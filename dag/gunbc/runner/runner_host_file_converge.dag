@@ -1921,7 +1921,12 @@ fn converge_deploy_slot_tree(
         SlotDrainPending { unit: _, cause: _ } => DeploySlotTreePending { unit: unit, cause: "masked; a job is still running or the unit is still stopping, so the rebuild waits for a later run" as NonEmptyStr }
         SlotActuationRefused { unit: _, step: st, reason: why } => DeploySlotTreeRefused { unit: unit, cause: join(["the drain refused at ", st, ": ", why], "") as NonEmptyStr }
         SlotActivated { unit: _ } => DeploySlotTreeRefused { unit: unit, cause: "the drain answered activated" as NonEmptyStr }
-        _ => rebuild_deploy_slot_tree(subject: subject, context: context, slot: slot)
+        SlotNotInstalled { unit: _ } => DeploySlotTreeRefused { unit: unit, cause: "the slot's unit is not installed, so there is no drained slot whose tree this run may remove" as NonEmptyStr }
+        // drain_and_mask_runner_slot_over answers Noop only for DrainAlreadyMasked: an earlier run masked
+        // the slot while a job ran, and it has since stopped. That is the pending drain settling, so the
+        // slot is as drained as SlotDrainedAndMasked and its tree is rebuilt.
+        SlotActuationNoop { unit: _, state: _ } => rebuild_deploy_slot_tree(subject: subject, context: context, slot: slot)
+        SlotDrainedAndMasked { unit: _ } => rebuild_deploy_slot_tree(subject: subject, context: context, slot: slot)
       }
   }
 }

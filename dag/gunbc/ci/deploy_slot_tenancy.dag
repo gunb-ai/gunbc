@@ -45,6 +45,14 @@ fn deploy_slot_selected_workflow() -> NonEmptyStr {
 // as the run's microvm-runner-group-ensure-receipts artifact), committed as a row because the slot's
 // drop-in is rendered before any job runs. The row records an observation; it admits nothing. The
 // deploy route's admission stays deploy_slot_observed_tenancy over a live read.
+//
+// THE ID IS TRANSCRIBED, AND THIS IS THE BOUNDARY THAT ADMITS IT. The guard below catches a receipt for
+// another group name or another workflow, but not the group being deleted and recreated under the same
+// name with a new id. A slot rendered from this row would then register with the old id. The expected
+// answer is that the JIT registration is refused for a group that no longer exists, so the slot fails to
+// register visibly; that is inferred from the API taking a group id, not yet observed. What retires this row is a live read of the slot's group from the
+// org's runner groups (the DeploySlotReading readback, which replaces srv1_modeled_deploy_slot_reading),
+// once that read can be done at render time.
 type RunnerGroupEnsureReceipt {
   run_id: NonEmptyStr
   observed_at: NonEmptyStr
