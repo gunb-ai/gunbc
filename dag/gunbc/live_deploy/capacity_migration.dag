@@ -8,7 +8,7 @@ import std.error_primitives { Result, Ok, Err }
 import extdeps.systemd.unit_file { ServiceUnitFile, ServiceSlice }
 import gunbc.compute.capacity_migration {
   CapacityManagedUnit, CapacityMigrationPopulation, CapacityTransientFamily, CapacityMigrationChild,
-  CapacityMigrationParentRequirement,
+  CapacityMigrationParentRequirement, CapacityWriterReading, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified,
 }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
 import gunbc.live_deploy.unit_install_roster { deployment_desired_unit_installs }
@@ -16,19 +16,21 @@ import gunbc.live_deploy.spec { DeploymentSpec }
 import gunbc.live_deploy.member_identity { ReleaseTarget }
 import gunbc.host.host_axis_caps { CapConvergeDecision }
 
-// Classification belongs to the source owner: Present names a ledger-writing entry,
-// Absent means source reachability establishes no ledger write, Err means unresolved.
+// Classification belongs to the source owner. Confirmed non-writers are excluded;
+// confirmed writers AND unclassified services are drained. The reading remains visible
+// in the parent requirements so the coordinator sees the cost of the over-approximation.
 // A unit name containing "enqueue" is not a non-writer proof. Slice/path/timer files
 // do not execute a process themselves; the services they activate must be classified.
 // The transient family's activators are inhibited separately by the migration gate.
 type DeploymentCapacityWriter {
-  source: DeclarationRef
+  reading: CapacityWriterReading
   install: DeploymentUnitInstall
 }
 
 fn deployment_capacity_writer_parent(writer: DeploymentCapacityWriter) -> CapacityMigrationParentRequirement {
   CapacityMigrationParentRequirement {
-    source: writer.source,
+    source: writer.reading.source,
+    standing: writer.reading.standing,
     parents: match writer.install.file {
       ServiceUnitFile { unit: _, service: service, install: _ } => {
         let slices = flat_map(service, setting => match setting {
@@ -43,32 +45,31 @@ fn deployment_capacity_writer_parent(writer: DeploymentCapacityWriter) -> Capaci
   }
 }
 
-fn deployment_capacity_writer_binding(row: DeploymentUnitInstall, classify: fn(DeploymentUnitInstall) -> Result<DeclarationRef?, String>) -> Result<DeploymentCapacityWriter?, String> {
+fn deployment_capacity_writer_binding(row: DeploymentUnitInstall, classify: fn(DeploymentUnitInstall) -> CapacityWriterReading) -> DeploymentCapacityWriter? {
   match row.file {
-    ServiceUnitFile { unit: _, service: _, install: _ } => match classify(row) {
-      Err { value: reason } => Err { value: reason }
-      Ok { value: Absent } => Ok { value: none }
-      Ok { value: Present { value: source } } => Ok { value: Present { value: DeploymentCapacityWriter { source: source, install: row } } }
+    ServiceUnitFile { unit: _, service: _, install: _ } => {
+      let reading = classify(row)
+      match reading.standing {
+        CapacityConfirmedNonWriter => none
+        CapacityConfirmedWriter => Present { value: DeploymentCapacityWriter { reading: reading, install: row } }
+        CapacityUnclassified { detail: _ } => Present { value: DeploymentCapacityWriter { reading: reading, install: row } }
+      }
     }
-    _ => Ok { value: none }
+    _ => none
   }
 }
 
 // This is desired population, not observed quiescence, a marker or permission to
-// activate a writer generation. classify is a source-owned reachability input; an
-// unresolved service refuses the whole population, never becomes a non-writer.
+// activate a writer generation. classify is a source-owned reachability input;
+// unclassified services remain in the drain, with unknown placement still refusing.
 fn deployment_capacity_population_from_installs(
   installed: List<DeploymentUnitInstall>, transients: List<CapacityTransientFamily>, children: List<CapacityMigrationChild>,
-  classify: fn(DeploymentUnitInstall) -> Result<DeclarationRef?, String>,
+  classify: fn(DeploymentUnitInstall) -> CapacityWriterReading,
 ) -> Result<CapacityMigrationPopulation, String> {
-  let bindings = map(installed, row => deployment_capacity_writer_binding(row: row, classify: classify))
-  let unread = flat_map(bindings, binding => match binding { Err { value: reason } => [reason] Ok { value: _ } => [] })
-  if count(unread) > 0 { Err { value: join(unread, "; ") } }
-  else {
-    let writers = flat_map(bindings, binding => match binding {
-      Ok { value: Present { value: writer } } => [writer]
-      _ => []
-    })
+  let writers = flat_map(installed, row => match deployment_capacity_writer_binding(row: row, classify: classify) {
+    Present { value: writer } => [writer]
+    Absent => []
+  })
     if count(installed) == 0 || count(writers) == 0 || count(transients) == 0 || count(children) == 0 {
       Err { value: "the desired installed-writer/transient/child population is incomplete" }
     } else {
@@ -79,14 +80,13 @@ fn deployment_capacity_population_from_installs(
         transients: transients, children: children,
       } }
     }
-  }
 }
 
 fn deployment_capacity_migration_population(
   spec: DeploymentSpec, target: ReleaseTarget, authorization: CapConvergeDecision,
   source_root: String, oidc_now: Second?,
   transients: List<CapacityTransientFamily>, children: List<CapacityMigrationChild>,
-  classify: fn(DeploymentUnitInstall) -> Result<DeclarationRef?, String>,
+  classify: fn(DeploymentUnitInstall) -> CapacityWriterReading,
 ) -> Result<CapacityMigrationPopulation, String> {
   match deployment_desired_unit_installs(spec: spec, target: target, authorization: authorization,
     source_root: source_root, oidc_now: oidc_now) {
