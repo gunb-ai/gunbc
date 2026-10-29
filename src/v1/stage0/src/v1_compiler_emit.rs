@@ -160,7 +160,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::TransportKind::{
-    FileTransport, LocalTransport, RestTransport, ShellTransport,
+    FileTransport, RestTransport, ShellTransport, UndeclaredTransport,
 };
 use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::VarBindingKind::*;
@@ -174,17 +174,17 @@ pub use crate::v1_std_core::{
     field_init_node_name_at, field_init_node_value, field_init_operation_modifier,
     find_child_named, foreach_body, foreach_collection, foreach_variable_at, if_condition,
     if_else_branch, if_then_branch, index_base, index_expr, is_compiler_error, is_file_transport,
-    is_local_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, local_transport_node, make_error_node,
+    is_rest_transport, is_shell_transport, is_undeclared_transport, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, make_error_node,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
     module_items, operation_modifier_name, param_node_default_value, param_node_name_at,
     param_node_type_expr, qualified_last_segment, record_lit_type_name_at, return_value,
     slice_base, slice_end, slice_start, transport_base_path, transport_has_auth, transport_verb,
-    tuple_type_name, unaryop_operand, with_required_cardinality, CallSemantics, CallTargetIdentity,
-    Cardinality, CompilerDiagnostic, Connective, DeclaredCallableIdentity, DeclaredFuncSig,
-    ErrorNode, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind, StringPart, TextFile, TransportKind,
-    UnaryOpKind, VarBindingKind,
+    tuple_type_name, unaryop_operand, undeclared_transport_node, with_required_cardinality,
+    CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
+    DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
+    StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2260,7 +2260,7 @@ pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
 
 pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
     if (item.transport.clone() == std::option::Option::None) {
-        crate::v1_std_core::local_transport_node(
+        crate::v1_std_core::undeclared_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             item.span.clone(),
         )
@@ -2567,7 +2567,7 @@ pub enum BoundOperation {
         transport: Rc<Node>,
         result_fields: Rc<Vec<Rc<ShellResultField>>>,
     },
-    LocalBound,
+    UnboundOperation,
     FileBound {
         verb: FileVerb,
         path_template: Rc<Node>,
@@ -3016,7 +3016,7 @@ pub fn bind_operation_transport(
         Some(TransportKind::FileTransport) => {
             bind_file_operation(t.clone(), op_node.clone(), source_indices.clone())
         }
-        Some(TransportKind::LocalTransport) => Rc::new(BoundOperation::LocalBound),
+        Some(TransportKind::UndeclaredTransport) => Rc::new(BoundOperation::UnboundOperation),
         std::option::Option::None => Rc::new(BoundOperation::BindingRefused {
             cause: Rc::new(TransportBindingRefusal::TransportMatchesNoRosterMember),
         }),
@@ -3218,7 +3218,7 @@ pub fn bound_operation_transport_kind(bound: Rc<BoundOperation>) -> Option<Trans
         BoundOperation::RestBound { transport: _, .. } => Some(TransportKind::RestTransport),
         BoundOperation::ShellBound { .. } => Some(TransportKind::ShellTransport),
         BoundOperation::FileBound { .. } => Some(TransportKind::FileTransport),
-        BoundOperation::LocalBound => Some(TransportKind::LocalTransport),
+        BoundOperation::UnboundOperation => Some(TransportKind::UndeclaredTransport),
         BoundOperation::BindingRefused { cause: _, .. } => std::option::Option::None,
     }
 }
@@ -3557,7 +3557,6 @@ pub fn emit_unified_transport_dispatch(
     render_rest: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone,
     render_shell: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
         + Clone,
-    render_local: impl Fn(String, i64) -> String + Clone,
 ) -> String {
     match (*bound.clone()).clone() {
         BoundOperation::RestBound { transport: t, .. } => render_rest(
@@ -3576,7 +3575,9 @@ pub fn emit_unified_transport_dispatch(
             depth.clone(),
             source_indices.clone(),
         ),
-        BoundOperation::LocalBound => render_local(op_name.clone(), depth.clone()),
+        BoundOperation::UnboundOperation => {
+            emit_unbound_operation_refusal(op_name.clone(), target.clone())
+        }
         BoundOperation::FileBound {
             path_template: __pt,
             result_fields: __rf,
@@ -6464,6 +6465,22 @@ pub fn emit_unmodeled_file_transport_refusal_with_cause(
                 ") -- ".to_string(),
             ),
             file_emission_refusal_fact(refusal),
+        ),
+        target.clone(),
+    )
+}
+
+pub fn emit_unbound_operation_refusal(op_name: String, target: RenderTarget) -> String {
+    emit_error_expr(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat("operation '".to_string(), op_name.clone()),
+                    "' has no realization for target ".to_string(),
+                ),
+                render_target_name(target.clone()),
+            ),
+            ": its service declares no transport".to_string(),
         ),
         target.clone(),
     )
