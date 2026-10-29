@@ -1,0 +1,135 @@
+module v2.test.claim.native_census.blocked_member_refusal_citation
+
+// THE DEMAND A REFUSAL MUST CITE THE NAME IT REFUSES, WRITTEN WITH NOTHING THAT ONLY THE FIX PROVIDES.
+//
+// v2.test.claim.native_census.blocked_member_dependency_refusal states the requester's side of a blocked
+// member, and it necessarily names the locality that makes the separation possible -- so on main it cannot
+// even resolve, which is a load failure and not a test result. This file states the half of the same fix
+// that main CAN be asked: when resolve refuses an import target as absent, the refusal must cite the name it
+// refuses as a NAME. `resolve_module_not_found_diagnostic_from_missing` minted the requested name through
+// `qualified_name_to_dotted_string` into the FILE slot of `textual_whole_file_diagnostic`, so the citation
+// was display text standing where a file belongs (std.diagnostic's `Locus::DeclarationLocus` comment names
+// that papering-over, and the typed citation is its sanctioned replacement). Same claim text at both
+// revisions, only the mint differs: RED on main, green once the mint cites the declaration.
+//
+// The claim is deliberately about the refusal every caller already reaches -- `admit_imported_modules` on a
+// name that is neither a root nor declared -- so it cannot pass by fixture luck: the requester's own module
+// is a real admitted root with a parsed header name, and the refused name is the one the request asked for.
+
+import std.algebra { Cons, Empty, empty_map, fold_list }
+import v2.compiler.name_resolve {
+  AdmissionAccepted,
+  AdmissionRejected,
+  AdmissionState,
+  ValidatedModuleRoots,
+  admit_imported_modules,
+  validate_module_roots
+}
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_imported_modules, no_type_declaration_kinds, no_type_declaration_modifiers }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_surface_edge }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.declaration_marker { test_marker_channel_empty }
+import v2.std.diagnostic { Accepted, ByteRange, DeclarationLocus, None, Outcome, Rejected, Textual, bind_outcome }
+import v2.std.namespace_alias { CapturedImportTarget }
+import v2.std.node { Atom, Conj, Node, TypeNode, fold_list_node, symbol_lexeme }
+import v2.std.qualified_name { QualifiedName }
+
+fn bc_qn(seg: Symbol) -> QualifiedName {
+  Cons { head: seg, tail: Empty }
+}
+
+fn bc_qn_pair(head_seg: Symbol, tail_seg: Symbol) -> QualifiedName {
+  Cons { head: head_seg, tail: Cons { head: tail_seg, tail: Empty } }
+}
+
+fn bc_module_root(segments: FreeMonoid<Symbol>) -> Outcome<NormalizedTree> {
+  admit_normalized_tree(
+    import_bindings: no_import_bindings(),
+    imported_modules: no_imported_modules(),
+    type_declaration_kinds: no_type_declaration_kinds(),
+    type_declaration_modifiers: no_type_declaration_modifiers(),
+    test_markers: test_marker_channel_empty(),
+    root: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        dag_surface_edge(edge: ^dag_surface_module_header, target: dag_grammar_atom(id: ^dag_surface_module_header)),
+        dag_surface_edge(
+          edge: ^dag_surface_module_header_qualified_name,
+          target: fold_list_node(
+            xs: segments,
+            item_node: fn(sym) {
+              Node {
+                kind: TypeNode { connective: Atom { identity: sym } },
+                children: [],
+                occurrence_id: OccurrenceSynthetic
+              }
+            }
+          )
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+    },
+    diagnostics: None
+  )
+}
+
+fn bc_located_import(target: QualifiedName) -> CapturedImportTarget {
+  CapturedImportTarget {
+    target: target,
+    at: Textual { file: ^bc_import_file, extent: ByteRange { start: 14, end: 42 } }
+  }
+}
+
+fn bc_admit(roots: ValidatedModuleRoots, target: QualifiedName) -> AdmissionState {
+  admit_imported_modules(
+    roots: roots,
+    modules: Cons { head: bc_located_import(target: target), tail: Empty },
+    state: AdmissionAccepted { bindings: empty_map(), origins: empty_map() },
+    subject_qn: bc_qn(seg: ^bc_subject_seg),
+    index: source_root_index_empty(),
+    active_roots: Empty
+  )
+}
+
+// Element-wise identity of two module names, by lexeme: identity is the join here, not pointer equality.
+fn qn_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+  fold_list(
+    xs: a,
+    empty: true,
+    cons: fn(acc, seg) {
+      if !acc { false } else {
+        fold_list(
+          xs: b,
+          empty: false,
+          cons: fn(seen, want) { if seen { true } else { symbol_lexeme(sym: seg) == symbol_lexeme(sym: want) } }
+        )
+      }
+    }
+  )
+}
+
+// RED ON MAIN, GREEN AT THE FIX: the refusal of an absent import target cites the refused name as a
+// declaration, so a reader takes the identity off the diagnostic instead of re-folding the roots that were
+// already folded to produce the refusal.
+test fn absent_import_refusal_cites_the_refused_name_as_a_declaration() -> Bool {
+  let refused = bc_qn_pair(head_seg: ^bc_absent_org, tail_seg: ^bc_absent_member)
+  bind_outcome(
+    o: bc_module_root(segments: Cons { head: ^bc_subject_seg, tail: Empty }),
+    f: fn(subject_root) {
+      match validate_module_roots(roots: Cons { head: subject_root, tail: Empty }) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: validated, diagnostics: _ } =>
+          match bc_admit(roots: validated, target: refused) {
+            AdmissionAccepted { bindings: _, origins: _ } => false
+            AdmissionRejected { diagnostics: d } =>
+              (d.head.reason == ^resolve_module_not_found)
+                && (match d.head.at {
+                  DeclarationLocus { declaration: declared } => qn_eq(a: declared, b: refused)
+                  _ => false
+                })
+          }
+      }
+    }
+  )
+}
