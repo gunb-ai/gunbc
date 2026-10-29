@@ -5,6 +5,7 @@ import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.toolchain.types { Aarch64 }
+import gunbc.site_pxe_edge { EveryKnownClient }
 import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly }
 import gunbc.machine_intake.subject { UnitKey }
 import gunbc.fleet.site_pxe_edge_converge {
@@ -288,7 +289,7 @@ test fn the_firmware_route_comes_from_the_standing_not_from_a_default() -> Bool 
 }
 
 test fn virtual_media_arm_does_not_need_a_pinned_chainloader() -> Bool {
-  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chain: SitePxeEdgeChainUnpinned { architecture: Aarch64, obligation: "fixture" }, virtual_media: media_available())
+  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chain: SitePxeEdgeChainUnpinned { architecture: Aarch64, audience: EveryKnownClient, obligation: "fixture" }, virtual_media: media_available())
   match derive(strategy: VirtualMedia, evidence: e, unit: "unit-alpha") {
     ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => true
     ArmedPxeOrUefiHttp { chain: _, firmware: _, origin: _, seed: _ } => false
@@ -303,7 +304,7 @@ test fn unobserved_firmware_is_an_unobserved_arm_not_a_fallback_to_virtual_media
 }
 
 test fn an_unpinned_chainloader_is_an_unobserved_arm() -> Bool {
-  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chain: SitePxeEdgeChainUnpinned { architecture: Aarch64, obligation: "pin it" }, virtual_media: media_available())
+  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chain: SitePxeEdgeChainUnpinned { architecture: Aarch64, audience: EveryKnownClient, obligation: "pin it" }, virtual_media: media_available())
   is_unobserved_as(arm: derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha"), expected: LoaderChainNotPinned { obligation: "pin it" })
 }
 

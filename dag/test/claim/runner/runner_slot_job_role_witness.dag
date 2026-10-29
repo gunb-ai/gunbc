@@ -6,7 +6,11 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
-import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user, deploy_slot_runner_group_name, deploy_slot_observed_tenancy }
+import gunbc.ci.deploy_slot_tenancy {
+  deploy_slot_job_user, deploy_slot_runner_group_name, deploy_slot_observed_tenancy,
+  RunnerGroupEnsureReceipt, deploy_slot_runner_group_id, deploy_slot_runner_group_ensure_receipt,
+}
+import extdeps.github.actions_jit_runner { JitRunnerGroupId }
 import gunbc.ci.deploy_route_requirement { srv1_deploy_route_requirement, deploy_route_switch_admitted }
 import gunbc.runner.runner_slot_allocation { identity_in_list, gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.runner.runner_slot_job_role {
@@ -119,6 +123,7 @@ test fn witness_deploy_instance_dropin_sets_user_labels_and_clears_the_docker_so
     Absent => false
     Present { value: t } =>
       string_contains(s: t, pattern: "CTRL_RUNNER_JOB_USER=ghdeploy")
+        && string_contains(s: t, pattern: "RUNNER_GROUP_ID=10")
         && string_contains(s: t, pattern: "gunbc-deploy")
         && !string_contains(s: t, pattern: "gunbc-heavy")
         && string_contains(s: t, pattern: "DOCKER_HOST=")
@@ -168,4 +173,21 @@ test fn witness_fleet_converge_keeps_its_selector_until_the_readback_admits_the_
       RunsOnExpression { expression: e } => !string_contains(s: e, pattern: deploy_slot_runner_group_name as String)
       _ => false
     }
+}
+
+fn id_of(x: RunnerGroupEnsureReceipt) -> Int {
+  match deploy_slot_runner_group_id(receipt: x) {
+    Absent => 0 - 1
+    Present { value: g } => g.value
+  }
+}
+
+// THE GROUP ID IS THE ENSURE RUN'S RECEIPT ONLY FOR THIS GROUP AND WORKFLOW. The committed receipt
+// yields its id; the same receipt naming another group, or the deploy group restricted to another
+// workflow, yields none, so the drop-in refuses rather than registering the slot into it.
+test fn witness_the_deploy_group_id_comes_only_from_a_receipt_for_this_group_and_workflow() -> Bool {
+  let r = deploy_slot_runner_group_ensure_receipt
+  id_of(x: r) == 10
+    && id_of(x: RunnerGroupEnsureReceipt { run_id: r.run_id, observed_at: r.observed_at, name: "heal-publisher-private", group: JitRunnerGroupId { value: 9 }, selected_workflow: r.selected_workflow }) == 0 - 1
+    && id_of(x: RunnerGroupEnsureReceipt { run_id: r.run_id, observed_at: r.observed_at, name: r.name, group: r.group, selected_workflow: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main" }) == 0 - 1
 }

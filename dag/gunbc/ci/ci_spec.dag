@@ -1163,6 +1163,11 @@ data gunbc_ci_service_runner_lost_boot_sweep_target: GunbcRunStepTarget = GunbcR
   function: "lost_boot_sweep_wet",
 }
 
+data gunbc_ci_service_runner_lost_boot_sweep_dry_run_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_lost_boot_sweep_run.dag",
+  function: "lost_boot_sweep_dry_run_wet",
+}
+
 data gunbc_ci_qualification_attempt_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_qualification_attempt_run.dag",
   function: "qualification_attempt_wet",
@@ -1343,8 +1348,9 @@ data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRun
   function: "approval_broker_dark_install_wet",
 }
 
-// THE microVM SLOT CONTROLLER INSTALL follows the dark install's convention exactly: the wet fold
-// under ci_deploy_srv1_access, invoked on the host-pinned runner, never through apply_dispatch.
+// THE microVM SLOT CONTROLLER INSTALL is invoked on the host-pinned runner, never through
+// apply_dispatch, like the dark install; unlike it, its elevated legs run as the fleet administrator
+// over the SSH edge under the job's inherited approval, not under ci_deploy_srv1_access's sudo.
 data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/live_deploy/apply.dag",
   function: "microvm_controller_install_wet",
@@ -1560,6 +1566,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_microvm_runner_group_ensure_target,
     gunbc_ci_srv1_root_mutation_approval_target,
     gunbc_ci_service_runner_lost_boot_sweep_target,
+    gunbc_ci_service_runner_lost_boot_sweep_dry_run_target,
     gunbc_ci_qualification_attempt_target,
     gunbc_ci_mtcollins1_boot_admit_target,
     gunbc_ci_gcp_iam_converge_request_target,
@@ -4465,6 +4472,16 @@ fn gunbc_ci_service_runner_lost_boot_sweep_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_service_runner_lost_boot_sweep_target.entry,
     function: gunbc_ci_service_runner_lost_boot_sweep_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.entry,
+    function: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.function,
     claim_run: false,
     receipt_rel: none
   )

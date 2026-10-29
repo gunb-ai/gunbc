@@ -24,6 +24,6 @@ data local_repo_wet_lane_per_row_wall_budget_unarmed_stall: GuaranteeStall = Gua
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: ["claim_batch_parse_gate_witness.dag", "claim_batch_unobserved_exit_witness.dag", "claim_batch_exit_two_unobserved_witness.dag"] },
+  population: BoundedPopulation { members: ["claim_batch_parse_gate_witness.dag", "claim_batch_unobserved_exit_witness.dag", "claim_batch_exit_two_unobserved_witness.dag", "claim_batch_outcomes_out_witness.dag"] },
   next_rung_trigger: climbs_when(capability: "the wet terminal arms set_witness_wall_budget from the declared bin_witness_wet_per_row_wall_budget_seconds datum and refuses an over-budget row as BudgetRefusedBeforeVerdict -- SUFFICIENT FOR deleting this row and the over-budget admission in excl_claim_batch_parse_gate_reason together"),
 }

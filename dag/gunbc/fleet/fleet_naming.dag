@@ -1,0 +1,300 @@
+module gunbc.fleet.fleet_naming
+
+// THE NAMES A FLEET MEMBER ANSWERS TO, AND THE ONE POLICY THAT BUILDS THEM.
+//
+// WHAT THIS MODULE IS. The model step of gunbc.plans.fleet_naming_reach_access P2: the identity types
+// and the single construction path, with no producer migrated and no endpoint cut over (those are P3-P5).
+// Every type here is constructed only from a HostnameAllocation, through the module's ONE policy row.
+// That is the wall the plan asks for -- "every hostname construction passes through a policy that names
+// the allocation" -- and a wall is only as good as its construction site: if an identity type could be
+// minted from a string, the wall would move back out to each caller that builds a name, which is exactly
+// the defect the plan's Context section counts (ten call sites constructing hostnames from host
+// identities or from raw strings).
+//
+// THE THREE NAMES, AND WHY THEY ARE THREE AND NOT FOUR (the plan's Decision D2). A brand says WHO MAY
+// MINT a value and by WHAT LAW; two names with the same minting law are one name written twice.
+//   FleetMemberLabel  -- the canonical fleet name of a member. MINTED ONLY BY fleet_member_label, from
+//                       an allocation, after the policy row. A bare string literal is refused, so a
+//                       caller cannot hand a function a name nobody allocated.
+//   LinuxHostname     -- what hostnamectl sets on the machine and reads back. An ALIAS of
+//                       FleetMemberLabel, deliberately not a second brand: the DFS for this concept finds
+//                       no distinct law, because the machine name IS the member's label by definition and
+//                       any divergence would be a defect to fix, not a state to model. A brand over a
+//                       string that equals another branded string by definition has no law of its own to
+//                       hold, and minting one would make "are these the same string?" a question every
+//                       consumer has to ask. It is still NAMED, so a machine-side converge can be typed
+//                       about the host name without pretending to a wall that is not there.
+//   ProviderEndpoint  -- the provider's addressing form for a member, and the value a consumer hands a
+//                       provider client. Not a reach address: extdeps.network.endpoint stays the single
+//                       address authority and this is a branded host token on that authority, not a
+//                       second address model.
+//
+// TailscaleMachineName is NOT here. The plan fixes its home as the Tailscale realization: FleetMemberLabel
+// plus the Tailscale realization gives TailscaleMachineName, and that construction belongs beside the
+// provider's device model, not in provider-neutral fleet code (minting it here would be the D9 fork the
+// plan spends a whole section arguing against).
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.error_primitives { Err, Ok, Result }
+import std.optional { Absent, Optional, Present }
+import extdeps.dns.domain_name {
+  DomainName,
+  DnsLabel,
+  HostName,
+  PartiallyQualified,
+  domain_name_wire,
+  parse_dns_label_raw,
+  parse_host_name,
+  qualify,
+}
+import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation {
+  DrawnHumanName,
+  FirstLast,
+  FirstMiddleLast,
+  FirstOnly,
+  HostnameAllocation,
+  HumanName,
+  LegacyHostname,
+  allocated_canonical_hostname,
+  allocation_selector_forms,
+}
+import gunbc.fleet.fleet_naming_policy {
+  BareLabel,
+  CanonicalFirstLast,
+  CanonicalFirstMiddleLast,
+  CanonicalFirstOnly,
+  FleetNamingPolicy,
+  MemberLabelQualification,
+  MemberLabelSource,
+  QualifiedByFleetZone,
+  SelectorFormPermission,
+  legacy_labels_may_stay,
+  policy_qualification_zone,
+  select_fleet_naming_policy,
+  selector_form_is_accepted,
+}
+
+// THE BRANDED IDENTITY TYPES. sole_constructor over the string each carries, so nothing outside this
+// module can produce one, and each keeps the allocation it was built from. The source field is not
+// bookkeeping: it is what makes a constructed name CHECKABLE afterwards, since a consumer holding a name
+// can go back to the roster and confirm the name still belongs to the slot it claims. A name with no
+// recorded source allocation is not a value in this module.
+type FleetMemberLabel sole_constructor {
+  source: HostnameAllocation
+  label: DnsLabel
+}
+
+// THE MACHINE NAME, as an alias rather than a second wall. See the header: the machine name equals the
+// member's label by definition, so a distinct brand would assert a law nothing enforces and let two
+// names drift where no law permits them to.
+type LinuxHostname = FleetMemberLabel
+
+// THE PROVIDER'S ADDRESSING FORM. A qualified host token -- what a fleet consumer passes a provider
+// client as "the machine" -- and NOT a socket address. The port belongs to the service being addressed
+// and extdeps.network.endpoint SocketAddress is where a host and a port are paired; carrying a port here
+// would give the same number two owners and let them disagree.
+type ProviderEndpoint sole_constructor {
+  source: HostnameAllocation
+  host: HostName
+}
+
+// WHAT CANNOT BE NAMED, AND WHY. Three failures that are genuinely different, so a caller cannot mistake
+// one for another, and each carries the slot it failed on:
+//   MemberSourceUnallocated   -- the slot has no row in the roster at all. A fact about the ledger.
+//   LegacyRowNeedsMigration   -- the policy would require a drawn name and this row is legacy. A fact
+//                                about the operator's migration state, with the remedy named in it.
+//   LabelFormUnusable         -- the spelling the policy selects will not parse as a label. A fact about
+//                                a spelling.
+// None of them returns an identity spelling, a raw address, or an empty label: the plan's rule is that a
+// missing allocation, binding, or observation refuses with a typed cause rather than falling back,
+// because an unallocated slot that silently becomes its own hostname is precisely how a second,
+// ungoverned namespace appears.
+type FleetNamingRefusal
+  = MemberSourceUnallocated { slot: HostIdentity, cause: NonEmptyStr }
+  | LegacyRowNeedsMigration { slot: HostIdentity, spelling: NonEmptyStr }
+  | LabelFormUnusable { slot: HostIdentity, spelling: NonEmptyStr, cause: NonEmptyStr }
+
+// THE ONE POLICY ROW THE MODULE ENACTS, read through the registry's accessor and never inlined. An
+// inline policy here plus the registry there is DESIGN 3's ungrounded duplicate: two sources that can
+// disagree with nothing visible to show it.
+fn fleet_naming_policy() -> FleetNamingPolicy {
+  select_fleet_naming_policy()
+}
+
+// THE CONSTRUCTION PATH. The single mint for a member label, and the only place any name type in this
+// module is built.
+//
+// WHY AN ALLOCATION IS THE ONLY INPUT. The plan fixes the route HostIdentity -> HostnameAllocation ->
+// FleetMemberLabel, so anything wanting a member label must first have gone to the roster. The old code
+// derived a hostname from the identity string, so an identity that happened to be a legal label silently
+// claimed a hostname nobody allocated; the refusal below is the case that route exists to catch.
+fn fleet_member_label(allocation: HostnameAllocation) -> Result<FleetMemberLabel, FleetNamingRefusal> {
+  let policy = fleet_naming_policy()
+  match selected_member_spelling(allocation: allocation, source: policy.member_label_source) {
+    Absent => Err {
+      value: LegacyRowNeedsMigration {
+        slot: allocation.fleet_slot,
+        spelling: allocation_stored_spelling(allocation: allocation),
+      }
+    }
+    Present { value: spelling } => match parse_dns_label_raw(raw: spelling) {
+      Err { value: _ } => Err {
+        value: LabelFormUnusable {
+          slot: allocation.fleet_slot,
+          spelling: spelling,
+          cause: "the spelling the naming policy selects does not parse as a DNS label, so it cannot be a member's canonical name" as NonEmptyStr,
+        }
+      }
+      Ok { value: label } => Ok {
+        value: FleetMemberLabel { source: allocation, label: label },
+      }
+    }
+  }
+}
+
+// THE MACHINE NAME. The same single mint, carried under the name the host-side converge speaks about
+// (set-hostname and read back). This is a thin wrapper rather than a second path on purpose: the wall
+// stays in fleet_member_label and this only names the role.
+fn linux_hostname(allocation: HostnameAllocation) -> Result<LinuxHostname, FleetNamingRefusal> {
+  fleet_member_label(allocation: allocation)
+}
+
+// THE PROVIDER'S ADDRESSING FORM. Same allocation, same policy row, and the label wall runs FIRST: a
+// spelling that will not be a member label will not be a provider address either, so no consumer can
+// obtain an ungoverned host token by "just needing a host". The qualification is whatever the selected
+// row says -- zone-suffixed once the operator's DNS move lands, bare today -- and is never a suffix
+// invented here.
+fn provider_endpoint(allocation: HostnameAllocation) -> Result<ProviderEndpoint, FleetNamingRefusal> {
+  match fleet_member_label(allocation: allocation) {
+    Err { value: e } => Err { value: e }
+    Ok { value: named } =>
+      match qualified_provider_host(named: named, qualification: fleet_naming_policy().member_label_qualification) {
+        Absent => Err {
+          value: LabelFormUnusable {
+            slot: named.source.fleet_slot,
+            spelling: named.label as String,
+            cause: "the policy asks for a zone-qualified provider address and the policy row carries no zone, so no address can be formed" as NonEmptyStr,
+          }
+        }
+        Present { value: host } => match parse_host_name(raw: domain_name_wire(name: host.name)) {
+          Err { value: _ } => Err {
+            value: LabelFormUnusable {
+              slot: named.source.fleet_slot,
+              spelling: domain_name_wire(name: host.name),
+              cause: "the qualified address the policy forms does not parse as a host name" as NonEmptyStr,
+            }
+          }
+          Ok { value: parsed } => Ok {
+            value: ProviderEndpoint { source: named.source, host: parsed },
+          }
+        }
+      }
+  }
+}
+
+// WHETHER A SLOT HAS A NAME AT ALL. The predicate the unallocated branch of the plan turns into a
+// question a caller can ask before it needs a label; the refusal above carries the same fact, and this
+// exists so a consumer that must not fail (a census row that reports unmanaged members) can test it
+// without matching on a refusal.
+fn fleet_slot_is_allocated(slot: HostIdentity, roster: List<HostnameAllocation>) -> Bool {
+  roster.any(a => a.fleet_slot == slot)
+}
+
+// WHICH SPELLING THE POLICY SELECTS, as text or as a refusal. A legacy row under a policy that says
+// legacy rows stay keeps its stored spelling -- the plan fixes that migration decision, and the operator
+// migrates rows later. A legacy row under a policy that would require a drawn name is refused rather than
+// quietly served: "the operator migrates them later" is a plan, not a licence to invent a name for an
+// unmigrated row.
+fn selected_member_spelling(
+  allocation: HostnameAllocation,
+  source: MemberLabelSource,
+) -> Optional<String> {
+  match allocation.name {
+    LegacyHostname { label: l } =>
+      if legacy_labels_may_stay(policy: fleet_naming_policy()) {
+        Present { value: l as String }
+      } else {
+        Absent
+      }
+    DrawnHumanName { name: n, draw: _ } => human_name_spelling(name: n, source: source)
+  }
+}
+
+// THE POLICY'S SPELLING COLUMN, ENACTED. Absent is the honest answer when the policy asks a name for a
+// spelling it does not have: a two-part name has no middle part, and inventing one (or falling back to a
+// different spelling than the policy selected) would answer a question nobody asked. The caller turns the
+// absence into a refusal that names the slot, so the failure is reported rather than papered over.
+fn human_name_spelling(name: HumanName, source: MemberLabelSource) -> Optional<String> {
+  match name {
+    FirstOnly { first: f } =>
+      match source {
+        CanonicalFirstOnly => Present { value: f as String }
+        CanonicalFirstLast => Absent
+        CanonicalFirstMiddleLast => Absent
+      }
+    FirstLast { first: f, last: l } =>
+      match source {
+        CanonicalFirstOnly => Present { value: f as String }
+        CanonicalFirstLast => Present { value: join([f as String, "-", l as String], "") }
+        CanonicalFirstMiddleLast => Absent
+      }
+    FirstMiddleLast { first: f, middle: m, last: l } =>
+      match source {
+        CanonicalFirstOnly => Present { value: f as String }
+        CanonicalFirstLast => Present { value: join([f as String, "-", l as String], "") }
+        CanonicalFirstMiddleLast => Present {
+          value: join([f as String, "-", m as String, "-", l as String], ""),
+        }
+      }
+  }
+}
+
+// THE ADDRESS THE PROVIDER ADDRESSES A MEMBER BY, qualified per the policy. Bare today; zone-qualified on
+// the row that carries a zone. An absent zone under a qualification that requires one is Absent, which
+// the caller turns into a refusal -- this function never substitutes a zone it was not given.
+fn qualified_provider_host(
+  named: FleetMemberLabel,
+  qualification: MemberLabelQualification,
+) -> Optional<HostName> {
+  match qualification {
+    BareLabel => Present {
+      value: HostName {
+        name: DomainName { labels: [named.label] },
+        qualification: PartiallyQualified,
+      },
+    }
+    QualifiedByFleetZone => match policy_qualification_zone(policy: fleet_naming_policy()) {
+      Absent => Absent
+      Present { value: zone } => Present { value: qualify(host: named.label, zone: zone) }
+    }
+  }
+}
+
+// THE TEXT OF AN ADDRESS. One function so the rendering of a host name is a single fact of this module
+// rather than a string-building habit that grows differently at each call site.
+fn provider_endpoint_text(endpoint: ProviderEndpoint) -> NonEmptyStr {
+  domain_name_wire(name: endpoint.host.name) as NonEmptyStr
+}
+
+// THE STORED SPELLING OF ANY ROW, drawn or legacy -- the text a refusal should name. For a drawn row
+// this is the canonical hostname; for a legacy row it is the label as recorded.
+fn allocation_stored_spelling(allocation: HostnameAllocation) -> NonEmptyStr {
+  allocated_canonical_hostname(allocation: allocation) as NonEmptyStr
+}
+
+// THE SELECTOR FORMS, delegated rather than re-derived. The one place a consumer asks "what may I type
+// for this host?", forwarding to the allocation module's existing function so the roster stays the
+// single source. Rebuilding that list here would be a second source for what a host answers to, which is
+// the defect this whole module exists to prevent.
+fn fleet_member_selector_forms(allocation: HostnameAllocation) -> List<String> {
+  allocation_selector_forms(allocation: allocation)
+}
+
+// WHETHER A SELECTOR FORM MAY BE USED: the policy must permit shortened forms AND the form must pick out
+// exactly one host. The caller supplies the count because only the roster knows how many hosts a spelling
+// matches; what lives here is the rule, which is the plan's sentence that a non-unique form is ambiguous
+// and must be refused with no implicit winner.
+fn fleet_member_selector_form_is_accepted(matches: Int) -> Bool {
+  selector_form_is_accepted(permission: fleet_naming_policy().selector_forms, matches: matches)
+}

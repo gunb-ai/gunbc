@@ -5,7 +5,6 @@ import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, CitedToAuthority, TranscribedUncited }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine, TemperaturePublished }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, ChassisPowerObservation }
-import std.measure { sdr_undecoded_line_count }
 import gunbc.machine_intake.bmc_fan_observation { ThermalObservation, ThermalRead, FanSensorObservation, FanSensorsRead, FanSensorsUnreadable }
 import gunbc.machine_intake.chassis_fan_establishment {
   FittedFanSet, FittedFanSetEstablished, FittedFanSetNotEstablished, FittedFanSetOperatorAssumed, PostPowerFanVerdict, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused,
@@ -46,7 +45,7 @@ fn read(rows: List<SdrTypeLine>) -> FanSensorObservation { FanSensorsRead { line
 fn on() -> ChassisPowerObservation { ChassisPowerRead { power_on: true } }
 
 fn verdict(set: FittedFanSet, chassis: ChassisPowerObservation, fans: FanSensorObservation) -> PostPowerFanVerdict {
-  post_power_fan_verdict(fitted: set, chassis: chassis, thermal: ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] }, fans: fans)
+  post_power_fan_verdict(fitted: set, chassis: chassis, thermal: ThermalRead { publication: TemperaturePublished, undecoded_texts: [], unrecognised_readings: [] }, fans: fans)
 }
 
 fn is_established(v: PostPowerFanVerdict) -> Bool {
