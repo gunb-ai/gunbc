@@ -7,7 +7,7 @@ import std.measure { kibibyte }
 import product.capacity.event_chain { PartitionId }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import gunbc.compute.capacity_migration {
-  CapacityManagedUnit, CapacityTransientFamily, CapacityMigrationChild,
+  CapacityManagedUnit, CapacityTransientFamily, CapacityMigrationChild, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified, capacity_migration_family_parent_requirements,
   CapacityMigrationPopulation, CapacityUnitDrain, CapacityMigrationAdmission, capacity_migration_admit,
 }
 import gunbc.compute.host_capacity { ComputeCapacityStanding, ComputeCapacityStandingRead }
@@ -26,6 +26,7 @@ fn migration_fixture_population(placement_known: Bool) -> CapacityMigrationPopul
     source: decl_ref(module_path: "test.claim.compute.capacity_migration_witness", decl_name: "migration_fixture_population"),
     installed: [activator], writer_parents: [],
     transients: [CapacityTransientFamily {
+      standing: CapacityConfirmedWriter,
       manager: SystemManager,
       source: decl_ref(module_path: "test.claim.compute.capacity_migration_witness", decl_name: "migration_fixture_unit"),
       patterns: ["fixture-*.service"], activators: [activator],
@@ -81,4 +82,46 @@ test fn a_different_manager_cannot_supply_the_unit_drain() -> Bool {
     quiescence: original.quiescence, descendants: original.descendants,
   }
   !migration_fixture_admits(observed: [wrong, migration_fixture_drain(name: "fixture.slice", populated: false)], placement_known: true, listing_known: true)
+}
+
+// New sound negative evidence can shrink the drain without changing activation.
+// The same unknown placement must remain visible while the root is unclassified.
+test fn only_confirmed_nonwriters_leave_the_family_parent_requirements() -> Bool {
+  let base = migration_fixture_population(placement_known: true)
+  let source = base.source
+  let family = CapacityTransientFamily {
+    manager: SystemManager, source: source, patterns: ["fixture-*.service"], activators: base.installed,
+    standing: CapacityConfirmedNonWriter, parents: Err { value: "unobserved parent" },
+  }
+  let unknown = CapacityTransientFamily {
+    manager: family.manager, source: source, patterns: family.patterns, activators: family.activators,
+    standing: CapacityUnclassified { detail: "service-call reach not covered" }, parents: family.parents,
+  }
+  count(capacity_migration_family_parent_requirements(families: [family])) == 0
+    && count(capacity_migration_family_parent_requirements(families: [unknown])) == 1
+}
+
+// Unclassified is a drain obligation, not an activation refusal of its own.
+test fn an_unclassified_family_can_admit_only_after_its_known_parent_is_drained() -> Bool {
+  let base = migration_fixture_population(placement_known: true)
+  let population = CapacityMigrationPopulation {
+    source: base.source, installed: base.installed, writer_parents: base.writer_parents,
+    transients: map(base.transients, family => CapacityTransientFamily {
+      manager: family.manager, source: family.source, patterns: family.patterns, activators: family.activators,
+      parents: family.parents, standing: CapacityUnclassified { detail: "service edge unresolved" },
+    }), children: base.children,
+  }
+  match capacity_migration_admit(population: population,
+    target_revision: "0123456789012345678901234567890123456789" as CommitSha,
+    observed: [migration_fixture_drain(name: "fixture.path", populated: false), migration_fixture_drain(name: "fixture.slice", populated: false)],
+    enumerate: family => Ok { value: [] }, read_child: child => migration_fixture_empty()) {
+    Err { value: _ } => false
+    Ok { value: _ } => match capacity_migration_admit(population: population,
+      target_revision: "0123456789012345678901234567890123456789" as CommitSha,
+      observed: [migration_fixture_drain(name: "fixture.path", populated: false)],
+      enumerate: family => Ok { value: [] }, read_child: child => migration_fixture_empty()) {
+      Err { value: _ } => true
+      Ok { value: _ } => false
+    }
+  }
 }
