@@ -132,10 +132,20 @@ fn boot_medium_reader_key_state() -> BootMediumReaderKeyState {
   )
 }
 
-fn boot_medium_reader_key_is_minted() -> Bool {
-  match boot_medium_reader_key_state() {
+// IS THE KEY MINTED -- THE ONE PLACE THIS IS DECIDED. Taking the state as an argument is what lets a
+// consumer that was HANDED a state (gunbc.auth.mtcollins1_branch_boot_trust
+// mtcollins1_boot_branch_route_refusal_cause_with is asked about a reader credential it may or may not be
+// given) ask the question without re-writing this match: a second copy of it is the drift this cleanup set
+// out to remove, and DESIGN.md §6b treats the second local implementation of one rule as the trigger to
+// generalize rather than a path to keep.
+fn boot_medium_reader_key_is_minted_of(state: BootMediumReaderKeyState) -> Bool {
+  match state {
     Minted { reference: _, public_key: _, fingerprint: _ } => true
     Unminted => false
     HalfMinted { why: _ } => false
   }
+}
+
+fn boot_medium_reader_key_is_minted() -> Bool {
+  boot_medium_reader_key_is_minted_of(state: boot_medium_reader_key_state())
 }
