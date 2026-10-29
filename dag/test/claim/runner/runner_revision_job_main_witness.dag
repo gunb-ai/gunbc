@@ -2,10 +2,12 @@ module test.claim.runner.runner_revision_job_main_witness
 
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.runner.runner_revision_job_main {
-  RevisionJobOutcome, RevisionJobSpecNotAdmitted, RevisionJobSlotNotDeclared, revision_job_run, revision_job_admit_image,
+  RevisionJobOutcome, RevisionJobSpecNotAdmitted, RevisionJobSlotNotDeclared, revision_job_run, revision_job_admit_image, revision_job_cell_job,
 }
 import gunbc.runner.runner_revision_job_image { RevisionJobImageNotAdmitted, RevisionJobImageVerified }
 import test.claim.runner.runner_revision_job_spec_witness { spec }
+import product.fabric.identity { ExecutionAttemptKey }
+import test.claim.fabric.fabric_grant_issuance_witness { subject_work }
 
 // THE JOB'S PRE-VM WALLS, BY EXECUTION OF THE ENTRY ITSELF: a malformed spec is refused before anything
 // else, and a well-formed one on a slot the declared list does not hold is refused before staging or
@@ -22,7 +24,11 @@ fn run(text: String, slot: String) -> String {
 }
 
 test fn the_job_refuses_a_malformed_spec_and_an_undeclared_slot_before_any_effect() -> Bool {
-  run(text: "not json", slot: "srv1-14") == "spec-not-admitted"
+  let a = revision_job_cell_job(attempt: "invocation-a" as ExecutionAttemptKey, work: subject_work, at: "2026-10-15T00:00:00Z")
+  let retry = revision_job_cell_job(attempt: "invocation-a" as ExecutionAttemptKey, work: subject_work, at: "2026-10-15T00:01:00Z")
+  let next = revision_job_cell_job(attempt: "invocation-b" as ExecutionAttemptKey, work: subject_work, at: "2026-10-15T00:01:00Z")
+  a.name == retry.name && a.name != next.name && a.work.id == next.work.id
+    && run(text: "not json", slot: "srv1-14") == "spec-not-admitted"
     && run(text: spec(claims: "[\"//gunbc/instruments:self-host\"]", extra: ""), slot: "srv1-15") == "slot-not-declared:srv1-15"
     && run(text: spec(claims: "[\"//gunbc/instruments:self-host\"]", extra: ""), slot: "srv1-13") == "slot-not-declared:srv1-13"
 }

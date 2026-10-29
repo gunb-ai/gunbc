@@ -11,7 +11,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decimal { decimal_digits_only }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.object_store { git_object_id_wire_hex }
-import product.fabric.identity { FabricIdentity }
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey }
 import product.fabric.sanitation { CellReadiness, CellQuarantined }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.floor.floor_demand { floor_execution_requirements }
@@ -115,9 +115,12 @@ fn revision_job_slot(instance: String) -> RunnerSlotIdentity? {
   } else { none }
 }
 
-fn revision_job_cell_job(spec: RevisionJobSpec, work: product.fabric.work.Work<NonEmptyStr>, at: Timestamp) -> MicroVmCellJob {
+// Work identity is stable across repeated invocations. The cell-job identity is
+// not: systemd INVOCATION_ID names this execution, and remote request recovery
+// must retain its execution attempt key rather than deriving it from WorkKey.
+fn revision_job_cell_job(attempt: ExecutionAttemptKey, work: product.fabric.work.Work<NonEmptyStr>, at: Timestamp) -> MicroVmCellJob {
   MicroVmCellJob {
-    name: join(["revision-job-", work.id.key as String], "") as NonEmptyStr,
+    name: concat("revision-job-", attempt as String) as NonEmptyStr,
     work: work,
     origin: "gunbc.observation.revision-job",
     submitted_at: at,
@@ -205,7 +208,7 @@ fn revision_job_run(
   match claim_set_run_work(source: ExactGitSource { subject: revision }, claims: spec.claims, requirements: floor_execution_requirements()) {
   FabricCiWorkRefused { cause: _ } => RevisionJobWorkRefused
   FabricCiWorkBound { work: work, source_tree_digest: _, environment_materialization_digest: _ } => {
-    let job = revision_job_cell_job(spec: spec, work: work, at: now)
+    let job = revision_job_cell_job(attempt: invocation_id as ExecutionAttemptKey, work: work, at: now)
     match fabric_allocation_store(tree: host_state_tree()) {
     FabricAllocationStoreUnready { detail } => RevisionJobNotGranted { detail: join(["the allocation store is unready: ", detail as String], "") }
     FabricAllocationStoreReady { store: allocation } =>
