@@ -51,6 +51,12 @@ fn gcp_operation_budget_fits_actuation_allowance() -> Bool {
   second_count(s: gcp_operation_poll_budget) <= second_count(s: iam_converge_token_lifetime)
 }
 
+// A DERIVED QUOTA WAIT is still bounded by the same allowance as the operation wait: a daily window
+// reopening hours away is a refusal to rerun after it, never a block of the ceremony.
+fn gcp_quota_wait_fits_actuation_allowance(wait: Second) -> Bool {
+  second_count(s: wait) <= second_count(s: gcp_operation_poll_budget)
+}
+
 // ── ONE READ, and the pure decision after it ─────────────────────────────────────────────────────
 type OperationReading
   = OperationRead { returned_name: String, standing: GcpOperationStanding }

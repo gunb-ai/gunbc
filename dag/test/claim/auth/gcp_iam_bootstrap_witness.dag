@@ -30,7 +30,7 @@ import gunbc.auth.gcp_iam_bootstrap {
 
 import gunbc.auth.gcp_iam_bootstrap_authority {
   bootstrap_operator_matches, iam_bootstrap_operator_subject,
-  iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted, bootstrap_429_retry_admitted, bootstrap_authority_requires, TemporaryAuthorityRetired, DenyPolicyReadback,
+  iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted, bootstrap_authority_requires, TemporaryAuthorityRetired, DenyPolicyReadback,
   BootstrapAuthorityIntent, bootstrap_authority_cell, bootstrap_authority_intent_wire, bootstrap_authority_may_grant,
   bootstrap_authority_action, AuthorityAbsent, AuthorityPresent, AuthorityUnreadable,
   AuthorityRefused, AuthoritySettled, RemoveAuthority, PublishAuthority,
@@ -145,19 +145,19 @@ test fn definite_publication_rejection_is_distinct_from_unknown_commit() -> Bool
 
 test fn deny_propagation_retry_requires_live_authority_and_a_remaining_budget() -> Bool {
   let refused = RestStatusRefused { status: 403, body: "permission not established" }
-  bootstrap_deny_retry_admitted(refusal: refused, remaining: 2, live: true)
-    && !bootstrap_deny_retry_admitted(refusal: refused, remaining: 1, live: true)
-    && !bootstrap_deny_retry_admitted(refusal: refused, remaining: 30, live: false)
-    && !bootstrap_deny_retry_admitted(refusal: RestTransportRefused { cause: "unknown commit" }, remaining: 30, live: true)
-    && !bootstrap_deny_retry_admitted(refusal: RestStatusRefused { status: 500, body: "unknown commit" }, remaining: 30, live: true)
+  bootstrap_deny_retry_admitted(refusal: refused, admitted_status: 403, remaining: 2, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: refused, admitted_status: 403, remaining: 1, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: refused, admitted_status: 403, remaining: 30, live: false)
+    && !bootstrap_deny_retry_admitted(refusal: RestTransportRefused { cause: "unknown commit" }, admitted_status: 403, remaining: 30, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: RestStatusRefused { status: 500, body: "unknown commit" }, admitted_status: 403, remaining: 30, live: true)
 }
 
 test fn a_429_retry_is_admitted_only_for_a_429_with_budget_and_live_authority() -> Bool {
   let limited = RestStatusRefused { status: 429, body: "x" }
-  bootstrap_429_retry_admitted(refusal: limited, remaining: 2, live: true)
-    && !bootstrap_429_retry_admitted(refusal: limited, remaining: 1, live: true)
-    && !bootstrap_429_retry_admitted(refusal: limited, remaining: 30, live: false)
-    && !bootstrap_429_retry_admitted(refusal: RestStatusRefused { status: 403, body: "x" }, remaining: 30, live: true)
+  bootstrap_deny_retry_admitted(refusal: limited, admitted_status: 429, remaining: 2, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: limited, admitted_status: 429, remaining: 1, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: limited, admitted_status: 429, remaining: 30, live: false)
+    && !bootstrap_deny_retry_admitted(refusal: RestStatusRefused { status: 403, body: "x" }, admitted_status: 429, remaining: 30, live: true)
 }
 
 test fn cleanup_dependency_does_not_wait_for_successful_deny_installation() -> Bool {

@@ -100,14 +100,10 @@ fn bootstrap_authority_publication_refused(refusal: RestRefusal) -> Bool {
   }
 }
 
-// A 429 is Google's own rate-limit refusal (a non-commit); whether to retry is budgeted and live like the
-// 403 propagation retry, and HOW LONG to wait is derived from its ErrorInfo, not here.
-fn bootstrap_429_retry_admitted(refusal: RestRefusal, remaining: Int, live: Bool) -> Bool {
-  remaining > 1 && live && match refusal { RestStatusRefused { status, body: _ } => (status as Int) == 429  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
-}
-
-fn bootstrap_deny_retry_admitted(refusal: RestRefusal, remaining: Int, live: Bool) -> Bool {
-  remaining > 1 && live && match refusal { RestStatusRefused { status, body: _ } => (status as Int) == 403  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
+// ONE retry-admission rule for the deny ceremony, keyed on the admitted status: 403 is the propagation
+// retry, 429 the quota retry (how long to wait is each caller's own fact). Budgeted and live-gated alike.
+fn bootstrap_deny_retry_admitted(refusal: RestRefusal, admitted_status: Int, remaining: Int, live: Bool) -> Bool {
+  remaining > 1 && live && match refusal { RestStatusRefused { status, body: _ } => (status as Int) == admitted_status  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
 }
 
 

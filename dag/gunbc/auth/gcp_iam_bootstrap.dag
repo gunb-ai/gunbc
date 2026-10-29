@@ -56,7 +56,7 @@ import gunbc.auth.gcp_iam_bootstrap_model {
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
 import gunbc.auth.gcp_iam_bootstrap_authority {
   bootstrap_operator_matches, iam_bootstrap_operator_member, iam_bootstrap_operator_subject,
-  iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted, bootstrap_429_retry_admitted, bootstrap_authority_dependency_plan,
+  iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted, bootstrap_authority_dependency_plan,
   BootstrapAuthorityIntent, bootstrap_authority_intent_valid, bootstrap_authority_may_grant,
   bootstrap_authority_cell, bootstrap_authority_intent_wire, bootstrap_authority_action,
   AuthorityAbsent, AuthorityPresent, AuthorityUnreadable, PublishAuthority, UseAuthority,
@@ -66,7 +66,7 @@ import gunbc.auth.approval_gate { approval_instant_now }
 import std.measure { second, second_count }
 import extdeps.clock { clock_unix_millis_read, clock_timestamp_to_unix_secs, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused, ClockTimestampObserved, ClockTimestampRefused }
 import extdeps.cloud.gcp.error_info { decode_429_error_info, quota_retry_wait_for, QuotaErrorInfoObserved, QuotaErrorInfoRefused, QuotaWaitBefore, QuotaWaitNow, QuotaWaitRefused }
-import gunbc.auth.gcp_operation_wait { OperationWaitDone, iam_deny_create_operation_outcome, operation_wait_refusal }
+import gunbc.auth.gcp_operation_wait { gcp_quota_wait_fits_actuation_allowance, OperationWaitDone, iam_deny_create_operation_outcome, operation_wait_refusal }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 // Operator-authorized initial setup. This entry does not forge an app approval or workflow
@@ -447,12 +447,12 @@ fn iam_bootstrap_ensure_deny_bounded(policy: IamBootstrapDenyPolicy, token: Secr
         else {
           match gcp.IamDeny.CreatePolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id, rules: policy.rules) {
             RestRefused { refusal: made_refusal } =>
-              if bootstrap_429_retry_admitted(refusal: made_refusal, remaining: remaining, live: iam_bootstrap_current_authority_live()) {
+              if bootstrap_deny_retry_admitted(refusal: made_refusal, admitted_status: 429, remaining: remaining, live: iam_bootstrap_current_authority_live()) {
                 match iam_bootstrap_quota_wait(refusal: made_refusal) {
                   "" => iam_bootstrap_ensure_deny_bounded(policy: policy, token: token, remaining: remaining - 1)
                   refused => refused
                 }
-              } else if bootstrap_deny_retry_admitted(refusal: made_refusal, remaining: remaining, live: iam_bootstrap_current_authority_live()) {
+              } else if bootstrap_deny_retry_admitted(refusal: made_refusal, admitted_status: 403, remaining: remaining, live: iam_bootstrap_current_authority_live()) {
                 if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
                   iam_bootstrap_ensure_deny_bounded(policy: policy, token: token, remaining: remaining - 1)
                 } else { "deny authority propagation wait failed" }
@@ -1129,7 +1129,7 @@ fn iam_bootstrap_probe_token(token: Secret, account: ServiceAccountEmail, remain
       let intent = BootstrapAuthorityIntent { operation: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_ID"),
         expires_at: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT") as Timestamp }
       let live = match approval_instant_now() { Absent => false Present { value: now } => bootstrap_authority_may_grant(intent: intent, now: now) }
-      if bootstrap_deny_retry_admitted(refusal: generated_refusal, remaining: remaining, live: live) {
+      if bootstrap_deny_retry_admitted(refusal: generated_refusal, admitted_status: 403, remaining: remaining, live: live) {
         if sleep_delay_seconds_second_carrier_projection(duration: second(count: 5)) {
           iam_bootstrap_probe_token(token: token, account: account, remaining: remaining - 1)
         } else { BootstrapProbeTokenRefused { reason: "probe permission propagation wait failed" } }
@@ -1391,7 +1391,9 @@ fn iam_bootstrap_quota_wait(refusal: RestRefusal) -> String {
               match quota_retry_wait_for(info: info, now_secs: epoch_secs_of_millis(millis: millis), to_epoch_secs: t => match clock_timestamp_to_unix_secs(timestamp: t) { ClockTimestampObserved { epoch_secs } => Present { value: epoch_secs }  ClockTimestampRefused { detail: _ } => none }) {
                 QuotaWaitRefused { missing } => concat("429 without a derivable wait: ", missing as String)
                 QuotaWaitNow => ""
-                QuotaWaitBefore { wait } => if sleep_delay_seconds_second_carrier_projection(duration: wait) { "" } else { "429 quota wait failed" }
+                QuotaWaitBefore { wait } =>
+                  if !gcp_quota_wait_fits_actuation_allowance(wait: wait) { join(["429 quota window reopens in ", to_string(second_count(s: wait)), " seconds, beyond the ceremony's actuation allowance; the create is not reissued -- rerun after the window"], "") }
+                  else if sleep_delay_seconds_second_carrier_projection(duration: wait) { "" } else { "429 quota wait failed" }
               }
           }
       }

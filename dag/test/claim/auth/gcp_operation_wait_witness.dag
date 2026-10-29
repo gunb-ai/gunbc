@@ -1,6 +1,7 @@
 module test.claim.auth.gcp_operation_wait_witness
 
 import std.types { Bool, Int, String }
+import std.measure { second }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestRefusal, RestTransportRefused }
@@ -12,7 +13,7 @@ import gunbc.auth.gcp_operation_wait {
   OperationRead, OperationUnreadable, OperationWaitReturn, OperationWaitSleepAndContinue,
   OperationWaitDone, OperationWaitFailed, OperationWaitBudgetSpent, OperationWaitUnreadable, OperationWaitIdentityMismatch, OperationWaitPacingRefused, operation_wait_after_pace,
   IamDenyOperationNamed, IamDenyOperationNameMismatch, iam_deny_operation_name_parse,
-  operation_wait_step, gcp_operation_poll_ticks, gcp_operation_budget_fits_actuation_allowance,
+  operation_wait_step, gcp_quota_wait_fits_actuation_allowance, gcp_operation_poll_ticks, gcp_operation_budget_fits_actuation_allowance,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -85,4 +86,9 @@ test fn a_deny_operation_not_done_is_never_done_and_done_true_is_done() -> Bool 
   let n = "policies/ap/denypolicies/pol-a/operations/op-1"
   (match operation_wait_step(operation_name: n, reading: OperationRead { returned_name: n, standing: gcp_operation_standing(done: Present { value: false }, error: Absent) }, remaining: 0) { OperationWaitReturn { outcome: OperationWaitBudgetSpent { operation_name: _ } } => true  _ => false })
     && (match operation_wait_step(operation_name: n, reading: OperationRead { returned_name: n, standing: gcp_operation_standing(done: Present { value: true }, error: Absent) }, remaining: 0) { OperationWaitReturn { outcome: OperationWaitDone } => true  _ => false })
+}
+
+// A derived quota wait beyond the actuation allowance refuses (RED, a daily window); one within it fits.
+test fn a_derived_quota_wait_beyond_the_actuation_allowance_does_not_fit() -> Bool {
+  gcp_quota_wait_fits_actuation_allowance(wait: second(count: 50)) && !gcp_quota_wait_fits_actuation_allowance(wait: second(count: 86390))
 }
