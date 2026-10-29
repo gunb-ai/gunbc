@@ -1,0 +1,63 @@
+module test.claim.live_deploy.capacity_migration_approval_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.error_primitives { Ok, Err }
+import std.durable_compare_and_set { cas_generation_first }
+import std.scoped_authorization {
+  AttemptIdentity, ScopedAuthorization, AuthorizationGranted, OperatorGrant,
+  Unclaimed, ClaimedBy, ClaimHeld, ClaimLost,
+}
+import extdeps.systemd.manager { SystemManager }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.capacity_quiescence { CapacityPlantStart, CapacityContainStart }
+import gunbc.live_deploy.capacity_migration_approval {
+  CapacityCutoverIntent, capacity_cutover_request, capacity_cutover_claim,
+  capacity_cutover_operation_admission,
+}
+
+fn approval_fixture_intent() -> CapacityCutoverIntent {
+  CapacityCutoverIntent {
+    host: "srv1", revision: "1111111111111111111111111111111111111111",
+    attempt: "cutover-fixture" as NonEmptyStr as AttemptIdentity,
+    operations: [CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" } }],
+  }
+}
+
+fn approval_fixture_grant() -> ScopedAuthorization<CapacityCutoverIntent> {
+  let request = capacity_cutover_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval")
+  AuthorizationGranted { grant: OperatorGrant {
+    escalation_id: request.escalation_id, scopes: request.scopes, subject: request.subject,
+    purpose: request.purpose, attempt: request.attempt, intent_hash: request.intent_hash,
+    granted_by: "fixture-operator", granted_at: "2026-10-29T00:00:00Z", expires_at: "2026-10-29T01:00:00Z",
+  }, claim: Unclaimed }
+}
+
+// Supplied CAS outcomes test the consumer boundary; durable CAS correctness belongs
+// to authorization_claim_slot's own witnesses, not a second in-memory claim store.
+test fn a_claimed_plan_admits_only_its_exact_unit_and_verb() -> Bool {
+  let request = capacity_cutover_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval")
+  match capacity_cutover_claim(request: request, authorization: approval_fixture_grant(), at: "2026-10-29T00:01:00Z",
+    claim: (id, attempt, at) => ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() }) {
+    Err { value: _ } => false
+    Ok { value: authorization } => {
+      let allowed = capacity_cutover_operation_admission(authorization: authorization,
+        operation: CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" } }, at: "2026-10-29T00:02:00Z")
+      let other_unit = capacity_cutover_operation_admission(authorization: authorization,
+        operation: CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "other.service" } }, at: "2026-10-29T00:02:00Z")
+      let other_verb = capacity_cutover_operation_admission(authorization: authorization,
+        operation: CapacityContainStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" } }, at: "2026-10-29T00:02:00Z")
+      (match allowed { Ok { value: _ } => true Err { value: _ } => false })
+        && (match other_unit { Err { value: _ } => true Ok { value: _ } => false })
+        && (match other_verb { Err { value: _ } => true Ok { value: _ } => false })
+    }
+  }
+}
+
+test fn an_already_claimed_capability_cannot_start_a_second_execution() -> Bool {
+  let request = capacity_cutover_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval")
+  match capacity_cutover_claim(request: request, authorization: approval_fixture_grant(), at: "2026-10-29T00:01:00Z",
+    claim: (id, attempt, at) => ClaimLost { holder: attempt }) {
+    Err { value: _ } => true
+    Ok { value: _ } => false
+  }
+}
