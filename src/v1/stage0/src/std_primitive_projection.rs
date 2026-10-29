@@ -317,6 +317,15 @@ pub fn primitive_shell_materialize_operation_argv() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_map_keys() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("map_keys".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn primitive_string_contains() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -501,6 +510,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
+            primitive_map_keys(),
+            "std.algebra".to_string(),
+            "map_keys_primitive_delegate".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
             primitive_string_contains(),
             "std.algebra".to_string(),
             "string_contains".to_string(),
@@ -540,6 +555,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_map_insert(),
             "std.algebra".to_string(),
             "map_insert".to_string(),
+            Rc::new(ProjectionFidelity::ModeledProjection),
+        ),
+        primitive_projection_row(
+            primitive_map_keys(),
+            "std.algebra".to_string(),
+            "map_keys".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
