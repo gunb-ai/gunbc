@@ -330,7 +330,7 @@ test fn an_unestablished_census_refuses_on_a_redfish_controller() -> Bool {
   let unestablished = conjunction_over_observation(goal: goal(), observed: read_with(w: w, managed: root_ref(version: "1", epoch: 1), password: managed_generation, census_reading: BmcRedfishCensusUnmodeled {}, surface_served: true, firmware: build_3_22(), at: 1793145600000))
   // Positive control: the SAME controller with a census that is served is not refused for the unestablished cause.
   let established = conjunction_over_observation(goal: goal(), observed: read_with(w: w, managed: root_ref(version: "1", epoch: 1), password: managed_generation, census_reading: census_of(w: w, password: managed_generation), surface_served: true, firmware: build_3_22(), at: 1793145600000))
-  not_refused_unestablished(outcome: unestablished) && refused_unestablished(outcome: unestablished) && !refused_unestablished(outcome: established)
+  not_refused_unestablished(outcome: established) && refused_unestablished(outcome: unestablished)
 }
 
 fn refused_unestablished(outcome: BmcSecureOutcome) -> Bool {
