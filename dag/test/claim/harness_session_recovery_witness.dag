@@ -14,7 +14,7 @@ import gunbc.harness.harness_session_recovery {
 }
 import gunbc.harness.harness_hosted_route { BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationEnded, ContinuationHold, ContinuationRefused, continuation_decision,
+  PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationEnded, ContinuationHold, ContinuationHoldUntil, ContinuationRefused, continuation_decision,
 }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
@@ -232,7 +232,7 @@ test fn patient_claim_not_due_holds_naming_the_next_redelivery_instant() -> Bool
   let lines = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 502 (the card did not answer)", since: 1000)
   let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000, re_deliveries: 0, session_key: "a1")
   (match decision_at(lines: lines, now: next - 1) {
-    ContinuationHold { reason } => reason.contains(to_string(value: next)) && reason.contains("next re-delivery at")
+    ContinuationHoldUntil { reason, redeliver_at } => reason.contains(to_string(value: next)) && reason.contains("next re-delivery at") && redeliver_at == next
     _ => false
   })
 }
@@ -272,6 +272,7 @@ test fn patient_claim_ten_days_pending_never_ends_the_request() -> Bool {
   let outcomes = map([next - 1, next, 1000 + 864000], at => match decision_at(lines: ten_days, now: at) {
     ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => "resume"
     ContinuationHold { reason: _ } => "hold"
+    ContinuationHoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => "hold"
     _ => "ended"
   })
   session_resume_bound == 3

@@ -1,12 +1,13 @@
 module test.claim.roadmap.roadmap_attempt_redelivery_wake
 
-// THE WAKE FOR A REQUEST-PENDING ATTEMPT, WITNESSED. The fix must pick up the ALREADY-WEDGED attempt
-// e5a42384c6a5e13d at round 7 (no fresh dispatch on this lab): the projection makes its capture owed,
-// the recorded CaptureAbsent lets the continuation reach its request-pending branch and Hold, and that
-// Hold arms exactly ONE transient user-manager re-delivery timer at the instant the transport-retry
-// policy already names -- through extdeps.systemd --execing the instance's own belt_dispatch_node_cli
-// route. A due-now Resume, a still-running worker, and a non-pending recovery arm nothing. The wake
-// effect's authorization pattern is DERIVED from the selector, not borrowed from the attempt launcher.
+// THE WAKE FOR A REQUEST-PENDING ATTEMPT, WITNESSED END TO END. The fix must pick up the ALREADY-WEDGED
+// attempt e5a42384c6a5e13d at round 7 (no fresh dispatch on this lab): the projection makes its capture
+// owed; the recorded CaptureAbsent lets the continuation reach its request-pending branch and Hold UNTIL
+// a TYPED instant (ContinuationHoldUntil.redeliver_at, the transport_retry_next_delivery_at value); the
+// belt maps that decision to a SpawnRouteWake and the armed command is a user-manager --on-calendar timer
+// named for the same attempt key, execing the instance's own belt_dispatch_node_cli route. A plain
+// (untimed) Hold, a due-now Resume, and a non-pending recovery map to NO wake -- so only the not-due
+// request-pending hold wakes. The authorization pattern is DERIVED from the selector, not borrowed.
 
 import std.types { Bool, Int, EpochSecs, NonEmptyStr }
 import std.optional { Present }
@@ -15,19 +16,17 @@ import gunbc.roadmap.roadmap_attempt_redelivery_wake {
   attempt_redelivery_wake_effect,
   attempt_redelivery_wake_selects_pattern,
   attempt_redelivery_wake_needs_no_witness,
-  attempt_redelivery_wake_instant,
   attempt_redelivery_wake_unit_name,
   attempt_redelivery_wake_command,
-  attempt_redelivery_wake_owed,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
   ContinuationDecision,
-  ContinuationHold,
+  ContinuationHoldUntil,
   ContinuationResume,
-  ContinuationRefused,
   continuation_decision,
 }
+import gunbc.roadmap.roadmap_belt_actuate { BeltSpawnRoute, SpawnRouteWake, SpawnRouteNone, SpawnRouteResume, SpawnRouteWorker, belt_spawn_route_for_decision }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, SessionRecoveryRequestPending }
 import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureAbsent }
 import gunbc.roadmap.roadmap_provider_events { ProviderExecutionState, ProviderRequestPending }
@@ -38,6 +37,8 @@ import extdeps.exec.command { argv_words }
 
 const wake_now: EpochSecs = 1_700_000_000
 const wake_user: NonEmptyStr = "srv1lab"
+const wake_key: String = "e5a42384c6a5e13d"
+const wake_node: String = "roadmap-belt"
 
 fn wedged_recovery(last_delivery: EpochSecs) -> SessionRecovery {
   SessionRecoveryRequestPending {
@@ -52,26 +53,24 @@ fn wedged_recovery(last_delivery: EpochSecs) -> SessionRecovery {
   }
 }
 
-fn wedged_pri(capture: SubmissionCaptureObservation, last_delivery: EpochSecs) -> PriorAttemptFacts {
+fn wedged_pri(capture: SubmissionCaptureObservation, last_delivery: EpochSecs, worker_terminal: Bool, now: EpochSecs?) -> PriorAttemptFacts {
   PriorAttemptFacts {
-    node_id: "roadmap-belt",
-    attempt_key: "e5a42384c6a5e13d",
+    node_id: wake_node,
+    attempt_key: wake_key,
     branch: "still-owl-805-pending-attempt-replay",
-    worker_terminal: true,
+    worker_terminal: worker_terminal,
     capture: capture,
     verification: none,
     review: none,
     goal_audit: none,
     recovery: wedged_recovery(last_delivery: last_delivery),
     verification_retry: RefusedRetryOperatorOnly,
-    now: Present { value: wake_now },
+    now: now,
   }
 }
 
-// THE WAKE EFFECT'S AUTHORIZATION PATTERN IS DERIVED, NOT BORROWED. A credential-free, reversible,
-// unattended user-manager unit; the fold must select the federated pattern (the run's own workload
-// identity, zero human actions, receipt is the run), not a human-in-the-loop pattern. The witness asks
-// the selector rather than assuming the answer, per the selection's own "never a call-site choice".
+// THE WAKE EFFECT'S AUTHORIZATION PATTERN IS DERIVED, NOT BORROWED. Credential-free, reversible,
+// unattended user-manager unit; the fold must select the federated pattern, not a human-in-the-loop one.
 test fn a_wake_effect_selects_federated_grant_by_the_selector() -> Bool {
   attempt_redelivery_wake_selects_pattern(operating_user: wake_user)
     && (match select_authorization_pattern(e: attempt_redelivery_wake_effect(operating_user: wake_user)) {
@@ -80,68 +79,73 @@ test fn a_wake_effect_selects_federated_grant_by_the_selector() -> Bool {
     })
 }
 
-// A RECURRING WAKE MUST RUN UNATTENDED. Mints no credential, bills nothing, reversible by re-arming;
-// the derived witness obligation is false -- nothing here belongs on an operator's phone.
+// A RECURRING WAKE MUST RUN UNATTENDED. Mints no credential, bills nothing, reversible by re-arming.
 test fn a_wake_effect_needs_no_human_witness() -> Bool {
   attempt_redelivery_wake_needs_no_witness(operating_user: wake_user)
     && !witness_required(e: attempt_redelivery_wake_effect(operating_user: wake_user))
 }
 
 // THE UPGRADE PATH, END TO END (eager-lynx req: no fresh dispatch). The already-wedged round-7 attempt:
-// the projection makes its capture owed; with the capture recorded as CaptureAbsent the continuation
-// HOLDS (provider not yet due); that Hold owes exactly one wake -- a user-manager --on-calendar timer
-// named for the same attempt key, execing the instance's own belt_dispatch_node_cli route, armed at a
-// FUTURE instant the transport-retry policy names.
-test fn the_wedged_pending_attempt_owes_capture_and_arms_a_redelivery_timer() -> Bool {
+// capture owed; with CaptureAbsent recorded the continuation HOLDS UNTIL a typed future instant; that
+// decision maps to a SpawnRouteWake for the same attempt key at that instant; the armed command carries
+// --user / --on-calendar / the attempt-key unit / belt_dispatch_node_cli.
+test fn the_wedged_pending_attempt_holds_until_an_instant_and_arms_a_wake() -> Bool {
   let capture_owed = belt_capture_recording_owed(provider: ProviderRequestPending { activity: "request-pending", detail: "{}" })
-  let decision = continuation_decision(prior: Present { value: wedged_pri(capture: CaptureAbsent, last_delivery: wake_now) })
-  let is_held = match decision { ContinuationHold { reason: _ } => true, _ => false }
-  let owed = attempt_redelivery_wake_owed(recovery: wedged_recovery(last_delivery: wake_now), worker_terminal: true, decision: decision)
-  let instant = attempt_redelivery_wake_instant(last_delivery_at: wake_now, re_deliveries: 0, attempt_key: "e5a42384c6a5e13d")
-  let armed = match attempt_redelivery_wake_command(node_id: "roadmap-belt", instance_id: "srv1-lab-codex-feedback-v0", attempt_key: "e5a42384c6a5e13d", next_delivery: instant) {
-    SystemdRunCommandReady { command } =>
-      let line = join(argv_words(command: command), separator: " ")
-      string_contains(s: line, pattern: "--user")
-        && string_contains(s: line, pattern: "--on-calendar=")
-        && string_contains(s: line, pattern: "gunbc-attempt-redeliver-roadmap-belt-e5a42384c6a5e13d.timer")
-        && string_contains(s: line, pattern: "belt_dispatch_node_cli")
-    SystemdRunCommandRefused { cause: _ } => false
+  let decision = continuation_decision(prior: Present { value: wedged_pri(capture: CaptureAbsent, last_delivery: wake_now, worker_terminal: true, now: Present { value: wake_now }) })
+  let is_hold_until = match decision { ContinuationHoldUntil { reason: _, attempt_key, redeliver_at } => attempt_key == wake_key && redeliver_at > wake_now, _ => false }
+  let route = belt_spawn_route_for_decision(decision: decision)
+  let route_is_wake = match route { SpawnRouteWake { attempt_key, at } => attempt_key == wake_key && at > wake_now, _ => false }
+  let armed = match route {
+    SpawnRouteWake { attempt_key, at } => match attempt_redelivery_wake_command(node_id: wake_node, instance_id: "srv1-live", attempt_key: attempt_key, next_delivery: at) {
+      SystemdRunCommandReady { command } =>
+        let line = join(argv_words(command: command), separator: " ")
+        string_contains(s: line, pattern: "--user")
+          && string_contains(s: line, pattern: "--on-calendar=")
+          && string_contains(s: line, pattern: "gunbc-attempt-redeliver-roadmap-belt-e5a42384c6a5e13d.timer")
+          && string_contains(s: line, pattern: "belt_dispatch_node_cli")
+      SystemdRunCommandRefused { cause: _ } => false
+    }
+    _ => false
   }
-  capture_owed
-    && is_held
-    && owed
-    && armed
-    && instant > wake_now
+  capture_owed && is_hold_until && route_is_wake && armed
 }
 
 // ONE WAKE PER PENDING WINDOW. Re-arming the same node+key names the same transient unit, so a re-pend
 // replaces the pending timer rather than stacking one per re-pend.
 test fn the_timer_is_re_armed_for_the_same_key_not_stacked() -> Bool {
-  attempt_redelivery_wake_unit_name(node_id: "roadmap-belt", attempt_key: "e5a42384c6a5e13d")
-    == attempt_redelivery_wake_unit_name(node_id: "roadmap-belt", attempt_key: "e5a42384c6a5e13d")
+  attempt_redelivery_wake_unit_name(node_id: wake_node, attempt_key: wake_key)
+    == attempt_redelivery_wake_unit_name(node_id: wake_node, attempt_key: wake_key)
 }
 
-// A DUE-NOW RESUME ARMS NOTHING. Its re-delivery is already due, so the running route re-delivers it
-// now; there is nothing for a timer to wait for.
-test fn a_resume_due_now_owes_no_wake() -> Bool {
-  let decision = continuation_decision(prior: Present { value: wedged_pri(capture: CaptureAbsent, last_delivery: wake_now - 100000) })
-  match decision {
-    ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } =>
-      !attempt_redelivery_wake_owed(recovery: wedged_recovery(last_delivery: wake_now - 100000), worker_terminal: true, decision: decision)
+// A PLAIN (UNTIMED) HOLD IS NOT WOKEN -- THE DISCRIMINATOR. A request-pending recovery whose worker has
+// not ended yields a plain ContinuationHold; it maps to SpawnRouteNone, NOT SpawnRouteWake: a live worker
+// is mid-turn and must never be re-dispatched by a timer.
+test fn a_plain_hold_maps_to_no_spawn_not_a_wake() -> Bool {
+  let decision = continuation_decision(prior: Present { value: wedged_pri(capture: CaptureAbsent, last_delivery: wake_now, worker_terminal: false, now: Present { value: wake_now }) })
+  let route = belt_spawn_route_for_decision(decision: decision)
+  match route {
+    SpawnRouteNone { step, detail: _ } => step == "continuation-hold"
     _ => false
   }
 }
 
-// A STILL-RUNNING WORKER IS NEVER WOKEN. Its Hold comes from "the worker has not ended"; waking it
-// would re-dispatch a live worker mid-turn. The wake is owed only for a terminal worker.
-test fn a_still_running_attempt_owes_no_wake() -> Bool {
-  let decision = continuation_decision(prior: Present { value: wedged_pri(capture: CaptureAbsent, last_delivery: wake_now) })
-  !attempt_redelivery_wake_owed(recovery: wedged_recovery(last_delivery: wake_now), worker_terminal: false, decision: decision)
+// A DUE-NOW RESUME IS NOT WOKEN. Its re-delivery is already due, so the running route re-delivers it now.
+test fn a_resume_due_now_maps_to_a_resume_route_not_a_wake() -> Bool {
+  let decision = continuation_decision(prior: Present { value: wedged_pri(capture: CaptureAbsent, last_delivery: 1_699_900_000, worker_terminal: true, now: Present { value: wake_now }) })
+  let route = belt_spawn_route_for_decision(decision: decision)
+  match route {
+    SpawnRouteResume { attempt_key, ordinal: _ } => attempt_key == wake_key
+    _ => false
+  }
 }
 
-// A NON-PENDING RECOVERY ARMS NOTHING. The wake belongs only to a request-pending recovery; an attempt
-// with no request standing pending is not waiting on a re-delivery, even beside a Hold from elsewhere.
-test fn a_non_pending_recovery_owes_no_wake() -> Bool {
-  let held = ContinuationHold { reason: "another obligation holds this attempt" }
-  !attempt_redelivery_wake_owed(recovery: SessionRecoveryNone, worker_terminal: true, decision: held)
+// A NON-PENDING RECOVERY IS NOT WOKEN. An attempt with no request standing pending spawns fresh; a timer
+// belongs only to a request-pending HoldUntil.
+test fn a_non_pending_recovery_maps_to_a_spawn_not_a_wake() -> Bool {
+  let no_prior = continuation_decision(prior: none)
+  let route = belt_spawn_route_for_decision(decision: no_prior)
+  match route {
+    SpawnRouteWorker => true
+    _ => false
+  }
 }

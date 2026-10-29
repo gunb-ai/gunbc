@@ -210,7 +210,7 @@ import gunbc.roadmap.roadmap_attempt_occurrence {
 import gunbc.roadmap.roadmap_launch_admission { occurrence_census_row }
 
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnRoute, SpawnRouteWorker, SpawnRouteResume, SpawnRouteNone, belt_spawn_route_for_decision,
+  BeltSpawnRoute, SpawnRouteWorker, SpawnRouteResume, SpawnRouteNone, SpawnRouteWake, belt_spawn_route_for_decision,
   VerifyOneReceiptObservation, VerifyOneReceiptAbsent, VerifyOneReceiptRecorded, VerifyOneReceiptUnreadable,
   VerifyOneGate, VerifyOneRun, VerifyOneNoOp, VerifyOneRefuse,
   belt_verify_one_gate,
@@ -218,7 +218,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   IntegrationCoreIntegrated, IntegrationCoreDeferred, IntegrationCoreBlocked, IntegrationCoreUnreadable,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  ContinuationSpawnFresh, ContinuationHold, ContinuationRefused, ContinuationComplete, ContinuationEnded, ContinuationResume,
+  ContinuationSpawnFresh, ContinuationHold, ContinuationHoldUntil, ContinuationRefused, ContinuationComplete, ContinuationEnded, ContinuationResume,
 }
 import gunbc.roadmap.roadmap_belt_tick_cli {
   belt_verify_one_result_json, belt_integrate_one_result_json,
@@ -2737,6 +2737,18 @@ test fn no_spawn_command_is_reachable_from_an_unresolved_lineage() -> Bool {
       SpawnRouteResume { attempt_key, ordinal } => attempt_key == "a1" && ordinal == 2
       _ => false
     })
+}
+
+// A REQUEST-PENDING ATTEMPT HELD UNTIL AN INSTANT IS NOT A DEAD STOP. A plain Hold maps to SpawnRouteNone
+// (above); a timed HoldUntil maps to SpawnRouteWake carrying the SAME attempt key and the instant the
+// continuation named -- the belt's hook to arm exactly one re-delivery timer for it (the fold runs the
+// command through dispatch_unit_exec_argv -> belt_exec, roadmap_attempt_redelivery_wake). One wake per
+// pending window; the wake reads the instant off the decision, never a second schedule.
+test fn a_not_due_request_pending_hold_maps_to_a_wake_route() -> Bool {
+  match belt_spawn_route_for_decision(decision: ContinuationHoldUntil { reason: "the prior attempt is request-pending and its next re-delivery is not due yet", attempt_key: "a1", redeliver_at: 1700000060 }) {
+    SpawnRouteWake { attempt_key, at } => attempt_key == "a1" && at == 1700000060
+    _ => false
+  }
 }
 
 // THE COMPOSITION, END TO END OVER THE REAL PRODUCER: an active systemd attempt unit for node-a

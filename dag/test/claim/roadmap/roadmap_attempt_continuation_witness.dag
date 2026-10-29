@@ -3,7 +3,7 @@ module test.claim.roadmap.roadmap_attempt_continuation_witness
 import std.types { Bool, String, Int, EpochSecs }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
-  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationResume, ContinuationComplete, ContinuationEnded,
+  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationHoldUntil, ContinuationResume, ContinuationComplete, ContinuationEnded,
   continuation_decision, continuation_decision_with_retirement,
   LineageRetireAdmission, LineageRetireAdmitted, LineageRetireRefused, lineage_retire_admission,
 }
@@ -372,7 +372,7 @@ fn pending_pri(capture: SubmissionCaptureObservation) -> PriorAttemptFacts {
 // Hold-with-instant or Resume -- NEVER Refused-for-capture-owed. This is the attempt the belt must re-deliver.
 test fn a_pending_request_with_a_recorded_capture_holds_or_resumes_never_refused() -> Bool {
   match continuation_decision(prior: pending_pri(CaptureAbsent)) {
-    ContinuationHold { reason } => string_contains(s: reason, pattern: "re-delivery")
+    ContinuationHoldUntil { reason, redeliver_at } => string_contains(s: reason, pattern: "re-delivery") && redeliver_at > 1700000000
     ContinuationResume { reason: _, attempt_key, ordinal: _, causes: _ } => attempt_key == "e5a42384c6a5e13d"
     _ => false
   }

@@ -659,10 +659,17 @@ import gunbc.roadmap.roadmap_lineage_retire_record {
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
-  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded, ContinuationResume,
+  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationHoldUntil, ContinuationComplete, ContinuationEnded, ContinuationResume,
   continuation_decision, continuation_decision_with_retirement,
   LineageRetireAdmission, LineageRetireAdmitted, LineageRetireRefused, lineage_retire_admission,
 }
+// THE WAKE FOR A REQUEST-PENDING ATTEMPT, CONSUMED BY THE SPAWN FOLD below (the SpawnRouteWake arm).
+// DESIGN §3c -- name the consumer and the executing route: the consumer is belt_actuate_spawn_exec_modeled's
+// SpawnRouteWake arm; the executing route is the SAME host-exec path the belt already uses to launch its
+// transient units (dispatch_unit_exec_argv -> belt_exec, resolving systemd-run from instance.toolchain),
+// so arming the wake is not a new transport or a second door -- it reads the instant off the decision and
+// runs systemd-run --user --on-calendar --collect execing belt_dispatch_node_cli for the same node+key.
+import gunbc.roadmap.roadmap_attempt_redelivery_wake { attempt_redelivery_wake_command, attempt_redelivery_wake_unit_name }
 import gunbc.harness.harness_session_recovery {
   SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_recovery_of_events,
 }
@@ -2553,6 +2560,7 @@ fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, pr
     ContinuationSpawnFresh { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     ContinuationRefused { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     ContinuationHold { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    ContinuationHoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     ContinuationComplete { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     ContinuationEnded { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
   }
@@ -2712,6 +2720,11 @@ type BeltSpawnRoute
   = SpawnRouteWorker
   | SpawnRouteResume { attempt_key: String, ordinal: Int }
   | SpawnRouteNone { step: String, detail: String }
+  // A request-pending attempt whose re-delivery is not yet due does NOT spawn, but it must not merely
+  // stop: this arm carries the instant the continuation named so the spawn fold arms ONE transient
+  // re-delivery wake for the same attempt key (roadmap_attempt_redelivery_wake), execing the instance's
+  // own belt_dispatch_node_cli route at that instant. Distinct from SpawnRouteNone, which is a dead stop.
+  | SpawnRouteWake { attempt_key: String, at: EpochSecs }
 
 fn belt_spawn_route_for_decision(decision: ContinuationDecision) -> BeltSpawnRoute {
   match decision {
@@ -2719,6 +2732,9 @@ fn belt_spawn_route_for_decision(decision: ContinuationDecision) -> BeltSpawnRou
     ContinuationResume { reason: _, attempt_key, ordinal, causes: _ } => SpawnRouteResume { attempt_key: attempt_key, ordinal: ordinal }
     ContinuationRefused { reason } => SpawnRouteNone { step: "continuation", detail: reason }
     ContinuationHold { reason } => SpawnRouteNone { step: "continuation-hold", detail: reason }
+    // Not-due request-pending hold becomes a WAKE route, not a dead stop: the fold arms one re-delivery
+    // timer at the instant the continuation itself named, so the attempt comes back on its own.
+    ContinuationHoldUntil { reason: _, attempt_key, redeliver_at } => SpawnRouteWake { attempt_key: attempt_key, at: redeliver_at }
     ContinuationComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
     ContinuationEnded { reason } => SpawnRouteNone { step: "lineage-ended", detail: reason }
   }
@@ -2798,6 +2814,24 @@ fn belt_actuate_spawn_exec_modeled(
           request: request,
           run: DispatchWorkerResumed { ordinal: ordinal },
         )
+      }
+    // A request-pending attempt held until a named instant arms ONE transient re-delivery wake for its
+    // own key, execed through the SAME host-exec transport the belt uses for its other transient units
+    // (dispatch_unit_exec_argv -> belt_exec, systemd-run resolved from the instance toolchain). Fail-
+    // closed: with no systemd-run, a refused command, or a failed host exec the attempt stays held and
+    // is retried -- never a silent drop. On success the pass still spawns nothing (not due); it reports
+    // the armed wake, and the idempotent unit name makes the re-arm safe (one wake per pending window).
+    SpawnRouteWake { attempt_key, at } =>
+      match instance.toolchain.systemd_run {
+        Absent => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["the request-pending attempt ", attempt_key, " is held until a re-delivery wake at ", to_string(value: at), " but this host carries no systemd-run to arm it; the belt cannot wake it -- provision systemd-run"], ""), provider: provider_wire_label, launch: launch }
+        Present { value: systemd_run } => match attempt_redelivery_wake_command(node_id: node.node as String, instance_id: instance.instance_id as String, attempt_key: attempt_key, next_delivery: at) {
+          SystemdRunCommandRefused { cause } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["the request-pending attempt ", attempt_key, " could not arm its re-delivery wake: ", cause], ""), provider: provider_wire_label, launch: launch }
+          SystemdRunCommandReady { command } => match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: workdir) {
+            ExecOk => SpawnFailed { node_id: node.node as String, step: "continuation-hold-until", detail: join(["the prior attempt ", attempt_key, " is request-pending and its re-delivery is not due yet; its wake ", attempt_redelivery_wake_unit_name(node_id: node.node as String, attempt_key: attempt_key), " is armed at ", to_string(value: at), " to re-deliver the same key by belt_dispatch_node_cli; the re-arm is idempotent and no resume is spent now"], ""), provider: provider_wire_label, launch: launch }
+            ExecFailed { program, exit_code: _, stderr: _ } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["arming the re-delivery wake for ", attempt_key, " failed on host exec of ", program, "; the attempt stays held and is retried on the next belt pass"], ""), provider: provider_wire_label, launch: launch }
+            ExecRefused { program, reason: _ } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["arming the re-delivery wake for ", attempt_key, " was refused on host exec of ", program, "; the attempt stays held and is retried on the next belt pass"], ""), provider: provider_wire_label, launch: launch }
+          }
+        }
       }
   }
 }
@@ -2897,6 +2931,7 @@ fn belt_lineage_retire_panel_for_instance(instance: HostDashboardInstance, node_
             ContinuationSpawnFresh { reason: _ } => LineageRetirePanelNone
             ContinuationRefused { reason: _ } => LineageRetirePanelNone
             ContinuationHold { reason: _ } => LineageRetirePanelNone
+            ContinuationHoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => LineageRetirePanelNone
             ContinuationComplete { reason: _ } => LineageRetirePanelNone
             ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageRetirePanelNone
           }
