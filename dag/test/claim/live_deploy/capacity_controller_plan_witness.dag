@@ -1,13 +1,16 @@
 module test.claim.live_deploy.capacity_controller_plan_witness
 
 import std.types { Bool }
+import std.decl_ref { decl_ref }
+import gunbc.compute.capacity_migration { CapacityMigrationPopulation }
+import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyRequest }
 import std.error_primitives { Ok, Err }
 import extdeps.systemd.manager { SystemManager }
 import extdeps.systemd.systemctl { systemctl_start_command }
 import extdeps.systemd.unit_file { ServiceUnitFile, NotInstallable }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
 import gunbc.live_deploy.apply_legs { ApplyPlanReady, ApplyLegInstallUnit, ApplyLegCommand, ApplyLegDiagnosedCommand, ApplyLegRepairDirectoryEntries }
-import gunbc.live_deploy.capacity_controller_plan { capacity_controller_installs, capacity_controller_reload_managers }
+import gunbc.live_deploy.capacity_controller_plan { capacity_controller_installs, capacity_controller_reload_managers, capacity_controller_plan, CapacityControllerDrain, CapacityControllerInstall, CapacityControllerReload, CapacityControllerDischarge }
 
 fn controller_fixture_install() -> DeploymentUnitInstall {
   DeploymentUnitInstall { manager: SystemManager, unit: "fixture.service", destination: "/fixture/fixture.service",
@@ -37,4 +40,30 @@ test fn diagnostic_and_repair_argv_are_not_controller_effect_evidence() -> Bool 
 
 test fn reload_is_once_per_installed_manager() -> Bool {
   capacity_controller_reload_managers(installs: [controller_fixture_install(), controller_fixture_install()]) == [SystemManager]
+}
+
+fn controller_fixture_request() -> CapacityMigrationApplyRequest {
+  CapacityMigrationApplyRequest {
+    population: CapacityMigrationPopulation {
+      source: decl_ref(module_path: "test.claim.live_deploy.capacity_controller_plan_witness", decl_name: "controller_fixture_request"),
+      installed: [], writer_parents: [], transients: [], children: [],
+    }, target_revision: "1111111111111111111111111111111111111111", bindings: [], child_subjects: [],
+  }
+}
+
+// This witnesses scheduling, not a claim that the fixture has been drained.
+// The real realization still has to execute the first leg and consume its proof.
+test fn installation_and_reload_precede_discharge_and_follow_drain() -> Bool {
+  let request = controller_fixture_request()
+  let install = controller_fixture_install()
+  match capacity_controller_plan(request: request, install_plan: ApplyPlanReady { legs: [ApplyLegInstallUnit { step: "fixture", install: install }] }) {
+    Err { value: _ } => false
+    Ok { value: plan } => plan.legs == [CapacityControllerDrain { request: request },
+      CapacityControllerInstall { install: install }, CapacityControllerReload { manager: SystemManager }, CapacityControllerDischarge]
+  }
+}
+
+test fn an_empty_install_plan_cannot_discharge_a_cutover() -> Bool {
+  capacity_controller_plan(request: controller_fixture_request(), install_plan: ApplyPlanReady { legs: [] })
+    == Err { value: "cutover has no writer generation to install" }
 }
