@@ -25,7 +25,7 @@ import std.algebra { skip }
 import std.materialization_ladder { DemandNature }
 import std.cache_identity { ArtifactKindId }
 import std.content_hash {
-  ContentHash, Fnv1a64Structural, HashFamily, Fnv1a64StructuralFamily, Sha256Family, Sha1Family, Sha512Family,
+  ContentHash, Sha256Digest, Fnv1a64Structural, HashFamily, Fnv1a64StructuralFamily, Sha256Family, Sha1Family, Sha512Family,
   content_hash_family, as_content_hash_structural, serialize_content_hash, parse_content_hash,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -180,8 +180,16 @@ type OccurrencePersistenceContract
 type PersistedOutputObligation {
   id: ArtifactOutputId
   occurrence_contract: OccurrencePersistenceContract
+  content: PersistedOutputContent
 }
 
+// A computed result is not known before execution; a copy of captured bytes is.
+// The store checks ExactByteContent against its verified byte part, not a text claim.
+type PersistedOutputContent
+  = ComputedContent
+  | ExactByteContent { digest: Sha256Digest }
+
+data output_fabric_blob: ArtifactOutputId = "fabric_blob"
 
 type ResultContract {
   carries_semantic_value: Bool
@@ -196,7 +204,7 @@ fn persisted_output(
   id: ArtifactOutputId,
   occurrence_contract: OccurrencePersistenceContract
 ) -> PersistedOutputObligation {
-  PersistedOutputObligation { id: id, occurrence_contract: occurrence_contract }
+  PersistedOutputObligation { id: id, occurrence_contract: occurrence_contract, content: ComputedContent }
 }
 
 

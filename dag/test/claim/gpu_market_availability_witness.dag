@@ -1,0 +1,66 @@
+module test.claim.gpu_market_availability_witness
+
+// EACH AVAILABILITY READING NAMES A REAL PRODUCT, ONCE, AT ITS TRUE STANDING. Every driver-listed product
+// is one the pinned driver appendix lists; no product carries two readings; the CMP boards are partner-only
+// because NVIDIA's page says so; and the cloud, OEM and regional readings, which no source read states,
+// stand as bets with the statement that would ground them, never as citations.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
+import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_580_95_05_supported_chips, nvidia_supported_chip_rows_named }
+import extdeps.gpu.nvidia_cmp { nvidia_cmp_board_catalogs, cmp_product_page_authority }
+import gunbc.gpu_market.availability {
+  GpuAvailabilityRow, MarketCatalogBoard, MarketDriverListedProduct, MarketProviderNamedProduct,
+  AvailabilityRead, AvailabilityUnread, PartnerOnly, OemOnly, CloudOnly, Regional, Mining,
+  gpu_availability_rows, gpu_market_identity_name, gpu_availability_rows_named,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_every_driver_listed_product_is_listed() -> Bool {
+  let names = gpu_availability_rows |> flat_map(r => match r.identity {
+    MarketDriverListedProduct { name: n } => [n]
+    _ => []
+  })
+  count(names) > 0 && names |> all(n => count(nvidia_supported_chip_rows_named(appendix: nvidia_linux_driver_580_95_05_supported_chips, name: n)) > 0)
+}
+
+test fn w_no_product_has_two_readings() -> Bool {
+  gpu_availability_rows |> all(r => count(gpu_availability_rows_named(name: gpu_market_identity_name(identity: r.identity))) == 1)
+}
+
+// STATED, SO CITED: every CMP board is partner-only, mining, on the CMP page's authority.
+test fn w_the_cmp_boards_are_partner_only_on_the_page_authority() -> Bool {
+  let cmp_rows = gpu_availability_rows |> filter(r => match r.availability {
+    AvailabilityRead { availability: PartnerOnly, standing: CitedToAuthority { authority: a } } => a == cmp_product_page_authority
+    _ => false
+  })
+  count(cmp_rows) == count(nvidia_cmp_board_catalogs) && cmp_rows |> all(r => match r.role { Mining => true  _ => false })
+}
+
+// INFERRED, SO A BET: no OEM-only, cloud-only or regional reading is cited, because no source read states
+// one; each carries the statement that would ground it. A reading that became CitedToAuthority without a
+// source would turn this red.
+test fn w_inferred_availability_stands_as_a_bet() -> Bool {
+  let inferred = gpu_availability_rows |> filter(r => match r.availability {
+    AvailabilityRead { availability: OemOnly, standing: _ } => true
+    AvailabilityRead { availability: CloudOnly { provider: _ }, standing: _ } => true
+    AvailabilityRead { availability: Regional { market: _ }, standing: _ } => true
+    _ => false
+  })
+  count(inferred) > 0 && inferred |> all(r => match r.availability {
+    AvailabilityRead { availability: _, standing: TranscribedUncited { read_obligation: _ } } => true
+    _ => false
+  })
+}
+
+// The T10's reading is about the catalogue's T10 board, not a name typed beside it.
+test fn w_the_t10_reading_is_about_the_catalogue_board() -> Bool {
+  match first(gpu_availability_rows_named(name: "Tesla T10 16GB")) {
+    Present { value: r } => (match r.identity { MarketCatalogBoard { board: _ } => true  _ => false })
+      && (match r.availability { AvailabilityRead { availability: OemOnly, standing: _ } => true  _ => false })
+    Absent => false
+  }
+}

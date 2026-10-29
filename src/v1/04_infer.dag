@@ -93,11 +93,11 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, ParsedModuleItemKind, 
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
   index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right,
-  make_transport_node, local_transport_node, is_shell_transport,
+  make_transport_node, undeclared_transport_node, is_shell_transport,
   Text, Interpolation,
   with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
   no_span, NewlineIndex,
-  unit_type, bool_type, string_type, int_type, float_type, none_type,
+  unit_type, bool_type, string_type, symbol_type, int_type, float_type, none_type,
   error_type,
   is_container_type, container_expected_arity,
   DeclRefCoords, fn_admit_callers, decl_ref_coords_label,
@@ -133,7 +133,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declaration_named_by_type_name, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
+import v1.compiler.infer_env { generic_actual_position_type, is_unsolved_type_variable, settled_type, settled_type_of_declaration, declaration_named_by_type_name, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -3490,6 +3490,29 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
 // there the produced node is the payload of a `Present` introduction standing for the Optional
 // carrier -- the two-representation gap declared_type_kernel_inhabitance_mismatch excludes on the
 // same ground -- and peeling it refused correct rows (gunbc.contributor_onboarding_path, measured).
+// THE MINTED CARET SYMBOL IS ITS OWN DECLARATION, NOT ITS SPELLING (gunbc#14082 review, DESIGN §3b).
+// The caret literal's type is the carrier `v1.std.core` mints as `symbol_type`: occurrence identity
+// OccurrenceSynthetic, `declaration: none`, authored by the seed itself. That node equality is the ONLY
+// way this judgment admits Symbol, and it is the same identity idiom the join already uses for the
+// kernel Optional (type_is_kernel_optional_declaration, this file: a kernel spelling names no corpus
+// declaration, so its identity is the kernel's own binding handed out, matched by node equality).
+//
+// WHY NOT THE DECLARED KERNEL-TYPE SET. std.types kernel_type_set is keyed by NAME and is read at 42
+// sites across six files -- including 03_resolve's get_exported_names, which appends
+// map_keys(kernel_type_set), so a row there also makes the name nameable. A corpus module already
+// declares `type Symbol` (v2.std.node, an opaque declaration whose host realization the symbol census
+// records), so admitting Symbol to the name-keyed set to buy conformance would hand that declaration a
+// kernel identity it never declared -- the same leaf-name collision this brief's other half fixes in
+// the emitter. Identity, not the leaf name, is the key the corpus rule demands.
+//
+// CONSEQUENCE, ASSERTED: a user-declared `type Symbol { x: Int }` carries its own DeclarationRef, is
+// not this node, and is judged as the ordinary declared type it is -- exactly like the same shape
+// declared under any other name. dag/test/claim/litsymbol_is_symbol.dag
+// caret_symbol_named_type_is_not_the_minted_carrier is that assertion's RED.
+fn is_minted_caret_symbol(n: Node) -> Bool {
+  n == symbol_type
+}
+
 fn kernel_value_declared_type_mismatch_bounded(
   formal: Node,
   actual: Node,
@@ -3506,13 +3529,17 @@ fn kernel_value_declared_type_mismatch_bounded(
   } else {
     let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
     let actual_name = authored_name_at(source_indices: source_indices, node: actual_base)
-    if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
+    if (is_kernel_type(name: actual_name) == false && is_minted_caret_symbol(n: actual_base) == false) || actual_name == "Unit" {
       false
     } else {
       let formal_name = if formal_name_override == "" {
         authored_name_at(source_indices: source_indices, node: formal_base)
       } else { formal_name_override }
-      if formal_name == "" || qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
+      // A caret literal is Symbol, which is grounded here so it refuses at every ground non-text type
+      // (`-> Int { ^tag }`). Symbol -> String is the one crossing left open: the declared gap
+      // gunbc.recurring_failure_mode caret_symbol_inhabits_string_via_conformance_unjudged.
+      let symbol_at_text = (is_minted_caret_symbol(n: actual) || is_minted_caret_symbol(n: actual_base)) && qualified_last_segment(name: formal_name) == "String"
+      if formal_name == "" || symbol_at_text || qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
         false
       } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual_base, source_indices: source_indices) {
         false
@@ -11082,9 +11109,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 let cpt = param_node_type_expr(n: cp)
                 if type_node_is_established(n: cpt, source_indices: scope.type_env.source_indices) {
                   extend_scope(scope: acc, name: pair.second, resolved: cpt, provenance: param_prov)
-                } else if is_unsolved_empty_list_element(n: cpt) {
-                  // The unsolved element of an empty list literal keeps its identity: collapsing it
-                  // to callable_param would defer a field read of it that no argument can establish.
+                } else if is_unsolved_type_variable(n: cpt) {
+                  // An unsolved type variable keeps its identity -- the empty list's element is the
+                  // instance the corpus surfaced: collapsing it to callable_param would defer a field
+                  // read of it that no argument can establish.
                   extend_scope(scope: acc, name: pair.second, resolved: cpt, provenance: param_prov)
                 } else {
                   extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: param_prov)
@@ -11551,13 +11579,6 @@ fn unsolved_type_variable_ids(n: Node, depth: Int) -> List<String> {
     concat(here,
       concat(n.children |> flat_map(ch => unsolved_type_variable_ids(n: child_type_node(ch: ch), depth: depth + 1)),
              n.params |> flat_map(p => unsolved_type_variable_ids(n: param_node_type_expr(n: p), depth: depth + 1))))
-  }
-}
-
-fn is_unsolved_empty_list_element(n: Node) -> Bool {
-  match n.inferred {
-    Present { value: TypeVariable { id: id } } => id == "empty_list_element"
-    _ => false
   }
 }
 
@@ -15714,6 +15735,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
 // answers error_type for anything not Resolved, so reading it through that would drop the very
 // binding site (measured: heal refused source_annotation.dag, list_at_optional(xs: List<T>) left T
 // unbound). First-wins binding is unchanged.
+
 fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   match formals |> first {
     Present { value: f } =>
@@ -15724,7 +15746,7 @@ fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_n
             actuals: actuals |> skip(1),
             generic_names: generic_names,
             source_indices: source_indices,
-            acc: unify_generics(formal: f, actual: a, generic_names: generic_names, source_indices: source_indices, acc: acc)
+            acc: unify_generics(formal: f, actual: generic_actual_position_type(slot: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
           )
         Absent => acc
       }
@@ -19663,6 +19685,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     fn_decl_items: built.fn_decl_items,
     fn_decl_identity_items: built.fn_decl_identity_items,
     fn_map_key_bounds: empty_map(),
+    fn_equality_bounds: empty_map(),
     recursive_type_set: all_recursive,
     fielded_variants: variant_shapes.fielded,
     positional_payload_variants: variant_shapes.positional_payload,
