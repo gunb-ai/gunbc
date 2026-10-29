@@ -1,0 +1,28 @@
+module test.claim.live_deploy.capacity_cutover_record_witness
+
+import std.types { Bool, String }
+import std.error_primitives { Ok, Err }
+import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_encode, capacity_cutover_record_decode }
+import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
+
+test fn restart_round_trip_preserves_generation_and_inode_bindings() -> Bool {
+  let record = recovery_fixture_record()
+  capacity_cutover_record_decode(text: capacity_cutover_record_encode(record: record) as String) == Ok { value: record }
+}
+
+test fn an_unknown_schema_is_not_an_empty_or_new_cutover() -> Bool {
+  capacity_cutover_record_decode(text: "{\"schema\":\"other\"}") == Err { value: "unknown cutover record schema" }
+}
+
+test fn a_truncated_record_cannot_authorize_recovery() -> Bool {
+  match capacity_cutover_record_decode(text: "{\"schema\":") {
+    Err { value: _ } => true Ok { value: _ } => false
+  }
+}
+
+test fn duplicate_schema_fields_are_refused_by_the_json_owner() -> Bool {
+  match capacity_cutover_record_decode(text: "{\"schema\":\"gunbc.capacity-cutover.v1\",\"schema\":\"other\"}") {
+    Err { value: why } => why != "unknown cutover record schema"
+    Ok { value: _ } => false
+  }
+}

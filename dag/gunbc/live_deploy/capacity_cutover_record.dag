@@ -1,0 +1,174 @@
+module gunbc.live_deploy.capacity_cutover_record
+
+import std.types { String, NonEmptyStr, List, Int, Bool, CommitSha }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.scoped_authorization { AttemptIdentity }
+import std.content_hash { sha256_hex_digest, sha1_hex_digest }
+import std.fabric_blob { FabricBlobAddress }
+import extdeps.systemd.manager { SystemdManager, SystemManager, UserManager }
+import extdeps.filesystem.posix { PosixFileIdentity }
+import extdeps.languages.json.emit { JsonValue, JsonArray, json_object, json_kv, json_string, json_int, json_array, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_field, json_field_string, json_field_int, FieldRead, FieldAbsent, FieldMalformed }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityGenerationFile, CapacityCutoverPhase, CapacityPreparingInhibition, CapacityInstalling, CapacityGenerationVerified, CapacityRemovingInhibition }
+
+// Versioned payload for the existing host-local durable CAS provider. Decoding
+// is data recovery, not permission to execute or an observation of live masks.
+// JSON's owner rejects duplicated fields; unknown schema/phase and malformed
+// hashes refuse. No path, record, or captured document is inferred on failure.
+fn capacity_record_text(obj: JsonValue, key: String) -> Result<NonEmptyStr, String> {
+  match json_field_string(obj: obj, key: key) {
+    FieldRead { value: text } => if text == "" { Err { value: concat("empty cutover field: ", key) } } else { Ok { value: text as NonEmptyStr } }
+    FieldMalformed { cause: why } => Err { value: why }
+    FieldAbsent => Err { value: concat("missing cutover field: ", key) }
+  }
+}
+
+fn capacity_record_number(obj: JsonValue, key: String) -> Result<Int, String> {
+  match json_field_int(obj: obj, key: key) {
+    FieldRead { value: n } => if n < 0 { Err { value: concat("negative cutover field: ", key) } } else { Ok { value: n } }
+    FieldMalformed { cause: why } => Err { value: why }
+    FieldAbsent => Err { value: concat("missing cutover field: ", key) }
+  }
+}
+
+fn capacity_record_value(obj: JsonValue, key: String) -> Result<JsonValue, String> {
+  match json_field(obj: obj, key: key) {
+    FieldRead { value: v } => Ok { value: v }
+    FieldMalformed { cause: why } => Err { value: why }
+    FieldAbsent => Err { value: concat("missing cutover field: ", key) }
+  }
+}
+
+fn capacity_record_list<T>(obj: JsonValue, key: String, decode: fn(JsonValue) -> Result<T, String>) -> Result<List<T>, String> {
+  match capacity_record_value(obj: obj, key: key) {
+    Err { value: why } => Err { value: why }
+    Ok { value: JsonArray { elements: values } } => fold(values, init: Ok { value: [] }, f: (prior, value) => match prior {
+      Err { value: why } => Err { value: why }
+      Ok { value: rows } => match decode(value) { Err { value: why } => Err { value: why } Ok { value: row } => Ok { value: rows + [row] } }
+    })
+    Ok { value: _ } => Err { value: concat("cutover field is not an array: ", key) }
+  }
+}
+
+fn capacity_record_manager_wire(manager: SystemdManager) -> JsonValue {
+  match manager {
+    SystemManager => json_object(members: [json_kv(key: "kind", value: json_string(s: "system"))])
+    UserManager { uid: uid } => json_object(members: [json_kv(key: "kind", value: json_string(s: "user")), json_kv(key: "uid", value: json_int(n: uid))])
+  }
+}
+
+fn capacity_record_manager(obj: JsonValue) -> Result<SystemdManager, String> {
+  let kind = match capacity_record_text(obj: obj, key: "kind") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  if (kind as String) == "system" { Ok { value: SystemManager } }
+  else if (kind as String) == "user" { match capacity_record_number(obj: obj, key: "uid") { Err { value: why } => Err { value: why } Ok { value: uid } => Ok { value: UserManager { uid: uid } } } }
+  else { Err { value: "unknown cutover manager" } }
+}
+
+fn capacity_generation_file_wire(file: CapacityGenerationFile) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "manager", value: capacity_record_manager_wire(manager: file.manager)),
+    json_kv(key: "unit", value: json_string(s: file.unit as String)),
+    json_kv(key: "destination", value: json_string(s: file.destination as String)),
+    json_kv(key: "address", value: json_string(s: file.address.key.hex as String)),
+    json_kv(key: "digest", value: json_string(s: file.digest.hex as String)),
+  ])
+}
+
+fn capacity_generation_file_read(obj: JsonValue) -> Result<CapacityGenerationFile, String> {
+  let manager_value = match capacity_record_value(obj: obj, key: "manager") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let manager = match capacity_record_manager(obj: manager_value) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let unit = match capacity_record_text(obj: obj, key: "unit") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let destination = match capacity_record_text(obj: obj, key: "destination") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let address = match capacity_record_text(obj: obj, key: "address") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let digest = match capacity_record_text(obj: obj, key: "digest") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  match sha256_hex_digest(hex: address as String) {
+    Absent => Err { value: "cutover blob address is not SHA-256" }
+    Present { value: key } => match sha256_hex_digest(hex: digest as String) {
+      Absent => Err { value: "cutover content digest is not SHA-256" }
+      Present { value: hash } => Ok { value: CapacityGenerationFile { manager: manager, unit: unit, destination: destination, address: FabricBlobAddress { key: key }, digest: hash } }
+    }
+  }
+}
+
+fn capacity_inhibition_path_wire(path: CapacityInhibitionPath) -> JsonValue {
+  json_object(members: [json_kv(key: "manager", value: capacity_record_manager_wire(manager: path.subject.manager)),
+    json_kv(key: "unit", value: json_string(s: path.subject.unit as String)), json_kv(key: "path", value: json_string(s: path.path as String))])
+}
+
+fn capacity_inhibition_path_read(obj: JsonValue) -> Result<CapacityInhibitionPath, String> {
+  let manager_value = match capacity_record_value(obj: obj, key: "manager") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let manager = match capacity_record_manager(obj: manager_value) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let unit = match capacity_record_text(obj: obj, key: "unit") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let path = match capacity_record_text(obj: obj, key: "path") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  Ok { value: CapacityInhibitionPath { subject: CapacityManagedUnit { manager: manager, unit: unit }, path: path } }
+}
+
+fn capacity_inhibition_artifact_wire(artifact: CapacityInhibitionArtifact) -> JsonValue {
+  json_object(members: [json_kv(key: "inhibition", value: capacity_inhibition_path_wire(path: artifact.inhibition)),
+    json_kv(key: "staged_path", value: json_string(s: artifact.staged_path as String)),
+    json_kv(key: "st_dev", value: json_int(n: artifact.identity.st_dev)), json_kv(key: "st_ino", value: json_int(n: artifact.identity.st_ino))])
+}
+
+fn capacity_inhibition_artifact_read(obj: JsonValue) -> Result<CapacityInhibitionArtifact, String> {
+  let inhibition_value = match capacity_record_value(obj: obj, key: "inhibition") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let inhibition = match capacity_inhibition_path_read(obj: inhibition_value) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let path = match capacity_record_text(obj: obj, key: "staged_path") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let device = match capacity_record_number(obj: obj, key: "st_dev") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let inode = match capacity_record_number(obj: obj, key: "st_ino") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  Ok { value: CapacityInhibitionArtifact { inhibition: inhibition, staged_path: path, identity: PosixFileIdentity { st_dev: device, st_ino: inode } } }
+}
+
+fn capacity_cutover_phase_wire(phase: CapacityCutoverPhase) -> JsonValue {
+  match phase {
+    CapacityPreparingInhibition => json_object(members: [json_kv(key: "kind", value: json_string(s: "preparing"))])
+    CapacityInstalling { completed: n } => json_object(members: [json_kv(key: "kind", value: json_string(s: "installing")), json_kv(key: "completed", value: json_int(n: n))])
+    CapacityGenerationVerified => json_object(members: [json_kv(key: "kind", value: json_string(s: "verified"))])
+    CapacityRemovingInhibition { completed: n } => json_object(members: [json_kv(key: "kind", value: json_string(s: "removing")), json_kv(key: "completed", value: json_int(n: n))])
+  }
+}
+
+fn capacity_cutover_phase_read(obj: JsonValue) -> Result<CapacityCutoverPhase, String> {
+  let kind = match capacity_record_text(obj: obj, key: "kind") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  if (kind as String) == "preparing" { Ok { value: CapacityPreparingInhibition } }
+  else if (kind as String) == "verified" { Ok { value: CapacityGenerationVerified } }
+  else if (kind as String) == "installing" { match capacity_record_number(obj: obj, key: "completed") { Err { value: why } => Err { value: why } Ok { value: n } => Ok { value: CapacityInstalling { completed: n } } } }
+  else if (kind as String) == "removing" { match capacity_record_number(obj: obj, key: "completed") { Err { value: why } => Err { value: why } Ok { value: n } => Ok { value: CapacityRemovingInhibition { completed: n } } } }
+  else { Err { value: "unknown cutover recovery phase" } }
+}
+
+fn capacity_cutover_record_encode(record: CapacityCutoverRecord) -> NonEmptyStr {
+  serialize_json(v: json_object(members: [json_kv(key: "schema", value: json_string(s: "gunbc.capacity-cutover.v1")),
+    json_kv(key: "attempt", value: json_string(s: record.attempt as String)), json_kv(key: "revision", value: json_string(s: record.target_revision as String)),
+    json_kv(key: "prior", value: json_array(elements: map(record.prior, file => capacity_generation_file_wire(file: file)))),
+    json_kv(key: "target", value: json_array(elements: map(record.target, file => capacity_generation_file_wire(file: file)))),
+    json_kv(key: "planned", value: json_array(elements: map(record.planned_paths, path => capacity_inhibition_path_wire(path: path)))),
+    json_kv(key: "created", value: json_array(elements: map(record.created_paths, path => capacity_inhibition_path_wire(path: path)))),
+    json_kv(key: "artifacts", value: json_array(elements: map(record.artifacts, artifact => capacity_inhibition_artifact_wire(artifact: artifact)))),
+    json_kv(key: "phase", value: capacity_cutover_phase_wire(phase: record.phase)),
+  ])) as NonEmptyStr
+}
+
+fn capacity_cutover_record_decode(text: String) -> Result<CapacityCutoverRecord, String> {
+  let obj = match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: gap } => { return Err { value: json_document_gap_text(gap: gap) } }
+    JsonDocumentParsed { value: value } => value
+  }
+  let schema = match capacity_record_text(obj: obj, key: "schema") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  if (schema as String) != "gunbc.capacity-cutover.v1" { return Err { value: "unknown cutover record schema" } }
+  let attempt = match capacity_record_text(obj: obj, key: "attempt") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let revision = match capacity_record_text(obj: obj, key: "revision") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  match sha1_hex_digest(hex: revision as String) { Absent => { return Err { value: "cutover revision is not a full git commit" } } Present { value: _ } => {} }
+  let prior = match capacity_record_list(obj: obj, key: "prior", decode: value => capacity_generation_file_read(obj: value)) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let target = match capacity_record_list(obj: obj, key: "target", decode: value => capacity_generation_file_read(obj: value)) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let planned = match capacity_record_list(obj: obj, key: "planned", decode: value => capacity_inhibition_path_read(obj: value)) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let created = match capacity_record_list(obj: obj, key: "created", decode: value => capacity_inhibition_path_read(obj: value)) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let artifacts = match capacity_record_list(obj: obj, key: "artifacts", decode: value => capacity_inhibition_artifact_read(obj: value)) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let phase_value = match capacity_record_value(obj: obj, key: "phase") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let phase = match capacity_cutover_phase_read(obj: phase_value) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  Ok { value: CapacityCutoverRecord { attempt: attempt as AttemptIdentity, target_revision: revision as CommitSha,
+    prior: prior, target: target, planned_paths: planned, created_paths: created, artifacts: artifacts, phase: phase } }
+}
