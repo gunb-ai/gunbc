@@ -42,7 +42,13 @@ type CapacityMigrationParentRequirement {
 }
 
 fn capacity_migration_parent_requirements(population: CapacityMigrationPopulation) -> List<CapacityMigrationParentRequirement> {
-  map(population.transients, family => CapacityMigrationParentRequirement { source: family.source, parents: family.parents })
+  capacity_migration_family_parent_requirements(families: population.transients)
+}
+
+// Each parent is a whole manager-scoped slice: inhibition and emptiness cover every
+// session on that host using it, not just the producer whose row requires it.
+fn capacity_migration_family_parent_requirements(families: List<CapacityTransientFamily>) -> List<CapacityMigrationParentRequirement> {
+  map(families, family => CapacityMigrationParentRequirement { source: family.source, parents: family.parents })
 }
 
 type CapacityMigrationChild {

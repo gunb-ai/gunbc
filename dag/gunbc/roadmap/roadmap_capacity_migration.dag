@@ -5,7 +5,7 @@ import std.decl_ref { decl_ref }
 import std.error_primitives { Ok, Err }
 import extdeps.systemd { systemd_service_unit_suffix }
 import extdeps.systemd.manager { SystemManager, UserManager }
-import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityTransientFamily }
+import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityTransientFamily, CapacityMigrationParentRequirement, capacity_migration_family_parent_requirements }
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, attempt_worker_slice_unit_name }
 import gunbc.live_deploy.spec {
   DeploymentNames, deployment_agent_door_unit_name,
@@ -86,4 +86,10 @@ fn roadmap_capacity_migration_transients(names: DeploymentNames, instance_id: St
       parents: Err { value: "redelivery timer/service initial parent unresolved; its executable may additionally self-wrap into gunbc-user-work.slice as an anonymous run-*.scope; observe and bind both before migration" },
     },
   ]
+}
+
+// Scheduling output, including Err for any unresolved family. A coordinator must not
+// discard that row and schedule a quiet window from the known subset.
+fn roadmap_capacity_migration_parent_requirements(names: DeploymentNames, instance_id: String, operating_uid: Int) -> List<CapacityMigrationParentRequirement> {
+  capacity_migration_family_parent_requirements(families: roadmap_capacity_migration_transients(names: names, instance_id: instance_id, operating_uid: operating_uid))
 }
