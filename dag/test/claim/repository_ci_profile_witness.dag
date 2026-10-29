@@ -20,11 +20,7 @@ import gunbc.witness.witness_roster {
   enforced_entries, known_red_entries, must_not_compile_entries, roster_needs_declared_cause_arms,
   run_one_definition, enforced_run_line, known_red_block, must_not_compile_block,
 }
-import gunbc.ci.repository_compose_overlay {
-  ComposeSpec, ComposeLink, merge_checkout_compose, compose_preamble, compose_reentry, compose_gunbc_run,
-  composed_source_roots, source_roots_argv_of, overlay_note_line, local_runs_note_line,
-  SealEnvBinding, heal_seal_env,
-}
+import gunbc.ci.repository_compose_overlay { heal_seal_env }
 import gunbc.ci.repository_projection_drift_workflow {
   DriftProgram, projection_drift_refusal, expected_projection_drift_workflow_yml,
   ProjectionDriftWorkflowGenerated, ProjectionDriftWorkflowGenerationRefused,

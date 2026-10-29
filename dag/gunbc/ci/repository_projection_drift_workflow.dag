@@ -5,6 +5,9 @@ import std.measure { byte_size_count }
 import std.optional { Optional, Present, Absent }
 import std.algebra { list_map }
 import std.dissolution { DissolutionCondition, dissolution_description }
+import v2.std.node { Node }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
@@ -44,14 +47,15 @@ import gunbc.ci.repository_ci_profile {
 import gunbc.ci.repository_compose_overlay {
   SealEnvBinding,
   composed_source_roots,
-  compose_gunbc_run,
-  compose_preamble,
-  head_tree_compose,
+  compose_gunbc_run_statements,
+  compose_preamble_statements,
+  head_tree_compose_statements,
   heal_seal_env,
+  local_runs_note,
   merge_checkout_compose,
   only_at_a_pull_request,
-  seal_ran_and_repo_alive,
-  source_roots_argv_of
+  overlay_note,
+  seal_ran_and_repo_alive
 }
 import gunbc.ci.repository_seed_steps {
   repository_checkout_step,
@@ -124,54 +128,96 @@ fn memory_budget_rows(profile: RepositoryCiProfile) -> List<YamlKeyValue> {
 }
 
 // THE CHECK: compose from the CHECKED-OUT tree, then ask the project's own drift claim whether the
-// committed bytes equal what the authorities emit. The banner is the first line the step prints, so a
+// committed bytes equal what the authorities emit. The banner is the first statement the step runs, so a
 // failing run says what it was checking before it says anything else.
-fn drift_check_script(profile: RepositoryCiProfile, seed: PublicSeed, overlay: OverlayIngest, program: DriftProgram, check: DagInvocation) -> String {
+fn drift_check_statements(
+  profile: RepositoryCiProfile,
+  seed: PublicSeed,
+  overlay: OverlayIngest,
+  program: DriftProgram,
+  check: DagInvocation
+) -> List<Node> {
   let roots = composed_source_roots(
     profile_roots: profile.roster.source_roots,
     overlay: overlay
   )
-    let argv = source_roots_argv_of(roots: roots)
-      let notes = [
-        "echo \"" + program.check_authority_banner as String + "\"",
-        "echo \"" + overlay.overlay_dir_name as String + " is a generated ingest copy of this repository's dag, composed into a detached worktree OUTSIDE the repository root so no auto-push can reach it; do not edit it. Edit the checkout. Dissolves when: " + dissolution_text(condition: overlay.overlay_copy_dissolves_when) + "\"",
-        "echo \"" + overlay.local_runs_warning as String + "\""
-      ]
-        let pre = compose_preamble(
-          seed: seed,
-          c: merge_checkout_compose(seed: seed, overlay: overlay, notes: notes)
-        )
-          join(
-            [
-              pre,
-              compose_gunbc_run(overlay: overlay, source_roots_argv: argv, entry: check.entry, function: check.function)
-            ],
-            ""
-          )
+  let notes = [
+    program.check_authority_banner as String,
+    overlay_note(overlay: overlay),
+    local_runs_note(overlay: overlay)
+  ]
+  concat(
+    compose_preamble_statements(seed: seed, c: merge_checkout_compose(seed: seed, overlay: overlay, notes: notes)),
+    compose_gunbc_run_statements(
+      overlay: overlay,
+      source_roots: roots,
+      entry: check.entry,
+      function: check.function
+    )
+  )
 }
 
-// THE SEAL: compose at the pull request HEAD and run the project's regenerate-and-seal target. The unset
-// lines are the same discipline as the check -- a composition must not inherit a cache from a previous
+fn drift_check_script(
+  profile: RepositoryCiProfile,
+  seed: PublicSeed,
+  overlay: OverlayIngest,
+  program: DriftProgram,
+  check: DagInvocation
+) -> Outcome<String> {
+  bash_emit_stmts(
+    statements: drift_check_statements(
+      profile: profile,
+      seed: seed,
+      overlay: overlay,
+      program: program,
+      check: check
+    ),
+    set_e: true
+  )
+}
+
+// THE SEAL: compose at the pull request HEAD and run the project's regenerate-and-seal target. The cache
+// clears are the same discipline as the check - a composition must not inherit a cache from a previous
 // tree, or a candidate can be assembled out of bytes that are not in the commit being sealed.
-fn heal_seal_script(seed: PublicSeed, overlay: OverlayIngest, seal: HealSeal) -> String {
+fn heal_seal_statements(seed: PublicSeed, overlay: OverlayIngest, seal: HealSeal) -> List<Node> {
   let roots = composed_source_roots(
     profile_roots: roster_source_roots(),
     overlay: overlay
   )
-    let argv = source_roots_argv_of(roots: roots)
-      join(
-        concat(
-          head_tree_compose(
-            seed: seed,
-            overlay: overlay,
-            head_tree_dir_name: seal.head_tree_dir_name,
-            head_link_name: seal.head_link_name,
-            compose_dir_name: seal.compose_dir_name
-          ),
-          [compose_gunbc_run(overlay: overlay, source_roots_argv: argv, entry: seal.invocation.entry, function: seal.invocation.function)]
-        ),
-        "\n"
-      )
+  concat(
+    head_tree_compose_statements(
+      seed: seed,
+      overlay: overlay,
+      head_tree_dir_name: seal.head_tree_dir_name,
+      head_link_name: seal.head_link_name,
+      compose_dir_name: seal.compose_dir_name
+    ),
+    compose_gunbc_run_statements(
+      overlay: overlay,
+      source_roots: roots,
+      entry: seal.invocation.entry,
+      function: seal.invocation.function
+    )
+  )
+}
+
+fn heal_seal_script(seed: PublicSeed, overlay: OverlayIngest, seal: HealSeal) -> Outcome<String> {
+  bash_emit_stmts(statements: heal_seal_statements(seed: seed, overlay: overlay, seal: seal), set_e: true)
+}
+
+// A job with no seal step needs no seal script; an accepted empty script is that case, so the step
+// builder below matches one shape of outcome rather than two.
+fn no_seal_script() -> Outcome<String> {
+  bash_emit_stmts(statements: [], set_e: true)
+}
+
+// A row that declares no seal has no seal script to refuse; the accepted empty script is that case, so
+// the generator matches one shape at this point rather than testing for a seal twice.
+fn seal_script_or_empty(seed: PublicSeed, overlay: OverlayIngest, drift: ProjectionDrift) -> Outcome<String> {
+  match drift.seal {
+    Present { value: seal } => heal_seal_script(seed: seed, overlay: overlay, seal: seal)
+    Absent => no_seal_script()
+  }
 }
 
 // THE SEAL COMPOSES THE SAME SOURCE TREES THE GATE CHECKS, because the candidate must be produced by the
@@ -185,19 +231,15 @@ fn projection_drift_steps(
   seed: PublicSeed,
   overlay: OverlayIngest,
   program: DriftProgram,
-  drift: ProjectionDrift
+  drift: ProjectionDrift,
+  check_body: String,
+  seal_body: String
 ) -> List<Step> {
   let budget = memory_budget_rows(profile: profile)
-    let check_step = RunStep {
-      name: Present { value: program.check_step_name },
-      id: none,
-      run: drift_check_script(
-        profile: profile,
-        seed: seed,
-        overlay: overlay,
-        program: program,
-        check: drift.check
-      ),
+  let check_step = RunStep {
+    name: Present { value: program.check_step_name },
+    id: none,
+    run: check_body,
       shell: none,
       env: Present { value: budget },
       working_directory: none,
@@ -210,7 +252,7 @@ fn projection_drift_steps(
           RunStep {
             name: Present { value: seal.seal_step_name },
             id: Present { value: seal.seal_step_id },
-            run: heal_seal_script(seed: seed, overlay: overlay, seal: seal),
+            run: seal_body,
             shell: none,
             env: Present { value: concat(budget, seal_env_rows()) },
             working_directory: none,
@@ -271,7 +313,9 @@ fn projection_drift_job(
   seed: PublicSeed,
   overlay: OverlayIngest,
   program: DriftProgram,
-  drift: ProjectionDrift
+  drift: ProjectionDrift,
+  check_body: String,
+  seal_body: String
 ) -> Job {
   Job {
     id: drift.job_id,
@@ -283,7 +327,9 @@ fn projection_drift_job(
       seed: seed,
       overlay: overlay,
       program: program,
-      drift: drift
+      drift: drift,
+      check_body: check_body,
+      seal_body: seal_body
     ),
     needs: [],
     env: none,
@@ -332,7 +378,9 @@ fn projection_drift_workflow(
   seed: PublicSeed,
   overlay: OverlayIngest,
   program: DriftProgram,
-  drift: ProjectionDrift
+  drift: ProjectionDrift,
+  check_body: String,
+  seal_body: String
 ) -> Workflow {
   Workflow {
     name: drift.workflow_name as String,
@@ -347,7 +395,9 @@ fn projection_drift_workflow(
         seed: seed,
         overlay: overlay,
         program: program,
-        drift: drift
+        drift: drift,
+        check_body: check_body,
+        seal_body: seal_body
       )
     ]
   }
@@ -371,12 +421,30 @@ fn expected_projection_drift_workflow_yml(
     Absent =>
       match drift_row(profile: profile) {
         Present { value: drift } =>
-          match emit_yaml(v: project_workflow_to_yaml(workflow: projection_drift_workflow(profile: profile, seed: seed, overlay: overlay, program: program, drift: drift))) {
+          match drift_check_script(
+            profile: profile,
+            seed: seed,
+            overlay: overlay,
+            program: program,
+            check: drift.check
+          ) {
+            Rejected { diagnostics: _ } => ProjectionDriftWorkflowGenerationRefused {
+              reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the drift check script, so no workflow is emitted rather than one carrying a step no grammar row accounts for"
+            }
+            Accepted { value: check_body, diagnostics: _ } =>
+          match seal_script_or_empty(seed: seed, overlay: overlay, drift: drift) {
+            Rejected { diagnostics: _ } => ProjectionDriftWorkflowGenerationRefused {
+              reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the heal seal script, so no workflow is emitted rather than one publishing a candidate no grammar row accounted for"
+            }
+            Accepted { value: seal_body, diagnostics: _ } =>
+          match emit_yaml(v: project_workflow_to_yaml(workflow: projection_drift_workflow(profile: profile, seed: seed, overlay: overlay, program: program, drift: drift, check_body: check_body, seal_body: seal_body))) {
             EmittedYaml { text: t } => ProjectionDriftWorkflowGenerated { content: t }
             YamlEmitRefused { path: p, reason: r } =>
               ProjectionDriftWorkflowGenerationRefused {
                 reason: yaml_emit_refusal_text(module_path: "gunbc.ci.repository_projection_drift_workflow", path: p, reason: r)
               }
+          }
+          }
           }
         Absent => ProjectionDriftWorkflowGenerationRefused { reason: drift_no_job_refusal_reason }
       }

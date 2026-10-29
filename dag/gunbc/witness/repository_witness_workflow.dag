@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { byte_size_count }
 import std.optional { Optional, Present, Absent }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
-import std.dissolution { dissolution_description, DissolutionCondition }
+import std.dissolution { dissolution_description, DissolutionCondition, unbound_dissolution }
 import extdeps.languages.yaml.emit { emit_yaml, YamlEmitResult, EmittedYaml, YamlEmitRefused }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
@@ -20,9 +20,10 @@ import gunbc.ci.repository_ci_profile {
   roster_route_is_instrument_dispatcher, profile_uses_public_seed
 }
 import gunbc.ci.repository_compose_overlay {
-  ComposeSpec, ComposeLink, merge_checkout_compose, compose_preamble, compose_reentry, compose_gunbc_run,
-  composed_source_roots, source_roots_argv_of, overlay_note_line, local_runs_note_line, dissolution_note_line
+  composed_source_roots, compose_preamble, merge_checkout_compose,
+  overlay_note, local_runs_note, dissolution_note
 }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import gunbc.witness.witness_roster {
   RosterEntry, RosterEntryKind, Enforced, KnownRed, MustNotCompile,
   enforced_entries, roster_needs_declared_cause_arms, run_one_definition, enforced_run_line,
@@ -102,7 +103,7 @@ fn repository_witness_lane_refusal(profile: RepositoryCiProfile, program: Roster
 // DESIGN 4c compile. The record step is not decoration: a green run must be attributable to the exact
 // seed revision, or "the claims pass" silently means "the claims pass against whatever main was at
 // checkout time".
-fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> List<Step> {
+fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_body: String) -> List<Step> {
   [
     checkout_repository_step(program: program),
     checkout_seed_step(seed: seed),
@@ -110,7 +111,7 @@ fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, prog
     toolchain_step(program: program),
     build_seed_step(seed: seed)
   ]
-    |> concat([run_roster_step(profile: profile, seed: seed, program: program)])
+    |> concat([run_roster_step(profile: profile, seed: seed, program: program, compose_body: compose_body)])
     |> concat(annotation_steps(profile: profile, seed: seed, program: program))
 }
 
@@ -207,11 +208,11 @@ fn build_seed_step(seed: PublicSeed) -> Step {
 // The memory budget is a row (profile.roster.memory_budget) rather than a constant because the
 // ceiling belongs to the machine the job runs on: a hosted runner with a different RAM figure is a row
 // edit, not an edit to a shell string.
-fn run_roster_step(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> Step {
+fn run_roster_step(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_body: String) -> Step {
   RunStep {
     name: Present { value: roster_run_step_name(profile: profile) },
     id: none,
-    run: roster_run_script(profile: profile, seed: seed, program: program),
+    run: roster_run_script(profile: profile, seed: seed, program: program, compose_body: compose_body),
     shell: none,
     env: memory_budget_env(profile: profile),
     working_directory: none,
@@ -240,7 +241,7 @@ fn memory_budget_env(profile: RepositoryCiProfile) -> Optional<List<YamlKeyValue
 // is to say which claim failed. The four-arm structure (enforced, declared red, must-not-compile, exit
 // status) is the evidence; the hand-written shell around it is a declared divergence whose trigger the
 // step prints, so nobody has to read this module to learn what would replace it.
-fn roster_run_script(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> String {
+fn roster_run_script(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_body: String) -> String {
   match profile.roster.route {
     InstrumentLabelRows => ""
     ComposedOverlayInterpreterRoster {
@@ -253,25 +254,42 @@ fn roster_run_script(profile: RepositoryCiProfile, seed: PublicSeed, program: Ro
       seed: seed,
       program: program,
       overlay: overlay,
-      hand_shell_dissolves_when: hand_shell_dissolves_when
+      hand_shell_dissolves_when: hand_shell_dissolves_when,
+      compose_body: compose_body
     )
   }
+}
+
+// THE COMPOSITION, RENDERED ONCE FOR THE JOB. The compose preamble is the one part of the mirror's
+// pipeline that is not this module's business - it is gunbc.ci.repository_compose_overlay's - so it is
+// rendered there as a statement tree and threaded in as an already-accounted-for script. Rendering it
+// here too would give the job two ideas of where the composed tree lives, and the roster's verdict would
+// be about whichever tree the last of the two built.
+fn mirror_compose_preamble(profile: RepositoryCiProfile, seed: PublicSeed, overlay: OverlayIngest) -> Outcome<String> {
+  compose_preamble(
+    seed: seed,
+    c: merge_checkout_compose(
+      seed: seed,
+      overlay: overlay,
+      notes: [
+        overlay_note(overlay: overlay),
+        local_runs_note(overlay: overlay)
+      ]
+    )
+  )
 }
 
 // THE COMPOSED RUN, RENDERED. Notes are echoed by the step that composes rather than left in a comment
 // because two of them are obligations with teeth: the overlay copy must not be edited and must not be
 // created inside a session worktree, and the hand-written shell around the roster is a declared
 // divergence whose successor capability is named at run time.
-fn composed_roster_script(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, overlay: OverlayIngest, hand_shell_dissolves_when: DissolutionCondition) -> String {
+fn composed_roster_script(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, overlay: OverlayIngest, hand_shell_dissolves_when: DissolutionCondition, compose_body: String) -> String {
   let roots = composed_source_roots(profile_roots: profile.roster.source_roots, overlay: overlay)
-  let argv = source_roots_argv_of(roots: roots)
+  let argv = mirror_source_roots_argv(roots: roots)
   join([
-    compose_preamble(seed: seed, c: merge_checkout_compose(seed: seed, overlay: overlay, notes: [
-      overlay_note_line(overlay: overlay),
-      local_runs_note_line(overlay: overlay),
-      dissolution_note_line(prefix: "the roster runs one process per row.", condition: overlay.shared_process_dissolves_when),
-      dissolution_note_line(prefix: "this roster is driven by hand-written shell.", condition: hand_shell_dissolves_when)
-    ])),
+    compose_body,
+    echo_line(text: dissolution_note(prefix: "the roster runs one process per row.", condition: overlay.shared_process_dissolves_when)),
+    echo_line(text: dissolution_note(prefix: "this roster is driven by hand-written shell.", condition: hand_shell_dissolves_when)),
     "fail=0\n",
     run_one_definition(source_roots_argv: argv),
     aggregate_line(profile: profile, overlay: overlay),
@@ -348,7 +366,7 @@ fn annotation_compile_script(profile: RepositoryCiProfile, seed: PublicSeed, ann
     ComposedOverlayInterpreterRoster { overlay: overlay } => join([
       "set -u\n",
       "GUNBC=\"$PWD/", seed.checkout_path as String, "/", seed.seed_binary_relative_path as String, "\"\n",
-      "COMPOSE=\"", compose_root(overlay: overlay), "\"\n",
+      "COMPOSE=\"", mirror_compose_root(overlay: overlay), "\"\n",
       "OUT=\"$\{RUNNER_TEMP:-", overlay.compose_root_env_default, "}/", annotation.output_dir_suffix as String, "\"\n",
       "if [ ! -d \"$COMPOSE/", overlay.overlay_dir_name as String, "/dag ]; then\n",
       "  echo \"::error::REFUSE section 4c check observed nothing: the composed root $COMPOSE is absent, so the roster step did not reach composition.\"\n",
@@ -360,7 +378,7 @@ fn annotation_compile_script(profile: RepositoryCiProfile, seed: PublicSeed, ann
       "rm -rf \"$OUT\" \"$OUT.log\"\n",
       "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR || true\n",
       "unset GUNBC_NATIVE_CACHE_ROOT || true\n",
-      "if \"$GUNBC\" compile ", source_roots_argv_of(roots: composed_source_roots(profile_roots: profile.roster.source_roots, overlay: overlay)),
+      "if \"$GUNBC\" compile ", mirror_source_roots_argv(roots: composed_source_roots(profile_roots: profile.roster.source_roots, overlay: overlay)),
       " --entry ", overlay.entry_prefix as String, annotation.invocation.entry as String,
       " --output-dir \"$OUT\" --target dag > \"$OUT.log\" 2>&1; then code=0; else code=$?; fi\n",
       "echo \"gunbc compile exited $code\"\n",
@@ -426,13 +444,13 @@ fn schedule_triggers(profile: RepositoryCiProfile) -> List<WorkflowTrigger> {
 // CI to another machine class is one row in one authority and every derivation - labels, memory regime,
 // RAM budget - follows instead of being remembered. Permissions are contents:read: the required gate
 // reads source and reports a verdict; anything more is a credential in the place that runs the most code.
-fn repository_witness_job(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> Job {
+fn repository_witness_job(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_body: String) -> Job {
   Job {
     id: profile.roster.job_id,
     name: none,
     runner: ci_runner_target_spec(target: profile.roster.runner),
     environment: none,
-    steps: repository_witness_steps(profile: profile, seed: seed, program: program),
+    steps: repository_witness_steps(profile: profile, seed: seed, program: program, compose_body: compose_body),
     needs: [],
     env: none,
     outputs: none,
@@ -444,13 +462,13 @@ fn repository_witness_job(profile: RepositoryCiProfile, seed: PublicSeed, progra
   }
 }
 
-fn repository_witness_workflow(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> Workflow {
+fn repository_witness_workflow(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_body: String) -> Workflow {
   Workflow {
     name: profile.roster.workflow_name,
     run_name: none,
     on: repository_witness_triggers(profile: profile),
     concurrency: none,
-    jobs: [repository_witness_job(profile: profile, seed: seed, program: program)],
+    jobs: [repository_witness_job(profile: profile, seed: seed, program: program, compose_body: compose_body)],
     env: none,
     permissions: Present { value: WorkflowPermissions {
       contents: Present { value: PermRead },
@@ -472,8 +490,59 @@ fn expected_repository_witnesses_yml(profile: RepositoryCiProfile, seed: PublicS
 fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> YamlEmitResult {
   match repository_witness_lane_refusal(profile: profile, program: program) {
     Present { value: reason } => YamlEmitRefused { path: profile.roster.workflow_file as String, reason: reason as String }
-    Absent => emit_yaml(v: project_workflow_to_yaml(workflow: repository_witness_workflow(profile: profile, seed: seed, program: program)))
+    Absent => match mirror_compose_preamble(profile: profile, seed: seed, overlay: overlay_of_lane(profile: profile)) {
+      Rejected { diagnostics: _ } => YamlEmitRefused {
+        path: profile.roster.workflow_file as String,
+        reason: "gunbc.witness.repository_witness_workflow: v2.workflow.bash_emit refused the composed-root preamble, so no workflow is emitted rather than one carrying a composition no grammar row accounts for"
+      }
+      Accepted { value: compose_body, diagnostics: _ } =>
+        emit_yaml(v: project_workflow_to_yaml(workflow: repository_witness_workflow(profile: profile, seed: seed, program: program, compose_body: compose_body)))
+    }
   }
+}
+
+// The overlay of the lane this profile routes its roster through; the instrument lane has none, and the
+// composition (and therefore its refusal) only exists for the composed lane.
+fn overlay_of_lane(profile: RepositoryCiProfile) -> OverlayIngest {
+  match profile.roster.route {
+    InstrumentLabelRows => no_overlay_lane()
+    ComposedOverlayInterpreterRoster { overlay: overlay } => overlay
+  }
+}
+
+// The instrument lane composes nothing, so its preamble is the accepted empty script: a job whose rows the
+// checkout's own compiler runs needs no second tree, and threading an empty script keeps one shape at the
+// call site instead of two.
+fn no_overlay_lane() -> OverlayIngest {
+  OverlayIngest {
+    overlay_dir_name: "dag",
+    entry_prefix: "dag/",
+    repo_link_name: "repo",
+    compose_dir_name: "compose",
+    compose_root_env_default: "/tmp",
+    overlay_copy_dissolves_when: instrument_lane_never_composes(),
+    local_runs_warning: "the instrument lane composes nothing; there is no overlay to create locally",
+    shared_process_dissolves_when: instrument_lane_never_composes()
+  }
+}
+
+fn instrument_lane_never_composes() -> DissolutionCondition {
+  unbound_dissolution(description: "the instrument lane composes no tree: the checkout's own compiler runs every row, so there is no copy and no composed root to retire")
+}
+
+fn echo_line(text: String) -> String {
+  concat(concat("echo \"", text), "\"\n")
+}
+
+// The composed tree's path, as this module's remaining string scripts need it. The composed-root builder
+// proper (gunbc.ci.repository_compose_overlay) assigns this from a statement tree; these two helpers exist
+// only for the scripts that are still strings, so that the compose module itself carries no shell text.
+fn mirror_compose_root(overlay: OverlayIngest) -> String {
+  concat(concat(concat("$\{RUNNER_TEMP:-", overlay.compose_root_env_default as String), "/"), overlay.compose_dir_name as String)
+}
+
+fn mirror_source_roots_argv(roots: List<String>) -> String {
+  join(map(xs: roots, f: root => concat("--source-root \"", root)), " ")
 }
 
 fn yaml_emission_text(result: YamlEmitResult) -> String {

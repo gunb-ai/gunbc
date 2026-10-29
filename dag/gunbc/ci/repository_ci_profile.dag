@@ -27,12 +27,14 @@ import extdeps.github.hosted_runners { github_hosted_ubuntu_2404_arm_public_cata
 // not reach the repository whose required check IS the fork.
 //
 // So the difference moves into a row. RepositoryCiProfile is the fact "what this repository's CI is", and
-// the workflow emitters are functions of it: gunbc.witness.repository_witness_workflow (the required
-// roster gate), gunbc.ci.repository_projection_drift_workflow (committed projections against their
-// authorities, and the repair seal), gunbc.heal.repository_heal_publisher_workflow (the publisher that
-// lands a sealed candidate). gunbc's own row lives in this module; the mirror's row lives IN THE MIRROR
-// and is passed to the same emitters as an argument, so no mirror path, module name or row name needs to
-// enter the public corpus - which is the constraint that decides several shapes below.
+// the workflow emitters are functions of it: gunbc.witness.compiler_gate_workflow::expected_compiler_gate_yml
+// and gunbc.heal_workflow::expected_heal_workflow_yml, gunbc.heal_publisher_workflow::expected_heal_publisher_workflow_yml
+// and gunbc.drift_watch_workflow::expected_drift_watch_workflow_yml render gunbc's own four workflows;
+// gunbc.witness.repository_witness_workflow::expected_repository_witnesses_yml and
+// gunbc.ci.repository_projection_drift_workflow::expected_projection_drift_workflow_yml take a row as an
+// argument and render a mirror repository's two. gunbc's own row lives in this module; the mirror's row
+// lives IN THE MIRROR and is passed to those two as an argument, so no mirror path, module name or row name
+// needs to enter the public corpus - which is the constraint that decides several shapes below.
 //
 // WHAT THIS ROW DELIBERATELY DOES NOT CARRY:
 // - runs-on label strings. A job carries a CiRunnerTarget and its spec PROJECTS from that target

@@ -3,6 +3,20 @@ module gunbc.ci.repository_compose_overlay
 import std.types { NonEmptyStr, String, List }
 import gunbc.ci.repository_ci_profile { PublicSeed, OverlayIngest }
 import std.dissolution { DissolutionCondition, dissolution_description }
+import v2.std.node { Node }
+import v2.std.diagnostic { Outcome }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_with_words,
+  bash_build_command_from_lits,
+  bash_build_word_lit,
+  bash_build_word_var,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_cmdsubst,
+  bash_build_assign,
+  bash_build_or_else,
+  bash_build_subshell_from_stmts
+}
 
 // THE COMPOSED ROOT, ONCE, FOR EVERY REPOSITORY THAT NEEDS ONE.
 //
@@ -14,6 +28,18 @@ import std.dissolution { DissolutionCondition, dissolution_description }
 // is how one CI repository acquires four subtly different ideas of what "the code under test" means.
 // They now differ only in the fields of ComposeSpec, and the composition itself is emitted by this
 // module from the repository's profile row (gunbc.ci.repository_ci_profile OverlayIngest).
+//
+// THE STATEMENTS ARE NODES, NOT TEXT. Every step here is a List<Node> of v2.extdeps.languages.bash_build
+// statements rendered by v2.workflow.bash_emit::bash_emit_stmts, which accounts for each statement against
+// its grammar rows and refuses the ones it cannot - so an unspellable step is a refusal at the moment it is
+// written, not a red run (or a green one) later. That is the route this repository's own admitted CI shell
+// names as its successor (gunbc.ci.ci_spec gunbc_ci_fleet_key_agent_shell_emit_dissolution: "AVAILABLE
+// today"), and the reason the compose steps were moved onto it instead of being consolidated as strings
+// beside it. Two consequences are worth naming rather than hiding: the grammar has four word kinds (literal,
+// variable, concatenation, command substitution) and no parameter-default form, so `${RUNNER_TEMP:-/tmp}`
+// becomes two statements - an assignment from the variable and an `|| true` fallback to the row's
+// compose_root_env_default - and `set -u` is not imposed, because reading a possibly-unset variable is
+// exactly what that fallback does.
 //
 // WHY THE COPY IS A WALL AND NOT A CONVENIENCE, AND WHY THE TRIGGER RIDES ON THE ROW.
 // The overlay copy exists because gunbc refuses an extra --source-root whose directory lies outside
@@ -29,104 +55,196 @@ import std.dissolution { DissolutionCondition, dissolution_description }
 // privacy; path containment can. That is why the composed tree is a detached worktree under RUNNER_TEMP,
 // why the warning is echoed by the step that composes rather than documented only in a comment, and why
 // a local run must compose in a temporary directory rather than in the checkout it was cloned into.
-//
-// HAND-SHELL, DECLARED, AT ONE SITE. These lines are shell composed as strings, which is the
-// unmodelled-realization tell in DESIGN 6. Consolidating them here shrinks the tell rather than adding a
-// copy of it; its dissolution is the typed-argv trigger carried on the route that takes this path
-// (gunbc.ci.repository_ci_profile ComposedOverlayInterpreterRoster hand_shell_dissolves_when), printed by
-// the step that runs it.
 
-// A SYMLINK THE COMPOSITION CREATES, naming one of the mirror's trees at the path an entry reads.
+// A SYMLINK THE COMPOSITION CREATES, naming one of the mirror's trees at the path an entry reads. The
+// target is a statement word, not a path string: the trees a composition links are variables the same
+// script assigned a step earlier, and a string that merely looked like `$HEAD_TREE` would be quoted by the
+// emitter and reach the filesystem as those ten characters.
 type ComposeLink {
   name: String
-  target: String
+  target: Node
 }
 
-// ONE COMPOSITION: what to run before, where the composed tree goes, what is copied in as the overlay,
-// which trees get symlinks, and what the step must tell a reader about its own status as a workaround.
+// ONE COMPOSITION: where the composed tree goes, what is copied in as the overlay, which trees get
+// symlinks, what the step must tell a reader about its own status as a workaround, and what runs first.
 type ComposeSpec {
-  shell_options: String
-  compose: String
-  before_compose: List<String>
-  overlay_source: String
+  compose_dir: NonEmptyStr
+  compose_root_fallback: NonEmptyStr
   overlay_dir_name: String
+  overlay_source: Node
   links: List<ComposeLink>
-  notes: List<String>
+  before_compose: List<Node>
+  notes: List<Node>
 }
 
-// THE COMPOSED PATH FOR A STEP THAT RE-ENTERS IT, derived from the row instead of re-typed by every
-// caller: a later step of the same job opens the directory an earlier step built.
-fn compose_root(overlay: OverlayIngest) -> String {
-  join(["$\{RUNNER_TEMP:-", overlay.compose_root_env_default, "}/", overlay.compose_dir_name as String], "")
+fn word(text: String) -> Node { bash_build_word_lit(text: text) }
+
+fn var_word(name: String) -> Node { bash_build_word_var(name: name) }
+
+fn path_under(name: String, tail: String) -> Node {
+  bash_build_word_concat_from_nodes(parts: [var_word(name: name), word(text: concat("/", tail))])
+}
+
+fn command(words: List<Node>) -> Node { bash_build_command_with_words(words: words) }
+
+fn command_words(rest: List<String>) -> Node {
+  bash_build_command_from_lits(lits: rest)
+}
+
+// `set -euo pipefail`, spelled as the command it is. bash_emit_stmts supplies `set -e` itself; the rest of
+// the options are ordinary words, and pipefail matters here because these scripts pipe a compiler through
+// `tee` - without it the pipeline reports tee's verdict and a compiler that died mid-stream is a pass.
+fn set_strict_stmt() -> Node {
+  command(words: [word(text: "set"), word(text: "-euo"), word(text: "pipefail")])
+}
+
+// `unset X || true`: the two cache variables may or may not be in the environment, and `set -e` must not
+// turn "it was not set" into a failed composition. They are cleared because a composed run that inherits
+// a cache resolves against bytes that are not on disk - a green run about code nobody wrote.
+fn unset_may_be_absent(name: String) -> Node {
+  bash_build_or_else(left: command_words(rest: ["unset", name]), right: command_words(rest: ["true"]))
+}
+
+// `RUNNER_TMP_ROOT="$RUNNER_TEMP"`, falling back to the row's default when the runner did not set it - the
+// two-statement spelling of the parameter default the bash grammar does not carry. Named once per script
+// so the composed tree and its run log cannot disagree about where the run's record lives.
+fn runner_tmp_root_stmts(fallback: NonEmptyStr) -> List<Node> {
+  [
+    bash_build_or_else(
+      left: bash_build_assign(name: "RUNNER_TMP_ROOT", value: var_word(name: "RUNNER_TEMP")),
+      right: bash_build_assign(name: "RUNNER_TMP_ROOT", value: word(text: fallback as String))
+    ),
+    command(words: [word(text: "test"), word(text: "-n"), var_word(name: "RUNNER_TMP_ROOT")])
+  ]
+}
+
+// THE SEED'S OWN COMPILER, at the path the seed build step left it.
+fn seed_gunbc_assign_stmt(seed: PublicSeed) -> Node {
+  bash_build_assign(
+    name: "GUNBC",
+    value: bash_build_word_concat_from_nodes(
+      parts: [var_word(name: "PWD"), word(text: concat("/", seed.seed_binary_relative_path as String))]
+    )
+  )
+}
+
+// `PRIVATE_ROOT="$(cd .. && pwd)"` - the mirror checkout, read from where the runner actually put it and
+// never spelled, so a row cannot claim a path the workflow did not create.
+fn private_root_assign_stmt() -> Node {
+  bash_build_assign(
+    name: "PRIVATE_ROOT",
+    value: bash_build_word_cmdsubst(
+      body: bash_build_subshell_from_stmts(
+        stmts: [command_words(rest: ["cd", ".."]), command_words(rest: ["pwd"])]
+      )
+    )
+  )
+}
+
+// A NOTE, printed before anything is compiled. echo takes the line as one word, so a row's prose - the
+// authority a step checks against, the wall the overlay is, the local-runs warning - reaches the log
+// intact instead of re-entering the shell as syntax.
+fn echo_stmt(text: String) -> Node {
+  command(words: [word(text: "echo"), word(text: text)])
 }
 
 // WHERE THE OVERLAY LANDS INSIDE THE COMPOSED TREE.
-fn compose_overlay_dir(overlay: OverlayIngest) -> String {
-  join(["$COMPOSE/", overlay.overlay_dir_name as String], "")
+fn compose_overlay_dir_path(overlay: OverlayIngest) -> String {
+  concat(concat(overlay.compose_dir_name as String, "/"), overlay.overlay_dir_name as String)
 }
 
 // THE INGEST COPY IS NOT A SOURCE. It is generated from the mirror checkout, so the step that makes it
 // says so, names the file an editor should open instead, and prints the capability that deletes the
 // copy - a reader of a green run can then tell a composed ingest directory from a checked-in one.
-fn overlay_note_line(overlay: OverlayIngest) -> String {
-  join([
-    "echo \"", overlay.overlay_dir_name as String,
-    " is a generated ingest copy of the repository checkout, composed into a detached worktree OUTSIDE the repository root so no auto-push can reach it; do not edit it. Edit the repository checkout. Dissolves when: ",
-    dissolution_description(condition: overlay.overlay_copy_dissolves_when), "\"\n"
-  ], "")
+fn overlay_note(overlay: OverlayIngest) -> String {
+  concat(
+    concat(overlay.overlay_dir_name as String,
+      " is a generated ingest copy of the repository checkout, composed into a detached worktree OUTSIDE the repository root so no auto-push can reach it; do not edit it. Edit the repository checkout. Dissolves when: "),
+    dissolution_description(condition: overlay.overlay_copy_dissolves_when)
+  )
 }
 
-// THE LOCAL-RUN WARNING, ECHOED BY THE STEP THAT COMPOSES. A comment cannot stop someone from
-// composing inside their session worktree, and the consequence there is a privacy leak through
-// auto-push rather than a slow test; the row carries the wording the owning repository uses.
-fn local_runs_note_line(overlay: OverlayIngest) -> String {
-  join(["echo \"LOCAL RUNS: ", overlay.local_runs_warning as String, "\"\n"], "")
+// THE LOCAL-RUN WARNING, echoed by the step that composes. A comment cannot stop someone from composing
+// inside their session worktree, and the consequence there is a privacy leak through auto-push rather than
+// a slow test; the row carries the wording the owning repository uses.
+fn local_runs_note(overlay: OverlayIngest) -> String {
+  concat("LOCAL RUNS: ", overlay.local_runs_warning as String)
 }
 
-// A NOTE THE ROUTE ADDS, printed once per composition, stating the capability that retires the
-// hand-written form. Kept here so every composition carries the same disclosure.
-fn dissolution_note_line(prefix: NonEmptyStr, condition: DissolutionCondition) -> String {
-  join(["echo \"", prefix as String, " Dissolves when: ", dissolution_description(condition: condition), "\"\n"], "")
+// A NOTE THE ROUTE ADDS, printed once per composition, stating the capability that retires the hand-written
+// form. Kept here so every composition carries the same disclosure in the same words.
+fn dissolution_note(prefix: NonEmptyStr, condition: DissolutionCondition) -> String {
+  concat(concat(prefix as String, " Dissolves when: "), dissolution_description(condition: condition))
 }
 
-// THE COMPOSITION A WITNESS RUN NEEDS: the checkout's own .dag copied in as the overlay, and the
-// checkout itself reachable by name from inside the composed tree so committed files can still be read.
+// THE COMPOSITION A WITNESS RUN NEEDS: the checkout's own .dag copied in as the overlay, and the checkout
+// itself reachable by name from inside the composed tree so committed files can still be read.
 fn merge_checkout_compose(seed: PublicSeed, overlay: OverlayIngest, notes: List<String>) -> ComposeSpec {
   ComposeSpec {
-    shell_options: "set -u",
-    compose: compose_root(overlay: overlay),
-    before_compose: [],
-    overlay_source: "$PRIVATE_ROOT",
+    compose_dir: overlay.compose_dir_name,
+    compose_root_fallback: overlay.compose_root_env_default,
     overlay_dir_name: overlay.overlay_dir_name as String,
-    links: [ComposeLink { name: overlay.repo_link_name as String, target: "$PRIVATE_ROOT" }],
-    notes: notes
+    overlay_source: var_word(name: "PRIVATE_ROOT"),
+    links: [ComposeLink { name: overlay.repo_link_name as String, target: var_word(name: "PRIVATE_ROOT") }],
+    before_compose: map(xs: notes, f: text => echo_stmt(text: text)),
+    notes: []
   }
 }
 
 // THE PREAMBLE, RENDERED FROM A ComposeSpec. cd to the seed checkout, name the compiler built there,
 // resolve the mirror checkout's absolute path, make a detached worktree of HEAD outside every repository
-// root, copy the .dag in as the overlay, symlink the trees, cd into the composed tree, then unset the
-// two cache variables: leaving them set resolves the composed run against a cache written for a
-// different corpus, which is a green run about code that is not on disk.
-fn compose_preamble(seed: PublicSeed, c: ComposeSpec) -> String {
-  join([
-    c.shell_options, "\n",
-    "cd ", seed.checkout_path as String, "\n",
-    "GUNBC=\"$PWD/", seed.seed_binary_relative_path as String, "\"\n",
-    "PRIVATE_ROOT=\"$(cd .. && pwd)\"\n",
-    join(c.before_compose, ""),
-    "COMPOSE=\"", c.compose, "\"\n",
-    "rm -rf \"$COMPOSE\"\n",
-    "git worktree prune\n",
-    "git worktree add --detach \"$COMPOSE\" HEAD\n",
-    "mkdir -p \"$COMPOSE/", c.overlay_dir_name, "\"\n",
-    "cp -a \"", c.overlay_source, "/dag\" \"$COMPOSE/", c.overlay_dir_name, "/dag\"\n",
-    join(map(c.links, l => join(["ln -sfn \"", l.target, "\" \"$COMPOSE/", l.name, "\"\n"], "")), ""),
-    "cd \"$COMPOSE\"\n",
-    join(c.notes, ""),
-    "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR || true\n",
-    "unset GUNBC_NATIVE_CACHE_ROOT || true\n"
-  ], "")
+// root, copy the .dag in as the overlay, symlink the trees, cd into the composed tree, then clear the two
+// cache variables.
+fn compose_preamble_statements(seed: PublicSeed, c: ComposeSpec) -> List<Node> {
+  concat(
+    [
+      set_strict_stmt(),
+      command_words(rest: ["cd", seed.checkout_path as String]),
+      seed_gunbc_assign_stmt(seed: seed),
+      private_root_assign_stmt()
+    ],
+    concat(
+      c.before_compose,
+      concat(
+        runner_tmp_root_stmts(fallback: c.compose_root_fallback),
+        [
+          bash_build_assign(name: "COMPOSE", value: path_under(name: "RUNNER_TMP_ROOT", tail: c.compose_dir as String)),
+          command(words: [word(text: "rm"), word(text: "-rf"), var_word(name: "COMPOSE")]),
+          command_words(rest: ["git", "worktree", "prune"]),
+          command(words: [
+            word(text: "git"), word(text: "worktree"), word(text: "add"), word(text: "--detach"),
+            var_word(name: "COMPOSE"), word(text: "HEAD")
+          ]),
+          command(words: [word(text: "mkdir"), word(text: "-p"), path_under(name: "COMPOSE", tail: c.overlay_dir_name)]),
+          command(words: [
+            word(text: "cp"), word(text: "-a"),
+            bash_build_word_concat_from_nodes(parts: [c.overlay_source, word(text: "/dag")]),
+            path_under(name: "COMPOSE", tail: concat(concat(c.overlay_dir_name, "/"), "dag"))
+          ])
+        ],
+        concat(
+          map(xs: c.links, f: link => command(words: [
+            word(text: "ln"), word(text: "-sfn"), link.target,
+            path_under(name: "COMPOSE", tail: link.name)
+          ])),
+          concat(
+            [command(words: [word(text: "cd"), var_word(name: "COMPOSE")])],
+            concat(
+              c.notes,
+              [
+                unset_may_be_absent(name: "GUNBC_RESOLVED_GRAPH_CACHE_DIR"),
+                unset_may_be_absent(name: "GUNBC_NATIVE_CACHE_ROOT")
+              ]
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn compose_preamble(seed: PublicSeed, c: ComposeSpec) -> Outcome<String> {
+  bash_emit_stmts(statements: compose_preamble_statements(seed: seed, c: c), set_e: true)
 }
 
 // A STEP OF THE SAME JOB RE-ENTERS THE COMPOSITION AN EARLIER STEP BUILT, rather than building it again:
@@ -134,26 +252,65 @@ fn compose_preamble(seed: PublicSeed, c: ComposeSpec) -> String {
 // it succeeded. Re-deriving the composition instead would re-run `git worktree add` against a directory
 // that already exists, and the second composition's failure would be reported as if the code under test
 // had failed to appear.
-fn compose_reentry(seed: PublicSeed, shell_options: String, compose: String) -> String {
-  join([
-    shell_options, "\n",
-    "GUNBC=\"$GITHUB_WORKSPACE/", seed.checkout_path as String, "/", seed.seed_binary_relative_path as String, "\"\n",
-    "COMPOSE=\"", compose, "\"\n",
-    "cd \"$COMPOSE\"\n",
-    "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR || true\n",
-    "unset GUNBC_NATIVE_CACHE_ROOT || true\n"
-  ], "")
+fn compose_reentry_statements(seed: PublicSeed, compose_dir: NonEmptyStr) -> List<Node> {
+  concat(
+    [
+      set_strict_stmt(),
+      bash_build_assign(
+        name: "GUNBC",
+        value: bash_build_word_concat_from_nodes(
+          parts: [
+            var_word(name: "GITHUB_WORKSPACE"),
+            word(text: concat("/", seed.checkout_path as String)),
+            word(text: concat("/", seed.seed_binary_relative_path as String))
+          ]
+        )
+      )
+    ],
+    concat(
+      runner_tmp_root_stmts(fallback: "/tmp"),
+      [
+        bash_build_assign(name: "COMPOSE", value: path_under(name: "RUNNER_TMP_ROOT", tail: compose_dir as String)),
+        command(words: [word(text: "cd"), var_word(name: "COMPOSE")]),
+        unset_may_be_absent(name: "GUNBC_RESOLVED_GRAPH_CACHE_DIR"),
+        unset_may_be_absent(name: "GUNBC_NATIVE_CACHE_ROOT")
+      ]
+    )
+  )
+}
+
+fn compose_reentry(seed: PublicSeed, compose_dir: NonEmptyStr) -> Outcome<String> {
+  bash_emit_stmts(statements: compose_reentry_statements(seed: seed, compose_dir: compose_dir), set_e: true)
 }
 
 // RUN ONE SUBJECT OVER THE COMPOSED ROOT. The entry is spelled through the overlay prefix because the
 // composed tree is what the compiler resolves against: the same claim run from the mirror checkout
-// directly resolves against a corpus the seed's compiler has never seen.
-fn compose_gunbc_run(overlay: OverlayIngest, source_roots_argv: String, entry: NonEmptyStr, function: NonEmptyStr) -> String {
-  join([
-    "\"$GUNBC\" run ", source_roots_argv,
-    " --entry \"", overlay.entry_prefix as String, entry as String,
-    "\" --function \"", function as String, "\"\n"
-  ], "")
+// directly resolves against a corpus the seed's compiler has never seen. The roots arrive as data and each
+// becomes one `--source-root` word pair here, so no caller can compose a flag line by hand.
+fn compose_gunbc_run_statements(overlay: OverlayIngest, source_roots: List<String>, entry: NonEmptyStr, function: NonEmptyStr) -> List<Node> {
+  let root_words = fold(
+    source_roots,
+    init: [] as List<Node>,
+    f: (acc, root) => concat(acc, [word(text: "--source-root"), word(text: root as String)])
+  )
+  [
+    command(
+      words: concat(
+        concat(
+          concat(
+            [var_word(name: "GUNBC"), word(text: "run")],
+            root_words
+          ),
+          [word(text: "--entry"), word(text: concat(overlay.entry_prefix as String, entry as String))]
+        ),
+        [word(text: "--function"), word(text: function as String)]
+      )
+    )
+  ]
+}
+
+fn compose_gunbc_run(overlay: OverlayIngest, source_roots: List<String>, entry: NonEmptyStr, function: NonEmptyStr) -> Outcome<String> {
+  bash_emit_stmts(statements: compose_gunbc_run_statements(overlay: overlay, source_roots: source_roots, entry: entry, function: function), set_e: true)
 }
 
 // THE SOURCE ROOTS OF A COMPOSED RUN: the repository's own roots, plus the overlay copy the composition
@@ -161,11 +318,7 @@ fn compose_gunbc_run(overlay: OverlayIngest, source_roots_argv: String, entry: N
 // against the row that names the overlay directory - and a stale root list resolves claims against a
 // corpus that is not the one on disk.
 fn composed_source_roots(profile_roots: List<String>, overlay: OverlayIngest) -> List<String> {
-  concat(profile_roots, [join([overlay.overlay_dir_name as String, "/dag"], "")])
-}
-
-fn source_roots_argv_of(roots: List<String>) -> String {
-  join(map(roots, r => join(["--source-root ", r as String], "")), " ")
+  concat(profile_roots, [concat(overlay.overlay_dir_name as String, "/dag")])
 }
 
 // THE HEAD-TREE COMPOSITION: same shape, different inputs. The drift check composes the tree that is
@@ -173,34 +326,82 @@ fn source_roots_argv_of(roots: List<String>) -> String {
 // must be the one the reviewer is looking at, not the one GitHub merged. Same worktree discipline
 // (outside the root, detached, pruned), and the link to the tree is named so the seal's own
 // witnesses can say which tree generated the bytes.
+fn head_tree_compose_statements(
+  seed: PublicSeed,
+  overlay: OverlayIngest,
+  head_tree_dir_name: NonEmptyStr,
+  head_link_name: NonEmptyStr,
+  compose_dir_name: NonEmptyStr
+) -> List<Node> {
+  concat(
+    [
+      set_strict_stmt(),
+      command_words(rest: ["cd", seed.checkout_path as String]),
+      seed_gunbc_assign_stmt(seed: seed),
+      private_root_assign_stmt(),
+      bash_build_assign(name: "HEAD_TREE", value: path_under(name: "RUNNER_TMP_ROOT", tail: head_tree_dir_name as String))
+    ],
+    concat(
+      runner_tmp_root_stmts(fallback: overlay.compose_root_env_default),
+      [
+        command(words: [
+          word(text: "git"), word(text: "-C"), var_word(name: "PRIVATE_ROOT"), word(text: "fetch"),
+          word(text: "--no-tags"), word(text: "--depth=1"), word(text: "origin"), var_word(name: "HEAD_SHA")
+        ]),
+        command(words: [word(text: "rm"), word(text: "-rf"), var_word(name: "HEAD_TREE")]),
+        command(words: [
+          word(text: "git"), word(text: "-C"), var_word(name: "PRIVATE_ROOT"),
+          word(text: "worktree"), word(text: "prune")
+        ]),
+        command(words: [
+          word(text: "git"), word(text: "-C"), var_word(name: "PRIVATE_ROOT"),
+          word(text: "worktree"), word(text: "add"), word(text: "--detach"),
+          var_word(name: "HEAD_TREE"), var_word(name: "HEAD_SHA")
+        ]),
+        bash_build_assign(name: "COMPOSE", value: path_under(name: "RUNNER_TMP_ROOT", tail: compose_dir_name as String)),
+        command(words: [word(text: "rm"), word(text: "-rf"), var_word(name: "COMPOSE")]),
+        command_words(rest: ["git", "worktree", "prune"]),
+        command(words: [
+          word(text: "git"), word(text: "worktree"), word(text: "add"), word(text: "--detach"),
+          var_word(name: "COMPOSE"), word(text: "HEAD")
+        ]),
+        command(words: [
+          word(text: "mkdir"), word(text: "-p"),
+          path_under(name: "COMPOSE", tail: concat(concat(compose_dir_name as String, "/"), overlay.overlay_dir_name as String))
+        ]),
+        command(words: [
+          word(text: "cp"), word(text: "-a"), path_under(name: "HEAD_TREE", tail: "dag"),
+          path_under(name: "COMPOSE", tail: concat(concat(compose_dir_name as String, "/"), concat(overlay.overlay_dir_name as String, "/dag")))
+        ]),
+        command(words: [
+          word(text: "ln"), word(text: "-sfn"), var_word(name: "HEAD_TREE"),
+          path_under(name: "COMPOSE", tail: concat(concat(compose_dir_name as String, "/"), head_link_name as String))
+        ]),
+        command(words: [word(text: "cd"), var_word(name: "COMPOSE")]),
+        unset_may_be_absent(name: "GUNBC_RESOLVED_GRAPH_CACHE_DIR"),
+        unset_may_be_absent(name: "GUNBC_NATIVE_CACHE_ROOT")
+      ]
+    )
+  )
+}
+
 fn head_tree_compose(
   seed: PublicSeed,
   overlay: OverlayIngest,
   head_tree_dir_name: NonEmptyStr,
   head_link_name: NonEmptyStr,
   compose_dir_name: NonEmptyStr
-) -> List<String> {
-  [
-    "set -euo pipefail",
-    "cd " + seed.checkout_path as String,
-    "GUNBC=\"$PWD/" + seed.seed_binary_relative_path as String + "\"",
-    "PRIVATE_ROOT=\"$(cd .. && pwd)\"",
-    "HEAD_TREE=\"$\{RUNNER_TEMP:-" + overlay.compose_root_env_default as String + "}/" + head_tree_dir_name as String + "\"",
-    "git -C \"$PRIVATE_ROOT\" fetch --no-tags --depth=1 origin \"$HEAD_SHA\"",
-    "rm -rf \"$HEAD_TREE\"",
-    "git -C \"$PRIVATE_ROOT\" worktree prune",
-    "git -C \"$PRIVATE_ROOT\" worktree add --detach \"$HEAD_TREE\" \"$HEAD_SHA\"",
-    "COMPOSE=\"$\{RUNNER_TEMP:-" + overlay.compose_root_env_default as String + "}/" + compose_dir_name as String + "\"",
-    "rm -rf \"$COMPOSE\"",
-    "git worktree prune",
-    "git worktree add --detach \"$COMPOSE\" HEAD",
-    "mkdir -p \"$COMPOSE/" + overlay.overlay_dir_name as String + "\"",
-    "cp -a \"$HEAD_TREE/dag\" \"$COMPOSE/" + overlay.overlay_dir_name as String + "/dag\"",
-    "ln -sfn \"$HEAD_TREE\" \"$COMPOSE/" + head_link_name as String + "\"",
-    "cd \"$COMPOSE\"",
-    "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR || true",
-    "unset GUNBC_NATIVE_CACHE_ROOT || true"
-  ]
+) -> Outcome<String> {
+  bash_emit_stmts(
+    statements: head_tree_compose_statements(
+      seed: seed,
+      overlay: overlay,
+      head_tree_dir_name: head_tree_dir_name,
+      head_link_name: head_link_name,
+      compose_dir_name: compose_dir_name
+    ),
+    set_e: true
+  )
 }
 
 // THE SEAL'S ENVIRONMENT. Names the publisher's admit step reads, so they are shared vocabulary and not
