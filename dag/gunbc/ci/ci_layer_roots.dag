@@ -1419,6 +1419,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "printer_execution_hold_recovery_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "fabric_control_plane_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
