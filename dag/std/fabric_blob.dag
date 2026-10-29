@@ -116,6 +116,7 @@ fn read_staged_fabric_blob_observed(path: NonEmptyStr, digest_observed: Bool, di
   size_observed: Bool, size_text: String) -> FabricBlobReadingOutcome
   admit_callers: [
     decl_ref(module_path: "std.fabric_blob", decl_name: "read_staged_fabric_blob"),
+    decl_ref(module_path: "test.claim.live_deploy.capacity_capture_store_witness", decl_name: "capture_fixture_blob"),
     decl_ref(module_path: "test.claim.std_fabric_blob", decl_name: "supplied_observations_cannot_mint_a_failed_or_negative_size_reading"),
     decl_ref(module_path: "test.claim.std_fabric_blob", decl_name: "supplied_nonempty_observation_preserves_digest_path_and_size"),
     decl_ref(module_path: "test.claim.live_deploy.capacity_generation_publish_witness", decl_name: "a_verified_published_target_binds_the_closed_controller"),

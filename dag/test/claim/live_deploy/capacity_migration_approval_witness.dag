@@ -156,7 +156,7 @@ test fn unreadable_clock_refuses_before_a_capture_effect() -> Bool {
     Err { value: _ } => false
     Ok { value: approval } => match capacity_cutover_file_run_authorized(authorization: approval,
       operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityInhibitionCreate },
-      now: () => Err { value: "clock unavailable" }, run: operation => Err { value: "effect dispatched" }) {
+      now: fn() { Err { value: "clock unavailable" } }, run: operation => Err { value: "effect dispatched" }) {
       Err { value: why } => why == "clock unavailable"
       Ok { value: _ } => false
     }
