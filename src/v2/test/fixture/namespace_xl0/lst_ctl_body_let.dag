@@ -2,7 +2,7 @@
 -- Read as a module by the native lane: the `ctl_*` rows must be accepted and the `tail_*`/`arm_*` rows are the
 -- refusals the body-lowering statement-position fix owes. Do not edit to dodge a refusal -- a fixture that
 -- stops refusing has moved, and the claim suite's expectations are the record of what it must do.
-module v2.test.lst_ctl_body_let
+module v2.test.fixture.namespace_xl0.lst_ctl_body_let
 
 import v2.std.logic { Bool }
 import v2.std.integer { Int }
