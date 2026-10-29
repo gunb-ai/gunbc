@@ -4,15 +4,16 @@ module extdeps.bmc.redfish
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.firmware.types { FirmwareSemanticVersion }
 import extdeps.uri { Uri, Https }
-import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot, FanTachSensor, RedfishMemorySummary, RedfishPowerControl, RedfishPowerState, RedfishPowerSubsystem, RedfishProcessorSummary, RedfishSensorReading, RedfishSystemInventory, TemperatureSensor }
+import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot, FanTachSensor, RedfishAccountRole, RedfishMemorySummary, RedfishPowerControl, RedfishPowerState, RedfishPowerSubsystem, RedfishProcessorSummary, RedfishSensorReading, RedfishSystemInventory, TemperatureSensor, redfish_account_role_from_wire }
 import std.measure { ByteSize, Gibibyte, HardwareThreadCount, gibibyte_to_byte_size, watt, watt_count }
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.algebra { list_head, skip }
 import std.optional { Present, Absent }
 import extdeps.languages.json.parse {
-  parse_json_document, json_document_gap_text, json_field, json_field_string,
-  JsonDocumentParsed, JsonDocumentUnreadable, FieldRead, FieldAbsent, FieldMalformed,
+  parse_json_document, json_document_gap_text, json_field, json_field_string, json_field_bool, json_field_int,
+  JsonDocumentParsed, JsonDocumentUnreadable, JsonFieldRead, FieldRead, FieldAbsent, FieldMalformed,
 }
-import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_object, json_kv, json_string, json_bool, json_array, serialize_json }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -329,3 +330,216 @@ type RedfishResetToDefaultsType
   = ResetAll
   | PreserveNetworkAndUsers
   | PreserveNetwork
+
+// ── REDFISH ACCOUNT SERVICE: THE MANAGER ACCOUNT COLLECTION AND ITS ACCOUNTS ─────────────────
+//
+// THE UPSTREAM IS DMTF'S REDFISH ACCOUNT SCHEMA. The account resource is published as
+// `ManagerAccount` and its collection as `ManagerAccountCollection` in the DMTF Redfish Account
+// schema bundle (the schema that also carries the `AccountService` singleton); the wire spellings
+// below -- `@odata.id`, `Members`, `Members@odata.count`, `UserName`, `Password`, `Enabled`,
+// `RoleId`, `Locked` -- are taken verbatim from that schema's published PropertyNames and are NOT
+// renamed. The `Role`/`RoleId` vocabulary is the same one `extdeps.bmc.types.RedfishAccountRole`
+// owns; this module only reads it back through `redfish_account_role_from_wire`, so the schema's
+// three published role words have exactly one authority in the tree.
+//
+// WHAT THE CAPTURES GROUND, AND WHAT THEY DO NOT. Two committed captures are the witnesses this
+// section models itself against, both under artifacts/bmc/ with SHA256SUMS:
+//   * srv13-first-contact-2026-10-07/AccountService_Accounts.json -- the ManagerAccountCollection as
+//     served by the ASRock ALTRAD8UD-1L2T on OpenBMC 03.22.00. It carries `Members` as an array of
+//     objects each holding exactly one string `@odata.id` ("/redfish/v1/AccountService/Accounts/root"), a
+//     `Members@odata.count`, and the collection `@odata.type`
+//     "#ManagerAccountCollection.ManagerAccountCollection". THIS is the grounding for an account's
+//     identity as read from the collection: the `UserName` is the segment after the final `/` of a
+//     member's `@odata.id`.
+//   * srv13-first-contact-2026-10-07/bmc-3.22.00-factory-login-403.json -- the 403 body the factory
+//     build answers an authenticated request with while the account's password must change; its
+//     `@Message.ExtendedInfo` shape and `MessageId` ("Base.1.16.0.PasswordChangeRequired") ground
+//     `redfish_password_change_required_body`, whose message id is supplied by the caller (the build's
+//     policy row) rather than hardcoded, exactly as `redfish_password_change_verdict` reads it back.
+//   * srv14-first-contact-2026-10-28 -- a managed (already-rotated) controller of the same board; its
+//     captures are of inventory resources, confirming the `@odata.id`/`Members` idiom is the served
+//     shape and not a srv13 artifact.
+//
+// THE CAPTURES CARRY NO ManagerAccount RESOURCE BODY. No committed capture holds a single account
+// resource with `UserName`/`Enabled`/`RoleId`/`Locked` populated, so this module does not pretend a
+// default for any of them: each is read as a `JsonFieldRead` whose `FieldAbsent` means "the served
+// resource did not carry it" and whose `FieldMalformed` means "it carried something that is not the
+// property." Turning an absent `Enabled` into `false`, or an absent `RoleId` into `ReadOnly`, is the
+// fabricated default DESIGN §5 forbids; the reader hands the distinction up and lets the caller decide
+// what an unread field means for its claim. Only the collection member's `@odata.id` is read as
+// REQUIRED of a member, because a collection member with no identity could not be matched to anything.
+//
+// NOT DECLARED HERE: the `AccountService` singleton's lockout properties
+// (`AccountLockoutThreshold`, `AccountLockoutDuration`, the counter-reset pair) are the property of
+// the lockout lane and are declared by it in this same module (sibling, see the collision boundary;
+// `RedfishAccountServiceLockoutServed` / `RedfishAccountServiceLockoutVerdict`). This section models
+// only the account census, the account resource, and the two bodies the forced first-login flow reads
+// and writes. It deliberately declares no `AccountService` resource type of its own, so the two lanes
+// cannot drift on the one account-service surface.
+
+// A ManagerAccount as read from a resource body. Every field is a typed read: present, absent, or
+// malformed -- never a default. The password is NOT here: it is write-only, admitted only as the single
+// member of the PATCH body built by `redfish_account_password_patch_body`, and no reader should ever
+// surface it from a GET.
+type RedfishManagerAccountRead {
+  odata_id: JsonFieldRead<String>,
+  user_name: JsonFieldRead<String>,
+  enabled: JsonFieldRead<Bool>,
+  locked: JsonFieldRead<Bool>,
+  role_id: RedfishRoleIdRead,
+}
+
+// The `RoleId` reading kept honest: the schema publishes three role words, and a served value outside
+// them is REPORTED (`Unknown`), not filed under the nearest published role.
+type RedfishRoleIdRead
+  = RedfishRoleIdAbsent
+  | RedfishRoleIdServed { role: RedfishAccountRole }
+  | RedfishRoleIdUnknown { word: String }
+  | RedfishRoleIdMalformed { cause: String }
+
+fn redfish_read_role_id(doc: JsonValue) -> RedfishRoleIdRead {
+  match json_field_string(obj: doc, key: "RoleId") {
+    FieldAbsent => RedfishRoleIdAbsent
+    FieldMalformed { cause: c } => RedfishRoleIdMalformed { cause: c }
+    FieldRead { value: word } => match redfish_account_role_from_wire(word: word) {
+      Present { value: role } => RedfishRoleIdServed { role: role }
+      Absent => RedfishRoleIdUnknown { word: word }
+    }
+  }
+}
+
+type RedfishAccountResourceRead
+  = RedfishAccountResourceUnreadable { cause: String }
+  | RedfishAccountResource { account: RedfishManagerAccountRead }
+
+// Read one ManagerAccount resource. A document that does not parse is `Unreadable`; anything that parses
+// is returned field-by-field as read, so an absent property stays absent rather than becoming a value.
+fn redfish_manager_account_from_json(body: String) -> RedfishAccountResourceRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } =>
+      RedfishAccountResourceUnreadable {
+        cause: concat("the ManagerAccount resource is not a JSON document: ", json_document_gap_text(gap: g))
+      }
+    JsonDocumentParsed { value } => RedfishAccountResource {
+      account: RedfishManagerAccountRead {
+        odata_id: json_field_string(obj: value, key: "@odata.id"),
+        user_name: json_field_string(obj: value, key: "UserName"),
+        enabled: json_field_bool(obj: value, key: "Enabled"),
+        locked: json_field_bool(obj: value, key: "Locked"),
+        role_id: redfish_read_role_id(doc: value),
+      }
+    }
+  }
+}
+
+// The ManagerAccountCollection census as served. The MEMBERS ARRAY is the census; the
+// `Members@odata.count` is kept as a separate, honestly-read served field (the two can disagree on a
+// real device -- srv13's sibling registry collection has a count of 4 over five members -- and which
+// one the device "meant" is a device observation made downstream, never a silent reconciliation here).
+type RedfishAccountCollectionRead
+  = RedfishAccountCollectionUnreadable { cause: String }
+  | RedfishAccountCollection {
+      member_odata_ids: List<String>,
+      members_odata_count: JsonFieldRead<Int>,
+    }
+
+fn redfish_collection_member_has_odata_id(member: JsonValue) -> Bool {
+  match json_field_string(obj: member, key: "@odata.id") {
+    FieldRead { value: _ } => true
+    FieldAbsent => false
+    FieldMalformed { cause: _ } => false
+  }
+}
+
+fn redfish_collection_member_odata_id_or_empty(member: JsonValue) -> String {
+  match json_field_string(obj: member, key: "@odata.id") {
+    FieldRead { value: s } => s
+    FieldAbsent => ""
+    FieldMalformed { cause: _ } => ""
+  }
+}
+
+// THE COLLECTION DECIDES THE CENSUS, and only a document that parses and carries a Members array of
+// single-string-`@odata.id` members can decide it. An unreadable collection is NOT an empty one -- an
+// empty census would say "there is no root account," which is the widening that would let a managed
+// credential be planned against a controller whose accounts nobody actually saw.
+fn redfish_manager_account_collection_from_json(body: String) -> RedfishAccountCollectionRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } =>
+      RedfishAccountCollectionUnreadable {
+        cause: concat("the ManagerAccountCollection is not a JSON document: ", json_document_gap_text(gap: g))
+      }
+    JsonDocumentParsed { value } => match json_field(obj: value, key: "Members") {
+      FieldAbsent => RedfishAccountCollectionUnreadable { cause: "the ManagerAccountCollection carries no Members member" }
+      FieldMalformed { cause: c } => RedfishAccountCollectionUnreadable { cause: c }
+      FieldRead { value: JsonArray { elements: elements } } =>
+        if any(elements, e => !redfish_collection_member_has_odata_id(member: e)) {
+          RedfishAccountCollectionUnreadable { cause: "a ManagerAccountCollection member carries no single string @odata.id" }
+        } else {
+          RedfishAccountCollection {
+            member_odata_ids: map(elements, e => redfish_collection_member_odata_id_or_empty(member: e)),
+            members_odata_count: json_field_int(obj: value, key: "Members@odata.count"),
+          }
+        }
+      FieldRead { value: JsonNull } => RedfishAccountCollectionUnreadable { cause: "the ManagerAccountCollection Members member is null" }
+      FieldRead { value: JsonBool { value: _ } } => RedfishAccountCollectionUnreadable { cause: "the ManagerAccountCollection Members member is not an array" }
+      FieldRead { value: JsonNumber { lexeme: _ } } => RedfishAccountCollectionUnreadable { cause: "the ManagerAccountCollection Members member is not an array" }
+      FieldRead { value: JsonString { value: _ } } => RedfishAccountCollectionUnreadable { cause: "the ManagerAccountCollection Members member is not an array" }
+      FieldRead { value: JsonObject { members: _ } } => RedfishAccountCollectionUnreadable { cause: "the ManagerAccountCollection Members member is not an array" }
+    }
+  }
+}
+
+// THE ACCOUNT NAME A COLLECTION MEMBER PUBLISHES: the segment after the final `/` of its `@odata.id`
+// ("/redfish/v1/AccountService/Accounts/root" -> "root"). This is the grounding for an account's `UserName` where no
+// resource body was captured; where a resource is served its own `UserName` member is the stronger
+// reading. A trailing slash, or an id that is only slashes, yields `Absent` -- an empty name is not an
+// account name, and inventing one would name an account the device never listed.
+fn redfish_manager_account_name_from_odata_id(id: String) -> String? {
+  let segments = split(s: id, delimiter: "/")
+  let count = list_length(items: segments)
+  if count == 0 {
+    Absent
+  } else {
+    match list_head(xs: skip(xs: segments, n: count - 1)) {
+      Present { value: last } => if last == "" { Absent } else { Present { value: last } }
+      Absent => Absent
+    }
+  }
+}
+
+// The PATCH body that writes a ManagerAccount's password -- the ONLY request the factory build admits
+// while the forced change stands. It is a single-member object carrying `Password` (the schema's
+// write-only property); nothing else belongs in it, and the caller must not read what it just wrote back.
+fn redfish_account_password_patch_body(password: String) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "Password", value: json_string(s: password))
+  ]))
+}
+
+// THE 403 BODY the 03.22.00 factory build serves for every authenticated request that is not the
+// password change, while the account's forced change stands. It reproduces, member-for-member, srv13's
+// committed capture (artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00-factory-login-403.json):
+// the `@Message.ExtendedInfo` array holds one `#Message.v1_1_1.Message` whose `Message` embeds the target
+// URI, whose `MessageArgs` is the single target URI, and whose `MessageSeverity`/`Resolution` are the
+// served strings. So the dry world answers a forced-change request with a body that
+// `redfish_password_change_verdict` reads back exactly as it reads the capture -- the inhabitance check.
+// The `MessageId` is the BUILD's: the caller (the build's policy row) supplies it, e.g.
+// "Base.1.16.0.PasswordChangeRequired", matching what srv13 served. The target URI is the account's
+// `@odata.id`, which srv13's ManagerAccountCollection published as "/redfish/v1/AccountService/Accounts/root".
+fn redfish_password_change_required_body(account_odata_id: String, message_id: String) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "@Message.ExtendedInfo", value: json_array(elements: [
+      json_object(members: [
+        json_kv(key: "@odata.type", value: json_string(s: "#Message.v1_1_1.Message")),
+        json_kv(key: "Message", value: json_string(s: concat("The password provided for this account must be changed before access is granted.  PATCH the Password property for this account located at the target URI '", account_odata_id, "' to complete this process."))),
+        json_kv(key: "MessageArgs", value: json_array(elements: [
+          json_string(s: account_odata_id)
+        ])),
+        json_kv(key: "MessageId", value: json_string(s: message_id)),
+        json_kv(key: "MessageSeverity", value: json_string(s: "Critical")),
+        json_kv(key: "Resolution", value: json_string(s: "Change the password for this account using a PATCH to the Password property at the URI provided."))
+      ])
+    ]))
+  ]))
+}

@@ -692,6 +692,20 @@ fn redfish_account_role_wire(role: RedfishAccountRole) -> NonEmptyStr {
   }
 }
 
+// THE WIRE WORD BACK TO THE ROLE, and no more than that. A `RoleId` that is not one of the three words
+// the schema publishes -- an OEM role name, a typo, an empty string -- is not coerced to the nearest one:
+// it is `Absent`, so a caller reports what it saw rather than filing an account under a role it never
+// carried. The reader that turns this `Absent` into "the service served a role outside the schema" is the
+// caller's claim about the device; what is fixed here is only the published vocabulary and its spelling.
+fn redfish_account_role_from_wire(word: NonEmptyStr) -> RedfishAccountRole? {
+  match word {
+    "Administrator" => Present { value: AccountRoleAdministrator }
+    "Operator" => Present { value: AccountRoleOperator }
+    "ReadOnly" => Present { value: AccountRoleReadOnly }
+    _ => Absent
+  }
+}
+
 fn redfish_privilege_wire(p: RedfishPrivilege) -> NonEmptyStr {
   match p {
     PrivilegeLogin => "Login"
