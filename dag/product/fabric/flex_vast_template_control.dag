@@ -15,6 +15,7 @@ import product.fabric.flex_vast_template {
   FlexTemplateSpec, flex_vast_template_spec, flex_template_env, flex_template_retired_hash,
   FlexTemplateDecision, FlexTemplateNoop, FlexTemplateApply, FlexTemplateRefuse,
   flex_template_decide, flex_template_env_forbidden_name,
+  flex_launch_runtype_wire, flex_vast_template_env_standing, FlexTemplateEnvOverBound, FlexTemplateEnvWithinBound,
 }
 
 // THE ENSURE FOR THE SECRET-FREE FLEX TEMPLATE, run by the fleet-converge flex_template_ensure mode, the
@@ -50,28 +51,36 @@ fn flex_template_list(api_key: Secret, filter: String) -> FlexTemplateListing us
   }
 }
 
+// The template create carries the declared launch MODE and nothing else: the args command is NOT stored
+// here, because an args command stored IN a template has never been observed to execute (template 782339:
+// 50 min, empty logs) -- it is applied per rent, in the create request (product.fabric.flex_vast_template
+// flex_vast_rent_launch). The env is refused before it is sent when it is over Vast's template-env bound.
 fn flex_template_create(api_key: Secret, spec: FlexTemplateSpec) -> String uses net: Network {
-  match vast_ai.Templates.Create(
-    api_key: api_key,
-    name: spec.name,
-    image: spec.image,
-    tag: spec.tag,
-    env: flex_template_env(spec: spec),
-    runtype: spec.runtype as String,
-    recommended_disk_space: flex_vast_disk_gigabytes(disk: spec.disk),
-    private: true,
-    onstart: spec.onstart,
-    ssh_direct: spec.ssh_direct,
-    jup_direct: spec.jup_direct,
-    use_jupyter_lab: spec.use_jupyter_lab,
-    min_cuda_max_good: spec.min_cuda_max_good as Int,
-    min_cpu_ram_mb: vast_ai_wire_mb(b: spec.min_cpu_ram),
-    min_gpu_ram_mb: vast_ai_wire_mb(b: spec.min_gpu_ram),
-    min_inet_down_mbps: vast_ai_wire_mbps(b: spec.min_inet_down),
-    verified_only: spec.verified_only,
-  ) {
-    RestAnswered { answer: _ } => "created"
-    RestRefused { refusal: _ } => "the create was refused or its outcome is unknown; the readback decides"
+  match flex_vast_template_env_standing(env: flex_template_env(spec: spec)) {
+    FlexTemplateEnvOverBound { chars: chars, max: max } =>
+      join(["REFUSED: the template env is ", int_to_decimal_string(value: chars), " characters; Vast caps it at ", int_to_decimal_string(value: max)], "")
+    FlexTemplateEnvWithinBound { chars: _ } => match vast_ai.Templates.Create(
+        api_key: api_key,
+        name: spec.name,
+        image: spec.image,
+        tag: spec.tag,
+        env: flex_template_env(spec: spec),
+        runtype: flex_launch_runtype_wire(runtype: spec.runtype),
+        recommended_disk_space: flex_vast_disk_gigabytes(disk: spec.disk),
+        private: true,
+        onstart: spec.onstart,
+        ssh_direct: spec.ssh_direct,
+        jup_direct: spec.jup_direct,
+        use_jupyter_lab: spec.use_jupyter_lab,
+        min_cuda_max_good: spec.min_cuda_max_good as Int,
+        min_cpu_ram_mb: vast_ai_wire_mb(b: spec.min_cpu_ram),
+        min_gpu_ram_mb: vast_ai_wire_mb(b: spec.min_gpu_ram),
+        min_inet_down_mbps: vast_ai_wire_mbps(b: spec.min_inet_down),
+        verified_only: spec.verified_only,
+      ) {
+        RestAnswered { answer: _ } => "created"
+        RestRefused { refusal: _ } => "the create was refused or its outcome is unknown; the readback decides"
+      }
   }
 }
 
