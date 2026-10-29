@@ -41,7 +41,7 @@ module gunbc.runner.runner_gpu_container_toolchain
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.algebra { string_contains, trim }
+import std.algebra { string_contains, trim, zip_map }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.env_binding { EnvSet }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -2044,23 +2044,18 @@ type GpuContainerProvisionNamespaceBatch
 
 // THE PAIRING, index by index, of pids to the lines readlink printed for them. Only reached when the exit
 // status is 0 and the counts match exactly, which is what makes the pairing a reading of operand order
-// rather than a guess about it.
+// rather than a guess about it. One linear zip: no accumulator is copied per step.
 fn gpu_container_provision_pair_pid_namespaces(
   pids: List<Int>,
   targets: List<String>,
 ) -> List<GpuContainerProvisionProcessNamespace> {
-  match pids.first() {
-    Absent => []
-    Present { value: pid } =>
-      match targets.first() {
-        Absent => []
-        Present { value: target } =>
-          concat(
-            [GpuContainerProvisionProcessNamespace { pid: pid, target: target }],
-            gpu_container_provision_pair_pid_namespaces(
-              pids: pids.skip(n: 1), targets: targets.skip(n: 1)))
-      }
-  }
+  zip_map(a: pids, b: targets, f: fn(pid, target) { GpuContainerProvisionProcessNamespace { pid: pid, target: target } })
+}
+
+// A PID WITH WHETHER STDERR NAMED IT GONE, asked once per pid so the partition below does not repeat the scan.
+type GpuContainerProvisionPidVanished {
+  pid: Int
+  gone: Bool
 }
 
 // WHETHER STDERR NAMED THIS PID'S LINK AS GONE.
@@ -2081,8 +2076,9 @@ fn gpu_container_provision_namespace_batch_reading(
 ) -> GpuContainerProvisionNamespaceBatch {
   let lines = filter(split(s: stdout, delimiter: "\n"), line => trim(s: line) != "")
   let stderr_lines = filter(split(s: stderr, delimiter: "\n"), line => trim(s: line) != "")
-  let gone = filter(pids, pid => gpu_container_provision_pid_named_gone(pid: pid, stderr_lines: stderr_lines))
-  let remaining = filter(pids, pid => !gpu_container_provision_pid_named_gone(pid: pid, stderr_lines: stderr_lines))
+  let asked = map(pids, pid => GpuContainerProvisionPidVanished { pid: pid, gone: gpu_container_provision_pid_named_gone(pid: pid, stderr_lines: stderr_lines) })
+  let gone = map(filter(asked, a => a.gone), a => a.pid)
+  let remaining = map(filter(asked, a => !a.gone), a => a.pid)
   let expected_exit = if length(stderr_lines) == 0 { 0 } else { 1 }
   if length(stderr_lines) != length(gone) {
     GpuContainerProvisionNamespaceBatchUnreadable {
