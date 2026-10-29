@@ -1652,13 +1652,9 @@ pub fn global_bare_owner_module(
             binding: b,
             ..
         }) => {
-            if global_bare_declarer_in_scope(owner_module_path.clone(), mp.clone()) == false {
-                std::option::Option::None
-            } else {
-                match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
-                    true => Some(mp.clone()),
-                    false => std::option::Option::None,
-                }
+            match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
+                true => Some(mp.clone()),
+                false => std::option::Option::None,
             }
         }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {

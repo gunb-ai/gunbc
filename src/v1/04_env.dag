@@ -939,12 +939,9 @@ fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: SourceSpan) -> Co
 fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: String) -> String? {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-      if global_bare_declarer_in_scope(env_module_path: owner_module_path, declarer: mp) == false { Absent }
-      else {
-        match binding_declares_name(binding: b, name: name, source_indices: env.source_indices) {
-          true => Present { value: mp }
-          false => Absent
-        }
+      match binding_declares_name(binding: b, name: name, source_indices: env.source_indices) {
+        true => Present { value: mp }
+        false => Absent
       }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       match global_bare_policy_candidate(env_module_path: owner_module_path, candidates: cands) {
