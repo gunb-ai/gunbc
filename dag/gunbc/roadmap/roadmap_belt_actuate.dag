@@ -223,6 +223,7 @@ import gunbc.deploy_transition {
   actuation_admission,
   transition_actuation_standing,
 }
+import gunbc.deploy_transition_store { transition_inhibition_store }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardObserveOnly,
@@ -11177,7 +11178,7 @@ data belt_dispatch_wire_contract_exemplar_provider: String = "codex"
 // standing is a refusal carrying its cause, never a proceed.
 fn belt_transition_admission_for_instance(instance: HostDashboardInstance) -> ActuationAdmission {
   actuation_admission(
-    standing: transition_actuation_standing(instance_root: instance.instance_root as String),
+    standing: transition_actuation_standing(inhibition: transition_inhibition_store(instance: instance)),
   )
 }
 

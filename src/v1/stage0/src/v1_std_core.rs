@@ -537,7 +537,7 @@ pub enum TransportKind {
     RestTransport,
     ShellTransport,
     FileTransport,
-    LocalTransport,
+    UndeclaredTransport,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -588,6 +588,11 @@ pub enum CompilerDiagnostic {
     },
     UnresolvedType {
         name: String,
+        span: Rc<SourceSpan>,
+    },
+    TypeRefMeasureBindingDisagreement {
+        name: String,
+        production_route: String,
         span: Rc<SourceSpan>,
     },
     UnitVariantPhantomIdentityEvidenceUnavailable {
@@ -925,6 +930,11 @@ pub enum CompilerDiagnostic {
         missing_realization_fact: String,
         span: Rc<SourceSpan>,
     },
+    CastRealizationRefused {
+        target: String,
+        missing_realization_fact: String,
+        span: Rc<SourceSpan>,
+    },
     TypeNameCarriesNoRecordConstructor {
         type_name: String,
         declared_variants: Rc<Vec<String>>,
@@ -1026,6 +1036,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ImportCollidesWithKernelName { span: s, .. } => s.clone(),
         CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnresolvedType { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TypeRefMeasureBindingDisagreement { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { span: s, .. } => {
             s.clone()
         }
@@ -1099,6 +1110,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { span: s, .. } => s.clone(),
         CompilerDiagnostic::TransportEmissionNotModeled { span: s, .. } => s.clone(),
+        CompilerDiagnostic::CastRealizationRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { span: s, .. } => s.clone(),
     }
 }
@@ -1111,6 +1123,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::ImportCollidesWithKernelName { name: n, module_path: m, importing_module: i, kernel_declaration_module: k, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "') collides with the kernel name whose mint is the declaration in '".to_string()), k.clone()), "'. An authored import of a different type of that name is refused so the type environment and the field binding cannot type the same spelling two ways.".to_string()),
     CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { name: n, module_path: m, importing_module: i, row_count: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "') cannot be judged against the kernel mint: ".to_string()), (c.clone()).to_string()), " kernel_mint_declaration_rows bind that minted name, so the owning declaration is undecidable and the import is refused rather than bound to a guessed module.".to_string()),
     CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(v1_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::TypeRefMeasureBindingDisagreement { name: n, production_route: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type reference '".to_string(), n.clone()), "' resolves in production through ".to_string()), r.clone()), ", but the N1a measure's binding authority finds no binding for it here: its qualifier is neither an ancestor of this module nor a module this module imports. The two routes disagree; the measure refuses rather than reading a production binding as unresolved.".to_string()),
     CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name: n, .. } => v1_rt::concat(v1_rt::concat("unit-variant marker identity evidence unavailable for '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::ArityMismatch { name: n, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type ".to_string(), n.clone()), " expects ".to_string()), (e.clone()).to_string()), " type arguments, got ".to_string()), (g.clone()).to_string()),
@@ -1177,6 +1190,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
     CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("service config field '".to_string(), f.clone()), "' carries the reference '".to_string()), n.clone()), "', and the reference judgment does not yet run on this field -- ".to_string()), t.clone()), ". This is a counted deferral, not a pass: nothing has established that '".to_string()), n.clone()), "' names anything".to_string()),
     CompilerDiagnostic::TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), kind.clone()), "' transport emission is not modeled: operation '".to_string()), svc.clone()), ".".to_string()), op.clone()), "' declared in '".to_string()), m.clone()), "' cannot be emitted for target '".to_string()), tgt.clone()), "' -- ".to_string()), missing.clone()), ". Bind a realization handler for the '".to_string()), kind.clone()), "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer".to_string()),
+    CompilerDiagnostic::CastRealizationRefused { target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("cast cannot be emitted for target '".to_string(), tgt.clone()), "' -- ".to_string()), missing.clone()),
     CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { type_name: t, declared_variants: vs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("record literal names '".to_string(), t.clone()), "' which declares no record constructor: '".to_string()), t.clone()), "' is a union with variants [".to_string()), vs.clone().join(&", ".to_string())), "]; construct one of its variants instead (DESIGN §4b: a value inhabits its declared type)".to_string()),
 }
 }
@@ -1241,6 +1255,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::UnresolvedType { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::TypeRefMeasureBindingDisagreement { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -1514,6 +1532,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::TransportEmissionNotModeled { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::CastRealizationRefused { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -3222,7 +3244,7 @@ pub fn make_transport_node(
     })
 }
 
-pub fn local_transport_node(
+pub fn undeclared_transport_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
@@ -3642,7 +3664,7 @@ pub fn classify_transport(
                 Some(TransportKind::FileTransport)
             } else {
                 if is_bare_transport(t.clone()) {
-                    Some(TransportKind::LocalTransport)
+                    Some(TransportKind::UndeclaredTransport)
                 } else {
                     std::option::Option::None
                 }
@@ -3651,12 +3673,12 @@ pub fn classify_transport(
     }
 }
 
-pub fn is_local_transport(
+pub fn is_undeclared_transport(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match classify_transport(t, source_indices) {
-        Some(TransportKind::LocalTransport) => true,
+        Some(TransportKind::UndeclaredTransport) => true,
         _ => false,
     }
 }
@@ -4744,14 +4766,14 @@ pub fn string_type() -> Rc<Node> {
     CACHED.with(|c: &Rc<Node>| c.clone())
 }
 
-pub fn hash_type() -> Rc<Node> {
+pub fn symbol_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: "Hash".to_string(),
-        span: kernel_span("Hash".to_string()),
-        ident_span: Some(kernel_span("Hash".to_string())),
+        name: "Symbol".to_string(),
+        span: kernel_span("Symbol".to_string()),
+        ident_span: Some(kernel_span("Symbol".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -5680,7 +5702,7 @@ pub struct ShellTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct LocalTransport;
+pub struct UndeclaredTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SeverityError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -9,7 +9,12 @@ import gunbc.machine_intake.kernel_module_decompression_observation {
   KernelModuleDecompressionObservation, NoRefusalRecorded, RefusalRecorded,
   RefusalIdentityUnread, RefusalIdentityCandidates, ModuleInsertFailure, DriverPrintedLater, DriverNotSeenInCapture,
 }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_console_reading, ReferenceCaptureRead, ConsoleRetained }
+import gunbc.host.boot_console_observation {
+  ConsoleRetained,
+  CaptureContents,
+}
+import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_console_reading }
+
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -204,7 +209,7 @@ data unread_digest: Sha256FileDigest = Sha256FileDigestUnavailable { path: "witn
 // retains -- the real route the boot bundle renders, not a supplied observation.
 test fn the_retained_console_reading_carries_the_refusal() -> Bool {
   let capture = join(failed_attempt_excerpt, "\n")
-  match mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 10), capture: concat(capture, "\n"), read_ok: true, read_error: "", capture_digest: unread_digest, reference: ReferenceCaptureRead { text: "", ok: false, error: "not supplied", digest: unread_digest }) {
+  match mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 10), capture: CaptureContentsRead { text: concat(capture, "\n"), digest: unread_digest }, reference: CaptureContentsUnread { reason: "not supplied" }) {
     ConsoleRetained { path: _, size: _, lines: _, firmware: _, firmware_error_lines: _, capture_digest: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _, against_reference: _, loader: _, linux: _, modules: m, nvparam: _, span_readings: _ } =>
       match m { RefusalRecorded { refusals: rs, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: RefusalIdentityUnread } => count(rs) == 2 _ => false }
     _ => false

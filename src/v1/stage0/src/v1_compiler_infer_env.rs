@@ -5,6 +5,7 @@ use self::BareOccurrenceBinding::*;
 use self::GlobalBareLookupState::*;
 use self::TypeNodeDeclarationReading::*;
 use self::TypeNodeUnidentifiedCause::*;
+use self::TypeRefMeasureBinding::*;
 use self::TypeReferenceDeclarationReading::*;
 use self::UnitVariantPhantomLookup::*;
 pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
@@ -16,8 +17,9 @@ use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 pub use crate::std_coercion::{TextRepresentation, TypeDeclarationProvenance};
+use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{
-    decl_ref, declaration_ref_display_key, declaration_ref_eq, DeclarationRef,
+    decl_ref, declaration_ref_display_key, declaration_ref_eq, DeclField, DeclarationRef,
 };
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
@@ -427,6 +429,7 @@ pub enum BareOccurrenceBinding {
         declaration: Rc<Node>,
     },
     BareOccurrenceIsKernelName,
+    BareOccurrenceUnbound,
     BareOccurrenceUndecided,
 }
 impl BareOccurrenceBinding {
@@ -439,6 +442,9 @@ impl BareOccurrenceBinding {
                 declaration: __val, ..
             } => __val.clone(),
             BareOccurrenceBinding::BareOccurrenceIsKernelName => {
+                panic!("no declaration on unit variant")
+            }
+            BareOccurrenceBinding::BareOccurrenceUnbound => {
                 panic!("no declaration on unit variant")
             }
             BareOccurrenceBinding::BareOccurrenceUndecided => {
@@ -616,7 +622,7 @@ pub fn bare_occurrence_binding(
                         if overlay_skips_kernel_name(name.clone()) {
                             Rc::new(BareOccurrenceBinding::BareOccurrenceIsKernelName)
                         } else {
-                            Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided)
+                            Rc::new(BareOccurrenceBinding::BareOccurrenceUnbound)
                         }
                     }
                 }
@@ -2264,9 +2270,32 @@ pub fn static_width_index_declaring_module(env: Rc<TypeEnv>) -> Option<String> {
     }
 }
 
-pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum TypeRefMeasureBinding {
+    TypeRefMeasureBound,
+    TypeRefMeasureDisagreesWithProduction,
+    TypeRefMeasureUnbound,
+}
+
+pub fn type_ref_qualifier_is_imported_module(env: Rc<TypeEnv>, qualifier: String) -> bool {
+    {
+        let mut __found = false;
+        for p in env.parents.clone().iter().cloned() {
+            if (p.module_path.clone() == qualifier.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> TypeRefMeasureBinding {
     match lookup_binding_on_chain(env.clone(), name.clone()) {
-        Some(_) => true,
+        Some(_) => TypeRefMeasureBinding::TypeRefMeasureBound,
         std::option::Option::None => {
             let variant_resolves =
                 match (*lookup_unit_variant_phantom_type(env.clone(), name.clone())).clone() {
@@ -2275,17 +2304,31 @@ pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> boo
                     UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => false,
                 };
             if variant_resolves.clone() {
-                true
+                TypeRefMeasureBinding::TypeRefMeasureBound
             } else {
                 {
                     let prefix = qualified_all_but_last(name.clone());
-                    if type_ref_module_path_is_containment_prefix(prefix, env.module_path.clone()) {
-                        match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
-                            Some(_) => true,
-                            std::option::Option::None => false,
-                        }
+                    if (prefix.clone() == "".to_string()) {
+                        TypeRefMeasureBinding::TypeRefMeasureUnbound
                     } else {
-                        false
+                        match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+                            std::option::Option::None => {
+                                TypeRefMeasureBinding::TypeRefMeasureUnbound
+                            }
+                            Some(_) => {
+                                if (type_ref_module_path_is_containment_prefix(
+                                    prefix.clone(),
+                                    env.module_path.clone(),
+                                ) || type_ref_qualifier_is_imported_module(
+                                    env.clone(),
+                                    prefix.clone(),
+                                )) {
+                                    TypeRefMeasureBinding::TypeRefMeasureBound
+                                } else {
+                                    TypeRefMeasureBinding::TypeRefMeasureDisagreesWithProduction
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -3564,7 +3607,13 @@ pub fn settled_type(
                 ) {
                     std::option::Option::None => Some(Rc::new(SettledType {
                         head: d.clone(),
-                        args: n.children.clone(),
+                        args: Rc::new({
+                            let mut __result = Vec::new();
+                            for ch in n.children.clone().iter().cloned() {
+                                __result.push(generic_actual_position_type(ch.clone()));
+                            }
+                            __result
+                        }),
                     })),
                     Some(pa) => match settled_parameterized_alias(
                         pa.clone(),
@@ -3576,7 +3625,13 @@ pub fn settled_type(
                         Some(through) => Some(through.clone()),
                         std::option::Option::None => Some(Rc::new(SettledType {
                             head: d.clone(),
-                            args: n.children.clone(),
+                            args: Rc::new({
+                                let mut __result = Vec::new();
+                                for ch in n.children.clone().iter().cloned() {
+                                    __result.push(generic_actual_position_type(ch.clone()));
+                                }
+                                __result
+                            }),
                         })),
                     },
                 },
@@ -3671,6 +3726,32 @@ pub fn parameterized_alias_of_declaration(
     }
 }
 
+pub fn is_unsolved_type_variable(n: Rc<Node>) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: _, .. }) => true,
+        _ => false,
+    }
+}
+
+pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
+    if (((slot.children.clone().len() as i64) == 0)
+        && (slot.connective.clone() == Connective::NoConnective))
+    {
+        match slot.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => {
+                if is_unsolved_type_variable(r.clone()) {
+                    slot
+                } else {
+                    r.clone()
+                }
+            }
+            _ => slot,
+        }
+    } else {
+        slot
+    }
+}
+
 pub fn settled_parameterized_alias(
     alias: Rc<ParameterizedAlias>,
     use_args: Rc<Vec<Rc<Node>>>,
@@ -3704,7 +3785,11 @@ pub fn settled_parameterized_alias(
                     .get((pair.0.clone()) as usize)
                     .cloned()
                 {
-                    Some(arg) => v1_rt::rc_map_insert(acc.clone(), pair.1.clone(), arg.clone()),
+                    Some(arg) => v1_rt::rc_map_insert(
+                        acc.clone(),
+                        pair.1.clone(),
+                        generic_actual_position_type(arg.clone()),
+                    ),
                     std::option::Option::None => acc.clone(),
                 },
             );
@@ -3979,7 +4064,13 @@ pub fn settled_rhs(
                         std::option::Option::None => {
                             break Some(Rc::new(SettledType {
                                 head: head.clone(),
-                                args: rhs.children.clone(),
+                                args: Rc::new({
+                                    let mut __result = Vec::new();
+                                    for ch in rhs.children.clone().iter().cloned() {
+                                        __result.push(generic_actual_position_type(ch.clone()));
+                                    }
+                                    __result
+                                }),
                             }));
                         }
                         Some(pa) => {
@@ -3999,7 +4090,15 @@ pub fn settled_rhs(
                                     std::option::Option::None => {
                                         break Some(Rc::new(SettledType {
                                             head: head.clone(),
-                                            args: rhs.children.clone(),
+                                            args: Rc::new({
+                                                let mut __result = Vec::new();
+                                                for ch in rhs.children.clone().iter().cloned() {
+                                                    __result.push(generic_actual_position_type(
+                                                        ch.clone(),
+                                                    ));
+                                                }
+                                                __result
+                                            }),
                                         }));
                                     }
                                 }
@@ -4412,6 +4511,20 @@ pub fn kernel_settled_agree(
     }
 }
 
+pub fn carried_declaration_ref(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    match n.declaration.clone() {
+        Some(d) => match (*d.field.clone()).clone() {
+            DeclField::WholeDeclaration => Some(d.clone()),
+            _ => std::option::Option::None,
+        },
+        std::option::Option::None => type_reference_declaration_ref(n.clone(), source_indices, env),
+    }
+}
+
 pub fn type_reference_declaration_ref(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4506,3 +4619,10 @@ pub fn alias_rhs_head_of_declaration(
         std::option::Option::None => std::option::Option::None,
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TypeRefMeasureBound;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TypeRefMeasureDisagreesWithProduction;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TypeRefMeasureUnbound;

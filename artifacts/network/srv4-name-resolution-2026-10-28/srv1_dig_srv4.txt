@@ -1,0 +1,18 @@
+observed_at_utc: 2026-10-28T12:22:51Z
+host: srv1
+$ ip -4 -br addr show enP3p6s0
+enP3p6s0         UP             192.168.1.203/24 metric 200 
+$ resolvectl dns enP3p6s0
+Link 3 (enP3p6s0): 192.168.1.1 2600:4040:9d00:4b00::1
+$ dig @192.168.1.1 srv4 A +noall +comments +answer
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 9246
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; ANSWER SECTION:
+srv4.			0	IN	A	192.168.1.196
+
+$ ip neigh show 192.168.1.196
+192.168.1.196 dev enP3p6s0 lladdr 48:21:0b:87:2d:64 REACHABLE 

@@ -1,0 +1,167 @@
+module test.claim.compile_dag_diagnostic_census_declared_home
+
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import std.algebra { count_where }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+// THE NO-GROWTH CONTROL READS THE AUTHORITIES DIRECTLY. std.primitives carries the ambient registry
+// surface entry for the spelling, gunbc.v1.v1_interpreter_primitive_surface carries the authored
+// interpreter arm that RUNS it, std.primitive_projection carries this home's projection row and the
+// primitive datum itself, and std.primitive_identity carries the primitive's declaration and the
+// traversal fact every declared primitive owes. Counting all four is what makes "homing the name
+// added no second authority" a counted fact rather than a promise: a second registry entry, a second
+// authored arm, or a second projection row turns this claim red -- and so does a projection row whose
+// primitive std.primitive_identity does not declare, which is the arm
+// primitive_projection_authority_witness w_projection_roster_carries_no_violations refuses (the arm
+// that made the first shape of this change red).
+import std.primitives { builtin_registry_surface_names }
+import std.primitive_identity {
+  primitive_identity_eq,
+  primitive_identity_is_declared,
+  primitive_traversal_order_for_identity,
+}
+import std.primitive_projection {
+  primitive_compile_dag_diagnostic_census,
+  primitive_projection_roster,
+  HostRealizedSeam,
+}
+import gunbc.v1.v1_interpreter_primitive_surface { v1_interpreter_authored_roster_arms }
+import gunbc.compile_diagnostic_census {
+  compile_dag_diagnostic_census,
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_count_at_key,
+  census_histograms_equal,
+  census_total_count
+}
+
+// The census resolves its synthetic source against the live checkout's module index.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE DECLARED HOME, EXERCISED BY ITS ROWS. Every call below reaches the census through the declared import of
+// gunbc.compile_diagnostic_census compile_dag_diagnostic_census (named arguments, the declaration's own
+// signature), not through the ambient builtin spelling, and each claim reads the ROWS the call returns: which
+// class, at which subject, with which severity, how many times. A claim that only matched CensusObserved would
+// pass for a census that observed nothing, so every positive below is paired with a fixture that must differ.
+
+fn rows_of(source: String) -> List<CompileDiagnosticCensusRow>? {
+  match compile_dag_diagnostic_census(source: source) {
+    CensusObserved { rows: rows } => Present { value: rows }
+    CensusNotRunnable { cause: _ } => none
+  }
+}
+
+data clean_source: String = "module census_home_clean\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, b: 3) }\n"
+
+data one_mislabel_source: String = "module census_home_mislabel\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\n"
+
+data two_mislabels_source: String = "module census_home_mislabel_twice\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\nfn g() -> Int { sub(a: 1, bb: 2) }\n"
+
+data mislabel_class: String = "CallArgumentNameUnknown"
+
+data mislabel_subject: String = "bb"
+
+// The same call leaves parameter b unfilled, which the compile reports as its own blocking row.
+data deficit_class: String = "CallPositionalDeficit"
+
+data deficit_subject: String = "b"
+
+// A clean single-module source observes NO rows of any severity, so the positives below are not reading a
+// census that always reports something.
+test fn declared_census_of_a_clean_source_has_no_rows() -> Bool {
+  match rows_of(source: clean_source) {
+    Present { value: rows } => count(rows) == 0
+    Absent => false
+  }
+}
+
+// One mislabelled argument is exactly two blocking rows, one per judgment the call provokes: the unknown name bb
+// and the unfilled parameter b. They are the WHOLE census, so no other row of either severity appears: the fixture
+// imports nothing, and no closure row can stand in for them.
+test fn declared_census_reports_the_rows_one_mislabel_provokes() -> Bool {
+  match rows_of(source: one_mislabel_source) {
+    Present { value: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: mislabel_class, subject_name: mislabel_subject, blocking: true) == 1
+        && census_count_at_key(rows: rows, diagnostic_class: deficit_class, subject_name: deficit_subject, blocking: true) == 1
+        && census_total_count(rows: census_blocking_rows(rows: rows)) == 2
+        && census_total_count(rows: rows) == 2
+    Absent => false
+  }
+}
+
+// Two occurrences at the same key are a count of two, not one row present: the census sums occurrences.
+test fn declared_census_counts_two_occurrences_at_one_key() -> Bool {
+  match rows_of(source: two_mislabels_source) {
+    Present { value: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: mislabel_class, subject_name: mislabel_subject, blocking: true) == 2
+        && census_count_at_key(rows: rows, diagnostic_class: deficit_class, subject_name: deficit_subject, blocking: true) == 2
+    Absent => false
+  }
+}
+
+// THE BINDING, read by the census itself. A fixture that imports the declared home and calls it compiles with
+// exactly the rows of the same fixture calling the ambient spelling (the differential cancels the shared closure),
+// so the declaration binds without a rival-authority or ambiguity row, and with no MissingExport at its name. The
+// paired RED imports a spelling the home does not declare: the census reports MissingExport at that spelling, so
+// the equality cannot be a census that ignores the import. Deleting the declaration turns the first claim red the
+// same way.
+data declared_call_source: String = "module census_home_declared_call\nimport std.types { String }\nimport gunbc.compile_diagnostic_census { compile_dag_diagnostic_census, CompileDiagnosticCensus }\nfn f(s: String) -> CompileDiagnosticCensus { compile_dag_diagnostic_census(source: s) }\n"
+
+data ambient_call_source: String = "module census_home_declared_call\nimport std.types { String }\nimport gunbc.compile_diagnostic_census { CompileDiagnosticCensus }\nfn f(s: String) -> CompileDiagnosticCensus { compile_dag_diagnostic_census(source: s) }\n"
+
+data undeclared_import_source: String = "module census_home_declared_call\nimport std.types { String }\nimport gunbc.compile_diagnostic_census { compile_dag_diagnostic_census_not_declared, CompileDiagnosticCensus }\nfn f(s: String) -> CompileDiagnosticCensus { compile_dag_diagnostic_census(source: s) }\n"
+
+test fn declared_import_binds_with_the_ambient_calls_rows() -> Bool {
+  match rows_of(source: declared_call_source) {
+    Present { value: declared } => match rows_of(source: ambient_call_source) {
+      Present { value: ambient } =>
+        census_histograms_equal(a: declared, b: ambient)
+          && census_count_at_key(rows: declared, diagnostic_class: "MissingExport", subject_name: "compile_dag_diagnostic_census", blocking: true) == 0
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+test fn importing_an_undeclared_spelling_from_the_home_moves_the_rows() -> Bool {
+  match rows_of(source: undeclared_import_source) {
+    Present { value: undeclared } => match rows_of(source: ambient_call_source) {
+      Present { value: ambient } =>
+        !census_histograms_equal(a: undeclared, b: ambient)
+          && census_count_at_key(rows: undeclared, diagnostic_class: "MissingExport", subject_name: "compile_dag_diagnostic_census_not_declared", blocking: true) == 1
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// THE NO-GROWTH CONTROL (the control tidy-ant-251's ruling requires beside the imported-positive /
+// bare-negative pair). Homing an ambient built-in must add ONE authority and remove none: the
+// spelling keeps exactly one entry in the std.primitives registry surface list, exactly one authored
+// interpreter arm in gunbc.v1.v1_interpreter_primitive_surface, and exactly one row in
+// std.primitive_projection -- whose fidelity is the HostRealizedSeam that binds the existing host
+// implementation by the declaration's identity, not a second realization. The last two conjuncts are
+// the ones that went red before this change was repaired: the projection row is only legal while
+// std.primitive_identity DECLARES the primitive it names (primitive_identity_is_declared reads
+// primitive_declared_definitions(), which the canonical-name list feeds) and owes the traversal-order
+// fact every declared primitive owes. A row that projects an undeclared primitive is what
+// primitive_projection_authority_witness w_projection_roster_carries_no_violations refuses; this
+// conjunct is the same fact read directly, so the two witnesses cannot disagree about it.
+test fn homing_the_name_added_no_second_authority() -> Bool {
+  count_where(builtin_registry_surface_names(), name => name == "compile_dag_diagnostic_census") == 1
+    && count_where(v1_interpreter_authored_roster_arms(), arm => arm.authored_spelling == "compile_dag_diagnostic_census") == 1
+    && count_where(primitive_projection_roster(), row => primitive_identity_eq(left: row.primitive, right: primitive_compile_dag_diagnostic_census)) == 1
+    && count_where(primitive_projection_roster(), row =>
+      match row.fidelity {
+        HostRealizedSeam => primitive_identity_eq(left: row.primitive, right: primitive_compile_dag_diagnostic_census)
+        _ => false
+      }
+    ) == 1
+    && primitive_identity_is_declared(primitive_compile_dag_diagnostic_census)
+    && match primitive_traversal_order_for_identity(identity: primitive_compile_dag_diagnostic_census) {
+      Present { value: _ } => true
+      Absent => false
+    }
+}

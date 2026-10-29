@@ -1,5 +1,6 @@
 module gunbc.instruments.layout_migration
 
+import std.integer { int_to_decimal_string }
 import std.types { FilePath, Int, List, String, Map }
 import std.optional { Absent, Optional, Present, optional_present }
 import extdeps.git
@@ -334,7 +335,7 @@ fn plan_summary_lines(changes: List<ModuleMove>) -> List<String> {
 }
 
 fn plan_count_text(n: Int) -> String {
-  n as String
+  int_to_decimal_string(value: n)
 }
 
 // THE PLAN REPORT. Writes the summary and one digest line per change to `report`, or the refusals

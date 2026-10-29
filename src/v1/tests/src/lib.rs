@@ -40,6 +40,8 @@ mod field_of_fractions_single_declaration_test;
 #[cfg(test)]
 mod item_kind_dispatch_totality_test;
 #[cfg(test)]
+mod litsymbol_is_symbol_test;
+#[cfg(test)]
 mod namespace_unique_on_chain_policy_test;
 
 #[cfg(test)]

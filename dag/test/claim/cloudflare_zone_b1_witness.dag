@@ -1,0 +1,692 @@
+module test.claim.cloudflare_zone_b1_witness
+
+// THE B1 DISCRIMINATOR. gunbc.cloudflare.zone claims three observed things — the Namecheap-side copy, the
+// Cloudflare-side served set, and the zone's live-but-unaddressable standing — and refuses the bind on
+// typed gaps. Each claim below fails on a specific edit: drop the MX from the copy and the carried/unverified
+// split moves; let a DNS answer stand in for the record list and the outstanding count silently empties;
+// collapse the custom domain's two status dimensions and a not-yet-serving domain reads as allocated;
+// delete one gap remedy and the concealment guard fires.
+//
+// WITNESS DISCIPLINE (README, cardinality/absence): every fact is a carrier member or a pure function of
+// carriers. No credential is touched, no transport runs, and nothing is re-implemented from the module
+// under test.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.error_primitives { pure_dag_seam_unreachable_string }
+import std.optional { Absent, Optional, Present }
+import extdeps.dns.domain_name { host_name_eq, HostName, DomainName, DnsLabel, FullyQualified }
+import std.human_intervention { HumanInterventionIdentity }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import gunbc.cloudflare.boot_origin { boot_origin_hostname_standing_for, BootOriginHostnameAllocated, BootOriginHostnameUnallocated }
+import extdeps.cloudflare.zone {
+  CloudflareAccountId, CloudflareZoneId, CloudflareZone, CloudflareDnsRecord,
+  Proxied, Direct, ProxyNotApplicable,
+  RecordTypeA, RecordTypeTXT, RecordTypeMX, RecordTypeNS, RecordTypeSOA,
+  ZoneStatusActive, ZoneStatusPending,
+  ZoneHeld, ZoneNotHeld,
+  r2_custom_domain_zone_admissible, ZoneAdmissible,
+  ZoneRefusedWrongAccount, ZoneRefusedNotActive, ZoneRefusedPaused, ZoneRefusedHold, ZoneRefusedHoldUnobserved,
+  ZoneRefusedBucketAccountUnobserved,
+  r2_custom_domain_requires_zone_reading, r2_custom_domain_requires_zone_citation, cloudflare_r2_custom_domain_is_serving,
+  cloudflare_r2_custom_domain_matches, cloudflare_record_type_admits_proxy, cloudflare_dns_record_key,
+  cloudflare_account_id_from_text, cloudflare_zone_id_from_text,
+  CloudflareR2CustomDomainBinding, CloudflareR2CustomDomainStatus,
+  OwnershipStatusUnknown, SslStatusUnknown, OwnershipVendorUnknown, SslVendorUnknown,
+  r2_ownership_status_of_text, r2_ssl_status_of_text,
+  OwnershipBlocked, SslActive,
+  r2_ownership_status_wire, r2_ssl_status_wire,
+}
+import gunbc.cloudflare.zone {
+  namecheap_copied_records, namecheap_observed_records, cloudflare_served_records,
+  unverified_copied_records, unproxied_contents_agree, copied_record_is_carried, zone_record_copy_standing,
+  CopyPendingRecordList,
+  namecheap_apex_txt, namecheap_apex_mx, namecheap_registrar_soa,
+  cloudflare_apex_txt, cloudflare_apex_mx, fleet_gunb_ai_zone_standing,
+  ZoneLiveButIdentityUnobserved, boot_origin_hostname_binding_verdict, BindingAwaitingZoneIdentity,
+  BindingAwaitingDispatch, BindingNotServing,
+  credential_route_gap, record_list_gap, bind_dispatch_gap,
+  BootOriginBindEffectGap, CloudflareCredentialRouteMissing, CloudflareRecordListUnread, BindDispatchUnmodeled,
+  boot_origin_bind_gap_names,
+  boot_origin_fqdn_decision, BootOriginFqdnDecision, FqdnDecided, PendingFqdnRecommendation,
+  BootOriginHostnameBindingVerdict, BindingAllocated,
+  gunb_ai_bucket_account, boot_origin_bucket, gunb_ai_apex, boot_origin_hostname,
+  gunb_ai_delegated_nameservers, boot_origin_bind_readback, ReadbackNotTaken, ReadbackOf, boot_origin_nxdomain_answers,
+  boot_origin_zone_admissibility, boot_origin_zone_hold_observation, copied_record_of_type,
+}
+
+// THE PRODUCT'S OWN CALL SITE is claimed too (review 87180: a rule only tests call is not a rule the
+// product uses). Today there is no zone identity to put in front of the rule, so the module's answer is
+// the typed Absent — and the hold receipt it would pass is the module's own Absent, not a stand-in the
+// zone type could silently default.
+test fn the_module_carries_the_hold_receipt_as_its_own_absence() -> Bool {
+  match boot_origin_zone_hold_observation {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match boot_origin_zone_admissibility() {
+         Absent => true
+         Present { value: standing } => match standing {
+           ZoneAdmissible { zone: _, basis: _ } => false
+           _ => true
+         }
+       }
+}
+
+// Witness ids are MINTED, never cast (review 38602: a cast walks straight through a `where brand`
+// alias), and NOTHING fabricates an id any more (review 87415). Where the concept admits "no identity
+// has been read", the minter returns Optional and the checked constructor's own answer stands — Absent
+// stays Absent. Where a FIXTURE genuinely needs a bare id (an observed zone always carries one), a
+// literal that failed the vendor's 32-hex shape is a bug in this file, and the arm diverges through the
+// audited never-projection instead of returning a plausible placeholder: pure_dag_seam_unreachable_string
+// never yields a value, so no zero id can ever be compared against a real read.
+fn account_fixture(text: String) -> CloudflareAccountId {
+  match cloudflare_account_id_from_text(text: text) {
+    Present { value: account } => account
+    Absent => CloudflareAccountId { value: pure_dag_seam_unreachable_string() as NonEmptyStr }
+  }
+}
+
+fn zone_id_fixture(text: String) -> CloudflareZoneId {
+  match cloudflare_zone_id_from_text(text: text) {
+    Present { value: zone_id } => zone_id
+    Absent => CloudflareZoneId { value: pure_dag_seam_unreachable_string() as NonEmptyStr }
+  }
+}
+
+// THE PRODUCT FACT, unmodified: the same-account tests run against what the module actually carries, so
+// if its cited id ever became Absent, admissible_zone_admits would fail through the unobserved-account
+// arm rather than quietly passing against a placeholder.
+data same_account: Optional<CloudflareAccountId> = gunb_ai_bucket_account
+
+// The bare form of the same id, for the fixtures that build an OBSERVED zone (whose account is required).
+fn bucket_account_or_die() -> CloudflareAccountId {
+  match gunb_ai_bucket_account {
+    Present { value: account } => account
+    Absent => CloudflareAccountId { value: pure_dag_seam_unreachable_string() as NonEmptyStr }
+  }
+}
+
+data same_account_id: CloudflareAccountId = bucket_account_or_die()
+// A fixture account that MUST differ from the product's; its own checked mint, and a distinct 32-hex.
+data wrong_account: Optional<CloudflareAccountId> =
+  cloudflare_account_id_from_text(text: "00000000000000000000000000000001")
+data wrong_account_id: CloudflareAccountId = account_fixture(text: "00000000000000000000000000000001")
+
+fn zone_in(account: CloudflareAccountId, active: Bool, paused: Bool) -> CloudflareZone {
+  CloudflareZone {
+    apex: gunb_ai_apex,
+    account: account,
+    zone_id: zone_id_fixture(text: "0123456789abcdef0123456789abcdef"),
+    status: if active { ZoneStatusActive } else { ZoneStatusPending },
+    paused: paused,
+  }
+}
+
+// A HOLD IS NOT A FIELD OF THE ZONE (review 87475, DESIGN §3): the vendor publishes it on its own
+// endpoint, so the rule receives the hold as the OBSERVER'S Optional receipt. These three spellings —
+// held, not-held, never-read — are what a caller can bring, and the admissibility arms below prove each
+// one lands somewhere different. The zone type has no hold to fake, so there is nothing to default.
+
+// THE CITED RULE, checked where it bites: same account + active + not paused admits, and each violated
+// condition refuses for its OWN reason. A fold that ignored the account, or treated the pause switch as
+// cosmetic, would fail exactly one of these four.
+test fn admissible_zone_admits() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: same_account, hold: Present { value: ZoneNotHeld }) {
+    ZoneAdmissible { zone: _, basis: _ } => true
+    _ => false
+  }
+}
+
+test fn wrong_account_refuses() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: wrong_account_id, active: true, paused: false), bucket_account: same_account, hold: Present { value: ZoneNotHeld }) {
+    ZoneRefusedWrongAccount { zone: _, bucket_account: _, basis: _ } => true
+    _ => false
+  }
+}
+
+test fn inactive_zone_refuses() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: false, paused: false), bucket_account: same_account, hold: Present { value: ZoneNotHeld }) {
+    ZoneRefusedNotActive { zone: _, basis: _ } => true
+    _ => false
+  }
+}
+
+test fn paused_zone_refuses() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: true), bucket_account: same_account, hold: Present { value: ZoneNotHeld }) {
+    ZoneRefusedPaused { zone: _, basis: _ } => true
+    _ => false
+  }
+}
+
+// The reading must carry the rule that closes the plan's open item, in the vendor's own words. The
+// zone-hold warning is NOT checked by grep here (review 38602): the hold is modelled as a field and an
+// arm, and the three tests below are the consumers — a fold that ignored it would fail one of them.
+test fn cited_reading_names_the_same_account_rule() -> Bool {
+  string_contains(s: r2_custom_domain_requires_zone_reading, pattern: "zone in the same account as the R2 bucket")
+}
+
+// THE HOLD, as a rule with arms: an Enterprise zone under a hold is active, unpaused and in the right
+// account, and STILL refuses — that is the whole point of modelling it. An unobserved hold refuses for a
+// DIFFERENT reason, because the next action differs (release it vs read it). Both must be distinct from
+// every other refusal, and only the not-under-hold arm admits.
+test fn held_zone_refuses_even_when_active_in_account() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: same_account, hold: Present { value: ZoneHeld }) {
+    ZoneRefusedHold { zone: _, basis: _ } => true
+    _ => false
+  }
+}
+
+test fn unobserved_hold_refuses_for_its_own_reason() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: same_account, hold: Absent) {
+    ZoneRefusedHoldUnobserved { zone: _, basis: _ } => true
+    _ => false
+  }
+}
+
+test fn a_hold_refusal_is_not_any_other_refusal() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: wrong_account_id, active: false, paused: true), bucket_account: same_account, hold: Present { value: ZoneHeld }) {
+    ZoneRefusedWrongAccount { zone: _, bucket_account: _, basis: _ } => true
+    _ => false
+  }
+}
+
+// THE COPY IS JOINED TO THE OBSERVED SET BY RECORD KEY, not counted against a transcription of the tree
+// (review 38602; DESIGN section 5: "Completeness is an identity join, not a count equality"). Three
+// things have to hold together: every copied key is an observed key (the copy invented nothing), every
+// observed key that is not copied is one of the registrar's own SOA/NS rows (nothing went missing), and
+// the un-copied rows are keyed by name/type/content so dropping an MX from the copy moves this test
+// instead of leaving it green.
+fn keys_of(records: List<CloudflareDnsRecord>) -> List<String> {
+  map(records, record => cloudflare_dns_record_key(record: record))
+}
+
+fn key_is_in(key: String, keys: List<String>) -> Bool {
+  fold(keys, init: false, f: (acc, k) => acc || k == key)
+}
+
+test fn copy_is_a_keyed_subjoin_of_the_observed_set() -> Bool {
+  let observed_keys = keys_of(records: namecheap_observed_records())
+  fold(
+    namecheap_copied_records(),
+    init: true,
+    f: (acc, record) => acc && key_is_in(key: cloudflare_dns_record_key(record: record), keys: observed_keys)
+  )
+}
+
+// The complement of the join, computed from the two lists rather than asserted as a number: the observed
+// rows the copy does NOT carry are exactly the registrar's SOA and its two NS, and each is identified by
+// its key, not by a cardinality someone copied out of the tree.
+test fn the_uncopied_observed_rows_are_the_registars_own() -> Bool {
+  let copied_keys = keys_of(records: namecheap_copied_records())
+  fold(
+    namecheap_observed_records(),
+    init: true,
+    f: (acc, record) =>
+      if key_is_in(key: cloudflare_dns_record_key(record: record), keys: copied_keys) {
+        acc
+      } else {
+        acc && match record.record_type {
+          RecordTypeNS => true
+          RecordTypeSOA => true
+          _ => false
+        }
+      }
+  )
+    && key_is_in(
+         key: join(["gunb.ai", "SOA", namecheap_registrar_soa], "/"),
+         keys: keys_of(records: namecheap_observed_records())
+       )
+}
+
+// The unproxied contents are the part a credential-free read settles, and both copies DO agree on them.
+// The exact strings are asserted so an edit to either transcription fails here rather than quietly
+// shifting the standing.
+test fn unproxied_contents_agree_on_both_sides() -> Bool {
+  unproxied_contents_agree()
+    && namecheap_apex_txt == cloudflare_apex_txt
+    && namecheap_apex_mx == cloudflare_apex_mx
+}
+
+// Read OUT OF the copy (review 87475): the product picks these two rows out of the derived set by type
+// and asks whether the zone publishes them, so this test is about the copy and the served answer rather
+// than about three literal blocks written in the same files. If the derivation ever dropped the SPF or
+// the MX row, copied_record_of_type returns Absent and both legs refuse.
+test fn unproxied_copied_records_are_carried() -> Bool {
+  match copied_record_of_type(record_type: RecordTypeTXT) {
+    Present { value: txt } => copied_record_is_carried(record: txt) && (txt.content as String) == (namecheap_apex_txt as String)
+    Absent => false
+  }
+    && match copied_record_of_type(record_type: RecordTypeMX) {
+         Present { value: mx } => copied_record_is_carried(record: mx) && (mx.content as String) == (namecheap_apex_mx as String)
+         Absent => false
+       }
+}
+
+// THE DERIVATION'S DECISION BOUNDARY. The copy is observed-minus-registrar, so the ONLY free choice left
+// is which types the filter excludes; this pins that choice to exactly the registrar's own rows. An edit
+// that also excluded the SPF record, or started carrying the registrar NS, fails here — which is exactly
+// the drift the second transcription used to hide.
+// A proxy arm must agree with the record's OWN type (review 87475 advisory): the arms no longer carry a
+// type, so a record's proxy state cannot contradict it by storing a second one — but the arms can still
+// be written directly, and a Proxied on a TXT record is the inconsistency the old payloads could have
+// hidden in the other direction. Every row of BOTH sets, observed and served, is checked; the fold is
+// total over the arms, so an arm outside the proxyable types refuses rather than passing quietly.
+fn every_record_proxy_agrees_with_its_type(records: List<CloudflareDnsRecord>) -> Bool {
+  fold(
+    records,
+    init: true,
+    f: (acc, record) => acc
+      && match record.proxy {
+           Proxied => cloudflare_record_type_admits_proxy(record_type: record.record_type)
+           Direct => cloudflare_record_type_admits_proxy(record_type: record.record_type)
+           ProxyNotApplicable => !cloudflare_record_type_admits_proxy(record_type: record.record_type)
+         }
+  )
+}
+
+test fn no_record_carries_a_proxy_state_its_type_cannot_have() -> Bool {
+  every_record_proxy_agrees_with_its_type(records: namecheap_observed_records())
+    && every_record_proxy_agrees_with_its_type(records: cloudflare_served_records())
+}
+
+test fn the_filter_excludes_exactly_the_registrar_rows() -> Bool {
+  match copied_record_of_type(record_type: RecordTypeNS) {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match copied_record_of_type(record_type: RecordTypeSOA) {
+         Absent => true
+         Present { value: _ } => false
+       }
+    && match copied_record_of_type(record_type: RecordTypeTXT) {
+         Present { value: _ } => true
+         Absent => false
+       }
+    && match copied_record_of_type(record_type: RecordTypeMX) {
+         Present { value: _ } => true
+         Absent => false
+       }
+    && match copied_record_of_type(record_type: RecordTypeA) {
+         Present { value: _ } => true
+         Absent => false
+       }
+}
+
+// The outstanding set is the nine records whose CONTENT a DNS answer cannot settle — the four apex A, the
+// four apex AAAA, and the www record whose shape the two copies disagree about — and every one of them is
+// a type that admits a proxy. If a proxied answer were ever allowed to stand in for the record list, this
+// is the count that would silently empty, which is exactly the failure this witness exists to make loud.
+test fn outstanding_set_is_the_proxied_nine() -> Bool {
+  list_length(items: unverified_copied_records()) == 9
+    && fold(
+         unverified_copied_records(),
+         init: true,
+         f: (acc, record) => acc && cloudflare_record_type_admits_proxy(record_type: record.record_type)
+       )
+}
+
+// THE COPY STANDING IS PENDING with a named reason, never falsely Complete. Completing on a DNS answer is
+// the failure mode guarded: a Complete standing from a reader that cannot see proxied content would be a
+// false green on the plan's own precondition.
+test fn copy_stands_pending_with_its_nine_outstanding() -> Bool {
+  match zone_record_copy_standing() {
+    CopyPendingRecordList { outstanding, unproxied_contents_agree: agree } =>
+      list_length(items: outstanding) == 9 && agree
+    _ => false
+  }
+}
+
+// THE ZONE STANDING: live (parent delegation + Cloudflare-minted SOA) but not addressable. The arms must
+// not be interchangeable — an agent able to write the observed-active arm without a zone id would make the
+// bind reachable on an invented identity.
+test fn zone_is_live_but_identity_unobserved() -> Bool {
+  match fleet_gunb_ai_zone_standing() {
+    ZoneLiveButIdentityUnobserved { nameservers, soa } =>
+      list_length(items: nameservers) == 2 && string_contains(s: soa, pattern: "alexandra.ns.cloudflare.com")
+    _ => false
+  }
+}
+
+test fn delegated_nameservers_match_the_parent_reading() -> Bool {
+  list_length(items: gunb_ai_delegated_nameservers) == 2
+    && fold(
+         gunb_ai_delegated_nameservers,
+         init: 0,
+         f: (acc, ns) => if ns == "alexandra.ns.cloudflare.com" || ns == "austin.ns.cloudflare.com" { acc + 1 } else { acc }
+       ) == 2
+}
+
+// THE HOSTNAME IS FREE, as a fact about the served set: nothing Cloudflare serves is named at
+// boot.gunb.ai. With the recorded NXDOMAIN answer count (6: A, AAAA and CNAME at each of the two
+// authoritative servers), an allocation appearing at that name breaks this instead of passing unnoticed.
+test fn boot_hostname_is_absent_from_the_served_set() -> Bool {
+  boot_origin_nxdomain_answers == 6
+    && fold(
+         cloudflare_served_records(),
+         init: true,
+         f: (acc, record) => acc && !host_name_eq(a: record.name, b: boot_origin_hostname)
+       )
+}
+
+// THE READBACK HAS NOT HAPPENED, and an unperformed read never reads as serving: the enable flag AND both
+// status dimensions are required, so any one left at not-read keeps the verdict off Allocated. The binding
+// must also name the zone and bucket the fold is converging, or a readback of some other bucket's domain
+// would satisfy the arm.
+// NO READ, NO BINDING (manager blocker on 5218cdb). The pending readback used to be a constructed
+// CloudflareR2CustomDomainBinding with two Unknown { wire: "unobserved" } statuses — a fabricated response
+// for a call nobody made, which also collided with the vendor's PUBLISHED "unknown". Today's truth is the
+// readback sum's own absence arm, carrying the dispatch gap; there is no binding to serve, to match, or
+// to misread. The verdict derives BindingAwaitingDispatch from exactly this absence.
+test fn the_readback_is_absence_not_a_fabricated_binding() -> Bool {
+  match boot_origin_bind_readback {
+    ReadbackNotTaken { gap } => match gap {
+      BindDispatchUnmodeled { missing: _, basis: _ } => gap_reports(gap: gap) == 1
+      _ => false
+    }
+    ReadbackOf { binding: _, observed_at: _ } => false
+  }
+}
+
+// ABSENCE IS NOT AN ID THAT HAPPENS TO BE WRONG (review 87415). The pending readback carries Absent, and
+// Absent fails the match against EVERY zone — including the one whose id this witness could otherwise
+// have fabricated. A real read carrying the right id matches it, so the failure above is the absence and
+// not a broken rule: the two directions together are what make an in-band placeholder impossible.
+// BOTH DIRECTIONS of the matches rule, now built ONLY from real shapes: a response that carries its zone
+// id matches that zone and no other bucket, and the readback's absence reaches the rule only through
+// ReadbackOf — the absence arm never hands a binding to the matcher at all. (The old third leg inspected
+// a fabricated binding's Absent zone_id; there is no such object any more, which is the point.)
+test fn a_read_identity_matches_its_own_zone_and_absence_hands_the_rule_nothing() -> Bool {
+  let right_zone = zone_in(account: same_account_id, active: true, paused: false)
+  let read_binding = binding_with(ownership: "active", ssl: "active", enabled: true)
+  cloudflare_r2_custom_domain_matches(binding: read_binding, zone: right_zone, bucket: boot_origin_bucket)
+    && !cloudflare_r2_custom_domain_matches(binding: read_binding, zone: right_zone, bucket: "some-other-bucket" as NonEmptyStr)
+    && match boot_origin_bind_readback {
+         ReadbackNotTaken { gap: _ } => true
+         ReadbackOf { binding: _, observed_at: _ } => false
+       }
+}
+
+// THE BUCKET'S ACCOUNT IS ITSELF AN OBSERVATION (review 87415): when it has not been read, admissibility
+// refuses for THAT reason, first, rather than comparing the zone against any placeholder. The arm is
+// distinct from every other refusal, so "we never read the bucket's owner" cannot be misread as "wrong
+// account" (which would send the next actor to the wrong remedy).
+test fn an_unread_bucket_account_refuses_for_its_own_reason() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: Absent, hold: Present { value: ZoneNotHeld }) {
+    ZoneRefusedBucketAccountUnobserved { zone: _, basis: _ } => true
+    _ => false
+  }
+    // Even a zone that is otherwise perfectly admissible refuses: active, unpaused, no hold.
+    && match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: Absent, hold: Present { value: ZoneNotHeld }) {
+         ZoneRefusedBucketAccountUnobserved { zone: _, basis: _ } => true
+         _ => false
+       }
+    // And it is NOT the wrong-account refusal: the two arms must not collapse.
+    && match r2_custom_domain_zone_admissible(zone: zone_in(account: wrong_account_id, active: true, paused: false), bucket_account: same_account, hold: Present { value: ZoneNotHeld }) {
+         ZoneRefusedWrongAccount { zone: _, bucket_account: _, basis: _ } => true
+         _ => false
+       }
+}
+
+// WHICH GAP, DECIDED WHERE THE OBSERVATION WAS MADE (review 87595). These used to feed a prose reason
+// through a keyword search, which meant a rewording could re-route the operator to the wrong remedy. The
+// search is gone; what is claimed instead is the ROUTING itself, three ways:
+//
+// (a) each constructor lands on its OWN arm with its own remedy count — no constructor can land on
+//     another's arm, because there is no longer anything to match except the call site;
+// (b) the standing CARRIES the gap and the verdict REPEATS it — the verdict's gap and the zone standing's
+//     gap are the same arm, so the verdict is a pass-through, not a second decision;
+// (c) a gap that reports nothing is UNREPRESENTABLE (missing is std.algebra FreeSemigroup), so the
+//     runtime length check and its comment are deleted; what remains is the countable one.
+fn gap_reports(gap: BootOriginBindEffectGap) -> Int {
+  list_length(items: boot_origin_bind_gap_names(gap: gap))
+}
+
+test fn each_gap_constructor_lands_on_its_own_arm() -> Bool {
+  match credential_route_gap() {
+    CloudflareCredentialRouteMissing { missing: _, basis: _ } => gap_reports(gap: credential_route_gap()) == 2
+    _ => false
+  }
+    && match record_list_gap() {
+         CloudflareRecordListUnread { missing: _, basis: _ } => gap_reports(gap: record_list_gap()) == 1
+         _ => false
+       }
+    && match bind_dispatch_gap() {
+         BindDispatchUnmodeled { missing: _, basis: _ } => gap_reports(gap: bind_dispatch_gap()) == 1
+         _ => false
+       }
+}
+
+// (b) THE PASS-THROUGH. Today the zone's identity is unread, so the standing carries the credential-route
+// gap and the verdict must report THAT gap — same arm, same remedy count. A verdict that re-derived a gap
+// from text could report a different arm than the standing carries; this claim is what makes that
+// impossible to land quietly.
+test fn the_verdict_reports_the_zone_standings_own_gap() -> Bool {
+  match fleet_gunb_ai_zone_standing() {
+    ZoneLiveButIdentityUnobserved { apex: _, nameservers: _, soa: _, gap, observed_at: _, basis: _ } =>
+      match gap {
+        CloudflareCredentialRouteMissing { missing: _, basis: _ } => {
+          match boot_origin_hostname_binding_verdict() {
+            BindingAwaitingZoneIdentity { gap: verdict_gap } => match verdict_gap {
+              CloudflareCredentialRouteMissing { missing: _, basis: _ } => gap_reports(gap: verdict_gap) == gap_reports(gap: gap)
+              _ => false
+            }
+            _ => false
+          }
+        }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// The COPY standing carries the record-list gap, not the credential one: the two blockers are distinct
+// (read the records vs mint the token) and each standing names its own, so neither is inferred from a
+// sentence and the operator is sent to the right remedy.
+test fn the_copy_standing_carries_the_record_list_gap() -> Bool {
+  match zone_record_copy_standing() {
+    CopyPendingRecordList { copied: _, outstanding: _, unproxied_contents_agree: _, gap, observed_at: _, basis: _ } =>
+      match gap {
+        CloudflareRecordListUnread { missing: _, basis: _ } => gap_reports(gap: gap) == 1
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// AWAITING DISPATCH IS NOT NOT-SERVING. A binding that was never created must not be reported as a
+// binding that exists and fails to serve — that would send the operator to debug a domain that was never
+// made. Both arms are constructible, so their distinctness is claimed rather than asserted.
+test fn awaiting_dispatch_is_not_not_serving() -> Bool {
+  match BindingAwaitingDispatch { gap: bind_dispatch_gap() } {
+    BindingAwaitingDispatch { gap } => gap_reports(gap: gap) == 1
+    _ => false
+  }
+    && match BindingNotServing { binding: binding_with(ownership: "blocked", ssl: "active", enabled: true) } {
+         // NOT-SERVING carries the receipt, not a sentence: the typed status dimensions are the reason,
+         // and the readback that reaches this arm is one the vendor RETURNED (zone identity Present).
+         // Read the receipt through the type: the blocking dimension is the Blocked arm, the other is
+         // Active, and that is exactly why serving fails — no sentence needed to say it.
+         // NOT-SERVING requires a real response: the receipt is read through the type, and the blocking
+         // dimension is the vendor's Blocked arm while ssl is Active.
+         BindingNotServing { binding: reported } => {
+           match reported.status.ownership {
+             OwnershipBlocked => true
+             _ => false
+           }
+             && match reported.status.ssl {
+                  SslActive => true
+                  _ => false
+                }
+             && !cloudflare_r2_custom_domain_is_serving(binding: reported)
+         }
+         _ => false
+       }
+}
+
+// THE FQDN IS RECOMMENDED, NOT DECIDED (review 87595: a decision status in a String is §4c). The carrier
+// names the candidate, who recommended it and when; the Decided arm additionally REQUIRES an operator
+// citation, so nothing here can pre-fill the decision — and the hostname standing stays Unallocated until
+// a follow-up builds that arm.
+test fn the_fqdn_is_recommended_and_not_yet_decided() -> Bool {
+  match boot_origin_fqdn_decision {
+         PendingFqdnRecommendation { hostname, recommended_by, at: _ } => host_name_eq(a: hostname, b: boot_origin_hostname)
+           && (recommended_by as String) == "bright-swift-248"
+         FqdnDecided { hostname: _, decided_by: _, citation: _ } => false
+       }
+}
+
+// THE HOSTNAME GATE IS CONSTRUCTIVE (review 87806). boot_origin.dag's standing used to ask a Bool —
+// "has anyone decided?" — and then take the production host from the READBACK, so a serving x.gunb.ai
+// with the operator having decided boot.gunb.ai would have ALLOCATED the wrong origin. The gate is now a
+// total function of (verdict, decision); these four claims are its whole contract: agreed hosts allocate
+// naming the DECIDED host, BOTH mismatch directions refuse (neither host wins), and a recommendation
+// alone never allocates however serving the readback.
+fn decided_for(domain: HostName) -> BootOriginFqdnDecision {
+  FqdnDecided {
+    hostname: domain,
+    decided_by: "operator-fixture" as HumanInterventionIdentity,
+    citation: r2_custom_domain_requires_zone_citation,
+  }
+}
+
+fn other_hostname() -> HostName {
+  HostName {
+    name: DomainName { labels: ["other" as DnsLabel, "gunb" as DnsLabel, "ai" as DnsLabel] },
+    qualification: FullyQualified,
+  }
+}
+
+fn allocated_verdict(domain: HostName) -> BootOriginHostnameBindingVerdict {
+  BindingAllocated {
+    binding: CloudflareR2CustomDomainBinding {
+      domain: domain,
+      bucket: boot_origin_bucket,
+      zone_id: Present { value: zone_id_fixture(text: "0123456789abcdef0123456789abcdef") },
+      enabled: true,
+      status: CloudflareR2CustomDomainStatus {
+        ownership: r2_ownership_status_of_text(text: "active"),
+        ssl: r2_ssl_status_of_text(text: "active"),
+      },
+    },
+    observed_at: "2026-10-29T00:00:00Z" as Rfc3339Timestamp,
+  }
+}
+
+test fn gate_leg1_agreed_hosts_allocate_naming_the_decided_host() -> Bool {
+  match boot_origin_hostname_standing_for(verdict: allocated_verdict(domain: boot_origin_hostname), decision: decided_for(domain: boot_origin_hostname)) {
+    BootOriginHostnameAllocated { fqdn } => host_name_eq(a: fqdn, b: boot_origin_hostname)
+    _ => false
+  }
+}
+
+test fn gate_leg2_mismatch_serving_other_refuses() -> Bool {
+  match boot_origin_hostname_standing_for(verdict: allocated_verdict(domain: other_hostname()), decision: decided_for(domain: boot_origin_hostname)) {
+    BootOriginHostnameUnallocated { intervention: _ } => true
+    BootOriginHostnameAllocated { fqdn: _ } => false
+  }
+}
+
+test fn gate_leg3_mirror_mismatch_refuses() -> Bool {
+  match boot_origin_hostname_standing_for(verdict: allocated_verdict(domain: boot_origin_hostname), decision: decided_for(domain: other_hostname())) {
+    BootOriginHostnameUnallocated { intervention: _ } => true
+    BootOriginHostnameAllocated { fqdn: _ } => false
+  }
+}
+
+test fn gate_leg4_recommendation_never_allocates() -> Bool {
+  match boot_origin_hostname_standing_for(verdict: allocated_verdict(domain: boot_origin_hostname), decision: boot_origin_fqdn_decision) {
+    BootOriginHostnameUnallocated { intervention: _ } => true
+    BootOriginHostnameAllocated { fqdn: _ } => false
+  }
+}
+
+// THE TWO STATUS DIMENSIONS ARE TYPED, not strings (review 38602): the six published values decode to
+// their own arms, an unpublished spelling lands in Unknown carrying the wire it came from, and serving
+// needs enabled + both dimensions active. A fold that compared strings could not tell "blocked" from a
+// typo, and that is exactly the confusion these three tests make impossible.
+fn binding_with(ownership: String, ssl: String, enabled: Bool) -> CloudflareR2CustomDomainBinding {
+  CloudflareR2CustomDomainBinding {
+    domain: boot_origin_hostname,
+    bucket: boot_origin_bucket,
+    // A binding the vendor has RETURNED carries its zone id; Present is what a real read yields.
+    zone_id: Present { value: zone_id_fixture(text: "0123456789abcdef0123456789abcdef") },
+    enabled: enabled,
+    status: CloudflareR2CustomDomainStatus {
+      ownership: r2_ownership_status_of_text(text: ownership),
+      ssl: r2_ssl_status_of_text(text: ssl),
+    },
+  }
+}
+
+test fn published_status_values_decode_to_their_arms() -> Bool {
+  match r2_ownership_status_of_text(text: "blocked") {
+    OwnershipBlocked => true
+    _ => false
+  }
+    && match r2_ssl_status_of_text(text: "initializing") {
+         SslInitializing => true
+         _ => false
+       }
+}
+
+// A value outside the published vocabulary keeps its wire instead of becoming a quiet "not serving": the
+// Unknown arm is the only place it can go, and it is distinguishable from every named arm.
+test fn unpublished_status_reaches_unknown_with_its_wire() -> Bool {
+  match r2_ownership_status_of_text(text: "verifying-ownership") {
+    OwnershipStatusUnknown { wire } => wire == "verifying-ownership"
+    _ => false
+  }
+    && match r2_ssl_status_of_text(text: "revoked") {
+         SslStatusUnknown { wire } => wire == "revoked"
+         _ => false
+       }
+}
+
+// The wire decoders and the wire printers are INVERSES on every published value, so the vocabulary
+// cannot drift from what the vendor publishes without one of these failing.
+test fn status_wires_round_trip() -> Bool {
+  r2_ownership_status_wire(status: r2_ownership_status_of_text(text: "pending")) == "pending"
+    && r2_ownership_status_wire(status: r2_ownership_status_of_text(text: "deactivated")) == "deactivated"
+    && r2_ownership_status_wire(status: r2_ownership_status_of_text(text: "blocked")) == "blocked"
+    && r2_ownership_status_wire(status: r2_ownership_status_of_text(text: "error")) == "error"
+    && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "initializing")) == "initializing"
+    && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "pending")) == "pending"
+    && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "active")) == "active"
+    && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "deactivated")) == "deactivated"
+}
+
+// THE VENDOR'S "unknown" IS A REAL ANSWER, not a missing one (the manager blocker found this): it is
+// PUBLISHED in both status vocabularies, so it decodes to its OWN arms — never to Unknown { wire }, which
+// is reserved for values OUTSIDE the published set — and it never serves, because the vendor did not say
+// it serves. The old pending binding squatted on Unknown{wire:"unobserved"} precisely because this
+// distinction did not exist; the fabricated wire string was indistinguishable from an unmodeled value.
+test fn published_unknown_is_its_own_arm_not_an_unmodeled_value() -> Bool {
+  match r2_ownership_status_of_text(text: "unknown") {
+    OwnershipVendorUnknown => true
+    OwnershipStatusUnknown { wire: _ } => false
+    _ => false
+  }
+    && match r2_ssl_status_of_text(text: "unknown") {
+         SslVendorUnknown => true
+         SslStatusUnknown { wire: _ } => false
+         _ => false
+       }
+    && r2_ownership_status_wire(status: r2_ownership_status_of_text(text: "unknown")) == "unknown"
+    && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "unknown")) == "unknown"
+    // And a vendor that says unknown has not said active: fail-closed in both directions.
+    && !cloudflare_r2_custom_domain_is_serving(binding: binding_with(ownership: "unknown", ssl: "active", enabled: true))
+    && !cloudflare_r2_custom_domain_is_serving(binding: binding_with(ownership: "active", ssl: "unknown", enabled: true))
+}
+
+test fn serving_needs_enabled_and_both_active() -> Bool {
+  cloudflare_r2_custom_domain_is_serving(binding: binding_with(ownership: "active", ssl: "active", enabled: true))
+    && !cloudflare_r2_custom_domain_is_serving(binding: binding_with(ownership: "active", ssl: "pending", enabled: true))
+    && !cloudflare_r2_custom_domain_is_serving(binding: binding_with(ownership: "blocked", ssl: "active", enabled: true))
+    && !cloudflare_r2_custom_domain_is_serving(binding: binding_with(ownership: "active", ssl: "active", enabled: false))
+}
+
+// The RecordTypeA import is exercised by nothing else above; pin it so the import list stays honest about
+// what the witness actually uses (an unused import is a roster that lies about its dependencies).
+test fn address_record_identity_is_its_wire_spelling() -> Bool {
+  cloudflare_record_type_admits_proxy(record_type: RecordTypeA)
+}

@@ -1,5 +1,7 @@
 module test.claim.materialization_store_local_wet_witness
 
+import std.cache_interface { ReplaceExisting, LeastRecentlyUsed, RefuseNewStore }
+
 import std.judgment_contract { identity_structural_component, identity_digest_component }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -65,6 +67,7 @@ import std.measure { byte_size }
 import std.measure { measure_count }
 import std.render_repeat_string_bootstrap { repeat_string }
 import extdeps.filesystem.filesystem_io { FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_entry_names }
+import std.integer { int_to_decimal_string }
 
 // WET CONTROLS FOR THE LOCAL PERSISTENT REALIZATION: every control of the provider-spine brief,
 // executed against a REAL filesystem through extdeps.realization.materialization_store_local. Each
@@ -177,8 +180,8 @@ fn delete_was_refused_by_the_host(t: LocalStoreDeleteAttempt) -> Bool {
 // eviction and the fit refusal are reached by execution. The store receives them as its parameter,
 // exactly as a production consumer passes gunbc.materialization_store_budgets.
 data witness_family_budgets: List<LocalStoreFamilyBudget> = [
-  LocalStoreFamilyBudget { family: native_module_verdict_bundle_artifact_kind, budget: byte_size(count: 4096) },
-  LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: byte_size(count: 4096) },
+  LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: native_module_verdict_bundle_artifact_kind, budget: byte_size(count: 4096) },
+  LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: typed_module_artifact_kind, budget: byte_size(count: 4096) },
 ]
 
 // An evicted RECORD whose own file the host refused to delete, typed down to the host's answer.
@@ -466,7 +469,7 @@ test fn the_family_budget_holds_on_disk_across_overrun_by_real_execution() -> Bo
     Present { value: store } => {
       let before = root_object_bytes(root_path: root_path)
       let steps = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] |> map(i => {
-        let c = local_store_commit(capability: store, req: bundle_req(module: concat("m", i as String)), payloads: padded_verdicts(module: concat("m", i as String)), parts: [])
+        let c = local_store_commit(capability: store, req: bundle_req(module: concat("m", int_to_decimal_string(value: i))), payloads: padded_verdicts(module: concat("m", int_to_decimal_string(value: i))), parts: [])
         BoundStep { within: commit_tag(c: c.commit) == "committed" && root_object_bytes(root_path: root_path) <= budget, evicted: count(c.evicted) }
       })
       let after = root_object_bytes(root_path: root_path)
@@ -474,6 +477,41 @@ test fn the_family_budget_holds_on_disk_across_overrun_by_real_execution() -> Bo
         && steps |> all(st => st.within)
         && fold(steps, init: 0, f: (acc, st) => acc + st.evicted) > 0
     }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// The same durable provider can retain entries instead of evicting them.
+test fn a_retained_family_refuses_capacity_and_survives_reopen_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let budgets = witness_family_budgets |> map(b => LocalStoreFamilyBudget { family: b.family, budget: b.budget, at_capacity: RefuseNewStore })
+  let verdict = match local_store_initialize(root: root, instance_label: "retained-witness", budgets: budgets) {
+    LocalStoreInitialized { opening: LocalStoreOpened { capability: store, durability: _ } } => {
+      let first_req = bundle_req(module: "retained-first")
+      let first_write = local_store_commit(capability: store, req: first_req, payloads: padded_verdicts(module: "retained-first"), parts: [])
+      let attempts = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] |> map(i => {
+        let name = concat("retained-", int_to_decimal_string(value: i))
+        let written = local_store_commit(capability: store, req: bundle_req(module: name), payloads: padded_verdicts(module: name), parts: [])
+        BoundStep { within: commit_tag(c: written.commit) == "committed" || commit_tag(c: written.commit) == "at_capacity", evicted: count(written.evicted) }
+      })
+      let refused = local_store_commit(capability: store, req: bundle_req(module: "retained-overflow"), payloads: padded_verdicts(module: "retained-overflow"), parts: [])
+      let reopened = match local_store_open(root: root, budgets: budgets) {
+        LocalStoreOpened { capability: again, durability: _ } => store_lookup_is_hit(l: local_store_lookup(capability: again, req: first_req))
+        LocalStoreUnavailable { root_path: _, cause: _ } => false
+      }
+      let wrong_policy_refused = match local_store_open(root: root, budgets: witness_family_budgets) {
+        LocalStoreUnavailable { root_path: _, cause: LocalStoreCatalogMismatch { marker_path: _, offered: _ } } => true
+        _ => false
+      }
+      commit_tag(c: first_write.commit) == "committed"
+        && all(attempts, a => a.within && a.evicted == 0)
+        && commit_tag(c: refused.commit) == "at_capacity" && count(refused.evicted) == 0
+        && root_object_bytes(root_path: root_path) <= 4096
+        && reopened && wrong_policy_refused
+    }
+    _ => false
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
   verdict && removed.success
@@ -568,7 +606,7 @@ test fn the_occupancy_index_slot_stays_within_its_window_by_real_execution() -> 
     Absent => false
     Present { value: store } => {
       let all_committed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-        |> all(i => commit_tag(c: local_store_commit(capability: store, req: bundle_req(module: concat("w", i as String)), payloads: verdicts(text: "w pass"), parts: []).commit) == "committed")
+        |> all(i => commit_tag(c: local_store_commit(capability: store, req: bundle_req(module: concat("w", int_to_decimal_string(value: i))), payloads: verdicts(text: "w pass"), parts: []).commit) == "committed")
       let slot_files = root_names_with_prefix(root_path: root_path, prefix: concat(local_store_index_key(family: native_module_verdict_bundle_artifact_kind) as String, "."))
       let hold_files = root_names_with_prefix(root_path: root_path, prefix: concat(local_store_hold_key(family: native_module_verdict_bundle_artifact_kind) as String, "."))
       all_committed && slot_files >= 1 && slot_files <= 3 && hold_files >= 1 && hold_files <= 3
@@ -1092,7 +1130,7 @@ test fn byte_parts_count_against_the_budget_and_leave_with_their_record_by_real_
     Absent => false
     Present { value: store } => {
       let all_committed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] |> all(i => {
-        let m = concat("bp", i as String)
+        let m = concat("bp", int_to_decimal_string(value: i))
         let c = local_store_commit(capability: store, req: bundle_req(module: m), payloads: diagnostics_only(), parts: verdict_part(root_path: root_path, name: concat("staging-", m), bytes: repeat_string(s: m, n: 300)))
         let staging_gone = Filesystem.Delete(path: store_path(root_path: root_path, name: concat("staging-", m)))
         commit_tag(c: c.commit) == "committed" && staging_gone.success && root_object_bytes(root_path: root_path) <= budget
@@ -1207,7 +1245,7 @@ test fn an_unreclaimable_index_generation_stops_further_writes_and_bounds_the_sl
       let blocked = shell.Mkdir.NewOwnerOnly(path: first_gen).success
       let c3 = local_store_commit(capability: store, req: bundle_req(module: "g3"), payloads: verdicts(text: "g pass"), parts: [])
       let after_c3 = root_names_with_prefix(root_path: root_path, prefix: slot_prefix)
-      let later = [4, 5, 6, 7, 8] |> map(i => commit_tag(c: local_store_commit(capability: store, req: bundle_req(module: concat("g", i as String)), payloads: verdicts(text: "g pass"), parts: []).commit))
+      let later = [4, 5, 6, 7, 8] |> map(i => commit_tag(c: local_store_commit(capability: store, req: bundle_req(module: concat("g", int_to_decimal_string(value: i))), payloads: verdicts(text: "g pass"), parts: []).commit))
       let population = root_names_with_prefix(root_path: root_path, prefix: slot_prefix)
       commit_tag(c: c1.commit) == "committed" && commit_tag(c: c2.commit) == "committed" && unlinked && blocked
         && commit_tag(c: c3.commit) == "committed"
@@ -1307,7 +1345,7 @@ test fn reopening_with_a_larger_budget_than_the_store_was_created_with_refuses_b
     Absent => false
     Present { value: store } => {
       let c = local_store_commit(capability: store, req: bundle_req(module: "b"), payloads: verdicts(text: "b pass"), parts: [])
-      let larger = witness_family_budgets |> map(b => LocalStoreFamilyBudget { family: b.family, budget: byte_size(count: measure_count(m: b.budget) * 4) })
+      let larger = witness_family_budgets |> map(b => LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: b.family, budget: byte_size(count: measure_count(m: b.budget) * 4) })
       commit_tag(c: c.commit) == "committed"
         && opening_refused_for_catalog(o: local_store_open(root: root, budgets: larger))
         && root_object_bytes(root_path: root_path) <= budget
@@ -1464,8 +1502,8 @@ test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution
     Present { value: store } => {
       let before = hold_slot_head_generation(root_path: session_root_path)
       match local_store_held_session(capability: store, family: native_module_verdict_bundle_artifact_kind, run: h => {
-        let writes = [1, 2, 3] |> map(i => local_store_commit_under_request(held: h, req: bundle_req(module: concat("s", i as String)), payloads: verdicts(text: "s pass"), parts: []))
-        let hits = [1, 2, 3] |> map(i => store_lookup_is_hit(l: local_store_lookup(capability: store, req: bundle_req(module: concat("s", i as String)))))
+        let writes = [1, 2, 3] |> map(i => local_store_commit_under_request(held: h, req: bundle_req(module: concat("s", int_to_decimal_string(value: i))), payloads: verdicts(text: "s pass"), parts: []))
+        let hits = [1, 2, 3] |> map(i => store_lookup_is_hit(l: local_store_lookup(capability: store, req: bundle_req(module: concat("s", int_to_decimal_string(value: i))))))
         writes |> all(c => session_commit_ok(c: c)) && hits |> all(x => x)
       }) {
         LocalStoreBracketRefused { refusal: _ } => false
@@ -1478,7 +1516,7 @@ test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution
     Absent => false
     Present { value: store } => {
       let before = hold_slot_head_generation(root_path: bracket_root_path)
-      let writes = [1, 2, 3] |> map(i => local_store_commit(capability: store, req: bundle_req(module: concat("b", i as String)), payloads: verdicts(text: "b pass"), parts: []))
+      let writes = [1, 2, 3] |> map(i => local_store_commit(capability: store, req: bundle_req(module: concat("b", int_to_decimal_string(value: i))), payloads: verdicts(text: "b pass"), parts: []))
       writes |> all(c => session_commit_ok(c: c)) && (hold_slot_head_generation(root_path: bracket_root_path) - before) == (2 * n)
     }
   }

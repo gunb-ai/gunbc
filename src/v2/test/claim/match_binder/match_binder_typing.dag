@@ -346,8 +346,13 @@ data mbt_hiding_src: String = mbt_decls + "fn g(artifact: Int, h: Outcome<ParseA
 
 fn mbt_hiding_reading() -> MbtReading { mbp_reading(src: mbt_hiding_src) }
 
+// RELABELLED, NOT REVERSED (tidy-ant-251, 2026-10-25): a pattern atom naming a frame value now refuses
+// with v2.compiler.resolve resolve_reason_pattern_atom_names_visible_value, which replaced
+// binder_hides_visible_value for pattern atoms. The program refuses exactly as before; only the cause and
+// remedy ("rename to bind, or use an equality guard to compare") changed, since the compiler cannot tell
+// a shadowing binder from a comparison against the parameter.
 test fn mbt_a_binder_hiding_a_same_named_parameter_refuses_holds() -> Bool {
-  mbp_reports(reading: mbt_hiding_reading(), reason: ^resolve_reason_binder_hides_visible_value)
+  mbp_reports(reading: mbt_hiding_reading(), reason: ^resolve_reason_pattern_atom_names_visible_value)
 }
 
 // (2) REFUSALS, EACH DISCRIMINATING: the same match with one pattern edit, so the positive control
@@ -595,7 +600,9 @@ test fn mbt_the_frontier_arm_accepts_and_reports_the_underived_scrutinee_holds()
       node: mbt_match_node(scrutinee: mbt_scrutinee(), arms: mbt_supplied_arms()),
       partials: Empty,
       entries: concat_inferred_facts_entries(a: mbt_underived_scrutinee_entry(), b: mbt_typed_bodies()),
-      resolved: mbt_resolved()
+      resolved: mbt_resolved(),
+      expected: Absent,
+      rigid_binders: Empty
     ),
     reason: ^infer_match_scrutinee_type_underived
   )
@@ -740,7 +747,7 @@ fn mbt_resolved() -> ResolvedTree {
     root: mbt_atom(s: ^mbt_unused_root),
     symbol_index: mbt_index(),
     resolved_declarations: mbt_index(),
-    occurrence_bindings: empty_map(), duplicate_binding_records: [],
+    occurrence_resolutions: empty_map(), duplicate_binding_records: [],
     module_outcomes: [], outcome_index: empty_module_outcome_index(),
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),
@@ -872,7 +879,9 @@ fn mbt_supplied_match(scrutinee_type: Node, arms: List<Node>) -> Outcome<Inferre
     node: mbt_match_node(scrutinee: mbt_scrutinee(), arms: arms),
     partials: Empty,
     entries: mbt_entries_for(scrutinee_type: scrutinee_type),
-    resolved: mbt_resolved()
+    resolved: mbt_resolved(),
+    expected: Absent,
+    rigid_binders: Empty
   )
 }
 
@@ -918,4 +927,68 @@ data mbt_undeclared_field_src: String = mbt_decls + "fn g(h: Outcome<ParseArtifa
 
 test fn mbt_a_field_off_the_binder_its_payload_does_not_declare_refuses_on_the_source_route_holds() -> Bool {
   mbp_reports(reading: mbp_reading(src: mbt_undeclared_field_src), reason: ^infer_reason_field_not_declared_on_receiver)
+}
+
+// A CATCH-ALL BINDER IS THE SCRUTINEE (v2.compiler.infer ArmPatternBinder). `other => other` covers
+// every alternative the earlier arms leave, and the binder is typed as the scrutinee's own type, so the
+// match types Diagnostics. Without the binder's row the `other` arm body is underived and the match
+// stays on the frontier (^mbp_underived), so the fact name discriminates the typing, not only the
+// acceptance.
+data mbt_catch_all_src: String = mbt_decls + "fn g(h: Diagnostics) -> Diagnostics {\n  match h {\n    None => h\n    other => other\n  }\n}\n"
+
+test fn mbt_a_catch_all_binder_is_typed_as_the_scrutinee_holds() -> Bool {
+  mbp_infers(reading: mbp_reading(src: mbt_catch_all_src))
+    && (mbp_reading(src: mbt_catch_all_src).match_fact == ^Diagnostics)
+}
+
+// AN ARM AFTER A CATCH-ALL IS UNREACHABLE AND REFUSES, after a binder and after a wildcard alike: both
+// cover every alternative (infer_coproduct_arm_after_catch_all). The binder case is also the guard for a
+// misspelled nullary variant that is not the last arm.
+data mbt_after_binder_src: String = mbt_decls + "fn g(h: Diagnostics) -> Diagnostics {\n  match h {\n    other => other\n    None => h\n  }\n}\n"
+
+data mbt_after_wildcard_src: String = mbt_decls + "fn g(h: Diagnostics) -> Diagnostics {\n  match h {\n    _ => h\n    None => h\n  }\n}\n"
+
+test fn mbt_an_arm_after_a_catch_all_refuses_as_unreachable_holds() -> Bool {
+  mbp_reports(reading: mbp_reading(src: mbt_after_binder_src), reason: ^infer_match_arm_unreachable)
+    && mbp_reports(reading: mbp_reading(src: mbt_after_wildcard_src), reason: ^infer_match_arm_unreachable)
+}
+
+// RULE R, AS RULED (sleek-owl-397, 2026-10-25): a read catch-all binder refuses when the alternatives the
+// earlier arms leave it number two or more and include a nullary variant (v2.compiler.infer
+// infer_coproduct_catch_all_binder_widening_over_a_nullary); a singleton remainder is exempt, because the
+// binder then binds exactly the value the intended arm would have matched. The three rows are the ruling's
+// required evidence.
+fn mbt_r_src(decl: String, arms: String) -> String {
+  "module p\n\n" + decl + "\n\nfn g(t: T) -> T {\n  match t {\n" + arms + "  }\n}\n"
+}
+
+data mbt_r_two_left: String = "type T = A { x: Int } | B | C"
+
+data mbt_r_one_left: String = "type T = A { x: Int } | B"
+
+data mbt_r_misspelled_arms: String = "    A { x: x } => t\n    Bx => Bx\n"
+
+data mbt_r_intended_arms: String = "    A { x: x } => t\n    other => other\n"
+
+data mbt_r_payload_left: String = "type T = A { x: Int } | B { y: Int } | C { z: Int }"
+
+// (1) A misspelled nullary over a remainder of two (B and C) refuses: the intended `B =>` arm would have left
+// C uncovered, and the binder silently takes it.
+test fn mbt_r_a_misspelled_binder_over_two_alternatives_refuses_holds() -> Bool {
+  mbp_reports(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_two_left, arms: mbt_r_misspelled_arms)), reason: ^infer_match_catch_all_binder_widens_over_a_nullary_variant)
+}
+
+// (2) TIME-STABILITY: the SAME arms are accepted while B is the only alternative left (behaviour-identical to
+// the intended program), and refuse once the type gains C: judged against the current remainder, never
+// grandfathered.
+test fn mbt_r_the_same_source_refuses_once_a_second_alternative_is_added_holds() -> Bool {
+  mbp_infers(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_one_left, arms: mbt_r_misspelled_arms)))
+    && mbp_reports(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_two_left, arms: mbt_r_misspelled_arms)), reason: ^infer_match_catch_all_binder_widens_over_a_nullary_variant)
+}
+
+// (3) An intended catch-all over a singleton nullary remainder is accepted, and so is one whose remainder
+// carries payloads only (no nullary for a misspelling to name).
+test fn mbt_r_an_intended_catch_all_over_a_singleton_or_payload_remainder_infers_holds() -> Bool {
+  mbp_infers(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_one_left, arms: mbt_r_intended_arms)))
+    && mbp_infers(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_payload_left, arms: mbt_r_intended_arms)))
 }

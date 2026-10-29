@@ -255,7 +255,7 @@ pub enum V2NativeCensusReading {
     },
     TypeDeclarationUse,
     /// `gunbc.instruments.ambient_name_census_reading`: the occurrence-binding rows census-infer prints.
-    OccurrenceBinding,
+    OccurrenceResolution,
     /// `gunbc.instruments.ambient_operation_disposition_reading`: the same run, read for each ambient
     /// primitive spelling's disposition.
     AmbientOperationDisposition,
@@ -442,7 +442,7 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("ambient-name-census"),
             TargetProducer::V2NativeCensus {
-                reading: V2NativeCensusReading::OccurrenceBinding,
+                reading: V2NativeCensusReading::OccurrenceResolution,
             },
         ),
         (
@@ -536,6 +536,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("router-proxy-falsifier"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/router_proxy_falsifier.dag",
+            },
+        ),
+        (
+            instrument_label("serving-benchmark-run"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/serving_benchmark_run.dag",
             },
         ),
         (
@@ -1170,7 +1176,7 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_census_infer_reading(&self_host_source_roots(), &TYPE_DECLARATION_USE_READING),
         TargetProducer::V2NativeCensus {
-            reading: V2NativeCensusReading::OccurrenceBinding,
+            reading: V2NativeCensusReading::OccurrenceResolution,
         } => run_ambient_name_census(
             &self_host_source_roots(),
             "ambient-name-census",
@@ -2093,8 +2099,9 @@ fn run_ambient_name_census(
         (Some("tree_runs".to_string()), text(&tree_runs)),
         (Some("rewritten".to_string()), text(&rewritten_text)),
     ];
-    if let Some(kit) = &kit {
+    if let (Some(kit), Some((kit_root, _))) = (&kit, &kit_inputs) {
         args.push((Some("kit_stdout".to_string()), text(&kit.stdout)));
+        args.push((Some("kit_root".to_string()), text(kit_root)));
     }
     match crate::v1_interpreter::run_in_context_with_args(&ctx, standing_function, &args, true) {
         Ok(value) => reader_standing_outcome(&ctx, &value, label_name, standing_function),
@@ -6080,10 +6087,14 @@ fn run_regen_round_cost_instrument() -> InvocationOutcome {
         message: format!("regen-round-cost: subject unreached: {detail}"),
     };
     let roots = self_host_source_roots();
+    // NOT a heal round: an instrument prices a round on the checkout it runs on, so it asks for
+    // no base mirror and its receipt renders no base-mirror line. Which authority a round seeds
+    // from is decided by the CALLER's context, never by whether something failed.
     let round = match cli_run::run_regen_round_cost(
         "target/stage0-regen-candidate",
         "target/stage0-regen-receipt.json",
         &roots,
+        false,
         false,
     ) {
         Ok(round) => round,
@@ -6197,5 +6208,203 @@ mod shared_type_census_cargo_mapping_tests {
         let build = shared_type_census_subject_build_from_cargo_verdict(&completed(0)).unwrap();
         assert!(!census::build_is_refused_finding(build.clone()));
         assert!(census::build_is_reportable_finding(build));
+    }
+}
+
+/// THE REGISTRY-VERSUS-ROWS IDENTITY CHECK (`gunbc.target_invocation_seed_growth`). `instrument_registry`
+/// is hand-written beside the `gunbc.instrument_targets` `instrument_bindings` rows it mirrors, and
+/// nothing compared them: a shared label whose producer kind, entry or function differs dispatched
+/// the registry's value while the rows said another. This evaluates the rows through the interpreter
+/// and joins by label identity. It is a frozen-X residue that dissolves with the v1 CLI, and it
+/// runs by hand (`cargo test registry_matches_rows`), not on the required path.
+#[cfg(test)]
+mod registry_rows_identity_tests {
+    use super::*;
+    use crate::v1_interpreter::Value;
+    use std::collections::BTreeMap;
+
+    /// One row as the identity join reads it: producer variant name, entry and function.
+    type RowReading = (String, Option<String>, Option<String>);
+
+    fn text(
+        ctx: &crate::v1_interpreter::InterpContext,
+        fields: &[(crate::v1_interpreter::Symbol, Value)],
+        name: &str,
+    ) -> Option<String> {
+        match ctx.field(fields, name) {
+            Some(Value::Str(s)) => Some(s.to_string()),
+            _ => None,
+        }
+    }
+
+    fn row_label(ctx: &crate::v1_interpreter::InterpContext, target: &Value) -> String {
+        let Value::Record { fields, .. } = target else {
+            panic!("binding target is not a Label")
+        };
+        let Some(Value::Record { fields: name, .. }) = ctx.field(fields, "target") else {
+            panic!("Label.target missing")
+        };
+        let target_name = text(ctx, name, "name").expect("TargetName.name");
+        let package = match ctx.field(fields, "package") {
+            Some(Value::Variant {
+                variant_name,
+                fields,
+                ..
+            }) if ctx.sym_eq(*variant_name, "PackagePath") => {
+                let Some(Value::List(segments)) = ctx.field(fields, "segments") else {
+                    panic!("PackagePath.segments missing")
+                };
+                segments
+                    .iter()
+                    .map(|s| match s {
+                        Value::Str(s) => s.to_string(),
+                        other => panic!("segment {other:?}"),
+                    })
+                    .collect::<Vec<_>>()
+                    .join("/")
+            }
+            _ => String::new(),
+        };
+        format!("//{package}:{target_name}")
+    }
+
+    /// The rows are read ONCE per process: each read drives the wet interpreter over the whole
+    /// corpus, and both tests join against the same reading.
+    fn read_rows() -> &'static BTreeMap<String, RowReading> {
+        static ROWS: std::sync::OnceLock<BTreeMap<String, RowReading>> = std::sync::OnceLock::new();
+        ROWS.get_or_init(evaluate_rows)
+    }
+
+    fn evaluate_rows() -> BTreeMap<String, RowReading> {
+        let reader = cli_run::workspace_root().join("dag/gunbc/instrument_targets.dag");
+        let roots = cli_run::default_source_roots();
+        let (graph, source_indices) =
+            cli_run::resolve_entry_graph(&roots, reader.to_str().expect("utf8 path"))
+                .expect("resolve rows");
+        let ctx = cli_run::make_eval_context(
+            graph.as_ref(),
+            source_indices,
+            crate::v1_interpreter::ExecutionMode::Wet,
+        );
+        let value =
+            crate::v1_interpreter::run_in_context_with_args(&ctx, "instrument_bindings", &[], true)
+                .expect("instrument_bindings");
+        let Value::List(bindings) = &value else {
+            panic!("instrument_bindings is not a List")
+        };
+        let mut rows = BTreeMap::new();
+        for binding in bindings.iter() {
+            let Value::Record { fields, .. } = binding else {
+                panic!("binding is not a record")
+            };
+            let label = row_label(&ctx, ctx.field(fields, "target").expect("binding.target"));
+            let Some(Value::Variant {
+                variant_name,
+                fields: producer,
+                ..
+            }) = ctx.field(fields, "producer")
+            else {
+                panic!("{label}: producer is not a variant")
+            };
+            let reading = (
+                ctx.resolve(*variant_name),
+                text(&ctx, producer, "entry"),
+                text(&ctx, producer, "function"),
+            );
+            assert!(
+                rows.insert(label.clone(), reading).is_none(),
+                "duplicate row {label}"
+            );
+        }
+        rows
+    }
+
+    fn registry_reading(producer: &TargetProducer) -> RowReading {
+        let debug = format!("{producer:?}");
+        let kind = debug
+            .split(|c: char| c == ' ' || c == '{')
+            .next()
+            .unwrap()
+            .to_string();
+        let (entry, function) = match producer {
+            TargetProducer::NativeClaimProgram { entry }
+            | TargetProducer::NativeServeProgram { entry } => (Some(entry.to_string()), None),
+            TargetProducer::CliWireProgram { entry, function } => {
+                (Some(entry.to_string()), Some(function.to_string()))
+            }
+            _ => (None, None),
+        };
+        (format!("{kind}Producer"), entry, function)
+    }
+
+    /// Every disagreement, each naming its label; empty when the two populations agree by identity.
+    fn mismatches(
+        registry: &[(Label, TargetProducer)],
+        rows: &BTreeMap<String, RowReading>,
+    ) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
+        for (label, producer) in registry {
+            let name = render_label(label);
+            seen.insert(name.clone());
+            match rows.get(&name) {
+                None => out.push(format!("{name}: in registry, no row")),
+                Some(row) if *row != registry_reading(producer) => out.push(format!(
+                    "{name}: registry {:?} != row {row:?}",
+                    registry_reading(producer)
+                )),
+                Some(_) => {}
+            }
+        }
+        out.extend(
+            rows.keys()
+                .filter(|n| !seen.contains(*n))
+                .map(|n| format!("{n}: row, not in registry")),
+        );
+        out
+    }
+
+    /// POSITIVE CONTROL: today's registry and rows agree on all labels.
+    #[test]
+    fn registry_matches_rows() {
+        let rows = read_rows();
+        let registry = instrument_registry();
+        assert_eq!(registry.len(), rows.len(), "label count differs");
+        let found = mismatches(&registry, rows);
+        assert!(
+            found.is_empty(),
+            "registry/rows drift:\n{}",
+            found.join("\n")
+        );
+    }
+
+    /// RED: a shared label whose entry (or function, or kind) differs is the silent hazard; the
+    /// check must fail and name that label.
+    #[test]
+    fn a_mutated_registry_entry_fails_by_name() {
+        let rows = read_rows();
+        let mut registry = instrument_registry();
+        let at = registry
+            .iter()
+            .position(|(_, p)| matches!(p, TargetProducer::CliWireProgram { .. }))
+            .expect("a CliWireProgram arm");
+        let victim = render_label(&registry[at].0);
+        registry[at].1 = TargetProducer::CliWireProgram {
+            entry: "dag/gunbc/instruments/mutated.dag",
+            function: "mutated",
+        };
+        let found = mismatches(&registry, rows);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].starts_with(&victim), "{found:?}");
+        let at = registry
+            .iter()
+            .position(|(_, p)| matches!(p, TargetProducer::SelfHost))
+            .expect("SelfHost arm");
+        registry[at].1 = TargetProducer::V2NativeCli;
+        assert_eq!(
+            mismatches(&registry, rows).len(),
+            2,
+            "a kind change must also be named"
+        );
     }
 }

@@ -1,0 +1,145 @@
+module extdeps.local_inference_lab.qwen3_8_flash_next
+
+import std.types { Bool, List, NonEmptyStr }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, HubCheckpointManifest, hub_checkpoint_manifest, HubFileDigest, hub_file_digest }
+import std.algebra { list_append, length, string_contains }
+
+// THE LOCAL-INFERENCE-LAB QWEN3.8-FLASH-NEXT NVFP4 CHECKPOINT, AS ITS PUBLISHER'S OWN EXTDEPS AUTHORITY.
+// This is the carrier gunbc.plans.flex_supplier_generalization generalization_55 declared and nothing
+// built: "the RentedWeightsPlacement shape generalizes ... over a Hugging Face repo at a pinned
+// revision, and Flash-Next moves from WeightsNamedUnpinned to the pinned revision observed on the
+// image." The row was declared; this module is the destination. The publisher is local-inference-lab,
+// not Alibaba and not vLLM upstream — they can re-quantize and push a new revision tomorrow — so under
+// DESIGN section 3's external-decomposition rule it is its own module, the shape
+// extdeps.radixark.glm_5_3_nvfp4 already establishes for a different publisher's redistribution.
+//
+// WHAT THIS MODULE KNOWS AND WHAT IT DOES NOT (DESIGN 4d). It knows the Hub facts of the artifact: the
+// repository, the exact revision serving runs at, the manifest the model API reports there, and the
+// content digests of the files the engine reads at start. It does NOT assert the quantization method:
+// the engine reports what it LOADED (`quantization=nvfp4_csf`, in the serving startup log, recorded by
+// gunbc.serving.srv1_serving_launch), and the repository NAME containing "NVFP4" is a name, not a
+// standing. Nothing here cites a paper or a release note for "NVFP4".
+
+data qwen3_8_flash_next_hub_repo: HubRepoId = HubRepoId {
+  kind: HubModelRepo,
+  path: "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD" as NonEmptyStr,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: hub_repo_https_uri(repo: qwen3_8_flash_next_hub_repo),
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.local_inference_lab.qwen3_8_flash_next",
+      decl_name: "qwen3_8_flash_next_hub_repo",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// THE PINNED REVISION. It is pinned because the host proves the tree moves: serving downloads by
+// revision, and the same tree was read on srv1's download cache at this revision (blob names matched,
+// 2026-10-25). The manifest is the Hub model API's own answer for this revision — 39 files, 21 of them
+// safetensors — read through the public model API 2026-10-25; the numbers are the API's, not a local
+// walk, and the read record below says so.
+data qwen3_8_flash_next_pinned_revision: NonEmptyStr =
+  "dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2" as NonEmptyStr
+
+data qwen3_8_flash_next_manifest: HubCheckpointManifest = hub_checkpoint_manifest(
+  revision: qwen3_8_flash_next_pinned_revision,
+  safetensors_shard_count: 21,
+  safetensors_bytes: byte_size(count: 102192011716),
+  repository_total_bytes: byte_size(count: 102262354720),
+  read_by: "the Hub model API tree for this repo at the revision above, read 2026-10-25; the per-file digests below are the same response's lfs.oid / oid members, and config.json plus the index were independently hashed on srv1's cache the same day and matched" as NonEmptyStr,
+)
+
+// THE TWO SMALL FILES WHOSE BYTES CHANGE ENGINE BEHAVIOR, digested at the pinned revision. config.json
+// is what the loader dispatches its quantization config on; the index's shard map must match the shards
+// on disk. Pinning only the shards would leave a substitution of either undetected by any digest check.
+// config.json is git-stored (its digest is the content digest the API reports alongside the git blob
+// oid, no LFS pointer); the index is LFS-stored, whose Hub `lfs.oid` IS the sha256.
+data qwen3_8_flash_next_config_pin: HubFileDigest = hub_file_digest(
+  path_in_repo: "config.json" as NonEmptyStr,
+  revision: qwen3_8_flash_next_pinned_revision,
+  bytes: byte_size(count: 75217),
+  sha256_hex: "b50dbc52a0c83b0cd2a44a372c1fb6b5e0e6827d22f2611c97d4d030f92f6b28" as NonEmptyStr,
+  lfs_stored: false,
+)
+
+data qwen3_8_flash_next_index_pin: HubFileDigest = hub_file_digest(
+  path_in_repo: "model.safetensors.index.json" as NonEmptyStr,
+  revision: qwen3_8_flash_next_pinned_revision,
+  bytes: byte_size(count: 47280974),
+  sha256_hex: "5fa166bbb1cf25adda455117563efa72a2072272001f459eedece131ffc913e1" as NonEmptyStr,
+  lfs_stored: true,
+)
+
+// EVERY SAFETENSOR SHARD, digested at the pinned revision. Each `lfs_stored: true` digest is the Hub's
+// own lfs.oid for that file at this revision — the LFS pointer stores the content digest, so a
+// multi-gigabyte shard is pinned from the API response rather than a local hash run. The rows are the
+// API's tree response of 2026-10-25, in path order.
+data qwen3_8_flash_next_shard_pins: List<HubFileDigest> = [
+  hub_file_digest(path_in_repo: "tensors/model-00001-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5000643504), sha256_hex: "ebf3648c5f4cd1f24e79789e7803498dc4e74cb52515cc515b2d22cf8161953b" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00002-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5002792096), sha256_hex: "79a643fc5c024089cecd32ca27dc43e671cbec70ff3628b728909b7656ac43ec" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00003-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5002927400), sha256_hex: "c45f942203db4c7f5a1071700b93b908495cc790271acddfff39091c2b953923" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00004-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5003194672), sha256_hex: "071ab9cf963ca0f1a6a194b4cec485f5de18ef9804da915b2e6abd0eb0c707af" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00005-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5003151448), sha256_hex: "f80d17870eb1d36917257494770984953476583c57737f61fdbd341c957b9715" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00006-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5002892148), sha256_hex: "3e9183d4ebb267fa92429184d5132d302cb1a98fd049149e5d01dccd4ca65795" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00007-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5002907708), sha256_hex: "aa1ad959c4d62e0bc4600fd0b57cc2939b463e9fb53dc01020e188552b52ce5a" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00008-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5003103756), sha256_hex: "0b18844027be74b84b240f23bf3a744bc29b35de0bd384f41c40cd85e6339326" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00009-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5002976316), sha256_hex: "2d0b6c66790c17f8b1fdcf442f541778c8f0a381aca26c11b9d7cfcf7c96f2f0" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00010-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5002834136), sha256_hex: "3ed9bd73745aebf6dc136f437b67d6b9fc3d38d25ad84300b399164bc87a72b7" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00011-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5002685828), sha256_hex: "4936ff28c6cc8b66653ddb9cae28bc284569a1a2f7116819a017dc1a0e517ed8" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00012-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5002912920), sha256_hex: "dd7df5a6ff73e9960412243f744eab9ec35f4be40da5bb158dc4ba8796b33742" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00013-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 5003237060), sha256_hex: "28a455c8ea4ebaa847fb4cbed2bc1de9eff0b501dd3f848a3a3cfc38778e8500" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00014-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 4845006312), sha256_hex: "6941676e685abf9817d9c48a17fdeda20b2b72d16217555252aa4c602b7f98b8" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00015-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 4860574920), sha256_hex: "2a1129b5acfc24a45bf402aa63dcef08b531aedfdaf5233c65fd3d12dc303fdd" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00016-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 4950031028), sha256_hex: "635e97fbad78fa988647d407e2b58e55d551ef94d798c9b6fb5550de25e86429" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00017-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 4950030896), sha256_hex: "bf60d564d89a805b67f8be5f2847a1b1567a70dbc23d19754395c127568474ad" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00018-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 4950030896), sha256_hex: "c5bde22f9364e82eb25973456795592fdcb4b158bc2095898979a2566bf4c562" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00019-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 4950030904), sha256_hex: "da3dc3b4f428f5b9dd53362691043d0242f48d03adca9b7b553bd9f3a1e96350" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00020-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 4950030904), sha256_hex: "4978bb6b8480cfc02d3c8bc84ba86202889f5f10d090bb17c21fee663cea7683" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tensors/model-00021-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 2700016864), sha256_hex: "48203838f2c76921bddbf1cc51d20a23858c128821a21add55fa1778e5e25283" as NonEmptyStr, lfs_stored: true),
+]
+
+fn qwen3_8_flash_next_pinned_files() -> List<HubFileDigest> {
+  [qwen3_8_flash_next_config_pin, qwen3_8_flash_next_index_pin]
+}
+
+// THE WHOLE PIN ROSTER the provision route carries: 21 shards + config.json + the index = 23 digested
+// files at the pinned revision. This is the CONSUMER that makes the per-file digests load-bearing:
+// gunbc.serving.serving_provision_derivation's vllm arm puts it into VllmServingProvisionInputs
+// (weights_digests), so a route DOES hold the shard digests a verifier checks against, and the witness
+// test.claim.serving.srv1_serving_launch_witness folds it against the manifest totals below. Without a
+// consumer these rows would be dead text (review 86738); the fold here is the first, cheapest check
+// that the rows and the manifest cannot drift apart silently.
+fn qwen3_8_flash_next_pin_roster() -> List<HubFileDigest> {
+  list_append(left: qwen3_8_flash_next_shard_pins, right: qwen3_8_flash_next_pinned_files())
+}
+
+// The roster folded against the manifest: 23 files, one revision everywhere, shard bytes summing EXACTLY
+// to the manifest's safetensors total, and the roster's bytes bounded by the repository total. The roster
+// pins 23 of the repository's 39 files (the 21 shards, config.json and the index), so its bytes cannot
+// equal the 39-file total: the other 16 files (102262354720 - 102239367907 = 22986813 bytes) are not
+// pinned here. An equality there was false from #15222 on and went unseen because no witness over it
+// resolved until #15367; this states what the rows support (DESIGN 4d). Pure rows — this is
+// decidable without the network, and the witness asserts it. Shards are recognised by the "-of-00021"
+// segment their names carry (config.json and the index do not contain it), so no path-prefix vocabulary
+// is needed here.
+fn qwen3_8_flash_next_pins_cohere() -> Bool {
+  let roster = qwen3_8_flash_next_pin_roster()
+  let shard_sum = fold(roster, init: 0, f: (acc, d) => if string_contains(s: d.path_in_repo as String, pattern: "-of-00021") { acc + (byte_size_count(b: d.bytes) as Int) } else { acc })
+  let total_sum = fold(roster, init: 0, f: (acc, d) => acc + (byte_size_count(b: d.bytes) as Int))
+  let one_revision = fold(roster, init: true, f: (acc, d) => acc && ((d.revision as String) == (qwen3_8_flash_next_manifest.revision as String)))
+  length(xs: roster) == 23
+    && one_revision
+    && shard_sum == (byte_size_count(b: qwen3_8_flash_next_manifest.safetensors_bytes) as Int)
+    && total_sum <= (byte_size_count(b: qwen3_8_flash_next_manifest.repository_total_bytes) as Int)
+}

@@ -1,0 +1,90 @@
+module test.claim.hash_builtins_declared_digest_witness
+
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EXECUTING EVIDENCE for v1.compiler.infer_method builtin_function_registry: the two digest rows
+// (atom_identity_hash, hash_combine) name their RESULT as the carrier std.content_hash DECLARES,
+// Fnv1a64StructuralDigestHex (String where lower_hex_16). Their rows used to name the result
+// through a bare `Hash` node with no declaration behind it, which resolved in the CALLER's scope;
+// wherever v2.std.node is in the closure that is `type Hash = Fnv1a64Structural`, a record, so the
+// digest was typed as a record and a record formal ACCEPTED it while the digest's own carrier
+// formal refused it invisibly (the std.content_hash content_hash_atom shape). Each claim joins the
+// census by CLASS and SUBJECT -- a TypeMismatch's subject is the type it GOT (measured, not read
+// off the source) -- so a module refusing for any other reason measures another wall. Refusals and
+// controls are separate modules, so no control's census carries a refusal this witness authored.
+
+// RED 1's module: the builtin's digest at a RECORD formal, in the content_hash_atom shape where
+// the caller-scope Hash record typing used to ACCEPT it.
+data record_formal_source: String = "module hash_digest_witness.record_formal\n\nimport std.types { String }\nimport std.content_hash { Fnv1a64Structural }\n\nfn wants_record(r: Fnv1a64Structural) -> String { \"rec\" }\n\nfn feed() -> String { wants_record(r: atom_identity_hash(\"a\")) }\n"
+
+// RED 2's module: raw digest TEXT at the declared carrier formal. The one declared route from text
+// to the carrier is std.content_hash fnv1a64_structural_hex_digest (CONTROL C2), which validates
+// the 16 lower-hex digits; nothing else may mint one.
+data text_into_carrier_source: String = "module hash_digest_witness.text_into_carrier\n\nimport std.types { String }\nimport std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, structural_content_hash }\n\nfn forged() -> Fnv1a64Structural { structural_content_hash(digest: \"not-a-digest\") }\n"
+
+// CONTROL C1: digest-to-digest, exactly the corpus composition shape -- atom_identity_hash into
+// hash_combine's String params, the digest into a carrier-typed result, and the
+// std.content_hash structural_content_hash route (a digest into its carrier-typed field).
+data digest_to_digest_source: String = "module hash_digest_witness.digest_to_digest\n\nimport std.types { String }\nimport std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, structural_content_hash }\n\nfn pair(x: String, y: String) -> Fnv1a64StructuralDigestHex {\n  hash_combine(atom_identity_hash(x), atom_identity_hash(y))\n}\n\nfn real_site(value: String) -> Fnv1a64Structural { structural_content_hash(digest: atom_identity_hash(value)) }\n"
+
+// CONTROL C2: the declared validating route text->carrier compiles. It returns the record OPTIONAL
+// (it validates, so it can refuse), which is why it is OptionalOf and not the bare carrier.
+data validating_route_source: String = "module hash_digest_witness.validating_route\n\nimport std.types { String }\nimport std.content_hash { Fnv1a64Structural, fnv1a64_structural_hex_digest }\n\nfn parsed(text: String) -> Fnv1a64Structural? { fnv1a64_structural_hex_digest(hex: text) }\n"
+
+// -1 when the census could not run, so neither a ">= 1" nor an "== 0" claim reads could-not-measure
+// as its answer.
+fn blocking_count(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+// DISCRIMINATING RED 1: the builtin's digest at a record formal is refused. On the parent it was
+// ACCEPTED there, because the row typed the result as the caller-scope Hash record. MEASURED
+// subject: the expression's type is the carrier, so the histogram key is Product(Fnv1a64StructuralDigestHex).
+test fn a_digest_is_refused_at_a_record_formal() -> Bool {
+  blocking_count(
+    c: compile_dag_diagnostic_census(record_formal_source),
+    wanted: "TypeMismatch",
+    subject: "Product(Fnv1a64StructuralDigestHex)"
+  ) >= 1
+}
+
+// DISCRIMINATING RED 2: raw digest text at the declared carrier formal is refused; only the
+// declared validating route admits text. MEASURED subject: the got-side is Primitive(String).
+test fn a_digest_text_is_refused_at_the_carrier_formal() -> Bool {
+  blocking_count(
+    c: compile_dag_diagnostic_census(text_into_carrier_source),
+    wanted: "TypeMismatch",
+    subject: "Primitive(String)"
+  ) >= 1
+}
+
+// ACCEPTED CONTROL C1: digest-to-digest composes -- hash_combine over two digests, and the
+// std.content_hash structural_content_hash route -- with no blocking diagnostic.
+test fn a_digest_flows_digest_to_digest() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(digest_to_digest_source)) == 0
+}
+
+// ACCEPTED CONTROL C2: the declared validating route admits text to the digest.
+test fn the_validating_route_admits_text() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(validating_route_source)) == 0
+}

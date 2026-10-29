@@ -6,12 +6,7 @@ import extdeps.exec.program { ProgramIdentity, cataloged_program, uncataloged_pr
 
 import std.types { NonEmptyStr, String, List }
 import std.algebra { Cons, Empty }
-import std.operation_argv {
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  OperationInputBinding,
-  operation_argv_cause_label,
-}
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, operation_argv_cause_label, shell_materialize_operation_argv }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { posix_single_quote }
@@ -325,6 +320,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.git", decl_name: "git_fetch_shallow_revision_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_checkout_revision_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_rev_parse_head_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_ls_files_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_grep_files_with_matches_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_init_quiet_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_rev_parse_tree_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_archive_tar_command"),

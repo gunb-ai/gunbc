@@ -67,6 +67,7 @@ import std.types { Int, String, List, FilePath }
 import std.shell_stream_capture { WitnessStderrCapturePolicy, BoundedTail }
 import std.measure { byte_size }
 import extdeps.git
+import extdeps.rust.cargo { cargo_default_target_dir }
 import extdeps.git.inspect
 import extdeps.gunbc
 import extdeps.shell
@@ -192,7 +193,7 @@ fn scratch_is_usable(root: String) -> Bool {
 fn scratch_root() -> String {
   let toplevel = git.Inspect.Toplevel()
   let made = shell.Mktemp.DirWithTemplate(
-    template: concat(toplevel.path as String, "/target/gunbc-diagnostic-span-XXXXXX") as FilePath
+    template: concat(cargo_default_target_dir(build_root: toplevel.path as String), "/gunbc-diagnostic-span-XXXXXX") as FilePath
   )
   if made.success { made.path as String } else { unavailable_scratch_root }
 }

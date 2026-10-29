@@ -883,6 +883,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         ImportCollidesWithKernelName { name: s(), module_path: s(), importing_module: s(), kernel_declaration_module: s(), span: no_span() },
         KernelMintDeclarationAmbiguousAtImport { name: s(), module_path: s(), importing_module: s(), row_count: 0, span: no_span() },
         UnresolvedType { name: s(), span: no_span() },
+        TypeRefMeasureBindingDisagreement { name: s(), production_route: s(), span: no_span() },
         TypeArgumentKindMismatch { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
         TypeParameterInValuePosition { name: s(), span: no_span() },
         UnitVariantPhantomIdentityEvidenceUnavailable { name: s(), span: no_span() },
@@ -980,6 +981,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
             missing_realization_fact: s(),
             span: no_span(),
         },
+        CastRealizationRefused { target: s(), missing_realization_fact: s(), span: no_span() },
         TypeNameCarriesNoRecordConstructor {
             type_name: s(),
             declared_variants: istrings(),
@@ -1360,6 +1362,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "KernelMintDeclarationAmbiguousAtImport"
         }
         CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
+        CompilerDiagnostic::TypeRefMeasureBindingDisagreement { .. } => {
+            "TypeRefMeasureBindingDisagreement"
+        }
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => {
             "UnitVariantPhantomIdentityEvidenceUnavailable"
         }
@@ -1445,6 +1450,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
+        CompilerDiagnostic::CastRealizationRefused { .. } => "CastRealizationRefused",
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
             "ServiceConfigReferenceJudgmentDeferred"
         }
@@ -1475,6 +1481,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ImportCollidesWithKernelName { name, .. } => name.clone(),
         CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { name, .. } => name.clone(),
         CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
+        CompilerDiagnostic::TypeRefMeasureBindingDisagreement { name, .. } => name.clone(),
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name, .. } => {
             name.clone()
         }
@@ -1581,6 +1588,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TransportEmissionNotModeled {
             service, operation, ..
         } => format!("{service}.{operation}"),
+        // The NAME is the refusal fact, which names the uncastable pair: the burn-down is the
+        // list of cast routes awaiting a declaration or a realization.
+        CompilerDiagnostic::CastRealizationRefused {
+            missing_realization_fact,
+            ..
+        } => missing_realization_fact.clone(),
         // The NAME is the config FIELD, not the referenced spelling: the burn-down this
         // histogram feeds is the list of service-config fields still awaiting the reference
         // judgment, and keying on the referenced name would spread one unjudged field across
@@ -1635,6 +1648,10 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => None,
         CompilerDiagnostic::CallPositionalDeficit { .. } => None,
         CompilerDiagnostic::CallPositionalSurplus { .. } => None,
+        // The refusal carries the target NAME and the missing realization FACT, not a rendered
+        // type-shape pair: like the pairless classes its arm is None, and the census model's
+        // `Absent` is the honest reading.
+        CompilerDiagnostic::CastRealizationRefused { .. } => None,
         CompilerDiagnostic::CircularDependency { .. } => None,
         CompilerDiagnostic::ComplexityUnknown { .. } => None,
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => None,
@@ -1695,6 +1712,14 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         }
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => None,
         CompilerDiagnostic::TypeParameterInValuePosition { .. } => None,
+        // INTERIM hand-Rust scaffold, same marker as the pair above
+        // (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7): the
+        // measure-vs-production disagreement carries a type-reference NAME and the
+        // production ROUTE that resolved it (its authority src/v1/00_core.dag
+        // render_diagnostic); neither is a rendered expected/got type shape, so the
+        // pairless reading is the honest one — the sibling reading `UnresolvedType`
+        // already gets. A pair is gained only by this arm being rewritten.
+        CompilerDiagnostic::TypeRefMeasureBindingDisagreement { .. } => None,
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => None,
         CompilerDiagnostic::UnlistedImportUse { .. } => None,
         CompilerDiagnostic::UnlistedVariantValueUse { .. } => None,

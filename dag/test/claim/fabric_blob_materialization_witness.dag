@@ -1,0 +1,116 @@
+module test.claim.fabric_blob_materialization_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.measure { byte_size, measure_count }
+import std.cache_identity { fabric_blob_artifact_kind }
+import std.cache_interface { RefuseNewStore }
+import std.judgment_contract { output_fabric_blob }
+import std.fabric_blob {
+  FabricBlobAddress, FabricBlobRead, FabricBlobReadRefused,
+  read_staged_fabric_blob, fabric_blob_reading_digest, fabric_blob_reading_size,
+  fabric_blob_reading_path,
+}
+import std.materialization_provider {
+  FabricBlobRequest, ArtifactRequest, ArtifactManifest, request_key,
+  addressed_request, RequestAddressed, RequestAddressRefused,
+  evaluation_store_address_digest, evaluation_store_address_preimage,
+}
+import std.materialization_object {
+  ArtifactPayload, ArtifactBlobPart, blob_part_payload, payload_part,
+  encode_store_object, result_content_canonical, store_object_name,
+  store_lookup_is_hit, store_lookup_refusal_tag, store_commit_refusal_tag,
+}
+import std.materialization_store_grant { WitnessScratchRoot }
+import extdeps.realization.materialization_store_local {
+  LocalStoreFamilyBudget, LocalStoreInitialized, LocalStoreInitializationRefused,
+  LocalStoreOpened, LocalStoreUnavailable, LocalStoreStagedPart,
+  local_store_initialize, local_store_open, local_store_commit, local_store_lookup_parts,
+  LocalStoreCapability, store_path,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+
+// Change both the record and its byte part coherently. Ordinary record-integrity
+// checks would accept them; the requested capture's digest must still refuse.
+fn substitute_capture(store: LocalStoreCapability, root_path: String, request: ArtifactRequest, source: NonEmptyStr) -> Bool {
+  match read_staged_fabric_blob(path: source) {
+    FabricBlobReadRefused { fault: _ } => false
+    FabricBlobRead { reading: other } => match addressed_request(req: request) {
+      RequestAddressRefused { components: _, scope: _ } => false
+      RequestAddressed { addressed: a } => {
+        let found = local_store_lookup_parts(capability: store, req: request)
+        let changed = all(found.parts, p => shell.Copy.File(source: source as String, destination: fabric_blob_reading_path(reading: p) as String).success)
+        let blob = ArtifactBlobPart { id: output_fabric_blob, digest: fabric_blob_reading_digest(reading: other), size: fabric_blob_reading_size(reading: other) }
+        let payload = blob_part_payload(b: blob)
+        let parts = [payload_part(payload: payload)]
+        let record = encode_store_object(
+          manifest: ArtifactManifest { kind: fabric_blob_artifact_kind, request_key: evaluation_store_address_digest(address: a.address), parts: parts },
+          payloads: [payload], blobs: [blob], evaluation_preimage: evaluation_store_address_preimage(address: a.address),
+          result_preimage: result_content_canonical(parts: parts, payloads: [payload]))
+        let planted = Filesystem.Write(path: store_path(root_path: root_path, name: store_object_name(address: a.address)), content: record)
+        let read = local_store_lookup_parts(capability: store, req: request)
+        store_lookup_is_hit(l: found.lookup) && count(found.parts) == 1 && changed && planted.success
+          && store_lookup_refusal_tag(l: read.lookup) == "output_content_refused"
+      }
+    }
+  }
+}
+
+// The bytes contain NUL and invalid UTF-8: this exercises the byte plane.
+test fn captured_bytes_bind_storage_and_survive_reopen() -> Bool {
+  let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX")
+  let root_path = directory.path
+  let root = WitnessScratchRoot { root: root_path }
+  let budgets = [LocalStoreFamilyBudget {
+    family: fabric_blob_artifact_kind, budget: byte_size(count: 4096), at_capacity: RefuseNewStore
+  }]
+  let source = concat(root_path, "/capture") as NonEmptyStr
+  let alternate = concat(root_path, "/renamed") as NonEmptyStr
+  let wrote = shell.Copy.File(source: "dag/test/fixture/fabric_blob/capture-a.bin", destination: source as String)
+  let copied = shell.Copy.File(source: "dag/test/fixture/fabric_blob/capture-a.bin", destination: alternate as String)
+  let verdict = match local_store_initialize(root: root, instance_label: "captured-blob", budgets: budgets) {
+    LocalStoreInitializationRefused { root_path: _, cause: _ } => false
+    LocalStoreInitialized { opening: opened } => match opened {
+      LocalStoreUnavailable { root_path: _, cause: _ } => false
+      LocalStoreOpened { capability: store, durability: _ } => match read_staged_fabric_blob(path: source) {
+        FabricBlobReadRefused { fault: _ } => false
+        FabricBlobRead { reading: original } => {
+          let request = FabricBlobRequest { address: FabricBlobAddress { key: fabric_blob_reading_digest(reading: original) } }
+          let saved = local_store_commit(capability: store, req: request, payloads: [],
+            parts: [LocalStoreStagedPart { id: output_fabric_blob, staged: source }])
+          let same = match read_staged_fabric_blob(path: alternate) {
+            FabricBlobReadRefused { fault: _ } => false
+            FabricBlobRead { reading: moved } => {
+              let moved_request = FabricBlobRequest { address: FabricBlobAddress { key: fabric_blob_reading_digest(reading: moved) } }
+              let repeated = local_store_commit(capability: store, req: moved_request, payloads: [],
+                parts: [LocalStoreStagedPart { id: output_fabric_blob, staged: alternate }])
+              request_key(req: request) == request_key(req: moved_request)
+                && store_commit_refusal_tag(c: repeated.commit) == "converged_on_prior_commit"
+            }
+          }
+          let changed = shell.Copy.File(source: "dag/test/fixture/fabric_blob/capture-b.bin", destination: source as String)
+          let wrong = local_store_commit(capability: store, req: request, payloads: [],
+            parts: [LocalStoreStagedPart { id: output_fabric_blob, staged: source }])
+          let text_only = local_store_commit(capability: store, req: request,
+            payloads: [ArtifactPayload { id: output_fabric_blob, content: "a digest is not the captured bytes" }], parts: [])
+          let restored = match local_store_open(root: root, budgets: budgets) {
+            LocalStoreUnavailable { root_path: _, cause: _ } => false
+            LocalStoreOpened { capability: reopened, durability: _ } => {
+              let found = local_store_lookup_parts(capability: reopened, req: request)
+              let bytes_match = store_lookup_is_hit(l: found.lookup) && count(found.parts) == 1
+                && all(found.parts, r => fabric_blob_reading_digest(reading: r) == fabric_blob_reading_digest(reading: original)
+                  && measure_count(m: fabric_blob_reading_size(reading: r)) == 4)
+              bytes_match && substitute_capture(store: reopened, root_path: root_path, request: request, source: source)
+            }
+          }
+          store_commit_refusal_tag(c: saved.commit) == "committed" && same && changed.success
+            && store_commit_refusal_tag(c: wrong.commit) == "output_content_refused"
+            && store_commit_refusal_tag(c: text_only.commit) == "output_content_refused" && restored
+        }
+      }
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  directory.success && wrote.success && copied.success && verdict && removed.success
+}

@@ -107,9 +107,10 @@ import extdeps.shadow.subordinate_ids {
   subordinate_id_file_path,
   parse_subordinate_file,
   subordinate_ranges_for,
+  subordinate_file_ranges,
   plan_subordinate_file,
-  usermod_step_words,
-  subordinate_step_text,
+  subordinate_file_bytes,
+  render_subordinate_file,
   subordinate_plan_text,
 }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
@@ -181,6 +182,7 @@ import gunbc.host.host_effect_realize {
 }
 import gunbc.typed_remote_file_write {
   converge_typed_remote_file,
+  converge_typed_remote_file_locked,
   typed_remote_file_write_seal,
   TypedRemoteFileConverged,
   TypedRemoteFileConvergenceRefused,
@@ -189,8 +191,21 @@ import gunbc.typed_remote_file_write {
   RemoteFileModeOwnerReadWriteWorldRead,
   RemoteFileViaNonInteractiveSudo,
   NoValidation,
+  DestinationUnchangedUntilRename,
+  FleetHostLock,
 }
-import gunbc.file_access { FileTreeScope }
+import std.measure { Second, second }
+import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
+import extdeps.procps.pgrep {
+  pgrep_user_argv,
+  pgrep_scan_outcome,
+  pgrep_pid_listing,
+  PgrepMatched,
+  PgrepNoMatch,
+  PgrepScanFailed,
+  PgrepPidsRead,
+  PgrepPidLineUnparseable,
+}import gunbc.file_access { FileTreeScope }
 
 // ── ONE QUESTION PER ARM, AND A REFUSED LEG IS NEVER A MISSING ARM ────────────────────────────────
 //
@@ -301,12 +316,24 @@ fn cdi_spec_arm(transport: HostEffectTransport) -> GpuContainerArm {
 // THE DOCKER HOST IS THE POINT OF THE WHOLE MODULE, so it is spelled once, here. DOCKER_HOST is set to
 // the job user's own rootless socket and the command is run AS the job user: if the daemon answers and
 // the container sees the device, the capability is real for the identity that will actually run CI.
-// env_prefixed_command puts the assignment in front of the sudo, so the value survives into the
-// command the job user's shell execs.
+//
+// THE ASSIGNMENT GOES INSIDE THE ELEVATION, never in front of it. /etc/sudoers line 9 on both fleet
+// hosts is `Defaults env_reset`, so an assignment placed before sudo is RESET away before the target
+// command ever sees it — measured on srv3 2026-10-26: `env DOCKER_HOST=unix:///run/user/999/docker.sock
+// sudo -n -u ghrunner env | grep -c DOCKER_HOST` prints 0, while `sudo -n -u ghrunner env DOCKER_HOST=…
+// env` shows the value. The first converge run emitted the outer form and both job-user arms failed with
+// "permission denied … unix:///var/run/docker.sock": the assignment evaporated, so docker fell back to
+// the ROOTFUL socket it must never touch, and a missing capability was reported for a daemon that was
+// actually running. env_prefixed_command inside sudo_elevate_as_command is the shape this module already
+// uses for its elevated reads (host_capability_row_read_command: `sudo env LC_ALL=C cat …`), and that is
+// the only reason the store checks worked on the same run.
 fn job_user_command(user: NonEmptyStr, socket: String, inner: ArgvCommand) -> ArgvCommand {
-  env_prefixed_command(
-    bindings: [EnvSet { name: "DOCKER_HOST", value: socket }],
-    command: sudo_elevate_as_command(user: user, command: argv_words(command: inner)),
+  sudo_elevate_as_command(
+    user: user,
+    command: argv_words(command: env_prefixed_command(
+      bindings: [EnvSet { name: "DOCKER_HOST", value: socket }],
+      command: inner,
+    )),
   )
 }
 
@@ -954,7 +981,7 @@ fn runner_gpu_container_toolchain_converge_ci_wet() -> ProcessExit {
                   //
                   // WHAT THE GATE DOES NOT DO is pull the label off a working host over a transient
                   // provisioning hiccup. The two verifications read the files themselves rather than trusting
-                  // the usermod exit codes, so on a host that already holds both declared ranges they pass
+                  // the write actions' exit codes, so on a host that already holds both declared ranges they pass
                   // no matter what the legs did, and the label stands — the behaviour that kept srv1's slot
                   // serving through the staged-write timeouts this module was built around. Red means "both
                   // ranges are not proven"; it does not mean "something failed".
@@ -972,7 +999,13 @@ fn runner_gpu_container_toolchain_converge_ci_wet() -> ProcessExit {
                       // is noise. The declared ranges are printed too, since a range the model declares
                       // and a range the host holds can disagree and that disagreement is the story.
                       "subordinate: declared ", to_string(ids.job_user_first), "+", to_string(ids.job_user_count),
-                      " for ", spec.job_user as String, ", displaceable ", ids.displaceable as String, "\n",
+                      " for ", spec.job_user as String, ", displaceable ", ids.displaceable as String,
+                      // THE BOUND, IN THE ARTIFACT A HUMAN READS. "The ranges are right" is not the whole
+                      // claim: it matters HOW they were made right, because a host whose ranges were moved
+                      // by a route that serialized against nothing can be correct today and clobbered
+                      // tomorrow. Naming it in the receipt is what makes the claim checkable after the
+                      // fact instead of only in the source.
+                      ", bound: ", gpu_container_provision_subordinate_write_bound, "\n",
                       "provision: ", gpu_container_provision_run_text(r: provision), "\n",
                       // SUBORDINATE INTEGRITY AS ITS OWN LINE, because it is now a reason a converge can go
                       // red that no other line explains: all four capability arms can print ok and this
@@ -1400,7 +1433,7 @@ data gpu_container_provision_subgid_verify_step: String = "subgid verified"
 // right for harmless install failures on an already-correct host, and wrong for a failed safety check.
 //
 // So integrity is its own conjunct rather than being inferred from provisioning success. It is proven by
-// the two verifications ACTUALLY READING BACK BOTH FILES, not by the usermod legs reporting exit 0 — which
+// the two verifications ACTUALLY READING BACK BOTH FILES, not by the write actions reporting exit 0 — which
 // is why requiring them present-and-provisioned (rather than "not refused") is the shape that holds: a
 // chain that stopped before the checks leaves them absent, and absent is not proven.
 // ONE RANGE FILE'S VERIFICATION, PROVEN — asked per file, which is the whole point. Two conditions on the
@@ -1445,20 +1478,20 @@ fn gpu_container_subordinate_integrity_holds(steps: List<GpuContainerProvisionSt
     && gpu_container_subordinate_range_verification_proven(steps: steps, step_name: gpu_container_provision_subgid_verify_step)
 }
 
-// WHY TWO usermod LEGS ARE NOT A TRANSACTION, AND WHAT IS HONEST TO CLAIM INSTEAD.
+// WHY TWO SUBORDINATE WRITES ARE NOT A TRANSACTION, AND WHAT IS HONEST TO CLAIM INSTEAD.
 //
 // An earlier comment on this path asserted that planning both files before mutating either means "the host
 // can never have one range moved without the other". That was false as written, and review 5644178843
-// caught it: gpu_container_provision_subordinate_actions emits the uid operations and the gid operations as
-// SEPARATE legs, and gpu_container_provision_run_legs stops at the first leg that fails, so a host can be
+// caught it: gpu_container_provision_subordinate_actions emits the uid write and the gid write as
+// SEPARATE actions, and the fold over the action list stops at the first action that fails, so a host can be
 // left with /etc/subuid migrated and /etc/subgid not. Planning both first buys one thing only — a refusal
 // that can be seen before anything is touched when BOTH files are already known to be bad — and it buys
 // nothing across the boundary between the two files.
 //
 // THE CONTRACT ACTUALLY OFFERED, stated as what it guarantees:
 //   1. A PARTIAL MIGRATION IS RECOGNISED, not papered over. The two verifications read the files
-//      themselves after usermod ran, so a host whose gid range did not land fails "subgid verified"
-//      whether or not its usermod exited 0. Partial application is therefore detected on the same
+//      themselves after the writes ran, so a host whose gid range did not land fails "subgid verified"
+//      whether or not its writer reported success. Partial application is therefore detected on the same
 //      converge that caused it, and reported in the receipt by name.
 //   2. THE CAPABILITY IS NOT GRANTED ACROSS IT. gpu_container_subordinate_integrity_holds makes the
 //      label gate refuse, so a half-migrated host never advertises gpu-docker; no GPU job is scheduled
@@ -1490,6 +1523,7 @@ fn gpu_container_provision_plan_has_refusal(actions: List<GpuContainerProvisionA
     ProvisionRefusal { step: _, cause: _ } => true
     ProvisionOwnedDirectory { step: _, argv: _ } => false
     ProvisionRootOwnedFile { step: _, path: _, content: _, scope: _ } => false
+    ProvisionSubordinateRangesFile { step: _, path: _, content: _, expected: _ } => false
     ProvisionLegs { legs: _ } => false
     ProvisionVerify { step: _, check: _ } => false
   })
@@ -1609,6 +1643,7 @@ fn gpu_container_provision_plan_step_names(actions: List<GpuContainerProvisionAc
     ProvisionRefusal { step: s, cause: _ } => [s]
     ProvisionOwnedDirectory { step: s, argv: _ } => [s]
     ProvisionRootOwnedFile { step: s, path: _, content: _, scope: _ } => [s]
+    ProvisionSubordinateRangesFile { step: s, path: _, content: _, expected: _ } => [s]
     ProvisionLegs { legs: ls } => map(ls, l => l.step)
     ProvisionVerify { step: s, check: _ } => [s]
   })
@@ -1630,6 +1665,7 @@ fn gpu_container_provision_plan_check_count(actions: List<GpuContainerProvisionA
     ProvisionRefusal { step: _, cause: _ } => false
     ProvisionOwnedDirectory { step: _, argv: _ } => false
     ProvisionRootOwnedFile { step: _, path: _, content: _, scope: _ } => false
+    ProvisionSubordinateRangesFile { step: _, path: _, content: _, expected: _ } => false
     ProvisionLegs { legs: _ } => false
   }))
 }
@@ -1791,21 +1827,298 @@ fn gpu_container_provision_displacee_store_free(
   }
 }
 
-// THE RECONCILIATION, AS LEGS PLUS A REFUSAL. A REFUSAL IS TERMINAL, and deliberately so: proceeding
-// without the range yields a dockerd that will not start, so "everything else installed" is not a partial
-// success — it is a host that looks configured and cannot run a container, which is the failure mode this
-// entire work item exists to remove.
+// WHAT THE WRITE IS BOUND BY, verbatim, and repeated into the receipt so a host that was converged can
+// say what it was serialized against. The two files are written whole under the fleet host lock, with the
+// destination re-read and compared immediately before the rename: serialized against fleet actuations; a
+// non-fleet useradd/usermod in the read-to-rename window is detected by the re-read compare, except within
+// the final compare-to-rename interval.
+//
+// It says nothing about shadow-utils because flock(1) and shadow do not speak: usermod and useradd
+// serialize on fcntl/lockf (measured: usermod 4.13 blocks on /etc/.pwd.lock and ignores flock(2)), so
+// claiming a lock against them would be the one sentence here that is not true.
+data gpu_container_provision_subordinate_write_bound: String =
+  "serialized against fleet actuations; a non-fleet useradd/usermod in the read-to-rename window is detected by the re-read compare, except within the final compare-to-rename interval"
+
+// HOW LONG THIS WRITE WAITS FOR THE FLEET HOST LOCK, and what a conflict reports. Both are THIS write's
+// policy, which is why they are rows here rather than a fleet row: fleet_converge_locked_apply_script runs
+// plain `flock -x <path> bash -c ...` -- NO -w and NO --conflict-exit-code -- so the apply waits UNBOUNDED
+// and cannot distinguish a conflict from its command's own failure. There is no shared value to import,
+// and minting one the apply does not consume would be a dangling declaration (§3c) carrying a meaning the
+// apply does not honour. This write bounds its wait instead: an actuator that cannot say why it is still
+// waiting has no business holding a converge open, and the host-mutation concurrency group
+// (gunbc-host-mutation-{host}) is what is supposed to keep the two actuators off one host, so contention
+// here means that serialization is broken somewhere else -- the right answer to that is a refusal, not a
+// longer wait.
+//
+// 75 is EX_TEMPFAIL (sysexits.h): a temporary condition for which retrying is the remedy, which is exactly
+// what a lock conflict is. The corpus cites the same convention in codex_harness_turn_busy_exit and
+// native_serve_stuck_exit_code; neither row is imported, because an exit contract belongs to the subsystem
+// that reports it and this write's exit status should not depend on the codex harness.
+data gpu_container_provision_subordinate_lock_wait: Second = second(count: 120)
+
+data gpu_container_provision_subordinate_lock_conflict_exit_code: Int = 75
+
+// HOW MANY PROCESSES AN ACCOUNT MAY HAVE BEFORE THIS CONVERGE CERTIFIES THEM. The precheck below reads
+// one /proc/<pid>/map per process of the displaced account, so the cost is execs over one SSH session --
+// and an unbounded scan is a converge whose runtime is chosen by whatever the displaced account happens to
+// be running. A login session on these hosts holds a few dozen processes; past this bound the honest
+// answer is that this converge cannot certify the move, and it says so instead of stopping early and
+// calling what it did not read clear.
+data gpu_container_provision_namespace_scan_pid_limit: Int = 256
+
+// ONE ROW OF /proc/<pid>/uid_map OR gid_map, READ AS "inner outer length".
+//
+// The OUTER column is the one this converge asks about: a namespace whose outer id falls inside the range
+// being moved from the displaced account is a namespace that is reading subordinate ids out of that range
+// RIGHT NOW, and moving the range under it reassigns what its uids mean. The inner column is not read
+// because the question is not which inner id maps where -- any row drawing from the range is enough to
+// refuse.
+type GpuContainerProvisionMapRow
+  = GpuContainerProvisionMapRowClear
+  | GpuContainerProvisionMapRowMapped
+  | GpuContainerProvisionMapRowUnreadable { raw: String }
+
+// A row that does not parse is NOT skipped. /proc/<pid>/uid_map is written by the kernel; a row this model
+// cannot read is a kernel this model does not describe, and "I could not read it" must never become "it is
+// not mapped from that range".
+fn gpu_container_provision_map_row(row: String, first: Int, count: Int) -> GpuContainerProvisionMapRow {
+  let words = fold(
+    split(s: row, delimiter: " "),
+    init: [],
+    f: (acc, piece) =>
+      fold(split(s: piece, delimiter: "\t"), init: acc, f: (acc2, word) =>
+        if trim(s: word) == "" { acc2 } else { append(acc2, trim(s: word)) })
+  )
+  if length(words) != 3 {
+    GpuContainerProvisionMapRowUnreadable { raw: row }
+  } else {
+    match words.skip(n: 1).first() {
+      Absent => GpuContainerProvisionMapRowUnreadable { raw: row }
+      Present { value: outer_s } =>
+        match words.skip(n: 2).first() {
+          Absent => GpuContainerProvisionMapRowUnreadable { raw: row }
+          Present { value: length_s } =>
+            match parse_int(s: outer_s) {
+              Absent => GpuContainerProvisionMapRowUnreadable { raw: row }
+              Present { value: outer } =>
+                match parse_int(s: length_s) {
+                  Absent => GpuContainerProvisionMapRowUnreadable { raw: row }
+                  Present { value: span } =>
+                    // Half-open intervals: [outer, outer+span) against [first, first+count). Adjacency
+                    // (outer == first+count) shares no id and is therefore clear.
+                    if outer < first + count && first < outer + span {
+                      GpuContainerProvisionMapRowMapped
+                    } else {
+                      GpuContainerProvisionMapRowClear
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+type GpuContainerProvisionMapScan
+  = GpuContainerProvisionMapClear
+  | GpuContainerProvisionMapMappedFromRange { row: String }
+  | GpuContainerProvisionMapUnreadableRow { row: String }
+
+fn gpu_container_provision_map_scan(text: String, first: Int, count: Int) -> GpuContainerProvisionMapScan {
+  fold(
+    filter(split(s: text, delimiter: "\n"), l => trim(s: l) != ""),
+    init: GpuContainerProvisionMapClear,
+    f: (acc, line) =>
+      match acc {
+        GpuContainerProvisionMapClear =>
+          match gpu_container_provision_map_row(row: trim(s: line), first: first, count: count) {
+            GpuContainerProvisionMapRowClear => GpuContainerProvisionMapClear
+            GpuContainerProvisionMapRowMapped => GpuContainerProvisionMapMappedFromRange { row: trim(s: line) }
+            GpuContainerProvisionMapRowUnreadable { raw: r } => GpuContainerProvisionMapUnreadableRow { row: r }
+          }
+        GpuContainerProvisionMapMappedFromRange { row: _ } => acc
+        GpuContainerProvisionMapUnreadableRow { row: _ } => acc
+      }
+  )
+}
+
+// THE NAMESPACE PRECHECK, for one map of one process against the ranges being moved from one account.
+// Returns the refusal, or none when the process is certified clear.
+//
+// A process that disappears between the scan and this read is not a failure: its namespaces went with it,
+// and there is no mapping left to move. That is why "No such file or directory" is the ONLY non-zero exit
+// read as clear -- an unreadable map for any other reason refuses.
+fn gpu_container_provision_one_process_map(
+  account: NonEmptyStr,
+  pid: Int,
+  map_name: String,
+  ranges: List<SubordinateRange>,
+  transport: HostEffectTransport,
+) -> String? {
+  let path = join(["/proc/", to_string(pid), "/", map_name], "")
+  match run_argv_over_host_effect_transport(
+    command: sudo_elevate_command(command: gpu_container_provision_read_argv(path: path)),
+    transport: transport) {
+    RunArgvTransportRefused { reason: r } =>
+      Present { value: join([account as String, " pid ", to_string(pid), ": ", r as String], "") }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code != 0 && string_contains(s: o.stderr, pattern: "No such file") {
+        none
+      } else if o.exit_code != 0 {
+        Present { value: join([account as String, " pid ", to_string(pid), ": cannot read ", path, " (exit ", to_string(o.exit_code), " ", trim(s: o.stderr), ")"], "") }
+      } else {
+        fold(ranges, init: none, f: (acc, r) =>
+          match acc {
+            Present { value: _ } => acc
+            Absent =>
+              match gpu_container_provision_map_scan(text: o.stdout, first: r.first, count: r.count) {
+                GpuContainerProvisionMapClear => none
+                GpuContainerProvisionMapMappedFromRange { row: row } =>
+                  Present { value: join(
+                    [account as String, " pid ", to_string(pid), " has a namespace mapped from the range being moved (",
+                     map_name, " row ", row, " of ", path, " overlaps ", to_string(r.first), ":", to_string(r.count), ")"],
+                    "") }
+                GpuContainerProvisionMapUnreadableRow { row: row } =>
+                  Present { value: join([account as String, " pid ", to_string(pid), ": unreadable ", map_name, " row ", row, " in ", path], "") }
+              }
+          })
+      }
+  }
+}
+
+// NO PROCESS OF THE DISPLACED ACCOUNT MAY BE MAPPED OUT OF THE RANGE BEING MOVED.
+//
+// THIS IS THE CHECK usermod WAS NEVER ABLE TO MAKE. usermod exits 8 the moment any process of the account
+// exists at all, which is why it is useless for an account that is logged in -- and why "just use usermod"
+// was never a workaround for this precondition, only a refusal to state it. Here the precondition is the
+// narrow one that matters: not "no processes" but "no process whose user namespace draws subordinate ids
+// from the range about to be reassigned". A logged-in session that has never created a namespace is moved
+// safely; a containerd running under that account is not.
+fn gpu_container_provision_displaced_maps(
+  account: NonEmptyStr,
+  map_name: String,
+  ranges: List<SubordinateRange>,
+  transport: HostEffectTransport,
+) -> String? {
+  if length(ranges) == 0 {
+    // Nothing is being taken from this account in this file, so there is nothing to certify.
+    none
+  } else {
+    match run_argv_over_host_effect_transport(
+      command: sudo_elevate_command(command: pgrep_user_argv(user: account)),
+      transport: transport) {
+      RunArgvTransportRefused { reason: r } =>
+        Present { value: join(["cannot scan processes of ", account as String, ": ", r as String], "") }
+      RunArgvTransportObserved { observed: o } =>
+        match pgrep_scan_outcome(exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr) {
+          // 2 or 3: the question was never answered. Reading that as "no processes" is the fail-open the
+          // procps manual's EXIT STATUS section exists to forbid.
+          PgrepScanFailed { exit_code: c, stderr: e } =>
+            Present { value: join(["pgrep -u ", account as String, " failed (exit ", to_string(c), " ", trim(s: e), ")"], "") }
+          PgrepNoMatch => none
+          PgrepMatched { listing: listing } =>
+            match pgrep_pid_listing(stdout: listing) {
+              PgrepPidLineUnparseable { line: l } =>
+                Present { value: join([account as String, ": pgrep printed a non-integer pid ", l], "") }
+              PgrepPidsRead { pids: pids } =>
+                if length(pids) > gpu_container_provision_namespace_scan_pid_limit {
+                  Present { value: join(
+                    [account as String, " has ", to_string(length(pids)), " processes; this converge certifies at most ",
+                     to_string(gpu_container_provision_namespace_scan_pid_limit), " and refuses to certify fewer"],
+                    "") }
+                } else {
+                  fold(pids, init: none, f: (acc, pid) =>
+                    match acc {
+                      Present { value: _ } => acc
+                      Absent => gpu_container_provision_one_process_map(
+                        account: account, pid: pid, map_name: map_name, ranges: ranges, transport: transport)
+                    })
+                }
+            }
+        }
+    }
+  }
+}
+
+// THE TWO WRITES, OR ONE OF THEM. A file whose plan is empty is NOT written: its rows already say what
+// they should say, and rewriting a file that is already correct would take the fleet lock and dirty the
+// mtime of a file this converge was only asked to inspect. The content is the WHOLE file rendered from the
+// rows the planner produced -- survivors in the order they were read, the displaced row re-granted in
+// place at its new first, the declared row appended -- and `expected` is the bytes that reading was made
+// against, which is what the writer will not overwrite unless the destination still equals.
+fn gpu_container_provision_subordinate_write(
+  step: String,
+  path: String,
+  steps: List<SubordinateStep>,
+  rows: List<SubordinateRange>,
+  reading: SubordinateFileReading,
+) -> List<GpuContainerProvisionAction> {
+  if length(steps) == 0 {
+    []
+  } else {
+    [
+      ProvisionSubordinateRangesFile {
+        step: step,
+        path: path,
+        content: render_subordinate_file(reading: reading, rs: rows),
+        expected: subordinate_file_bytes(reading: reading),
+      },
+    ]
+  }
+}
+
+fn gpu_container_provision_subordinate_writes(
+  uid_path: String,
+  uid_steps: List<SubordinateStep>,
+  uid_rows: List<SubordinateRange>,
+  uid_reading: SubordinateFileReading,
+  gid_path: String,
+  gid_steps: List<SubordinateStep>,
+  gid_rows: List<SubordinateRange>,
+  gid_reading: SubordinateFileReading,
+) -> List<GpuContainerProvisionAction> {
+  append(
+    gpu_container_provision_subordinate_write(
+      step: "subuid", path: uid_path, steps: uid_steps, rows: uid_rows, reading: uid_reading),
+    items: gpu_container_provision_subordinate_write(
+      step: "subgid", path: gid_path, steps: gid_steps, rows: gid_rows, reading: gid_reading))
+}
+
+// THE RECONCILIATION, AS WHOLE-FILE WRITES PLUS A REFUSAL. A REFUSAL IS TERMINAL, and deliberately so:
+// proceeding without the range yields a dockerd that will not start, so "everything else installed" is not
+// a partial success -- it is a host that looks configured and cannot run a container, which is the failure
+// mode this entire work item exists to remove.
 //
 // BOTH FILES ARE PLANNED BEFORE EITHER IS WRITTEN. /etc/subuid and /etc/subgid are edited as a pair by
-// shadow itself, and planning them together means a refusal on either one stops BOTH — so the converge
+// shadow itself, and planning them together means a refusal on either one stops BOTH -- so the converge
 // can never leave a host where uids were moved and gids were not, which is a state no tool produces and
 // no tool expects.
 type GpuContainerSubordinateReconcile
-  = GpuContainerSubordinatePlanned { legs: List<GpuContainerProvisionLeg>, report: String }
+  = GpuContainerSubordinatePlanned { actions: List<GpuContainerProvisionAction>, report: String }
   | GpuContainerSubordinateRefused { reason: String }
   | GpuContainerSubordinateUnreadable { reason: String }
 
-fn gpu_container_provision_subordinate_legs(
+// THE SUBORDINATE WRITE, WITHOUT usermod.
+//
+// usermod --remove-subuid / --add-subuid CANNOT BE USED ON THESE HOSTS: shadow exits 8 with "user X is
+// currently used by process N" for any account that has a running process, and both accounts this converge
+// ever touches are logged in (the displaced account holds a systemd --user, the job account holds lingering
+// sessions). Every converge but one would fail at the first leg, and the failure would be indistinguishable
+// from a host that genuinely has a container running out of the range.
+//
+// So the files are written DIRECTLY -- and everything shadow's own writer was providing has to be provided
+// here, one condition at a time, each of them a refusal rather than a hope:
+//   (a) the displaced account is store-free (checked once, shared by both plans, so the two files cannot
+//       be judged against two different answers about the same account), and NO PROCESS of it holds a
+//       namespace mapped from the range being moved (gpu_container_provision_displaced_maps above);
+//   (b) the write is atomic and taken under the fleet host lock -- staging file in the SAME directory,
+//       dd conv=fsync, rename, all of it under flock(1) on fleet_generation_lock;
+//   (c) the WHOLE file is rendered from the rows that were parsed, untouched rows byte-identical, and the
+//       destination is re-read and compared against the bytes the render was made against immediately
+//       before the rename (gunbc.typed_remote_file_write, DestinationUnchangedUntilRename);
+//   (d) the rendered ranges are pairwise disjoint, or the plan is refused before a leg exists.
+// A refusal on either file stops both (see above), and any unreadable row is a refusal -- the parser
+// refuses the whole file if one line does not render back byte-identically.
+fn gpu_container_provision_subordinate_reconcile(
   job_user: NonEmptyStr,
   ids: RunnerHostSubordinateIds,
   displacee_home: String?,
@@ -1840,19 +2153,53 @@ fn gpu_container_provision_subordinate_legs(
     displacee_regrant_first: ids.displacee_regrant_first)
   match uid_plan {
     SubordinatePlanRefused { reason: r } => GpuContainerSubordinateRefused { reason: concat(uid_path, ": ", r) }
-    SubordinatePlanSteps { steps: us } =>
+    SubordinatePlanSteps { steps: us, rows: urs } =>
       match gid_plan {
         SubordinatePlanRefused { reason: r } => GpuContainerSubordinateRefused { reason: concat(gid_path, ": ", r) }
-        SubordinatePlanSteps { steps: gs } =>
-          GpuContainerSubordinatePlanned {
-            legs: append(
-              map(us, s => gpu_container_provision_leg(
-                step: join(["subuid ", subordinate_step_text(step: s)], ""),
-                words: usermod_step_words(f: SubordinateUids, step: s))),
-              items: map(gs, s => gpu_container_provision_leg(
-                step: join(["subgid ", subordinate_step_text(step: s)], ""),
-                words: usermod_step_words(f: SubordinateGids, step: s)))),
-            report: join([subordinate_plan_text(plan: uid_plan), " | ", subordinate_plan_text(plan: gid_plan)], ""),
+        SubordinatePlanSteps { steps: gs, rows: grs } =>
+          if length(us) == 0 && length(gs) == 0 {
+            // Nothing to do is a real answer, and it is the srv1 answer: its rows already hold the range,
+            // its ghrunner holds a running rootless store that must NOT be moved. No leg, no write, no
+            // lock taken -- a no-op that flocked and rewrote the file would be a converge that damages
+            // what it was only supposed to inspect.
+            GpuContainerSubordinatePlanned {
+              actions: [],
+              report: "subordinate ranges already hold the declared rows; nothing written",
+            }
+          } else {
+            // The precheck runs whenever ANYTHING is being written, not only when the displaced account
+            // loses its row: it is a read-only scan, and deciding "was this account actually displaced"
+            // from the step shapes is a second place to be wrong about the same fact.
+            match gpu_container_provision_displaced_maps(
+              account: ids.displaceable,
+              map_name: "uid_map",
+              ranges: subordinate_ranges_for(rs: subordinate_file_ranges(reading: uid_reading), account: ids.displaceable),
+              transport: transport) {
+              Present { value: why } => GpuContainerSubordinateRefused { reason: why }
+              Absent =>
+                match gpu_container_provision_displaced_maps(
+                  account: ids.displaceable,
+                  map_name: "gid_map",
+                  ranges: subordinate_ranges_for(rs: subordinate_file_ranges(reading: gid_reading), account: ids.displaceable),
+                  transport: transport) {
+                  Present { value: why } => GpuContainerSubordinateRefused { reason: why }
+                  Absent => GpuContainerSubordinatePlanned {
+                    actions: gpu_container_provision_subordinate_writes(
+                      uid_path: uid_path,
+                      uid_steps: us,
+                      uid_rows: urs,
+                      uid_reading: uid_reading,
+                      gid_path: gid_path,
+                      gid_steps: gs,
+                      gid_rows: grs,
+                      gid_reading: gid_reading),
+                    report: join(
+                      [subordinate_plan_text(plan: uid_plan), " | ", subordinate_plan_text(plan: gid_plan), " | ",
+                       gpu_container_provision_subordinate_write_bound],
+                      ""),
+                  }
+                }
+            }
           }
       }
   }
@@ -1925,6 +2272,13 @@ type GpuContainerProvisionAction
   // spelling for "some other root" — the write is confined to /home (the job user's unit file) or /etc (the
   // apt sources line), which are exactly the two trees this converge owns.
   | ProvisionRootOwnedFile { step: String, path: String, content: String, scope: GpuContainerProvisionWriteScope }
+  // ONE SUBORDINATE FILE, WRITTEN WHOLE. It carries `expected` alongside `content` because the two are
+  // different facts about different moments: `content` is what this converge rendered from the rows it
+  // parsed, and `expected` is what the file held when those rows were read. The writer refuses to rename
+  // unless the destination still equals `expected`, which is the only thing standing between a render and
+  // a stale lock holder overwriting each other. The scope is not carried: it is fixed at /etc for these
+  // two paths, and a caller that could name a scope here could name one that is not /etc.
+  | ProvisionSubordinateRangesFile { step: String, path: String, content: String, expected: String }
   | ProvisionLegs { legs: List<GpuContainerProvisionLeg> }
   | ProvisionVerify { step: String, check: GpuContainerProvisionCheck }
   // AN ACTION THAT ONLY REPORTS, for a refusal discovered while PLANNING. It exists because a refusal has
@@ -1950,8 +2304,10 @@ fn gpu_container_range_file_path(f: GpuContainerRangeFile) -> String {
 // exists because the corresponding ACTION's exit status is not evidence:
 type GpuContainerProvisionCheck
   = VerifySubordinateRanges { file: GpuContainerRangeFile, job_user: NonEmptyStr, first: Int, count: Int }
-  // usermod exits 0 when a flag pair simply did not apply to the file named, so the ONLY thing that can
-  // tell "the range is there" from "the command ran" is reading the file back. THE FILE IS NAMED rather
+  // A WRITE CAN REPORT SUCCESS AND STILL LEAVE THE RANGE OUT. The writer's own read-back proves the bytes
+  // it renamed are the bytes it rendered, but it cannot prove the render was the render THIS host needed,
+  // and the route that replaced usermod has no exit code that means "the range is there" -- so the ONLY
+  // thing that can tell "the range is there" from "a file was written" is reading the file back. THE FILE IS NAMED rather
   // than the check being "the ranges": /etc/subuid and /etc/subgid are separate files, shadow maintains
   // them separately, and a host whose uid range landed while its gid range did not has a dockerd that
   // fails at namespace-creation time with an error naming neither file. Checking only subuid because it
@@ -2012,12 +2368,12 @@ fn gpu_container_provision_check_verdict(
       let rs = parse_subordinate_file(path: gpu_container_range_file_path(f: file), exit_code: 0, stdout: stdout, stderr: "")
       match rs {
         SubordinateFileUnreadable { path: _, cause: cc } => Present { value: cc }
-        SubordinateFileRead { path: _, ranges: ranges } =>
+        SubordinateFileRead { path: _, bytes: _, ranges: ranges } =>
           if subordinate_ranges_for(rs: ranges, account: j).any(r => r.first == f && r.count == c) {
             Absent
           } else {
             Present { value: join([j as String, " does not hold ", to_string(f), "+", to_string(c), " in ",
-                                   gpu_container_range_file_path(f: file), " after usermod"], "") }
+                                   gpu_container_range_file_path(f: file), " after the subordinate write"], "") }
           }
       }
     }
@@ -2110,6 +2466,41 @@ fn gpu_container_provision_run_action(
         mode: RemoteFileModeOwnerReadWriteWorldRead,
         privilege: RemoteFileViaNonInteractiveSudo,
         validation: NoValidation,
+      ) {
+        TypedRemoteFileConvergenceRefused { step: st, reason: r } =>
+          [GpuContainerProvisionRefused { step: join([s, " ", st], ""), cause: r }]
+        TypedRemoteFileConverged { converged: _ } =>
+          [GpuContainerProvisioned { step: s }]
+      }
+    // THE SUBORDINATE WRITE, through the same writer -- but on its LOCKED ROUTE, with the destination
+    // re-read and compared against the bytes this render was made against immediately before the rename.
+    //
+    // THE LOCK IS THE FLEET HOST LOCK, NOT A FILE LOCK OF OURS. It is the same flock(1) the fleet converge
+    // apply takes over fleet_generation_lock, and the gpu converge mode does not otherwise hold it -- so
+    // this is the write taking the lock itself rather than assuming somebody else did. Taking a *private*
+    // lock path would be the lie version of this: it would serialize against nothing. Contention is a
+    // refusal, not a wait-out: the wait is this write's own bound, tighter than the fleet apply's (which
+    // waits unbounded on the same lock -- see gpu_container_provision_subordinate_lock_wait), and the
+    // host-mutation concurrency group keeps the two actuators off one host, so an actual conflict means
+    // the serialization is broken somewhere else and the right answer is to stop.
+    //
+    // The mode is 0644 root:root because that is what the live hosts measure, and the privilege is
+    // sudo -n because /etc is not writable by the runner principal. The scope is /etc, never /home: these
+    // are shadow's files, and the seal is what stops a mistyped path (or a future caller) from routing
+    // them anywhere else.
+    ProvisionSubordinateRangesFile { step: s, path: p, content: c, expected: e } =>
+      match converge_typed_remote_file_locked(
+        target: admin,
+        context: context,
+        admission: typed_remote_file_write_seal(path: p, content: c, allowed_scope: gpu_container_provision_write_scope_tree(scope: WriteScopeSystemEtc)),
+        mode: RemoteFileModeOwnerReadWriteWorldRead,
+        privilege: RemoteFileViaNonInteractiveSudo,
+        validation: DestinationUnchangedUntilRename { expected: e },
+        lock: FleetHostLock {
+          lock_path: fleet_generation_lock as NonEmptyStr,
+          wait: gpu_container_provision_subordinate_lock_wait,
+          conflict_exit_code: gpu_container_provision_subordinate_lock_conflict_exit_code,
+        },
       ) {
         TypedRemoteFileConvergenceRefused { step: st, reason: r } =>
           [GpuContainerProvisionRefused { step: join([s, " ", st], ""), cause: r }]
@@ -2229,7 +2620,7 @@ fn gpu_container_provision_plan(
           ProvisionVerify { step: "unit active verified", check: VerifyUnitActive { uid: uid_value } },
         ],
       ),
-      // 3 (placed last on purpose). THE RANGES, READ BACK AFTER usermod ran. Verification goes at the end
+      // 3 (placed last on purpose). THE RANGES, READ BACK AFTER THE SUBORDINATE WRITES RAN. Verification goes at the end
       // of the list rather than immediately after the step it checks so that a failure anywhere in the
       // chain is reported at the point the chain stopped, and the verifications — which are the only
       // things here that can be run against a host that is already correct — then always describe the
@@ -2484,14 +2875,14 @@ fn gpu_container_provision_subordinate_actions(
   displacee_home: String?,
   transport: HostEffectTransport,
 ) -> List<GpuContainerProvisionAction> {
-  match gpu_container_provision_subordinate_legs(
+  match gpu_container_provision_subordinate_reconcile(
     job_user: spec.job_user, ids: ids, displacee_home: displacee_home, transport: transport) {
-    GpuContainerSubordinatePlanned { legs: legs, report: _ } =>
-      if length(legs) == 0 {
-        []
-      } else {
-        [ProvisionLegs { legs: legs }]
-      }
+    // The actions, as planned -- ONE PER FILE, each its own whole-file write under the fleet host lock.
+    // They are NOT collapsed into one action: a write that has to be refused has to be locatable, and the
+    // receipt says which of the two files stopped. A no-op plan contributes nothing here, which is how a
+    // srv1 converge ends up with no subordinate leg at all instead of a rewrite of a file that already
+    // holds the declared rows.
+    GpuContainerSubordinatePlanned { actions: actions, report: _ } => actions
     // A REFUSAL IS REPORTED AS ITSELF, not converted into a leg with an empty argv. The first draft did
     // that conversion, and it destroyed the one thing the refusal exists to carry: the reason. An empty
     // argv reaching a transport produces "the command failed" with nothing naming WHY the ranges were

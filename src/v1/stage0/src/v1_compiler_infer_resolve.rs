@@ -15,6 +15,9 @@ use crate::std_syntax::LiteralValue::LitInt;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_types::{container_param_name, SourceSpan};
 pub use crate::std_types::{is_container_type, is_kernel_type};
+use crate::v1_compiler_infer_env::TypeRefMeasureBinding::{
+    TypeRefMeasureBound, TypeRefMeasureDisagreesWithProduction, TypeRefMeasureUnbound,
+};
 use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
     UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
 };
@@ -24,7 +27,7 @@ pub use crate::v1_compiler_infer_env::{
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
     lookup_unit_variant_phantom_type, substitute_type_slots, substitute_type_slots_scoped,
     symbol_index_lookup, type_ref_measure_binding_authority, width_resolution_declaration,
-    TypeBinding, TypeEnv, UnitVariantContribution, UnitVariantPhantomLookup,
+    TypeBinding, TypeEnv, TypeRefMeasureBinding, UnitVariantContribution, UnitVariantPhantomLookup,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
@@ -34,8 +37,8 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    ArityMismatch, InternalError, TypeAliasCycle, TypeArgumentKindMismatch, UnlistedImportUse,
-    UnresolvedType,
+    ArityMismatch, InternalError, TypeAliasCycle, TypeArgumentKindMismatch,
+    TypeRefMeasureBindingDisagreement, UnlistedImportUse, UnresolvedType,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -56,18 +59,18 @@ pub use crate::v1_std_core::{
     field_from_key_property_name, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, find_property, foreach_variable_at, generic_param_name_at, intern,
-    is_compiler_error, is_local_transport, join_optional_cardinality, kernel_span,
-    let_binding_name_at, local_transport_node, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_init_node, make_field_node,
-    make_interp_part_node, make_named_expr_node, make_param_node, make_resolved_param_node,
-    make_resource_use_node, make_text_part_node, make_transport_node, map_children, no_span,
-    node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
+    is_compiler_error, is_undeclared_transport, join_optional_cardinality, kernel_span,
+    let_binding_name_at, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
+    make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
+    make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
+    make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
+    param_node_default_value, param_node_name_at, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment,
     resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
-    string_type, transport_request_body, type_param_kind_property_name, unit_type,
-    with_optional_cardinality, with_required_cardinality, Cardinality, CompilerDiagnostic,
-    Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, InferredNode, MatchPattern,
-    NewlineIndex, Node, ParsedModuleItemKind, StringPart,
+    string_type, transport_request_body, type_param_kind_property_name, undeclared_transport_node,
+    unit_type, with_optional_cardinality, with_required_cardinality, Cardinality,
+    CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind,
+    InferredNode, MatchPattern, NewlineIndex, Node, ParsedModuleItemKind, StringPart,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2068,11 +2071,25 @@ Rc::new(NodeResolveResult {
                                                     } else {
                                                         structurally_resolved.clone()
                                                     };
-                                                    if ((((masked.clone() && v1_rt::type_ref_hit_ne_bind_measure_active()) && (crate::v1_compiler_infer_env::type_ref_measure_binding_authority(env.clone(), type_name.clone()) == false)) && (crate::std_types::is_kernel_type(type_name.clone()) == false)) && (crate::std_types::is_kernel_type(crate::v1_std_core::qualified_last_segment(type_name.clone())) == false)) {
+                                                    let measure_refusal = if (((masked.clone() && v1_rt::type_ref_hit_ne_bind_measure_active()) && (crate::std_types::is_kernel_type(type_name.clone()) == false)) && (crate::std_types::is_kernel_type(crate::v1_std_core::qualified_last_segment(type_name.clone())) == false)) {
+                                                        match crate::v1_compiler_infer_env::type_ref_measure_binding_authority(env.clone(), type_name.clone()) {
+    TypeRefMeasureBinding::TypeRefMeasureBound => Rc::new(vec![]),
+    TypeRefMeasureBinding::TypeRefMeasureUnbound => Rc::new(vec![crate::v1_std_core::make_error_node(crate::v1_compiler_infer_env::bare_name_miss_diagnostic(env.clone(), type_name.clone(), n.span.clone()), module_name.clone())]),
+    TypeRefMeasureBinding::TypeRefMeasureDisagreesWithProduction => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeRefMeasureBindingDisagreement {
+    name: type_name.clone(),
+    production_route: "v1.compiler.infer_env lookup_qualified_module_projection (exact symbol_index hit on the qualified name)".to_string(),
+    span: n.span.clone(),
+}), module_name.clone())]),
+}
+                                                    } else {
+                                                        Rc::new(vec![])
+                                                    };
+                                                    if ((measure_refusal.clone().len() as i64) > 0)
+                                                    {
                                                         Rc::new(NodeResolveResult {
-    resolved: final_resolved.clone(),
-    diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(crate::v1_compiler_infer_env::bare_name_miss_diagnostic(env.clone(), type_name.clone(), n.span.clone()), module_name.clone())]),
-})
+                                                            resolved: final_resolved.clone(),
+                                                            diagnostics: measure_refusal.clone(),
+                                                        })
                                                     } else {
                                                         {
                                                             let unlisted_diags = if (((masked.clone() && (v1_rt::map_is_empty(&env.source_visible_names.clone()) == false)) && (v1_rt::map_has(&env.source_visible_names.clone(), type_name.clone()) == false)) && (crate::v1_std_core::resolved_node_is_kernel_identity_for_name(n.clone(), type_name.clone()) == false)) {
@@ -2083,11 +2100,11 @@ Rc::new(NodeResolveResult {
                                                             } else {
                                                                 Rc::new(vec![])
                                                             };
-Rc::new(NodeResolveResult {
-    resolved: final_resolved.clone(),
-    diagnostics: unlisted_diags.clone(),
-})
-}
+                                                            Rc::new(NodeResolveResult {
+                                                                resolved: final_resolved.clone(),
+                                                                diagnostics: unlisted_diags.clone(),
+                                                            })
+                                                        }
                                                     }
                                                 }
                                                 std::option::Option::None => {
@@ -2502,7 +2519,7 @@ pub fn resolve_transport_binding(
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<TransportResolveResult> {
-    if crate::v1_std_core::is_local_transport(transport.clone(), env.source_indices.clone()) {
+    if crate::v1_std_core::is_undeclared_transport(transport.clone(), env.source_indices.clone()) {
         Rc::new(TransportResolveResult {
             transport: transport.clone(),
             diagnostics: Rc::new(vec![]),
@@ -4262,7 +4279,7 @@ pub fn resolve_item_types(
         let anno_diags = anno_resolved.diagnostics.clone();
         let transport_resolved = if (item.transport.clone() == std::option::Option::None) {
             Rc::new(TransportResolveResult {
-                transport: crate::v1_std_core::local_transport_node(
+                transport: crate::v1_std_core::undeclared_transport_node(
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     crate::v1_std_core::no_span(),
                 ),

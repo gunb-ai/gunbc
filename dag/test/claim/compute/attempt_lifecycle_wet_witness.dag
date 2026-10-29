@@ -1,5 +1,7 @@
 module test.claim.compute.attempt_lifecycle_wet_witness
 
+import std.cache_interface { ReplaceExisting, LeastRecentlyUsed }
+
 import gunbc.durable_cas_file_store { SlotStore }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
@@ -32,6 +34,7 @@ import std.materialization_provider { ComputeWorkRequest }
 import std.materialization_store_grant { WitnessScratchRoot, DurableHostVolume }
 import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget }
 import std.cache_identity { compute_work_artifact_kind }
+import gunbc.owned_cargo_target { owned_cargo_target_dir }
 import std.measure { byte_size }
 import std.fabric_blob { fabric_blob_reading_path }
 import gunbc.compute.work_class_grant { work_class_grant, work_class_grant_rows, work_class_of }
@@ -628,7 +631,7 @@ fn a_refused_reservation_closes_the_slot_it_was_taken_under_cell(root: String) -
 // arm is where a collision would be served as a hit.
 test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
-  let root = ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
+  let root = ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
     leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
@@ -679,7 +682,7 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
 fn target_lifetime_settle(root_path: String, write_log: Bool) -> ProvideResult {
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
-    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: join([root_path, "/owned/target"], ""),
+    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: owned_cargo_target_dir(base_root: root_path, owner: "owned"),
     log_path: join([root_path, "/run.log"], ""), consumption_path: root_path,
   }
   let made = shell.Mkdir.Parents(path: layout.target_dir as FilePath)
@@ -699,7 +702,7 @@ fn target_lifetime_settle(root_path: String, write_log: Bool) -> ProvideResult {
 test fn a_settlement_that_landed_removes_the_owned_target() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_target_life.XXXXXX").path
   let r = target_lifetime_settle(root_path: root_path, write_log: true)
-  let gone = reuse_path_absent(path: join([root_path, "/owned/target"], ""))
+  let gone = reuse_path_absent(path: owned_cargo_target_dir(base_root: root_path, owner: "owned"))
   let removed = shell.Remove.RecursiveForce(path: root_path)
   removed.success && gone
     && (match r { ProvideFresh { outcome: _, document: _, host_record } => match host_record { HostRecordWritten => true  _ => false }  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
@@ -708,10 +711,10 @@ test fn a_settlement_that_landed_removes_the_owned_target() -> Bool {
 test fn a_settlement_that_failed_keeps_the_owned_target_and_refuses_located() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_target_life.XXXXXX").path
   let r = target_lifetime_settle(root_path: root_path, write_log: false)
-  let kept = Filesystem.Read(path: join([root_path, "/owned/target/artifact"], "")).success
+  let kept = Filesystem.Read(path: join([owned_cargo_target_dir(base_root: root_path, owner: "owned"), "/artifact"], "")).success
   let removed = shell.Remove.RecursiveForce(path: root_path)
   removed.success && kept
-    && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "is KEPT") && string_contains(s: doc, pattern: "/owned/target")  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
+    && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "is KEPT") && string_contains(s: doc, pattern: owned_cargo_target_dir(base_root: root_path, owner: "owned"))  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
 }
 
 // ── THE PRODUCTION SERVE-OR-PRODUCE DECISION, EXECUTED (side-chat review at 41a107ce81) ──────────
@@ -739,7 +742,7 @@ test fn a_settlement_that_failed_keeps_the_owned_target_and_refuses_located() ->
 // requires compute_provide_leaf to attach, on a host with a user unit manager (//gunbc/instruments:
 // compute-run-unit-cold). This supplied-outcome half may not stand without it.
 fn reuse_store(root_path: String) -> ComputeStore {
-  ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
+  ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
 }
 
 fn reuse_tree() -> GitObjectId {
