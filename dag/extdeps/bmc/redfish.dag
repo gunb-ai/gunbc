@@ -6,9 +6,10 @@ import extdeps.firmware.types { FirmwareSemanticVersion }
 import extdeps.uri { Uri, Https }
 import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot, FanTachSensor, RedfishAccountRole, RedfishMemorySummary, RedfishPowerControl, RedfishPowerState, RedfishPowerSubsystem, RedfishProcessorSummary, RedfishSensorReading, RedfishSystemInventory, TemperatureSensor, redfish_account_role_from_wire }
 import std.measure { ByteSize, Gibibyte, HardwareThreadCount, gibibyte_to_byte_size, watt, watt_count }
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length, range }
 import std.algebra { list_head, skip }
 import std.optional { Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.languages.json.parse {
   parse_json_document, json_document_gap_text, json_field, json_field_string, json_field_bool, json_field_int,
   JsonDocumentParsed, JsonDocumentUnreadable, JsonFieldRead, FieldRead, FieldAbsent, FieldMalformed,
@@ -546,3 +547,118 @@ fn redfish_password_change_required_body(account_odata_id: String, message_id: S
     ]))
   ]))
 }
+// ── THE SERVED ACCOUNT-LOCKOUT POLICY ───────────────────────────────────────────────────────────────
+//
+// Whether a failed login locks an account, after how many, and for how long is NOT a fact this
+// repository holds about a build. It is a property the SERVICE SERVES, on its own AccountService
+// resource, and so it is read per controller beside the other account readings -- never declared per
+// board or per firmware release here. What is declared here is only the upstream SHAPE: the published
+// property names, their units, and what each published value itself says it does.
+//
+// UPSTREAM (the authority below; the four property definitions were read out of the DMTF-published
+// schema in full today, not from a summary):
+//   DMTF Redfish Account Service v1.19.0, resource AccountService,
+//   https://redfish.dmtf.org/schemas/v1/AccountService.v1_19_0.json
+//   retrieved 2026-10-29. Cited verbatim, in the schema's own words:
+//     AccountLockoutThreshold (integer|null)
+//       "This property shall contain the threshold of failed login attempts before a user account is
+//       locked.  If `0`, the account shall never be locked."
+//     AccountLockoutDuration (integer|null)
+//       "... the period of time, in seconds, that an account is locked after the number of failed login
+//       attempts reaches the `AccountLockoutThreshold` value, within the `AccountLockoutCounterResetAfter`
+//       window of time.  The value shall be greater than or equal to the AccountLockoutCounterResetAfter
+//       value.  If this value is `0`, no lockout shall occur.  If AccountLockoutCounterResetEnabled value
+//       is `false`, this property shall be ignored."
+//     AccountLockoutCounterResetAfter (integer)
+//       "... the period of time, in seconds, from the last failed login attempt when the
+//       AccountLockoutThreshold counter, which counts the number of failed login attempts, is reset to 0.
+//       ... The threshold counter also resets to 0 after each successful login.  If the
+//       AccountLockoutCounterResetEnabled value is `false`, this property shall be ignored."
+//     AccountLockoutCounterResetEnabled (boolean)
+//       "... whether the threshold counter is reset after the AccountLockoutCounterResetAfter expires.
+//       If `true`, it is reset.  If `false`, only a successful login resets the threshold counter and if
+//       the user reaches the AccountLockoutThreshold limit, the account shall be locked out indefinitely
+//       and only an administrator-issued reset clears the threshold counter.  IF THIS PROPERTY IS ABSENT,
+//       THE DEFAULT IS `true`."
+//
+// THE ABSENT-NESS OF A PROPERTY IS NOT A DEFAULT THIS REPOSITORY MAY SUBSTITUTE. Each field below is
+// therefore an optional, except the threshold, which the budget cannot read as anything but served or
+// not-served; the reading layer says which. `AccountLockoutCounterResetEnabled` keeps the schema's own
+// documented default as a NAMED reading (`redfish_account_lockout_counter_reset_enabled_reads`), cited
+// to the sentence quoted above -- the schema's default, not ours -- and a caller that will not read the
+// schema's sentence is free to pass the property's absence through as `Bool?` = none and refuse.
+//
+// CONSUMER: gunbc.machine_intake.bmc_secure reads this shape per controller into its account-state
+// observation (BmcLockoutSurfaceReading) and spends plans against it (the failed-login budget). Sibling
+// consumer, agreed 2026-10-29: gunbc.bmc_model's BmcWorld locks a Redfish account when its failed-login
+// counter reaches `account_lockout_threshold`, and never locks when that threshold is 0 (upstream text,
+// quoted above, not an inference).
+
+data redfish_account_service_lockout_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "redfish.dmtf.org/schemas/v1/AccountService.v1_19_0.json"
+  }
+}
+
+// The four published properties, with the schema's PascalCase names carried in the field comments
+// because those are the strings a service puts on the wire. The names in the record are snake_case for
+// the same reason every other record here is snake_case; the citation is the comment, and the reading
+// layer never re-derives a name from an assumption.
+type RedfishAccountServiceLockoutServed sole_constructor {
+  // "AccountLockoutThreshold": the threshold of failed login attempts before a user account is locked.
+  // 0 shall never lock -- read it with redfish_account_lockout_threshold_locks_after, never by
+  // comparing to zero at the use site, so the upstream sentence is stated once.
+  account_lockout_threshold: Int where range(min: 0, max: 4294967295)
+  // "AccountLockoutDuration": seconds an account stays locked once the threshold is reached. 0 => no
+  // lockout shall occur; ignored entirely when the reset-enabled flag is false.
+  account_lockout_duration: Int where range(min: 0, max: 4294967295)?
+  // "AccountLockoutCounterResetAfter": seconds from the LAST failed attempt until the failed-attempt
+  // counter returns to 0. A successful login also resets it, whatever this says.
+  account_lockout_counter_reset_after: Int where range(min: 0, max: 4294967295)?
+  // "AccountLockoutCounterResetEnabled": whether the counter resets after that window at all. When the
+  // service does not publish it the schema's own default is true (quoted above); none below means the
+  // service did not publish it, and the caller decides whether to read the schema default or refuse.
+  account_lockout_counter_reset_enabled: Bool?
+}
+
+// Whether the threshold locks at all, in upstream's words: 0 never locks; anything else locks at that
+// many failures. Stated as a sum so no use site re-implements the zero case differently.
+type RedfishAccountLockoutThresholdReading
+  = AccountIsNeverLockedByServedThreshold
+  | AccountLocksAfter { failed_attempts: Int where range(min: 1, max: 4294967295) }
+
+fn redfish_account_lockout_threshold_locks_after(served: RedfishAccountServiceLockoutServed) -> RedfishAccountLockoutThresholdReading {
+  if served.account_lockout_threshold == 0 {
+    AccountIsNeverLockedByServedThreshold
+  } else {
+    AccountLocksAfter { failed_attempts: served.account_lockout_threshold }
+  }
+}
+
+// The schema's own default for an absent AccountLockoutCounterResetEnabled is true. That default is the
+// SCHEMA's, quoted above; a caller that treats an absent property as no answer at all passes the none
+// through instead of calling this, and the budget then refuses rather than assuming.
+fn redfish_account_lockout_counter_reset_enabled_reads(served: RedfishAccountServiceLockoutServed) -> Bool {
+  match served.account_lockout_counter_reset_enabled {
+    Present { value: v } => v
+    Absent => true
+  }
+}
+
+// THE THREE ARMS, in the same shape as this module's password-change verdict: a service that answered,
+// a service that would not answer because nothing is authenticated yet (the OpenBMC 03.22.00 case --
+// every authenticated read, this one included, is refused with 403 Base.1.16.0.PasswordChangeRequired
+// until the forced change is made), and a read that could not be read at all. None of the three is
+// collapsed into another, and none of them is a number.
+type RedfishAccountServiceLockoutVerdict
+  = RedfishAccountServiceLockoutPropertiesRead { served: RedfishAccountServiceLockoutServed }
+  | RedfishAccountServiceLockoutPropertiesNotAuthenticated { http_status: Int where range(min: 400, max: 599), detail: NonEmptyStr }
+  | RedfishAccountServiceLockoutPropertiesUnreadable { detail: NonEmptyStr }
+
+// THE FRONTIER this section's consumer is waiting on. The dry world and the live reader both take this
+// shape; what does not yet exist is a live read that mints it from a controller's AccountService
+// document. Not dissolved by the dry realization.
+data redfish_account_service_lockout_live_read_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when a live read of GET /redfish/v1/AccountService mints RedfishAccountServiceLockoutVerdict over the four published lockout properties for a controller this fleet operates, with the response body committed as content-addressed evidence under artifacts/bmc/*/; NOT satisfied by the dry world supplying the record, by a transcription of another controller's document, or by a read taken with no authenticated session (which must be recorded as PropertiesNotAuthenticated, never as zeroes)" as NonEmptyStr,
+)
