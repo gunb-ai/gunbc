@@ -23,6 +23,8 @@ import gunbc.bmc_model {
   bmc_redfish_authorize, bmc_redfish_change_password, bmc_redfish_note_failed_login, bmc_redfish_account,
   bmc_redfish_surface, bmc_redfish_census,
   RedfishAuthTransport, RedfishAuthAccepted, RedfishAuthUnauthorized, RedfishAuthForcedPasswordChange,
+  RedfishAuthSurfaceUnmodeled, BmcRedfishChangeBlocked, BmcRedfishChangeSurfaceUnmodeled,
+  BmcRedfishChangeNoSuchAccount, BmcRedfishChangeSharedUserAbsent,
   RedfishBasicAuth, RedfishSessionAuth, RedfishOrdinaryRequest, RedfishPasswordPatch,
 }
 import extdeps.bmc.ipmi_channel { IpmiUserId }
@@ -30,7 +32,8 @@ import extdeps.bmc.types { AccountRoleAdministrator, RedfishAccountRole }
 import extdeps.bmc.redfish { redfish_password_change_verdict, RedfishPasswordChangeRequired }
 import gunbc.machine_intake.bmc_secure_redfish_frontier {
   bmc_secure_redfish_consumer_frontier_rows, bmc_secure_redfish_read_consumer_frontier_rows,
-  bmc_secure_redfish_write_consumer_frontier_rows, bmc_secure_redfish_trigger_module,
+  bmc_secure_redfish_write_consumer_frontier_rows, bmc_secure_redfish_extdeps_consumer_frontier_rows,
+  bmc_secure_redfish_trigger_module,
   bmc_secure_redfish_read_realization, bmc_secure_redfish_write_realization,
 }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
@@ -282,11 +285,12 @@ fn redfish_frontier_subject_qualified_name(row: FrontierRow) -> String {
   }
 }
 
-// Subject exists in gunbc.bmc_model (an obligation written against a function nobody wrote is the same absence
-// wearing a carrier); the trigger's declaration is ABSENT from the machine_intake census (pending, not fired).
+// Subject exists where it is declared -- the gunbc.bmc_model world surface or the extdeps.bmc.redfish wire
+// readers -- (an obligation written against a function nobody wrote is the same absence wearing a carrier); the
+// trigger's declaration is ABSENT from the machine_intake census (pending, not fired).
 fn redfish_frontier_subject_declared(row: FrontierRow) -> Bool {
   let wanted = redfish_frontier_subject_qualified_name(row: row)
-  any(xs: decl_facts(pool_roots: ["dag/gunbc"]), predicate: fn(d) { d.qualified_name == wanted })
+  any(xs: decl_facts(pool_roots: ["dag/gunbc", "dag/extdeps"]), predicate: fn(d) { d.qualified_name == wanted })
 }
 
 fn redfish_frontier_trigger_pending(row: FrontierRow) -> Bool {
@@ -297,20 +301,23 @@ fn redfish_frontier_trigger_pending(row: FrontierRow) -> Bool {
 test fn the_bmc_secure_redfish_consumers_are_rostered_as_pending_frontiers() -> Bool {
   let read_rows = bmc_secure_redfish_read_consumer_frontier_rows()
   let write_rows = bmc_secure_redfish_write_consumer_frontier_rows()
+  let extdeps_rows = bmc_secure_redfish_extdeps_consumer_frontier_rows()
   let everything = bmc_secure_redfish_consumer_frontier_rows()
-  let counts = list_length(items: read_rows) == 3 && list_length(items: write_rows) == 1 && list_length(items: everything) == 4
+  let counts = list_length(items: read_rows) == 3 && list_length(items: write_rows) == 1 && list_length(items: extdeps_rows) == 6 && list_length(items: everything) == 10
   let every_row_disciplined = !any(xs: everything, predicate: fn(row) {
     !(redfish_frontier_enrolled(row: row)
       && redfish_frontier_trigger_module(row: row) == bmc_secure_redfish_trigger_module
       && redfish_frontier_subject_declared(row: row)
       && redfish_frontier_trigger_pending(row: row))
   })
-  // the two distinct future realizations item 3 must mint are the triggers (not one catch-all name).
+  // the two distinct future realizations item 3 must mint are the triggers (not one catch-all name); the extdeps
+  // census readers bind the READ realization and the PATCH-body builder binds the WRITE realization.
   let read_trigger = concat(bmc_secure_redfish_trigger_module, concat(".", bmc_secure_redfish_read_realization))
   let write_trigger = concat(bmc_secure_redfish_trigger_module, concat(".", bmc_secure_redfish_write_realization))
   let read_bound = any(xs: read_rows, predicate: fn(row) { redfish_frontier_trigger_qualified_name(row: row) == read_trigger })
   let write_bound = any(xs: write_rows, predicate: fn(row) { redfish_frontier_trigger_qualified_name(row: row) == write_trigger })
-  counts && every_row_disciplined && read_bound && write_bound
+  let extdeps_bound = any(xs: extdeps_rows, predicate: fn(row) { redfish_frontier_trigger_qualified_name(row: row) == read_trigger }) && any(xs: extdeps_rows, predicate: fn(row) { redfish_frontier_trigger_qualified_name(row: row) == write_trigger })
+  counts && every_row_disciplined && read_bound && write_bound && extdeps_bound
 }
 
 // RED (review 87824): a SHARED account whose IPMI user is not in the table has nowhere to write. Applying the
@@ -330,5 +337,41 @@ test fn a_shared_password_write_to_an_absent_ipmi_user_changes_nothing() -> Bool
     Absent => false
   }
   let no_credential_written = !bmc_ipmi_user_accepts(world: step.world, user: missing_id, password: managed_password)
-  not_completed && flag_and_counter_untouched && no_credential_written && step.world == seeded
+  let blocked_reason = match step.blocked {
+    Present { value: BmcRedfishChangeSharedUserAbsent {} } => true
+    _ => false
+  }
+  not_completed && blocked_reason && flag_and_counter_untouched && no_credential_written && step.world == seeded
+}
+
+// RED (review 87866): an UNMODELED Redfish surface (the world field is none) must NOT be answered as "no such
+// account" / "401 bad credentials". That would fabricate a credential verdict for a controller that serves no
+// account service (DESIGN 5). The typed surface is read first: authorize returns RedfishAuthSurfaceUnmodeled and
+// the write is blocked with the SurfaceUnmodeled reason -- DISTINCT from a modeled-but-empty surface, which
+// answers 401 (no such account) and is blocked NoSuchAccount. Positive controls are the modeled-empty answers on
+// the same lines below; the discriminating pair is unmodeled-vs-modeled-empty for both authorize and the change.
+test fn an_unmodeled_surface_refuses_as_unmodeled_not_as_no_such_account() -> Bool {
+  let unmodeled = bmc_world(power: BmcPowerOn)
+  let modeled_empty = world_with([])
+  // authorize: unmodeled answers the unmodeled arm; a modeled-but-empty surface answers 401 (no such account).
+  let auth_unmodeled = match bmc_redfish_authorize(world: unmodeled, name: "root", password: factory_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
+    RedfishAuthSurfaceUnmodeled {} => true
+    _ => false
+  }
+  let auth_modeled_empty = match bmc_redfish_authorize(world: modeled_empty, name: "root", password: factory_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
+    RedfishAuthUnauthorized {} => true
+    _ => false
+  }
+  // the change: unmodeled is blocked SurfaceUnmodeled, modeled-empty is blocked NoSuchAccount -- the two refusals differ.
+  let write_unmodeled = match bmc_redfish_change_password(world: unmodeled, name: "root", new_password: managed_password).blocked {
+    Present { value: BmcRedfishChangeSurfaceUnmodeled {} } => true
+    _ => false
+  }
+  let write_modeled_empty = match bmc_redfish_change_password(world: modeled_empty, name: "root", new_password: managed_password).blocked {
+    Present { value: BmcRedfishChangeNoSuchAccount {} } => true
+    _ => false
+  }
+  // and neither refusal changed the world it was handed.
+  let untouched = bmc_redfish_change_password(world: unmodeled, name: "root", new_password: managed_password).world == unmodeled
+  auth_unmodeled && auth_modeled_empty && write_unmodeled && write_modeled_empty && untouched
 }

@@ -12,9 +12,10 @@
 //consumes: gunbc.bmc_model (the Redfish surface entries that have no production consumer yet), std.roster_frontier,
 //  std.decl_ref, std.dissolution.
 //referenced-by: gunbc.census_closure_frontier (the roster gunbc.dissolution_census folds).
-//invariants: every subject resolves to a declaration gunbc.bmc_model declares; every trigger resolves to a
-//  declaration gunbc.machine_intake.bmc_secure does NOT declare yet; every trigger module is bmc_secure; deleting
-//  or renaming a Redfish surface entry reddens the witness that reads these rows, not a comment.
+//invariants: every subject resolves to a declaration gunbc.bmc_model or extdeps.bmc.redfish declares (the world
+//  surface entries and the extdeps wire readers respectively); every trigger resolves to a declaration
+//  gunbc.machine_intake.bmc_secure does NOT declare yet; every trigger module is bmc_secure; deleting or renaming a
+//  Redfish surface entry or wire reader reddens the witness that reads these rows, not a comment.
 
 module gunbc.machine_intake.bmc_secure_redfish_frontier
 
@@ -81,9 +82,54 @@ fn bmc_secure_redfish_write_consumer_frontier_rows() -> List<FrontierRow> {
   ]
 }
 
+// THE EXTDEPS WIRE READERS. These parse the served Redfish wire shapes (the ManagerAccountCollection envelope,
+// each ManagerAccount member, the member @odata.id tail, the RoleId reading, the Password PATCH body). Their only
+// call sites today are the item-1 shapes witness -- a check of the shapes, not the RUN consumer DESIGN 3c asks
+// for -- so these rows name item 3's dry realizations as the consumer that retires them rather than leaving the
+// readers dangling. They are upstream decomposition (DESIGN 3): our code reads the vendor's served shape, and the
+// obligation to read it is ours, in bmc_secure.
+fn bmc_secure_redfish_extdeps_consumer_frontier_rows() -> List<FrontierRow> {
+  let read_reason = "the served Redfish wire shape is read (extdeps.bmc.redfish); its DRY consumer is item 3's Redfish account census read (dry_read_bmc_redfish_account_census) in gunbc.machine_intake.bmc_secure, which parses the collection and its members through this reader, landing after PR 1b-i merges and not existing yet."
+  [
+    frontier_row_decl(
+      ref: decl_ref(module_path: "extdeps.bmc.redfish", decl_name: "redfish_manager_account_collection_from_json"),
+      reason: read_reason,
+      dissolution: bound_dissolution(ref: decl_ref(module_path: bmc_secure_redfish_trigger_module, decl_name: bmc_secure_redfish_read_realization)),
+    ),
+    frontier_row_decl(
+      ref: decl_ref(module_path: "extdeps.bmc.redfish", decl_name: "redfish_manager_account_from_json"),
+      reason: read_reason,
+      dissolution: bound_dissolution(ref: decl_ref(module_path: bmc_secure_redfish_trigger_module, decl_name: bmc_secure_redfish_read_realization)),
+    ),
+    frontier_row_decl(
+      ref: decl_ref(module_path: "extdeps.bmc.redfish", decl_name: "redfish_manager_account_name_from_odata_id"),
+      reason: read_reason,
+      dissolution: bound_dissolution(ref: decl_ref(module_path: bmc_secure_redfish_trigger_module, decl_name: bmc_secure_redfish_read_realization)),
+    ),
+    frontier_row_decl(
+      ref: decl_ref(module_path: "extdeps.bmc.redfish", decl_name: "RedfishAccountCollectionRead"),
+      reason: read_reason,
+      dissolution: bound_dissolution(ref: decl_ref(module_path: bmc_secure_redfish_trigger_module, decl_name: bmc_secure_redfish_read_realization)),
+    ),
+    frontier_row_decl(
+      ref: decl_ref(module_path: "extdeps.bmc.redfish", decl_name: "RedfishRoleIdRead"),
+      reason: read_reason,
+      dissolution: bound_dissolution(ref: decl_ref(module_path: bmc_secure_redfish_trigger_module, decl_name: bmc_secure_redfish_read_realization)),
+    ),
+    frontier_row_decl(
+      ref: decl_ref(module_path: "extdeps.bmc.redfish", decl_name: "redfish_account_password_patch_body"),
+      reason: "the Password PATCH body is built in extdeps.bmc.redfish; its DRY consumer is item 3's RedfishAccountPasswordWrite realization (dry_apply_bmc_redfish_password_write) in gunbc.machine_intake.bmc_secure, landing after PR 1b-i merges and not existing yet.",
+      dissolution: bound_dissolution(ref: decl_ref(module_path: bmc_secure_redfish_trigger_module, decl_name: bmc_secure_redfish_write_realization)),
+    ),
+  ]
+}
+
 fn bmc_secure_redfish_consumer_frontier_rows() -> List<FrontierRow> {
   concat(
     bmc_secure_redfish_read_consumer_frontier_rows(),
-    bmc_secure_redfish_write_consumer_frontier_rows(),
+    concat(
+      bmc_secure_redfish_write_consumer_frontier_rows(),
+      bmc_secure_redfish_extdeps_consumer_frontier_rows(),
+    ),
   )
 }
