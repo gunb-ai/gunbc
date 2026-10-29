@@ -61,6 +61,7 @@ module gunbc.witness.compiler_gate_workflow
 // (witness_floor_concurrency_group), so a later push never cancels them.
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.measure { Minute, minute_count }
 import std.algebra { fold_list, list_append, list_map, list_find_first }
 import gunbc.parse_verdict_schema { parse_verdict_restore_ancestor_ordinals }
 import std.optional { Absent, Optional, Present }
@@ -369,7 +370,7 @@ data compiler_gate_required_job_id: String = gunbc_roster_gate().required_contex
 // module's step list. It stays well above the measured wall (see the claim that the bound is not a
 // budget): a timeout that trims a slow-but-honest run turns a subject verdict into silence on the
 // required context.
-data compiler_gate_emit_build_timeout_minutes: Int = gunbc_roster_gate().timeout_minutes
+data compiler_gate_emit_build_timeout: Minute = gunbc_roster_gate().timeout
 
 // ONE STEP PER SUBJECT, EACH WITH ITS OWN ID. `witness_floor_build_step` cannot be reused: it binds
 // the fixed step id `build_witness_fold`, and two steps in one job may not share an id. The
@@ -665,7 +666,7 @@ fn compiler_gate_required_job() -> Job {
     env: Present { value: compiler_gate_required_job_env() },
     outputs: none,
     if_condition: Present { value: compiler_gate_fleet_job_condition() },
-    timeout_minutes: Present { value: compiler_gate_emit_build_timeout_minutes() },
+    timeout_minutes: Present { value: minute_count(m: compiler_gate_emit_build_timeout()) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: compiler_gate_permissions }

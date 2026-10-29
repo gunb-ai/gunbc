@@ -6,9 +6,7 @@ import std.types {
   String,
   NonEmptyStr
 }
-import std.measure {
-  byte_size_count
-}
+import std.measure { byte_size_count, minute_count }
 import std.optional {
   Optional,
   Present,
@@ -613,7 +611,7 @@ fn repository_witness_job_from_steps(profile: RepositoryCiProfile, steps: List<S
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: profile.roster.timeout_minutes,
+    timeout_minutes: minute_count(m: profile.roster.timeout),
     continue_on_error: none,
     concurrency: none,
     permissions: none

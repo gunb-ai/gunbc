@@ -4,6 +4,7 @@ import extdeps.github.expressions { Expression, ContextAccess, ExpressionTemplat
 
 
 import std.types { Bool, Int, List, String }
+import std.measure { Minute, minute_count }
 import std.optional { Present, Absent }
 import std.algebra { list_map }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
@@ -134,7 +135,7 @@ data heal_workflow_name: String = gunbc_heal_job().workflow_name as String
 
 data heal_workflow_job_id: String = gunbc_heal_job().job_id as String
 
-data heal_workflow_timeout_minutes: Int = gunbc_heal_job().timeout_minutes
+data heal_workflow_timeout: Minute = gunbc_heal_job().timeout
 
 data heal_workflow_required_bins: List<String> = ["gunbc", "claim_executor"]
 
@@ -393,7 +394,7 @@ fn heal_workflow_job() -> Job {
     env: none,
     outputs: none,
     if_condition: Present { value: heal_workflow_job_condition() },
-    timeout_minutes: Present { value: heal_workflow_timeout_minutes() },
+    timeout_minutes: Present { value: minute_count(m: heal_workflow_timeout()) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: heal_workflow_job_permissions }

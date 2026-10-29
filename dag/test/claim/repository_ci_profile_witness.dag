@@ -1,7 +1,7 @@
 module test.claim.repository_ci_profile_witness
 
 import std.types { Bool, List, NonEmptyStr, String, Int }
-import std.measure { byte_size }
+import std.measure { byte_size, Minute, minute }
 import std.optional { Optional, Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject, frontier_rows_well_formed }
@@ -80,7 +80,7 @@ fn no_refusal() -> Optional<NonEmptyStr> {
 // report leaves the branch unpromotable with no reason attached, so a non-positive timeout is refused
 // before a byte is emitted rather than surfacing as a job that dies in the night.
 test fn a_zero_timeout_gate_is_refused() -> Bool {
-  match repository_ci_profile_refusal(profile: with_roster_timeout(minutes: 0)) {
+  match repository_ci_profile_refusal(profile: with_roster_timeout(limit: minute(0))) {
     Present { value: reason } => string_contains(s: reason as String, pattern: "timeout")
     Absent => false
   }
@@ -210,7 +210,7 @@ test fn a_subject_is_invoked_through_its_own_roots_entry_and_function() -> Bool 
     && string_contains(s: argv, pattern: "--function wit_main")
 }
 
-fn with_roster_timeout(minutes: Int) -> RepositoryCiProfile {
+fn with_roster_timeout(limit: Minute) -> RepositoryCiProfile {
   let base = public_profile()
   RepositoryCiProfile {
     repository: base.repository,
@@ -223,7 +223,7 @@ fn with_roster_timeout(minutes: Int) -> RepositoryCiProfile {
       job_display_name: base.roster.job_display_name,
       required_context: base.roster.required_context,
       runner: base.roster.runner,
-      timeout_minutes: minutes,
+      timeout: limit,
       source_roots: base.roster.source_roots,
       schedule: base.roster.schedule,
       memory_budget: base.roster.memory_budget,
@@ -260,7 +260,7 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
       job_display_name: "witnesses",
       required_context: "witnesses",
       runner: group,
-      timeout_minutes: 90,
+      timeout: minute(90),
       source_roots: ["dag", "src/v2"],
       schedule: Present {
         value: CronSchedule {
@@ -288,7 +288,7 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
         job_id: "projection-drift",
         job_display_name: "projection-drift",
         runner: FleetSelfHosted,
-        timeout_minutes: 90,
+        timeout: minute(90),
         // THE MIRROR POLL NOTHING. Its drift check runs on every checkout of a mirror commit, which is
         // the moment a public seed could have moved; a cadence would only re-run the same comparison.
         // (gunbc's own drift watch is the opposite shape: it exists to poll, and its emitter refuses a
@@ -322,7 +322,7 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
           job_id: "publish",
           job_display_name: "publish",
           runner: github_hosted_publisher_runner_target(),
-          timeout_minutes: 45,
+          timeout: minute(45),
           trigger_workflow: "projection-drift",
           candidate_artifact: "repair-candidate",
           admit: Present { value: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_admit" } },
@@ -462,6 +462,19 @@ test fn the_gate_runs_on_the_selected_target_not_on_a_typed_label() -> Bool {
     && string_contains(s: yml, pattern: declared_group_name() as String)
 }
 
+// THE TIMEOUT IS A DURATION IN THE ROW AND A MINUTE COUNT ONLY AT THE EMIT EDGE. The row carries a
+// std.measure `Minute` (Time at the ISO-8601 sixty scale, the same carrier a ruleset's response timeout
+// uses); GitHub's `timeout-minutes` is where the number appears, and it is produced by one projection
+// (`minute_count`) rather than by a field named for a unit and typed as a bare count. So a row that meant
+// ninety seconds could not be spelled `90`, and the emitted step's ceiling is read from the row rather
+// than restated next to it.
+test fn the_gate_timeout_is_the_rows_duration_projected_at_the_emit_edge() -> Bool {
+  string_contains(
+    s: emitted_gate_text(profile: mirror_profile(seal: true, publish: true)),
+    pattern: "timeout-minutes: 90"
+  )
+}
+
 // THE CADENCE IS A ROW. A mirror that must notice the seed branch moved without a commit here needs a
 // poll; a repository that does not can leave the list empty and get no schedule at all.
 test fn a_declared_cadence_becomes_a_schedule_and_an_empty_one_becomes_no_trigger() -> Bool {
@@ -507,7 +520,7 @@ fn gate_profile_without_schedule() -> RepositoryCiProfile {
       job_display_name: base.roster.job_display_name,
       required_context: base.roster.required_context,
       runner: base.roster.runner,
-      timeout_minutes: base.roster.timeout_minutes,
+      timeout: base.roster.timeout,
       source_roots: base.roster.source_roots,
       schedule: Absent,
       memory_budget: base.roster.memory_budget,

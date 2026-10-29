@@ -1,7 +1,7 @@
 module gunbc.ci.repository_projection_drift_workflow
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, minute_count }
 import std.optional { Optional, Present, Absent }
 import std.algebra { list_map }
 import v2.std.node { Node }
@@ -337,7 +337,7 @@ fn projection_drift_job(
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: Present { value: drift.timeout_minutes },
+    timeout_minutes: Present { value: minute_count(m: drift.timeout) },
     continue_on_error: none,
     concurrency: none,
     permissions: none

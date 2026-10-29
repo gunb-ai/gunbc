@@ -3,6 +3,7 @@ module gunbc.drift_watch_workflow
 
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.measure { Minute, minute_count }
 import std.optional { Present, Absent }
 import std.algebra { list_map }
 import extdeps.cron.schedule_model { CronSchedule, CronField, Wildcard, Exact }
@@ -55,7 +56,7 @@ data drift_watch_workflow_name: String = gunbc_drift_watch_job().workflow_name a
 
 data drift_watch_job_id: String = gunbc_drift_watch_job().job_id as String
 
-data drift_watch_timeout_minutes: Int = gunbc_drift_watch_job().timeout_minutes
+data drift_watch_timeout: Minute = gunbc_drift_watch_job().timeout
 
 // REFUSE BEFORE EMIT. A job that exists and checks nothing is worse than no job, because it reads as
 // coverage: the repository believes its committed generated files are watched, and nothing watches them.
@@ -186,7 +187,7 @@ fn drift_watch_job() -> Job {
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: Present { value: drift_watch_timeout_minutes },
+    timeout_minutes: Present { value: minute_count(m: drift_watch_timeout) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: drift_watch_permissions }

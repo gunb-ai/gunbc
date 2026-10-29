@@ -1,7 +1,7 @@
 module gunbc.ci.repository_ci_profile
 
-import std.types { NonEmptyStr, String, List, Bool, Int, gt_zero }
-import std.measure { ByteSize }
+import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.measure { ByteSize, Minute, minute, minute_count }
 import std.optional { Optional, Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
@@ -126,7 +126,7 @@ type RosterGate {
   job_display_name: NonEmptyStr
   required_context: NonEmptyStr
   runner: CiRunnerTarget
-  timeout_minutes: Int
+  timeout: Minute
   source_roots: List<String>
   schedule: Optional<CronSchedule>
   memory_budget: Optional<ByteSize>
@@ -144,7 +144,7 @@ type ProjectionDrift {
   job_id: NonEmptyStr
   job_display_name: NonEmptyStr
   runner: CiRunnerTarget
-  timeout_minutes: Int
+  timeout: Minute
   // THE CADENCE, and a drift watch that never runs is not a check. Present for a repository that polls
   // (so an infrastructure change is caught by something other than the next commit); Absent for one whose
   // drift is only ever checked at checkout, where the emitter adds no schedule trigger at all.
@@ -164,7 +164,7 @@ type HealWorkflowPolicy {
   job_id: NonEmptyStr
   job_display_name: NonEmptyStr
   runner: CiRunnerTarget
-  timeout_minutes: Int
+  timeout: Minute
 }
 
 // THE SEAL, living in the drift job rather than in a workflow of its own because the candidate must be
@@ -191,7 +191,7 @@ type HealPublisherPolicy {
   job_id: NonEmptyStr
   job_display_name: NonEmptyStr
   runner: CiRunnerTarget
-  timeout_minutes: Int
+  timeout: Minute
   trigger_workflow: NonEmptyStr
   candidate_artifact: NonEmptyStr
   // Present when the repository's publisher runs a .dag subject to admit the candidate and publish it;
@@ -231,7 +231,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
       job_display_name: required_ci_context_name,
       required_context: required_ci_context_name,
       runner: FleetSelfHosted,
-      timeout_minutes: 90,
+      timeout: minute(90),
       source_roots: witness_layer_roots,
       schedule: Absent,
       memory_budget: Absent,
@@ -246,7 +246,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         job_id: "heal-generated-artifacts" as NonEmptyStr,
         job_display_name: "heal-generated-artifacts" as NonEmptyStr,
         runner: FleetSelfHosted,
-        timeout_minutes: 90
+        timeout: minute(90)
       }
     },
     drift: Present {
@@ -256,7 +256,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         job_id: "tier-o-drift" as NonEmptyStr,
         job_display_name: "tier-o-drift" as NonEmptyStr,
         runner: FleetSelfHosted,
-        timeout_minutes: 60,
+        timeout: minute(60),
         cron: Present {
           value: CronSchedule {
             minute: Exact { value: 17 },
@@ -282,7 +282,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         job_id: "publish" as NonEmptyStr,
         job_display_name: "publish" as NonEmptyStr,
         runner: github_hosted_publisher_runner_target(),
-        timeout_minutes: 45,
+        timeout: minute(45),
         trigger_workflow: heal_workflow_authority_name,
         candidate_artifact: heal_repair_candidate_artifact_name,
         admit: Absent,
@@ -352,7 +352,7 @@ fn repository_without_drift_job() -> ProjectionDrift {
     job_id: "no-drift-watch-declared",
     job_display_name: "no-drift-watch-declared",
     runner: FleetSelfHosted,
-    timeout_minutes: 0,
+    timeout: minute(0),
     cron: Absent,
     check: DagInvocation { entry: "no-drift-watch-declared", function: "no_drift_watch_declared" },
     seal: Absent
@@ -366,7 +366,7 @@ fn repository_without_heal_job() -> HealWorkflowPolicy {
     job_id: "no-heal-declared",
     job_display_name: "no-heal-declared",
     runner: FleetSelfHosted,
-    timeout_minutes: 0
+    timeout: minute(0)
   }
 }
 
@@ -377,7 +377,7 @@ fn repository_without_publisher() -> HealPublisherPolicy {
     job_id: "no-heal-publish-declared",
     job_display_name: "no-heal-publish-declared",
     runner: FleetSelfHosted,
-    timeout_minutes: 0,
+    timeout: minute(0),
     trigger_workflow: "no-heal-declared",
     candidate_artifact: heal_repair_candidate_artifact_name,
     admit: Absent,
@@ -494,7 +494,7 @@ fn repository_ci_profile_refusal(profile: RepositoryCiProfile) -> Optional<NonEm
     Present { value: "REFUSE: a job pins itself to a runner group that gunbc.runner.runner_group_restriction_ensure does not declare. Ensure the group, or select another CiRunnerTarget (gunbc.ci.ci_runner_target FleetSelfHostedInDeclaredGroup)." }
   } else if profile_publisher_trigger_is_declared(profile: profile) == false {
     Present { value: "REFUSE: the publisher is triggered by the completion of a workflow this profile does not declare, so it can never run with anything to publish. Name the heal or drift workflow that seals the candidate (gunbc.ci.repository_ci_profile profile_publisher_trigger_is_declared)." }
-  } else if gt_zero(value: profile.roster.timeout_minutes) == false {
+  } else if minute_count(m: profile.roster.timeout) == 0 {
     Present { value: "REFUSE: the required gate declares a timeout that is not positive; it would be killed before it could report a reason." }
   } else if roster_route_is_instrument_dispatcher(profile: profile) && profile_builds_a_second_compiler(profile: profile) {
     Present { value: "REFUSE: this profile routes its roster through the instrument dispatcher while declaring a seed compiler or an overlay to compose. The dispatcher runs every row in the checkout that already holds the compiler under test, so the seed would build a second copy of it and the overlay would compose a root nothing reads. Take the composed route, or declare neither (gunbc.ci.repository_ci_profile RosterRoute)." }

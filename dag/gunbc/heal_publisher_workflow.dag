@@ -2,6 +2,7 @@ module gunbc.heal_publisher_workflow
 
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.measure { Minute, minute_count }
 import std.optional { Optional, Present, Absent }
 import std.algebra { list_map }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue, YamlValue }
@@ -78,7 +79,7 @@ data heal_publisher_workflow_name: String = gunbc_heal_publisher_job().workflow_
 
 data heal_publisher_workflow_job_id: String = gunbc_heal_publisher_job().job_id as String
 
-data heal_publisher_timeout_minutes: Int = gunbc_heal_publisher_job().timeout_minutes
+data heal_publisher_timeout: Minute = gunbc_heal_publisher_job().timeout
 
 data heal_publisher_no_job_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the repository's CI profile row declares no publisher (gunbc.ci.repository_ci_profile RepositoryCiProfile publisher is Absent). A publisher whose candidate source is not declared is a job that fires with nothing to publish - the shape this repository must not be able to commit. Delete .github/workflows/heal-publish.yml, or declare the heal or drift job that seals the candidate."
 
@@ -375,7 +376,7 @@ fn heal_publisher_job() -> Job {
     env: none,
     outputs: none,
     if_condition: Present { value: heal_publisher_job_condition() },
-    timeout_minutes: Present { value: heal_publisher_timeout_minutes() },
+    timeout_minutes: Present { value: minute_count(m: heal_publisher_timeout()) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: heal_publisher_job_permissions }
