@@ -52,7 +52,8 @@ import gunbc.runner.runner_browser_toolchain {
   TreeAdmission, TreeAdmitted, VersionMatches, HostLibrariesResolved, BrowserLaunchRendered,
   runner_browser_toolchain_node, runner_browser_toolchain_automation, browser_toolchain_probe_title, browser_toolchain_probe_width_px,
 }
-import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_root }
+import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_path }
+import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle { MegaRacEndMedia, MegaRacEndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan, megarac_run_record_text, MegaRacRunRecord }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
@@ -453,7 +454,7 @@ data first_worker_start: Int = 5000
 fn worker_filesystem() -> ModeledFilesystem {
   worker_process_started(
     fs: ModeledFilesystem {
-      directories: ["/", "/home", "/home/runner", "/home/runner/work", "/home/runner/work/gunbc", "/home/runner/work/gunbc/gunbc", "/home/runner/work/gunbc/gunbc/target", "/run", "/proc", "/tmp", runner_temp, "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String],
+      directories: ["/", "/home", "/home/runner", "/home/runner/work", "/home/runner/work/gunbc", "/home/runner/work/gunbc/gunbc", "/home/runner/work/gunbc/gunbc/target", "/run", "/proc", "/tmp", runner_temp, "/var", "/var/lib", host_state_tree_path(tree: host_state_tree()) as String, unit_hold_store_path(tree: host_state_tree()) as String],
       files: [ModeledFile { path: credential_path, content: "secret" }],
       refused_reads: [],
       stats: [ModeledPathStat { path: runner_temp, mode: runner_temp_mode, owner: runner_principal }],
@@ -508,7 +509,7 @@ fn record_path(r: DispatchRecord) -> String {
 
 fn is_hold_write(r: DispatchRecord) -> Bool {
   r.invocation.at.service == "Filesystem" && starts_with(s: r.invocation.at.operation, prefix: "WriteCreateNew")
-    && starts_with(s: record_path(r: r), prefix: unit_hold_store_root as String)
+    && starts_with(s: record_path(r: r), prefix: unit_hold_store_path(tree: host_state_tree()) as String)
 }
 
 // The effects that change the controller or start a process against it.
@@ -651,7 +652,7 @@ test fn a_second_run_for_a_held_unit_writes_nothing_to_the_controller() -> Bool 
   let other_running = with_fs(w: base, fs: fs_with_file(fs: base.fs, path: proc_stat_path(pid: 2900), content: proc_stat_line(p: worker_process(pid: 2900, start_ticks: 100))))
   let prior = evaluate_in_witness_frame(
     frame: matrix_frame(world: other_running),
-    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr)) }
+    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_path(tree: host_state_tree()), slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr)) }
   )
   match prior {
     WitnessReturned { state } => match state {

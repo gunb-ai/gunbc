@@ -32,6 +32,7 @@ import gunbc.host.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   boot_run_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal,
 }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation, megarac_release_boot_session }
 import gunbc.machine_intake.megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs, MegaRacAttachResult }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
@@ -2785,7 +2786,7 @@ fn mtcollins1_boot_under_live_unit_hold(
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_on_srv1_resolving_toolchain"),
   ]
 {
-  match boot_run_acquire_unit_hold(host: operator_host_mtcollins1, run_id: run_id) {
+  match boot_run_acquire_unit_hold(host: operator_host_mtcollins1, run_id: run_id, tree: host_state_tree()) {
     UnitHoldRefused { reason: r } =>
       MtCollins1HeldBoot {
         actuation: actuation_not_powered_on(outcome: exit_failure(reason: concat("mtcollins1 boot: ", r as String)), reason: "the unit hold was refused, so nothing was written"),
@@ -2795,7 +2796,7 @@ fn mtcollins1_boot_under_live_unit_hold(
         fru: Absent,
       }
     UnitHeld { proof: p } =>
-      match admit_boot_attempt(proof: p, revision: subject.execution_revision) {
+      match admit_boot_attempt(proof: p, revision: subject.execution_revision, tree: host_state_tree()) {
         BootAttemptRefused { cause: c } => {
           let why = concat("mtcollins1 boot: attempt receipt refused: ", attempt_receipt_refusal_text(cause: c))
           MtCollins1HeldBoot {

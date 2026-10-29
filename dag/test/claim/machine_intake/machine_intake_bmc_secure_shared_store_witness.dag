@@ -24,14 +24,17 @@ import gunbc.machine_intake.subject {
 import gunbc.deployment_risk { TestRisk }
 import gunbc.machine_intake.phase { machine_qualification_policy }
 import std.scoped_authorization { AttemptIdentity }
-import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write }
+import test.fixture.machine_intake.bmc_write_approval { approved_bmc_convergence }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady }
 import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access }
-import gunbc.machine_intake.bmc_credential_policy { BmcCredentialPolicyKey, RedfishBasicOrSession, IpmiLanplus, CredentialSurface, asrock_altrad8ud_openbmc_3_22_00_key }
+import extdeps.board_authority { BoardAuthorityRef }
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
+import gunbc.machine_intake.bmc_credential_policy { RedfishBasicOrSession, IpmiLanplus, CredentialSurface, asrock_altrad8ud_openbmc_3_22_00_key }
 import gunbc.machine_intake.bmc_rotation_route {
-  BmcRotationRouteStanding, RotateCredential, rotation_route_from_citation, redfish_account_password_write,
+  BmcRotationRouteStanding, rotation_route_from_citation, redfish_account_password_write,
 }
 import gunbc.machine_intake.bmc_secure {
+  bmc_secure_convergence_approval,
   BmcSecureGoal, BmcAccountActionDue, BmcAccountStateObservation, ManagedCredentialReference, ManagedCredentialGenerationFetched,
   BmcSecureStateInspected, BmcSecureStateUnobserved, PublishedAccountRetired,
   PublishedCredentialProbed, PublishedCredentialRetiredOnTheManagedAccount,
@@ -111,7 +114,12 @@ fn world_root(password: String) -> BmcWorld {
 }
 
 fn derive_over(served: List<CredentialSurface>) -> DryPublishedReading {
-  DryDerivePublishedRetirement { policy: asrock_altrad8ud_openbmc_3_22_00_key(), published_account: "root" as NonEmptyStr, served: served }
+  DryDerivePublishedRetirement { published_account: "root" as NonEmptyStr, served: served }
+}
+
+// The lab controller's declared board: the board the 3.22.00 policy row was measured on.
+fn lab_board() -> BoardAuthorityRef? {
+  Present { value: asrock_altrad8ud_openbmc_3_22_00_key().board }
 }
 
 data redfish_only: List<CredentialSurface> = [RedfishBasicOrSession]
@@ -128,6 +136,7 @@ fn read_root(w: BmcWorld, managed: ManagedCredentialReference, password: String,
     world: w,
     subject: lab_subject(),
     endpoint: lab_endpoint,
+    board: lab_board(),
     firmware: lab_firmware(),
     managed: managed,
     managed_user: root_user,
@@ -228,10 +237,11 @@ fn generation_v2(store_at: ObserverClockInstant, fetch_at: ObserverClockInstant)
 // Apply (the account action remedies it), and the plan is computed over the cited Redfish root route.
 fn plan_root(reading: BmcAccountStateObservation, separate: Bool, store_at: ObserverClockInstant, fetch_at: ObserverClockInstant, plan_at: ObserverClockInstant) -> BmcAccountPlanOutcome? {
   let route = cited_root_route()
-  let go = approved_bmc_write(standing: route, request: redfish_account_password_write(account: "root" as NonEmptyStr), purpose: RotateCredential, attempt: "attempt-1" as NonEmptyStr)
   match generation_v2(store_at: store_at, fetch_at: fetch_at) {
     Absent => none
-    Present { value: g } =>
+    Present { value: g } => {
+      let published = if separate { PublishedWriteInputs { route: route, generation: g } } else { PublishedAccountIsTheManagedAccount }
+      let go = approved_bmc_convergence(approval: bmc_secure_convergence_approval(goal: goal_v1(), reading: reading, managed_user: root_user, managed_route: route, published: published), attempt: "attempt-1" as NonEmptyStr)
       Present {
         value: plan_bmc_account_action(
           subject: lab_subject(),
@@ -239,13 +249,14 @@ fn plan_root(reading: BmcAccountStateObservation, separate: Bool, store_at: Obse
           reading: reading,
           managed_user: root_user,
           managed_route: route,
-          managed_approval: go,
+          approval: go,
           managed_generation: g,
-          published: if separate { PublishedWriteInputs { route: route, approval: go, generation: g } } else { PublishedAccountIsTheManagedAccount },
+          published: published,
           channel_close: none,
           planned_at: plan_at,
         ),
       }
+    }
   }
 }
 
@@ -311,14 +322,19 @@ test fn the_root_rotation_applies_reads_back_and_converges() -> Bool {
   }
 }
 
-// ── the derivation is bound to the build it was read on (review of gunbc#15317) ──────────────────────
+// ── the derivation is bound to the board and build it was read on (review of gunbc#15317) ───────────
+//
+// The policy key is not supplied beside the reading: the dry read derives it from the reading's own declared
+// board and observed build, so a derivation under another board's or build's row is not expressible through
+// it. retired_on_the_managed_account still joins the derivation's key to the observation's, for any other
+// producer of the observation.
 
 fn build(wire: NonEmptyStr) -> BmcFirmwareReleaseIdentity {
   bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: wire)
 }
 
-// root holding generation 1, read under generation 1, at `firmware`, deriving under `policy`.
-fn read_root_on(firmware: BmcFirmwareReleaseIdentity, policy: BmcCredentialPolicyKey, served: List<CredentialSurface>) -> BmcAccountStateObservation
+// root holding generation 1, read under generation 1, on `board` at `firmware`.
+fn read_root_on(board: BoardAuthorityRef?, firmware: BmcFirmwareReleaseIdentity, served: List<CredentialSurface>) -> BmcAccountStateObservation
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "derived_on"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "decision_on_build"),
@@ -328,6 +344,7 @@ fn read_root_on(firmware: BmcFirmwareReleaseIdentity, policy: BmcCredentialPolic
     world: world_root(password: generation_1),
     subject: lab_subject(),
     endpoint: lab_endpoint,
+    board: board,
     firmware: firmware,
     managed: root_ref(version: "1", epoch: 1),
     managed_user: root_user,
@@ -338,53 +355,53 @@ fn read_root_on(firmware: BmcFirmwareReleaseIdentity, policy: BmcCredentialPolic
     published_account: PublishedAccountRetired,
     break_glass: root_ref(version: "1", epoch: 1),
     break_glass_password: generation_1,
-    published_reading: DryDerivePublishedRetirement { policy: policy, published_account: "root" as NonEmptyStr, served: served },
+    published_reading: derive_over(served: served),
     attempt: "attempt-1" as AttemptIdentity,
     read_at_millis: t_read,
   )
 }
 
-fn derived_on(firmware: BmcFirmwareReleaseIdentity, policy: BmcCredentialPolicyKey, served: List<CredentialSurface>) -> Bool {
-  match read_root_on(firmware: firmware, policy: policy, served: served).published_credential {
+fn derived_on(board: BoardAuthorityRef?, firmware: BmcFirmwareReleaseIdentity, served: List<CredentialSurface>) -> Bool {
+  match read_root_on(board: board, firmware: firmware, served: served).published_credential {
     PublishedCredentialRetiredOnTheManagedAccount { derivation: _ } => true
     PublishedCredentialProbed { probes: _ } => false
   }
 }
 
-fn decision_on_build(firmware: BmcFirmwareReleaseIdentity, policy: BmcCredentialPolicyKey, served: List<CredentialSurface>) -> String {
-  match inspect_bmc_secure_state(subject: lab_subject(), goal: goal_v1(), reading: read_root_on(firmware: firmware, policy: policy, served: served)) {
+fn decision_on_build(board: BoardAuthorityRef?, firmware: BmcFirmwareReleaseIdentity, served: List<CredentialSurface>) -> String {
+  match inspect_bmc_secure_state(subject: lab_subject(), goal: goal_v1(), reading: read_root_on(board: board, firmware: firmware, served: served)) {
     BmcSecureStateUnobserved { cause: _ } => "unobserved"
     BmcSecureStateInspected { observed: _, assessment: _, decision: d } => decision_label(d: d)
   }
-}
-
-fn key_for(wire: NonEmptyStr) -> BmcCredentialPolicyKey {
-  BmcCredentialPolicyKey { board: asrock_altrad8ud_openbmc_3_22_00_key().board, firmware: build(wire: wire) }
 }
 
 // NO SURFACES IS NOT EVERY SURFACE COVERED. A discovery that established no served surface derives nothing,
 // and BmcSecure refuses; the same read with the Redfish surface served is the Noop
 // (a_secured_root_controller_is_read_without_a_published_probe).
 test fn an_empty_served_set_derives_nothing() -> Bool {
-  let k = asrock_altrad8ud_openbmc_3_22_00_key()
-  !derived_on(firmware: k.firmware, policy: k, served: [])
-    && decision_on_build(firmware: k.firmware, policy: k, served: []) == "refuse"
-    && derived_on(firmware: k.firmware, policy: k, served: redfish_only)
+  let f = asrock_altrad8ud_openbmc_3_22_00_key().firmware
+  !derived_on(board: lab_board(), firmware: f, served: [])
+    && decision_on_build(board: lab_board(), firmware: f, served: []) == "refuse"
+    && derived_on(board: lab_board(), firmware: f, served: redfish_only)
 }
 
-// A BUILD NOBODY MEASURED DERIVES NOTHING, even read at that very build.
+// A BUILD NOBODY MEASURED DERIVES NOTHING, even read at that very build on the measured board.
 test fn a_build_with_no_policy_row_derives_nothing() -> Bool {
-  let k = key_for(wire: "3.06.00" as NonEmptyStr)
-  !derived_on(firmware: k.firmware, policy: k, served: redfish_only)
-    && decision_on_build(firmware: k.firmware, policy: k, served: redfish_only) == "refuse"
+  let older = build(wire: "3.06.00" as NonEmptyStr)
+  !derived_on(board: lab_board(), firmware: older, served: redfish_only)
+    && decision_on_build(board: lab_board(), firmware: older, served: redfish_only) == "refuse"
 }
 
-// ANOTHER BUILD'S POLICY DOES NOT DISCHARGE THIS READING. The 3.22.00 row derives a retirement, but a reading
-// taken on 3.06.00 is not secured by it; the same reading taken on 3.22.00 is the Noop.
-test fn another_builds_policy_does_not_secure_the_reading() -> Bool {
-  let k = asrock_altrad8ud_openbmc_3_22_00_key()
-  let older = build(wire: "3.06.00" as NonEmptyStr)
-  derived_on(firmware: older, policy: k, served: redfish_only)
-    && decision_on_build(firmware: older, policy: k, served: redfish_only) == "refuse"
-    && decision_on_build(firmware: k.firmware, policy: k, served: redfish_only) == "noop"
+// THE BOARD IS HALF THE KEY. The 3.22.00 row was measured on the ALTRAD8UD board: the same build read on
+// another board, or on a controller whose board no row declares, derives nothing and refuses; the reading on
+// the measured board and build is the Noop (paired control).
+test fn another_board_or_an_undeclared_board_derives_nothing() -> Bool {
+  let f = asrock_altrad8ud_openbmc_3_22_00_key().firmware
+  let other: BoardAuthorityRef? = Present { value: mt_collins_board_authority }
+  let undeclared: BoardAuthorityRef? = none
+  !derived_on(board: other, firmware: f, served: redfish_only)
+    && decision_on_build(board: other, firmware: f, served: redfish_only) == "refuse"
+    && !derived_on(board: undeclared, firmware: f, served: redfish_only)
+    && decision_on_build(board: undeclared, firmware: f, served: redfish_only) == "refuse"
+    && decision_on_build(board: lab_board(), firmware: f, served: redfish_only) == "noop"
 }
