@@ -506,30 +506,32 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
   }
 }
 
-// A KEYED ROSTER, not a classifier, and the one leaf-name key this branch adds. It answers a
-// narrower question than "is this name the kernel Map": is this name one of the built-in container
-// spellings whose bare use, in a module that does not have it visible, must be REFUSED rather than
-// guessed at. Two things make it safe in a way the other leaf-spelling probes are not, and one thing
-// makes keying it by declaration impossible here:
-//  - HARM DIRECTION. Its only consumer is unbound_container_diagnostics, which turns a true answer
-//    into an error. A roster line can refuse a name; it can never RENDER a look-alike as the
-//    built-in. A user-declared type named Map reaching this line is refused, not conflated -- the
-//    opposite direction of harm from the failure this branch's ruling is about.
-//  - NO DECLARATION EXISTS YET. It fires exactly where the name resolves to NOTHING (the
-//    kernel-minting path), so there is no resolved declaration node to hand
-//    container_declaration_aliases_keyed_algebra; and resolve sits BELOW the infer phase that
-//    resolves references and builds TypeEnv. Declaration identity is asked in the phase that has the
-//    resolved reference: container_declaration_aliases_keyed_algebra below, and
-//    node_is_keyed_algebra_spelling in v1.compiler.types -- both declaration_ref_eq comparisons.
-// A container spelling that is bound only through the declaration it names (std.types Map =
-// FinitelySupportedFunction) resolves, when that declaration aliases the keyed algebra (below), as
-// the kernel keyed container: the ONE identity the declaration's own spelling
-// FinitelySupportedFunction<K, V> resolves to, so a Map<K, V> and a FinitelySupportedFunction<K, V>
-// meet at a join as one type. Resolving it as a user generic of the alias instead minted a second
-// identity (the record expansion) and refused the joins at v2.std.compilers.lexing
-// lex_rule_set_insert_keyword_class. With no declaration in scope it is unbound, never silently the
-// kernel container. Tracked as the sixth probe, with its limits and its next rung named, in
+// A KEYED ROSTER, not a classifier -- the one leaf-name key this branch adds, and probe 6 of
 // gunbc.recurring_failure_mode one_name_two_representations_kernel_map_and_finitely_supported_function.
+// It answers a narrower question than "is this name the kernel Map": is this one of the built-in
+// container spellings whose bare use, in a module that does not have it visible, must be REFUSED
+// rather than guessed at.
+// CALL SITES, from `git grep -n declaration_resolved_container -- src/v1` at this head (three lines:
+// this definition, one call, zero others). The single call is in unbound_container_diagnostics, whose
+// single call site is the keyed-collection arm of resolve_node_bounded. Its only effect is to add an
+// error diagnostic: the kernel stamping on that arm is decided by v1.compiler.types
+// node_is_keyed_collection, not by this roster, so a roster line can refuse a name but can never
+// RENDER a look-alike as the built-in. Review 87479 caught this file claiming one consumer while
+// is_user_generic_use_site -- which can route a use site to the kernel realization -- was a second;
+// that site is now keyed on the declaration and no longer calls this function.
+// WHY IT CANNOT BE A DECLARATION COMPARISON HERE: it fires exactly where the name resolves to
+// NOTHING, so there is no resolved declaration node to hand container_declaration_aliases_keyed_algebra,
+// and resolve sits BELOW the infer phase that resolves references and builds TypeEnv. Declaration
+// identity is asked in the phase that has the resolved reference:
+// container_declaration_aliases_keyed_algebra below, and node_is_keyed_algebra_spelling in
+// v1.compiler.types -- both declaration_ref_eq comparisons.
+// A container spelling bound only through the declaration it names (std.types Map =
+// FinitelySupportedFunction) resolves, when that declaration aliases the keyed algebra (below), as the
+// kernel keyed container: the ONE identity the declaration's own spelling FinitelySupportedFunction<K, V>
+// resolves to, so a Map<K, V> and a FinitelySupportedFunction<K, V> meet at a join as one type.
+// Resolving it as a user generic of the alias instead minted a second identity (the record expansion)
+// and refused the joins at v2.std.compilers.lexing lex_rule_set_insert_keyword_class. With no
+// declaration in scope it is unbound, never silently the kernel container.
 fn declaration_resolved_container(name: String) -> Bool {
   name == "Map"
 }
@@ -584,10 +586,35 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   else {
     let decl = resolve_generic_use_decl(env: env, n: n)
     if decl.params |> count > 0 {
-      // RESIDUE: second consumer of the leaf-spelling classifier (the first is the emitter's
-      // node_is_keyed_collection); tracked by gunbc.recurring_failure_mode
-      // emitter_keyed_container_lowering_is_keyed_by_leaf_spelling, whose trigger covers both sites.
-      if (is_container_type(name: n.name) && (declaration_resolved_container(name: authored_name(env: env, node: n)) == false || container_declaration_aliases_keyed_algebra(decl: decl, env: env))) || node_is_keyed_algebra_spelling(n: n, source_indices: env.source_indices) { false }
+      // KEYED ON THE DECLARATION (review 87479; DESIGN 4: "type compatibility keys on the exact
+      // declaration a position resolves to, never its leaf name"). This was the SECOND consumer of
+      // declaration_resolved_container and the one that could route a use site to the kernel
+      // realization, so it is the site where a leaf-name key does real harm: a user-declared record
+      // named Map that merely aliases something else reached this line through is_container_type (the
+      // container-name roster, which keys on the use-site spelling and predates this PR) and was then
+      // dispatched by `authored_name == "Map"`. The roster is gone from this decision. Three answers,
+      // none of them the Map spelling, decide it:
+      //  - the DECLARATION it resolves to is a KERNEL-MINTED container (List, Set, FreeMonoid and the
+      //    rest of the roster), read through resolved_node_is_kernel_identity_for_name on `decl` -- the
+      //    predicate that already owns kernel identity by exact span equality, and the reason the
+      //    built-in containers keep answering "not a user generic" without this line consulting the
+      //    leaf spelling at all. Keying it on the use-site node instead would have made every authored
+      //    List<K> a user generic: an authored use site carries an authored span, so only the
+      //    declaration's own span can answer kernel. Its census is
+      //    gunbc.type_reference_decl_file_occurrence_census's kernel-minted row;
+      //  - the declaration it resolves to IS the keyed algebra (std.types Map, or std.algebra
+      //    FinitelySupportedFunction) -- container_declaration_aliases_keyed_algebra, which compares
+      //    declaration_ref_eq, so a look-alike answers false and keeps its own user-generic identity
+      //    (red: a_lookalike_record_named_finitely_supported_function_aliased_as_map_is_not_the_kernel_container
+      //    in dag/test/claim/map_annotation_resolves_by_declaration_witness.dag);
+      //  - or the use site spells the ruling's OWN name: this branch's ruling declares
+      //    FinitelySupportedFunction<K, V> to BE the kernel keyed container, so that spelling resolves
+      //    as the container whatever its module. That arm is a spelling key by design and its
+      //    look-alike surface is the fsk.definer stand-in in
+      //    dag/test/claim/fsf_spelling_resolves_as_kernel_keyed_container_witness.dag; hardening it to
+      //    declaration identity is the next rung, named in gunbc.recurring_failure_mode
+      //    emitter_keyed_container_lowering_is_keyed_by_leaf_spelling.
+      if (is_container_type(name: n.name) && (resolved_node_is_kernel_identity_for_name(node: decl, name: n.name) || container_declaration_aliases_keyed_algebra(decl: decl, env: env))) || node_is_keyed_algebra_spelling(n: n, source_indices: env.source_indices) { false }
       else if decl.inferred != none { true }
       else { true }
     } else { false }
