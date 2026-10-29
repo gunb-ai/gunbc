@@ -539,7 +539,8 @@ fn outcome_row_facts(
     outcome: &ClaimOutcome,
     receipt: &v1_compiler::v1_interpreter::PerformanceReceipt,
 ) -> OutcomeRowFacts {
-    use v1_compiler::v1_interpreter::{HermeticEffectGround, OpaqueHostCallReach};
+    use v1_compiler::v1_compiler_expected_red_roster_join::EffectRefusalGround as Ground;
+    use v1_compiler::v1_interpreter::OpaqueHostCallReach;
     let kind = claim_outcome_kind(outcome).to_string();
     let (detail, code, ground) = match outcome {
         ClaimOutcome::Pass | ClaimOutcome::Fail | ClaimOutcome::CompletedOverBudget { .. } => {
@@ -560,10 +561,11 @@ fn outcome_row_facts(
         ClaimOutcome::HostEffectRefused { operation, ground } => (
             operation.clone(),
             String::new(),
-            match ground {
-                HermeticEffectGround::UnpublishedMockCase { .. } => "UnpublishedMockCase",
-                HermeticEffectGround::NoMockResponse => "NoMockResponse",
-                HermeticEffectGround::FilesystemRemoval => "FilesystemRemoval",
+            match v1_compiler::cli_run::effect_refusal_ground_verdict(ground) {
+                Ground::UnpublishedMockCase => "UnpublishedMockCase",
+                Ground::NoMockResponse => "NoMockResponse",
+                Ground::FilesystemRemoval => "FilesystemRemoval",
+                Ground::FrameNotRealizableUnderMode => "FrameNotRealizableUnderMode",
             }
             .to_string(),
         ),
@@ -1499,7 +1501,7 @@ fn main() -> ExitCode {
 mod cli_path_resolution_wiring_tests {
     use super::OutcomeRowFacts;
     use super::{batch_exit_code, parse_args, validate_explicit_functions, EntryGroup};
-    use v1_compiler::cli_run::{process_shared_index, workspace_root, ClaimOutcome};
+    use v1_compiler::cli_run::{process_shared_index_or_refuse, workspace_root, ClaimOutcome};
     use v1_compiler::v1_interpreter::ExecutionMode;
 
     fn args(v: &[&str]) -> Vec<String> {
@@ -1511,7 +1513,7 @@ mod cli_path_resolution_wiring_tests {
 
     fn one_of_every_claim_outcome() -> Vec<v1_compiler::cli_run::ClaimOutcome> {
         use v1_compiler::cli_run::{BudgetKind, ClaimOutcome, WitnessRuntimeCause};
-        use v1_compiler::v1_interpreter::{HermeticEffectGround, RaisePath};
+        use v1_compiler::v1_interpreter::{EffectRefusalGround, RaisePath};
         vec![
             ClaimOutcome::Pass,
             ClaimOutcome::Fail,
@@ -1537,7 +1539,7 @@ mod cli_path_resolution_wiring_tests {
             },
             ClaimOutcome::HostEffectRefused {
                 operation: "o".into(),
-                ground: HermeticEffectGround::NoMockResponse,
+                ground: EffectRefusalGround::NoMockResponse,
             },
             ClaimOutcome::Panicked {
                 payload: "p".into(),
@@ -1563,7 +1565,7 @@ mod cli_path_resolution_wiring_tests {
             ws.join("dag").to_string_lossy().into_owned(),
             ws.join("src/v2").to_string_lossy().into_owned(),
         ];
-        let index = process_shared_index(&roots);
+        let index = process_shared_index_or_refuse(&roots);
         let entry = ws
             .join("dag/test/claim/discovery_census_witness.dag")
             .to_string_lossy()

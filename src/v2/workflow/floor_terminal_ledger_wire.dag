@@ -11,6 +11,8 @@ import std.content_hash {
   content_hash_combine_structural
 }
 import v2.std.integer { Int }
+import std.integer { int_to_decimal_string }
+import std.nat { nat_to_decimal_string }
 import v2.std.node { Symbol }
 import std.algebra { list_append }
 import v2.workflow.floor2_prepared_subject { witness_identity_qualified_name }
@@ -368,7 +370,7 @@ fn render_header(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> String
 fn render_footer(rows: List<ClaimTerminalRow>) -> String {
   ledger_wire_join(fields: [
     ledger_wire_footer_tag,
-    rows.length() as String,
+    nat_to_decimal_string(value: rows.length()),
     ledger_rows_digest(rows: rows).digest
   ])
 }
@@ -423,7 +425,7 @@ fn render_partial_refusal_line(reason: Symbol, offending: String, row_count: Int
     ledger_partial_refusal_tag,
     reason as String,
     offending,
-    row_count as String
+    int_to_decimal_string(value: row_count)
   ])
 }
 
@@ -714,7 +716,7 @@ fn readback_footer_count_agrees(readback: LedgerReadback, planned_rows: Int) -> 
       rows: _,
       footer_row_count_wire: wire,
       footer_digest: _
-    } => wire == planned_rows as String
+    } => wire == int_to_decimal_string(value: planned_rows)
   }
 }
 
@@ -1000,7 +1002,7 @@ fn render_ledger_from_seed(
                 ),
                 right: [ledger_wire_join(fields: [
                   ledger_wire_footer_tag,
-                  admitted.length() as String,
+                  nat_to_decimal_string(value: admitted.length()),
                   readback_rows_digest(rows: admitted).digest
                 ])]
               )

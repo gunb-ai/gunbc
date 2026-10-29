@@ -140,13 +140,14 @@ fn ubuntu_install_media_mirror_urls(artifact: UbuntuInstallMediaArtifactRow) -> 
   )
 }
 
-fn ubuntu_install_media_artifacts_dir() -> NonEmptyStr {
-  "/var/lib/gunbc/artifacts" as NonEmptyStr
-}
-
-fn ubuntu_install_media_install_path(artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+// THE INSTALL ROOT IS RECEIVED, NOT CARRIED (cohort C-host): this module carries upstream facts
+// only -- the cited rows, their filenames and digests. The host directory the media is installed into
+// is a gunbc host-state fact, declared under the ONE tree by gunbc.provisioning.install_media_store
+// (install_media_slots, member "artifacts"); it passes the directory here, and the old
+// ubuntu_install_media_artifacts_dir() with its "/var/lib/gunbc/artifacts" literal is DELETED.
+fn ubuntu_install_media_install_path(dir: NonEmptyStr, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
   concat(
-    concat(ubuntu_install_media_artifacts_dir() as String, "/"),
+    concat(dir as String, "/"),
     ubuntu_install_media_filename(artifact: artifact) as String,
   ) as NonEmptyStr
 }
