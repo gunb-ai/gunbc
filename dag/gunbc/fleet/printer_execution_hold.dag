@@ -106,6 +106,15 @@ data printer_operator_observation_attempt:AttemptIdentity = ("printer-start-stal
 
 data printer_operator_observation_purpose:NonEmptyStr = "no printer converge for this escalation is running and printer-01 is idle; free the stale printer-start hold"
 
+// THE INTENT IS THE PLANNED ACTION ITSELF: which slot, under which root, over which holder and
+// generation. Hashing a constant label here would let an observation approved for ANY hold release
+// EVERY hold (the revision is that hash, and the derived grant's subject comes from the request), so
+// consent would be a flag, not a decision about one specific hold. Same shape as
+// gunbc.serving.serving_key_grant / rented_host_grant: intent text of the subject, then hashed.
+fn printer_operator_observation_intent_text(hold_root:NonEmptyStr,hold_slot:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration) -> NonEmptyStr {
+  join(["printer-start-stale-hold-release-v1 root=",hold_root as String," slot=",hold_slot as String," holder=",holder as String," generation=",int_to_decimal_string(value:cas_generation_count(g:generation))],"") as NonEmptyStr
+}
+
 fn printer_operator_observation_request(hold_root:NonEmptyStr,hold_slot:NonEmptyStr,escalation_id:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration) -> AuthorizationRequest<DurableHoldSubject> {
   AuthorizationRequest {
     escalation_id: escalation_id,
@@ -113,7 +122,7 @@ fn printer_operator_observation_request(hold_root:NonEmptyStr,hold_slot:NonEmpty
     subject: DurableHoldSubject { hold:file_hold_ref(root:hold_root,slot_key:hold_slot), holder:holder, generation:generation },
     purpose: printer_operator_observation_purpose,
     attempt: printer_operator_observation_attempt,
-    intent_hash: content_hash_of_value(value:"printer-start-stale-hold-release-v1" as NonEmptyStr),
+    intent_hash: content_hash_of_value(value:printer_operator_observation_intent_text(hold_root:hold_root,hold_slot:hold_slot,holder:holder,generation:generation)),
     destructive: true,
   }
 }
@@ -137,7 +146,7 @@ fn store_failure_detail(cause:CasStoreFailure) -> String {
 // learn who holds the controller. (Before this, one masked sentence for every refusal made a
 // 4.5-day stale hold a cross-machine forensic hunt.)
 fn printer_hold_slot_text(slot_key:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration) -> String {
-  join(["owner '",holder as String,"' (slot ",slot_key as String,", generation ",int_to_decimal_string(value: cas_generation_count(g:g)),") "],"")
+  join(["owner '",holder as String,"' (slot ",slot_key as String,", generation ",int_to_decimal_string(value: cas_generation_count(g:generation)),") "],"")
 }
 
 // THE ACQUIRE-USE-RELEASE DANCE, spelled ONCE and used by the first attempt and by every retry
@@ -193,7 +202,7 @@ fn printer_hold_release_on_operator_observation(root:NonEmptyStr,approvals_root:
               match file_hold_release_commit(plan:p) {
                 FileHoldReleased {slot_key:_,generation:_}=>printer_hold_retry_after_release(root:root,slot_key:hold_slot,owner:printer_execution_hold_owner_text(escalation_id:escalation_id),use:use,prior:join(["the stale printer-start hold on slot ",hold_slot as String," (holder ",rh as String,") was released on the operator's approved observation"],""))
                 FileHoldReleaseLost {slot_key:_}=>exit_failure(reason:join(["the stale printer-start hold on slot ",slot_key as String," moved under the operator-observed release; nothing released, re-run"],""))
-                FileHoldReleaseStoreUnavailable {slot_key:_,cause:cs}=>exit_failure(reason:join(["the printer-start claim store refused the operator-observed release on slot ",slot_key as String,": ",cs as String],""))
+                FileHoldReleaseStoreUnavailable {slot_key:_,cause:cs}=>exit_failure(reason:join(["the printer-start claim store refused the operator-observed release on slot ",slot_key as String,": ",store_failure_detail(cause:cs)],""))
                 FileHoldReleaseKeyNotSlotAddressable {slot_key:_}=>exit_failure(reason:join(["the printer-start hold slot key ",slot_key as String," is not slot-addressable; the operator-observed release did not commit"],""))
               }
             FileHoldNonHolderReleaseNotEligible {slot_key:_,refusal:r}=>exit_failure(reason:join(["the operator observation did not release this hold: ",printer_hold_slot_text(slot_key:slot_key,holder:holder,generation:generation),"-- ",printer_nonholder_refusal_detail(refusal:r)],""))

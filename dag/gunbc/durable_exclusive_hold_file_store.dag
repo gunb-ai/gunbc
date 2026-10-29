@@ -604,7 +604,7 @@ fn file_hold_recover_dead_holder(
     decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_enter"),
   ]
 {
-  match live_owner(h: holder) {
+  match live_owner(holder) {
     HolderObservedDead { evidence: e } =>
       match file_hold_recovery_assess(root: root, slot_key: slot_key, report: DurableHoldHolderReport { holder: holder, generation: generation, liveness: HolderObservedDead { evidence: e } }, released_by: released_by) {
         FileHoldRecoveryPlanned { plan: p, dead_holder: d, evidence: ev } =>
