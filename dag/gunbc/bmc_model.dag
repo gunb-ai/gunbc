@@ -13,8 +13,7 @@ import extdeps.bmc.ipmi_sdr { SdrTypeLine }
 import extdeps.bmc.ipmi_chassis_control {
   IpmiChassisControlAction, IpmiChassisPowerDown, IpmiChassisPowerUp, IpmiChassisPowerCycle, IpmiChassisHardReset,
 }
-import std.roster_frontier { FrontierRow, PathSubject, frontier_row_path }
-import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // THE ONE BMC MODEL: scenario state and its transitions, nothing else. The controller operations and
@@ -558,11 +557,6 @@ fn bmc_ipmi_get_user_access(world: BmcWorld, user: IpmiUserId, channel: IpmiChan
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "bmc_sol_drop_fired" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  frontier_row_path(
-    path: "gunbc.bmc_model::bmc_redfish_note_failed_login",
-    reason: "the failed-login lock reads its threshold from the caller as a typed BmcRedfishLockoutThreshold, not from the served AccountService; the world counts failures and applies a threshold but does not own the served value (the lockout lane does). Rostered so the ratchet arms at unrostered=0.",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: the lockout lane's extdeps.bmc.redfish RedfishAccountServiceLockoutServed lands and the caller reads account_lockout_threshold from it into bmc_redfish_note_failed_login, retiring the caller-supplied threshold parameter; the 0-means-never conversion belongs at that extdeps wire boundary, not here."),
-  ),
 ]
 
 // ── REDFISH ACCOUNT SERVICE ───────────────────────────────────────────────────────────────────
@@ -607,8 +601,9 @@ type BmcRedfishAccount {
   failed_logins: Int
 }
 
-// Which accounts the Redfish surface serves. The dry Redfish read (gunbc.machine_intake.bmc_secure's
-// dry_read_bmc_account_state) is the consumer that reads this census; a world built with none reads as
+// Which accounts the Redfish surface serves. The declared consumer is item 3's dry Redfish account read in
+// gunbc.machine_intake.bmc_secure (the frontier rows in gunbc.machine_intake.bmc_secure_redfish_frontier bind that
+// realization -- it does not exist until PR 1b-i lands); a world built with none reads as
 // "the Redfish surface serves no account," which is NOT the same as the surface being unreadable.
 fn bmc_with_redfish_accounts(world: BmcWorld, accounts: List<BmcRedfishAccount>) -> BmcWorld {
   BmcWorld {
@@ -639,9 +634,11 @@ fn bmc_redfish_census(world: BmcWorld) -> List<BmcRedfishAccount> {
   }
 }
 
-// THE TYPED SURFACE READ, for the dry read (gunbc.machine_intake.bmc_secure's dry_read_bmc_account_state).
-// `Absent` = the Redfish surface was never modeled (report the reading as absence, not as an empty census);
-// `Present { [] }` = the surface is modeled and genuinely serves zero accounts. Never collapse the two.
+// THE TYPED SURFACE READ. `Absent` = the Redfish surface was never modeled (report the reading as absence, not as an
+// empty census); `Present { [] }` = the surface is modeled and genuinely serves zero accounts. Never collapse the two.
+// Its declared consumer is item 3's dry Redfish account read (frontier: gunbc.machine_intake.bmc_secure_redfish_frontier),
+// which is also what keeps this distinction from being decoration -- the witness reads it on both a none world and a
+// Present { [] } world until that realization lands.
 fn bmc_redfish_surface(world: BmcWorld) -> List<BmcRedfishAccount>? {
   world.redfish_accounts
 }
