@@ -800,10 +800,15 @@ fn runner_host_path_metadata_wire(m: FleetHostPathMetadata) -> String {
   }
 }
 
+// `ancestors` is the root-only reading of the ancestor directories that EXIST; `absent_ancestors` is the
+// tail of the chain that does not, established by listing each one's parent (entry_presence), never read
+// from a failed find. A file whose drop-in directory was never created is therefore an observed absence
+// with a declared repair, not an unobservable path.
 type FleetHostFileObservation {
   content: FleetHostFileStanding
   file_metadata: FleetHostPathMetadata
   ancestors: FleetHostPathMetadata
+  absent_ancestors: List<String>
 }
 
 type FleetHostFileAction
@@ -816,6 +821,34 @@ type FleetHostFileAction
 // bytes where a CI user can replace them. Unsafe FILE metadata, by contrast, IS repaired by a write --
 // the staged file is created by root and renamed over the old one, replacing its owner and mode.
 fn fleet_host_file_action(observation: FleetHostFileObservation) -> FleetHostFileAction {
+  if length(observation.absent_ancestors) > 0 {
+    fleet_host_file_action_under_absent_ancestors(observation: observation)
+  } else {
+    fleet_host_file_action_under_present_ancestors(observation: observation)
+  }
+}
+
+// THE DIRECTORIES ARE CREATED ONLY WHERE NOTHING ELSE COULD HAVE PLACED THE FILE: the ancestors that exist
+// must be root-only (the same refusal as a write into an existing tree), and the file must read absent,
+// since a file cannot exist below a directory that does not. Any other content reading under an absent
+// directory contradicts the presence walk and refuses.
+fn fleet_host_file_action_under_absent_ancestors(observation: FleetHostFileObservation) -> FleetHostFileAction {
+  match observation.ancestors {
+    PathsNotRootOnly { paths: ps, detail: d } =>
+      HostFileActionRefused { reason: join(["ancestor directory not root-only: ", join(ps, ","), " ", d], "") }
+    PathsUnobservable { reason: r } => HostFileActionRefused { reason: concat("ancestor metadata unobservable: ", r) }
+    PathsNotApplicable => HostFileActionRefused { reason: "ancestor metadata was not read" }
+    PathsRootOnly =>
+      match observation.content {
+        HostFileAbsent => HostFileWrite
+        HostFileUnobservable { reason: r } => HostFileActionRefused { reason: r }
+        HostFileIdentical => HostFileActionRefused { reason: concat("the file reads present below an ancestor the listing found absent: ", join(observation.absent_ancestors, ",")) }
+        HostFileDiffers => HostFileActionRefused { reason: concat("the file reads present below an ancestor the listing found absent: ", join(observation.absent_ancestors, ",")) }
+      }
+  }
+}
+
+fn fleet_host_file_action_under_present_ancestors(observation: FleetHostFileObservation) -> FleetHostFileAction {
   match observation.ancestors {
     PathsNotRootOnly { paths: ps, detail: d } =>
       HostFileActionRefused { reason: join(["ancestor directory not root-only: ", join(ps, ","), " ", d], "") }
@@ -1324,7 +1357,7 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
         LegMetadataProbe { path: f.path as String },
         LegFileModeFind { path: f.path as String, mode: f.mode },
         LegRootOnlyFind { paths: fleet_host_path_ancestors(path: f.path as String), kind: "d" },
-      ]),
+      ] + map(fleet_host_path_ancestors(path: f.path as String), a => LegElevated { command: fleet_host_ancestor_directory_argv(path: a) })),
       concat(
         map(concat(residue.files, residue.directories), p => LegMetadataProbe { path: p }),
         concat(
@@ -1387,6 +1420,108 @@ fn observe_fleet_host_paths(
     TypedArgvExecConverged { result: r } =>
       classify_root_only_paths(requested: paths, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
   }
+}
+
+// THE ANCESTOR CHAIN, WITH ITS ABSENT TAIL. One find over every ancestor answers the common case. find
+// exits nonzero when a named path does not exist, and that exit alone cannot tell absence from a refusal,
+// so a failed find is followed by the presence question for each ancestor (entry_presence, the walk that
+// already establishes a file's own absence). Absent ancestors must be a tail of the chain; the find is
+// then re-run over the ancestors that exist, so their root-only reading is still a successful find.
+type FleetHostAncestorsReading {
+  metadata: FleetHostPathMetadata
+  absent: List<String>
+}
+
+fn observe_fleet_host_ancestors(
+  subject: FleetHostFileSubject,
+  context: FleetSshExecutionContext,
+  path: String,
+) -> FleetHostAncestorsReading
+{
+  let chain = fleet_host_path_ancestors(path: path)
+  match observe_fleet_host_paths(subject: subject, context: context, paths: chain, kind: "d") {
+    PathsUnobservable { reason: r } => {
+      let presence = map(chain, a => AncestorPresence {
+        path: a,
+        presence: entry_presence(arm: OverTransport { transport: FleetSsh { target: subject.target, context: context } }, path: a),
+      })
+      fleet_host_ancestors_after_presence(
+        subject: subject,
+        context: context,
+        chain: chain,
+        presence: presence,
+        find_refusal: r,
+      )
+    }
+    PathsRootOnly => FleetHostAncestorsReading { metadata: PathsRootOnly, absent: [] }
+    PathsNotRootOnly { paths: ps, detail: d } => FleetHostAncestorsReading { metadata: PathsNotRootOnly { paths: ps, detail: d }, absent: [] }
+    PathsNotApplicable => FleetHostAncestorsReading { metadata: PathsNotApplicable, absent: [] }
+  }
+}
+
+type AncestorPresence {
+  path: String
+  presence: EntryPresence
+}
+
+fn fleet_host_ancestors_after_presence(
+  subject: FleetHostFileSubject,
+  context: FleetSshExecutionContext,
+  chain: List<String>,
+  presence: List<AncestorPresence>,
+  find_refusal: String,
+) -> FleetHostAncestorsReading
+{
+  match classify_fleet_host_ancestor_presence(chain: chain, presence: presence) {
+    AncestorTailUndetermined { cause: c } =>
+      FleetHostAncestorsReading { metadata: PathsUnobservable { reason: join([find_refusal, "; ", c], "") }, absent: [] }
+    AncestorTailNone =>
+      FleetHostAncestorsReading { metadata: PathsUnobservable { reason: find_refusal }, absent: [] }
+    AncestorTailAbsent { present: ps, absent: ab } =>
+      FleetHostAncestorsReading {
+        metadata: if length(ps) == 0 { PathsUnobservable { reason: "no ancestor of the file exists within the write scope" } } else {
+          observe_fleet_host_paths(subject: subject, context: context, paths: ps, kind: "d")
+        },
+        absent: ab,
+      }
+  }
+}
+
+// THE PURE HALF: which ancestors exist and which do not, from one presence answer per ancestor, in the
+// chain's root-to-leaf order. Any undetermined answer undetermines the whole reading, and an absent
+// ancestor above a present one contradicts itself, so both refuse rather than create.
+type AncestorTail
+  = AncestorTailNone
+  | AncestorTailAbsent { present: List<String>, absent: List<String> }
+  | AncestorTailUndetermined { cause: String }
+
+fn classify_fleet_host_ancestor_presence(chain: List<String>, presence: List<AncestorPresence>) -> AncestorTail {
+  let undetermined = list_flat_map(presence, a => match a.presence {
+    EntryPresenceIndeterminate { cause: c } => [join([a.path, ": ", c], "")]
+    EntryPresent => []
+    EntryAbsent => []
+  })
+  let present = list_flat_map(presence, a => match a.presence { EntryPresent => [a.path] EntryAbsent => [] EntryPresenceIndeterminate { cause: _ } => [] })
+  let absent = list_flat_map(presence, a => match a.presence { EntryAbsent => [a.path] EntryPresent => [] EntryPresenceIndeterminate { cause: _ } => [] })
+  if length(undetermined) > 0 {
+    AncestorTailUndetermined { cause: concat("ancestor presence undetermined: ", join(undetermined, "; ")) }
+  } else if !(map(presence, a => a.path) == chain) {
+    AncestorTailUndetermined { cause: "the presence answers do not cover the ancestor chain in order" }
+  } else if length(absent) == 0 {
+    AncestorTailNone
+  } else if !(concat(present, absent) == chain) {
+    AncestorTailUndetermined { cause: concat("an absent ancestor lies above a present one: ", join(absent, ",")) }
+  } else {
+    AncestorTailAbsent { present: present, absent: absent }
+  }
+}
+
+// THE DIRECTORY AN ABSENT ANCESTOR IS CREATED AS: root-owned, at the executor's managed directory mode,
+// which carries no group or other write bit, so the root-only readback admits exactly what was created.
+fn fleet_host_ancestor_directory_argv(path: String) -> List<String> {
+  map(executor_privileged_operation_argv(op: EnsureOwnedDirectory {
+    path: path as NonEmptyStr, owner: "root" as NonEmptyStr, group: "root" as NonEmptyStr, mode: executor_managed_directory_mode,
+  }), w => w as String)
 }
 
 fn observe_fleet_host_file_mode(
@@ -1489,6 +1624,7 @@ fn observe_fleet_host_file(
 ) -> FleetHostFileObservation
 {
   let content = observe_fleet_host_file_content(subject: subject, context: context, file: file)
+  let ancestors = observe_fleet_host_ancestors(subject: subject, context: context, path: file.path as String)
   FleetHostFileObservation {
     content: content,
     file_metadata: match content {
@@ -1497,7 +1633,8 @@ fn observe_fleet_host_file(
       HostFileIdentical => observe_fleet_host_file_mode(subject: subject, context: context, file: file)
       HostFileDiffers => observe_fleet_host_file_mode(subject: subject, context: context, file: file)
     },
-    ancestors: observe_fleet_host_paths(subject: subject, context: context, paths: fleet_host_path_ancestors(path: file.path as String), kind: "d"),
+    ancestors: ancestors.metadata,
+    absent_ancestors: ancestors.absent,
   }
 }
 
@@ -2291,20 +2428,63 @@ fn apply_fleet_host_file(
     HostFileLeaveInPlace => HostFileLeftInPlace
     HostFileActionRefused { reason: r } => HostFileNotAttempted { reason: r }
     HostFileWrite =>
-      match converge_typed_remote_file(
-        target: subject.target,
-        context: context,
-        admission: fleet_host_file_write_admission(file: planned.file),
-        mode: planned.file.mode,
-        privilege: RemoteFileViaNonInteractiveSudo,
-        validation: planned.file.validation,
-      ) {
-        TypedRemoteFileConvergenceRefused { step: st, reason: why } => HostFileWriteRefused { step: st, reason: why }
-        TypedRemoteFileConverged { converged: c } =>
-          match fleet_host_file_readback_refusal(metadata: observe_fleet_host_file_mode(subject: subject, context: context, file: planned.file)) {
-            Absent => HostFileConvergedByWrite { converged: c }
-            Present { value: why } => HostFileWriteRefused { step: "metadata-readback", reason: why }
-          }
+      match create_fleet_host_absent_ancestors(subject: subject, context: context, planned: planned) {
+        Present { value: why } => HostFileWriteRefused { step: "ancestor-directories", reason: why }
+        Absent => write_fleet_host_file(subject: subject, context: context, planned: planned)
+      }
+  }
+}
+
+// THE ABSENT ANCESTORS ARE CREATED TOP-DOWN AS ROOT, AND THE WHOLE CHAIN IS READ BACK before any byte is
+// written: a write lands only beneath directories this run read as root-only, whether they existed or
+// were just created. Nothing is created when the observation found every ancestor present.
+fn create_fleet_host_absent_ancestors(
+  subject: FleetHostFileSubject,
+  context: FleetSshExecutionContext,
+  planned: FleetHostFilePlanned,
+) -> String?
+{
+  if length(planned.observation.absent_ancestors) == 0 {
+    none
+  } else {
+    let failed = list_flat_map(planned.observation.absent_ancestors, d =>
+      match run_fleet_host_leg(subject: subject, context: context, leg: LegElevated { command: fleet_host_ancestor_directory_argv(path: d) }) {
+        TypedArgvExecRefused { reason: why } => [join([d, ": ", why], "")]
+        TypedArgvExecConverged { result: r } =>
+          if r.exit_code == 0 { [] } else { [join([d, ": exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "")] }
+      })
+    if length(failed) > 0 {
+      Present { value: concat("creating an absent ancestor refused: ", join(failed, "; ")) }
+    } else {
+      match observe_fleet_host_paths(subject: subject, context: context, paths: fleet_host_path_ancestors(path: planned.file.path as String), kind: "d") {
+        PathsRootOnly => none
+        PathsNotRootOnly { paths: ps, detail: d } => Present { value: join(["after creation the ancestors do not read back root-only: ", join(ps, ","), " ", d], "") }
+        PathsUnobservable { reason: r } => Present { value: concat("after creation the ancestors could not be read back: ", r) }
+        PathsNotApplicable => Present { value: "after creation the ancestors were not read back" }
+      }
+    }
+  }
+}
+
+fn write_fleet_host_file(
+  subject: FleetHostFileSubject,
+  context: FleetSshExecutionContext,
+  planned: FleetHostFilePlanned,
+) -> FleetHostFileOutcome
+{
+  match converge_typed_remote_file(
+    target: subject.target,
+    context: context,
+    admission: fleet_host_file_write_admission(file: planned.file),
+    mode: planned.file.mode,
+    privilege: RemoteFileViaNonInteractiveSudo,
+    validation: planned.file.validation,
+  ) {
+    TypedRemoteFileConvergenceRefused { step: st, reason: why } => HostFileWriteRefused { step: st, reason: why }
+    TypedRemoteFileConverged { converged: c } =>
+      match fleet_host_file_readback_refusal(metadata: observe_fleet_host_file_mode(subject: subject, context: context, file: planned.file)) {
+        Absent => HostFileConvergedByWrite { converged: c }
+        Present { value: why } => HostFileWriteRefused { step: "metadata-readback", reason: why }
       }
   }
 }
@@ -3226,6 +3406,7 @@ fn runner_host_file_result_line(r: FleetHostFileResult) -> String {
     " content=", runner_host_file_standing_wire(standing: r.planned.observation.content),
     " file-metadata=", runner_host_path_metadata_wire(m: r.planned.observation.file_metadata),
     " ancestors=", runner_host_path_metadata_wire(m: r.planned.observation.ancestors),
+    " absent-ancestors=", if length(r.planned.observation.absent_ancestors) == 0 { "none" } else { join(r.planned.observation.absent_ancestors, ",") },
     " action=", runner_host_file_action_wire(action: r.planned.action),
     " outcome=", runner_host_file_outcome_wire(outcome: r.outcome),
     "\n",
