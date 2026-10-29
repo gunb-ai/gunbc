@@ -11,7 +11,7 @@ import gunbc.deploy_transition_bootstrap {
 }
 import gunbc.live_deploy.capacity_quiescence {
   CapacityQuiescenceStep, CapacityReadUnit, CapacityInhibitUnit, CapacityPlantStart, CapacityContainStart,
-  capacity_quiescence_probe, capacity_quiescence_plan, capacity_quiescence_reprobe, CapacityProbeProcess,
+  capacity_quiescence_probe, capacity_quiescence_probe_inhibited, capacity_quiescence_plan, capacity_quiescence_reprobe, CapacityProbeProcess,
 }
 
 fn quiescence_fixture_unit() -> CapacityManagedUnit {
@@ -122,4 +122,28 @@ test fn an_unanswered_post_install_start_is_not_proof() -> Bool {
       QuiescenceRefused { cause: _ } => true QuiescenceInForce => false
     }
   }
+}
+
+
+fn quiescence_inhibited_fixture(masked: Bool, stop: Int) -> Result<CapacityUnitDrain, String> {
+  capacity_quiescence_probe_inhibited(subject: quiescence_fixture_unit(), requirement: CapacityProbeProcess { parent: none },
+    run: step => match step {
+      CapacityReadUnit { subject: _ } => Ok { value: ShellResponse { exit_code: 0,
+        stdout: concat("ActiveState=inactive\nControlGroup=/fixture.slice/fixture.service\nLoadState=", if masked { "masked\n" } else { "loaded\n" }), stderr: "" } }
+      CapacityInhibitUnit { subject: _ } => Err { value: "ordinary mask must not be created" }
+      CapacityContainStart { subject: _ } => Ok { value: ShellResponse { exit_code: stop, stdout: "", stderr: "stop outcome" } }
+      _ => quiescence_fixture_run(step: step, start: 1)
+    }, descendants: path => RecordedPathEmpty)
+}
+
+test fn migration_consumes_existing_inhibition_without_creating_another_mask() -> Bool {
+  match quiescence_inhibited_fixture(masked: true, stop: 0) {
+    Err { value: _ } => false
+    Ok { value: drain } => unit_quiescence_admission(q: drain.quiescence) == QuiescenceInForce
+  }
+}
+
+test fn migration_refuses_missing_inhibition_or_a_failed_stop() -> Bool {
+  (match quiescence_inhibited_fixture(masked: false, stop: 0) { Err { value: _ } => true Ok { value: _ } => false })
+    && (match quiescence_inhibited_fixture(masked: true, stop: 1) { Err { value: _ } => true Ok { value: _ } => false })
 }

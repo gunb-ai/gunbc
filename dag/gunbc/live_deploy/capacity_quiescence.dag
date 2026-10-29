@@ -195,3 +195,25 @@ fn capacity_quiescence_reprobe(subject: CapacityManagedUnit, requirement: Capaci
       control_group: systemctl_show_property_value(text: before.stdout, key: "ControlGroup"))
   }
 }
+
+// Migration owns persistent inhibition separately: its journaled .control link
+// must already be installed and reloaded. This route never makes a second mask
+// in the ordinary unit directory. Preserve the pre-stop cgroup for descendants.
+fn capacity_quiescence_probe_inhibited(subject: CapacityManagedUnit, requirement: CapacityProbeRequirement,
+  run: fn(CapacityQuiescenceStep) -> Result<ShellResponse, String>,
+  descendants: fn(String) -> RecordedCgroupPathStanding) -> Result<CapacityUnitDrain, String> {
+  let before = match capacity_require_masked_response(response: run(CapacityReadUnit { subject: subject })) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  match run(CapacityContainStart { subject: subject }) {
+    Err { value: why } => { return Err { value: why } }
+    Ok { value: stopped } => if stopped.exit_code != 0 {
+      return Err { value: concat("inhibited unit could not be stopped: ", stopped.stderr) }
+    }
+  }
+  capacity_probe_activation_and_drain(subject: subject, requirement: requirement,
+    run: step => match step {
+      CapacityReadUnit { subject: _ } => capacity_require_masked_response(response: run(step))
+      _ => run(step)
+    }, descendants: descendants, control_group: systemctl_show_property_value(text: before.stdout, key: "ControlGroup"))
+}

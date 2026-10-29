@@ -16,7 +16,7 @@ import gunbc.compute.host_capacity { ComputeCapacityStanding, ComputeCapacitySub
 import gunbc.compute.recorded_cgroup_drain { RecordedCgroupPathStanding }
 import gunbc.live_deploy.capacity_quiescence {
   CapacityProbeRequirement, CapacityProbeProcess, CapacityProbeActivation, CapacityProbeUnknown,
-  CapacityQuiescenceStep, capacity_quiescence_probe,
+  CapacityQuiescenceStep, capacity_quiescence_probe_inhibited,
 }
 
 type CapacityProbeBinding {
@@ -47,7 +47,7 @@ fn capacity_probe_bindings_run(bindings: List<CapacityProbeBinding>, ports: Capa
       // Shared parents are observed once. Ambiguous bindings are rejected by the
       // producer; this fold only reuses an already acquired observation identity.
       if any(observed, reading => reading.subject == binding.subject) { Ok { value: observed } }
-      else { match capacity_quiescence_probe(subject: binding.subject, requirement: binding.requirement, run: ports.run, descendants: ports.descendants) {
+      else { match capacity_quiescence_probe_inhibited(subject: binding.subject, requirement: binding.requirement, run: ports.run, descendants: ports.descendants) {
         Err { value: why } => Err { value: join([binding.subject.unit as String, ": ", why], "") }
         Ok { value: reading } => Ok { value: observed + [reading] }
       } }
@@ -66,7 +66,8 @@ fn capacity_family_probe_binding(family: CapacityTransientFamily, unit: Capacity
   } }
 }
 
-// Executes only after apply authorization. Refusal happens before any installation.
+// Executes only after apply authorization and journaled inhibition publication/reload.
+// Its probe consumes existing masks; it never creates an unjournaled ordinary mask. Refusal happens before any installation.
 // Listing is after fixed activators/parents are proven inhibited, never a pre-drain
 // snapshot that can lose a concurrently launched transient. Final admission consumes
 // the observations from this run, not a persisted success marker.
