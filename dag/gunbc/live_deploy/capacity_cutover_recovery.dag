@@ -4,8 +4,10 @@ import std.types { String, NonEmptyStr, List, Int, Bool, CommitSha }
 import std.error_primitives { Result, Ok, Err }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
-import extdeps.crypto.hash { Digest }
-import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
+import std.fabric_blob { FabricBlobAddress, FabricBlobReadingOutcome, FabricBlobRead, FabricBlobReadRefused, fabric_blob_reading_digest, fabric_blob_fault_text }
+import extdeps.systemd.manager { SystemdManager }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, CapturedUnitDocument }
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 
 // This is the payload of the existing durable CAS slot, not another journal
@@ -13,8 +15,11 @@ import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 // are inhibited. The record is written before the first link; no boot consumer
 // runs it. Only an explicitly approved recovery can choose resume or rollback.
 type CapacityGenerationFile {
-  install: DeploymentUnitInstall
-  digest: Digest
+  manager: SystemdManager
+  unit: NonEmptyStr
+  destination: NonEmptyStr
+  address: FabricBlobAddress
+  digest: Sha256Digest
 }
 
 type CapacityCutoverPhase
@@ -74,14 +79,14 @@ fn capacity_recovery_plan(record: CapacityCutoverRecord, choice: CapacityRecover
 }
 
 fn capacity_recovery_has_inhibition(paths: List<CapacityInhibitionPath>, file: CapacityGenerationFile) -> Bool {
-  count(filter(paths, path => path.subject.manager == file.install.manager && path.subject.unit == file.install.unit)) == 1
+  count(filter(paths, path => path.subject.manager == file.manager && path.subject.unit == file.unit)) == 1
 }
 
 // This first recovery domain replaces existing units only. It refuses additions
 // rather than silently leaving a new writer behind during rollback.
 fn capacity_generation_has_file(files: List<CapacityGenerationFile>, file: CapacityGenerationFile) -> Bool {
-  count(filter(files, candidate => candidate.install.manager == file.install.manager
-    && candidate.install.unit == file.install.unit && candidate.install.destination == file.install.destination)) == 1
+  count(filter(files, candidate => candidate.manager == file.manager
+    && candidate.unit == file.unit && candidate.destination == file.destination)) == 1
 }
 
 fn capacity_generation_same_subjects(left: List<CapacityGenerationFile>, right: List<CapacityGenerationFile>) -> Bool {
@@ -110,5 +115,18 @@ fn capacity_recovery_finding(record: CasSlotObservation<CapacityCutoverRecord>, 
       Ok { value: paths } => if count(paths) == 0 { CapacityRecoveryClear }
         else { CapacityRecoveryOrphanMasks { paths: paths, remedy: "owned masks have no recovery record; preserve them and require operator reconciliation" } }
     }
+  }
+}
+
+// Recovery rehydrates bytes through the existing blob provider, then binds the
+// observed content to the durable manifest before constructing the typed install.
+// The record never stores a caller-asserted live path or serialized unit AST.
+fn capacity_generation_install(file: CapacityGenerationFile,
+  read: fn(FabricBlobAddress) -> FabricBlobReadingOutcome) -> Result<DeploymentUnitInstall, String> {
+  match read(file.address) {
+    FabricBlobReadRefused { fault: fault } => Err { value: fabric_blob_fault_text(fault: fault) as String }
+    FabricBlobRead { reading: blob } => if content_hash_eq_cryptographic(left: file.digest, right: fabric_blob_reading_digest(reading: blob)) {
+      Ok { value: DeploymentUnitInstall { manager: file.manager, unit: file.unit, destination: file.destination, file: CapturedUnitDocument { blob: blob } } }
+    } else { Err { value: "retained unit blob does not match the recorded generation digest" } }
   }
 }
