@@ -36,13 +36,17 @@ data broker_owns_lifecycle_not_meaning_note: NonEmptyStr = "One broker lifecycle
 // nothing without the device. This module keeps what that redemption commits INTO, and the carrier
 // an authority adapter consumes.
 
-// THE REDEEMED-CONSENT CARRIER AN AUTHORITY ADAPTER CONSUMES (gunbc.machine_intake bmc_rotation_route,
-// bmc_secure, arrival_converge take one as their approval input): the authenticated claims and the
+// THE REDEEMED-CONSENT CARRIER AN AUTHORITY ADAPTER CONSUMES: the authenticated claims and the
 // principal the consent record names. It outlived the bearer route because it is the adapter's
 // interface, not that route's: an admitted redemption names the enrolled device's Google login, and
 // the only refusal it carries is the capability's own. The bearer route's method and tailnet-header
-// refusals left with it. Adapters are supplied one today; their live realizations carry their own
-// dissolution conditions.
+// refusals left with it. ITS FORMER ADAPTERS HAVE SINCE MOVED: gunbc.machine_intake
+// bmc_rotation_route, bmc_secure and arrival_converge now take std.scoped_authorization
+// ScopedAuthorization<BmcAccountWriteApproval> (main's 536a969f, the BMC rotation model), so this
+// carrier has no consumer left in the corpus. It is NOT re-minted for a new adapter: an authority
+// that needs consent takes the scoped authorization of its own purpose. It retires with the ntfy
+// retirement change (gunbc.auth.approval_ntfy_deployment approval_ntfy_retirement_frontier), which
+// is an actuation and so the operator's to approve.
 type RedemptionRefusal
   = RedemptionCapabilityRefused { cause: CapabilityRefusal }
 
