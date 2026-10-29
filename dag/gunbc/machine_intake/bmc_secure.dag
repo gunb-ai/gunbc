@@ -3286,22 +3286,6 @@ fn bmc_spend_count(spends: List<BmcPlanFailedLoginSpend>, key: BmcFailedLoginBud
   }
 }
 
-// The channels a published user may actually reach: the ADDRESSED LAN members of
-// the controller's own census. This is the same set admitted_channel_writes
-// demands the plan cover, so the budget is charged for exactly the logins the
-// plan is required to make — never for a channel the controller does not report,
-// and never for a non-LAN (serial/internal) member, which no lanplus login
-// crosses.
-fn bmc_lan_channels_of(observed: BmcAccountStateObservation) -> List<IpmiChannelNumber> {
-  fold(observed.channel_census.members, init: [], f: (acc, member) => {
-    match member {
-      IpmiLanChannelMember { channel: c, medium: _, ipv4: IpmiLanIpv4Assigned { address: _ } } => if any(acc, x => (x as Int) == (c as Int)) { acc } else { concat(acc, [c]) }
-      IpmiLanChannelMember { channel: _, medium: _, ipv4: IpmiLanIpv4Unassigned } => acc
-      IpmiNonLanChannelMember { channel: _, medium: _ } => acc
-    }
-  })
-}
-
 // The surface a planned write crosses, read off the route's own request. An
 // IPMI Set User Password names no channel, so it is the undetermined arm; a
 // privilege-limit write names the channel of the access row it sets.
