@@ -4,9 +4,15 @@ import gunbc.host_command_binding { LocalCommandHost, CreationNotRequested }
 
 import extdeps.provisioning.ubuntu_install_media {
   noble_numbat_2404_3_live_server_arm64,
-  ubuntu_install_media_artifacts_dir,
-  ubuntu_install_media_install_path,
 }
+// THE ARTIFACTS DIRECTORY IS THE SEALED MEDIA STORE (cohort C-host): the mint gates both operations
+// (a store that cannot be listed publishes nothing and resolves nothing), and the directory the
+// publication writes into is read off the minted record -- this module carries no literal.
+import gunbc.provisioning.install_media_store {
+  InstallMediaStore, InstallMediaStoreReading, InstallMediaStoreReady, InstallMediaStoreUnready,
+  install_media_store, install_media_install_path, install_media_parent_directory,
+}
+import gunbc.host_state_root { host_state_tree }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   UbuntuSeededInstallMediaBuildInput,
   ubuntu_seeded_install_media_default_nocloud_dir,
@@ -90,21 +96,26 @@ fn srv3_seeded_install_media_refusal_text(reason: String) -> String {
 
 // The actuator host serves the image over its own NBD proxy from its artifacts directory, beside the
 // stock medium it was derived from.
-data srv3_seeded_install_media_boundary: SeededImageWriteBoundary = HostArtifactsDirectory {
-  dir: ubuntu_install_media_artifacts_dir(),
-}
-
+// THE MINT GATES BOTH OPERATIONS. A media store that cannot be listed publishes nothing (a
+// publication would write where nothing may be read) and resolves nothing (a resolution would report
+// served bytes nobody confirmed readable). The refusal states the mint's observation -- the
+// SeededImagePublicationRefused / SeededImageUnobservable arms the module already had.
 fn srv3_seeded_install_media_publish() -> SeededImagePublication {
   match srv3_seeded_install_media {
     Srv3SeededInstallMediaRefused { reason: r } =>
       SeededImagePublicationRefused { reason: srv3_seeded_install_media_refusal_text(reason: r), work: CreationNotRequested }
     Srv3SeededInstallMediaDerived { input: i } =>
-      publish_seeded_image(
-        host: LocalCommandHost,
-        input: i,
-        stock_path: ubuntu_install_media_install_path(artifact: noble_numbat_2404_3_live_server_arm64),
-        boundary: srv3_seeded_install_media_boundary,
-      )
+      match install_media_store(tree: host_state_tree()) {
+        InstallMediaStoreUnready { detail: d } =>
+          SeededImagePublicationRefused { reason: concat("the install media store refused to open: ", d), work: CreationNotRequested }
+        InstallMediaStoreReady { store: s } =>
+          publish_seeded_image(
+            host: LocalCommandHost,
+            input: i,
+            stock_path: install_media_install_path(store: s, artifact: noble_numbat_2404_3_live_server_arm64),
+            boundary: HostArtifactsDirectory { dir: install_media_parent_directory(store: s) },
+          )
+      }
   }
 }
 
@@ -113,6 +124,11 @@ fn srv3_seeded_install_media_resolve() -> SeededImageResolution {
     Srv3SeededInstallMediaRefused { reason: r } =>
       SeededImageUnobservable { reason: srv3_seeded_install_media_refusal_text(reason: r) }
     Srv3SeededInstallMediaDerived { input: i } =>
-      resolve_seeded_image(host: LocalCommandHost, input: i, dir: ubuntu_install_media_artifacts_dir())
+      match install_media_store(tree: host_state_tree()) {
+        InstallMediaStoreUnready { detail: d } =>
+          SeededImageUnobservable { reason: concat("the install media store refused to open: ", d) }
+        InstallMediaStoreReady { store: s } =>
+          resolve_seeded_image(host: LocalCommandHost, input: i, dir: install_media_parent_directory(store: s))
+      }
   }
 }
