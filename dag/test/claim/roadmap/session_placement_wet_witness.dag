@@ -473,22 +473,39 @@ test fn a_reacquisition_of_an_unsettled_slot_collides() -> Bool {
   charged && launched && collides
 }
 
-// GREEN -- the fix: the route runs the settlement pass before acquiring; the dead worker's unit is
-// terminal (absent), so the pass releases the seat and deletes the slot, and the same-key acquisition
-// then opens it fresh instead of colliding.
-test fn the_settlement_releases_a_terminal_slot_so_the_same_attempt_re_acquires() -> Bool {
-  let dir = fresh_dir(tag: "g5-settle-release-reacquire")
+// GREEN (delivered) -- the route runs the settlement pass before acquiring; the dead worker's unit is
+// terminal (absent), so the pass CLOSES the slot and RETURNS its seat. This is the G5 law the gate
+// restores. It does NOT yet make a same-key re-acquisition succeed -- see the next leg.
+test fn the_settlement_closes_a_dead_workers_slot_and_returns_its_seat() -> Bool {
+  let dir = fresh_dir(tag: "g5-settle-release-seat")
   let stores = stores_at(dir: dir)
   let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
   let launched = launched_ok(dir: dir, rec: slot_a(opened: 1000))
   let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999))
   let released = released_unit(s: s) == unit_a() && slot_is_terminal(dir: dir)
-  let re_acquires = match attempt_open(root: dir as NonEmptyStr, record: slot_a(opened: 1000)) {
-    AttemptAdvanced { state: _, generation: _ } => true
-    AttemptLostRace { expected: _, observed: _ } => false
+  charged && launched && released
+}
+
+// DISCRIMINATING GAP (documents the live wedge's remaining cause) -- after the pass closes and
+// releases the dead worker's slot, a create-only re-open of the SAME key STILL loses the race, because
+// SettleTerminateAndRelease leaves the slot PRESENT in a terminal state and attempt_open is CAS
+// ExpectSlotAbsent (std.durable_compare_and_set cas_expectation_admits: ExpectSlotAbsent against a
+// present slot is false). So the same-key re-delivery is refused "a session slot already exists" even
+// though its seat was returned. Closing the wedge fully needs the fully-settled dead-worker slot
+// REAPED at the re-delivery, which is a placement-lifecycle decision outside the gate. See PR #15357.
+test fn a_settled_terminal_slot_still_blocks_a_create_only_re_open_until_reaped() -> Bool {
+  let dir = fresh_dir(tag: "g5-settle-reopen-collides")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let launched = launched_ok(dir: dir, rec: slot_a(opened: 1000))
+  let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999))
+  let seat_returned = released_unit(s: s) == unit_a() && slot_is_terminal(dir: dir)
+  let still_collides = match attempt_open(root: dir as NonEmptyStr, record: slot_a(opened: 1000)) {
+    AttemptLostRace { expected: _, observed: _ } => true
+    AttemptAdvanced { state: _, generation: _ } => false
     AttemptTransitionRefused { detail: _ } => false
   }
-  charged && launched && released && re_acquires
+  charged && launched && seat_returned && still_collides
 }
 
 // SAFETY -- a still-running worker's seat is KEPT by the pass, so the same-key acquisition still

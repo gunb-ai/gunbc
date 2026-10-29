@@ -6,7 +6,7 @@ import gunbc.roadmap.roadmap_belt_actuate { belt_settlement_spawn_gate }
 import gunbc.roadmap.roadmap_launch_admission { LaunchNoPlacementGrant }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
-import std.optional { Present, Absent }
+import std.optional { Present }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_outcome_with_release, belt_commit_git_argv,
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
