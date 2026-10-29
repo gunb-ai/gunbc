@@ -75,7 +75,7 @@ test fn rendered_digest_must_match_the_approved_digest() -> Bool {
 
 fn generation_fixture_approval(plan: CapacityPlannedGeneration) -> Result<CapacityCutoverAuthorization, String> {
   let intent = CapacityCutoverIntent { host: "srv1", revision: "1111111111111111111111111111111111111111",
-    attempt: plan.store.attempt, operations: [], file_operations: [], captures: [], generations: [plan.operation] }
+    attempt: plan.store.attempt, operations: [], file_operations: [], captures: [], reloads: [], generations: [plan.operation] }
   let request = capacity_cutover_request(intent: intent, escalation_id: "generation-fixture")
   let authorization = AuthorizationGranted { grant: OperatorGrant {
     escalation_id: request.escalation_id, scopes: request.scopes, subject: request.subject,

@@ -70,7 +70,7 @@ fn capture_manifest_fixture(outside: Bool, missing: Bool, wrong_target: Bool) ->
             prior: if missing { [] } else { [captured] }, target: [captured], planned_paths: record.planned_paths,
             created_paths: [], artifacts: [], phase: record.phase }
           let intent = CapacityCutoverIntent { host: "srv1", revision: record.target_revision, attempt: store.attempt,
-            operations: [], file_operations: [], generations: [CapacityGenerationOperation { subject: CapacityManagedUnit { manager: file.manager, unit: file.unit }, destination: if wrong_target { "/etc/systemd/system/unapproved.service" } else { file.destination }, root: store.root, digest: file.digest }], captures: [CapacityCaptureOperation { source: file.destination, root: store.root }] }
+            operations: [], file_operations: [], reloads: [], generations: [CapacityGenerationOperation { subject: CapacityManagedUnit { manager: file.manager, unit: file.unit }, destination: if wrong_target { "/etc/systemd/system/unapproved.service" } else { file.destination }, root: store.root, digest: file.digest }], captures: [CapacityCaptureOperation { source: file.destination, root: store.root }] }
           capacity_capture_manifest_complete(store: store, intent: intent, record: supplied)
         }
       }

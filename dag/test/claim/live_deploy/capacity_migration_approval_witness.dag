@@ -23,7 +23,7 @@ fn approval_fixture_intent() -> CapacityCutoverIntent {
   CapacityCutoverIntent {
     host: "srv1", revision: "1111111111111111111111111111111111111111",
     attempt: "cutover-fixture" as NonEmptyStr as AttemptIdentity,
-    generations: [], captures: [CapacityCaptureOperation { source: "/etc/systemd/system/fixture.service", root: "/var/lib/gunbc/cutover-capture/cutover-fixture" }],
+    reloads: [], generations: [], captures: [CapacityCaptureOperation { source: "/etc/systemd/system/fixture.service", root: "/var/lib/gunbc/cutover-capture/cutover-fixture" }],
     file_operations: [CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityInhibitionCreate }],
     operations: [CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" } },
       CapacityInhibitUnit { subject: CapacityManagedUnit { manager: SystemManager, unit: "actions-runner@srv1-02.service" } }],

@@ -11,7 +11,7 @@ import std.scoped_authorization {
 }
 import std.effect_grant { Execute, Write, NamespacePosition, ServiceOpTree }
 import std.filesystem_path_grant { absolute_path_position }
-import extdeps.systemd.manager { SystemManager, UserManager }
+import extdeps.systemd.manager { SystemdManager, SystemManager, UserManager }
 import extdeps.languages.json.emit { serialize_json, JsonArray, JsonString }
 import gunbc.live_deploy.capacity_quiescence {
   CapacityQuiescenceStep, CapacityReadUnit, CapacityInhibitUnit, CapacityPlantStart, CapacityContainStart,
@@ -74,6 +74,35 @@ fn capacity_generation_scope(intent: CapacityCutoverIntent, operation: CapacityG
     action: "generation-publish" as NonEmptyStr as AuthorizedAction }
 }
 
+// systemctl(1), Manager State Commands, daemon-reload:
+// https://www.freedesktop.org/software/systemd/man/latest/systemctl.html#daemon-reload
+// Reload reconstructs a manager's unit/dependency configuration, not one unit.
+type CapacityReloadBoundary = CapacityAfterInhibition | CapacityAfterInstall | CapacityAfterRemoval
+
+type CapacityManagerReload {
+  manager: SystemdManager
+  boundaries: List<CapacityReloadBoundary>
+}
+
+fn capacity_reload_manager_text(manager: SystemdManager) -> String {
+  match manager { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) }
+}
+
+fn capacity_reload_boundary_text(boundary: CapacityReloadBoundary) -> String {
+  match boundary {
+    CapacityAfterInhibition => "after-inhibition"
+    CapacityAfterInstall => "after-install"
+    CapacityAfterRemoval => "after-owned-inhibition-removal"
+  }
+}
+
+fn capacity_reload_scope(intent: CapacityCutoverIntent, manager: SystemdManager) -> AuthorizationScope {
+  AuthorizationScope { verb: Execute,
+    resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc.cutover.manager" },
+      path: [intent.host as String, intent.attempt as String, capacity_reload_manager_text(manager: manager)] },
+    action: "reload" as NonEmptyStr as AuthorizedAction }
+}
+
 type CapacityCutoverIntent {
   host: NonEmptyStr
   revision: CommitSha
@@ -81,6 +110,7 @@ type CapacityCutoverIntent {
   operations: List<CapacityQuiescenceStep>
   file_operations: List<CapacityCutoverFileOperation>
   captures: List<CapacityCaptureOperation>
+  reloads: List<CapacityManagerReload>
   generations: List<CapacityGenerationOperation>
 }
 
@@ -110,7 +140,7 @@ fn capacity_cutover_operation_scope(intent: CapacityCutoverIntent, operation: Ca
 // JSON framing keeps identity inputs injective even when a name contains punctuation.
 // The full operation set is fixed before consent; late-discovered units cannot borrow it.
 fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
-  serialize_json(v: JsonArray { elements: [JsonString { value: "gunbc.capacity-cutover.v4" },
+  serialize_json(v: JsonArray { elements: [JsonString { value: "gunbc.capacity-cutover.v5" },
     JsonString { value: intent.host as String }, JsonString { value: intent.revision as String },
     JsonString { value: intent.attempt as String },
     JsonArray { elements: map(intent.operations, operation => {
@@ -120,6 +150,10 @@ fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
         UserManager { uid: uid } => concat("user:", to_string(uid))
       } }, JsonString { value: subject.unit as String }, JsonString { value: capacity_cutover_operation_action(operation: operation) as String }] }
     }) },
+    JsonArray { elements: map(intent.reloads, row => JsonArray { elements: [
+      JsonString { value: capacity_reload_manager_text(manager: row.manager) },
+      JsonArray { elements: map(row.boundaries, boundary => JsonString { value: capacity_reload_boundary_text(boundary: boundary) }) }
+    ] }) },
     JsonArray { elements: map(intent.generations, operation => JsonArray { elements: [
       JsonString { value: match operation.subject.manager { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) } },
       JsonString { value: operation.subject.unit as String }, JsonString { value: operation.destination as String },
@@ -141,7 +175,8 @@ fn capacity_cutover_request(intent: CapacityCutoverIntent, escalation_id: NonEmp
     scopes: map(intent.operations, operation => capacity_cutover_operation_scope(intent: intent, operation: operation))
       + map(intent.file_operations, operation => capacity_cutover_file_scope(operation: operation))
       + map(intent.captures, operation => capacity_capture_scope(intent: intent, operation: operation))
-      + map(intent.generations, operation => capacity_generation_scope(intent: intent, operation: operation)),
+      + map(intent.generations, operation => capacity_generation_scope(intent: intent, operation: operation))
+      + map(intent.reloads, row => capacity_reload_scope(intent: intent, manager: row.manager)),
     intent_hash: content_hash_of_value(value: capacity_cutover_intent_text(intent: intent)),
     purpose: "One capacity-writer cutover: inhibit and probe exactly the named manager/unit operations; contain a successful probe; install only after drain admission" as NonEmptyStr,
     destructive: true,
@@ -249,4 +284,31 @@ fn capacity_cutover_generation_admission(authorization: CapacityCutoverAuthoriza
     AuthorizationPermitted { grant: _ } => Ok { value: operation }
     AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
   } }
+}
+
+
+fn capacity_cutover_reload_admission(authorization: CapacityCutoverAuthorization, manager: SystemdManager,
+  boundary: CapacityReloadBoundary, at: Timestamp) -> Result<CapacityReloadBoundary, String> {
+  let rows = filter(authorization.intent.reloads, row => row.manager == manager)
+  if count(rows) != 1 { return Err { value: "reload manager is absent or repeated in approved plan" } }
+  if !any(authorization.intent.operations, operation => capacity_quiescence_step_subject(step: operation).manager == manager)
+    && !any(authorization.intent.generations, operation => operation.subject.manager == manager) {
+    return Err { value: "reload manager is not touched by the cutover plan" }
+  }
+  if !all(rows, row => count(filter(row.boundaries, allowed => allowed == boundary)) == 1) {
+    return Err { value: "reload boundary is absent or repeated in approved plan" }
+  }
+  match authorize(authorization: AuthorizationGranted { grant: authorization.grant, claim: authorization.claim },
+    request: capacity_cutover_request(intent: authorization.intent, escalation_id: authorization.grant.escalation_id), observed_at: at) {
+    AuthorizationPermitted { grant: _ } => Ok { value: boundary }
+    AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
+  }
+}
+
+fn capacity_cutover_reload_plan_lines(intent: CapacityCutoverIntent) -> List<String> {
+  flat_map(intent.reloads, row => map(row.boundaries, boundary => join([
+    "manager=", capacity_reload_manager_text(manager: row.manager), " verb=daemon-reload boundary=",
+    capacity_reload_boundary_text(boundary: boundary), " declared-count=", to_string(count(row.boundaries)),
+    " apply=", intent.attempt as String
+  ], "")))
 }
