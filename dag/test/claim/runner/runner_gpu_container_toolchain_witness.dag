@@ -65,7 +65,7 @@ import gunbc.runner.runner_gpu_container_toolchain {
   GpuContainerProvisionMapClear,
   GpuContainerProvisionMapMappedFromRange,
   GpuContainerProvisionMapUnreadableRow,
-  gpu_container_provision_map_scan,
+  gpu_container_provision_map_scan,  gpu_container_provision_subordinate_write_bound,
   VerifyKeyringFingerprint,
   gpu_container_provision_check_verdict,
   GpuContainerProvisionStep,
@@ -1196,4 +1196,19 @@ test fn the_rows_keep_read_order_regrant_in_place_and_append_only_what_is_missin
   )
   join(map(rows, r => subordinate_range_text(r: r)), "\n")
     == "ubuntu:231072:65536\nbriansrls:165536:65536\ncarol:296608:65536\nghrunner:100000:65536"
+}
+
+// THE BOUND, PINNED TO THE WORDS THAT WERE SET FOR IT. The sentence is a commitment about what the write
+// IS serialized against and what it is NOT, and a paraphrase is a different promise. It must name fleet
+// actuations and must concede the final compare-to-rename interval -- and it must NOT claim a lock against
+// shadow, which serializes on fcntl/lockf and ignores flock(2) outright (measured: usermod 4.13 blocks on
+// /etc/.pwd.lock, and /etc/subuid.lock does not exist). A receipt that said "locked against shadow-utils"
+// would be the one sentence here that no host could ever have honored, and it would be read by the next
+// operator who decides a hand-run usermod is safe.
+test fn the_subordinate_write_bound_claims_fleet_serialization_and_never_a_shadow_lock() -> Bool {
+  string_contains(s: gpu_container_provision_subordinate_write_bound, pattern: "serialized against fleet actuations")
+    && string_contains(
+      s: gpu_container_provision_subordinate_write_bound,
+      pattern: "detected by the re-read compare, except within the final compare-to-rename interval")
+    && !string_contains(s: gpu_container_provision_subordinate_write_bound, pattern: "shadow")
 }

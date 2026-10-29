@@ -999,7 +999,13 @@ fn runner_gpu_container_toolchain_converge_ci_wet() -> ProcessExit {
                       // is noise. The declared ranges are printed too, since a range the model declares
                       // and a range the host holds can disagree and that disagreement is the story.
                       "subordinate: declared ", to_string(ids.job_user_first), "+", to_string(ids.job_user_count),
-                      " for ", spec.job_user as String, ", displaceable ", ids.displaceable as String, "\n",
+                      " for ", spec.job_user as String, ", displaceable ", ids.displaceable as String,
+                      // THE BOUND, IN THE ARTIFACT A HUMAN READS. "The ranges are right" is not the whole
+                      // claim: it matters HOW they were made right, because a host whose ranges were moved
+                      // by a route that serialized against nothing can be correct today and clobbered
+                      // tomorrow. Naming it in the receipt is what makes the claim checkable after the
+                      // fact instead of only in the source.
+                      ", bound: ", gpu_container_provision_subordinate_write_bound, "\n",
                       "provision: ", gpu_container_provision_run_text(r: provision), "\n",
                       // SUBORDINATE INTEGRITY AS ITS OWN LINE, because it is now a reason a converge can go
                       // red that no other line explains: all four capability arms can print ok and this
