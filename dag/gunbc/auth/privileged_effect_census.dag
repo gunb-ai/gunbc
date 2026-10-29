@@ -48,6 +48,7 @@ import gunbc.auth.branch_dispatch_federation {
   boot_credential_effect_on_reviewed_main, boot_credential_effect_off_reviewed_main,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_route { bootstrap_delta_privileged_effect }
+import gunbc.cloudflare.zone_authorization { zone_dns_record_copy_effect, zone_r2_custom_domain_bind_effect }
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
@@ -1164,6 +1165,16 @@ fn manual_physical_effect(subject: NonEmptyStr, step: HumanIntervention) -> Priv
   manual_no_api_effect(subject: subject, step: step, cause: "the act happens at the machine's console; no API reaches it" as NonEmptyStr, billing: NoBillingConsequence)
 }
 
+// THE TWO CLOUDFLARE ZONE EFFECTS (gunbc.cloudflare.zone_authorization). The selection sends both to the
+// federated grant: reversible, minting nothing, bindable fleet identity. Nothing realizes that yet: the
+// fleet's accessor roster carries no cell on a zone-scoped Cloudflare token, so the run has no credential
+// that names the effect. The trigger is unbound because it names a capability whose declaration does not
+// exist yet.
+data zone_token_accessor_cell_unlanded: DivergenceReason = DivergenceReason {
+  statement: "no fleet accessor cell and no Secret Manager container exist for a zone-scoped Cloudflare token (gunbc.cloudflare.zone CloudflareCredentialRouteMissing), so the selected federated grant has no credential to fetch and the zone effects are performed under none" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "a zone-scoped Cloudflare token minted through the mint route and held in Secret Manager, with a per-secret accessor cell for the fleet principal in gunbc.auth.fleet_secret_accessor_roster, SUFFICIENT FOR a dispatched run to fetch it by workload identity and perform the DNS record copy and the R2 custom-domain bind with no operator-supplied credential. NOT satisfied by a token pasted by the operator or relayed between sessions" as NonEmptyStr),
+}
+
 data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_account_intervention"),
@@ -2095,6 +2106,18 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: anchored_host_key_mint_effect(),
     realized: RealizedHumanStep,
     divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.cloudflare.zone_authorization", decl_name: "zone_dns_record_copy_effect"),
+    effect: zone_dns_record_copy_effect(identity: convergence_principal()),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: zone_token_accessor_cell_unlanded },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.cloudflare.zone_authorization", decl_name: "zone_r2_custom_domain_bind_effect"),
+    effect: zone_r2_custom_domain_bind_effect(identity: convergence_principal()),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: zone_token_accessor_cell_unlanded },
   },
 ]
 

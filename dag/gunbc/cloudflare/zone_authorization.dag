@@ -1,0 +1,98 @@
+module gunbc.cloudflare.zone_authorization
+
+import std.types { NonEmptyStr }
+import std.human_intervention { FleetOnce }
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, ApiSurface, WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
+  MintsNoCredential, ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
+  AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession,
+  AdministratorEdge, ApprovedConvergenceGrant,
+  AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
+  PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
+  select_authorization_pattern,
+}
+
+// ── THE AUTHORIZATION ROUTE FOR THE TWO PRIVILEGED CLOUDFLARE ZONE EFFECTS ───────────────────
+// gunbc.cloudflare.zone reports CloudflareCredentialRouteMissing: the zone standing and the bind both
+// stop at a Cloudflare credential no pattern under gunbc.auth names. This module supplies the
+// missing half that is a MODELING fact: each zone effect is a PrivilegedEffect, the existing
+// selection (gunbc.auth.authorization_pattern_selection select_authorization_pattern) is run over it,
+// and the route is READ OFF whatever pattern that returns. The pattern is never written down here, so
+// a changed characteristic changes the route instead of leaving a stale assertion beside it.
+//
+// WHAT THE CHARACTERISTICS ARE. Both effects are single-shot (FleetOnce), reversible by reapply (a
+// record or a custom-domain binding is deleted or re-put), reach a provider API, and mint nothing:
+// they USE a zone-scoped Cloudflare token, they do not create one (the token's mint is the separate
+// account-wide effect already rostered at gunbc.cloudflare.r2_token_mint_run). Neither bills a third
+// party. So neither owes a witness or must run unattended, and the workload identity decides: the
+// fleet cloud principal can hold a per-secret accessor cell on the token, which makes the federated
+// grant the only admissible pattern that is not dominated.
+//
+// THE IDENTITY IS A PARAMETER, NOT RESTATED. The fleet principal's standing is resolved once in
+// gunbc.auth.privileged_effect_census convergence_principal; that module imports this one for its
+// rows, so the standing is passed in rather than re-derived here.
+//
+// NOTHING HERE ACTUATES. No token is read, no record is written and no binding is created; the
+// bind itself is a later change and the FQDN it binds stays the zone standing's pending decision.
+
+fn zone_dns_record_copy_effect(identity: WorkloadIdentityStanding) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "copy the apex's DNS records into the Cloudflare zone for the boot origin through the Cloudflare DNS records API, under a zone-scoped token the run reads from Secret Manager" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: identity,
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn zone_r2_custom_domain_bind_effect(identity: WorkloadIdentityStanding) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "attach a custom domain on the zone to the R2 bucket that serves the boot origin through the Cloudflare R2 custom-domain API, under a zone-scoped token the run reads from Secret Manager" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: identity,
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// ── The route, as the selection returned it ──────────────────────────────────────────────────
+// ZoneRouteByWorkloadIdentity carries the member the accessor cell must name. The refused arm
+// carries the selection itself, so a refusal stays a typed, located cause and is never read as a
+// route.
+type ZoneEffectRoute
+  = ZoneRouteByWorkloadIdentity { member: NonEmptyStr }
+  | ZoneRouteByOperatorApproval
+  | ZoneRouteNotAutomatable { standing: AuthorizationPatternSelection }
+
+fn route_of_pattern(p: AuthorizationPattern, e: PrivilegedEffect, standing: AuthorizationPatternSelection) -> ZoneEffectRoute {
+  match p {
+    FederatedScopedGrant =>
+      match e.workload_identity {
+        WorkloadIdentityBindable { member: m } => ZoneRouteByWorkloadIdentity { member: m }
+        WorkloadIdentityUnbindable { cause: _ } => ZoneRouteNotAutomatable { standing: standing }
+      }
+    OperatorApprovedCapability => ZoneRouteByOperatorApproval
+    HumanOnlyStep { step: _ } => ZoneRouteNotAutomatable { standing: standing }
+    OperatorOwnSession => ZoneRouteNotAutomatable { standing: standing }
+    AdministratorEdge => ZoneRouteNotAutomatable { standing: standing }
+    ApprovedConvergenceGrant => ZoneRouteNotAutomatable { standing: standing }
+  }
+}
+
+fn zone_effect_route(e: PrivilegedEffect) -> ZoneEffectRoute {
+  let selection = select_authorization_pattern(e: e)
+  match selection {
+    PatternSelected { pattern: p, receipt: _ } => route_of_pattern(p: p, e: e, standing: selection)
+    ManualStepRequired { step: _, receipt: _ } => ZoneRouteNotAutomatable { standing: selection }
+    NoAdmissiblePattern { causes: _, scope: _ } => ZoneRouteNotAutomatable { standing: selection }
+    PatternSelectionNeedsEvidence { needs: _ } => ZoneRouteNotAutomatable { standing: selection }
+    PatternSelectionNeedsPolicy { survivors: _ } => ZoneRouteNotAutomatable { standing: selection }
+    PatternSelectionRefused { defects: _ } => ZoneRouteNotAutomatable { standing: selection }
+  }
+}
