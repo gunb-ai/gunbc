@@ -13,7 +13,7 @@ import std.durable_exclusive_hold {
   HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
   HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
   DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
-  DurableHoldHolderReport, DurableHoldRecoveryRefusal,
+  DurableHoldRecoveryRefusal,
   HoldRecoveryNothingHeld, HoldRecoveryHolderLive, HoldRecoveryHolderUnobservable, HoldRecoverySlotMoved,
   HoldRecoveryReportForAnotherHolder, HoldRecoverySlotUndecodable, HoldRecoveryObservationUnavailable,
 }
@@ -498,14 +498,6 @@ fn holder_liveness_route(holder: DurableHoldOwnerRef) -> HolderLivenessRoute {
     UnitHoldOwnerUnrecognized { raw: _ } =>
       HolderNotObservable { cause: "the holder's owner names no process this module can observe (it was written without one, or not by this module)" as NonEmptyStr }
   }
-}
-
-fn holder_report(holder: DurableHoldOwnerRef, generation: CasGeneration) -> DurableHoldHolderReport {
-  let liveness = match holder_liveness_route(holder: holder) {
-    HolderObserveProcess { process: p, pid_namespace: n } => holder_process_liveness(p: p, pid_namespace: n)
-    HolderNotObservable { cause: c } => HolderLivenessUnobservable { cause: c }
-  }
-  DurableHoldHolderReport { holder: holder, generation: generation, liveness: liveness }
 }
 
 type DeadHolderRecovery
