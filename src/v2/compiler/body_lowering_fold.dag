@@ -13086,14 +13086,14 @@ fn body_lower_tail_statement_read(stmt: Node) -> Outcome<Node> {
       // where the module is wrong, and it is the sibling of the `return` arm above: a `return`
       // that is not in tail position refuses, a `let` that is in tail position refuses.
       match body_lower_statement_let_captured_optional(stmt: stmt) {
-        ParseSubtreeFound { captured: _binding } =>
+        Present { value: _binding } =>
           outcome_rejected(
             d: body_lower_diagnostic(
               reason: ^body_lowering_reason_statement_let_in_tail_position,
               n: stmt
             )
           )
-        ParseSubtreeAbsent => body_lower_value_read(value: stmt)
+        Absent => body_lower_value_read(value: stmt)
       }
   }
 }
