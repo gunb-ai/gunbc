@@ -216,3 +216,8 @@ service os.Id {
     }
   }
 }
+
+// All numeric group memberships from the account database, including the primary group.
+fn id_groups_of_command(user: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: id_program(), arguments: ["-G", user as String])
+}

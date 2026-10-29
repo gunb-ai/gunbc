@@ -1,0 +1,101 @@
+module gunbc.fleet.fleet_revision_accounts
+
+import std.types { Bool, String, NonEmptyStr, Int, List }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.access.posix { PosixUser }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.posix.getent { getent_passwd_command, getent_group_command, getent_key_not_found_exit }
+import extdeps.tools.id { id_groups_of_command }
+import extdeps.tools.shadow_accounts { groupadd_fixed_command, useradd_fixed_command }
+import extdeps.sudo.elevation { sudo_elevate_command }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_revision_principal_home }
+
+// Exact account convergence over the controller's existing elevated transport. Only getent's
+// located key-not-found result permits creation. A conflicting account is never modified;
+// a creation exit is never the evidence of convergence: the database is read back.
+fn revision_account_field(text: String, index: Int) -> String {
+  match skip(trim(s: text).split(delimiter: ":"), index).first() {
+    Present { value: field } => field
+    Absent => ""
+  }
+}
+
+fn revision_account_passwd_agrees(user: PosixUser, text: String) -> Bool {
+  count(trim(s: text).split(delimiter: ":")) == 7
+    && revision_account_field(text: text, index: 0) == user.name as String
+    && revision_account_field(text: text, index: 2) == to_string(user.uid)
+    && revision_account_field(text: text, index: 3) == to_string(user.gid)
+    && revision_account_field(text: text, index: 5) == fleet_revision_principal_home(user: user) as String
+    && revision_account_field(text: text, index: 6) == fleet_posix_nologin_shell_path as String
+}
+
+fn revision_account_group_agrees(user: PosixUser, text: String) -> Bool {
+  count(trim(s: text).split(delimiter: ":")) == 4
+    && revision_account_field(text: text, index: 0) == user.name as String
+    && revision_account_field(text: text, index: 2) == to_string(user.gid)
+    && revision_account_field(text: text, index: 3) == ""
+}
+
+fn revision_account_ensure_entry(
+  read: ArgvCommand,
+  create: ArgvCommand,
+  agrees: fn(String) -> Bool,
+  run: fn(ArgvCommand) -> ProcessOutcome,
+) -> String? {
+  match run(read) {
+    ProcessOutputPresent { text: text } =>
+      if agrees(text) { none } else { Present { value: "existing account/group differs from its declared allocation" } }
+    ProcessOutputAbsent => Present { value: "account database answered success without an entry" }
+    ProcessRefused { exit_code: code, stderr: detail } =>
+      if code != getent_key_not_found_exit { Present { value: concat("account database unreadable: ", detail) } }
+      else {
+        match run(sudo_elevate_command(command: argv_words(command: create))) {
+          ProcessRefused { exit_code: _, stderr: why } => Present { value: concat("account/group creation refused: ", why) }
+          _ => match run(read) {
+            ProcessOutputPresent { text: text } =>
+              if agrees(text) { none } else { Present { value: "created account/group readback differs from its declared allocation" } }
+            _ => Present { value: "created account/group could not be read back" }
+          }
+        }
+      }
+  }
+}
+
+fn revision_account_converge(user: PosixUser, run: fn(ArgvCommand) -> ProcessOutcome) -> String? {
+  match revision_account_ensure_entry(
+    read: getent_group_command(key: user.name),
+    create: groupadd_fixed_command(name: user.name, gid: user.gid),
+    agrees: text => revision_account_group_agrees(user: user, text: text), run: run,
+  ) {
+    Present { value: why } => Present { value: why }
+    Absent => match revision_account_ensure_entry(
+      read: getent_passwd_command(key: user.name),
+      create: useradd_fixed_command(name: user.name, uid: user.uid, gid: user.gid,
+        home: fleet_revision_principal_home(user: user), shell: fleet_posix_nologin_shell_path),
+      agrees: text => revision_account_passwd_agrees(user: user, text: text), run: run,
+    ) {
+      Present { value: why } => Present { value: why }
+      Absent => match run(id_groups_of_command(user: user.name)) {
+        ProcessOutputPresent { text: groups } =>
+          if trim(s: groups) == to_string(user.gid) { none }
+          else { Present { value: "account has undeclared group memberships; refusing rather than removing access from an existing account" } }
+        _ => Present { value: "account group memberships could not be read" }
+      }
+    }
+  }
+}
+
+// The install plan exposes every possible command of this conditional leg to its
+// existing argv witnesses; conditional execution does not hide privileged operations.
+fn revision_account_possible_commands(user: PosixUser) -> List<ArgvCommand> {
+  [
+    getent_group_command(key: user.name),
+    sudo_elevate_command(command: argv_words(command: groupadd_fixed_command(name: user.name, gid: user.gid))),
+    getent_passwd_command(key: user.name),
+    sudo_elevate_command(command: argv_words(command: useradd_fixed_command(name: user.name, uid: user.uid, gid: user.gid,
+      home: fleet_revision_principal_home(user: user), shell: fleet_posix_nologin_shell_path))),
+    id_groups_of_command(user: user.name),
+  ]
+}

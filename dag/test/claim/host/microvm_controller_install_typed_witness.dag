@@ -6,7 +6,7 @@ import std.algebra { list_at_optional }
 import std.content_hash { content_hash_validate_lower_hex_length }
 import gunbc.host.host_effect_realize {
   MicrovmControllerInstallStep, MicrovmControllerInstallReady, MicrovmControllerInstallRefused,
-  MicrovmControllerArgvStep, MicrovmControllerVerifyStep, MicrovmControllerReceiptStep, MicrovmControllerTreeStep,
+  MicrovmControllerAccountStep, MicrovmControllerArgvStep, MicrovmControllerVerifyStep, MicrovmControllerReceiptStep, MicrovmControllerTreeStep,
   microvm_controller_install_staging, microvm_controller_starts_no_instance_refusal,
   microvm_controller_step_text, microvm_controller_step_name, microvm_controller_step_stdin,
   microvm_controller_step_words, microvm_controller_argv_step,
@@ -252,6 +252,7 @@ fn microvm_w5_elevated_relative_words(step: MicrovmControllerInstallStep) -> Lis
     MicrovmControllerVerifyStep { name: _ } => []
     MicrovmControllerReceiptStep { name: _ } => []
     MicrovmControllerTreeStep { name: _ } => []
+    MicrovmControllerAccountStep { name: _, user: _ } => []
   }
 }
 

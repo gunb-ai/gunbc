@@ -1,5 +1,13 @@
 module gunbc.host.host_effect_realize
 
+import extdeps.access.posix { PosixUser }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly }
+import gunbc.fleet.fleet_posix_accounts {
+  fleet_posix_revision_preparer_user, fleet_posix_materialization_writer_user,
+  fleet_revision_principal_home,
+}
+import gunbc.fleet.fleet_revision_accounts { revision_account_converge, revision_account_possible_commands }
+
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text, admitted_scratch_path }
 
 import std.algebra { Cons, Empty, FreeSemigroup, list_append, list_snoc_item, trim, skip, fold_list, list_map, non_empty_append, non_empty_singleton, non_empty_to_list, string_concat_join }
@@ -9876,7 +9884,8 @@ fn build_cache_already_converged(
 // installs the observed lines as data on stdin. Each carries its name so a
 // fold failure says which leg refused.
 type MicrovmControllerInstallStep
-  = MicrovmControllerArgvStep {
+  = MicrovmControllerAccountStep { name: String, user: PosixUser }
+  | MicrovmControllerArgvStep {
       name: String,
       command: ArgvCommand,
       stdin_payload: String,
@@ -9985,6 +9994,7 @@ fn microvm_controller_step_name(step: MicrovmControllerInstallStep) -> String {
     MicrovmControllerVerifyStep { name: n } => n
     MicrovmControllerReceiptStep { name: n } => n
     MicrovmControllerTreeStep { name: n } => n
+    MicrovmControllerAccountStep { name: n, user: _ } => n
   }
 }
 
@@ -9995,6 +10005,8 @@ fn microvm_controller_step_words(step: MicrovmControllerInstallStep) -> List<Str
     MicrovmControllerReceiptStep { observe: o, observe2: t, write: w } =>
       concat(argv_words(command: o), concat(argv_words(command: t), argv_words(command: w)))
     MicrovmControllerTreeStep { name: _ } => []
+    MicrovmControllerAccountStep { name: _, user: user } =>
+      flat_map(revision_account_possible_commands(user: user), command => argv_words(command: command))
   }
 }
 
@@ -10012,6 +10024,7 @@ fn microvm_controller_step_stdin(step: MicrovmControllerInstallStep) -> String {
     MicrovmControllerVerifyStep { command: _, expected: _, subject: _ } => ""
     MicrovmControllerReceiptStep { observe: _, observe2: _, write: _ } => ""
     MicrovmControllerTreeStep { name: _ } => ""
+    MicrovmControllerAccountStep { name: _, user: _ } => ""
   }
 }
 
@@ -10217,6 +10230,13 @@ fn microvm_controller_revision_job_steps(release_dir: String, guest_kernel_pinne
     let operator = fleet_posix_operator_user.name
     let instances = map(revision_job_slots, slot => runner_slot_instance_name(slot: slot))
     concat(
+      concat(
+        flat_map([fleet_posix_revision_preparer_user, fleet_posix_materialization_writer_user], user => [
+          MicrovmControllerAccountStep { name: concat("revision-job account ", user.name as String), user: user },
+          microvm_controller_argv_step(name: concat("revision-job private home ", user.name as String),
+            command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
+              mode: declared_directory_mode(m: DirectoryOwnerOnly), owner: user.name, group: user.name, path: fleet_revision_principal_home(user: user) as String))),
+        ]),
       [
         revision_job_owned_dir_step(name: "revision-job image dir", path: root),
         revision_job_install_file_step(name: "revision-job kernel install", source: runner_guest_base_artifact_path(root: staging, artifact: runner_guest_kernel_artifact), dest: kernel),
@@ -10241,7 +10261,7 @@ fn microvm_controller_revision_job_steps(release_dir: String, guest_kernel_pinne
           command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
             mode: install_d_shared_mode, owner: operator, group: operator, path: revision_job_spec_dir)),
         ),
-      ],
+      ]),
       concat(
         flat_map(instances, i => [
           revision_job_owned_dir_step(name: concat("revision-job instance dir ", i), path: revision_job_instance_dir(instance: i)),
@@ -10716,6 +10736,17 @@ fn realize_microvm_controller_install_on_host(
             FoldFailed { reason: why } => FoldFailed { reason: why }
             FoldOk { exit_code: prior_code, stdout: prior_out, stderr: prior_err } =>
               match s {
+                MicrovmControllerAccountStep { name: name, user: user } =>
+                  match revision_account_converge(user: user, run: command =>
+                    match microvm_controller_run_argv(name: name, command: command, stdin_payload: "", transport: transport) {
+                      StepRefused { reason: why } => ProcessRefused { exit_code: 1, stderr: why }
+                      StepRan { exit_code: code, stdout: out, stderr: err } =>
+                        if code == 0 { ProcessOutputPresent { text: out } }
+                        else { ProcessRefused { exit_code: code, stderr: err } }
+                    }) {
+                    Present { value: why } => FoldFailed { reason: join([name, ": ", why], "") }
+                    Absent => FoldOk { exit_code: prior_code, stdout: prior_out, stderr: prior_err }
+                  }
                 MicrovmControllerArgvStep { name: name, command: command, stdin_payload: stdin_text } =>
                   match microvm_controller_run_argv(name: name, command: command, stdin_payload: stdin_text, transport: transport) {
                     StepRefused { reason: why } => FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "': ", why], "") }

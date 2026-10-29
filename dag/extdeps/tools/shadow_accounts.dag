@@ -1,0 +1,26 @@
+module extdeps.tools.shadow_accounts
+
+import std.types { NonEmptyStr, String, Int }
+import extdeps.exec.program { uncataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/shadow-maint/shadow" }
+}
+
+// No --force or --non-unique: a conflicting numeric allocation must refuse.
+fn groupadd_fixed_command(name: NonEmptyStr, gid: Int) -> ArgvCommand {
+  argv_command(program: uncataloged_program(invocation: "groupadd"), arguments: ["--gid", to_string(gid), "--", name as String])
+}
+
+// The group must already exist. No home creation/skel copy and no supplementary groups;
+// the caller provisions the private home separately and reads the resulting account back.
+fn useradd_fixed_command(name: NonEmptyStr, uid: Int, gid: Int, home: NonEmptyStr, shell: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: uncataloged_program(invocation: "useradd"), arguments: [
+    "--uid", to_string(uid), "--gid", to_string(gid), "--no-user-group",
+    "--no-create-home", "--groups", "", "--home-dir", home as String,
+    "--shell", shell as String, "--", name as String,
+  ])
+}

@@ -167,6 +167,8 @@ data srv1_root_mutation_approved_scopes: List<AuthorizationScope> = [
 // authorize both read this one value, so what the census says the effect needs and what the run
 // asks the grant for cannot drift apart.
 data microvm_controller_install_root_scopes: List<AuthorizationScope> = [
+  // Dedicated revision preparation accounts write the passwd/group databases.
+  srv1_root_write_scope(path: ["etc"]),
   srv1_root_write_scope_at(path: systemd_system_unit_directory as String),
   srv1_root_write_scope_at(path: path_parent_directory(path: workspace_dispatch_grant_path)),
   srv1_root_write_scope_at(path: microvm_controller_root),

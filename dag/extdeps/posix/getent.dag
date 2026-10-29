@@ -28,3 +28,7 @@ fn getent_passwd_command(key: NonEmptyStr) -> ArgvCommand {
 // the one status that says the entry is ABSENT rather than unreadable, so a caller that creates an
 // absent entry reads this value instead of treating every non-zero exit as absence.
 data getent_key_not_found_exit: Int = 2
+
+fn getent_group_command(key: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: getent_program(), arguments: ["group", key as String])
+}

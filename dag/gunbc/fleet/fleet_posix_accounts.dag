@@ -178,8 +178,9 @@ data fleet_posix_worker_user: PosixUser = PosixUser {
 // allocation receipt. Convergence must refuse an occupied uid/gid or a mismatched existing
 // account. No host has been changed by these declarations. Provisioning belongs to the
 // existing gated fleet convergence; it must precede enabling revision preparation.
-// The safe-copy dependency is the directory-anchored filesystem capability named in
-// gunbc.fabric.fabric_source_snapshot: plain cp and an lstat pre-check are insufficient.
+// Path resolution remains below the structural ceiling recorded by
+// a_pathname_reresolves_its_ancestry_between_calls: permissions bound readable bytes,
+// not ancestry stability. A modeled directory-handle primitive closes that residual.
 data fleet_posix_revision_preparer_user: PosixUser = PosixUser {
   name: "gunbc-revision-preparer",
   uid: 1005,
@@ -192,6 +193,10 @@ data fleet_posix_materialization_writer_user: PosixUser = PosixUser {
   uid: 1006,
   gid: 1006,
   shell: LoginShellObserved { path: fleet_posix_nologin_shell_path },
+}
+
+fn fleet_revision_principal_home(user: PosixUser) -> NonEmptyStr {
+  concat("/var/lib/gunbc/revision-job/principals/", user.name as String) as NonEmptyStr
 }
 
 // No daemon socket, administrator group, or sudo reach is conferred on either account.
