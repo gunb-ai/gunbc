@@ -44,7 +44,7 @@ import product.fabric.flex_vast_shadow {
 import product.fabric.flex_vast_template {
   flex_vast_template_spec, flex_template_retired_hash, flex_vast_rent_launch,
   FlexRentLaunch, FlexRentLaunchBuilt, FlexRentLaunchRefused, flex_launch_runtype_wire,
-  flex_rent_launch_refusal_cause, flex_vast_onstart_b64_flag,
+  flex_rent_launch_refusal_cause, flex_launch_args, flex_launch_onstart, flex_vast_onstart_b64_flag,
 }
 import gunbc.flex_vast_credential { flex_vast_api_key_secret_ref, flex_vast_api_key_host_path, flex_vast_api_key_custody_host }
 import gunbc.serving.rented_allocation {
@@ -143,18 +143,13 @@ data flex_vast_template_hash_binding: FlexVastTemplateHashBinding = FlexVastTemp
   reason: "flex_template_ensure has not bound a hash; the only hash this account has for the flex template is the retired, credential-carrying template, which is never adopted" as NonEmptyStr,
 }
 
-// A bound row that names the retired template is dropped anyway: the retired hash is refused whoever
-// names it, so no binding can bring it back.
-fn flex_vast_template_hash_rows_admit(rows: List<FlexTemplateHashRow>) -> List<FlexTemplateHashRow> {
-  rows.filter(row => (row.hash as String) != (flex_template_retired_hash as String))
-}
-
 // The rows a pass reads, derived from the binding so the binding is the only authority: unbound means no
-// rows, and bound means exactly what the ensure read back, minus the retired hash.
+// rows, and bound means exactly what the ensure read back. The retired hash is refused once, at the
+// lookup (flex_vast_template_hash), whoever binds it.
 fn flex_vast_template_hash_rows(binding: FlexVastTemplateHashBinding) -> List<FlexTemplateHashRow> {
   match binding {
     FlexVastTemplateHashUnbound { reason: _ } => []
-    FlexVastTemplateHashBound { rows: rows } => flex_vast_template_hash_rows_admit(rows: rows)
+    FlexVastTemplateHashBound { rows: rows } => rows
   }
 }
 
@@ -475,9 +470,9 @@ fn flex_create_perform(api_key: Secret, request: FlexCreateRequest, create_env: 
     template_hash_id: request.template_hash_id,
     label: request.label,
     env: create_env,
-    runtype: flex_launch_runtype_wire(runtype: request.launch.runtype),
-    args: request.launch.args,
-    onstart: request.launch.onstart,
+    runtype: flex_launch_runtype_wire(launch: request.launch.mode),
+    args: flex_launch_args(launch: request.launch.mode),
+    onstart: flex_launch_onstart(launch: request.launch.mode),
   )
   match sent {
     RestAnswered { answer: a } =>
@@ -855,8 +850,8 @@ fn flex_create_request_wire(q: FlexCreateRequest) -> String {
     " template=", q.template_hash_id as String, " label=", q.label as String,
     // The launch this rent carries. The env is rendered by length, not by value: it is where the
     // per-rental password is appended in the write path, and the base64 script is long.
-    " runtype=", flex_launch_runtype_wire(runtype: q.launch.runtype),
-    " args=", int_to_decimal_string(value: q.launch.args.count()),
+    " runtype=", flex_launch_runtype_wire(launch: q.launch.mode),
+    " args=", int_to_decimal_string(value: flex_launch_args(launch: q.launch.mode).count()),
     " onstart_b64=", if q.launch.env.contains(flex_vast_onstart_b64_flag()) { "yes" } else { "no" },
     " env_chars=", int_to_decimal_string(value: string_length(s: q.launch.env)),
     " reservation_micro=", int_to_decimal_string(value: money_amount_micro_count(m: q.reservation)),

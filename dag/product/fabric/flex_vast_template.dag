@@ -20,12 +20,32 @@ import product.fabric.flex_serving_image { flex_lil_serving_image }
 // The args launch is applied PER RENT, in the create request (flex_vast_rent_launch below), not stored
 // in the template: an args command stored IN a template has never been observed to execute (template
 // 782339: 50 min, empty logs). The template declares the mode so the readback and the create agree.
-type FlexLaunchRuntype = FlexSshRuntype | FlexArgsRuntype
+//
+// The mode and what it may carry are ONE sum, so a mode cannot hold the other mode's field: an ssh launch
+// carries a stored on-start script and no args; an args launch carries the container command and no stored
+// script (its script travels base64 in the create env). Every wire field is derived from the arm.
+type FlexTemplateLaunch
+  = FlexSshLaunch { onstart: String }
+  | FlexArgsLaunch { args: List<String> }
 
-fn flex_launch_runtype_wire(runtype: FlexLaunchRuntype) -> String {
-  match runtype {
-    FlexSshRuntype => "ssh"
-    FlexArgsRuntype => "args"
+fn flex_launch_runtype_wire(launch: FlexTemplateLaunch) -> String {
+  match launch {
+    FlexSshLaunch { onstart: _ } => "ssh"
+    FlexArgsLaunch { args: _ } => "args"
+  }
+}
+
+fn flex_launch_args(launch: FlexTemplateLaunch) -> List<String> {
+  match launch {
+    FlexSshLaunch { onstart: _ } => []
+    FlexArgsLaunch { args: a } => a
+  }
+}
+
+fn flex_launch_onstart(launch: FlexTemplateLaunch) -> String {
+  match launch {
+    FlexSshLaunch { onstart: o } => o
+    FlexArgsLaunch { args: _ } => ""
   }
 }
 
@@ -96,15 +116,12 @@ fn flex_vast_template_env_standing(env: String) -> FlexTemplateEnvStanding {
 // serving-image fact (product.fabric.flex_serving_image flex_lil_serving_image.onstart), never from the
 // template, so there is one script and one place it is written.
 type FlexRentLaunch {
-  runtype: FlexLaunchRuntype
-  onstart: String
-  args: List<String>
+  mode: FlexTemplateLaunch
   env: String
 }
 
 type FlexRentLaunchRefusal
   = FlexRentLaunchNotArgsMode { runtype: String }
-  | FlexRentLaunchTemplateCarriesOnstart
   | FlexRentLaunchNoOnstartScript
   | FlexRentLaunchOnstartNotEncodable
   | FlexRentLaunchEnvAlreadySetsOnstartB64
@@ -118,7 +135,6 @@ type FlexRentLaunchResult
 fn flex_rent_launch_refusal_cause(cause: FlexRentLaunchRefusal) -> String {
   match cause {
     FlexRentLaunchNotArgsMode { runtype: runtype } => join(["the template launch mode is ", runtype, "; the launch observed to serve is args"], "")
-    FlexRentLaunchTemplateCarriesOnstart => "the template stores an on-start script; in args mode the script travels base64 in the create request's env"
     FlexRentLaunchNoOnstartScript => "the serving image fact carries no on-start script to launch"
     FlexRentLaunchOnstartNotEncodable => "the on-start script is not base64-encodable"
     FlexRentLaunchEnvAlreadySetsOnstartB64 => "the template env already sets ONSTART_B64"
@@ -135,12 +151,10 @@ fn flex_vast_onstart_b64(script: String) -> String? {
 // The launch a create request carries, or a typed refusal. The template's docker-options string is the
 // base; the script is appended to it as `-e ONSTART_B64=<base64>`, which is the form that served.
 fn flex_vast_rent_launch(spec: FlexTemplateSpec) -> FlexRentLaunchResult {
-  match spec.runtype {
-    FlexSshRuntype => FlexRentLaunchRefused { cause: FlexRentLaunchNotArgsMode { runtype: flex_launch_runtype_wire(runtype: spec.runtype) } }
-    FlexArgsRuntype =>
-      if string_length(s: spec.onstart) > 0 {
-        FlexRentLaunchRefused { cause: FlexRentLaunchTemplateCarriesOnstart }
-      } else if string_length(s: flex_lil_serving_image.onstart) == 0 {
+  match spec.launch {
+    FlexSshLaunch { onstart: _ } => FlexRentLaunchRefused { cause: FlexRentLaunchNotArgsMode { runtype: flex_launch_runtype_wire(launch: spec.launch) } }
+    FlexArgsLaunch { args: args } =>
+      if string_length(s: flex_lil_serving_image.onstart) == 0 {
         FlexRentLaunchRefused { cause: FlexRentLaunchNoOnstartScript }
       } else {
         let base = flex_template_env(spec: spec)
@@ -153,9 +167,7 @@ fn flex_vast_rent_launch(spec: FlexTemplateSpec) -> FlexRentLaunchResult {
             Present { value: b64 } =>
               FlexRentLaunchBuilt {
                 launch: FlexRentLaunch {
-                  runtype: spec.runtype,
-                  onstart: "",
-                  args: spec.args,
+                  mode: FlexArgsLaunch { args: args },
                   env: join([base, " ", flag, b64], ""),
                 },
               }
@@ -174,15 +186,13 @@ type FlexTemplateSpec {
   name: NonEmptyStr
   image: NonEmptyStr
   tag: NonEmptyStr
-  runtype: FlexLaunchRuntype
-  // The container command, applied per rent (flex_vast_rent_launch). Empty for a ssh-mode spec.
-  args: List<String>
+  // The launch mode with what it carries: the args container command is applied per rent
+  // (flex_vast_rent_launch); an args launch stores no on-start script, because an args command stored IN
+  // the template has never been observed to execute and the script travels base64 in the create env.
+  launch: FlexTemplateLaunch
   disk: ByteSize
   port: Port
   shm: ByteSize
-  // '' for the args launch: the script travels base64 in the create request's env instead, because an
-  // args command stored IN the template has never been observed to execute.
-  onstart: String
   ssh_direct: Bool
   jup_direct: Bool
   use_jupyter_lab: Bool
@@ -279,12 +289,10 @@ data flex_vast_template_spec: FlexTemplateSpec = FlexTemplateSpec {
   name: "flex lil v3 (no credential env)" as NonEmptyStr,
   image: join([flex_lil_serving_image.repository as String, "@sha256"], "") as NonEmptyStr,
   tag: flex_lil_serving_image.digest_sha256,
-  runtype: FlexArgsRuntype,
-  args: flex_vast_args_launch,
+  launch: FlexArgsLaunch { args: flex_vast_args_launch },
   disk: flex_serving_recipe.disk,
   port: flex_lil_serving_image.port,
   shm: flex_lil_serving_image.shm,
-  onstart: "",
   ssh_direct: true,
   jup_direct: true,
   use_jupyter_lab: false,

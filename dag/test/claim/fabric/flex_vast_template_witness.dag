@@ -11,7 +11,7 @@ import product.fabric.flex_vast_template {
   flex_template_env_forbidden_name, flex_template_retired_hash,
   flex_vast_template_env_standing, flex_vast_template_env_max_chars, FlexTemplateEnvOverBound, FlexTemplateEnvWithinBound,
   flex_vast_create_env_observed_accepted, flex_vast_create_env_cap, FlexCreateEnvCapUnknown,
-  flex_vast_rent_launch, FlexRentLaunchBuilt, FlexRentLaunchRefused, FlexSshRuntype, FlexArgsRuntype, flex_launch_runtype_wire, flex_vast_args_launch,
+  flex_vast_rent_launch, FlexRentLaunchBuilt, FlexRentLaunchRefused, FlexSshLaunch, FlexArgsLaunch, flex_launch_runtype_wire, flex_launch_args, flex_launch_onstart, flex_vast_args_launch,
 }
 import product.fabric.flex_vast_loop { mint_flex_create_env }
 import product.fabric.flex_serving_image { flex_lil_serving_image, flex_serving_image_reference, flex_serving_onstart }
@@ -42,7 +42,7 @@ fn any_forbidden(env: String) -> Bool {
 test fn the_declared_template_env_carries_no_credential_name() -> Bool {
   (list_length(flex_template_forbidden_env_names) == 4)
     && !any_forbidden(env: flex_template_env(spec: flex_vast_template_spec))
-    && !(flex_vast_template_spec.onstart.contains("R2_"))
+    && !(flex_launch_onstart(launch: flex_vast_template_spec.launch).contains("R2_"))
     && any_forbidden(env: "-e PORT=18000 -e POOL_API_KEY=x")
     && any_forbidden(env: "-e R2_ACCESS_KEY_ID=x")
 }
@@ -84,11 +84,11 @@ test fn two_mints_differ_and_each_carries_the_launch_and_names_pool_api_key() ->
 
 // THE LAUNCH SHAPE: runtype args, [bash, -c, <decode ONSTART_B64, run, exec sleep infinity>], stored onstart ''.
 test fn the_spec_is_the_args_launch_with_an_empty_stored_onstart() -> Bool {
-  (flex_launch_runtype_wire(runtype: flex_vast_template_spec.runtype) == "args")
-    && (flex_vast_template_spec.args == flex_vast_args_launch)
-    && (list_length(flex_vast_template_spec.args) == 3)
-    && join(flex_vast_template_spec.args, " ").contains("ONSTART_B64")
-    && join(flex_vast_template_spec.args, " ").contains("exec sleep infinity")
+  (flex_launch_runtype_wire(launch: flex_vast_template_spec.launch) == "args")
+    && (flex_launch_args(launch: flex_vast_template_spec.launch) == flex_vast_args_launch)
+    && (list_length(flex_launch_args(launch: flex_vast_template_spec.launch)) == 3)
+    && join(flex_launch_args(launch: flex_vast_template_spec.launch), " ").contains("ONSTART_B64")
+    && join(flex_launch_args(launch: flex_vast_template_spec.launch), " ").contains("exec sleep infinity")
 }
 
 // A template env over Vast's 4096-char cap refuses; the declared env is within it; an ssh spec builds no
@@ -103,8 +103,8 @@ test fn a_template_env_over_4096_chars_refuses() -> Bool {
 test fn an_ssh_spec_builds_no_per_rent_launch() -> Bool {
   let ssh = FlexTemplateSpec {
     name: flex_vast_template_spec.name, image: flex_vast_template_spec.image, tag: flex_vast_template_spec.tag,
-    runtype: FlexSshRuntype, args: [], disk: flex_vast_template_spec.disk, port: flex_vast_template_spec.port,
-    shm: flex_vast_template_spec.shm, onstart: flex_vast_template_spec.onstart, ssh_direct: flex_vast_template_spec.ssh_direct,
+    launch: FlexSshLaunch { onstart: flex_lil_serving_image.onstart }, disk: flex_vast_template_spec.disk, port: flex_vast_template_spec.port,
+    shm: flex_vast_template_spec.shm, ssh_direct: flex_vast_template_spec.ssh_direct,
     jup_direct: flex_vast_template_spec.jup_direct, use_jupyter_lab: flex_vast_template_spec.use_jupyter_lab,
     min_cuda_max_good: flex_vast_template_spec.min_cuda_max_good, min_cpu_ram: flex_vast_template_spec.min_cpu_ram,
     min_gpu_ram: flex_vast_template_spec.min_gpu_ram, min_inet_down: flex_vast_template_spec.min_inet_down,
@@ -134,7 +134,7 @@ test fn the_outcome_is_ensured_only_with_a_clean_readback_and_one_retired_row() 
 test fn the_vast_realization_reads_the_one_serving_image() -> Bool {
   ((flex_vast_template_spec.image as String) == "ghcr.io/local-inference-lab/vllm@sha256")
     && ((flex_vast_template_spec.tag as String) == "751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7")
-    && (flex_vast_template_spec.onstart == "")
+    && (flex_launch_onstart(launch: flex_vast_template_spec.launch) == "")
     && (flex_serving_onstart == flex_lil_serving_image.onstart)
     && ((flex_serving_image_reference(image: flex_lil_serving_image) as String) == "ghcr.io/local-inference-lab/vllm@sha256:751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7")
     && (match flex_host_image(recipe: flex_serving_recipe) {

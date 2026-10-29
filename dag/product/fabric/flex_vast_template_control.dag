@@ -15,7 +15,7 @@ import product.fabric.flex_vast_template {
   FlexTemplateSpec, flex_vast_template_spec, flex_template_env, flex_template_retired_hash,
   FlexTemplateDecision, FlexTemplateNoop, FlexTemplateApply, FlexTemplateRefuse,
   flex_template_decide, flex_template_env_forbidden_name,
-  flex_launch_runtype_wire, flex_vast_template_env_standing, FlexTemplateEnvOverBound, FlexTemplateEnvWithinBound,
+  flex_launch_runtype_wire, flex_launch_onstart, flex_vast_template_env_standing, FlexTemplateEnvOverBound, FlexTemplateEnvWithinBound,
 }
 
 // THE ENSURE FOR THE SECRET-FREE FLEX TEMPLATE, run by the fleet-converge flex_template_ensure mode, the
@@ -65,10 +65,10 @@ fn flex_template_create(api_key: Secret, spec: FlexTemplateSpec) -> String uses 
         image: spec.image,
         tag: spec.tag,
         env: flex_template_env(spec: spec),
-        runtype: flex_launch_runtype_wire(runtype: spec.runtype),
+        runtype: flex_launch_runtype_wire(launch: spec.launch),
         recommended_disk_space: flex_vast_disk_gigabytes(disk: spec.disk),
         private: true,
-        onstart: spec.onstart,
+        onstart: flex_launch_onstart(launch: spec.launch),
         ssh_direct: spec.ssh_direct,
         jup_direct: spec.jup_direct,
         use_jupyter_lab: spec.use_jupyter_lab,
