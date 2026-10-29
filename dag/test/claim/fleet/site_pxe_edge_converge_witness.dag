@@ -135,6 +135,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_image_standing,
   site_pxe_edge_install_standing,
   site_pxe_edge_install_files,
+  site_pxe_edge_run_text,
   site_pxe_edge_unit_active_standing,
   site_pxe_edge_file_parent_argv,
   site_pxe_edge_host_grub_cfg,
@@ -1130,6 +1131,17 @@ test fn an_unobservable_listener_probe_is_its_own_arm_and_not_converged() -> Boo
   let base = apply_run(post: PostActivationDigestHeld)
   let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } } }
   !site_pxe_edge_run_succeeded(run: blind) && HttpListenUnobservable { reason: "x" } != HttpListenAbsent
+}
+
+// THE RECEIPT SAYS WHY THE HTTP LEG DECIDED THE VERDICT: srv4's run 40825621987 ended REFUSED with every printed
+// line holding, because the one failing term was never rendered. Each listener arm prints its own finding.
+test fn the_receipt_renders_the_http_leg_that_decided_the_verdict() -> Bool {
+  let base = apply_run(post: PostActivationDigestHeld)
+  let other = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenOtherAddress { local: "127.0.0.1:8080" } } }
+  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
+  contains(site_pxe_edge_run_text(run: other), "\nhttp=activation held listen OTHER-ADDRESS 127.0.0.1:8080\nterminal=REFUSED\n")
+    && contains(site_pxe_edge_run_text(run: bound), "\nhttp=activation held listen bound 192.168.1.196:8080\nterminal=succeeded\n")
+    && contains(site_pxe_edge_run_text(run: base), "\nhttp=not-needed\n")
 }
 
 // ONE ds= TOKEN (review 86171): the seeded-media string builder now composes the shared token through GRUB's quoting
