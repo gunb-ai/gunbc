@@ -572,7 +572,9 @@ test fn emit_on_demand_match_loop_fold_materialize_share_on_hit_holds() -> Bool 
                 EmitOnDemandMiss => false
               }
             },
-            did_not_fit: (a, b) => false
+            did_not_fit: (a, b) => false,
+            at_capacity: (a, b) => false,
+            policy_refused: c => false
           )
         Absent => false
       }

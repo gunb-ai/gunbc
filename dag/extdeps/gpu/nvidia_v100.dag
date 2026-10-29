@@ -1,0 +1,251 @@
+module extdeps.gpu.nvidia_v100
+
+import std.types { List, NonEmptyStr }
+import std.optional { Present }
+import std.measure { hardware_thread_count, bandwidth, watt, gibibyte, gibibyte_to_byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, PassiveThermalSolution, PcieAddInBoard, RatedBoardPower, SxmModule }
+import extdeps.memory.types { MemoryFacts, Hbm }
+import extdeps.pci.identity { PciDeviceId }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.uri { Uri, Https }
+
+// NVIDIA V100 Tensor Core GPU datasheet 1165301-r5, read 2026-10-28. Volta, 5,120 CUDA cores. V100 PCIe:
+// "32 GB /16 GB HBM2", 900 GB/sec, PCIe Gen3, 250 W. V100 SXM2: the same memory, 900 GB/sec, NVLink, 300 W.
+// V100S PCIe: 32 GB HBM2, 1134 GB/sec, PCIe Gen3, 250 W. All passive. No link width is stated, so PCIe
+// links are Absent. Each memory configuration is its own SKU, so its own device row and board; the
+// driver's names (Tesla V100-PCIE-32GB 1db6, -PCIE-16GB 1db4, -SXM2-32GB 1db5, -SXM2-16GB 1db1,
+// V100S-PCIE-32GB 1df6) name them.
+
+data v100_datasheet_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "images.nvidia.com/content/technologies/volta/pdf/volta-v100-datasheet-update-us-1165301-r5.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_v100_board_catalogs", field: WholeDeclaration
+  } },
+  first_citation: v100_datasheet_authority,
+  further_citations: []
+}
+
+data nvidia_tesla_v100_pcie_32gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "Tesla V100 PCIe 32GB",
+  microarchitecture: "Volta",
+  execution_lane_count: Present { value: hardware_thread_count(5120) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 32)), memory_kind: Hbm },
+  memory_bandwidth: Present { value: bandwidth(count: 900000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_32gb_catalog", field_name: "memory"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_32gb_catalog", field_name: "memory_bandwidth"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_32gb_catalog", field_name: "execution_lane_count"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_32gb_catalog", field_name: "microarchitecture"), authority: v100_datasheet_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_tesla_v100_pcie_32gb_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "Tesla V100 PCIe 32GB",
+  gpu: nvidia_tesla_v100_pcie_32gb_catalog,
+  gpu_count: 1,
+  attachment: PcieAddInBoard { link: none },
+  board_power: Present { value: RatedBoardPower { rated: watt(count: 250) } },
+  zero_power: none,
+  thermal: Present { value: PassiveThermalSolution },
+  pci_device_id: Present { value: "1db6" as PciDeviceId },
+  driver_listed_name: Present { value: "Tesla V100-PCIE-32GB" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_32gb_board_facts", field_name: "board_power"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_32gb_board_facts", field_name: "thermal"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_32gb_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_32gb_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_tesla_v100_pcie_32gb_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_tesla_v100_pcie_32gb_board_facts)
+
+data nvidia_tesla_v100_pcie_16gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "Tesla V100 PCIe 16GB",
+  microarchitecture: "Volta",
+  execution_lane_count: Present { value: hardware_thread_count(5120) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Hbm },
+  memory_bandwidth: Present { value: bandwidth(count: 900000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_16gb_catalog", field_name: "memory"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_16gb_catalog", field_name: "memory_bandwidth"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_16gb_catalog", field_name: "execution_lane_count"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_16gb_catalog", field_name: "microarchitecture"), authority: v100_datasheet_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_tesla_v100_pcie_16gb_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "Tesla V100 PCIe 16GB",
+  gpu: nvidia_tesla_v100_pcie_16gb_catalog,
+  gpu_count: 1,
+  attachment: PcieAddInBoard { link: none },
+  board_power: Present { value: RatedBoardPower { rated: watt(count: 250) } },
+  zero_power: none,
+  thermal: Present { value: PassiveThermalSolution },
+  pci_device_id: Present { value: "1db4" as PciDeviceId },
+  driver_listed_name: Present { value: "Tesla V100-PCIE-16GB" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_16gb_board_facts", field_name: "board_power"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_16gb_board_facts", field_name: "thermal"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_16gb_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_16gb_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_tesla_v100_pcie_16gb_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_tesla_v100_pcie_16gb_board_facts)
+
+data nvidia_tesla_v100_sxm2_32gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "Tesla V100 SXM2 32GB",
+  microarchitecture: "Volta",
+  execution_lane_count: Present { value: hardware_thread_count(5120) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 32)), memory_kind: Hbm },
+  memory_bandwidth: Present { value: bandwidth(count: 900000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_catalog", field_name: "memory"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_catalog", field_name: "memory_bandwidth"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_catalog", field_name: "execution_lane_count"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_catalog", field_name: "microarchitecture"), authority: v100_datasheet_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_tesla_v100_sxm2_32gb_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "Tesla V100 SXM2 32GB",
+  gpu: nvidia_tesla_v100_sxm2_32gb_catalog,
+  gpu_count: 1,
+  attachment: SxmModule,
+  board_power: Present { value: RatedBoardPower { rated: watt(count: 300) } },
+  zero_power: none,
+  thermal: Present { value: PassiveThermalSolution },
+  pci_device_id: Present { value: "1db5" as PciDeviceId },
+  driver_listed_name: Present { value: "Tesla V100-SXM2-32GB" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_board_facts", field_name: "attachment"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_board_facts", field_name: "board_power"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_board_facts", field_name: "thermal"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_tesla_v100_sxm2_32gb_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_tesla_v100_sxm2_32gb_board_facts)
+
+data nvidia_tesla_v100_sxm2_16gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "Tesla V100 SXM2 16GB",
+  microarchitecture: "Volta",
+  execution_lane_count: Present { value: hardware_thread_count(5120) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Hbm },
+  memory_bandwidth: Present { value: bandwidth(count: 900000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_catalog", field_name: "memory"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_catalog", field_name: "memory_bandwidth"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_catalog", field_name: "execution_lane_count"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_catalog", field_name: "microarchitecture"), authority: v100_datasheet_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_tesla_v100_sxm2_16gb_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "Tesla V100 SXM2 16GB",
+  gpu: nvidia_tesla_v100_sxm2_16gb_catalog,
+  gpu_count: 1,
+  attachment: SxmModule,
+  board_power: Present { value: RatedBoardPower { rated: watt(count: 300) } },
+  zero_power: none,
+  thermal: Present { value: PassiveThermalSolution },
+  pci_device_id: Present { value: "1db1" as PciDeviceId },
+  driver_listed_name: Present { value: "Tesla V100-SXM2-16GB" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_board_facts", field_name: "attachment"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_board_facts", field_name: "board_power"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_board_facts", field_name: "thermal"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_tesla_v100_sxm2_16gb_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_tesla_v100_sxm2_16gb_board_facts)
+
+data nvidia_tesla_v100s_pcie_32gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "Tesla V100S PCIe 32GB",
+  microarchitecture: "Volta",
+  execution_lane_count: Present { value: hardware_thread_count(5120) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 32)), memory_kind: Hbm },
+  memory_bandwidth: Present { value: bandwidth(count: 1134000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100s_pcie_32gb_catalog", field_name: "memory"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100s_pcie_32gb_catalog", field_name: "memory_bandwidth"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100s_pcie_32gb_catalog", field_name: "execution_lane_count"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100s_pcie_32gb_catalog", field_name: "microarchitecture"), authority: v100_datasheet_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_tesla_v100s_pcie_32gb_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "Tesla V100S PCIe 32GB",
+  gpu: nvidia_tesla_v100s_pcie_32gb_catalog,
+  gpu_count: 1,
+  attachment: PcieAddInBoard { link: none },
+  board_power: Present { value: RatedBoardPower { rated: watt(count: 250) } },
+  zero_power: none,
+  thermal: Present { value: PassiveThermalSolution },
+  pci_device_id: Present { value: "1df6" as PciDeviceId },
+  driver_listed_name: Present { value: "Tesla V100S-PCIE-32GB" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100s_pcie_32gb_board_facts", field_name: "board_power"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100s_pcie_32gb_board_facts", field_name: "thermal"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100s_pcie_32gb_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100s_pcie_32gb_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_tesla_v100s_pcie_32gb_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_tesla_v100s_pcie_32gb_board_facts)
+
+// Every board this module declares, in declaration order: the roster test.claim.gpu_board_catalog_witness
+// requires to be admitted, and this module's model-scope subject.
+data nvidia_v100_board_catalogs: List<GpuBoardAdmission> = [nvidia_tesla_v100_pcie_32gb_board_catalog, nvidia_tesla_v100_pcie_16gb_board_catalog, nvidia_tesla_v100_sxm2_32gb_board_catalog, nvidia_tesla_v100_sxm2_16gb_board_catalog, nvidia_tesla_v100s_pcie_32gb_board_catalog]
