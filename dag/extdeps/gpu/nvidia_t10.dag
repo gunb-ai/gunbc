@@ -1,15 +1,102 @@
 module extdeps.gpu.nvidia_t10
 
-import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.gpu.passive_card_row { CardRow, NeedsReading }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.types { List, NonEmptyStr }
+import std.optional { Present }
+import std.measure { gibibyte, gibibyte_to_byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, PcieAddInBoard }
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.pci.identity { PciDeviceId }
 import extdeps.vendor.nvidia { nvidia }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.gpu.passive_card_row { CardRow, NeedsReading }
+import extdeps.uri { Uri, Https }
+import extdeps.nvidia.linux_driver_supported_chips { NvidiaSupportedChipRow, nvidia_linux_driver_580_95_05_supported_chips, nvidia_supported_chip_rows_for_device }
 
-// ═══ NVIDIA TESLA T10: A ROW WITH NO DOCUMENT BEHIND IT YET ═══
+// THE TURING TESLA T10: WHAT CAN BE GROUNDED, AND WHAT CANNOT. The operator is buying about sixty of
+// these cards. NVIDIA publishes no product page, brief or datasheet for it that this repository could
+// reach (the card row's header below records the probe of every nvidia.com path, 2026-10-26), and the
+// vGPU user guides 13.0, 15.0 and 16.0 (docs.nvidia.com/vgpu/<release>/grid-vgpu-user-guide, read
+// 2026-10-28) do not mention it. Two independent authorities do:
+//  - The PCI ID Repository (pci.ids at pciutils/pciids commit 6bf2473, read 2026-10-28) names device
+//    10de:1e37 "TU102GL [Tesla T10 16GB / GRID RTX T10-2/T10-4/T10-8]" with subsystems 10de:1304 and
+//    10de:1370 "Tesla T10 16GB". That grounds the device id, the die (TU102GL) and the 16 GB in the name.
+//  - NVIDIA's Linux driver README Appendix A (extdeps.nvidia.linux_driver_supported_chips, release
+//    580.95.05) does NOT list device 1e37 in any table. Its only "Tesla T10" rows are the 2008 GT200
+//    "Tesla T10 Processor" (device 05e7) in the 340.xx legacy table: a different product of the same
+//    name. The 535.274.02, 550.163.01, 525.147.05, 470.256.02 and 450.119.03 READMEs were also read on
+//    2026-10-28 and none lists 1e37 either. Whether the driver binds to the card is a reading of a real
+//    card, not a fact this module can state; that the README lists it as supported is false.
+// Everything else is unread and Absent: lane count, bandwidth, power, link, thermal solution. The
+// operator's cards are the route to them: nvidia-smi on one card reports memory.total, power.default_limit,
+// power.min_limit / power.max_limit, pcie.link.gen.max / width.max and the VBIOS, which is the board
+// grain this row needs. "Turing" is the architecture NVIDIA's TU die prefix names; no page read states it.
+
+data pci_ids_t10_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "raw.githubusercontent.com/pciutils/pciids/6bf2473e60693bcc2d8e778da53034678f4ace55/pci.ids"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_t10", decl_name: "nvidia_t10_board_catalogs", field: WholeDeclaration
+  } },
+  first_citation: pci_ids_t10_authority,
+  further_citations: []
+}
+
+// The rows of the pinned driver appendix listing the T10's device id: none. Computed from the whole
+// appendix, so it is a reading of the README, not an assertion typed here.
+data nvidia_t10_driver_appendix_rows: List<NvidiaSupportedChipRow> = nvidia_supported_chip_rows_for_device(
+  appendix: nvidia_linux_driver_580_95_05_supported_chips,
+  device_id: "1e37" as PciDeviceId,
+)
+
+data nvidia_tesla_t10_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "Tesla T10 16GB",
+  microarchitecture: "Turing",
+  execution_lane_count: none,
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Dram },
+  memory_bandwidth: none,
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_t10", decl_name: "nvidia_tesla_t10_catalog", field_name: "memory"), authority: pci_ids_t10_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_tesla_t10_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "Tesla T10 16GB",
+  gpu: nvidia_tesla_t10_catalog,
+  gpu_count: 1,
+  attachment: PcieAddInBoard { link: none },
+  board_power: none,
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "1e37" as PciDeviceId },
+  driver_listed_name: none,
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_t10", decl_name: "nvidia_tesla_t10_board_facts", field_name: "pci_device_id"), authority: pci_ids_t10_authority },
+  ],
+}
+
+data nvidia_tesla_t10_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_tesla_t10_board_facts)
+
+// Every board this module declares, in declaration order: the roster test.claim.gpu_board_catalog_witness
+// requires to be admitted, and this module's model-scope subject.
+data nvidia_t10_board_catalogs: List<GpuBoardAdmission> = [nvidia_tesla_t10_board_catalog]
+
+// ═══ THE CARD'S MECHANICAL ROW: NO DOCUMENT BEHIND IT YET ═══
 //
-// The operator is buying about 60 T10s. NVIDIA publishes no product brief or datasheet for it that
-// this repository could reach. The 2026-10-26 probe (statuses verbatim, run from this repository's
+// The PCI ID Repository above names the card; it draws nothing. The 2026-10-26 probe (statuses verbatim, run from this repository's
 // own runner):
 //   images.nvidia.com/content/technologies/virtualization/tesla-t10-virtualgpu-product-brief-170910a.pdf  404
 //   images.nvidia.com/content/technologies/virtualization/tesla_t10_virtualgpu_datasheet-170910a.pdf       404
@@ -27,13 +114,6 @@ import extdeps.vendor.nvidia { nvidia }
 // caliper reading of a held card is an observation and is recorded in the observing layer
 // (product.printed_chassis.duct_card_catalog), and this row cites that receipt only through a
 // standing that admits it.
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef { module_path: "extdeps.gpu.nvidia_t10", decl_name: "t10_card_row", field: WholeDeclaration }
-  },
-  first_citation: extdeps.vendor.nvidia.extdeps_external_authority_anchor,
-  further_citations: []
-}
 
 fn t10_document_obligation(what: NonEmptyStr) -> NonEmptyStr {
   join(["an NVIDIA document for the Tesla T10 (product brief or datasheet: PB number, version, URL, sha256), read for ", what as String, ". None was reachable on 2026-10-26 or 2026-10-29 (see this module's header); third-party listings are not a source. If no document exists, the operator reads the figure on a received card and the reading is recorded in product.printed_chassis.duct_card_catalog as an observation, with a caliper and a date."], "") as NonEmptyStr

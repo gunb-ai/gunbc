@@ -89,6 +89,7 @@ import extdeps.toolchain.types { Architecture, Aarch64, X86_64, architecture_dia
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly, ipxe_build_target_path, ipxe_chainloading_authority }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacParseError, render_mac_address, parse_mac_address }
 import gunbc.machine_intake.srv14_host_nic_observation { srv14_host_nic_mac }
+import gunbc.machine_intake.srv15_host_nic_observation { srv15_host_nic_mac }
 import gunbc.site_pxe_edge {
   SiteEdgeRoster,
   SiteEdgeServedChain,
@@ -475,17 +476,26 @@ data site_pxe_edge_chain_pins: List<SitePxeEdgeChainPin> = [
 data site_pxe_edge_install_requests: List<SitePxeEdgeInstallRequest> = [
   SitePxeEdgeInstallRequest {
     client: srv14_install_client,
-    user_data: autoinstall_user_data_document(payload: srv14_ubuntu_autoinstall),
+    user_data: autoinstall_user_data_document(payload: site_pxe_edge_key_only_autoinstall),
+    architecture: Aarch64,
+  },
+  SitePxeEdgeInstallRequest {
+    client: srv15_install_client,
+    user_data: autoinstall_user_data_document(payload: site_pxe_edge_key_only_autoinstall),
     architecture: Aarch64,
   },
 ]
 
 data srv14_install_client: MacParseResult = parse_mac_address(text: srv14_host_nic_mac as String)
 
-// srv14's install: the fleet's key-only account, no identity section, and the direct layout over the installer's
-// chosen disk, which replaces whatever OS the NVMe carried before. The seed travels over NoCloud-net from this
-// edge's seed root; the per-client directory under it is the edge's to name from the admitted binding.
-data srv14_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+data srv15_install_client: MacParseResult = parse_mac_address(text: srv15_host_nic_mac as String)
+
+// THE ONE INSTALL THIS EDGE SERVES: the fleet's key-only account, no identity section, and the direct layout over
+// the installer's chosen disk, which replaces whatever OS the NVMe carried before. Nothing in it names a host (the
+// seed's instance-id comes from the request's MAC), so every request shares it rather than copying it per host.
+// The seed travels over NoCloud-net from this edge's seed root; the per-client directory under it is the edge's to
+// name from the admitted binding.
+data site_pxe_edge_key_only_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
   autoinstall_version: 1,
   delivery: NoCloudNet { seed_url: site_pxe_edge_seed_root_uri },
   fully_automated: true,
@@ -501,6 +511,7 @@ data srv14_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPaylo
 data site_pxe_edge_known_client_observations: List<MacParseResult> = [
   first_onboarding_known_client_mac,
   srv14_install_client,
+  srv15_install_client,
 ]
 
 data site_pxe_edge_seed_origin_resolution: BootNetworkProbe = site_pxe_edge_seed_origin_probe(
