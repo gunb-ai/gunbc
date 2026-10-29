@@ -1,0 +1,36 @@
+-- Materialized fixture for the statement-position claim suite (v2.test.claim.namespace_xl0.let_statement_position).
+-- Read as a module by the native lane: the `ctl_*` rows must be accepted and the `tail_*`/`arm_*` rows are the
+-- refusals the body-lowering statement-position fix owes. Do not edit to dodge a refusal -- a fixture that
+-- stops refusing has moved, and the claim suite's expectations are the record of what it must do.
+module v2.test.lst_arm_block_if_match
+
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+
+type LstS = LstA { v: Int } | LstB
+
+fn lst_uses(x: Int) -> Int { x }
+
+fn lst_predicate(i: Int) -> Bool { i > 0 }
+
+// The shape dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1053 authored: a braced arm block
+// whose first statement binds an `if` whose branches are matches, and whose last statement reads that
+// binding. Resolving it means the block is read as a statement sequence, not as a head.
+fn lst_probe(s: LstS, i: Int) -> Int { match s {
+  LstA { v: v } => {
+    let chosen = if lst_predicate(i: v) {
+      match s {
+        LstA { v: w } => lst_uses(x: w)
+        LstB => i
+      }
+    } else {
+      match s {
+        LstA { v: w } => lst_uses(x: w)
+        LstB => 0
+      }
+    }
+    let shifted = chosen + 1
+    lst_uses(x: shifted)
+  }
+  LstB => i
+} }
