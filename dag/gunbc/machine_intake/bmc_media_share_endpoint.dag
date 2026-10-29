@@ -51,14 +51,15 @@ import gunbc.megarac_media_model {
   megarac_mtcollins1_nfs_server_address_formality,
 }
 
-// THE TYPED RESOLUTION THE ENDPOINT AUTHORITY RETURNS FOR THE SHARE. `ByHolderIpv4` is the holder's LAN IPv4
-// with its source cited; `ByAllocatedName` is the holder's allocated member name (the form a hostname-accepting
-// firmware would take, once a grounded name-resolution exists). Carrying the source beside the value is what
-// makes this an endpoint resolution and not a bare string a consumer could hand-copy. Consumers:
-// resolve_fabric_storage_share_server_address and its witness.
-type BmcMediaServerAddress
-  = ByHolderIpv4 { address: NonEmptyStr, source: NonEmptyStr }
-  | ByAllocatedName { name: NonEmptyStr, source: NonEmptyStr }
+// THE TYPED RESOLUTION THE ENDPOINT AUTHORITY RETURNS FOR THE SHARE. There is exactly ONE form today: the
+// holder's LAN IPv4. Its citation is STRUCTURAL, not a prose field -- the only way to build a
+// `ByHolderIpv4` is `srv2_fabric_storage_share_holder_ipv4()`, which renders the grounded address-authority
+// row; no consumer can dress an arbitrary string as a resolution, so the value can never be a hand-copied
+// literal (DESIGN 3, DESIGN 5). A hostname form (`ByAllocatedName`) is deliberately NOT declared: it has no
+// producer and its `EndpointResolutionEvidence` frontier has not landed -- declaring an arm with no route
+// would be dangling vocabulary (DESIGN 3c) and its witness RED unauthorable (DESIGN 4b). It returns when a
+// real route constructs it. Consumers: resolve_fabric_storage_share_server_address and its witness.
+type BmcMediaServerAddress = ByHolderIpv4 { address: NonEmptyStr }
 
 // WHY A RESOLUTION CAN BE REFUSED. Each arm is a distinct way the endpoint fails to license the BMC share --
 // the resolver never falls through to a default value (DESIGN 5). Consumers: srv2_fabric_storage_share_endpoint,
@@ -145,10 +146,7 @@ fn srv2_fabric_storage_share_endpoint() -> Result<ServiceEndpointIdentity, BmcMe
 // the row exactly -- the continuity the convergence witness already guards. Consumers:
 // resolve_fabric_storage_share_server_address and srv2_bmc_media_share_server_address.
 fn srv2_fabric_storage_share_holder_ipv4() -> BmcMediaServerAddress {
-  ByHolderIpv4 {
-    address: render_ipv4_address(addr: srv2_lan_ipv4),
-    source: "gunbc.fleet.fleet_reach.srv2_lan_ipv4 -- the grounded census observation of the segment holder's LAN IPv4 (address authority extdeps.network.endpoint), cited not copied",
-  }
+  ByHolderIpv4 { address: render_ipv4_address(addr: srv2_lan_ipv4) }
 }
 
 // THE ENDPOINT RESOLVER (Do-step 2). Given the share's endpoint identity and the per-firmware hostname
@@ -207,8 +205,7 @@ fn srv2_bmc_media_share_server_address() -> Result<NonEmptyStr, BmcMediaShareRef
         Err { value: why } => Err { value: why }
         Ok { value: resolved } =>
           match resolved {
-            ByHolderIpv4 { address: address, source: _ } => Ok { value: address }
-            ByAllocatedName { name: name, source: _ } => Ok { value: name }
+            ByHolderIpv4 { address: address } => Ok { value: address }
           }
       }
   }

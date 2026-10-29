@@ -19,7 +19,6 @@ module test.claim.machine_intake.bmc_media_share_endpoint_witness
 import std.types { Bool, NonEmptyStr, String }
 import std.error_primitives { Err, Ok }
 import std.optional { Absent, Optional, Present }
-import std.algebra { string_contains }
 import gunbc.machine_intake.bmc_media_share_endpoint {
   ByHolderIpv4,
   bmc_media_nfs_port,
@@ -75,9 +74,10 @@ test fn witness_srv2_share_inhabits_the_fabric_storage_share_role() -> Bool {
 }
 
 // THE OPEN QUESTION IS ANSWERED WITH THE IPv4, NOT A NAME (Do-step 2). While hostname acceptance is Unobserved,
-// resolve_fabric_storage_share_server_address on the real srv2 endpoint yields the holder's LAN IPv4 AND cites
-// the row it came from. A resolver that silently treated "unobserved" as "the firmware accepts a hostname"
-// would return a name here and go RED.
+// resolve_fabric_storage_share_server_address on the real srv2 endpoint yields the holder's LAN IPv4. The value
+// can only be a cited resolution: `ByHolderIpv4` has a single producer (the grounded srv2 LAN row), so the
+// result is red against any value but that row's. A resolver that silently treated "unobserved" as "the
+// firmware accepts a hostname" would fail the Accepted-vs-Unobserved discriminator below.
 test fn witness_unobserved_hostname_standing_resolves_to_holder_ipv4() -> Bool {
   match srv2_fabric_storage_share_endpoint() {
     Err { value: _ } => false
@@ -87,11 +87,7 @@ test fn witness_unobserved_hostname_standing_resolves_to_holder_ipv4() -> Bool {
         formality: NfsServerAddressHostnameUnobserved { what_would_ground_it: "probe" as NonEmptyStr },
       ) {
         Err { value: _ } => false
-        Ok { value: ByHolderIpv4 { address: a, source: src } } =>
-          (a as String) == expected_holder_ipv4() && string_contains(s: src as String, pattern: "srv2_lan_ipv4")
-        // A name served under an UNOBSERVED standing would mean the resolver treated "unobserved" as "the
-        // firmware accepts a hostname" -- the exact bug this witness exists to catch -- so it is RED, not green.
-        Ok { value: ByAllocatedName { name: _, source: _ } } => false
+        Ok { value: ByHolderIpv4 { address: a } } => (a as String) == expected_holder_ipv4()
       }
   }
 }
@@ -109,7 +105,7 @@ test fn witness_unobserved_and_refused_give_address_while_accepted_is_refused() 
         formality: NfsServerAddressHostnameRefused { observed_via: "probe" as NonEmptyStr },
       ) {
         Err { value: _ } => false
-        Ok { value: ByHolderIpv4 { address: a, source: _ } } =>
+        Ok { value: ByHolderIpv4 { address: a } } =>
           (a as String) == expected_holder_ipv4()
             && match resolve_fabric_storage_share_server_address(
               share: ep,
@@ -118,8 +114,6 @@ test fn witness_unobserved_and_refused_give_address_while_accepted_is_refused() 
               Ok { value: _ } => false
               Err { value: _ } => true
             }
-        // A name served under a REFUSED standing would ignore the firmware reading -- RED, not green.
-        Ok { value: ByAllocatedName { name: _, source: _ } } => false
       }
   }
 }
@@ -196,8 +190,7 @@ test fn witness_production_binding_and_fixture_match_the_resolver_output() -> Bo
         formality: megarac_mtcollins1_nfs_server_address_formality,
       ) {
         Err { value: _ } => false
-        Ok { value: ByAllocatedName { name: _, source: _ } } => false
-        Ok { value: ByHolderIpv4 { address: resolved, source: _ } } =>
+        Ok { value: ByHolderIpv4 { address: resolved } } =>
           match srv2_bmc_media_share_server_address() {
             Err { value: _ } => false
             Ok { value: accessor } =>
