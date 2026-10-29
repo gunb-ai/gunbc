@@ -439,7 +439,7 @@ fn systemd_run_setenv_options(bindings: List<SystemdSetenvBinding>) -> List<Syst
   fold(bindings, init: [], f: (acc, b) => list_append(left: acc, right: [SetEnv { binding: b }]))
 }
 
-// THE USER-MANAGER TRANSIENT START: `systemd-run --user --unit=NAME --property=NAME=VALUE ... --setenv=K=V
+// THE USER-MANAGER TRANSIENT START: `systemd-run --user --unit=NAME -p NAME=VALUE ... --setenv=K=V
 // ... -- CMD`. The property words travel as two words (-p, then NAME=VALUE) and the projected
 // order here is the order the string-built form this replaces happened to emit, so the projected
 // words for existing callers are byte-identical to what they rendered before the cutover.

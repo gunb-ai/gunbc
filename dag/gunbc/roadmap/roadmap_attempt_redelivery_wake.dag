@@ -142,10 +142,12 @@ fn attempt_redelivery_wake_unit_name(node_id: String, attempt_key: String, insta
 // a working directory: `working_directory` is the instance's repo root, carried as the real systemd-run(1)
 // property --property=WorkingDirectory=<repo root> -- WITHOUT it the transient service starts in the user
 // manager's default cwd (/session-home), the serve binary refuses at startup with 'no workspace root'
-// (exit 2), and the wake is armed-but-nonfunctional (the live finding, srv1 2026-10-29). The path is
-// admitted at a typed NonEmptyStr position (never a brand cast), and the property is applied under the
-// user manager (extdeps.systemd WorkingDirectoryProperty). Consumed by roadmap_belt_actuate's
-// SpawnRouteWake fold arm.
+// (exit 2), and the wake is armed-but-nonfunctional (the live finding, srv1 2026-10-29). The working
+// directory is admitted at this builder's NonEmptyStr parameter via the tree's established path coercion
+// (instance.repo_root -> NonEmptyStr -- the same `root as NonEmptyStr` path idiom used across the repo);
+// the brand cast this change deliberately avoids is the TIME brand (as EpochSecs), not this path
+// admission. The property is applied under the user manager (extdeps.systemd WorkingDirectoryProperty).
+// Consumed by roadmap_belt_actuate's SpawnRouteWake fold arm.
 fn attempt_redelivery_wake_command(node_id: String, attempt_key: String, next_delivery: EpochSecs, working_directory: NonEmptyStr, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_user_oneshot_timer_command(
     unit: attempt_redelivery_wake_unit_name(node_id: node_id, attempt_key: attempt_key, instant: next_delivery),
