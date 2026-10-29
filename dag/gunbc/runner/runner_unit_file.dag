@@ -54,7 +54,9 @@ import gunbc.runner.runner_host_deploy {
   GithubAppRunnerConfig,
   github_app_runner_org,
   runner_job_user_env_name,
+  runner_group_id_env_name,
 }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_id, deploy_slot_runner_group_ensure_receipt }
 import gunbc.runner.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
@@ -566,27 +568,33 @@ fn runner_unit_slot_role_dropin_text(deploy: RunnerHostDeploy, slot: RunnerSlotI
   match role {
     CiJobSlot => Absent
     DeployJobSlot =>
-      Present { value: match runner_slot_registration_labels(slot: slot) {
-        RegistrationLabelsRefused { host: _, cause: c } =>
-          RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
-        RegistrationLabelsResolved { labels: labels } =>
-          match runner_unit_labels_json(spec: SelfHosted { labels: labels }) {
-            RunnerUnitLabels { json_text: labels_json } =>
-              RunnerUnitText {
-                text: serialize_systemd_drop_in(drop_in: SystemdDropIn {
-                  sections: [DropInServiceSection { directives: concat(
-                    [
-                      runner_unit_environment(name: runner_job_user_env_name, value: runner_slot_job_user(role: role, ci_job_user: deploy.job_user) as String),
-                      runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json),
-                    ],
-                    if runner_slot_job_role_runs_containers(role: role) { [] } else { [runner_unit_environment(name: docker_host_env_var, value: "")] },
-                  ) }],
-                }),
+      Present { value: match deploy_slot_runner_group_id(receipt: deploy_slot_runner_group_ensure_receipt) {
+        Absent =>
+          RunnerUnitTextRefused { reason: "runner_unit_file: the deploy slot's runner group receipt is for another group or workflow, so the slot is not registered into a group nobody re-read" as NonEmptyStr }
+        Present { value: group } =>
+          match runner_slot_registration_labels(slot: slot) {
+            RegistrationLabelsRefused { host: _, cause: c } =>
+              RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
+            RegistrationLabelsResolved { labels: labels } =>
+              match runner_unit_labels_json(spec: SelfHosted { labels: labels }) {
+                RunnerUnitLabels { json_text: labels_json } =>
+                  RunnerUnitText {
+                    text: serialize_systemd_drop_in(drop_in: SystemdDropIn {
+                      sections: [DropInServiceSection { directives: concat(
+                        [
+                          runner_unit_environment(name: runner_job_user_env_name, value: runner_slot_job_user(role: role, ci_job_user: deploy.job_user) as String),
+                          runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json),
+                          runner_unit_environment(name: runner_group_id_env_name, value: to_string(group.value)),
+                        ],
+                        if runner_slot_job_role_runs_containers(role: role) { [] } else { [runner_unit_environment(name: docker_host_env_var, value: "")] },
+                      ) }],
+                    }),
+                  }
+                RunnerUnitLabelsHostedRunner =>
+                  RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as a hosted runner" as NonEmptyStr }
+                RunnerUnitLabelsUnresolvedExpression { expression: _ } =>
+                  RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as an unresolved expression" as NonEmptyStr }
               }
-            RunnerUnitLabelsHostedRunner =>
-              RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as a hosted runner" as NonEmptyStr }
-            RunnerUnitLabelsUnresolvedExpression { expression: _ } =>
-              RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as an unresolved expression" as NonEmptyStr }
           }
       } }
   }

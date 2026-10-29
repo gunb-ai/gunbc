@@ -1,0 +1,94 @@
+module gunbc.gpu_market.workload_tier
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count, gibibyte, gibibyte_to_byte_size }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.gpu_market.census { CensusCard, census_cards }
+
+// WHICH CENSUS CARDS ARE WORTH PRICING FOR THE WARM-AGENT SERVING WORKLOAD, AND IN WHICH TIER. This is a
+// decision policy, not a fact about any GPU, so it is a projection over gunbc.gpu_market.census, which
+// carries every released discrete card the pinned pages list with no threshold of its own. A different
+// workload (a routing model, an embedder, a draft model) is a different policy over the same census.
+//
+// THE TIERS ARE PER-GPU MEMORY, because a model shard must fit on one GPU: a K80 board of two 12 GB GPUs
+// is a 12 GB card for this purpose, not a 24 GB one. They are half-open intervals, so every memory size
+// lands in exactly one, including sizes between the named ones (a 14 GB part is experimental):
+//   LongContextTier          >= long_context_floor   (16 GiB): the main long-context tier;
+//   ExperimentalSmallTier    >= experimental_floor   (8 GiB):  smaller models, experimentally;
+//   SmallModelOnlyTier       >= small_model_floor    (6 GiB):  small models only;
+//   BelowWorkloadFloor       below that:                       not useful for this workload.
+// THE LAUNCH CUTOFF is the census's earlier rule, kept as a coarse stand-in for runtime support. It is
+// not read from any runtime's support matrix and it is loose (current CUDA has also dropped Kepler, from
+// 2012); it is replaced when a support matrix is read in. A card whose launch year the page does not
+// state cannot be shown to pass it, so it is refused, not tiered.
+// Together the cutoff and the 8 GiB floor reproduce the census this module replaced: the cards in the two
+// upper tiers are exactly the cards the census held when it filtered at the source.
+type GpuWorkloadTier = LongContextTier | ExperimentalSmallTier | SmallModelOnlyTier | BelowWorkloadFloor
+
+// The floors descend: long_context_floor >= experimental_floor >= small_model_floor. A policy whose floors
+// do not descend leaves a tier empty; test.claim.gpu_market_census_witness holds the live policy to it.
+type GpuWorkloadTierPolicy {
+  launch_cutoff_year: Nat
+  long_context_floor: ByteSize
+  experimental_floor: ByteSize
+  small_model_floor: ByteSize
+}
+
+data warm_agent_tier_policy: GpuWorkloadTierPolicy = GpuWorkloadTierPolicy {
+  launch_cutoff_year: 2011,
+  long_context_floor: gibibyte_to_byte_size(g: gibibyte(count: 16)),
+  experimental_floor: gibibyte_to_byte_size(g: gibibyte(count: 8)),
+  small_model_floor: gibibyte_to_byte_size(g: gibibyte(count: 6)),
+}
+
+type GpuTierRefusal = TierLaunchUnread | TierLaunchBeforeCutoff { year: Nat }
+
+type GpuTierVerdict
+  = GpuTiered { card: CensusCard, tier: GpuWorkloadTier }
+  | GpuTierRefused { card: CensusCard, refusal: GpuTierRefusal }
+
+fn gpu_workload_tier_of(policy: GpuWorkloadTierPolicy, memory: ByteSize) -> GpuWorkloadTier {
+  let m = byte_size_count(b: memory)
+  if m >= byte_size_count(b: policy.long_context_floor) { LongContextTier }
+  else if m >= byte_size_count(b: policy.experimental_floor) { ExperimentalSmallTier }
+  else if m >= byte_size_count(b: policy.small_model_floor) { SmallModelOnlyTier }
+  else { BelowWorkloadFloor }
+}
+
+fn gpu_workload_tier(policy: GpuWorkloadTierPolicy, card: CensusCard) -> GpuTierVerdict {
+  match card.launch_year {
+    Absent => GpuTierRefused { card: card, refusal: TierLaunchUnread }
+    Present { value: y } => if y < policy.launch_cutoff_year {
+      GpuTierRefused { card: card, refusal: TierLaunchBeforeCutoff { year: y } }
+    } else {
+      GpuTiered { card: card, tier: gpu_workload_tier_of(policy: policy, memory: card.memory_per_gpu) }
+    }
+  }
+}
+
+fn gpu_workload_verdicts(policy: GpuWorkloadTierPolicy) -> List<GpuTierVerdict> {
+  census_cards() |> map(c => gpu_workload_tier(policy: policy, card: c))
+}
+
+fn gpu_tier_eq(a: GpuWorkloadTier, b: GpuWorkloadTier) -> Bool {
+  match a {
+    LongContextTier => match b { LongContextTier => true  _ => false }
+    ExperimentalSmallTier => match b { ExperimentalSmallTier => true  _ => false }
+    SmallModelOnlyTier => match b { SmallModelOnlyTier => true  _ => false }
+    BelowWorkloadFloor => match b { BelowWorkloadFloor => true  _ => false }
+  }
+}
+
+// The cards of one tier: what a pricing pass for that tier reads.
+fn gpu_workload_tier_cards(policy: GpuWorkloadTierPolicy, tier: GpuWorkloadTier) -> List<CensusCard> {
+  gpu_workload_verdicts(policy: policy) |> flat_map(v => match v {
+    GpuTiered { card: c, tier: t } => if gpu_tier_eq(a: t, b: tier) { [c] } else { [] }
+    GpuTierRefused { card: _, refusal: _ } => []
+  })
+}
+
+// DESIGN section 3c declared frontier.
+data gpu_workload_tier_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the dated sold-listing census (step 7 of the GPU catalogue program) prices the cards gpu_workload_tier_cards returns for LongContextTier and ExperimentalSmallTier, joining each listing to a census card by its source row. SUFFICIENT FOR: the tiers have a production consumer; until then only test.claim.gpu_market_census_witness reads them." as NonEmptyStr
+)

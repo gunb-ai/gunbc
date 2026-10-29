@@ -48,7 +48,7 @@ pub use crate::v1_compiler_closure_stub_v2_std_text_rust::{closure_stub_v2_std_t
 pub use crate::v1_compiler_coercion::{coerce_primitive_type, is_copy, target_callable, rust_lookup_exact_binding, declaration_realizes_natively_on_rust, type_reference_realization, declaration_realization, type_realization_decision, realized_checkpoint, realization_host_numeric_spelling, realization_is_host_numeric, provenance_declares_structurally, target_checkpoints, rust_variant_value_realization, rust_variant_arm_is_bound_somewhere};
 pub use crate::v1_compiler_compiler_tests_rust::{compiler_tests_source};
 pub use crate::v1_compiler_dag_collect_support::{connective_name};
-pub use crate::v1_compiler_emit::{BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_container, emit_keyed_container_type, keyed_container_has_target_inhabitant, render_tuple_parts, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node, emit_data_value_json, emit_declared_optional_row_json, EmitterOutcome, is_null_coalesce, has_service_items, order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared, emit_typed_let_shared, child_from_key, BoundOperation, ShellResultField, ShellResultChannel, shell_emission_refusal_fact, shell_result_channel_key, shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy, bind_operation_transport, transport_binding_refusal_fact, NativeEffectRealizationAdmission, NativeEffectDeclSite, native_effect_resolution, admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal, FileVerb, FileResultField, FileResultChannel, ShellEmissionRefusal, NativeEffectContract, NativeEffectHandler};
+pub use crate::v1_compiler_emit::{BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_container, emit_keyed_container_type, keyed_container_has_target_inhabitant, render_tuple_parts, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node, emit_data_value_json, emit_declared_optional_row_json, EmitterOutcome, is_null_coalesce, has_service_items, order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared, emit_typed_let_shared, child_from_key, BoundOperation, ShellResultField, ShellResultChannel, shell_emission_refusal_fact, shell_result_channel_key, shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy, bind_operation_transport, transport_binding_refusal_fact, emit_unbound_operation_refusal, NativeEffectRealizationAdmission, NativeEffectDeclSite, native_effect_resolution, admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal, FileVerb, FileResultField, FileResultChannel, ShellEmissionRefusal, NativeEffectContract, NativeEffectHandler};
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection, escape_json_string, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent, to_snake, to_screaming_snake, is_upper, sanitize_service_name, capitalize_first, service_var_name, to_pascal, escape_string_literal_body, unique_strings, to_string, to_string_helper, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_type_alias_return_node, is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item, has_mock_prefix, extract_test_projections};
 pub use crate::v1_compiler_infer::{is_lambda_expr, InferScope, build_params_scope, extend_scope, build_emit_graph_info, declared_return_type_node, match_unguarded_absent_arm_index, optional_match_arm_sees_present_value, expr_span, resolved_type_name, expand_type_for_field_access, is_where_refinement_type, call_args_by_name, caller_resource_requirements, established_resource_binding};
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling, TypeDeclOccurrenceBinding};
@@ -98,7 +98,7 @@ use crate::std_target_representation::VariantParentKey::{VariantParentDeclaratio
 use crate::std_target_representation::VariantValueRealization::{VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound, VariantTargetValueAmbiguous, VariantParentIdentityUnavailable};
 use crate::v1_compiler_artifact::RenderTarget::{Rust};
 use crate::v1_compiler_artifact::RustModuleRenderSelection::{RenderEveryModule, RenderSelectedMirrors};
-use crate::v1_compiler_emit::BoundOperation::{RestBound, ShellBound, LocalBound, FileBound, BindingRefused};
+use crate::v1_compiler_emit::BoundOperation::{RestBound, ShellBound, UnboundOperation, FileBound, BindingRefused};
 use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
 use crate::v1_compiler_emit::FileResultChannel::{FileChanSuccess, FileChanByteCount, FileChanPath, FileChanError, FileChanErrorKind, FileChanContent};
 use crate::v1_compiler_emit::FileVerb::{FileRead, FileWrite, FileWriteBytes, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList};
@@ -41372,7 +41372,12 @@ pub fn emit_transport_call(
             result_fields: fs,
             ..
         } => emit_file_call(v.clone(), pt.clone(), fs.clone(), source_indices.clone()),
-        BoundOperation::LocalBound => emit_local_call(op_name.clone()),
+        BoundOperation::UnboundOperation => {
+            crate::v1_compiler_emit::emit_unbound_operation_refusal(
+                op_name.clone(),
+                RenderTarget::Rust,
+            )
+        }
         BoundOperation::BindingRefused { cause: cz, .. } => {
             crate::v1_compiler_emit::emit_error_expr(
                 v1_rt::concat(
@@ -43912,19 +43917,6 @@ pub fn emit_file_return(result_fields: Rc<Vec<Rc<FileResultField>>>) -> String {
             }
         }
     }
-}
-
-pub fn emit_local_call(op_name: String) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                "// Local binding -- direct function call\n".to_string(),
-                "Ok(".to_string(),
-            ),
-            crate::v1_compiler_emit::emit_ident(op_name, RenderTarget::Rust),
-        ),
-        "())".to_string(),
-    )
 }
 
 pub fn resource_item_renders_async_trait(item: Rc<Node>) -> bool {

@@ -10,18 +10,19 @@ import gunbc.workspace_commissioning {
 import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance, WorkspaceCommissioningRecordAbsent, WorkspaceCommissioningRecordRead, WorkspaceCommissioningRecordUnreadable }
 import gunbc.workspace_commissioning_runtime { workspace_commissioning_runtime_refusal }
 import gunbc.workspace_commissioning_history { workspace_initial_controller_history_refusal }
-import gunbc.workspace_commissioning_observe { workspace_observe_commissioning_obligations }
+import gunbc.workspace_commissioning_observe { workspace_observe_allocation_obligations }
 import gunbc.workspace_commissioning_store {
   workspace_commissioning_store_root, workspace_commissioning_store_observe, workspace_commissioning_store_restore_admission,
   WorkspaceCommissioningStoreObserved, WorkspaceCommissioningStoreRefused,
 }
 import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
 import gunbc.runner.runner_microvm_network { SlotNetworkSanitationSubject }
-import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root, fabric_cell_allocation_key }
-import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
+import gunbc.fabric.fabric_control_plane { fabric_cell_allocation_key }
+import gunbc.fabric.fabric_allocation_store { fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_hold, fabric_allocation_custody }
+import gunbc.host_state_root { host_state_tree }
 import std.durable_exclusive_hold { HoldSlotAbsent, HoldObservationUnavailable, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable }
 import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
-import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.runner.runner_microvm_cell_readiness_store { OwnershipRead, OwnershipUnread }
 import gunbc.fleet.fleet_host_budget { HostAllocationConserves }
 
 // The installed controller calls this under its slot incarnation and the fleet apply's host
@@ -49,7 +50,7 @@ fn workspace_observe_commissioning_admission(provenance: WorkspaceCommissioningP
                 authority: WorkspaceCommissioningAuthorizedPlan { slot: provenance.slot, plan_hash: provenance.plan_hash },
                 budget: HostAllocationConserves, cpu_budget: provenance.cpu_budget, attempt_envelope: provenance.attempt_envelope,
                 prior_purpose: WorkspacePriorPurposeWithdrawn,
-                obligations: workspace_observe_commissioning_obligations(root: fabric_control_plane_store_root(), slot: provenance.slot),
+                obligations: workspace_observe_allocation_obligations(slot: provenance.slot),
                 sanitation: observation.observations)
             }
             WorkspaceCommissioningRecordRead { record: _ } => workspace_commissioning_store_restore_admission(snapshot: snapshot)
@@ -67,9 +68,10 @@ fn workspace_observe_commissioning_admission(provenance: WorkspaceCommissioningP
 // nonzero generation is history, not a never-acquired slot. Unknown queued effects must be
 // drained by the enclosing host mutation transition; this read does not claim to cancel them.
 fn workspace_commissioning_no_hold_refusal(provenance: WorkspaceCommissioningProvenance) -> String? {
-  let root = fabric_control_plane_store_root()
-  match read_store_ownership(path: root as String) {
-    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: provenance.slot)) {
+  match fabric_allocation_store(tree: host_state_tree()) {
+  FabricAllocationStoreUnready { detail: _ } => Present { value: "allocation history root is missing, unreadable or outside root custody" }
+  FabricAllocationStoreReady { store: allocation } => match fabric_allocation_custody(store: allocation) {
+    OwnershipRead { ownership: StoreRootOwned } => match fabric_allocation_observe_hold(store: allocation, key: fabric_cell_allocation_key(slot: provenance.slot)) {
       HoldSlotAbsent => none
       HoldSlotFree { generation: _, released_by: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
       HoldSlotHeld { generation: _, owner: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
@@ -78,5 +80,6 @@ fn workspace_commissioning_no_hold_refusal(provenance: WorkspaceCommissioningPro
     }
     OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => Present { value: "allocation history root is missing, unreadable or outside root custody" }
     OwnershipUnread { reason: _ } => Present { value: "allocation history root is missing, unreadable or outside root custody" }
+  }
   }
 }
