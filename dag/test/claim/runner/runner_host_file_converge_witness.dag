@@ -772,7 +772,7 @@ test fn an_absent_ancestor_is_created_root_owned_and_its_leg_crosses_the_edge() 
   let argv = fleet_host_ancestor_directory_argv(path: "/etc/systemd/system/actions-runner@srv1-02.service.d")
   let line = join(argv, " ")
   string_contains(s: line, pattern: "-o root -g root")
-    && string_contains(s: line, pattern: "-m 0755")
+    && string_contains(s: line, pattern: "-m 00755")
     && string_contains(s: line, pattern: "/etc/systemd/system/actions-runner@srv1-02.service.d")
     && (match portable_remote_words(raws: argv) { Present { value: _ } => true Absent => false })
 }
