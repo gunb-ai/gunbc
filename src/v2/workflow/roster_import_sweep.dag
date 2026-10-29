@@ -3260,7 +3260,7 @@ fn roster_rename_control_count_check(verdicts: List<RosterControlVerdict>) -> St
 }
 
 fn roster_rename_controls_verdicts_all(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
-  list_append(left: roster_rename_control_verdicts(prepared: prepared, lex: lex), right: roster_control_edits_disjoint_verdicts())
+  list_append(left: list_append(left: roster_rename_control_verdicts(prepared: prepared, lex: lex), right: roster_control_edits_disjoint_verdicts()), right: roster_supplied_control_verdicts(prepared: prepared, lex: lex))
 }
 
 // The rename controls' failures and the count check, as the gated report reads them.
