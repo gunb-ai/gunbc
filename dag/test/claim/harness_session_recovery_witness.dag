@@ -11,6 +11,7 @@ import gunbc.harness.harness_session_recovery {
   session_event_request_pending, session_event_request_redelivered, session_request_pending_since_of, session_request_redeliveries_of,
   harness_unexplained_refusal, session_messages_validation, session_conversation_from_request, session_conversation_messages,
   session_event_recovery_needed, session_event_resumed, session_recovery_of_events, session_resume_bound,
+  session_recovery_is_request_pending_resumable,
 }
 import gunbc.harness.harness_hosted_route { BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint }
 import gunbc.roadmap.roadmap_attempt_continuation {
@@ -432,4 +433,23 @@ test fn patient_claim_the_wake_ordinals_are_one_sequence_across_both_kinds() -> 
     ContinuationResume { reason: _, attempt_key: _, ordinal, causes: _ } => ordinal == 4
     _ => false
   })
+}
+
+// THE WORKTREE-RESTORE GATE (gunbc.roadmap.roadmap_belt_actuate): the belt's worktree restore is gated on
+// RESUMABILITY -- this projection of the recovery -- and NOT on the continuation's ENDING standing. That is the
+// cycle-break: a reclaimed worktree makes the continuation Refused (its capture is unreadable), so gating the
+// restore on that standing would keep the tree permanently missing (missing tree => Refused => unknown => restore
+// refuses => tree stays missing). The recovery reading says 'request pending and resumable' without touching the
+// tree, so the restore can re-materialize it. The restore runs ONLY on the true arm; every other standing is
+// false (the decision refuses or ends on those with its own typed reason, and the restore does not act).
+test fn the_restore_gate_is_true_only_for_a_resumable_request_pending_lineage() -> Bool {
+  let pending = SessionRecoveryRequestPending { cause: "engine refusal", since: 1000, re_deliveries: 0, wakes_made: 0, last_delivery_at: 1000, resumable: true, interrupted_calls: [], resume_round: 7 }
+  let interrupted = SessionRecoveryRequestPending { cause: "engine refusal", since: 1000, re_deliveries: 0, wakes_made: 0, last_delivery_at: 1000, resumable: true, interrupted_calls: ["c1"], resume_round: 7 }
+  let non_resumable = SessionRecoveryRequestPending { cause: "engine refusal", since: 1000, re_deliveries: 0, wakes_made: 0, last_delivery_at: 1000, resumable: false, interrupted_calls: [], resume_round: 7 }
+  session_recovery_is_request_pending_resumable(recovery: pending)
+    && !session_recovery_is_request_pending_resumable(recovery: interrupted)
+    && !session_recovery_is_request_pending_resumable(recovery: non_resumable)
+    && !session_recovery_is_request_pending_resumable(recovery: SessionRecoveryNone)
+    && !session_recovery_is_request_pending_resumable(recovery: SessionRecoveryPending { causes: ["x"], resumes_made: 0, wakes_made: 0, interrupted_calls: [], resume_round: 1 })
+    && !session_recovery_is_request_pending_resumable(recovery: SessionRecoveryMalformed { mismatch: "duplicate member" })
 }
