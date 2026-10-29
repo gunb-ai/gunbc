@@ -189,30 +189,54 @@ fn sealed_forced_change() -> PublishedCredentialChangeForced? {
   }
 }
 
-// RUNG: the N-1 boundary. A controller that serves AccountLockoutThreshold 3
-// refuses a plan that may make THREE failing logins on that account and surface,
-// and admits the same plan at TWO. The discriminating half is the three: any
-// implementation that compares with >= instead of > admits the plan that locks the
-// account, and any that forgets the -1 admits it too. The positive control is the
-// two, on the same threshold, so a gate that refused everything would not pass.
+// RUNG: the served threshold is a ceiling on CUMULATIVE failed attempts, not on
+// this plan's. The controller counts every failed attempt against the account
+// until the served AccountLockoutCounterResetAfter window passes it away
+// (AccountService.v1_19_0), so a plan may make only what the account can still
+// survive: threshold - 1 (the last attempt is held back for a human, who may get
+// it wrong) - the failures the reading already shows as counted. The reading's
+// own rejected managed probe is one of those while it sits inside the served
+// window, so at threshold 3 the plan's two logins land on the third and the gate
+// refuses; the same plan is admitted once the served window is shorter than the
+// time since that probe, and at that same expired window a threshold of 2 — where
+// the plan's two logins are exactly the two the controller allows — refuses
+// again; and the plan plus one declared retry refuses at threshold 3. Four
+// shapes, four different bugs: forgetting the -1, forgetting the subtraction,
+// forgetting the window, or reading no threshold at all. The positive control is
+// the admitted pair on the same reading, so a gate that refused everything fails
+// here too.
 test fn threshold_three_refuses_three_failing_logins_and_admits_two() -> Bool {
   let store_at = observer_clock_modeled(millis: t_store, realization: lockout_schedule)
   let fetch_at = observer_clock_modeled(millis: t_fetch, realization: lockout_schedule)
   let plan_at = observer_clock_modeled(millis: t_plan, realization: lockout_schedule)
-  let base = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_only(read_at: t_read, redfish_threshold: 3))
-  // Two logins already: the managed probe and the published credential's own
+  // The probe is inside the served window: the controller has already counted one
+  // failure against root, which is why the gate is not "cost < threshold".
+  let inside = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 3, reset_after_secs: 300))
+  // The served window is shorter than the time since that probe: nothing counted.
+  let expired = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 3, reset_after_secs: 1))
+  let tight = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 2, reset_after_secs: 1))
+  // Two logins: the managed probe and the published credential's own
   // authentication, both root's, both on Redfish. A declared retry is the third.
-  let two = plan_lock(reading: base, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
-  let three = plan_lock(reading: base, forced_change: none, declared_retries: [retry(account: "root" as NonEmptyStr, surface: RedfishAccountServiceLogin, times: 1)], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
-  let blocks = budget_blocks(three)
-  let says_three_over_two = match list_head(blocks) {
+  let two_inside = plan_lock(reading: inside, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
+  let two_expired = plan_lock(reading: expired, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
+  let two_tight = plan_lock(reading: tight, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
+  let three_expired = plan_lock(reading: expired, forced_change: none, declared_retries: [retry(account: "root" as NonEmptyStr, surface: RedfishAccountServiceLogin, times: 1)], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
+  let says_two_over_one = match list_head(budget_blocks(two_inside)) {
+    Absent => false
+    Present { value: b } => match b {
+      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: k } => c == 2 && m == 1 && th == 3 && k == 1
+      FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
+    }
+  }
+  let says_three_over_two = match list_head(budget_blocks(three_expired)) {
     Absent => false
     Present { value: b } => match b {
       CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: k } => c == 3 && m == 2 && th == 3 && k == 0
       FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
     }
   }
-  planned(two) && refused_by_budget(three) && says_three_over_two
+  planned(two_expired) && refused_by_budget(two_inside) && refused_by_budget(two_tight)
+    && refused_by_budget(three_expired) && says_two_over_one && says_three_over_two
 }
 
 // RUNG: an unread threshold refuses, and does NOT default. The same plan that was
@@ -248,7 +272,9 @@ test fn declared_retries_are_charged_as_logins() -> Bool {
   let store_at = observer_clock_modeled(millis: t_store, realization: lockout_schedule)
   let fetch_at = observer_clock_modeled(millis: t_fetch, realization: lockout_schedule)
   let plan_at = observer_clock_modeled(millis: t_plan, realization: lockout_schedule)
-  let read = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_only(read_at: t_read, redfish_threshold: 4))
+  // The probe is outside the served window, so the headroom is the plain
+  // threshold - 1: 3 of 4. Anything that charges an extra presentation goes over it.
+  let read = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 4, reset_after_secs: 1))
   let none_declared = plan_lock(reading: read, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
   let two_declared = plan_lock(reading: read, forced_change: none, declared_retries: [retry(account: "root" as NonEmptyStr, surface: RedfishAccountServiceLogin, times: 2)], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
   let says_four_over_three = match list_head(budget_blocks(two_declared)) {
@@ -327,7 +353,7 @@ test fn the_forced_change_path_costs_no_failed_login_on_the_surface_it_is_ground
   let store_at = observer_clock_modeled(millis: t_store, realization: lockout_schedule)
   let fetch_at = observer_clock_modeled(millis: t_fetch, realization: lockout_schedule)
   let plan_at = observer_clock_modeled(millis: t_plan, realization: lockout_schedule)
-  let tight = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_only(read_at: t_read, redfish_threshold: 2))
+  let tight = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 2, reset_after_secs: 1))
   let unread = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_unread(read_at: t_read, detail: "nothing authenticated is readable before the forced change" as NonEmptyStr))
   let sealed = match sealed_forced_change() {
     Present { value: f } => Present { value: f }
@@ -362,33 +388,4 @@ test fn a_served_never_locked_threshold_licenses_what_an_unread_one_refuses() ->
   planned(plan_lock(reading: never, forced_change: none, declared_retries: retries, store_at: store_at, fetch_at: fetch_at, plan_at: plan_at))
     && refused_by_budget(plan_lock(reading: unread, forced_change: none, declared_retries: retries, store_at: store_at, fetch_at: fetch_at, plan_at: plan_at))
     && says_never
-}
-
-// ── TEMPORARY DIAGNOSTICS (delete before the PR) ────────────────────────────
-test fn diag_base_plan_admits_at_all() -> Bool {
-  let store_at = observer_clock_modeled(millis: t_store, realization: lockout_schedule)
-  let fetch_at = observer_clock_modeled(millis: t_fetch, realization: lockout_schedule)
-  let plan_at = observer_clock_modeled(millis: t_plan, realization: lockout_schedule)
-  let base = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_only(read_at: t_read, redfish_threshold: 20))
-  planned(plan_lock(reading: base, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at))
-}
-
-test fn diag_roster_at_the_refusing_threshold() -> Bool {
-  let base = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_only(read_at: t_read, redfish_threshold: 3))
-  let r = roster_of(observed: base)
-  let root = list_head(filter(r.spends, k => bmc_failed_login_budget_key_same(a: k.key, b: BmcFailedLoginBudgetKey { account: "root" as NonEmptyStr, surface: RedfishAccountServiceLogin })))
-  match root {
-    Absent => false
-    Present { value: s } => list_length(items: s.logins) == 2 && list_length(items: r.exempt) == 0
-  }
-}
-
-test fn diag_headroom_at_the_refusing_threshold() -> Bool {
-  let base = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_only(read_at: t_read, redfish_threshold: 3))
-  let h = bmc_failed_login_headroom(key: BmcFailedLoginBudgetKey { account: "root" as NonEmptyStr, surface: RedfishAccountServiceLogin }, reading: base.lockout, known: [], now: t_plan)
-  match h {
-    HeadroomKnown { threshold: t, known_failures_in_window: k, may_fail: m } => t == 3 && k == 0 && m == 2
-    AccountNotLockedOutByThisController { reason: _ } => false
-    HeadroomUnknown { cause: _ } => false
-  }
 }
