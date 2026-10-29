@@ -19,7 +19,7 @@ import gunbc.serving.srv1_serving_launch {
   srv1_serving_unmodeled_frontier_rows,
 }
 
-// The argv `docker inspect --format {{.Config.Cmd}} lil-flash-next` showed on 2026-10-25, with the two
+// The argv `docker inspect --format {{.Config.Cmd}} lil-flash-next` showed on 2026-10-29 (the LMCache tier relaunch), with the two
 // shell substitutions left as the wrapper writes them and the output redirect cut at its boundary (the
 // wrapper's `>> $D/serve.log 2>&1` is shell, not argv). A LITERAL, deliberately: this is the reading the
 // derivation is checked against, and restating it from the rows would make the check circular.
@@ -28,9 +28,11 @@ data observed_cmd_tail: List<String> = [
   "--profile", "qwen38-flash-next",
   "--hardware", "rtx-pro-6000-pcie",
   "--env", "LMCACHE_MODE=ram-disk",
-  "--env", "LMCACHE_L1_GB=24",
+  "--env", "LMCACHE_L1_GB=150",
   "--env", "LMCACHE_L2_GB=200",
   "--env", "LMCACHE_L2_ROOT=/cache/kv",
+  "--env", "LMCACHE_L2_WORKERS=16",
+  "--env", "LMCACHE_L2_ODIRECT=1",
   "--",
   "--port", "18000",
   "--ssl-keyfile", "/root/serve/tls.key",
@@ -79,9 +81,11 @@ test fn the_environment_tiers_wire_as_the_container_shows_them() -> Bool {
   srv1_serving_launch.environment
     == [
       lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr),
-      lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "24" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "150" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "200" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_L2_ODIRECT" as NonEmptyStr, value: "1" as NonEmptyStr),
     ]
     && (lil_serve_environment_wire(e: lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr)) as String) == "LMCACHE_MODE=ram-disk"
 }
@@ -152,9 +156,11 @@ test fn a_port_override_changes_only_the_port() -> Bool {
       "--profile", "qwen38-flash-next",
       "--hardware", "rtx-pro-6000-pcie",
       "--env", "LMCACHE_MODE=ram-disk",
-      "--env", "LMCACHE_L1_GB=24",
+      "--env", "LMCACHE_L1_GB=150",
       "--env", "LMCACHE_L2_GB=200",
       "--env", "LMCACHE_L2_ROOT=/cache/kv",
+      "--env", "LMCACHE_L2_WORKERS=16",
+      "--env", "LMCACHE_L2_ODIRECT=1",
       "--",
       "--port", "18001",
       "--ssl-keyfile", "/root/serve/tls.key",
