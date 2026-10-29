@@ -38,7 +38,7 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_hosted_build_prelude
 import gunbc.witness.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
-  type_declaration_use_census_label, dependency_demand_census_label, self_host_frontier_label, decl_ref_census_label, effect_pair_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
+  type_declaration_use_census_label, dependency_demand_census_label, self_host_frontier_label, decl_ref_census_label, effect_pair_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, shared_type_leaf_collision_census_label, instrument_targets,
   known_red_derivation_label, roster_reach_inhabitance_label, router_proxy_falsifier_label, serving_benchmark_run_label,
   ambient_name_census_label, roster_import_sweep_controls_label, credential_acquisition_systemd_rows_label,
 }
@@ -233,6 +233,10 @@ fn instrument_dispatch_labels() -> List<Label> {
     // The credential acquisition rows that start transient units through `systemd-run --user`: no session container or
     // remote build runner has a user manager, so they run on a fleet runner on purpose; a fixture run, no memory row.
     credential_acquisition_systemd_rows_label(),
+    // The shared-type leaf collision census emits the compiler and cargo-builds every rostered closure
+    // subject, past the free remote runner's one-hour cap; its receipts (the collision controls, the
+    // #15197-era RED enrollment) are taken on purpose at the head that cites them, never per change.
+    shared_type_leaf_collision_census_label(),
   ]
 }
 

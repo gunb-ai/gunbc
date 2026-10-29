@@ -154,7 +154,29 @@ fn diagnostic_names_class(diagnostic: String, class: String) -> Bool {
   string_contains(s: diagnostic, pattern: class)
 }
 
-fn refuse_control_holds(report: SubjectCollisionReport) -> Bool {
+// THE #15197 WALL, ENROLLED AS THE REGRESSION CONTROL (DESIGN 4b obligation 4: an expecting-red
+// probe that greens when its wall lands becomes a permanent regression control). The wall: the
+// struct emitter asks the DECLARATION for the derive roster
+// (v1.compiler.emit_rust shared_type_declaration_is_marked_shared), so the Rc-carried twin of a
+// colliding leaf never inherits the constant twin's sharing and rustc never sees Copy over an Rc
+// field. What the wall guarantees AT SUBJECT GRAIN is exactly this conjunction, and rustc itself is
+// the oracle for the Copy question: were the twin still Copy over its Rc field, this same cargo run
+// would refuse with E0204 and BuildAccepted could not be observed. The probe's own derive-attribute
+// reading is v1.compiler_tests_rust ct_shared_roster_follows_declaration_test at declaration grain.
+// The old E0204 expectation did not vanish: it is refuse_red_holds below, still run on every census
+// and reported, never a gate while unmet.
+fn rc_twin_regression_holds(report: SubjectCollisionReport) -> Bool {
+  match report.build {
+    BuildAccepted => report_has_different_sharing(report: report)
+    BuildRefused { diagnostic: _ } => false
+    BuildNotAttempted => false
+  }
+}
+
+// THE OLD EXPECTATION, KEPT AS THE RED: the collision refused by rustc with E0204. While the wall
+// stands it is unmet (red), which is what its enrollment asserts; if it ever HOLDS again the wall
+// fell back and the census says so instead of silently agreeing.
+fn refuse_red_holds(report: SubjectCollisionReport) -> Bool {
   match report.build {
     BuildRefused { diagnostic: d } =>
       report_has_different_sharing(report: report) && diagnostic_names_class(diagnostic: d, class: refuse_diagnostic_class)
@@ -233,20 +255,26 @@ fn control_line(name: String, held: Bool) -> String {
 }
 
 fn fixture_standing(refuse_report: SubjectCollisionReport, silent_report: SubjectCollisionReport, green_report: SubjectCollisionReport) -> String {
-  let refuse_held = refuse_control_holds(report: refuse_report)
+  let regression_held = rc_twin_regression_holds(report: refuse_report)
   let silent_held = silent_control_holds(report: silent_report)
   let green_held = green_control_holds(report: green_report)
-  let held = refuse_held && silent_held && green_held
+  let held = regression_held && silent_held && green_held
   [
     concat("STANDING ", if held { "held" } else { "unmet" }),
-    control_line(name: "refuse_different_sharing_rustc_e0204", held: refuse_held),
+    control_line(name: "rc_twin_no_copy_no_rustc_e0204", held: regression_held),
     control_line(name: "silent_different_sharing_rustc_accepted", held: silent_held),
-    control_line(name: "green_no_collision_rustc_accepted", held: green_held)
+    control_line(name: "green_no_collision_rustc_accepted", held: green_held),
+    // The #15197-era expectation stays ENROLLED as the RED, reported every run (DESIGN 4b
+    // obligation 4: the RED stays enrolled after the climb, production machinery dissolves but
+    // evidence does not). It is unmet while the declaration-asking wall stands, and if it ever
+    // reports holding the wall fell back -- rc_twin_no_copy_no_rustc_e0204 unmet would already
+    // have taken the census down, so the two lines can never report held together for one verdict.
+    control_line(name: "refuse_different_sharing_rustc_e0204_red_enrolled", held: refuse_red_holds(report: refuse_report))
   ] |> join(separator: "\n")
 }
 
 fn fixture_controls_hold(refuse_report: SubjectCollisionReport, silent_report: SubjectCollisionReport, green_report: SubjectCollisionReport) -> Bool {
-  refuse_control_holds(report: refuse_report) && silent_control_holds(report: silent_report) && green_control_holds(report: green_report)
+  rc_twin_regression_holds(report: refuse_report) && silent_control_holds(report: silent_report) && green_control_holds(report: green_report)
 }
 
 fn observation_held(standing_held: Bool, live_unobserved: Bool) -> Bool {
