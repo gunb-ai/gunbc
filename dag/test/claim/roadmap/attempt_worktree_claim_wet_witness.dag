@@ -4,7 +4,7 @@ import extdeps.shell
 import std.types { Bool, String, List, NonEmptyStr, EpochSecs }
 import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedCauseUnknown, AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused }
 import std.durable_compare_and_set { CasGeneration }
-import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive }
+import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimOutcome, WorktreeClaimNoop, WorktreeClaimRemoved, WorktreeClaimClosed, WorktreeClaimKept, WorktreeClaimRed,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_new, worktree_claim_open,
@@ -17,7 +17,7 @@ import gunbc.roadmap.roadmap_attempt_worktree_claim {
 }
 import std.upsert_decision { Noop, Apply, Refuse }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import test.claim.roadmap.session_placement_wet_witness { node_a, key_a, node_b, key_b, host, fresh_dir, stores_at, lifecycle_absent }
+import test.claim.roadmap.session_placement_wet_witness { node_a, key_a, node_b, key_b, host, fresh_dir, stores_at, lifecycle_absent, opened_ok, slot_a }
 
 // KILL-AT-EACH-TRANSITION CONTROLS for gunbc.roadmap.roadmap_attempt_worktree_claim over a real claim store.
 // A worktree is a marker file in a directory the witness owns; git, the unit manager and the capture record
@@ -294,4 +294,28 @@ test fn an_unknown_lineage_standing_refuses_never_reports_converged() -> Bool {
   let ctl = worktree_claim_classify_open(path: "wt", tree: ClaimTreePresent, worker: ClaimWorkerEnded, content: ClaimContentPushed, capture: ClaimCaptureSettled, lineage_ended: LineageEnded)
   let ctl_released = match ctl.decision { Apply { plan: _ } => true  _ => false }
   refused && not_noop && ctl_released
+}
+
+// THE FOLD ITSELF, NOT ONLY THE CLASSIFIER (DESIGN §3 pairing obligation): the live wedged attempt
+// (e5a42384c6a5e13d) carries a placement slot, so its fold reaches ClaimWorkerEnded through the REAL
+// observation route -- a supplied variant is not that route. Seed a claim AND a placement slot so
+// session_placement_observe_at returns SessionPlacementObserved (the CAS slot is the sole requirement;
+// the grant record may be absent => SessionGrantNotRecorded, still Observed), drive the unit as Finished
+// so loaded_of => ClaimWorkerEnded, and run the real fold. With the injected standing NotEnded the claim
+// is KEPT (noop, tree survives); with Ended it is RELEASED. This is the route the belt actually walks.
+test fn the_fold_reaches_an_ended_worker_and_honours_the_lineage_standing() -> Bool {
+  let dir = fresh_dir(tag: "wf1")
+  let cd = fresh_dir(tag: "wf1c")
+  let td = fresh_dir(tag: "wf1t")
+  let dir2 = fresh_dir(tag: "wf2")
+  let cd2 = fresh_dir(tag: "wf2c")
+  let td2 = fresh_dir(tag: "wf2t")
+  let seeded = opened_ok(dir: dir, rec: slot_a(opened: 1000)) && opened_ok(dir: dir2, rec: slot_a(opened: 1000))
+  let o1 = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000) && plant(td: td, n: node_a, k: key_a)
+  let o2 = open_claim(cd: cd2, td: td2, n: node_a, k: key_a, opened: 1000) && plant(td: td2, n: node_a, k: key_a)
+  let kept = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitFinished { exit_status: "1" }, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1299, ended: LineageNotEnded), check: is_noop)
+  let there = tree_there(td: td, n: node_a, k: key_a)
+  let released = only(os: pass(dir: dir2, cd: cd2, td: td2, others: AttemptUnitFinished { exit_status: "1" }, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1299, ended: LineageEnded), check: is_removed)
+  let gone = !tree_there(td: td2, n: node_a, k: key_a)
+  cleaned(dirs: [dir, cd, td, dir2, cd2, td2], verdict: seeded && o1 && o2 && kept && there && released && gone)
 }
