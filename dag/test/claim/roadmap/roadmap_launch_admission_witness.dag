@@ -10,7 +10,7 @@ import gunbc.worker_lifecycle { WorkerProcessRunning, WorkerProcessExited, Worke
 import gunbc.roadmap.roadmap_launch_admission { LaunchCensusRow }
 import gunbc.roadmap.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, DesiredMember, roadmap_belt_production_spawn_mode, spawn_mode_label, belt_reconcile_upsert_count }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
   belt_tick_admit_and_spawn, belt_dispatch_status_label, belt_dispatch_result_ok,
   BeltLaunchDecision, BeltLaunchDecided, BeltLaunchWithheld, belt_tick_admit,
   BeltLaunchPass, belt_tick_launch_pass,
@@ -163,6 +163,9 @@ fn no_actuation_outcome(o: BeltSpawnOutcome) -> Bool {
     SpawnNotAdmitted { node_id: _, refusal: _ } => true
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
+    // SpawnLaunchPending is the actuation whose start request is enqueued on the attempt-unit spool
+    // and not yet answered: the actuator WAS entered, so it is not a no-actuation outcome.
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => false
   }
 }
 

@@ -425,6 +425,7 @@ fn attempt_commit_bytes(
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open_payload"),
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_advance_payload"),
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_reopen_settled"),
   ]
 {
   match admit_cas_attempt(attempt: cas_attempt(
@@ -603,6 +604,78 @@ fn attempt_open_payload<P>(root: NonEmptyStr, record: P, codec: AttemptPayloadCo
 
 fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
   attempt_open_payload(root: root, record: record, codec: attempt_record_codec())
+}
+
+// THE RESUME REOPEN. A request-pending attempt whose worker died holds a slot that settlement has
+// CLOSED (terminal) and RETURNED the seat for. A re-delivery of that SAME attempt key is the same
+// attempt CONTINUING, so it must reopen that slot -- it may not open a second one: the create-only
+// open is CAS ExpectSlotAbsent and loses to the closed slot forever, which is exactly how a pending
+// attempt wedges on a lab with no tick to run the settlement pass beside a new acquisition. This
+// writes the proposed record -- carrying a FRESH pre-launch window, so the resumed worker is not
+// reclaimed as a dead launch the instant the next settlement pass reads the (long-past) original
+// deadline -- over the existing slot under a CAS on its OBSERVED generation, so the generation line
+// (the attempt's placement history) stays whole: settled at generation n, reopened at generation n+1.
+// ONLY a terminal slot at that exact generation is admitted. An absent slot is no session to continue
+// (the caller opens it create-only instead); a Reserved or Launching slot is a LIVE placement -- a
+// running worker is never displaced by a resume, and the caller's RED and SAFETY cases depend on it.
+// Whether the seat was actually RETURNED (release-settled) is NOT this fold's fact to see: the seat
+// ledger lives in the placement layer, which adjudicates it and alone calls here. See the module law.
+fn attempt_reopen_settled(
+  root: NonEmptyStr,
+  reference: NonEmptyStr,
+  expected: CasGeneration,
+  record: AttemptRecord,
+) -> AttemptTransition {
+  let codec = attempt_record_codec()
+  let reserved = codec.with_state(record, AttemptReserved)
+  let declared = codec.launch_deadline(reserved) - codec.opened_at(reserved)
+  if declared > compute_pre_launch_ceiling_seconds {
+    AttemptTransitionRefused {
+      detail: join(["the resumed attempt declared a pre-launch window of ", to_string(value: declared), " seconds and the ceiling is ", to_string(value: compute_pre_launch_ceiling_seconds), "; an over-long window is refused rather than clamped, and a slot already past its deadline would be reclaimed the moment it is written"], ""),
+    }
+  } else if declared < 0 {
+    AttemptTransitionRefused {
+      detail: join(["the resumed attempt declared a launch deadline of ", to_string(value: codec.launch_deadline(reserved)), " which precedes the instant it reopens at ", to_string(value: codec.opened_at(reserved)), "; a window already closed would be reclaimable the moment it is written"], ""),
+    }
+  } else {
+    match observe_cas_slot_state(root: root, key: reference) {
+      CasObservedUnreadable { cause: c } =>
+        AttemptTransitionRefused { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
+      CasObservedReadable { readable: r } =>
+        match r {
+          CasReadableAbsent =>
+            AttemptLostRace { expected: join(["a settled slot at generation ", to_string(value: cas_generation_count(g: expected))], ""), observed: "an absent slot" }
+          CasReadablePresent { version: v } =>
+            match codec.decode(v.value as String) {
+              Absent =>
+                AttemptTransitionRefused { detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], "") }
+              Present { value: rec } =>
+                if codec.reference_of(rec) != (reference as String) {
+                  AttemptTransitionRefused { detail: join(["the attempt slot keyed ", reference as String, " names reference ", codec.reference_of(rec)], "") }
+                } else if cas_generation_count(g: v.generation) != cas_generation_count(g: expected) {
+                  AttemptLostRace {
+                    expected: join(["generation ", to_string(value: cas_generation_count(g: expected))], ""),
+                    observed: join(["generation ", to_string(value: cas_generation_count(g: v.generation))], ""),
+                  }
+                } else {
+                  match codec.state_of(rec) {
+                    AttemptTerminal { verdict: _, detail: _ } =>
+                      attempt_commit_bytes(
+                        root: root,
+                        reference: reference,
+                        state: AttemptReserved,
+                        payload: codec.encode(reserved) as NonEmptyStr,
+                        expected: ExpectSlotGeneration { generation: expected })
+                    AttemptReserved =>
+                      AttemptTransitionRefused { detail: "reopen requires a closed slot, but this slot is still Reserved -- a live placement a resume may never displace" }
+                    AttemptLaunching =>
+                      AttemptTransitionRefused { detail: "reopen requires a closed slot, but this slot is still Launching -- a running worker a resume may never displace" }
+                  }
+                }
+            }
+        }
+    }
+  }
 }
 
 // THE LAUNCH GATE. Called BEFORE the reader is admitted, never after. It reads the current slot,

@@ -14,7 +14,7 @@ import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptOwner, DispatchOwned, DirectInvocation, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
-  attempt_open, attempt_begin_launch, attempt_terminate, attempt_record_with_state, attempt_transition_wire, attempt_state_wire,
+  attempt_open, attempt_begin_launch, attempt_terminate, attempt_reopen_settled, attempt_record_with_state, attempt_transition_wire, attempt_state_wire,
   compute_pre_launch_ceiling_seconds,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
   unit_lifecycle_wire,
@@ -324,7 +324,64 @@ fn session_attempt_record(node_id: String, attempt_key: String, unit: NonEmptySt
   }
 }
 
-fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPlacementStores, node_id: String, attempt_key: String) -> SessionPlacementAcquisition {
+// HOW THE FIRST STEP OF AN ACQUISITION ENTERS THE SLOT -- one derivation, two entries. A FRESH attempt
+// opens create-only (CAS ExpectSlotAbsent), so a duplicate reference is a refusal, never a silent
+// overwrite (the module's own law). A RESUME of the prior attempt reopens the slot settlement already
+// CLOSED and RETURNED the seat for, at its next generation, via attempt_reopen_settled. The choice is
+// the CALLER's, read from the continuation decision it already holds (the belt's resume route passes
+// resume=true for exactly the prior attempt key the continuation named); the acquisition never infers
+// which attempt it continues, so there is one decision path, not a second beside the door. A resume
+// whose slot is still live, or closed but whose seat the ledger has not been returned, is refused here
+// -- a running worker is never displaced and a seat is never double-held.
+type SessionPlacementOpen
+  = SessionPlacementOpened { slot: AttemptRecord, generation: CasGeneration }
+  | SessionPlacementOpenRefused { detail: String }
+
+fn session_placement_open_for_acquisition(
+  stores: SessionPlacementStores,
+  host: String,
+  record: AttemptRecord,
+  resume: Bool,
+) -> SessionPlacementOpen {
+  if !resume {
+    match attempt_open(root: stores.slots_root, record: record) {
+      AttemptAdvanced { state: _, generation: g } => SessionPlacementOpened { slot: record, generation: g }
+      AttemptLostRace { expected: e, observed: o } =>
+        SessionPlacementOpenRefused { detail: join(["a session slot already exists for ", record.unit, " (expected ", e, ", found ", o, "); one attempt holds at most one placement"], "") }
+      AttemptTransitionRefused { detail: d } =>
+        SessionPlacementOpenRefused { detail: join(["the session slot could not be opened, so nothing was reserved: ", d], "") }
+    }
+  } else {
+    let slot = attempt_slot_read(root: stores.slots_root, reference: record.reference as NonEmptyStr)
+    match slot {
+      AttemptSlotAbsent =>
+        SessionPlacementOpenRefused { detail: join(["a resume reopens the prior attempt's own closed session slot, but none is held for ", record.unit, "; there is no session to continue, and a resume may not fabricate one"], "") }
+      AttemptSlotUnreadable { detail: d } =>
+        SessionPlacementOpenRefused { detail: join(["the prior session slot could not be read to reopen it: ", d], "") }
+      AttemptSlotHeld { record: closed, generation: n } =>
+        match closed.state {
+          AttemptTerminal { verdict: _, detail: _ } =>
+            if session_release_settled_for_slot(stores: stores, host: host, slot: slot) {
+              match attempt_reopen_settled(root: stores.slots_root, reference: record.reference as NonEmptyStr, expected: n, record: record) {
+                AttemptAdvanced { state: _, generation: g } => SessionPlacementOpened { slot: attempt_record_with_state(r: record, state: AttemptReserved), generation: g }
+                AttemptLostRace { expected: e, observed: o } =>
+                  SessionPlacementOpenRefused { detail: join(["the settled session slot moved before the reopen (expected ", e, ", found ", o, "); the settlement raced this resume, so it is retried on the next belt pass"], "") }
+                AttemptTransitionRefused { detail: d } =>
+                  SessionPlacementOpenRefused { detail: join(["the closed session slot would not reopen for the resume: ", d], "") }
+              }
+            } else {
+              SessionPlacementOpenRefused { detail: join(["the prior session slot ", record.unit, " is closed but its seat has not been settled back to the ledger; settlement must return the seat before a resume reopens the same attempt"], "") }
+            }
+          AttemptReserved =>
+            SessionPlacementOpenRefused { detail: join(["the prior attempt ", record.unit, " still holds a live reserved slot; a resume never displaces it"], "") }
+          AttemptLaunching =>
+            SessionPlacementOpenRefused { detail: join(["the prior attempt ", record.unit, " is still launching a worker; a resume never displaces a running worker"], "") }
+        }
+    }
+  }
+}
+
+fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPlacementStores, node_id: String, attempt_key: String, resume: Bool) -> SessionPlacementAcquisition {
   match session_unit(node_id: node_id, attempt_key: attempt_key) {
     SystemdUnitNameStemEmpty =>
       SessionPlacementRefused { detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty) }
@@ -341,21 +398,18 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
         Absent => SessionPlacementRefused { detail: "the host clock could not be read as epoch seconds, and the session's slot carries a launch deadline" }
         Present { value: now } => {
           let record = session_attempt_record(node_id: node_id, attempt_key: attempt_key, unit: systemd_unit_name_wire(name: name), granted: work_class_grant_amount(g: class_grant), now: now)
-          match attempt_open(root: stores.slots_root, record: record) {
-            AttemptLostRace { expected: e, observed: o } =>
-              SessionPlacementRefused { detail: join(["a session slot already exists for ", record.unit, " (expected ", e, ", found ", o, "); one attempt holds at most one placement"], "") }
-            AttemptTransitionRefused { detail: d } =>
-              SessionPlacementRefused { detail: join(["the session slot could not be opened, so nothing was reserved: ", d], "") }
-            AttemptAdvanced { state: _, generation: g } =>
-              match host_capacity_reserve(instance: instance, pool: pool, reference: record.unit as NonEmptyStr, term_seconds: session_placement_term_seconds, request: record.granted) {
+          match session_placement_open_for_acquisition(stores: stores, host: instance.host_identity as String, record: record, resume: resume) {
+            SessionPlacementOpenRefused { detail: d } => SessionPlacementRefused { detail: d }
+            SessionPlacementOpened { slot: opened, generation: g } =>
+              match host_capacity_reserve(instance: instance, pool: pool, reference: opened.unit as NonEmptyStr, term_seconds: session_placement_term_seconds, request: opened.granted) {
                 ComputeReserved { grant: lease, partition: p, amount: a, store: s } =>
                   SessionPlacementGranted { grant: SessionPlacementGrant {
-                    node_id: node_id, attempt_key: attempt_key, unit: record.unit as NonEmptyStr,
-                    lease: lease, partition: p, amount: a, class_grant: class_grant, store: s, slot: record, slot_generation: g,
+                    node_id: node_id, attempt_key: attempt_key, unit: opened.unit as NonEmptyStr,
+                    lease: lease, partition: p, amount: a, class_grant: class_grant, store: s, slot: opened, slot_generation: g,
                   } }
-                ComputeCapacityFull { wire: w } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeCapacityFull { wire: w }))
-                ComputeHostBelowFloor { requested: rq, available: av } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeHostBelowFloor { requested: rq, available: av }))
-                ComputeReservationRefused { detail: d } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeReservationRefused { detail: d }))
+                ComputeCapacityFull { wire: w } => session_refused_after_open(stores: stores, record: opened, generation: g, refusal: compute_reservation_wire(r: ComputeCapacityFull { wire: w }))
+                ComputeHostBelowFloor { requested: rq, available: av } => session_refused_after_open(stores: stores, record: opened, generation: g, refusal: compute_reservation_wire(r: ComputeHostBelowFloor { requested: rq, available: av }))
+                ComputeReservationRefused { detail: d } => session_refused_after_open(stores: stores, record: opened, generation: g, refusal: compute_reservation_wire(r: ComputeReservationRefused { detail: d }))
               }
           }
         }

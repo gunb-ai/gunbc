@@ -1,6 +1,9 @@
 module test.claim.roadmap.roadmap_belt_actuate_witness
 
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
+import gunbc.roadmap.roadmap_session_placement { SessionSettlePassRan, SessionSettlePassRefused }
+import gunbc.roadmap.roadmap_belt_actuate { belt_settlement_spawn_gate }
+import gunbc.roadmap.roadmap_launch_admission { LaunchNoPlacementGrant }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
 import std.optional { Present }
@@ -3235,4 +3238,35 @@ test fn the_seat_discharge_pass_reaches_the_tick_receipt_typed_and_counted() -> 
 test fn the_shared_function_run_argv_builds_the_run_shape_once() -> Bool {
   let argv = belt_function_run_argv(program: "serve-binary", repo_root: "/repo", entry: "dag/x.dag", function: "f", args: ["a", "b"])
   join(argv, "|") == "serve-binary|run|--source-root|/repo/dag|--source-root|/repo/src/v2|--entry|/repo/dag/x.dag|--function|f|--arg|a|--arg|b"
+}
+
+// G5 (side-chat ruling on #13074): settlement is ordered BEFORE EVERY new acquisition. The gate below
+// is the ONE derivation both acquisition routes read -- the tick (belt_tick_spawn_after_settlement) and
+// the dispatch door/redeliver route (belt_dispatch_node_staged_over). A completed pass lets the
+// acquisition proceed; a refused pass refuses it with a typed LaunchNoPlacementGrant, never a spawn that
+// collided halfway. That closes the wedge where, on a manual_ready lab with no tick, a dead worker's
+// terminal slot held the seat a same-key re-delivery needed and nothing ran the pass to release it.
+test fn witness_settlement_gate_ran_lets_the_acquisition_proceed() -> Bool {
+  match belt_settlement_spawn_gate(settled: SessionSettlePassRan { settlements: [] }, node_id: "a") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_settlement_gate_refused_refuses_the_acquisition_with_the_settlement_wire() -> Bool {
+  match belt_settlement_spawn_gate(
+    settled: SessionSettlePassRefused { detail: "the session slot store could not be listed" },
+    node_id: "a",
+  ) {
+    Absent => false
+    Present { value: o } => match o {
+      SpawnNotAdmitted { node_id: nid, refusal } =>
+        nid == "a"
+          && match refusal {
+               LaunchNoPlacementGrant { detail } => string_contains(s: detail, pattern: "session settlement refused")
+               _ => false
+             }
+      _ => false
+    }
+  }
 }
