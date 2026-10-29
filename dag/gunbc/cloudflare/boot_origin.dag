@@ -10,7 +10,7 @@ import std.human_intervention {
 }
 import extdeps.external_authority { FactCitation }
 import extdeps.cloudflare.r2 { r2_custom_domain_citation }
-import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name, domain_name_wire }
+import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name, domain_name_wire, host_name_eq }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -32,8 +32,8 @@ import gunbc.network_boot_delivery {
   BootBundleMemberInWrongSlot,
 }
 import gunbc.cloudflare.zone {
-  boot_origin_hostname_binding_verdict, BindingAllocated,
-  boot_origin_fqdn_is_decided,
+  boot_origin_hostname_binding_verdict, BindingAllocated, BootOriginHostnameBindingVerdict,
+  BootOriginFqdnDecision, FqdnDecided, PendingFqdnRecommendation, boot_origin_fqdn_decision,
 }
 import gunbc.cloudflare.r2_origin {
   FabricDurableOrigin,
@@ -150,15 +150,36 @@ type BootOriginHostnameStanding
 
 data boot_origin_hostname_intervention_identity: String = "cloudflare-r2-boot-origin-hostname"
 
+// Today's state: the real verdict against the real decision carrier.
 fn boot_origin_hostname_standing() -> BootOriginHostnameStanding {
-  match boot_origin_hostname_binding_verdict() {
-    // A serving readback is the ONLY thing that may name the production origin, and even then the host
-    // is the operator's chosen FQDN, so both conditions must hold together.
+  boot_origin_hostname_standing_for(
+    verdict: boot_origin_hostname_binding_verdict(),
+    decision: boot_origin_fqdn_decision
+  )
+}
+
+// THE GATE, as a total function of its two inputs, so the failure case (review 87806) is claimable: the
+// witness hands it a Decided arm naming one host and a serving binding naming another and requires
+// refusal, then the agreeing pair and requires Allocated built FROM the decided host.
+fn boot_origin_hostname_standing_for(verdict: BootOriginHostnameBindingVerdict, decision: BootOriginFqdnDecision) -> BootOriginHostnameStanding {
+  match verdict {
+    // A serving readback is the ONLY thing that may name the production origin (review 87806): the host
+    // is CONSTRUCTED from the Decided arm's hostname and must be the very host the response reports, so
+    // a serving domain the operator never chose can only refuse here — it can no longer be allocated by a
+    // Bool that discarded which host was decided.
     BindingAllocated { binding, observed_at: _ } =>
-      if boot_origin_fqdn_is_decided() {
-        BootOriginHostnameAllocated { fqdn: binding.domain }
-      } else {
-        boot_origin_hostname_unallocated()
+      match decision {
+        FqdnDecided { hostname, decided_by: _, citation: _ } =>
+          if host_name_eq(a: hostname, b: binding.domain) {
+            BootOriginHostnameAllocated { fqdn: hostname }
+          } else {
+            // The operator decided one host and the vendor is serving another: refuse, do not pick a
+            // winner by precedence. The disagreement is the finding, and it is reported as Unallocated
+            // with the operator's own intervention, whose instruction names the carrier to correct.
+            boot_origin_hostname_unallocated()
+          }
+        // A recommendation is not a decision; nothing may name the production origin on it.
+        PendingFqdnRecommendation { hostname: _, recommended_by: _, at: _ } => boot_origin_hostname_unallocated()
       }
     _ => boot_origin_hostname_unallocated()
   }

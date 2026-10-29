@@ -609,6 +609,11 @@ fn boot_origin_bind_gap_names(gap: BootOriginBindEffectGap) -> List<NonEmptyStr>
 // --------------------------------------------------------------------------------
 // (4) THE FQDN DECISION, as the pending thing it is.
 //
+// There is deliberately no is_decided Bool here (review 87806): a Bool answers "has anyone decided?" and
+// throws away WHAT was decided, and the consumer that then takes the production host from anywhere else
+// can name the boot origin on a host nobody chose. The consumer (gunbc.cloudflare.boot_origin's hostname
+// standing) matches this sum directly and builds its Allocated arm FROM the Decided arm's hostname.
+//
 // gunbc.cloudflare.boot_origin's own instruction says the zone and FQDN "is an operator decision this
 // repository cannot derive", and its standing is derived — never declarable — from this module's verdict
 // plus this carrier's Decided arm, so no agent may flip boot_origin_hostname_standing from here, and this
@@ -617,9 +622,10 @@ fn boot_origin_bind_gap_names(gap: BootOriginBindEffectGap) -> List<NonEmptyStr>
 // Modelled (review 87595) instead of stored as a sentence: a decision status is a status, and §4c puts a
 // status in a typed carrier. Pending carries the candidate plus WHO recommended it and WHEN; Decided
 // requires the citation, so a decided FQDN without a source cannot be written. Today's value is Pending
-// with the parent's recommendation — the carrier is read by boot_origin_fqdn_is_decided, so it is not
-// commentary. When the operator answers, the Decided arm is built from their citation and the hostname
-// standing flips in the follow-up that cites it; this file cannot pre-fill it.
+// with the parent's recommendation — the carrier is read by the hostname standing in
+// gunbc.cloudflare.boot_origin, which reads the HOST out of the Decided arm, so it is not commentary.
+// When the operator answers, the Decided arm is built from their citation and the hostname standing flips
+// in the follow-up that cites it; this file cannot pre-fill it.
 // --------------------------------------------------------------------------------
 
 type BootOriginFqdnDecision
@@ -635,12 +641,4 @@ data boot_origin_fqdn_decision: BootOriginFqdnDecision = PendingFqdnRecommendati
 
 data boot_origin_fqdn_recommendation_at: Rfc3339Timestamp = "2026-10-28T00:00:00Z" as Rfc3339Timestamp
 
-// The consumer: nothing may treat the hostname as allocated on a recommendation alone. Today this is
-// false, and that IS the module's honest state — the follow-up that cites the operator's answer builds
-// the Decided arm and this reads true.
-fn boot_origin_fqdn_is_decided() -> Bool {
-  match boot_origin_fqdn_decision {
-    FqdnDecided { hostname: _, decided_by: _, citation: _ } => true
-    PendingFqdnRecommendation { hostname: _, recommended_by: _, at: _ } => false
-  }
-}
+

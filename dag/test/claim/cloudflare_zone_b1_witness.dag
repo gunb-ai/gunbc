@@ -14,7 +14,10 @@ module test.claim.cloudflare_zone_b1_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.error_primitives { pure_dag_seam_unreachable_string }
 import std.optional { Absent, Optional, Present }
-import extdeps.dns.domain_name { host_name_eq }
+import extdeps.dns.domain_name { host_name_eq, HostName, DomainName, DnsLabel, FullyQualified }
+import std.human_intervention { HumanInterventionIdentity }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import gunbc.cloudflare.boot_origin { boot_origin_hostname_standing_for, BootOriginHostnameAllocated, BootOriginHostnameUnallocated }
 import extdeps.cloudflare.zone {
   CloudflareAccountId, CloudflareZoneId, CloudflareZone, CloudflareDnsRecord,
   Proxied, Direct, ProxyNotApplicable,
@@ -24,10 +27,10 @@ import extdeps.cloudflare.zone {
   r2_custom_domain_zone_admissible, ZoneAdmissible,
   ZoneRefusedWrongAccount, ZoneRefusedNotActive, ZoneRefusedPaused, ZoneRefusedHold, ZoneRefusedHoldUnobserved,
   ZoneRefusedBucketAccountUnobserved,
-  r2_custom_domain_requires_zone_reading, cloudflare_r2_custom_domain_is_serving,
+  r2_custom_domain_requires_zone_reading, r2_custom_domain_requires_zone_citation, cloudflare_r2_custom_domain_is_serving,
   cloudflare_r2_custom_domain_matches, cloudflare_record_type_admits_proxy, cloudflare_dns_record_key,
   cloudflare_account_id_from_text, cloudflare_zone_id_from_text,
-  CloudflareR2CustomDomainStatus,
+  CloudflareR2CustomDomainBinding, CloudflareR2CustomDomainStatus,
   OwnershipStatusUnknown, SslStatusUnknown, OwnershipVendorUnknown, SslVendorUnknown,
   r2_ownership_status_of_text, r2_ssl_status_of_text,
   OwnershipBlocked, SslActive,
@@ -44,8 +47,8 @@ import gunbc.cloudflare.zone {
   credential_route_gap, record_list_gap, bind_dispatch_gap,
   BootOriginBindEffectGap, CloudflareCredentialRouteMissing, CloudflareRecordListUnread, BindDispatchUnmodeled,
   boot_origin_bind_gap_names,
-  zone_record_copy_standing, CopyPendingRecordList,
-  boot_origin_fqdn_decision, boot_origin_fqdn_is_decided,
+  boot_origin_fqdn_decision, BootOriginFqdnDecision, FqdnDecided, PendingFqdnRecommendation,
+  BootOriginHostnameBindingVerdict, BindingAllocated,
   gunb_ai_bucket_account, boot_origin_bucket, gunb_ai_apex, boot_origin_hostname,
   gunb_ai_delegated_nameservers, boot_origin_bind_readback, ReadbackNotTaken, ReadbackOf, boot_origin_nxdomain_answers,
   boot_origin_zone_admissibility, boot_origin_zone_hold_observation, copied_record_of_type,
@@ -525,12 +528,76 @@ test fn awaiting_dispatch_is_not_not_serving() -> Bool {
 // citation, so nothing here can pre-fill the decision — and the hostname standing stays Unallocated until
 // a follow-up builds that arm.
 test fn the_fqdn_is_recommended_and_not_yet_decided() -> Bool {
-  !boot_origin_fqdn_is_decided()
-    && match boot_origin_fqdn_decision {
+  match boot_origin_fqdn_decision {
          PendingFqdnRecommendation { hostname, recommended_by, at: _ } => host_name_eq(a: hostname, b: boot_origin_hostname)
            && (recommended_by as String) == "bright-swift-248"
          FqdnDecided { hostname: _, decided_by: _, citation: _ } => false
        }
+}
+
+// THE HOSTNAME GATE IS CONSTRUCTIVE (review 87806). boot_origin.dag's standing used to ask a Bool —
+// "has anyone decided?" — and then take the production host from the READBACK, so a serving x.gunb.ai
+// with the operator having decided boot.gunb.ai would have ALLOCATED the wrong origin. The gate is now a
+// total function of (verdict, decision); these four claims are its whole contract: agreed hosts allocate
+// naming the DECIDED host, BOTH mismatch directions refuse (neither host wins), and a recommendation
+// alone never allocates however serving the readback.
+fn decided_for(domain: HostName) -> BootOriginFqdnDecision {
+  FqdnDecided {
+    hostname: domain,
+    decided_by: "operator-fixture" as HumanInterventionIdentity,
+    citation: r2_custom_domain_requires_zone_citation,
+  }
+}
+
+fn other_hostname() -> HostName {
+  HostName {
+    name: DomainName { labels: ["other" as DnsLabel, "gunb" as DnsLabel, "ai" as DnsLabel] },
+    qualification: FullyQualified,
+  }
+}
+
+fn allocated_verdict(domain: HostName) -> BootOriginHostnameBindingVerdict {
+  BindingAllocated {
+    binding: CloudflareR2CustomDomainBinding {
+      domain: domain,
+      bucket: boot_origin_bucket,
+      zone_id: Present { value: zone_id_fixture(text: "0123456789abcdef0123456789abcdef") },
+      enabled: true,
+      status: CloudflareR2CustomDomainStatus {
+        ownership: r2_ownership_status_of_text(text: "active"),
+        ssl: r2_ssl_status_of_text(text: "active"),
+      },
+    },
+    observed_at: "2026-10-29T00:00:00Z" as Rfc3339Timestamp,
+  }
+}
+
+test fn gate_leg1_agreed_hosts_allocate_naming_the_decided_host() -> Bool {
+  match boot_origin_hostname_standing_for(verdict: allocated_verdict(domain: boot_origin_hostname), decision: decided_for(domain: boot_origin_hostname)) {
+    BootOriginHostnameAllocated { fqdn } => host_name_eq(a: fqdn, b: boot_origin_hostname)
+    _ => false
+  }
+}
+
+test fn gate_leg2_mismatch_serving_other_refuses() -> Bool {
+  match boot_origin_hostname_standing_for(verdict: allocated_verdict(domain: other_hostname()), decision: decided_for(domain: boot_origin_hostname)) {
+    BootOriginHostnameUnallocated { intervention: _ } => true
+    BootOriginHostnameAllocated { fqdn: _ } => false
+  }
+}
+
+test fn gate_leg3_mirror_mismatch_refuses() -> Bool {
+  match boot_origin_hostname_standing_for(verdict: allocated_verdict(domain: boot_origin_hostname), decision: decided_for(domain: other_hostname())) {
+    BootOriginHostnameUnallocated { intervention: _ } => true
+    BootOriginHostnameAllocated { fqdn: _ } => false
+  }
+}
+
+test fn gate_leg4_recommendation_never_allocates() -> Bool {
+  match boot_origin_hostname_standing_for(verdict: allocated_verdict(domain: boot_origin_hostname), decision: boot_origin_fqdn_decision) {
+    BootOriginHostnameUnallocated { intervention: _ } => true
+    BootOriginHostnameAllocated { fqdn: _ } => false
+  }
 }
 
 // THE TWO STATUS DIMENSIONS ARE TYPED, not strings (review 38602): the six published values decode to
