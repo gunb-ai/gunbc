@@ -470,3 +470,32 @@ test fn a_served_never_locked_threshold_licenses_what_an_unread_one_refuses() ->
     && refused_by_budget(plan_lock(reading: unread, forced_change: none, declared_retries: retries, store_at: store_at, fetch_at: fetch_at, plan_at: plan_at))
     && says_never
 }
+
+// RUNG: the counter window each surface serves, read back as the repo's own time
+// measure. Both arms of the window are named here because they are read from
+// different upstream places — AccountService.AccountLockoutCounterResetAfter on
+// Redfish, the attempt-count-reset seconds byte of the LAN configuration parameters
+// on IPMI — and a gate that could only read one of them would price the other
+// surface's failures with the wrong window.
+test fn each_surface_serves_its_own_counter_window() -> Bool {
+  let read = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_both_served(read_at: t_read, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20))
+  let redfish_window = bmc_failed_attempt_window(surface: RedfishAccountServiceLogin, reading: read.lockout)
+  let ipmi_window = bmc_failed_attempt_window(surface: IpmiLanPlusLogin { channel: 1 }, reading: read.lockout)
+  let dark_window = bmc_failed_attempt_window(surface: IpmiLanPlusLoginChannelUndetermined, reading: read.lockout)
+  let redfish_counts = match redfish_window {
+    FailedAttemptsCountedFor { window: _ } => true
+    FailedAttemptsNeverReset { reason: _ } => false
+    FailedAttemptWindowUnread { detail: _ } => false
+  }
+  let ipmi_counts = match ipmi_window {
+    FailedAttemptsCountedFor { window: _ } => true
+    FailedAttemptsNeverReset { reason: _ } => false
+    FailedAttemptWindowUnread { detail: _ } => false
+  }
+  let dark_is_unread = match dark_window {
+    FailedAttemptWindowUnread { detail: _ } => true
+    FailedAttemptsCountedFor { window: _ } => false
+    FailedAttemptsNeverReset { reason: _ } => false
+  }
+  redfish_counts && ipmi_counts && dark_is_unread
+}
