@@ -2,7 +2,8 @@ module v2.test.claim.std.node_occurrence_depth
 
 import v2.std.node { ComputationNode, Edge, Node, NotADeclaration, Positional, Value, node_same_occurrence, node_synthetic }
 import std.algebra { fold_list, is_empty, length, list_append }
-import std.types { List }
+import std.types { Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
