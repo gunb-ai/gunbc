@@ -26,7 +26,6 @@
 module gunbc.roadmap.roadmap_attempt_redelivery_wake
 
 use std.types { Bool, NonEmptyStr, EpochSecs, Str }
-use std.bool { not_bool }
 use gunbc.auth.authorization_pattern_selection {
   FederatedScopedGrant,
   NoBillingConsequence,
@@ -91,7 +90,7 @@ fn attempt_redelivery_wake_selects_pattern(operating_user: NonEmptyStr) -> Bool 
 /// break-glass -- so the derived witness obligation is false: nothing here belongs on an operator's
 /// phone, which is what keeps a recurring wake from becoming a queue of taps.
 fn attempt_redelivery_wake_needs_no_witness(operating_user: NonEmptyStr) -> Bool {
-  not_bool(a: witness_required(e: attempt_redelivery_wake_effect(operating_user: operating_user)))
+  !witness_required(e: attempt_redelivery_wake_effect(operating_user: operating_user))
 }
 
 /// THE UNIT NAME IS THE ATTEMPT'S, SO A RE-ARM IS IDEMPOTENT. The same node + attempt key names the same
@@ -110,10 +109,10 @@ fn attempt_redelivery_wake_unit_name(node_id: Str, attempt_key: Str) -> NonEmpty
 fn attempt_redelivery_wake_command(node_id: Str, instance_id: Str, attempt_key: Str, next_delivery: EpochSecs) -> SystemdRunCommandReading {
   systemd_run_user_oneshot_timer_command(
     unit: attempt_redelivery_wake_unit_name(node_id: node_id, attempt_key: attempt_key),
-    on_calendar: systemd_onetime_calendar_expression(instant: next_delivery),
+    on_calendar: systemd_onetime_calendar_expression(instant: next_delivery) as NonEmptyStr,
     setenv_bindings: [
-      SystemdSetenvBinding { key: attempt_redelivery_env_node as NonEmptyStr, value: node_id as NonEmptyStr },
-      SystemdSetenvBinding { key: attempt_redelivery_env_instance as NonEmptyStr, value: instance_id as NonEmptyStr },
+      SystemdSetenvBinding { name: attempt_redelivery_env_node as NonEmptyStr, value: node_id as NonEmptyStr },
+      SystemdSetenvBinding { name: attempt_redelivery_env_instance as NonEmptyStr, value: instance_id as NonEmptyStr },
     ],
     command_argv: [
       Text(kind: Raw, value: attempt_redelivery_cli_program),
