@@ -22,3 +22,9 @@ extdeps.fans.delta delta_bfb1012m_outlet.
 
 Dissolves: when the refactor PR lands with its A16 diff stated, this directory is deleted in that PR;
 the preserved dimensions then stand on witnesses, not on this snapshot.
+
+REFRESH 2026-10-29: #15243 merged as c6959e2 with the blower roots' notes/markers rewritten to cite
+delta_bfb1012m_outlet (text only; the dimensions are unchanged). a16_manifests.jsonl was re-derived at main
++ c6959e2 with the producer above: roots 1-4 (plug-duct, sleeve-duct, both fit rings) are byte-identical to
+the bf338f7 capture; roots 5-6 differ from it only in those cited-outlet note strings. This is the baseline
+the refactor is diffed against. The directory name keeps its original label.
