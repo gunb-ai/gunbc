@@ -209,17 +209,26 @@ data ipmi_lan_bad_password_threshold_authority: ExternalAuthority = ExternalAuth
 // The four served figures, in the printed units. The threshold is a byte-sized count on the wire; the
 // two intervals are the printed seconds (wire tens-of-seconds times ten), each bounded by the largest
 // value a two-byte little-endian tens-of-seconds field can print.
+// THE UPSTREAM BOUNDS, NAMED. A union arm cannot carry a where-clause of its own
+// (the checker expects the closing brace after a plain type), and these are the
+// bounds ipmitool's lib/ipmi_lanp.c states for the 6-byte Bad Password Threshold
+// block: the count is one byte (0..255) and each of the two intervals is a
+// 16-bit count of TEN-SECOND units, so 0..655350 seconds. Naming them once also
+// keeps a caller from passing an interval where a count belongs.
+type IpmiLanBadPasswordCount = Int where range(min: 0, max: 255)
+type IpmiLanLockoutSeconds = Int where range(min: 0, max: 655350)
+
 type IpmiLanBadPasswordThreshold sole_constructor {
   // "Invalid password disable": whether a bad password disables the user at all. False means the
   // controller is not locking users out on this channel, and the budget says so rather than assuming.
   invalid_password_disable: Bool
   // "Bad Password Threshold": the number of bad passwords after which the user is disabled.
-  bad_password_threshold: Int where range(min: 0, max: 255)
+  bad_password_threshold: IpmiLanBadPasswordCount
   // "Attempt Count Reset Int.", in seconds: how long the count of bad attempts survives from the last
   // bad attempt.
-  attempt_count_reset_secs: Int where range(min: 0, max: 655350)
+  attempt_count_reset_secs: IpmiLanLockoutSeconds
   // "User Lockout Interval", in seconds: how long the user stays disabled once the threshold is met.
-  user_lockout_interval_secs: Int where range(min: 0, max: 655350)
+  user_lockout_interval_secs: IpmiLanLockoutSeconds
 }
 
 // THE THREE ARMS. Read: the controller answered with the six bytes. NotAvailable: it answered, but not
@@ -236,7 +245,7 @@ type IpmiLanBadPasswordThresholdVerdict
 // compares these two cases differently at two use sites.
 type IpmiLanLockoutThresholdReading
   = IpmiLanUsersAreNotLockedOut { reason: NonEmptyStr }
-  | IpmiLanLocksAfter { failed_attempts: Int where range(min: 1, max: 255) }
+  | IpmiLanLocksAfter { failed_attempts: IpmiLanBadPasswordCount }
 
 fn ipmi_lan_bad_password_threshold_locks_after(
   channel: IpmiChannelNumber,
