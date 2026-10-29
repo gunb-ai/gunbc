@@ -832,3 +832,24 @@ test fn a_decision_admits_no_request_with_other_scopes() -> Bool {
     }
   }
 }
+
+// AN APPROVAL ENTAILS ONLY ITS EXACT WRITES (side-chat review of #15354). Entailment is
+// account_write_request_eq, which compares every argument (user; channel, user and privilege; account and
+// both declarations), NOT account_write_request_same_operation, the route's operation-shape relation. So
+// over a route that grounds the IPMI password operation, a go for user 3 admits user 3 and does not entail
+// user 4; and a qualification go for Redfish root's password write does not entail admin's, while root's own
+// candidate passes the approval under it (and stops only at the absent response: "unrealized").
+test fn an_approval_entails_only_its_exact_writes() -> Bool {
+  let grounded = cited_password_route_at(endpoint: lab_endpoint)
+  let go_user_3 = password_go(standing: grounded, purpose: RotateCredential)
+  let root = redfish_write(op_field: "SetAccountPassword" as NonEmptyStr, action_field: "SetAccountPassword" as NonEmptyStr)
+  let admin = redfish_account_password_write(account: "admin" as NonEmptyStr)
+  let root_go_at_admin = qualification_approval_for(standing: lab_candidate(request: admin), request: root)
+  let c_root = lab_candidate(request: root)
+  !account_write_request_eq(a: IpmiSetUserPassword { user: 3 }, b: IpmiSetUserPassword { user: 4 })
+    && !account_write_request_eq(a: root, b: admin)
+    && apply_verdict_for(standing: grounded, target: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: 3 }, approval_value: go_user_3) == "admitted"
+    && apply_verdict_for(standing: grounded, target: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: 4 }, approval_value: go_user_3) == "not-entailed"
+    && classify_names(candidate: lab_candidate(request: admin), approval_value: root_go_at_admin) == "not-entailed"
+    && classify_names(candidate: c_root, approval_value: qualification_approval_for(standing: c_root, request: root)) == "unrealized"
+}
