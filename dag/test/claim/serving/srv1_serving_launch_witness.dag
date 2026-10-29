@@ -10,7 +10,7 @@ import std.dissolution { dissolution_is_bound, dissolution_description }
 import std.roster_frontier { DeclSubject }
 import gunbc.serving.serving_enrollment { ServingRouteResolved, CeilingByDeclaredPolicy }
 import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, LilServeApiKeyFromFile, lil_serve_environment_entry, lil_serve_environment_wire, lil_serve_launch_argv }
-import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, QWEN3_8_FLASH_NEXT_REVISION }
+import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, qwen3_8_flash_next_pinned_revision }
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 import gunbc.serving.srv1_serving_launch {
@@ -112,7 +112,7 @@ test fn the_retained_wrapper_is_the_serving_entrypoint_the_receipt_read() -> Boo
 // receipt read off the live container — the Hub row and the receipt cannot disagree silently.
 test fn the_launch_exports_the_observed_authorities() -> Bool {
   (srv1_serving_pinned_checkpoint().revision as String) == (qwen3_8_flash_next_manifest.revision as String)
-    && (srv1_serving_pinned_checkpoint().revision as String) == (QWEN3_8_FLASH_NEXT_REVISION as String)
+    && (srv1_serving_pinned_checkpoint().revision as String) == (qwen3_8_flash_next_pinned_revision as String)
     && (srv1_serving_pinned_checkpoint().revision as String) == (srv1_serving_startup_reading.checkpoint_revision as String)
     && (srv1_serving_image().digest_sha256 as String) == (srv1_serving_startup_reading.image_digest_sha256 as String)
     && (srv1_serving_image().digest_sha256 as String) == (local_inference_lab_vllm_image.digest_sha256 as String)
@@ -137,7 +137,7 @@ test fn the_enrollment_route_is_the_launch_address_with_the_operators_declared_c
       (e.port == srv1_serving_launch.listen_port)
         && (e.replica.node as String) == "srv1"
         && (e.replica.served_name as String) == (srv1_router_upstream_launch_facts.name as String)
-        && (e.address as String) == (srv1_router_upstream_launch_facts.host as String)
+        && (e.address as String) == (render_ipv4_address(addr: srv1_router_upstream_launch_facts.host) as String)
         && (match c {
           CeilingByDeclaredPolicy { count: n, decider: d, decided_on: dd, basis: _ } =>
             n == 4 && (d as String) == "operator" && (dd as String) == "2026-10-24"
