@@ -9,6 +9,7 @@ import std.fabric_blob { FabricBlobAddress, FabricBlobReadingOutcome, FabricBlob
 import extdeps.systemd.manager { SystemdManager }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall, CapturedUnitDocument }
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact }
 
 // This is the payload of the existing durable CAS slot, not another journal
 // protocol. A host-local file-store binding must remain available while services
@@ -38,6 +39,7 @@ type CapacityCutoverRecord {
   target: List<CapacityGenerationFile>
   planned_paths: List<CapacityInhibitionPath>
   created_paths: List<CapacityInhibitionPath>
+  artifacts: List<CapacityInhibitionArtifact>
   phase: CapacityCutoverPhase
 }
 
@@ -50,7 +52,7 @@ type CapacityRecoveryLeg
   | CapacityRecoveryInstall { file: CapacityGenerationFile }
   | CapacityRecoveryVerifyGeneration { files: List<CapacityGenerationFile> }
   | CapacityRecoveryVerifyInhibition { paths: List<CapacityInhibitionPath> }
-  | CapacityRecoveryRemoveRecordedLinks { paths: List<CapacityInhibitionPath> }
+  | CapacityRecoveryRemoveRecordedLinks { artifacts: List<CapacityInhibitionArtifact> }
   | CapacityRecoveryRemoveRecord
   | CapacityRecoveryReload
 
@@ -63,6 +65,9 @@ fn capacity_recovery_plan(record: CapacityCutoverRecord, choice: CapacityRecover
   if record.created_paths != record.planned_paths {
     return Err { value: "inhibition ownership is incomplete; reconcile creation receipts before recovery" }
   }
+  if !all(record.created_paths, path => capacity_recovery_has_artifact(artifacts: record.artifacts, path: path)) {
+    return Err { value: "recorded inhibition has no unique retained inode artifact" }
+  }
   if !all(selected, file => capacity_recovery_has_inhibition(paths: record.created_paths, file: file)) {
     return Err { value: "captured generation has a unit without its recorded inhibition" }
   }
@@ -74,8 +79,12 @@ fn capacity_recovery_plan(record: CapacityCutoverRecord, choice: CapacityRecover
     + map(selected, file => CapacityRecoveryInstall { file: file })
     + [CapacityRecoveryVerifyGeneration { files: selected },
       CapacityRecoveryVerifyInhibition { paths: record.planned_paths },
-      CapacityRecoveryRemoveRecordedLinks { paths: record.created_paths },
+      CapacityRecoveryRemoveRecordedLinks { artifacts: record.artifacts },
       CapacityRecoveryRemoveRecord, CapacityRecoveryReload] }
+}
+
+fn capacity_recovery_has_artifact(artifacts: List<CapacityInhibitionArtifact>, path: CapacityInhibitionPath) -> Bool {
+  count(filter(artifacts, artifact => artifact.inhibition == path)) == 1
 }
 
 fn capacity_recovery_has_inhibition(paths: List<CapacityInhibitionPath>, file: CapacityGenerationFile) -> Bool {

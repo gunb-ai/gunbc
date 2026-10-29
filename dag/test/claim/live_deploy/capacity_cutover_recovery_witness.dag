@@ -6,6 +6,8 @@ import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { CasObservedReadable, CasReadableAbsent }
 import std.content_hash { sha256_hex_digest }
 import std.fabric_blob { FabricBlobAddress }
+import extdeps.filesystem.posix { PosixFileIdentity }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact }
 import std.optional { Present, Absent }
 import extdeps.systemd.manager { SystemManager }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
@@ -31,7 +33,7 @@ fn recovery_fixture_record() -> CapacityCutoverRecord {
     target_revision: "1111111111111111111111111111111111111111",
     prior: match recovery_fixture_file(name: "fixture.service", digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") { Present { value: file } => [file] Absent => [] },
     target: match recovery_fixture_file(name: "fixture.service", digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") { Present { value: file } => [file] Absent => [] },
-    planned_paths: [path], created_paths: [path], phase: CapacityInstalling { completed: 0 } }
+    planned_paths: [path], created_paths: [path], artifacts: [CapacityInhibitionArtifact { inhibition: path, staged_path: "/etc/gunbc/cutover/fixture/mask", identity: PosixFileIdentity { st_dev: 10, st_ino: 42 } }], phase: CapacityInstalling { completed: 0 } }
 }
 
 // Supplied journal boundary, not a claim to have simulated filesystem durability.
