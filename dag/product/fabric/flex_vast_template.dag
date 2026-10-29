@@ -7,7 +7,7 @@ import std.list { first_where }
 import std.measure { ByteSize, Bandwidth, gibibyte_count, gibibyte_ceiling }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.encoding { base64_encode, base64_octets, Base64Variant, Standard }
-import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, int_to_decimal_string }
 import extdeps.cloud.vast_ai { VastAiTemplateRow }
 import product.fabric.flex_vast_shadow { flex_serving_recipe, flex_flash_next_vast_filters }
 import product.fabric.flex_serving_image { flex_lil_serving_image }
@@ -125,6 +125,7 @@ type FlexRentLaunchRefusal
   | FlexRentLaunchNoOnstartScript
   | FlexRentLaunchOnstartNotEncodable
   | FlexRentLaunchEnvAlreadySetsOnstartB64
+  | FlexRentLaunchEnvOverCreateCap { chars: Int, max: Int }
 
 type FlexRentLaunchResult
   = FlexRentLaunchBuilt { launch: FlexRentLaunch }
@@ -138,6 +139,7 @@ fn flex_rent_launch_refusal_cause(cause: FlexRentLaunchRefusal) -> String {
     FlexRentLaunchNoOnstartScript => "the serving image fact carries no on-start script to launch"
     FlexRentLaunchOnstartNotEncodable => "the on-start script is not base64-encodable"
     FlexRentLaunchEnvAlreadySetsOnstartB64 => "the template env already sets ONSTART_B64"
+    FlexRentLaunchEnvOverCreateCap { chars: chars, max: max } => join(["the create env would be ", int_to_decimal_string(value: chars), " characters; the read cap is ", int_to_decimal_string(value: max)], "")
   }
 }
 
@@ -150,7 +152,9 @@ fn flex_vast_onstart_b64(script: String) -> String? {
 
 // The launch a create request carries, or a typed refusal. The template's docker-options string is the
 // base; the script is appended to it as `-e ONSTART_B64=<base64>`, which is the form that served.
-fn flex_vast_rent_launch(spec: FlexTemplateSpec) -> FlexRentLaunchResult {
+// The create env's cap is read here: unknown refuses nothing (no cap is invented), a read cap refuses an
+// over-cap env. `reserved_chars` is what the write path appends after the launch env (the drawn password flag).
+fn flex_vast_rent_launch(spec: FlexTemplateSpec, cap: FlexCreateEnvCap, reserved_chars: Int) -> FlexRentLaunchResult {
   match spec.launch {
     FlexSshLaunch { onstart: _ } => FlexRentLaunchRefused { cause: FlexRentLaunchNotArgsMode { runtype: flex_launch_runtype_wire(launch: spec.launch) } }
     FlexArgsLaunch { args: args } =>
@@ -165,11 +169,13 @@ fn flex_vast_rent_launch(spec: FlexTemplateSpec) -> FlexRentLaunchResult {
           match flex_vast_onstart_b64(script: flex_lil_serving_image.onstart) {
             Absent => FlexRentLaunchRefused { cause: FlexRentLaunchOnstartNotEncodable }
             Present { value: b64 } =>
-              FlexRentLaunchBuilt {
-                launch: FlexRentLaunch {
-                  mode: FlexArgsLaunch { args: args },
-                  env: join([base, " ", flag, b64], ""),
-                },
+              let env = join([base, " ", flag, b64], "")
+              let chars = string_length(s: env) + reserved_chars
+              let built = FlexRentLaunchBuilt { launch: FlexRentLaunch { mode: FlexArgsLaunch { args: args }, env: env } }
+              match cap {
+                FlexCreateEnvCapUnknown { read_obligation: _ } => built
+                FlexCreateEnvCapRead { max_chars: max } =>
+                  if chars > max { FlexRentLaunchRefused { cause: FlexRentLaunchEnvOverCreateCap { chars: chars, max: max } } } else { built }
               }
           }
         }

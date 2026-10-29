@@ -10,7 +10,7 @@ import product.fabric.flex_vast_template {
   flex_vast_template_spec, flex_template_env, flex_template_decide, flex_template_forbidden_env_names,
   flex_template_env_forbidden_name, flex_template_retired_hash,
   flex_vast_template_env_standing, flex_vast_template_env_max_chars, FlexTemplateEnvOverBound, FlexTemplateEnvWithinBound,
-  flex_vast_create_env_observed_accepted, flex_vast_create_env_cap, FlexCreateEnvCapUnknown,
+  flex_vast_create_env_observed_accepted, flex_vast_create_env_cap, FlexCreateEnvCapUnknown, FlexCreateEnvCapRead, FlexRentLaunchEnvOverCreateCap,
   flex_vast_rent_launch, FlexRentLaunchBuilt, FlexRentLaunchRefused, FlexSshLaunch, FlexArgsLaunch, flex_launch_runtype_wire, flex_launch_args, flex_launch_onstart, flex_vast_args_launch,
 }
 import product.fabric.flex_vast_loop { mint_flex_create_env }
@@ -73,7 +73,7 @@ test fn the_retired_hash_is_never_adopted_and_differing_content_is_not_edited() 
 
 // TWO CREATES, TWO PASSWORDS: each mint draws /dev/urandom afresh, keeps the launch env, and names POOL_API_KEY.
 test fn two_mints_differ_and_each_carries_the_launch_and_names_pool_api_key() -> Bool {
-  match flex_vast_rent_launch(spec: flex_vast_template_spec) {
+  match flex_vast_rent_launch(spec: flex_vast_template_spec, cap: flex_vast_create_env_cap, reserved_chars: 65) {
     FlexRentLaunchRefused { cause: _ } => false
     FlexRentLaunchBuilt { launch: l } =>
       let a = mint_flex_create_env(launch: l) as String
@@ -110,7 +110,7 @@ test fn an_ssh_spec_builds_no_per_rent_launch() -> Bool {
     min_gpu_ram: flex_vast_template_spec.min_gpu_ram, min_inet_down: flex_vast_template_spec.min_inet_down,
     verified_only: flex_vast_template_spec.verified_only,
   }
-  match flex_vast_rent_launch(spec: ssh) { FlexRentLaunchRefused { cause: _ } => true  FlexRentLaunchBuilt { launch: _ } => false }
+  match flex_vast_rent_launch(spec: ssh, cap: flex_vast_create_env_cap, reserved_chars: 65) { FlexRentLaunchRefused { cause: _ } => true  FlexRentLaunchBuilt { launch: _ } => false }
 }
 
 // The run's verdict is a typed outcome: ensured only when the readback decides Noop AND the retired hash
@@ -149,4 +149,14 @@ test fn the_create_env_cap_is_unknown_and_the_observed_acceptance_is_above_the_t
   (match flex_vast_create_env_cap { FlexCreateEnvCapUnknown { read_obligation: _ } => true  _ => false })
     && (flex_vast_create_env_observed_accepted.env_chars > flex_vast_template_env_max_chars)
     && (flex_vast_create_env_observed_accepted.instance_id == 57968351)
+}
+
+// The create env's cap is READ by the launch builder: unknown refuses nothing, a read cap refuses an
+// over-cap create env with a typed cause.
+test fn a_read_create_env_cap_refuses_an_over_cap_launch_and_an_unknown_one_does_not() -> Bool {
+  (match flex_vast_rent_launch(spec: flex_vast_template_spec, cap: flex_vast_create_env_cap, reserved_chars: 65) { FlexRentLaunchBuilt { launch: _ } => true  _ => false })
+    && (match flex_vast_rent_launch(spec: flex_vast_template_spec, cap: FlexCreateEnvCapRead { max_chars: 100 }, reserved_chars: 65) {
+          FlexRentLaunchRefused { cause: FlexRentLaunchEnvOverCreateCap { chars: _, max: m } } => m == 100
+          _ => false
+        })
 }
