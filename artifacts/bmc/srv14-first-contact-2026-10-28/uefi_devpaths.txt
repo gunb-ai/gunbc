@@ -1,0 +1,94 @@
+tcgetattr: Inappropriate ioctl for device
+[SOL Session operational.  Use ~? for help]
+map -r -t net
+map: Invalid argument - 'net'
+Shell> dh -p DevicePath
+Handle dump by protocol 'DevicePath'
+04: FirmwareVolume2 DevicePath(..A505-419A-859E-2A4FF6CA6FE5)) FirmwareVolumeBlock 
+05: FirmwareVolume2 DevicePath(..A691-4F54-974F-B9A42172CE53)) FirmwareVolumeBlock 
+99: HIIConfigAccess DevicePath(..9A04-4C6D-A748-793DAA0F65DF)) 
+9E: HIIConfigAccess DevicePath(..6712-45AB-84C4-35D3C6A3686D)) 
+A4: PCIRootBridgeIO(PciRootBridgeIo) DevicePath(PcieRoot(0x0)) 
+A6: PCIRootBridgeIO(PciRootBridgeIo) DevicePath(PcieRoot(0x10000)) 
+A8: PCIRootBridgeIO(PciRootBridgeIo) DevicePath(PcieRoot(0x20000)) 
+AA: PCIRootBridgeIO(PciRootBridgeIo) DevicePath(PcieRoot(0x30000)) 
+AC: PCIRootBridgeIO(PciRootBridgeIo) DevicePath(PcieRoot(0x40000)) 
+AE: PCIRootBridgeIO(PciRootBridgeIo) DevicePath(PcieRoot(0x50000)) 
+B0: PCIRootBridgeIO(PciRootBridgeIo) DevicePath(PcieRoot(0x60000)) 
+B2: PCIRootBridgeIO(PciRootBridgeIo) DevicePath(PcieRoot(0x70000)) 
+B3: HIIConfigAccess DevicePath(..E4B2-4C6E-9851-CB2BAC777DBB)) 
+B6: HIIConfigAccess DevicePath(..E4B2-4C6E-9851-CB2BAC777DBB)) 
+B8: HIIConfigAccess DevicePath(..004F-4071-A3E3-15C9FBD490CA)) 
+106: HIIConfigAccess DevicePath(..E9F7-4D8D-A708-DFB2C6661D61)) 
+10E: DevicePath(PcieRoot(0x0)/Pci(0x0,0x0)) PCIIO 
+10F: DevicePath(PcieRoot(0x0)/Pci(0x1,0x0)) PCIIO 
+110: DevicePath(PcieRoot(0x0)/Pci(0x2,0x0)) PCIIO 
+111: DevicePath(PcieRoot(0x0)/Pci(0x3,0x0)) PCIIO 
+112: DevicePath(PcieRoot(0x0)/Pci(0x4,0x0)) PCIIO 
+113: DevicePath(PcieRoot(0x10000)/Pci(0x0,0x0)) PCIIO 
+114: DevicePath(PcieRoot(0x10000)/Pci(0x1,0x0)) PCIIO 
+115: DevicePath(PcieRoot(0x10000)/Pci(0x2,0x0)) PCIIO 
+116: DevicePath(PcieRoot(0x10000)/Pci(0x3,0x0)) PCIIO 
+117: DevicePath(PcieRoot(0x10000)/Pci(0x4,0x0)) PCIIO 
+118: DevicePath(PcieRoot(0x20000)/Pci(0x0,0x0)) PCIIO 
+119: DevicePath(PcieRoot(0x20000)/Pci(0x1,0x0)) PCIIO 
+11A: DevicePath(PcieRoot(0x30000)/Pci(0x0,0x0)) PCIIO 
+11B: DevicePath(PcieRoot(0x30000)/Pci(0x1,0x0)) PCIIO 
+11C: DevicePath(PcieRoot(0x40000)/Pci(0x0,0x0)) PCIIO 
+11D: DevicePath(PcieRoot(0x40000)/Pci(0x1,0x0)) PCIIO 
+11E: DevicePath(PcieRoot(0x40000)/Pci(0x3,0x0)) PCIIO 
+11F: DevicePath(PcieRoot(0x40000)/Pci(0x5,0x0)) PCIIO 
+120: USBHostController2 USBHostControler 3279A703-BA93-4CBC-AD11-5C2A82C94A80 DevicePath(..0)/Pci(0x5,0x0)/Pci(0x0,0x0)) PCIIO 
+121: DevicePath(PcieRoot(0x40000)/Pci(0x7,0x0)) PCIIO 
+122: E3161450-AD0F-11D9-9669-0800200C9A66 DevicePath(..0)/Pci(0x7,0x0)/Pci(0x0,0x0)) PCIIO 
+123: DevicePath(PcieRoot(0x50000)/Pci(0x0,0x0)) PCIIO 
+124: DevicePath(PcieRoot(0x50000)/Pci(0x1,0x0)) PCIIO 
+125: DevicePath(..0)/Pci(0x1,0x0)/Pci(0x0,0x0)) PCIIO 
+126: DevicePath(..0)/Pci(0x0,0x0)/Pci(0x0,0x0)) PCIIO 
+127: DevicePath(PcieRoot(0x50000)/Pci(0x3,0x0)) PCIIO 
+128: E3161450-AD0F-11D9-9669-0800200C9A66 DevicePath(..0)/Pci(0x3,0x0)/Pci(0x0,0x0)) PCIIO 
+129: E3161450-AD0F-11D9-9669-0800200C9A66 DevicePath(..0)/Pci(0x3,0x0)/Pci(0x0,0x1)) PCIIO 
+12A: DevicePath(PcieRoot(0x50000)/Pci(0x5,0x0)) PCIIO 
+12B: 4B215191-9A25-43FD-86B5-74E7AF723315 AD77AE29-4C20-4FDD-8504-8176619B676A NvmExpressPassThru AFA4CF3F-AF71-4C30-A4FB-2910E771F9B0 DevicePath(..0)/Pci(0x5,0x0)/Pci(0x0,0x0)) PCIIO 
+12C: DevicePath(PcieRoot(0x50000)/Pci(0x7,0x0)) PCIIO 
+12D: DevicePath(PcieRoot(0x60000)/Pci(0x0,0x0)) PCIIO 
+12E: DevicePath(PcieRoot(0x60000)/Pci(0x1,0x0)) PCIIO 
+12F: DevicePath(PcieRoot(0x60000)/Pci(0x5,0x0)) PCIIO 
+130: DevicePath(PcieRoot(0x70000)/Pci(0x0,0x0)) PCIIO 
+131: DevicePath(PcieRoot(0x70000)/Pci(0x1,0x0)) PCIIO 
+132: DevicePath(PcieRoot(0x70000)/Pci(0x5,0x0)) PCIIO 
+133: E1E4A857-C970-4075-A4DA-E9C41B69ADFC SimpleTextOut EDIDActive(EDIDActive) EDIDDiscovered(EDIDDiscovered) GraphicsOutput(GraphicsOutput) DevicePath(..0x0,0x0)/AcpiAdr(0x80010100)) 
+134: SimpleTextOut 0ADFB62D-FF74-484C-8944-F85C4BEA87A8 SimpleTextInEx SimpleTextIn DevicePath(..115200,8,D,1)/VenVt100Plus()) 
+5F: DevicePath(..rial(0x0)/Uart(115200,8,N,1)) SerialIO 
+135: FirmwareVolume2 DevicePath(..2735-43EF-A379-30F2F592BA10)) FirmwareVolumeBlock 
+137: DevicePath(..0)/Pci(0x0,0x0)/USB(0x2,0x0)) USBIO 
+138: DevicePath(..0)/Pci(0x0,0x0)/USB(0x3,0x0)) USBIO 
+139: DevicePath(..0)/USB(0x3,0x0)/USB(0x2,0x0)) USBIO 
+13A: DevicePath(..0)/USB(0x2,0x0)/USB(0x0,0x0)) USBIO 
+13B: 8D8969CC-FEB0-4303-B21A-1F116F385643 DevicePath(..0)/USB(0x2,0x0)/USB(0x0,0x1)) USBIO 
+13C: Dns4ServiceBinding Dns6ServiceBinding Rest 54B34347-C478-4865-8415-742E5155B204 Mtftp6ServiceBinding Dhcp6ServiceBinding Udp6ServiceBinding Tcp6ServiceBinding Ip6Config Ip6ServiceBinding MTFTPv4ServiceBinding DHCPv4ServiceBinding UDPv4ServiceBinding HttpServiceBinding TCPv4ServiceBinding IPv4Config2 IPv4ServiceBinding ARPServiceBinding ManagedNetworkServiceBinding VlanConfig SimpleNetwork DevicePath(..0,0x1)/MAC(E2FB38276D91,0x0)) NetworkInterfaceIdentifier31 
+159: DevicePath(..0)/Pci(0x0,0x0)/USB(0x0,0x0)) USBIO 
+15A: DevicePath(..0)/Pci(0x0,0x0)/USB(0x1,0x0)) USBIO 
+15B: Dns4ServiceBinding Dns6ServiceBinding Rest 54B34347-C478-4865-8415-742E5155B204 Mtftp6ServiceBinding Dhcp6ServiceBinding Udp6ServiceBinding Tcp6ServiceBinding Ip6Config Ip6ServiceBinding MTFTPv4ServiceBinding DHCPv4ServiceBinding UDPv4ServiceBinding HttpServiceBinding TCPv4ServiceBinding IPv4Config2 IPv4ServiceBinding E4F61863-FE2C-4B56-A8F4-08519BC439DF ARPServiceBinding ManagedNetworkServiceBinding VlanConfig SimpleNetwork HIIConfigAccess AdapterInfo(AdapterInfo) NetworkInterfaceIdentifier31 E3161450-AD0F-11D9-9669-0800200C9A66 DevicePath(..0,0x0)/MAC(9C6B00E7CA9C,0x1)) 34D59603-1428-4429-A414-E6B3B5FD7DC1 
+15D: HIIConfigAccess DevicePath(..EF44-43BD-9797-43E93BCF5FA8)) 
+15F: HIIConfigAccess DevicePath(..3B71-4324-B39A-745CBB015FFF)) 
+169: HIIConfigAccess DevicePath(..D830-4EB2-8742-2D4CC9B54F2C)) 
+177: Dns4ServiceBinding Dns6ServiceBinding Rest 54B34347-C478-4865-8415-742E5155B204 Mtftp6ServiceBinding Dhcp6ServiceBinding Udp6ServiceBinding Tcp6ServiceBinding Ip6Config Ip6ServiceBinding MTFTPv4ServiceBinding DHCPv4ServiceBinding UDPv4ServiceBinding HttpServiceBinding TCPv4ServiceBinding IPv4Config2 IPv4ServiceBinding E4F61863-FE2C-4B56-A8F4-08519BC439DF ARPServiceBinding ManagedNetworkServiceBinding VlanConfig SimpleNetwork HIIConfigAccess AdapterInfo(AdapterInfo) NetworkInterfaceIdentifier31 E3161450-AD0F-11D9-9669-0800200C9A66 DevicePath(..0,0x0)/MAC(9C6B00E7CA9A,0x1)) 34D59603-1428-4429-A414-E6B3B5FD7DC1 
+179: HIIConfigAccess DevicePath(..EF44-43BD-9797-43E93BCF5FA8)) 
+17B: HIIConfigAccess DevicePath(..3B71-4324-B39A-745CBB015FFF)) 
+185: HIIConfigAccess DevicePath(..D830-4EB2-8742-2D4CC9B54F2C)) 
+192: Dns4ServiceBinding Dns6ServiceBinding Rest 54B34347-C478-4865-8415-742E5155B204 Mtftp6ServiceBinding Dhcp6ServiceBinding Udp6ServiceBinding Tcp6ServiceBinding Ip6Config Ip6ServiceBinding MTFTPv4ServiceBinding DHCPv4ServiceBinding UDPv4ServiceBinding HttpServiceBinding TCPv4ServiceBinding IPv4Config2 IPv4ServiceBinding E4F61863-FE2C-4B56-A8F4-08519BC439DF ARPServiceBinding ManagedNetworkServiceBinding VlanConfig SimpleNetwork HIIConfigAccess AdapterInfo(AdapterInfo) NetworkInterfaceIdentifier31 E3161450-AD0F-11D9-9669-0800200C9A66 DevicePath(..0,0x1)/MAC(9C6B00E7CA9B,0x1)) 34D59603-1428-4429-A414-E6B3B5FD7DC1 
+194: HIIConfigAccess DevicePath(..EF44-43BD-9797-43E93BCF5FA8)) 
+196: HIIConfigAccess DevicePath(..3B71-4324-B39A-745CBB015FFF)) 
+1A0: HIIConfigAccess DevicePath(..D830-4EB2-8742-2D4CC9B54F2C)) 
+1AD: DiskIO BlockIO DiskInfo DevicePath(..0x1,53-92-00-61-6B-38-25-00)) StorageSecurityCommand 
+1AE: SimpleFileSystem DiskIO EFISystemPartition PartitionInfo BlockIO DevicePath(..-8B615597F031,0x800,0x32000)) 
+1AF: DiskIO E3C9E316-0B5C-4DB8-817D-F92DF00215AE PartitionInfo BlockIO DevicePath(..AC529281CBD1,0x32800,0x8000)) 
+1B0: DiskIO EBD0A0A2-B9E5-4433-87C0-68B6B72699C7 PartitionInfo BlockIO DevicePath(..9565A8DF,0x3A800,0x3B812000)) 
+1B1: DiskIO DE94BBA4-06D1-4D40-A16A-BFD50179D6AC PartitionInfo BlockIO DevicePath(..167BB11,0x3B84C800,0x194000)) 
+1B2: HIIConfigAccess DevicePath(..FC0E-4B6E-9E79-D54D5DB6CD20)) 
+1B3: DevicePath(..DB26-429B-A648-BD47664C8012)) LoadFile 
+1B7: HIIConfigAccess DevicePath(..C00D-4158-87FF-F04D6396A915)) 
+1BA: HIIConfigAccess DevicePath(..21E2-4852-9875-7FF4881D67A5)) 
+1BE: HIIConfigAccess DevicePath(..EFDA-4C23-BBC4-98FD29AA0069)) 
+Shell> 

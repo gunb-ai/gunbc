@@ -1,0 +1,324 @@
+module gunbc.gpu_market.listing_observation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count }
+import std.decimal { decimal_digits_only }
+import std.algebra { Cons }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.currency.currency { CurrencyCode, currency_code_eq }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_days_from_civil }
+import extdeps.ebay.ebay { MarketplaceEnum }
+import extdeps.ebay.browse { BrowseItemSummary }
+import extdeps.gpu.types {
+  GpuBoardAdmission, PcieAddInBoard, SxmModule, MxmModule, SolderedBga, gpu_board_admission_facts,
+}
+import gunbc.gpu_market.availability {
+  GpuAvailability, GpuMarketRole, AvailabilityRead, AvailabilityUnread, CloudOnly,
+  gpu_availability_rows_named,
+}
+
+// A DATED OBSERVATION OF ONE MARKETPLACE LISTING OF GPU HARDWARE, AND WHAT IT CAN BE JOINED TO. The listing
+// is a receipt this repository makes about a marketplace, so it lives here in the observing layer, never
+// in an extdeps row: a price is not a property of NVIDIA's product.
+//
+// WHAT WAS SOLD IS PART OF THE FACT. A complete laptop, the laptop's mainboard, a removable module and a
+// converted PCIe board can all carry one GPU and have different host costs, deployment work, resale value
+// and failure modes, so the acquisition form is a field and listings are never pooled across it.
+// SOLD AND ACTIVE ARE DIFFERENT EVIDENCE. A sold listing is a price someone paid; an active listing is a
+// price someone asks. Price ranges are taken over sold listings only.
+//
+// WHERE THE DATA COMES FROM. extdeps.ebay.browse models eBay's Browse API, which returns ACTIVE listings:
+// gpu_listing_from_browse maps one of its item summaries to an observation. Sold prices come from eBay's
+// Marketplace Insights API, which is restricted and which this repository does not model, or from the
+// operator's own export; eBay's search pages refuse this repository's scripted reads (HTTP 403,
+// 2026-10-28). So no sold observation is authored here: gpu_listing_sold_data_frontier names what lands one.
+type ListingKind = SoldListing { sold_on: Iso8601CivilDate } | ActiveListing
+
+type ListingAcquisitionForm
+  = BarePcieBoard
+  | BareMxmModule
+  | BareDgffModule
+  | MobileConversionBoard
+  | LaptopMainboard
+  | CompleteLaptop
+  | CompleteWorkstation
+  | PartsOnly
+
+type ListingCondition = ListingNew | ListingUsed | ListingRefurbished | ListingForParts
+
+// WHICH HARDWARE THE LISTING IS OF, as the observer identified it. A listing whose title the observer could
+// not tie to a catalogue board or a named market product is ListingUnidentified, and is never joined.
+type ListingHardware
+  = ListedCatalogBoard { board: GpuBoardAdmission }
+  | ListedMarketProduct { name: NonEmptyStr }
+  | ListingUnidentified
+
+type GpuListingObservation {
+  observed_on: Iso8601CivilDate
+  kind: ListingKind
+  marketplace: MarketplaceEnum
+  listing_id: NonEmptyStr
+  title_as_stated: String
+  hardware: ListingHardware
+  acquisition: ListingAcquisitionForm
+  condition: ListingCondition
+  quantity: Nat
+  price: MoneyAmountMicro
+  shipping: MoneyAmountMicro?
+  currency: CurrencyCode
+  location: String?
+}
+
+// ── FROM AN eBay BROWSE ITEM ──────────────────────────────────────────────────────────────────────
+
+// "127.63" as micros: digits, an optional point, at most six fraction digits. Anything else is unread.
+fn listing_decimal_micros(text: String) -> MoneyAmountMicro? {
+  let parts: List<String> = text.split(delimiter: ".")
+  let whole: String = match parts { Cons { head: w, tail: _ } => w  _ => "" }
+  let fraction: String = match parts { Cons { head: _, tail: Cons { head: f, tail: _ } } => f  _ => "" }
+  if count(parts) > 2 || whole == "" || !decimal_digits_only(s: whole) || !decimal_digits_only(s: fraction) || string_length(s: fraction) > 6 { none }
+  else {
+    match parse_int(s: concat(whole, concat(fraction, listing_zeros(n: 6 - string_length(s: fraction))))) {
+      Present { value: i } => match checked_int_to_nat(n: i) {
+        Present { value: n } => Present { value: money_amount_micro(count: n) }
+        Absent => none
+      }
+      Absent => none
+    }
+  }
+}
+
+fn listing_zeros(n: Int) -> String {
+  if n <= 0 { "" } else { concat("0", listing_zeros(n: n - 1)) }
+}
+
+// eBay's condition ids for the four conditions this module distinguishes (eBay "Item condition ID and
+// name values": 1000 New, 2500 Seller refurbished, 3000 Used, 7000 For parts or not working). Any other id
+// is not read as one of them.
+fn listing_condition_of_ebay_id(id: String) -> ListingCondition? {
+  if id == "1000" { Present { value: ListingNew } }
+  else if id == "2500" { Present { value: ListingRefurbished } }
+  else if id == "3000" { Present { value: ListingUsed } }
+  else if id == "7000" { Present { value: ListingForParts } }
+  else { none }
+}
+
+type BrowseListingRead
+  = BrowseListingObserved { observation: GpuListingObservation }
+  | BrowseListingUnread { field: NonEmptyStr }
+
+// One Browse search hit as an ACTIVE listing observation. The observer supplies what Browse cannot: the
+// date of the read, the hardware the title is of, and what form was offered. Shipping is read only from
+// a single fixed-cost option; several options, or a calculated one, leave it Absent rather than picked.
+fn gpu_listing_from_browse(item: BrowseItemSummary, observed_on: Iso8601CivilDate, marketplace: MarketplaceEnum, hardware: ListingHardware, acquisition: ListingAcquisitionForm) -> BrowseListingRead {
+  match item.price {
+    Absent => BrowseListingUnread { field: "price" }
+    Present { value: p } => match listing_decimal_micros(text: p.value) {
+      Absent => BrowseListingUnread { field: "price.value" }
+      Present { value: price } => match item.conditionId {
+        Absent => BrowseListingUnread { field: "conditionId" }
+        Present { value: cid } => match listing_condition_of_ebay_id(id: cid) {
+          Absent => BrowseListingUnread { field: "conditionId" }
+          Present { value: condition } => BrowseListingObserved {
+            observation: GpuListingObservation {
+              observed_on: observed_on,
+              kind: ActiveListing,
+              marketplace: marketplace,
+              listing_id: item.itemId,
+              title_as_stated: match item.title { Present { value: t } => t  Absent => "" },
+              hardware: hardware,
+              acquisition: acquisition,
+              condition: condition,
+              quantity: 1,
+              price: price,
+              shipping: listing_single_fixed_shipping(item: item),
+              currency: p.currency,
+              location: match item.itemLocation { Present { value: l } => l.country  Absent => none },
+            },
+          }
+        }
+      }
+    }
+  }
+}
+
+fn listing_single_fixed_shipping(item: BrowseItemSummary) -> MoneyAmountMicro? {
+  match item.shippingOptions {
+    Present { value: opts } => if count(opts) == 1 {
+      match first(opts) {
+        Present { value: o } => match o.shippingCostType {
+          Present { value: "FIXED" } => match o.shippingCost { Present { value: c } => listing_decimal_micros(text: c.value)  Absent => none }
+          _ => none
+        }
+        Absent => none
+      }
+    } else { none }
+    Absent => none
+  }
+}
+
+// ── THE JOIN ──────────────────────────────────────────────────────────────────────────────────────
+
+// Why a listing is not joined, or what a joined listing contradicts.
+type GpuListingRefusal
+  = ListingHardwareUnidentified
+  | ListingQuantityZero
+  | ListingFormContradictsBoard { acquisition: ListingAcquisitionForm }
+
+// A joined listing may still contradict an availability READING: a bare board listed for a product whose
+// reading is cloud-only. That is not refused (a physical board on the market is exactly the evidence that
+// would retire the reading) but carried, so the price is never read without it.
+type GpuListingNote = ListingAgainstAvailabilityReading { availability: GpuAvailability }
+
+type GpuListingJoin
+  = GpuListingJoined { observation: GpuListingObservation, identity_name: NonEmptyStr, unit_landed: MoneyAmountMicro?, role: GpuMarketRole?, notes: List<GpuListingNote> }
+  | GpuListingRefused { observation: GpuListingObservation, refusal: GpuListingRefusal }
+
+// Whether a listing's form can be the board's attachment. A PCIe board is sold as a bare board, inside a
+// workstation, or for parts; an MXM module bare or for parts; a soldered GPU only inside a laptop, on its
+// mainboard, or on a conversion board; an SXM module only inside a system or for parts.
+fn listing_form_fits_board(form: ListingAcquisitionForm, board: GpuBoardAdmission) -> Bool {
+  match gpu_board_admission_facts(admission: board).attachment {
+    PcieAddInBoard { link: _ } => match form { BarePcieBoard => true  CompleteWorkstation => true  PartsOnly => true  _ => false }
+    MxmModule { variant: _, link: _ } => match form { BareMxmModule => true  PartsOnly => true  _ => false }
+    SolderedBga => match form { CompleteLaptop => true  LaptopMainboard => true  MobileConversionBoard => true  PartsOnly => true  _ => false }
+    SxmModule => match form { CompleteWorkstation => true  PartsOnly => true  _ => false }
+  }
+}
+
+fn listing_identity_name(hardware: ListingHardware) -> NonEmptyStr? {
+  match hardware {
+    ListedCatalogBoard { board: b } => match gpu_board_admission_facts(admission: b).driver_listed_name {
+      Present { value: n } => Present { value: n }
+      Absent => Present { value: gpu_board_admission_facts(admission: b).model }
+    }
+    ListedMarketProduct { name: n } => Present { value: n }
+    ListingUnidentified => none
+  }
+}
+
+fn listing_bare_form(form: ListingAcquisitionForm) -> Bool {
+  match form { BarePcieBoard => true  BareMxmModule => true  BareDgffModule => true  _ => false }
+}
+
+// What one listing costs per unit with shipping, when the listing states its shipping.
+fn listing_unit_landed(o: GpuListingObservation) -> MoneyAmountMicro? {
+  match o.shipping {
+    Present { value: s } => Present { value: money_amount_micro(count: (money_amount_micro_count(m: o.price) + money_amount_micro_count(m: s)) / o.quantity) }
+    Absent => none
+  }
+}
+
+fn gpu_listing_join(o: GpuListingObservation) -> GpuListingJoin {
+  match listing_identity_name(hardware: o.hardware) {
+    Absent => GpuListingRefused { observation: o, refusal: ListingHardwareUnidentified }
+    Present { value: name } => if o.quantity == 0 { GpuListingRefused { observation: o, refusal: ListingQuantityZero } }
+      else if (match o.hardware { ListedCatalogBoard { board: b } => !listing_form_fits_board(form: o.acquisition, board: b)  _ => false }) {
+        GpuListingRefused { observation: o, refusal: ListingFormContradictsBoard { acquisition: o.acquisition } }
+      } else {
+        let readings = gpu_availability_rows_named(name: name)
+        GpuListingJoined {
+          observation: o,
+          identity_name: name,
+          unit_landed: listing_unit_landed(o: o),
+          role: if count(readings) == 1 { readings |> map(r => r.role) |> first } else { none },
+          notes: readings |> flat_map(r => match r.availability {
+            AvailabilityRead { availability: CloudOnly { provider: p }, standing: _ } =>
+              if listing_bare_form(form: o.acquisition) { [ListingAgainstAvailabilityReading { availability: CloudOnly { provider: p } }] } else { [] }
+            _ => []
+          }),
+        }
+      }
+  }
+}
+
+// ── DATED PRICE RANGES ────────────────────────────────────────────────────────────────────────────
+
+type GpuListingWindow { from: Iso8601CivilDate, to: Iso8601CivilDate }
+
+fn listing_day(d: Iso8601CivilDate) -> Int { iso8601_days_from_civil(y: d.year, m: d.month, d: d.day) }
+
+fn listing_sold_within(o: GpuListingObservation, w: GpuListingWindow) -> Bool {
+  match o.kind {
+    SoldListing { sold_on: s } => listing_day(d: s) >= listing_day(d: w.from) && listing_day(d: s) <= listing_day(d: w.to)
+    ActiveListing => false
+  }
+}
+
+// One range per (product, acquisition form, condition, currency) over the window's SOLD listings that
+// joined and state their shipping. A listing with a note carries it into its range, so a cloud-only
+// product's bare-board range is never read without the contradiction it records.
+type GpuListingPriceRange {
+  identity_name: NonEmptyStr
+  acquisition: ListingAcquisitionForm
+  condition: ListingCondition
+  currency: CurrencyCode
+  window: GpuListingWindow
+  role: GpuMarketRole?
+  sold_count: Nat
+  minimum: MoneyAmountMicro
+  maximum: MoneyAmountMicro
+  notes: List<GpuListingNote>
+}
+
+fn listing_form_eq(a: ListingAcquisitionForm, b: ListingAcquisitionForm) -> Bool { listing_form_wire(f: a) == listing_form_wire(f: b) }
+
+fn listing_form_wire(f: ListingAcquisitionForm) -> String {
+  match f {
+    BarePcieBoard => "bare-pcie-board"
+    BareMxmModule => "bare-mxm-module"
+    BareDgffModule => "bare-dgff-module"
+    MobileConversionBoard => "mobile-conversion-board"
+    LaptopMainboard => "laptop-mainboard"
+    CompleteLaptop => "complete-laptop"
+    CompleteWorkstation => "complete-workstation"
+    PartsOnly => "parts-only"
+  }
+}
+
+fn listing_condition_wire(c: ListingCondition) -> String {
+  match c { ListingNew => "new"  ListingUsed => "used"  ListingRefurbished => "refurbished"  ListingForParts => "for-parts" }
+}
+
+fn listing_range_matches(r: GpuListingPriceRange, name: NonEmptyStr, o: GpuListingObservation) -> Bool {
+  (r.identity_name as String) == (name as String) && listing_form_eq(a: r.acquisition, b: o.acquisition)
+    && listing_condition_wire(c: r.condition) == listing_condition_wire(c: o.condition) && currency_code_eq(a: r.currency, b: o.currency)
+}
+
+fn listing_range_add(ranges: List<GpuListingPriceRange>, j: GpuListingJoin, w: GpuListingWindow) -> List<GpuListingPriceRange> {
+  match j {
+    GpuListingRefused { observation: _, refusal: _ } => ranges
+    GpuListingJoined { observation: o, identity_name: name, unit_landed: landed, role: role, notes: notes } => match landed {
+      Absent => ranges
+      Present { value: u } => if !listing_sold_within(o: o, w: w) { ranges }
+        else if ranges |> any(r => listing_range_matches(r: r, name: name, o: o)) {
+          ranges |> map(r => if listing_range_matches(r: r, name: name, o: o) {
+            GpuListingPriceRange {
+              identity_name: r.identity_name, acquisition: r.acquisition, condition: r.condition, currency: r.currency, window: r.window, role: r.role,
+              sold_count: r.sold_count + 1,
+              minimum: if money_amount_micro_count(m: u) < money_amount_micro_count(m: r.minimum) { u } else { r.minimum },
+              maximum: if money_amount_micro_count(m: u) > money_amount_micro_count(m: r.maximum) { u } else { r.maximum },
+              notes: concat(r.notes, notes),
+            }
+          } else { r })
+        } else {
+          concat(ranges, [GpuListingPriceRange {
+            identity_name: name, acquisition: o.acquisition, condition: o.condition, currency: o.currency, window: w, role: role,
+            sold_count: 1, minimum: u, maximum: u, notes: notes,
+          }])
+        }
+    }
+  }
+}
+
+fn gpu_listing_price_ranges(observations: List<GpuListingObservation>, window: GpuListingWindow) -> List<GpuListingPriceRange> {
+  fold(observations |> map(o => gpu_listing_join(o: o)), init: [], f: (acc, j) => listing_range_add(ranges: acc, j: j, w: window))
+}
+
+// DESIGN section 3c declared frontier.
+data gpu_listing_sold_data_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a dated sold-listing observation lands from a producer this repository runs: an eBay Marketplace Insights reader (an access grant eBay restricts, then a model beside extdeps.ebay.browse), or a typed import of the operator's own sold-listing export. SUFFICIENT FOR: gpu_listing_price_ranges has real sold rows to range over; until then its executing route is test.claim.gpu_market_listing_witness over supplied observations, and the one real producer, gpu_listing_from_browse, yields only active listings." as NonEmptyStr
+)

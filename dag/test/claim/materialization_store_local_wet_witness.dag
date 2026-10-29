@@ -1,5 +1,7 @@
 module test.claim.materialization_store_local_wet_witness
 
+import std.cache_interface { ReplaceExisting, LeastRecentlyUsed, RefuseNewStore }
+
 import std.judgment_contract { identity_structural_component, identity_digest_component }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -178,8 +180,8 @@ fn delete_was_refused_by_the_host(t: LocalStoreDeleteAttempt) -> Bool {
 // eviction and the fit refusal are reached by execution. The store receives them as its parameter,
 // exactly as a production consumer passes gunbc.materialization_store_budgets.
 data witness_family_budgets: List<LocalStoreFamilyBudget> = [
-  LocalStoreFamilyBudget { family: native_module_verdict_bundle_artifact_kind, budget: byte_size(count: 4096) },
-  LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: byte_size(count: 4096) },
+  LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: native_module_verdict_bundle_artifact_kind, budget: byte_size(count: 4096) },
+  LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: typed_module_artifact_kind, budget: byte_size(count: 4096) },
 ]
 
 // An evicted RECORD whose own file the host refused to delete, typed down to the host's answer.
@@ -475,6 +477,41 @@ test fn the_family_budget_holds_on_disk_across_overrun_by_real_execution() -> Bo
         && steps |> all(st => st.within)
         && fold(steps, init: 0, f: (acc, st) => acc + st.evicted) > 0
     }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// The same durable provider can retain entries instead of evicting them.
+test fn a_retained_family_refuses_capacity_and_survives_reopen_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let budgets = witness_family_budgets |> map(b => LocalStoreFamilyBudget { family: b.family, budget: b.budget, at_capacity: RefuseNewStore })
+  let verdict = match local_store_initialize(root: root, instance_label: "retained-witness", budgets: budgets) {
+    LocalStoreInitialized { opening: LocalStoreOpened { capability: store, durability: _ } } => {
+      let first_req = bundle_req(module: "retained-first")
+      let first_write = local_store_commit(capability: store, req: first_req, payloads: padded_verdicts(module: "retained-first"), parts: [])
+      let attempts = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] |> map(i => {
+        let name = concat("retained-", int_to_decimal_string(value: i))
+        let written = local_store_commit(capability: store, req: bundle_req(module: name), payloads: padded_verdicts(module: name), parts: [])
+        BoundStep { within: commit_tag(c: written.commit) == "committed" || commit_tag(c: written.commit) == "at_capacity", evicted: count(written.evicted) }
+      })
+      let refused = local_store_commit(capability: store, req: bundle_req(module: "retained-overflow"), payloads: padded_verdicts(module: "retained-overflow"), parts: [])
+      let reopened = match local_store_open(root: root, budgets: budgets) {
+        LocalStoreOpened { capability: again, durability: _ } => store_lookup_is_hit(l: local_store_lookup(capability: again, req: first_req))
+        LocalStoreUnavailable { root_path: _, cause: _ } => false
+      }
+      let wrong_policy_refused = match local_store_open(root: root, budgets: witness_family_budgets) {
+        LocalStoreUnavailable { root_path: _, cause: LocalStoreCatalogMismatch { marker_path: _, offered: _ } } => true
+        _ => false
+      }
+      commit_tag(c: first_write.commit) == "committed"
+        && all(attempts, a => a.within && a.evicted == 0)
+        && commit_tag(c: refused.commit) == "at_capacity" && count(refused.evicted) == 0
+        && root_object_bytes(root_path: root_path) <= 4096
+        && reopened && wrong_policy_refused
+    }
+    _ => false
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
   verdict && removed.success
@@ -1308,7 +1345,7 @@ test fn reopening_with_a_larger_budget_than_the_store_was_created_with_refuses_b
     Absent => false
     Present { value: store } => {
       let c = local_store_commit(capability: store, req: bundle_req(module: "b"), payloads: verdicts(text: "b pass"), parts: [])
-      let larger = witness_family_budgets |> map(b => LocalStoreFamilyBudget { family: b.family, budget: byte_size(count: measure_count(m: b.budget) * 4) })
+      let larger = witness_family_budgets |> map(b => LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: b.family, budget: byte_size(count: measure_count(m: b.budget) * 4) })
       commit_tag(c: c.commit) == "committed"
         && opening_refused_for_catalog(o: local_store_open(root: root, budgets: larger))
         && root_object_bytes(root_path: root_path) <= budget

@@ -1,0 +1,93 @@
+### dmidecode system
+	Manufacturer:                       
+	Product Name: ALTRAD8UD-1L2T
+	Serial Number:                       
+	SKU Number:                       
+	Family:                       
+### dmidecode baseboard
+	Manufacturer: ASRockRack
+	Product Name: ALTRAD8UD-1L2T
+	Version:                       
+	Serial Number: BR80S6102300049
+### dmidecode bios
+	Vendor: American Megatrends International, LLC.
+	Version: 4.01
+	Release Date: 03/11/2026
+### cpu
+Architecture:                            aarch64
+CPU(s):                                  80
+Vendor ID:                               ARM
+Model name:                              Neoverse-N1
+Thread(s) per core:                      1
+Core(s) per socket:                      80
+Socket(s):                               1
+CPU(s) scaling MHz:                      35%
+### mem
+               total        used        free      shared  buff/cache   available
+Mem:             250           3         244           0           4         247
+Swap:              0           0           0
+	Size: 64 GB
+	Locator: DDR4_A1
+	Speed: 2133 MT/s
+	Manufacturer: Samsung
+	Part Number: M393A8G40D40-CRB     
+	Configured Memory Speed: 2133 MT/s
+	Size: 64 GB
+	Locator: DDR4_B1
+	Speed: 2133 MT/s
+	Manufacturer: Samsung
+	Part Number: M393A8G40D40-CRB     
+	Configured Memory Speed: 2133 MT/s
+	Size: No Module Installed
+	Locator: DDR4_C1
+	Size: No Module Installed
+	Locator: DDR4_D1
+	Size: 64 GB
+	Locator: DDR4_E1
+	Speed: 2133 MT/s
+	Manufacturer: Samsung
+	Part Number: M393A8G40D40-CRB     
+	Configured Memory Speed: 2133 MT/s
+	Size: 64 GB
+	Locator: DDR4_F1
+	Speed: 2133 MT/s
+	Manufacturer: Samsung
+	Part Number: M393A8G40D40-CRB      
+	Configured Memory Speed: 2133 MT/s
+	Size: No Module Installed
+	Locator: DDR4_G1
+	Size: No Module Installed
+	Locator: DDR4_H1
+### nics
+enP2p4s0 mac=9c:6b:00:e7:ca:63 carrier=1 driver=igb pci=0002:04:00.0
+enP3p3s0f0 mac=9c:6b:00:e7:ca:61 carrier=0 driver=ixgbe pci=0003:03:00.0
+enP3p3s0f1 mac=9c:6b:00:e7:ca:62 carrier=0 driver=ixgbe pci=0003:03:00.1
+enxaed28d1959f9 mac=ae:d2:8d:19:59:f9 carrier=1 driver=cdc_ether pci=1-2.3.1:2.0
+lo               UNKNOWN        127.0.0.1/8 
+enP2p4s0         UP             192.168.1.204/24 metric 100 
+### disks
+NAME      SIZE MODEL                   SERIAL           TRAN   TYPE
+sda      57.6G USB Flash Drive         5764925934879163 usb    disk
+nvme0n1 931.5G WD Green SN350 1TB 2G0C 25466Q801557     nvme   disk
+### partitions on non-usb disks
+NAME      SIZE FSTYPE   LABEL  PARTLABEL
+sda      57.6G                 
+`-sda1   57.6G vfat     UBUNTU 
+nvme0n1 931.5G                 
+### pci
+0002:04:00.0 Ethernet controller [0200]: Intel Corporation I210 Gigabit Network Connection [8086:1533] (rev 03)
+0003:02:00.0 VGA compatible controller [0300]: ASPEED Technology, Inc. ASPEED Graphics Family [1a03:2000] (rev 41)
+0003:03:00.0 Ethernet controller [0200]: Intel Corporation Ethernet Controller X550 [8086:1563] (rev 01)
+0003:03:00.1 Ethernet controller [0200]: Intel Corporation Ethernet Controller X550 [8086:1563] (rev 01)
+0003:04:00.0 Non-Volatile memory controller [0108]: Sandisk Corp WD Green SN350 240GB (DRAM-less) / SN560E NVMe SSD [15b7:5019]
+### secure boot
+bash: line 1: mokutil: command not found
+SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c
+SetupMode-8be4df61-93ca-11d2-aa0d-00e098032b8c
+### ipmi
+Firmware Revision         : 3.22
+Manufacturer Name         : ASRock Rack Incorporation
+Aux Firmware Rev Info     : 
+IP Address Source       : DHCP Address
+IP Address              : 192.168.1.248
+MAC Address             : 9c:6b:00:e7:c9:e7

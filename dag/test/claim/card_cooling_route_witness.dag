@@ -10,8 +10,6 @@ import product.printed_chassis.card_cooling_route {
 }
 import product.printed_chassis.gpu_duct {a16_blower_duct_design, blower_reach_behind, um}
 import product.printed_chassis.chassis_clearances {card_end_rear_fan_clearance, chassis_gaps, gap_may_be_printed_on, remeasure_before_print}
-import extdeps.gpu.passive_card_row {row_is_sealed, row_unread_fields, row_field_obligation}
-import extdeps.gpu.nvidia_passive_rows {a16_row, t10_row, a2_row, card_rows, all_rows_bench_list}
 
 // ═══ THE 70 mm IS NOT THE ONLY CONSTRAINT, AND THE WITNESSES SAY SO ═══
 //
@@ -95,34 +93,4 @@ test fn w_outlet_alignment_stays_an_obligation_not_a_check() -> Bool {
   string_length(outlet_alignment_obligation()) > 0
 }
 
-// ═══ THE CARD ROWS ═══
-
-// THE A16 ROW IS HONEST ABOUT BEING A COPY. Its millimetres are the operator's caliper record
-// (product.printed_chassis.gpu_duct a16_end_face); carrying them into a row makes them a transcription,
-// and a transcription prints nothing until read back. Minting the observation standing directly is a
-// forgery (test.claim.observed_receipt_seal_witness), so the sealed row would be the SUSPICIOUS one.
-test fn w_the_a16_row_is_transcribed_not_sealed() -> Bool {
-  !row_is_sealed(row: a16_row)
-    && length(list: row_unread_fields(row: a16_row)) > 0
-    && match row_field_obligation(field: a16_row.end_face_length) {
-         Absent => false
-         Present { value: o } => string_length(o) > 0
-       }
-}
-
-// THE T10 AND A2 ROWS REFUSE EVERY FIELD. The datasheets do not answer at any path this repository could
-// reach (the probe is recorded in extdeps.gpu/nvidia_passive_rows); a row built on remembered numbers
-// would seal on a guess, and 60 cards would arrive wearing it.
-test fn w_t10_and_a2_rows_carry_no_unbacked_numbers() -> Bool {
-  !row_is_sealed(row: t10_row) && !row_is_sealed(row: a2_row)
-    && length(list: row_unread_fields(row: t10_row)) == 8
-    && length(list: row_unread_fields(row: a2_row)) == 8
-}
-
-// ONE CONCEPT, CARDS AS DATA: the rows are data in a list, the bench list names each unsealed row once,
-// and a fourth card joins without any product-layer branch. The report's length is the row count, so a
-// new card shows up where the operator will read it.
-test fn w_a_fourth_card_is_one_more_row() -> Bool {
-  length(list: card_rows) == 3
-    && length(list: all_rows_bench_list()) > length(list: card_rows)
-}
+// The card rows' claims are in test.claim.duct_card_catalog_witness, beside the catalog that joins them.
