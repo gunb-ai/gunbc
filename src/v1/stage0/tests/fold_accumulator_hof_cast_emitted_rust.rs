@@ -48,8 +48,8 @@ import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.list { distinct_by_key }
 import std.algebra { list_push }
 
-fn probe_case(names: List<String>) -> List<NonEmptyStr> {
-  let keys = fold(names, init: [], f: (acc, n) => acc |> list_push(item: n as NonEmptyStr))
+fn probe_case(names: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  let keys = fold(names, init: [], f: (acc, n) => acc |> list_push(item: n))
   distinct_by_key(xs: keys, key: fn(k) { k as String })
 }
 "#;
@@ -62,8 +62,8 @@ import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.list { distinct_by_key }
 import std.algebra { list_push }
 
-fn probe_case(names: List<String>, keys: List<NonEmptyStr>) -> List<NonEmptyStr> {
-  let _seed = fold(names, init: [], f: (acc, n) => acc |> list_push(item: n as NonEmptyStr))
+fn probe_case(names: List<NonEmptyStr>, keys: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  let _seed = fold(names, init: [], f: (acc, n) => acc |> list_push(item: n))
   distinct_by_key(xs: keys, key: fn(k) { k as String })
 }
 "#;
@@ -76,8 +76,8 @@ const EMPTY_INIT_PUSH: &str = r#"module probe_empty_init_push
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.algebra { list_push }
 
-fn probe_case(n: String) -> List<NonEmptyStr> {
-  list_push(xs: [], item: n as NonEmptyStr)
+fn probe_case(n: NonEmptyStr) -> List<NonEmptyStr> {
+  list_push(xs: [], item: n)
 }
 "#;
 
@@ -93,8 +93,8 @@ fn push_one<U>(xs: List<U>, item: U) -> List<U> {
   list_push(xs: xs, item: item)
 }
 
-fn probe_case(n: String) -> List<NonEmptyStr> {
-  push_one(xs: [], item: n as NonEmptyStr)
+fn probe_case(n: NonEmptyStr) -> List<NonEmptyStr> {
+  push_one(xs: [], item: n)
 }
 "#;
 
@@ -266,7 +266,7 @@ fn an_empty_init_list_push_takes_its_element_from_the_item_and_a_wrapper_still_t
     );
     assert!(
         push.diagnostics.is_empty(),
-        "list_push([], item: n as NonEmptyStr) was refused where List<NonEmptyStr> is required: {:?}",
+        "list_push([], item: n) was refused where List<NonEmptyStr> is required: {:?}",
         push.diagnostics
     );
 
