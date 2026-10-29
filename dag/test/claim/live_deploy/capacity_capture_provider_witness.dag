@@ -1,13 +1,15 @@
 module test.claim.live_deploy.capacity_capture_provider_witness
 
-import std.types { Bool, NonEmptyStr }
-import std.error_primitives { Ok, Err }
+import std.types { Bool, NonEmptyStr, String }
+import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import std.scoped_authorization { AttemptIdentity, ClaimHeld, ClaimLost, ClaimUndecided, ClaimedBy }
 import std.durable_compare_and_set { cas_generation_first }
 import std.materialization_provider { CutoverCaptureRequest }
-import gunbc.live_deploy.capacity_capture_provider { capacity_capture_journal_admission, capacity_capture_claim_admission, capacity_capture_claim_key, capacity_capture_record_result }
-import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityCapturingGeneration, CapacityInstalling, capacity_generation_request }
+import gunbc.live_deploy.capacity_capture_provider { capacity_capture_journal_admission, capacity_capture_claim_admission, capacity_capture_claim_key, capacity_capture_record_result, capacity_capture_manifest_complete }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityGenerationFile, CapacityCutoverRecord, CapacityCapturingGeneration, CapacityInstalling, capacity_generation_request }
+import gunbc.live_deploy.capacity_capture_store { capacity_capture_blob_path }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverIntent, CapacityCaptureOperation }
 import test.claim.live_deploy.capacity_capture_store_witness { capture_fixture_store }
 import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
 
@@ -95,4 +97,42 @@ test fn recording_a_second_result_cannot_overwrite_the_first_capture() -> Bool {
     Present { value: file } => capacity_capture_record_result(record: record, file: file)
       == Err { value: "capture result already recorded for this source" }
   }
+}
+
+
+// This supplies record/address evidence, not fake provider verification. The wet
+// finish separately looks up every byte part before its phase transition.
+fn capture_manifest_fixture(outside: Bool, missing: Bool) -> Result<CapacityCutoverRecord, String> {
+  let record = capture_preparing_record()
+  match capture_fixture_store(mode: "700") {
+    Err { value: why } => Err { value: why }
+    Ok { value: store } => match first(record.prior) {
+      Absent => Err { value: "fixture has no prior file" }
+      Present { value: file } => match capacity_capture_blob_path(store: store, request: capacity_generation_request(file: file)) {
+        Err { value: why } => Err { value: why }
+        Ok { value: address } => {
+          let captured = CapacityGenerationFile { host: file.host, manager: file.manager, unit: file.unit,
+            destination: file.destination, digest: file.digest, address: if outside { "/outside/provider" } else { address } }
+          let supplied = CapacityCutoverRecord { attempt: record.attempt, target_revision: record.target_revision,
+            prior: if missing { [] } else { [captured] }, target: [captured], planned_paths: record.planned_paths,
+            created_paths: [], artifacts: [], phase: record.phase }
+          let intent = CapacityCutoverIntent { host: "srv1", revision: record.target_revision, attempt: store.attempt,
+            operations: [], file_operations: [], captures: [CapacityCaptureOperation { source: file.destination, root: store.root }] }
+          capacity_capture_manifest_complete(store: store, intent: intent, record: supplied)
+        }
+      }
+    }
+  }
+}
+
+test fn a_complete_capture_manifest_can_reach_byte_verification() -> Bool {
+  match capture_manifest_fixture(outside: false, missing: false) { Ok { value: _ } => true Err { value: _ } => false }
+}
+
+test fn an_unrecorded_capture_prevents_inhibition() -> Bool {
+  capture_manifest_fixture(outside: false, missing: true) == Err { value: "capture generation is incomplete" }
+}
+
+test fn a_provider_result_outside_the_apply_root_refuses() -> Bool {
+  capture_manifest_fixture(outside: true, missing: false) == Err { value: "capture result is outside its provider address or host" }
 }
