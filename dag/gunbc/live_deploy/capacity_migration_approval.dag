@@ -8,7 +8,7 @@ import std.scoped_authorization {
   OperatorGrant, authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
   AuthorizationClaimState, AuthorizationGranted, AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided,
 }
-import std.effect_grant { Execute, NamespacePosition, ServiceOpTree }
+import std.effect_grant { Execute, Write, NamespacePosition, ServiceOpTree, FilesystemPathTree }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import extdeps.languages.json.emit { serialize_json, JsonArray, JsonString }
 import gunbc.live_deploy.capacity_quiescence {
@@ -16,11 +16,37 @@ import gunbc.live_deploy.capacity_quiescence {
   capacity_quiescence_step_subject,
 }
 
+// Filesystem mutations are separate from systemd lifecycle probes. Consent is
+// exact per path and operation, never permission for a whole capture directory.
+// Ownership, create-only publication and inode checks remain provider obligations.
+type CapacityCutoverFileVerb = CapacityCaptureCreate | CapacityCaptureRemove | CapacityInhibitionCreate | CapacityInhibitionRemove
+
+type CapacityCutoverFileOperation {
+  path: NonEmptyStr
+  verb: CapacityCutoverFileVerb
+}
+
+fn capacity_cutover_file_action(operation: CapacityCutoverFileOperation) -> AuthorizedAction {
+  (match operation.verb {
+    CapacityCaptureCreate => "capture-create"
+    CapacityCaptureRemove => "capture-remove"
+    CapacityInhibitionCreate => "inhibit-create"
+    CapacityInhibitionRemove => "inhibit-remove"
+  }) as NonEmptyStr as AuthorizedAction
+}
+
+fn capacity_cutover_file_scope(operation: CapacityCutoverFileOperation) -> AuthorizationScope {
+  AuthorizationScope { verb: Write,
+    resource: NamespacePosition { tree: FilesystemPathTree, path: split(s: operation.path as String, delimiter: "/") },
+    action: capacity_cutover_file_action(operation: operation) }
+}
+
 type CapacityCutoverIntent {
   host: NonEmptyStr
   revision: CommitSha
   attempt: AttemptIdentity
   operations: List<CapacityQuiescenceStep>
+  file_operations: List<CapacityCutoverFileOperation>
 }
 
 fn capacity_cutover_operation_action(operation: CapacityQuiescenceStep) -> AuthorizedAction {
@@ -49,7 +75,7 @@ fn capacity_cutover_operation_scope(intent: CapacityCutoverIntent, operation: Ca
 // JSON framing keeps identity inputs injective even when a name contains punctuation.
 // The full operation set is fixed before consent; late-discovered units cannot borrow it.
 fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
-  serialize_json(v: JsonArray { elements: [JsonString { value: "gunbc.capacity-cutover.v1" },
+  serialize_json(v: JsonArray { elements: [JsonString { value: "gunbc.capacity-cutover.v2" },
     JsonString { value: intent.host as String }, JsonString { value: intent.revision as String },
     JsonString { value: intent.attempt as String },
     JsonArray { elements: map(intent.operations, operation => {
@@ -59,13 +85,18 @@ fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
         UserManager { uid: uid } => concat("user:", to_string(uid))
       } }, JsonString { value: subject.unit as String }, JsonString { value: capacity_cutover_operation_action(operation: operation) as String }] }
     }) },
+    JsonArray { elements: map(intent.file_operations, operation => JsonArray { elements: [
+      JsonString { value: operation.path as String },
+      JsonString { value: capacity_cutover_file_action(operation: operation) as String },
+    ] }) },
   ] }) as NonEmptyStr
 }
 
 fn capacity_cutover_request(intent: CapacityCutoverIntent, escalation_id: NonEmptyStr) -> AuthorizationRequest<CapacityCutoverIntent> {
   AuthorizationRequest {
     escalation_id: escalation_id, subject: intent, attempt: intent.attempt,
-    scopes: map(intent.operations, operation => capacity_cutover_operation_scope(intent: intent, operation: operation)),
+    scopes: map(intent.operations, operation => capacity_cutover_operation_scope(intent: intent, operation: operation))
+      + map(intent.file_operations, operation => capacity_cutover_file_scope(operation: operation)),
     intent_hash: content_hash_of_value(value: capacity_cutover_intent_text(intent: intent)),
     purpose: "One capacity-writer cutover: inhibit and probe exactly the named manager/unit operations; contain a successful probe; install only after drain admission" as NonEmptyStr,
     destructive: true,
@@ -115,6 +146,31 @@ fn capacity_cutover_run_authorized(
   match now() {
     Err { value: why } => Err { value: why }
     Ok { value: at } => match capacity_cutover_operation_admission(authorization: authorization, operation: operation, at: at) {
+      Err { value: why } => Err { value: why }
+      Ok { value: admitted } => run(admitted)
+    }
+  }
+}
+
+// Consent is checked at each file-effect boundary, after the clock reading.
+// This does not mint ownership or permit deleting a foreign inhibition inode.
+fn capacity_cutover_file_admission(authorization: CapacityCutoverAuthorization,
+  operation: CapacityCutoverFileOperation, at: Timestamp) -> Result<CapacityCutoverFileOperation, String> {
+  if fold(authorization.intent.file_operations, init: false, f: (found, allowed) => found || allowed == operation) {
+    match authorize(authorization: AuthorizationGranted { grant: authorization.grant, claim: authorization.claim },
+      request: capacity_cutover_request(intent: authorization.intent, escalation_id: authorization.grant.escalation_id), observed_at: at) {
+      AuthorizationPermitted { grant: _ } => Ok { value: operation }
+      AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
+    }
+  } else { Err { value: "cutover file operation names a path or verb outside the approved plan" } }
+}
+
+fn capacity_cutover_file_run_authorized(authorization: CapacityCutoverAuthorization,
+  operation: CapacityCutoverFileOperation, now: fn() -> Result<Timestamp, String>,
+  run: fn(CapacityCutoverFileOperation) -> Result<ShellResponse, String>) -> Result<ShellResponse, String> {
+  match now() {
+    Err { value: why } => Err { value: why }
+    Ok { value: at } => match capacity_cutover_file_admission(authorization: authorization, operation: operation, at: at) {
       Err { value: why } => Err { value: why }
       Ok { value: admitted } => run(admitted)
     }
