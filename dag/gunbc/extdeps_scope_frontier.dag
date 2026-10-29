@@ -628,6 +628,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/github/merge_state_contracts.dag",
   "dag/extdeps/github/mergeable_state_contracts.dag",
   "dag/extdeps/gpu/apple.dag",
+  "dag/extdeps/standards/pcie_cem.dag",
   "dag/extdeps/wikipedia/gpu_spec_table.dag",
   "dag/extdeps/wikipedia/list_of_nvidia_graphics_processing_units.dag",
   "dag/extdeps/wikipedia/list_of_amd_graphics_processing_units.dag",
