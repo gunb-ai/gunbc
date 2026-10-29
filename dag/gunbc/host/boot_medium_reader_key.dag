@@ -1,7 +1,7 @@
 module gunbc.host.boot_medium_reader_key
 
 import std.types { List, NonEmptyStr, String }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, optional_is_absent }
 import extdeps.ssh.keys {
   SshPublicKey, AuthorizedKeyEntry, AuthorizedKeyOption, AuthorizedKeyForcedCommand, authorized_key_forced_command,
   ForcedCommandOption, NoAgentForwardingOption, NoPortForwardingOption, NoPtyOption, NoUserRcOption, NoX11ForwardingOption,
@@ -132,17 +132,47 @@ fn boot_medium_reader_key_state() -> BootMediumReaderKeyState {
   )
 }
 
-// IS THE KEY MINTED -- THE ONE PLACE THIS IS DECIDED. Taking the state as an argument is what lets a
-// consumer that was HANDED a state (gunbc.auth.mtcollins1_branch_boot_trust
-// mtcollins1_boot_branch_route_refusal_cause_with is asked about a reader credential it may or may not be
-// given) ask the question without re-writing this match: a second copy of it is the drift this cleanup set
-// out to remove, and DESIGN.md §6b treats the second local implementation of one rule as the trigger to
-// generalize rather than a path to keep.
-fn boot_medium_reader_key_is_minted_of(state: BootMediumReaderKeyState) -> Bool {
+// WHICH FAULT THE KEY HAS, OR NONE WHEN IT HAS NONE. THE ONE MATCH THAT ANSWERS BOTH QUESTIONS -- is it
+// minted, and if not why -- so a consumer that refuses on the first can never write the second out again
+// (review 88050: the causes belong in a typed carrier, DESIGN.md §4c, and the operator-facing sentences
+// belong to a renderer, not to the decision). The alternatives this replaces were a three-arm boolean match
+// here and a second three-arm match in gunbc.auth.mtcollins1_branch_boot_trust picking refusal sentences,
+// which is DESIGN.md §6b's trigger: two local implementations of one rule, with a dead arm wherever they
+// disagree.
+//
+// `why` is carried verbatim. "Not yet minted" and "the mint landed part of its receipt" are different faults
+// with different remedies -- flattening them is how a partially-landed mint gets called harmless, and a route
+// reopened on HalfMinted would carry a credential whose public half nobody can check.
+type BootMediumReaderKeyFault
+  = NotMinted
+  | PartlyMinted { why: NonEmptyStr }
+
+fn boot_medium_reader_key_fault(state: BootMediumReaderKeyState) -> BootMediumReaderKeyFault? {
   match state {
-    Minted { reference: _, public_key: _, fingerprint: _ } => true
-    Unminted => false
-    HalfMinted { why: _ } => false
+    Minted { reference: _, public_key: _, fingerprint: _ } => none
+    Unminted => Present { value: NotMinted }
+    HalfMinted { why: w } => Present { value: PartlyMinted { why: w } }
+  }
+}
+
+// IS THE KEY MINTED -- THE ONE PLACE THIS IS DECIDED, and it is decided by the match above: the absence of a
+// fault IS minted-ness, so the two can never disagree about which states count. Taking the state as an
+// argument is what lets a consumer that was HANDED a credential ask without re-writing the match.
+fn boot_medium_reader_key_is_minted_of(state: BootMediumReaderKeyState) -> Bool {
+  optional_is_absent(opt: boot_medium_reader_key_fault(state: state))
+}
+
+// THE RECEIPT'S REFERENCE, OR NONE. The other question a consumer asks about the three states -- not "is it
+// minted" but "give me the pinned version I am supposed to grant against" -- answered here too, so that
+// deciding which states are usable is never re-written in a consumer that also needs to destructure one. The
+// one that used to match `Minted { reference: r, ... } => ..., Unminted => none, HalfMinted => none` inline is
+// gunbc.auth.mtcollins1_branch_boot_trust mtcollins1_boot_branch_reader_grant_over; review 88050 counted that
+// as the second local implementation of the minted rule.
+fn boot_medium_reader_key_minted_reference(state: BootMediumReaderKeyState) -> SecretRef? {
+  match state {
+    Minted { reference: r, public_key: _, fingerprint: _ } => Present { value: r }
+    Unminted => none
+    HalfMinted { why: _ } => none
   }
 }
 

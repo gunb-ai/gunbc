@@ -34,7 +34,7 @@ import gunbc.auth.authorization_pattern_selection {
 }
 import gunbc.auth.mtcollins1_branch_boot_trust {
   mtcollins1_boot_branch_federation, mtcollins1_boot_branch_federation_with, mtcollins1_boot_branch_is_trusted,
-  mtcollins1_boot_branch_route_refusal_cause_with,
+  mtcollins1_boot_branch_route_refusal_cause_with, mtcollins1_boot_branch_route_refusal_text,
 }
 // THE READER KEY'S STATE, AS A TYPE, IS WHAT OPENS AND CLOSES THIS ROUTE. Imported rather than re-derived:
 // review 87627 found two consumers comparing the secret's version against the literal "pending", so the
@@ -633,9 +633,12 @@ fn boot_credential_source_from_branch_selection_with(state: BootMediumReaderKeyS
   match s {
     PatternSelected { pattern: FederatedScopedGrant, receipt: _ } =>
       match mtcollins1_boot_branch_route_refusal_cause_with(state: state) {
-        // THE CAUSE IS THE ROUTE'S OWN WORDS, carried through rather than restated here. Today it names
-        // the unminted reader key; it never says "unprovisioned" when the reason is something else.
-        Present { value: cause } => BootCredentialSourceRefused { cause: cause }
+        // THE CAUSE IS THE ROUTE'S OWN, carried through rather than restated here -- as a TYPED cause, which
+        // is rendered to operator prose only at the boundary, because BootCredentialSourceRefused is an
+        // existing authority shape whose cause field is a sentence. Today it names the unminted reader key;
+        // it never says "unprovisioned" when the reason is something else.
+        Present { value: cause } =>
+          BootCredentialSourceRefused { cause: mtcollins1_boot_branch_route_refusal_text(cause: cause) }
         Absent => BootCredentialSourceSelected { source: TrustedBranchBootIdentity }
       }
     PatternSelected { pattern: _, receipt: _ } => BootCredentialSourceRefused { cause: "the branch boot selected a pattern that mints no branch boot credential" as NonEmptyStr }

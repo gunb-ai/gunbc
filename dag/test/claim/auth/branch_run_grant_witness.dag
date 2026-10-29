@@ -3,7 +3,7 @@ module test.claim.auth.branch_run_grant_witness
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp, CommitSha }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, optional_is_absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell, IamCondition, gcp_policy_cells, gcp_cell_in }
 import extdeps.cloud.hetzner_cloud_api { HetznerTokenRead }
 import extdeps.github.github { GitHubUser, User }
@@ -47,7 +47,7 @@ import gunbc.auth.privileged_effect_census { mtcollins1_branch_boot_operator_rul
 import gunbc.auth.branch_dispatch_federation { branch_boot_credential_effect_approval_free }
 import gunbc.auth.mtcollins1_branch_boot_trust {
   mtcollins1_boot_trusted_branches, mtcollins1_boot_trusted_branch_ref, mtcollins1_boot_trusted_environment,
-  mtcollins1_boot_trusted_environment_is_nameable, mtcollins1_boot_trusted_ref_pin,
+  mtcollins1_boot_trusted_ref_pin,
   mtcollins1_boot_branch_admits, mtcollins1_boot_branch_presented_claims, mtcollins1_boot_branch_is_trusted,
   mtcollins1_boot_branch_service_account, mtcollins1_boot_branch_provider_resource,
   mtcollins1_boot_branch_claim_pins, mtcollins1_boot_branch_claim_pins_with,
@@ -56,11 +56,14 @@ import gunbc.auth.mtcollins1_branch_boot_trust {
   mtcollins1_boot_branch_federation_with, mtcollins1_boot_branch_secret_grants_with,
   mtcollins1_boot_branch_bmc_grant, mtcollins1_boot_branch_reader_grant,
   mtcollins1_boot_branch_route_refusal_cause, mtcollins1_boot_branch_route_refusal_cause_with,
+  mtcollins1_boot_branch_route_refusal_text, mtcollins1_boot_branch_route_standing,
+  ReaderKeyUnusable, Refused, Admitted,
   mtcollins1_boot_branch_bmc_secret_id, mtcollins1_boot_branch_bmc_grants,
   mtcollins1_boot_branch_principal_set, mtcollins1_boot_branch_wif_pool_id,
 }
 import gunbc.host.boot_medium_reader_key {
-  BootMediumReaderKeyState, Unminted, Minted, HalfMinted, boot_medium_reader_key_state,
+  BootMediumReaderKeyState, Unminted, Minted, HalfMinted,
+  NotMinted, PartlyMinted, boot_medium_reader_key_state,
   boot_medium_reader_ssh_privkey_secret,
 }
 import extdeps.ssh.keys { SshPublicKey, Ed25519 }
@@ -733,8 +736,18 @@ fn branch_boot_verdict_matches_todays_binding() -> Bool {
         _ => false
       }
       && match mtcollins1_boot_branch_route_refusal_cause_with(state: Unminted) {
+        // THE CAUSE IS MATCHED, NOT GREPED (review 88050): the route is closed BECAUSE the key is unminted,
+        // not because some other conjunct happens to be missing -- a swap of causes would have kept the old
+        // text-grepping claim green. The operator sentence that names the mint is the renderer's business.
         Absent => false
-        Present { value: cause } => string_contains(s: cause, pattern: "#15329")
+        Present { value: ReaderKeyUnusable { fault: NotMinted } } =>
+          string_contains(
+            s: mtcollins1_boot_branch_route_refusal_text(
+              cause: ReaderKeyUnusable { fault: NotMinted }
+            ),
+            pattern: "#15329"
+          )
+        Present { value: _ } => false
       }
       && match branch_boot_census_rows().first() {
         Absent => false
@@ -1020,7 +1033,11 @@ test fn a_boot_presenting_no_environment_is_refused() -> Bool {
 // is the §5 property the review asked for: removing the environment standing cannot leave a provider that
 // admits a branch boot.
 fn branch_boot_environment_is_nameable() -> Bool {
-  mtcollins1_boot_trusted_environment_is_nameable()
+  // ASKED OF THE PIN BUILDER, which is where that question is actually decided -- and expressed as presence
+  // (std.optional optional_is_absent) rather than a hand-written Absent/Present match, per review 87673. The
+  // authority module's own is_nameable helper is gone: review 88050 showed it was only ever standing in for
+  // the typed standing, which now says the same thing in mtcollins1_boot_branch_route_standing.
+  !optional_is_absent(opt: mtcollins1_boot_trusted_environment_pin())
 }
 
 // (1) the pin tracks the standing, in BOTH directions
@@ -1237,12 +1254,21 @@ test fn a_half_minted_reader_key_keeps_the_route_closed_by_its_own_reason() -> B
   }
   && match mtcollins1_boot_branch_route_refusal_cause_with(state: half_minted_reader_state()) {
     Absent => false
-    Present { value: c } =>
-      string_contains(s: c, pattern: "part of its receipt")
-      // the refusal carries the state's reason, not a generic sentence: mutate the why and the text moves
-      && string_contains(s: c, pattern: "witness fixture")
-      // and it still points at the change that finishes the mint
-      && string_contains(s: c, pattern: "#15329")
+    // THE FAULT IS TYPED AND CARRIES ITS OWN REASON (review 88050): matching the arm says WHICH fault the
+    // route refused on, and `why` is the state's own text -- mutate the fixture's why and both the matched
+    // value and the rendered sentence move with it.
+    Present { value: ReaderKeyUnusable { fault: PartlyMinted { why: w } } } =>
+      string_contains(s: w as String, pattern: "witness fixture")
+      && string_contains(
+        s: mtcollins1_boot_branch_route_refusal_text(cause: ReaderKeyUnusable { fault: PartlyMinted { why: w } }),
+        pattern: "part of its receipt"
+      )
+      // and the sentence still points at the one place to act
+      && string_contains(
+        s: mtcollins1_boot_branch_route_refusal_text(cause: ReaderKeyUnusable { fault: PartlyMinted { why: w } }),
+        pattern: "#15329"
+      )
+    Present { value: _ } => false
   }
   // the reader cell is absent, so the policy would have been the BMC credential alone -- which is exactly
   // the incomplete policy the both-cells-or-nothing rule refuses to converge
@@ -1253,9 +1279,55 @@ test fn a_half_minted_reader_key_keeps_the_route_closed_by_its_own_reason() -> B
   // and the UNMINTED refusal is the other sentence, naming the mint rather than a partial one
   && match mtcollins1_boot_branch_route_refusal_cause_with(state: Unminted) {
     Absent => false
-    Present { value: c } =>
-      string_contains(s: c, pattern: "is not minted")
-      && !string_contains(s: c, pattern: "part of its receipt")
+    // THE TWO FAULTS STAY TWO: different arms of the typed sum, different rendered sentences. Under the old
+    // string causes this pair of claims was the only thing keeping them distinct, and it could not say which
+    // cause had fired -- only which words had.
+    Present { value: ReaderKeyUnusable { fault: NotMinted } } => {
+      let sentence = mtcollins1_boot_branch_route_refusal_text(cause: ReaderKeyUnusable { fault: NotMinted })
+      string_contains(s: sentence, pattern: "is not minted")
+        && !string_contains(s: sentence, pattern: "part of its receipt")
+    }
+    Present { value: _ } => false
+  }
+}
+
+// ONE DERIVATION, TWO PROJECTIONS (review 88050). The refusal and the federation builder used to read the
+// standing separately, and the builder carried two arms to catch them disagreeing -- arms its own comment
+// called unreachable, which is the tell that they were a second representation of one fact rather than safety.
+// Both are now projections of gunbc.auth.mtcollins1_branch_boot_trust mtcollins1_boot_branch_route_standing,
+// and this claim is what makes that more than a comment: for the same input state, the standing is Refused
+// exactly when the refusal reports a cause (and reports THAT cause's rendering, not some other sentence), and
+// it is Admitted exactly when a federation exists -- carrying the admission's own condition and grants rather
+// than a second computation that could have drifted. Reintroduce the double read (e.g. have the builder call
+// mtcollins1_boot_branch_attribute_condition() again instead of folding the standing's pins) and the second
+// half goes red the moment the two disagree.
+test fn the_refusal_and_the_federation_are_projections_of_one_standing() -> Bool {
+  match mtcollins1_boot_branch_route_standing(state: Unminted) {
+    // today's world closes the route, so the projection must say so rather than stay silent
+    Admitted { facts: _ } => false
+    Refused { cause: cause } => match mtcollins1_boot_branch_route_refusal_cause_with(state: Unminted) {
+      Absent => false
+      Present { value: reported } =>
+        // STRUCTURAL EQUALITY ON THE CAUSE (the corpus does this of any coproduct value:
+        // dag/gunbc/auth/approval_device_crypto_client.dag verdict == CryptoRefused). The projection reports
+        // the SAME cause the standing carries -- not merely a sentence that reads the same.
+        reported == cause
+          && mtcollins1_boot_branch_route_refusal_text(cause: reported)
+              == mtcollins1_boot_branch_route_refusal_text(cause: cause)
+          && match mtcollins1_boot_branch_federation_with(state: Unminted) {
+            // refused means NO federation -- not an empty one, not a partial one
+            Present { value: _ } => false
+            Absent => match mtcollins1_boot_branch_route_standing(state: minted_reader_state()) {
+              Refused { cause: _ } => false
+              Admitted { facts: facts } => match mtcollins1_boot_branch_federation_with(state: minted_reader_state()) {
+                Absent => false
+                Present { value: fed } =>
+                  fed.attribute_condition == facts.attribute_condition
+                    && branch_grant_secrets(grants: fed.secret_grants) == branch_grant_secrets(grants: facts.secret_grants)
+              }
+            }
+          }
+    }
   }
 }
 
