@@ -3029,16 +3029,21 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
 // (gunbc.ci.ci_spec gunbc_ci_sm_max_time; the prelude's other lines are local file writes) and the probe's
 // declared bound; for the always() release, the owned release alone. The flat aux budget
 // is what killed a probe's first wet run while it was still typechecking.
-// A RUNNER-HOST STEP'S TIMEOUT: its closure's resolve budget (gunbc.runner.runner_host_cap_bracket
-// runner_host_closure_resolve_budget, not the generic resolve figure) plus the phases it runs after it.
-fn fleet_converge_runner_host_step_timeout_minutes(phases: List<Second>) -> Int {
-  let secs = fold(phases, second_count(s: runner_host_closure_resolve_budget) as Int, (acc, p) => acc + (second_count(s: p) as Int))
+// A GUNBC RUN STEP'S TIMEOUT, ONE RULE: its startup (the resolve of its entry's closure) plus the phases it
+// runs after it, rounded up to whole minutes. The callers differ only in which startup budget they name.
+fn fleet_converge_step_timeout_minutes(startup_seconds: Int, phases: List<Second>) -> Int {
+  let secs = fold(phases, startup_seconds, (acc, p) => acc + (second_count(s: p) as Int))
   (secs + 59) / 60
 }
 
+// A RUNNER-HOST STEP'S TIMEOUT: its closure's resolve budget (gunbc.runner.runner_host_cap_bracket
+// runner_host_closure_resolve_budget, not the generic resolve figure) plus the phases it runs after it.
+fn fleet_converge_runner_host_step_timeout_minutes(phases: List<Second>) -> Int {
+  fleet_converge_step_timeout_minutes(startup_seconds: second_count(s: runner_host_closure_resolve_budget) as Int, phases: phases)
+}
+
 fn fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: List<Second>) -> Int {
-  let secs = fold(phases, gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60, (acc, p) => acc + (second_count(s: p) as Int))
-  (secs + 59) / 60
+  fleet_converge_step_timeout_minutes(startup_seconds: gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60, phases: phases)
 }
 
 // THE REAL KVM OBSERVER AGAINST THE REAL BMC, NO BOOT (gunbc.machine_intake.mtcollins1_kvm_observer_observe):
