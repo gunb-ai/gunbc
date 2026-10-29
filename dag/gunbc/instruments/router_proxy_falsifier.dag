@@ -543,8 +543,12 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   // ONE curl process, TWO transfers (-Z): the requests must overlap, and sequential bindings cannot
   // overlap -- the holding turn would already have finished by the time its successor was issued. One
   // transfer holds f1 (its engine sleeps six seconds) while the other arrives, and -i prints the status
+  // The hold needs ?hold=1, not ?hold: nginx leaves arg_hold NIL for a query without '=', so a bare
+  // ?hold never entered the sleep, both transfers finished instantly, f1 never reached its cap, and
+  // the refusal the case exists to prove was never issued. Measured against the fixture on srv1:
+  // ?hold=1 sleeps 6.00s, ?hold returns in 0.001s.
   // line and headers of each so the refusal is visible as a 429 carrying Retry-After.
-  let cap_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: cap-1", "--data-binary", "\{\"model\":\"m-f\",\"q\":\"contended\"\}", "-w", "\n%\{http_code\}\n", "https://127.0.0.1:18445/v1/chat/completions?hold", "https://127.0.0.1:18445/v1/chat/completions?hold"])
+  let cap_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: cap-1", "--data-binary", "\{\"model\":\"m-f\",\"q\":\"contended\"\}", "-w", "\n%\{http_code\}\n", "https://127.0.0.1:18445/v1/chat/completions?hold=1", "https://127.0.0.1:18445/v1/chat/completions?hold=1"])
   // After the contended turn releases, the SAME session still goes to f1: the binding survived a refusal.
   let cap_after_release = dev_request(key: "ck-falsifier", session: "cap-1", body: model_body(model: "m-f"), path: "/v1/chat/completions")
   let drained = dev_request(key: "ck-falsifier", session: "drained-1", body: model_body(model: "m-g"), path: "/v1/chat/completions")
