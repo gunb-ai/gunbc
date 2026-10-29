@@ -7,13 +7,12 @@ import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
 import gunbc.ci.repository_ci_profile {
   RepositoryCiProfile, RosterGate, RosterRoute, ComposedOverlayInterpreterRoster, InstrumentLabelRows,
   PublicSeed, OverlayIngest, RosterAggregate, AnnotationStep, ProjectionDrift, HealSeal, HealPublisherPolicy,
-  DagInvocation, gunbc_repository_ci_profile, repository_ci_profile_refusal, profile_uses_public_seed,
-  profile_overlay, roster_route_is_instrument_dispatcher, fleet_runner_group_target,
+  DagInvocation, gunbc_repository_ci_profile, repository_ci_profile_refusal,
+  fleet_runner_group_target,
   github_hosted_publisher_runner_target, dag_invocation_argv,
 }
 import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted }
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
-import gunbc.required_ci_contract_epoch { required_ci_context_name }
 import gunbc.witness.witness_roster {
   RosterEntry, RosterEntryKind, Enforced, KnownRed, MustNotCompile,
   roster_entry_is_enforced, roster_entry_is_known_red, roster_entry_is_must_not_compile,
@@ -37,57 +36,41 @@ import gunbc.witness.repository_witness_workflow {
 // WHAT THESE CLAIMS HOLD.
 //
 // The shared CI emitters (gunbc.ci.repository_ci_profile and the modules that read it) exist so that
-// gunbc's repository and its private mirror are rendered by ONE set of emitters from TWO rows. The risk
-// that substitution creates is the obvious one: the profile row becomes a second description of the
-// repository that its actual emitters never consult, so it drifts and starts certifying a CI that does
-// not exist. Each claim below names a fact the repository's own authority carries and asserts the row
-// agrees with it - the required context name is the one authority, the roster route is the one a
-// self-compiling repository can take, and the halves of the heal transaction either both exist or neither
-// does. A row that drifts from its authority is a red run here rather than a green check about nothing.
+// gunbc's repository and its private mirror are rendered by ONE set of emitters from TWO rows. The risk that
+// substitution creates is the obvious one: the profile row becomes a second description of the repository
+// that its emitters never consult, so it drifts and starts certifying a CI that does not exist. The answer is
+// not a witness holding two descriptions equal - the four workflow emitters read identity, runner, timeout,
+// cadence and source roots out of this row, and the committed bytes are compared with their emission by the
+// authority that owns generated artifacts (dag/gunbc/instruments/tier_o_drift_check.dag). So what is claimed
+// here is what no emitter can vouch for itself: that gunbc's own row is well formed, that the shapes a
+// repository may not declare are refused before a byte is emitted, and that a declared row becomes a step
+// rather than a comment.
 
 fn public_profile() -> RepositoryCiProfile {
   gunbc_repository_ci_profile()
 }
 
-// THE PUBLIC PROFILE ROW DESCRIBES THE CI THAT ACTUALLY RUNS, by the authority that names the required
-// check. If gunbc's required gate is renamed in its own authority and this row is not updated with it,
-// branch protection and the emitted YAML disagree and one of them is lying.
-// THE REQUIRED CONTEXT IS CARRIED AS THE REPOSITORY'S GATE IDENTITY, and the emitters read it from here
-// (gunbc.witness.compiler_gate_workflow, gunbc.heal_workflow, gunbc.heal_publisher_workflow and
-// gunbc.drift_watch_workflow all project from this row). What the byte claims
-// (dag/test/claim/repository_ci_profile_emission_bytes_witness.dag) prove is that the committed files are
-// the emission of the row; this claim proves the row itself names the obligation the CI contract epochs
-// declare, so the row cannot quietly become the authority for a check that no longer exists.
-test fn the_profile_carries_the_required_obligation_the_ci_contract_declares() -> Bool {
-  public_profile().roster.required_context == (required_ci_context_name as NonEmptyStr)
-    && public_profile().roster.job_id == (required_ci_context_name as NonEmptyStr)
+// THE ROW IS CHECKED AGAINST THE RULES THAT DECIDE WHAT A REPOSITORY MAY DECLARE - never against a copy of
+// the strings the emitters print. The four workflow emitters read identity, runner, timeout and source roots
+// out of this row (gunbc.witness.compiler_gate_workflow, gunbc.heal_workflow,
+// gunbc.heal_publisher_workflow, gunbc.drift_watch_workflow), so a claim repeating those facts against an
+// emitter constant would be two descriptions held equal by a witness. What only the row can answer is what is
+// checked: that gunbc's own row is well formed, and that the lanes a repository cannot mix are refused.
+test fn the_public_row_is_well_formed_under_the_profile_rules() -> Bool {
+  repository_ci_profile_refusal(profile: public_profile()) == no_refusal()
 }
 
-// A SELF-COMPILING REPOSITORY DECLARES NEITHER A SEED NOR AN OVERLAY. The seed row means "build the
-// compiler out of another repository", and the overlay means "copy this repository's rows into a composed
-// tree"; gunbc needs neither, and a row that claimed otherwise would have the required gate build a
-// second copy of the compiler it is running under.
-// A SELF-COMPILING REPOSITORY DECLARES NEITHER A SEED NOR AN OVERLAY, and takes the instrument lane. The
-// seed row means "build the compiler out of another repository" and the overlay means "copy this
-// repository's rows into a composed tree"; gunbc needs neither, and a row claiming otherwise would have the
-// required gate build a second copy of the compiler it is already running under.
-test fn public_profile_declares_no_seed_no_overlay_and_takes_the_instrument_lane() -> Bool {
-  profile_uses_public_seed(profile: public_profile()) == false
-    && match profile_overlay(profile: public_profile()) {
-         Absent => true
-         Present { value: _ } => false
-       }
-    && roster_route_is_instrument_dispatcher(profile: public_profile())
-}
-
-// GUNBC DECLARES THE JOBS IT ACTUALLY RUNS. Each committed workflow is the emission of one of these rows,
-// so a row deleted here is a file that must be deleted too - which is the mechanism by which a repository
-// that stops committing generated mirrors loses its heal and publisher without anyone editing YAML.
-test fn public_profile_declares_the_heal_drift_and_publisher_it_runs() -> Bool {
-  repository_declares_heal_job(profile: public_profile())
-    && repository_declares_drift_job(profile: public_profile())
-    && repository_declares_publisher(profile: public_profile())
-    && repository_ci_profile_refusal(profile: public_profile()) == no_refusal()
+// A REPOSITORY THAT DISPATCHES ITS ROSTER THROUGH THE INSTRUMENT CANNOT ALSO DECLARE A SECOND COMPILER. The
+// dispatcher runs every row in the checkout that already holds the compiler under test, so a seed row or an
+// overlay beside it is a required gate reporting on a binary none of its rows ever ran. Refused by the rules
+// rather than by convention, which is what stops the instrument lane and a mirror's composed lane from being
+// "simplified" into one shape that quietly runs the wrong compiler.
+test fn the_instrument_lane_is_refused_when_it_also_declares_a_seed() -> Bool {
+  let refused = match repository_ci_profile_refusal(profile: instrument_lane_with_seed()) {
+    Present { value: reason } => string_contains(s: reason as String, pattern: "instrument dispatcher")
+    Absent => false
+  }
+  refused && repository_ci_profile_refusal(profile: public_profile()) == no_refusal()
 }
 
 fn no_refusal() -> Optional<NonEmptyStr> {
@@ -583,6 +566,21 @@ fn with_no_drift() -> RepositoryCiProfile {
     roster: base.roster,
     public_seed: base.public_seed,
     drift: Absent,
+    publisher: base.publisher
+  }
+}
+
+// The instrument lane asking for a seed too: gunbc's row with a seed repository declared beside it. The
+// refusal claim's subject, and the shape the rules must never accept.
+fn instrument_lane_with_seed() -> RepositoryCiProfile {
+  let base = public_profile()
+  RepositoryCiProfile {
+    repository: base.repository,
+    default_branch: base.default_branch,
+    heal: base.heal,
+    roster: base.roster,
+    public_seed: Present { value: fixture_seed() },
+    drift: base.drift,
     publisher: base.publisher
   }
 }

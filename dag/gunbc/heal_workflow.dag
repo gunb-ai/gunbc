@@ -127,7 +127,9 @@ data heal_round_base_mirror_env: String = "HEAL_BASE_MIRROR_COMMIT"
 // THE HEAL JOB'S NAME, ID AND TIMEOUT COME FROM THE REPOSITORY'S CI PROFILE ROW: a repository that
 // commits no generated mirror deletes the heal row and this file with it, and a repository that does
 // keeps them - with one description of the job rather than this module and the profile each carrying one.
-// The committed bytes are the evidence (dag/test/claim/repository_ci_profile_emission_bytes_witness.dag).
+// The committed bytes are the evidence, and the comparison belongs to the authority that owns generated
+// artifacts (dag/gunbc/instruments/tier_o_drift_check.dag, repaired by generated_artifact_gate.dag main_wet);
+// a claim holding a second copy of this file's text would only be another thing to keep equal.
 data heal_workflow_name: String = gunbc_heal_job().workflow_name as String
 
 data heal_workflow_job_id: String = gunbc_heal_job().job_id as String

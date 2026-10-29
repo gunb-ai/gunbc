@@ -70,8 +70,10 @@ import gunbc.ci.ci_spec {
 
 // THE PUBLISHER'S NAME, JOB ID AND TIMEOUT COME FROM THE REPOSITORY'S CI PROFILE ROW. Two of these
 // literals used to sit beside the step list while the profile also described the job; the row is now the
-// single description and this emitter is a projection of it, with the committed bytes checked against the
-// emission in dag/test/claim/repository_ci_profile_emission_bytes_witness.dag.
+// single description and this emitter is a projection of it. The committed bytes are compared against this
+// emission by the authority that owns generated artifacts (dag/gunbc/instruments/tier_o_drift_check.dag),
+// which is the check the drift-watch job already runs; a claim re-quoting this file would be a second
+// description of the same bytes.
 data heal_publisher_workflow_name: String = gunbc_heal_publisher_job().workflow_name as String
 
 data heal_publisher_workflow_job_id: String = gunbc_heal_publisher_job().job_id as String

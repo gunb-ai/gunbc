@@ -489,6 +489,18 @@ fn profile_overlay(profile: RepositoryCiProfile) -> Optional<OverlayIngest> {
   }
 }
 
+// WHETHER THE GATE ASSEMBLES A COMPILER THAT IS NOT THE ONE ALREADY IN ITS CHECKOUT - by building a seed
+// repository beside itself, or by running over a composed overlay root. The instrument-lane arm of
+// repository_ci_profile_refusal asks this: a row dispatched to the instrument dispatcher runs in the checkout
+// that holds the compiler under test, so a profile that also declares a seed or an overlay is describing two
+// repositories at once, and the gate would report on a binary none of its rows ever ran.
+fn profile_builds_a_second_compiler(profile: RepositoryCiProfile) -> Bool {
+  profile_uses_public_seed(profile: profile) || match profile.roster.route {
+    ComposedOverlayInterpreterRoster { overlay: _ } => true
+    InstrumentLabelRows => false
+  }
+}
+
 // A PROFILE IS WELL FORMED when its halves agree and no job pins itself to a pool nothing ensures.
 // Called by every emitter before it renders a byte, so a mis-shapen row is a refusal at emit time rather
 // than a workflow that fails on a runner that was never created, or a seal no publisher will ever read.
@@ -501,6 +513,8 @@ fn repository_ci_profile_refusal(profile: RepositoryCiProfile) -> Optional<NonEm
     Present { value: "REFUSE: the publisher is triggered by the completion of a workflow this profile does not declare, so it can never run with anything to publish. Name the heal or drift workflow that seals the candidate (gunbc.ci.repository_ci_profile profile_publisher_trigger_is_declared)." }
   } else if gt_zero(value: profile.roster.timeout_minutes) == false {
     Present { value: "REFUSE: the required gate declares a timeout that is not positive; it would be killed before it could report a reason." }
+  } else if roster_route_is_instrument_dispatcher(profile: profile) && profile_builds_a_second_compiler(profile: profile) {
+    Present { value: "REFUSE: this profile routes its roster through the instrument dispatcher while declaring a seed compiler or an overlay to compose. The dispatcher runs every row in the checkout that already holds the compiler under test, so the seed would build a second copy of it and the overlay would compose a root nothing reads. Take the composed route, or declare neither (gunbc.ci.repository_ci_profile RosterRoute)." }
   } else {
     Absent
   }
