@@ -15,7 +15,7 @@ import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 import gunbc.serving.srv1_serving_launch {
   srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
-  srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, srv1_router_upstream_launch_facts, srv1_serving_route,
+  srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, Srv1ImageFileReplaced, Srv1ImageFileAdded, srv1_router_upstream_launch_facts, srv1_serving_route,
   srv1_serving_unmodeled_frontier_rows,
 }
 
@@ -98,7 +98,7 @@ test fn the_retained_wrapper_is_the_serving_entrypoint_the_receipt_read() -> Boo
   let b = srv1_serving_wrapper.body
   string_contains(s: b, pattern: "#!/bin/bash")
     && string_contains(s: b, pattern: "lil-flash-next")
-    && string_contains(s: b, pattern: "IMG=sha256:236aa2f2dc64266e2239f03aaa0e66d52d57a2a6405ece8dfb92a5ae9547f881")
+    && string_contains(s: b, pattern: "IMG=sha256:74b35f46d8067dc6cae68ff6b92bf010497a5cbb8a06429f5729f8ed342ec7ba")
     && string_contains(s: b, pattern: "srv1-inference.slice")
     && string_contains(s: b, pattern: "pool-card")
     && string_contains(s: b, pattern: ".pool_key")
@@ -115,13 +115,18 @@ test fn the_launch_exports_the_observed_authorities() -> Bool {
     && (srv1_serving_pinned_checkpoint().revision as String) == (srv1_serving_startup_reading.checkpoint_revision as String)
     && (srv1_serving_image().digest_sha256 as String) == (srv1_serving_startup_reading.image_digest_sha256 as String)
     // srv1 runs the DERIVED image, not the upstream base: the two digests differ, the base is the
-    // upstream row itself, and every replacement changed the file it names: four of them, the #255
-    // adapter and #263's retention, store controller and storage manager.
+    // upstream row itself, and every change is a real one: seven files, six replaced (each digest differs
+    // from the base's) and one added (checkpoint_loss.py, which the base does not have).
     && (srv1_serving_image_derivation.base.digest_sha256 as String) == (local_inference_lab_vllm_image.digest_sha256 as String)
     && (srv1_serving_image().digest_sha256 as String) != (local_inference_lab_vllm_image.digest_sha256 as String)
-    && length(xs: concat([srv1_serving_image_derivation.replacements.head], srv1_serving_image_derivation.replacements.tail)) == 4
-    && concat([srv1_serving_image_derivation.replacements.head], srv1_serving_image_derivation.replacements.tail)
-      .all(r => (r.base_file_sha256_hex as String) != (r.replaced_file_sha256_hex as String))
+    && length(xs: concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail)) == 7
+    && concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail)
+      .all(c => match c {
+        Srv1ImageFileReplaced { path: _, base_file_sha256_hex: b, replaced_file_sha256_hex: r } => (b as String) != (r as String)
+        Srv1ImageFileAdded { path: _, added_file_sha256_hex: _ } => true
+      })
+    && fold(concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail), init: 0,
+      f: (n, c) => match c { Srv1ImageFileAdded { path: _, added_file_sha256_hex: _ } => n + 1 _ => n }) == 1
 }
 
 // THE ROUTER'S LAUNCH FACTS READ THE LAUNCH: the port is the launch's listen port, the advertised model

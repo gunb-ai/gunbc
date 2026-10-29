@@ -48,8 +48,8 @@ import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading, s
 // contrast, IS modeled (srv1_serving_launch below), and this script's own value is decidable: its body
 // hashes to the wrapper_sha256_hex the startup receipt read off the host.
 data srv1_serving_wrapper: RetainedShellScript = RetainedShellScript {
-  body: "#!/bin/bash\n# srv1: serve Qwen3.8-Flash-Next (NVFP4 weights, FP8 K/V) with the lil vLLM image, as the Vast \"flash-next lil v2\" template does:\n# lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie, LMCache ram-disk session cache, HTTPS with a\n# self-signed key kept across restarts, an API key, restart on crash. Differences from Vast: the linux/arm64 (DGX Spark)\n# build of the image (no arm64 build of the Vast digest exists), GPU through CDI, and the container in srv1-inference.slice\n# (cores 96-127, hard cap 130 GiB, no swap; LMCache RAM tier 100 GiB, which lives in /dev/shm, so 110 GiB shm; no host IPC) so it cannot squeeze the sessions;\n# no automatic restart, so a reboot does not bring it back unattended. /cache/jit (the b12x / FlashInfer kernel\n# tuning, hours for a new batch-shape set) is on the host so a container restart keeps it.\nset -eu\n# EXTRA: more lil / vLLM options after \"--\" (e.g. \"--max-num-seqs 64 --mode off\"); they override the profile.\nEXTRA=\x24\{EXTRA:-}\nIMG=sha256:236aa2f2dc64266e2239f03aaa0e66d52d57a2a6405ece8dfb92a5ae9547f881  # da08aaf9 + the LMCache checkpoint lost-retry repair (gunbc-private#263); da08aaf9 = base af14f1a9 + the delete-accounting repair (gunbc-private#255)\nB=\x24HOME/lil; mkdir -p \x24B/hf \x24B/kv \x24B/serve \x24B/jit; umask 077\n[ -s \x24B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d '/+=' > \x24B/pool_key\numask 022\ndocker rm -f lil-flash-next >/dev/null 2>&1 || true\n# Removal is asynchronous; a run issued before the name frees fails with \"Conflict\".\nfor i in \x24(seq 1 60); do docker container inspect lil-flash-next >/dev/null 2>&1 || break; sleep 2; done\ndocker run -d --name lil-flash-next --restart no --device nvidia.com/gpu=all --cgroup-parent=srv1-inference.slice --memory=130g --memory-swap=130g \\\n  --shm-size 110g -p 18000:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v \x24B/hf:/root/.cache/huggingface -v \x24B/kv:/cache/kv -v \x24B/jit:/cache/jit -v \x24B/serve:/root/serve -v \x24B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash \x24IMG -lc '\nD=/root/serve; ev(){ echo \"\x24(date -u +%FT%TZ) \x24*\" >> \x24D/events.log; }\n[ -s \x24D/tls.key ] && [ -s \x24D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj \"/CN=pool-card\" -keyout \x24D/tls.key -out \x24D/tls.crt >> \x24D/events.log 2>&1\nev \"START srv1 (driver \x24(nvidia-smi --query-gpu=driver_version --format=csv,noheader), cache ram-disk, L1 100G, L2 200G, L2 16 workers O_DIRECT, TLS)\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=100 --env LMCACHE_L2_GB=200 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 \\\n  -- --port 18000 '\"\x24EXTRA\"' --ssl-keyfile \x24D/tls.key --ssl-certfile \x24D/tls.crt --api-key \"\x24(cat /root/.pool_key)\" >> \x24D/serve.log 2>&1'\necho started; docker ps --filter name=lil-flash-next --format \"{{.Status}}\"",
-  reason: "srv1's serving container entrypoint, retained verbatim from /home/briansrls/strata-test/srv1_lil_serve.sh (re-read off the host 2026-10-29 14:22 after the checkpoint-retry relaunch, while the container ran from it; sha256 db922b3992cadea7f897a7f1eb9d2f2d67e4d1ab496f5c750d5fddf45fc83d07, pinned in gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading). THE CLAIM OF THIS ROW, narrowed to match its single dissolves_to (DESIGN 4b: the trigger names the capability this row loses): the container launch itself — image by digest, restart no, srv1-inference.slice cgroup, 130g/130g memory-and-swap, 110g shm, device/env/mount flags, published port — retires into extdeps.docker.cli DockerCreateSpec rendered by docker_run_foreground_argv, the dissolves_to ref, together with the launch tail srv1_serving_launch already models. The OTHER effects the script still performs (the TLS self-mint at CN=pool-card, the events.log START record, the key generation, the key read at exec time) are NOT claimed by this row's trigger; each carries its own keyed trigger row in srv1_serving_unmodeled_frontier_rows below. No secret value appears in this text." as NonEmptyStr,
+  body: "#!/bin/bash\n# srv1: serve Qwen3.8-Flash-Next (NVFP4 weights, FP8 K/V) with the lil vLLM image, as the Vast \"flash-next lil v2\" template does:\n# lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie, LMCache ram-disk session cache, HTTPS with a\n# self-signed key kept across restarts, an API key, restart on crash. Differences from Vast: the linux/arm64 (DGX Spark)\n# build of the image (no arm64 build of the Vast digest exists), GPU through CDI, and the container in srv1-inference.slice\n# (cores 96-127, hard cap 130 GiB, no swap; LMCache RAM tier 100 GiB, which lives in /dev/shm, so 110 GiB shm; no host IPC) so it cannot squeeze the sessions;\n# no automatic restart, so a reboot does not bring it back unattended. /cache/jit (the b12x / FlashInfer kernel\n# tuning, hours for a new batch-shape set) is on the host so a container restart keeps it.\nset -eu\n# EXTRA: more lil / vLLM options after \"--\" (e.g. \"--max-num-seqs 64 --mode off\"); they override the profile.\nEXTRA=\x24\{EXTRA:-}\nIMG=sha256:74b35f46d8067dc6cae68ff6b92bf010497a5cbb8a06429f5729f8ed342ec7ba  # 236aa2f2 + LMCache checkpoint page-loss attribution, observation only (gunbc-private#264); 236aa2f2 = da08aaf9 + the lost-retry repair (#263); da08aaf9 = base af14f1a9 + the delete-accounting repair (#255)\nB=\x24HOME/lil; mkdir -p \x24B/hf \x24B/kv \x24B/serve \x24B/jit; umask 077\n[ -s \x24B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d '/+=' > \x24B/pool_key\numask 022\ndocker rm -f lil-flash-next >/dev/null 2>&1 || true\n# Removal is asynchronous; a run issued before the name frees fails with \"Conflict\".\nfor i in \x24(seq 1 60); do docker container inspect lil-flash-next >/dev/null 2>&1 || break; sleep 2; done\ndocker run -d --name lil-flash-next --restart no --device nvidia.com/gpu=all --cgroup-parent=srv1-inference.slice --memory=130g --memory-swap=130g \\\n  --shm-size 110g -p 18000:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v \x24B/hf:/root/.cache/huggingface -v \x24B/kv:/cache/kv -v \x24B/jit:/cache/jit -v \x24B/serve:/root/serve -v \x24B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash \x24IMG -lc '\nD=/root/serve; ev(){ echo \"\x24(date -u +%FT%TZ) \x24*\" >> \x24D/events.log; }\n[ -s \x24D/tls.key ] && [ -s \x24D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj \"/CN=pool-card\" -keyout \x24D/tls.key -out \x24D/tls.crt >> \x24D/events.log 2>&1\nev \"START srv1 (driver \x24(nvidia-smi --query-gpu=driver_version --format=csv,noheader), cache ram-disk, L1 100G, L2 200G, L2 16 workers O_DIRECT, TLS)\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=100 --env LMCACHE_L2_GB=200 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 \\\n  -- --port 18000 '\"\x24EXTRA\"' --ssl-keyfile \x24D/tls.key --ssl-certfile \x24D/tls.crt --api-key \"\x24(cat /root/.pool_key)\" >> \x24D/serve.log 2>&1'\necho started; docker ps --filter name=lil-flash-next --format \"{{.Status}}\"",
+  reason: "srv1's serving container entrypoint, retained verbatim from /home/briansrls/strata-test/srv1_lil_serve.sh (re-read off the host 2026-10-29 16:23 after the page-loss attribution relaunch, while the container ran from it; sha256 2fe242e0eb363affacd64337bd007ab08bdea653f92e09f4892018f750f07f1c, pinned in gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading). THE CLAIM OF THIS ROW, narrowed to match its single dissolves_to (DESIGN 4b: the trigger names the capability this row loses): the container launch itself — image by digest, restart no, srv1-inference.slice cgroup, 130g/130g memory-and-swap, 110g shm, device/env/mount flags, published port — retires into extdeps.docker.cli DockerCreateSpec rendered by docker_run_foreground_argv, the dissolves_to ref, together with the launch tail srv1_serving_launch already models. The OTHER effects the script still performs (the TLS self-mint at CN=pool-card, the events.log START record, the key generation, the key read at exec time) are NOT claimed by this row's trigger; each carries its own keyed trigger row in srv1_serving_unmodeled_frontier_rows below. No secret value appears in this text." as NonEmptyStr,
   dissolves_to: decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_foreground_argv"),
 }
 
@@ -156,55 +156,74 @@ type Srv1ServingImageDerivation {
   digest_sha256: NonEmptyStr
   standing: CitedFigureStanding
   base: VllmServingImage
-  // Every file the derivation replaces relative to its base, each with the base's digest (the build's
-  // `sha256sum -c` guard) and the replacement's (read inside the running container). Nonempty by
-  // construction: a derivation that replaces nothing is the base, and has no row here.
-  replacements: FreeSemigroup<Srv1ImageFileReplacement>
+  // Every file the derivation changes relative to its base: a REPLACED file carries the base's digest
+  // (the build's `sha256sum -c` guard) and the replacement's (read inside the running container); an
+  // ADDED file carries its digest and the guard that it was absent from the base (`test ! -e`). Nonempty
+  // by construction: a derivation that changes nothing is the base, and has no row here.
+  changes: FreeSemigroup<Srv1ImageFileChange>
 }
 
-type Srv1ImageFileReplacement {
-  path: NonEmptyStr
-  base_file_sha256_hex: NonEmptyStr
-  replaced_file_sha256_hex: NonEmptyStr
+type Srv1ImageFileChange
+  = Srv1ImageFileReplaced { path: NonEmptyStr, base_file_sha256_hex: NonEmptyStr, replaced_file_sha256_hex: NonEmptyStr }
+  | Srv1ImageFileAdded { path: NonEmptyStr, added_file_sha256_hex: NonEmptyStr }
+
+fn srv1_image_file_replaced(path: NonEmptyStr, base: NonEmptyStr, replaced: NonEmptyStr) -> Srv1ImageFileChange {
+  Srv1ImageFileReplaced { path: path, base_file_sha256_hex: base, replaced_file_sha256_hex: replaced }
 }
 
-fn srv1_image_file_replacement(path: NonEmptyStr, base: NonEmptyStr, replaced: NonEmptyStr) -> Srv1ImageFileReplacement {
-  Srv1ImageFileReplacement { path: path, base_file_sha256_hex: base, replaced_file_sha256_hex: replaced }
+fn srv1_image_file_added(path: NonEmptyStr, added: NonEmptyStr) -> Srv1ImageFileChange {
+  Srv1ImageFileAdded { path: path, added_file_sha256_hex: added }
+}
 }
 
 data srv1_serving_image_derivation: Srv1ServingImageDerivation = Srv1ServingImageDerivation {
-  repository: "local/eager-lynx-lmcache" as NonEmptyStr,
-  tag: "checkpoint-retry" as NonEmptyStr,
-  // `docker inspect --format {{.Image}} lil-flash-next` on srv1, 2026-10-29 14:22, after the relaunch onto
-  // the checkpoint lost-retry repair (gunbc-private#263); the wrapper runs it BY THIS ID. It is built FROM
-  // the delete-accounting build da08aaf9 (gunbc-private#255), itself FROM the upstream base, so relative to
-  // the base it replaces four files: the #255 adapter and #263's three.
-  digest_sha256: "236aa2f2dc64266e2239f03aaa0e66d52d57a2a6405ece8dfb92a5ae9547f881" as NonEmptyStr,
+  repository: "local/eager-checkpoint-attribution" as NonEmptyStr,
+  tag: "20261029" as NonEmptyStr,
+  // `docker inspect --format {{.Image}} lil-flash-next` on srv1, 2026-10-29 16:23, after the relaunch onto
+  // the page-loss attribution build (gunbc-private#264, observation only), built FROM the lost-retry build
+  // 236aa2f2 (#263), FROM the delete-accounting build da08aaf9 (#255), FROM the upstream base. Relative to
+  // the base it changes seven files. The whole lmcache tree of this image was diffed against 236aa2f2's
+  // (784 files): exactly the five #264 files differ, so its directory COPY added nothing unlisted.
+  digest_sha256: "74b35f46d8067dc6cae68ff6b92bf010497a5cbb8a06429f5729f8ed342ec7ba" as NonEmptyStr,
   standing: TranscribedUncited {
-    read_obligation: "A local build with no registry manifest: this repository read the running container's image ID and, inside it, each replaced file's sha256 (2026-10-29 14:22). The build recipes (each FROM its predecessor by digest, a sha256 -c guard on every replaced base file, then COPY) are read from gunbc-private#255's and #263's Dockerfiles, not from a modeled realization; retiring this needs the build as a keyed realization under gunbc.spark.vllm_image_identity's derived-key pattern." as NonEmptyStr,
+    read_obligation: "A local build with no registry manifest: this repository read the running container's image ID and each changed file's sha256 (2026-10-29 16:23), and diffed the image's lmcache tree against its predecessor's. The build recipes (each FROM its predecessor by digest, a sha256 -c or test ! -e guard on every base file it changes, then COPY) are read from gunbc-private#255's, #263's and #264's Dockerfiles, not from a modeled realization; retiring this needs the build as a keyed realization under gunbc.spark.vllm_image_identity's derived-key pattern." as NonEmptyStr,
   },
   base: local_inference_lab_vllm_image,
-  replacements: FreeSemigroup {
-    head: srv1_image_file_replacement(
+  changes: FreeSemigroup {
+    head: srv1_image_file_replaced(
       path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/l2_adapters/native_connector_l2_adapter.py" as NonEmptyStr,
       base: "b6e87817a179a58b239e5dfecf8df4280ea048b01d1ee5b1c2027a57580a4f93" as NonEmptyStr,
       replaced: "d4b5aef995406fcda896bb5a3a7e9f6829f7ea4a6b48203a3dd54b2630fa82a7" as NonEmptyStr,
     ),
     tail: [
-      srv1_image_file_replacement(
+      srv1_image_file_replaced(
         path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/checkpoint_retention.py" as NonEmptyStr,
         base: "bef7ab06f0f4d09b9646a89f6b8f7cd28d5f51bcb0cc9103c8f605781e12294e" as NonEmptyStr,
-        replaced: "a303afd8bbd0d3f443c734bd7b9bee4f922d0820e0b664e2c2f599eee21baf33" as NonEmptyStr,
+        replaced: "486f9a157e1cacf163a45e76a8d1b105f60f83e43e0ed72446259b135ba90c32" as NonEmptyStr,
       ),
-      srv1_image_file_replacement(
+      srv1_image_file_replaced(
         path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/storage_controllers/store_controller.py" as NonEmptyStr,
         base: "f77b7a148fcfd1b20ac53fcc12412b74048fd0c802a40cc9021e3864476c3f2f" as NonEmptyStr,
         replaced: "cbc612b142a5f87716d36b966794ab4664f938bb664de9f4c22e0b14fe92d364" as NonEmptyStr,
       ),
-      srv1_image_file_replacement(
+      srv1_image_file_replaced(
         path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/storage_manager.py" as NonEmptyStr,
         base: "5cd022eefc259c64a069e470d1621dcd6f7d4d84490b1951e59359aad7a7d22b" as NonEmptyStr,
-        replaced: "caa822ddeb0719f73176c65e92445eb697ec459a420d0b6986674a5bfed46278" as NonEmptyStr,
+        replaced: "a28920e1f2e5e4c82c3f3c3d4b8ec28048debc685d22ef78f2a84c449b6f67b8" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/storage_controllers/eviction_controller.py" as NonEmptyStr,
+        base: "f4f921edb872faa9db7b8c120154adfef88415af7912217d4f0f3f39de1d2f80" as NonEmptyStr,
+        replaced: "74007ec2eda09d0a8c132416d31dca11942d386ed505bb0d5402bf74fb87662b" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/multiprocess/modules/checkpoint.py" as NonEmptyStr,
+        base: "4e7d3a26d9bf97b82e2deda375deb696926bb8327bf60c4f35b081d5456e74eb" as NonEmptyStr,
+        replaced: "557f24b175d881757e97ceacb69c7bdb2b985230a26202760fb0b6f625dddb24" as NonEmptyStr,
+      ),
+      srv1_image_file_added(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/checkpoint_loss.py" as NonEmptyStr,
+        added: "ce95b5cd6986b62d39860e79978b2553efcfa7dc179c87c9edfbcb51796737c1" as NonEmptyStr,
       ),
     ],
   },
