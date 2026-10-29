@@ -31,7 +31,7 @@ import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
 import gunbc.ci.ci_materialization { step_display_name }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
-import gunbc.ci.repository_ci_profile { gunbc_heal_publisher_job, HealPublisherPolicy }
+import gunbc.ci.repository_ci_profile { gunbc_heal_publisher_job, HealPublisherPolicy, gunbc_heal_job }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.heal_workflow {
   heal_job_holds_publication_credential, step_uses_action, job_permissions_carry_write
@@ -433,9 +433,18 @@ fn publisher_job_executes_candidate_code(job: HealPublisherPolicy) -> Bool {
   any(heal_publisher_job(job: job).steps, s => checkout_step_names_another_subject(step: s))
 }
 
+// The candidate side of the boundary is the heal row of THIS repository's profile, read by matching: a
+// repository with no heal job has no candidate, and the boundary is then vacuous rather than assumed safe.
+fn publication_candidate_holds_publication_credential() -> Bool {
+  match gunbc_heal_job() {
+    Absent => false
+    Present { value: policy } => heal_job_holds_publication_credential(job: policy)
+  }
+}
+
 fn heal_publication_phases_isolated(job: HealPublisherPolicy) -> Bool {
   phases_are_isolated(s: phase_isolation(
-    candidate_holds_publication_credential: heal_job_holds_publication_credential(),
+    candidate_holds_publication_credential: publication_candidate_holds_publication_credential(),
     candidate_credential_detail: "the heal candidate job carries a write grant or federates to a cloud identity",
     publication_executes_candidate_code: publisher_job_executes_candidate_code(job: job),
     publication_execution_detail: "the publisher job checks out a ref or repository other than its own default-branch commit"

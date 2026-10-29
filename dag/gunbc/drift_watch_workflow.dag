@@ -198,6 +198,10 @@ data drift_watch_capability_refusal_reason: String = "REFUSED gunbc.drift_watch_
 // this is about whether the row entitles the repository to have the job at all.
 
 
+data drift_watch_no_job_refusal_reason: String = "REFUSED gunbc.drift_watch_workflow: this repository's RepositoryCiProfile carries no ProjectionDrift row, so there is no scheduled drift watch to emit. The absence is the repository's data, not this emitter's default."
+
+data drift_watch_no_cron_refusal_reason: String = "REFUSED gunbc.drift_watch_workflow: the repository's ProjectionDrift row declares no cadence, so no schedule trigger is emitted; a checkout-driven drift check comes from gunbc.ci.repository_projection_drift_workflow instead."
+
 // THE DRIFT EMITTER, REFUSING BEFORE IT RENDERS. Presence is read by matching, not by asking a Bool of
 // an Optional: the no-row case and the row-without-cadence case are branches of the same match, so the
 // fabricated fallbacks this module used to carry for each (a "no-drift-watch-declared" row, a midnight

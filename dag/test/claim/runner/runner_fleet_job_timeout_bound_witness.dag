@@ -29,7 +29,7 @@ module test.claim.runner.runner_fleet_job_timeout_bound_witness
 
 import std.types { Bool, Int, String, List }
 import std.optional { Present }
-import std.measure { second, second_count }
+import std.measure { second, second_count, minute_count }
 import extdeps.github.actions {
   Job,
   Workflow,
@@ -57,7 +57,7 @@ import gunbc.runner.runner_fleet_job_timeout_census {
   job_declared_timeout_minutes,
   fleet_pool_runner_spec,
 }
-import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow, compiler_gate_required_job_id, compiler_gate_emit_build_timeout_minutes }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow, compiler_gate_required_job_id, compiler_gate_emit_build_timeout }
 import gunbc.generated_artifact { artifact_eq, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, InstrumentDispatchYamlArtifact, MicrovmShakedownYamlArtifact }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow,
@@ -89,7 +89,7 @@ test fn the_wait_bound_is_the_declared_timeout_fold_plus_the_poll_interval() -> 
   length(boot) == 1
     && all(
       boot,
-      j => job_declared_timeout_minutes(j: j) == compiler_gate_emit_build_timeout_minutes
+      j => job_declared_timeout_minutes(j: j) == minute_count(m: compiler_gate_emit_build_timeout)
         && fleet_job_belongs_to_population(w: compiler_gate_workflow, j: j)
         && bound_seconds() == job_declared_timeout_minutes(j: j) * 60 + poll_seconds()
     )
@@ -167,9 +167,9 @@ test fn the_population_holds_the_v2_bootstrap_job_at_its_declared_timeout() -> B
   let jobs = fleet_targeted_autonomous_jobs()
   length(jobs) > 0
     && all(jobs, j => job_selects_fleet_pool(j: j))
-    && any(jobs, j => j.id == compiler_gate_required_job_id && job_declared_timeout_minutes(j: j) == compiler_gate_emit_build_timeout_minutes)
+    && any(jobs, j => j.id == compiler_gate_required_job_id && job_declared_timeout_minutes(j: j) == minute_count(m: compiler_gate_emit_build_timeout))
     && any(jobs, j => job_declared_timeout_minutes(j: j) == fleet_targeted_declared_timeout_minutes())
-    && compiler_gate_emit_build_timeout_minutes <= fleet_targeted_declared_timeout_minutes()
+    && minute_count(m: compiler_gate_emit_build_timeout) <= fleet_targeted_declared_timeout_minutes()
 }
 
 // 5. THE ENCLOSING BUDGETS FOLD OVER THE BOUND AND STILL BOUND IT. host_cap_bracket_budget is the
@@ -256,6 +256,6 @@ test fn the_census_domain_is_explained_and_reads_the_authorities() -> Bool {
 // v2-bootstrap declaration), while the derived bound certifies the same population.
 test fn the_stale_2700s_literal_would_be_refused_by_the_cover_check() -> Bool {
   !fleet_bound_covers_population(bound: second(count: 2700), jobs: fleet_targeted_autonomous_jobs())
-    && !fleet_bound_covers_declared_minutes(bound: second(count: 2700), minutes: compiler_gate_emit_build_timeout_minutes)
+    && !fleet_bound_covers_declared_minutes(bound: second(count: 2700), minutes: minute_count(m: compiler_gate_emit_build_timeout))
     && fleet_bound_covers_population(bound: runner_host_cap_drain_policy.wait_bound, jobs: fleet_targeted_autonomous_jobs())
 }
