@@ -125,12 +125,13 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   speculative_acceptance_length: "2.778" as NonEmptyStr,
   nvidia_driver: "580.178.04" as NonEmptyStr,
   wrapper_path: "/home/briansrls/strata-test/srv1_lil_serve.sh" as NonEmptyStr,
-  // RE-READ 2026-10-29 after the LMCache tier relaunch (L1 150 GiB, L2 16 workers with O_DIRECT,
-  // 180g memory, 160g shm): the wrapper hash is the new host file's; the image digest, engine version,
+  // RE-READ 2026-10-29 after the LMCache tier relaunch (L1 100 GiB, L2 16 workers with O_DIRECT,
+  // 130g memory, 110g shm; L1 150 GiB ran 10:58-11:55 and left srv1 1.4 GiB MemAvailable under session
+  // load, so it was stepped down): the wrapper hash is the new host file's; the image digest, engine version,
   // checkpoint revision, max_model_len, max_num_seqs, max_num_batched_tokens, gpu_memory_utilization,
   // block_size, kv_cache_dtype and kv_connector were re-read from the new startup log and are unchanged.
   // speculative_acceptance_length is a running average and was NOT re-read; it stays the 2026-10-25 value.
-  wrapper_sha256_hex: "38b399826bcff17897f126233e5fc0a52827a076aed1fb61252729600ee5fffd" as NonEmptyStr,
+  wrapper_sha256_hex: "f7172c3fded03668007f025b2af42a206d430841c280c5e606803b5d9e53b456" as NonEmptyStr,
   observed_on: "2026-10-29" as NonEmptyStr,
   probes: [
     "docker inspect --format {{.Image}} lil-flash-next",
