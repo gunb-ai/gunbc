@@ -334,6 +334,11 @@ type BootOverrideClear
 type StaleOverrideClearance
   = StaleOverrideNoneFound                        // the before-read answered, and nothing was pending
   | StaleOverrideCleared                          // pending found, cleared, and the readback said so
+  // The before-read never established what stood (unread, or never taken), the route cleared ANYWAY, and the
+  // clear's OWN readback established that nothing is in force. Distinct from StaleOverrideCleared because
+  // what stood before is unknown: the set may proceed -- the state it goes in over is positively read -- but
+  // the attempt never learned what it removed, and the receipt has to carry that.
+  | StaleOverrideClearedUnread { reason: NonEmptyStr }
   | StaleOverrideWouldNotClear                    // cleared, and the readback still showed it pending: the attempt refuses
   | StaleOverrideUnread { reason: NonEmptyStr }   // the clear or its readback never answered
 
@@ -350,6 +355,8 @@ fn stale_override_clearance_text(c: StaleOverrideClearance) -> String {
   match c {
     StaleOverrideNoneFound => "none found"
     StaleOverrideCleared => "stale override cleared"
+    StaleOverrideClearedUnread { reason: r } =>
+      concat("stale override cleared without a before-read (", r as String, ")")
     StaleOverrideWouldNotClear => "would not clear"
     StaleOverrideUnread { reason: r } => concat("unread: ", r as String)
   }
@@ -365,6 +372,7 @@ fn boot_override_standing_after_clear(before: BootOverrideStanding, clearance: S
   match clearance {
     StaleOverrideNoneFound => before
     StaleOverrideCleared => OverrideFlagNotPending
+    StaleOverrideClearedUnread { reason: _ } => OverrideFlagNotPending
     StaleOverrideWouldNotClear => OverrideFlagPending
     StaleOverrideUnread { reason: r } => OverrideReadUnanswered { reason: concat("the stale override's clear never answered: ", r as String) }
   }
@@ -469,6 +477,9 @@ type DerivedFinding
   | HandoffUnconfirmed { handoff: HandoffMedia }
   | OverrideNotConsumed { consumption: BootOverrideConsumption }
   | OverrideStaleNotCleared { clearance: StaleOverrideClearance }
+  // The set went in over a controller whose standing was never read; the clear's own readback is the only
+  // evidence about what it went in over, and it is evidence about AFTER, not before.
+  | OverrideStaleClearedUnread { reason: NonEmptyStr }
   | OverrideLeftPendingAtRelease { clear: BootOverrideClear }
   | PoweredOffWithoutTerminalMarker
   | PresentationAfterHandoff { presentation: BootPresentation }
@@ -487,6 +498,8 @@ fn derived_finding_text(f: DerivedFinding) -> String {
     OverrideNotConsumed { consumption: c } => override_not_consumed_text(c: c)
     // The two clear findings route through the two state renderers beside their sums, so one vocabulary
     // renders one sum (the same rule the override finding above already follows).
+    OverrideStaleClearedUnread { reason: r } =>
+      concat("the pre-power clear landed without ever reading what stood: ", r as String)
     OverrideStaleNotCleared { clearance: c } =>
       concat("an override was already pending before this attempt set one and would not clear (", stale_override_clearance_text(c: c) as String, "), so the attempt refused and nothing was attributed to it")
     OverrideLeftPendingAtRelease { clear: r } =>
@@ -631,6 +644,7 @@ fn run_record_derived_findings(record: BootRunRecord) -> List<DerivedFinding> {
   let stale =
     match record.override_stale {
       StaleOverrideNoneFound => []
+      StaleOverrideClearedUnread { reason: r } => [OverrideStaleClearedUnread { reason: r }]
       StaleOverrideCleared => []
       StaleOverrideWouldNotClear => [OverrideStaleNotCleared { clearance: record.override_stale }]
       StaleOverrideUnread { reason: _ } => []

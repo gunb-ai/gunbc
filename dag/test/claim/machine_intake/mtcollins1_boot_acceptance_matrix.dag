@@ -1506,3 +1506,62 @@ test fn an_attempt_that_never_set_an_override_owes_no_clear() -> Bool {
     _ => false
   }
 }
+
+// ─── THE UNREADABLE INITIAL PARAMETER 5 (side-chat REQUEST_CHANGES at 3a890b02, §5) ────────────────────
+// THE CONTROLLER CANNOT ANSWER ABOUT ITS OWN BOOT PARAMETER. Every parameter-5 read of the run -- the
+// before-read, the clear's readback, the release's readback -- comes back the way an ipmitool session that
+// will not establish does: exit 1, nothing on stdout. 'Clear what is pending' alone was fail-OPEN here: a
+// before-read that owed nothing walked straight into a set over an UNKNOWN controller. The route's invariant
+// is now that the state a set goes in over is positively read as cleared, by the before-read or by the
+// clear's own readback -- so this run attempts the clear, cannot read it back, and refuses the set.
+fn param5_unreadable_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 1, stdout: "", stderr: "Unable to establish IPMI v2 / RMCP+ session" } },
+    state: w,
+    elapsed: second(count: 1),
+  }
+}
+
+// SAME PRODUCTION REALIZATION, ONE BINDING SWAPPED -- the parameter-5 read, and only that one. The
+// production binding's own reference is reused so the swap keeps the operation's provenance; the clear's
+// WRITE stays bound, so what fails here is the reading, not the ability to act.
+fn matrix_param5_unreadable_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
+  let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
+  let standing = first_where(xs: production.bindings, keep: fn(b) { b.at.operation == "ChassisBootParamGet" })
+  matrix_frame_over(realization: OperationRealization {
+    identity: production.identity,
+    initial: production.initial,
+    epoch: production.epoch,
+    advance: production.advance,
+    bindings: concat(xs: filter(production.bindings, b => !(b.at.operation == "ChassisBootParamGet")), ys: match standing {
+      // The binding is there in production; the witness swaps only its answer. If it ever is not, the
+      // production bindings stand and the row below fails rather than passing on a frame that never tested
+      // the fault.
+      Present { value: b } => [OperationBinding { at: b.at, handler: param5_unreadable_handler }]
+      Absent => []
+    }),
+  })
+}
+
+fn run_attempt_with_param5_unreadable(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
+  evaluate_in_witness_frame(
+    frame: matrix_param5_unreadable_frame(world: world),
+    subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) },
+  )
+}
+
+// NO SET ON AN UNREAD STANDING: the clear is attempted (one plain bootdev dispatch), its readback does not
+// answer, the handoff is withheld, the boot device this attempt wanted is NEVER set, and nothing is owed on
+// the way out because this attempt never drove the controller. The stale words name the failure the operator
+// would have to fix -- an unreadable parameter 5 -- rather than 'none found'.
+test fn an_unreadable_parameter_five_read_sets_nothing() -> Bool {
+  match run_attempt_with_param5_unreadable(world: world_with_stale_override(lines: mtcollins1_console_boot_prompt_lines_with_login_prompt())) {
+    WitnessReturned { value, route } =>
+      count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") == 0
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") == 1
+        && string_contains(s: outcome_reason(a: value), pattern: "handoff withheld")
+        && string_contains(s: override_stale_words(a: value), pattern: "unread")
+        && starts_with(s: override_release_words(a: value), prefix: "not required: ")
+    _ => false
+  }
+}

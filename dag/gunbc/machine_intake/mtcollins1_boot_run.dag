@@ -2332,14 +2332,21 @@ fn mtcollins1_boot_param5_release(password_file: String, owed: Bool) -> BootPara
 }
 
 // WHY THE CLEAR WITHHOLDS THE SET, in the refusal's own words, or nothing. Kept as its own function so the
-// sentence the operator reads and the witness pins lives in exactly one place.
+// sentence the operator reads and the witness pins lives in exactly one place. THE SET IS REFUSED UNLESS THE
+// CLEARED STATE IS POSITIVELY ESTABLISHED (side-chat REQUEST_CHANGES at 3a890b02, §5): of the five
+// clearances, only three let a set go in -- nothing was in force (the controller said so), something was and
+// the clear's readback says it is gone, or the standing was never read and the clear's own readback says
+// nothing is in force now. 'Would not clear' and 'never answered' both refuse: the state a set would go in
+// over is unknown, and an unknown standing is not evidence of a clear one.
 fn mtcollins1_boot_stale_clear_refusal(clearance: StaleOverrideClearance) -> String? {
   match clearance {
     StaleOverrideWouldNotClear =>
       Present { value: "mtcollins1 boot: handoff withheld: the override pending before this attempt would not clear; parameter 5 still reads it pending after the clear, and setting this attempt's override on top of bytes this attempt did not remove cannot attribute any consumption to it" }
+    StaleOverrideUnread { reason: r } =>
+      Present { value: concat("mtcollins1 boot: handoff withheld: parameter 5's standing before this attempt was never established and the pre-power clear never read back as cleared (", r as String, "); the set is refused because the state it would go in over is unknown") }
     StaleOverrideNoneFound => Absent
     StaleOverrideCleared => Absent
-    StaleOverrideUnread { reason: _ } => Absent
+    StaleOverrideClearedUnread { reason: _ } => Absent
   }
 }
 

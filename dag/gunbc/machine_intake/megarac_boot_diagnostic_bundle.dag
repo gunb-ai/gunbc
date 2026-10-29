@@ -199,7 +199,7 @@ import gunbc.host.boot_attempt {
   OverrideStillPendingAfterAttempt, override_consumption_text, boot_override_consumption,
   BootOverrideClear, StaleOverrideClearance, OverrideCleared, OverrideClearLeftPending,
   OverrideClearNotRequired, OverrideClearUnread, StaleOverrideNoneFound, StaleOverrideCleared,
-  StaleOverrideWouldNotClear, StaleOverrideUnread, boot_override_clear_text,
+  StaleOverrideWouldNotClear, StaleOverrideUnread, StaleOverrideClearedUnread, boot_override_clear_text,
   stale_override_clearance_text, boot_override_standing_after_clear,
   DerivedFinding, derived_finding_text, run_record_derived_findings,
   StandingFinding, TerminalObserved,
@@ -1381,23 +1381,28 @@ fn megarac_override_release(clear: BootParam5Clear) -> BootOverrideClear {
 // attempt proceeds, or refuses, without ever learning what stood, and the receipt has to say so rather than
 // claim a clear.
 fn megarac_stale_override_clearance(before: BootParam5Reading, clear: BootParam5Clear) -> StaleOverrideClearance {
-  match before {
-    BootParam5NotTaken { reason: r } => StaleOverrideUnread { reason: r }
-    BootParam5Unread { cause: c } => StaleOverrideUnread { reason: bmc_read_cause_text(cause: c) }
-    BootParam5Read { readback: rb, at: _ } =>
-      if !boot_param5_override_is_pending(readback: rb) {
-        StaleOverrideNoneFound
+  match clear {
+    // A clear was owed and none was issued -- for a standing the controller described as pending, or for one
+    // nobody ever read. Either way the attempt may not proceed: 'none found' is reserved for the controller
+    // itself saying nothing is in force.
+    BootParam5ClearNotIssued { reason: r } =>
+      if boot_param5_owes_clear(read: before) {
+        StaleOverrideUnread { reason: stale_clear_not_issued_reason(before: before, why: r) }
       } else {
-        match clear {
-          BootParam5ClearNotIssued { reason: r } => StaleOverrideUnread { reason: concat("the pending override's clear was not issued: ", r as String) as NonEmptyStr }
-          BootParam5ClearIssued { write_answered: _, readback: read } => match read {
-            BootParam5Read { readback: rb2, at: _ } =>
-              if boot_param5_override_is_pending(readback: rb2) { StaleOverrideWouldNotClear } else { StaleOverrideCleared }
-            BootParam5Unread { cause: c } => StaleOverrideUnread { reason: bmc_read_cause_text(cause: c) }
-            BootParam5NotTaken { reason: r } => StaleOverrideUnread { reason: r }
-          }
-        }
+        StaleOverrideNoneFound
       }
+    BootParam5ClearIssued { write_answered: _, readback: read } => match read {
+      BootParam5Read { readback: rb2, at: _ } =>
+        if boot_param5_override_is_pending(readback: rb2) {
+          StaleOverrideWouldNotClear
+        } else if boot_param5_standing_established(read: before) {
+          StaleOverrideCleared
+        } else {
+          StaleOverrideClearedUnread { reason: boot_param5_standing_not_established(read: before) }
+        }
+      BootParam5Unread { cause: c } => StaleOverrideUnread { reason: bmc_read_cause_text(cause: c) }
+      BootParam5NotTaken { reason: r } => StaleOverrideUnread { reason: r }
+    }
   }
 }
 
@@ -1485,26 +1490,60 @@ fn megarac_handoff_issued_set(h: MegaRacHandoff) -> Bool {
 }
 
 // WHY NO CLEAR WAS ISSUED, in the words the receipt prints -- read off the SAME reading the decision came
-// from, so the receipt can never say 'nothing was pending' about bytes nobody read (the fail-closed rule
-// above, and the reason boot_param5_owes_clear answers 'no' for an unread standing).
+// from, so the receipt can never say 'nothing was pending' about bytes nobody read. Only the Read arm is
+// reachable: an unread or un-taken standing OWES the clear (boot_param5_owes_clear), so the two defensive
+// arms below say what they would mean rather than flattering the route.
 fn boot_param5_clear_not_required_reason(read: BootParam5Reading) -> NonEmptyStr {
   match read {
     BootParam5Read { readback: _, at: _ } => "the controller's own reading said no boot override was in force"
-    BootParam5Unread { cause: c } => concat("the before-read could not be read (", bmc_read_cause_text(cause: c), "), and nothing is written on bytes nobody read") as NonEmptyStr
-    BootParam5NotTaken { reason: r } => concat("the before-read was not taken (", r as String, "), and nothing is written on a standing nobody read") as NonEmptyStr
+    BootParam5Unread { cause: c } => concat("the before-read could not be read (", bmc_read_cause_text(cause: c), "), which owes a clear") as NonEmptyStr
+    BootParam5NotTaken { reason: r } => concat("the before-read was not taken (", r as String, "), which owes a clear") as NonEmptyStr
   }
 }
 
-// DOES THIS BEFORE-READ OWE A CLEAR? The anything-pending question, asked before any write is issued: an
-// override in force for ANY device is cleared, because the set writes all five bytes over it and the next
-// consumption judgment would otherwise describe bytes this attempt never set (review 87528). An UNREAD or
-// UN-TAKEN before-read owes no write -- nothing is dispatched on a standing nobody read -- and the clearance
-// carries that as StaleOverrideUnread, so the receipt says 'we never learned' rather than 'nothing was there'.
+// WHY THE BEFORE-READ ESTABLISHES NOTHING, for the receipt and for the finding that says so.
+fn boot_param5_standing_not_established(read: BootParam5Reading) -> NonEmptyStr {
+  match read {
+    BootParam5Read { readback: _, at: _ } => "the controller read back, which establishes a standing"
+    BootParam5Unread { cause: c } => concat("the before-read could not be read (", bmc_read_cause_text(cause: c), ")") as NonEmptyStr
+    BootParam5NotTaken { reason: r } => concat("the before-read was not taken (", r as String, ")") as NonEmptyStr
+  }
+}
+
+// WHAT THE RECEIPT SAYS WHEN A CLEAR THAT WAS OWED NEVER HAPPENED -- worded differently for the two ways to
+// get there, because 'it was there and we left it' and 'we never looked' are different things to fix.
+fn stale_clear_not_issued_reason(before: BootParam5Reading, why: NonEmptyStr) -> NonEmptyStr {
+  if boot_param5_standing_established(read: before) {
+    concat("the pending override's clear was not issued: ", why as String) as NonEmptyStr
+  } else {
+    concat("the standing was never established and no clear was issued (", boot_param5_standing_not_established(read: before), "): ", why as String) as NonEmptyStr
+  }
+}
+
+// DID THIS READING ESTABLISH A STANDING AT ALL? An answer nobody could read is not a standing: the route may
+// not treat 'we failed to look' as 'we looked and it was clear'.
+fn boot_param5_standing_established(read: BootParam5Reading) -> Bool {
+  match read {
+    BootParam5Read { readback: _, at: _ } => true
+    BootParam5Unread { cause: _ } => false
+    BootParam5NotTaken { reason: _ } => false
+  }
+}
+
+// DOES THIS BEFORE-READ OWE A CLEAR? Asked BEFORE any write is issued, and fail-closed on all three arms
+// (side-chat REQUEST_CHANGES at 3a890b02, §5): a clear is owed when the read says a flag is in force for ANY
+// device (review 87528), AND when the read never established a standing at all -- answering 'no clear owed'
+// there is how an unreadable initial parameter 5 lets a set go in over an unknown controller, which is the
+// same defect the pending-override check exists to close. The route's invariant is not 'clear what is
+// pending' but 'the state the set goes in over is POSITIVELY READ AS CLEARED': a clear plus a readback that
+// says so, or the attempt refuses before any set. So an unread or un-taken standing owes the clear, and if
+// the clear's own readback cannot be read either, megarac_stale_override_clearance answers StaleOverrideUnread
+// and mtcollins1_boot_stale_clear_refusal refuses the set.
 fn boot_param5_owes_clear(read: BootParam5Reading) -> Bool {
   match read {
     BootParam5Read { readback: rb, at: _ } => boot_param5_override_is_pending(readback: rb)
-    BootParam5Unread { cause: _ } => false
-    BootParam5NotTaken { reason: _ } => false
+    BootParam5Unread { cause: _ } => true
+    BootParam5NotTaken { reason: _ } => true
   }
 }
 
