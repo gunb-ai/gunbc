@@ -5,6 +5,8 @@ import std.algebra { list_head, skip, list_at_optional }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.toml.types { TomlValue, TomlKeyValue, TomlEntry, TomlTable, TomlDocument, TomlString, TomlInteger, TomlBool, TomlArray, TomlInlineTable }
+import std.host_text { chars }
+import std.integer { int_to_decimal_string }
 
 
 
@@ -135,7 +137,7 @@ fn toml_char_is_bare_key(p: Int) -> Bool {
 }
 
 fn toml_key_is_bare(key: String) -> Bool {
-  let cs = chars(s: key)
+  let cs = chars(text: key)
   ((cs |> count) > 0) && ((cs |> filter(p => !toml_char_is_bare_key(p: p)) |> count) == 0)
 }
 
@@ -150,7 +152,7 @@ fn toml_render_key(key: String) -> String {
 fn toml_render_value(v: TomlValue) -> String {
   match v {
     TomlString { value } => concat("\"", concat(toml_escape_basic_string(s: value), "\""))
-    TomlInteger { value } => value as String
+    TomlInteger { value } => int_to_decimal_string(value: value)
     TomlBool { value } => if value { "true" } else { "false" }
     TomlArray { elements } =>
       concat("[", concat(elements |> map(toml_render_value) |> join(separator: ", "), "]"))

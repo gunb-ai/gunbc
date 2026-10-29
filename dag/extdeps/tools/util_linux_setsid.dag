@@ -1,6 +1,7 @@
 module extdeps.tools.util_linux_setsid
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 import std.types { NonEmptyStr, String, List }
 import extdeps.external_authority { ExternalAuthority }
@@ -28,6 +29,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 fn setsid_program() -> ProgramIdentity = uncataloged_program(invocation: "setsid")
 
-fn setsid_fork_words(command: List<String>) -> List<String> {
-  concat([setsid_program().invocation as String, "--fork"], command)
+fn setsid_fork_command(command: List<String>) -> ArgvCommand {
+  argv_command(program: setsid_program(), arguments: concat(["--fork"], command))
 }

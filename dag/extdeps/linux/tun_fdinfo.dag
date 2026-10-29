@@ -13,6 +13,7 @@ import extdeps.filesystem.filesystem_io {
 import extdeps.linux.procfs { procfs_path_literal, ProcSelfStatus, procfs_status_effective_uid }
 import extdeps.numeric.base16 { base16_word_value }
 import extdeps.linux.ethtool_ioctl { linux_ethtool_channels_observe, LinuxEthtoolChannels, LinuxEthtoolChannelsRead, LinuxEthtoolChannelsUnsupported, LinuxEthtoolChannelsUnreadable }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "github.com/torvalds/linux/blob/master/drivers/net/tun.c" }

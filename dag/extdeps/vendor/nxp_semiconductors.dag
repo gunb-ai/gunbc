@@ -1,0 +1,32 @@
+module extdeps.vendor.nxp_semiconductors
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// Read 2026-10-21 through search excerpts of NXP's own product pages (nxp.com), which name the company
+// as NXP Semiconductors; the registrant's legal name is carried as the Dutch public company's, read
+// from the encyclopedia article rather than from a filing, which this session did not reach.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/NXP_Semiconductors"
+  }
+}
+
+data nxp_semiconductors: Vendor<Hardware> = Vendor { legal_name: "NXP Semiconductors N.V." }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.nxp_semiconductors",
+      decl_name: "nxp_semiconductors",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

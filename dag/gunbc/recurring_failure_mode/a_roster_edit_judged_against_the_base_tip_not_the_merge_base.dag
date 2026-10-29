@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_roster_edit_judged_against_the_base_tip_not_the_merge_base
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_roster_edit_judged_against_the_base_tip_not_the_merge_base: RecurringFailureMode = RecurringFailureMode {
   identity: "a_roster_edit_judged_against_the_base_tip_not_the_merge_base" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a required-floor judgment of a ROSTER EDIT reads the base side at the base ref's TIP, while the floor's declared comparison is a merge-base one. A branch that edits the roster and then falls behind main is judged as if it authored every roster change main made after the branch point, in reverse. The change it is charged with is not in its diff, and the merge that would land it does not contain that change either: git's three-way merge keeps main's later edit to rows the branch did not touch.",

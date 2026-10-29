@@ -6,7 +6,12 @@ import gunbc.host.host_effect_realize {
   tree_entries_agree,
   tree_hash_lines,
   tree_ancestor_directories,
-  tree_binary_agrees,
+  tree_binary_agreement,
+  Sha256Side, SourceSide, InstalledSide, Sha256Agreement, Sha256Agrees, Sha256Differs, Sha256SideUnobserved,
+  Sha256Observation, Sha256Observed, Sha256Unobserved,
+  Sha256UnobservedCause, Sha256TransportRefused, Sha256RunFailed, Sha256LineUnparsed,
+  sha256_observation_of_outcome, sha256_observations_agreement,
+  RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved,
   approval_broker_tree_install,
   ApprovalBrokerTreeInstallVerdict,
   TreeInstallRefused,
@@ -15,7 +20,7 @@ import gunbc.host.host_effect_realize {
   TreeStepSourceObserve,
   TreeStepRevision,
 }
-import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -83,6 +88,7 @@ test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> 
     base_root: "/nonexistent-w6-base",
     source_root: "/nonexistent-w6-source",
     revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" },
+    executables: approval_broker_release_locus_executables,
     transport: LocalShell,
   ), at: TreeStepSourceObserve)
 }
@@ -93,11 +99,86 @@ test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
     base_root: "/nonexistent-w6-base",
     source_root: "/nonexistent-w6-source",
     revision: RevisionNotInstalled,
+    executables: approval_broker_release_locus_executables,
     transport: LocalShell,
   ), at: TreeStepRevision)
 }
 
-// A binary that cannot be hashed on either side is a disagreement (the real LocalShell sha256sum fails).
+// A binary that cannot be hashed on either side is a disagreement (the real LocalShell sha256sum fails),
+// and the disagreement names the unobserved side.
 test fn a_binary_with_no_readable_hash_does_not_agree() -> Bool {
-  !tree_binary_agrees(source_path: "/nonexistent-w6-source/a", installed_path: "/nonexistent-w6-base/a", transport: LocalShell)
+  match tree_binary_agreement(source_path: "/nonexistent-w6-source/a", installed_path: "/nonexistent-w6-base/a", transport: LocalShell) {
+    Sha256SideUnobserved { side: SourceSide, cause: _ } => true
+    Sha256SideUnobserved { side: InstalledSide, cause: _ } => false
+    Sha256Agrees => false
+    Sha256Differs => false
+  }
+}
+
+fn observed_out(stdout: String, success: Bool, stderr: String) -> RunArgvTransportOutcome {
+  RunArgvTransportObserved { observed: ShellExecObserved { exit_code: if success { 0 } else { 1 }, success: success, stdout: stdout, stderr: stderr } }
+}
+
+fn obs_of(stdout: String) -> Sha256Observation {
+  sha256_observation_of_outcome(outcome: observed_out(stdout: stdout, success: true, stderr: ""))
+}
+
+fn is_refused(o: Sha256Observation, want: String) -> Bool {
+  match o {
+    Sha256Unobserved { cause: Sha256TransportRefused { reason: r } } => r == want
+    Sha256Unobserved { cause: Sha256RunFailed { stderr: _ } } => false
+    Sha256Unobserved { cause: Sha256LineUnparsed { stdout: _ } } => false
+    Sha256Observed { digest: _ } => false
+  }
+}
+
+fn is_failed(o: Sha256Observation, want: String) -> Bool {
+  match o {
+    Sha256Unobserved { cause: Sha256RunFailed { stderr: e } } => e == want
+    Sha256Unobserved { cause: Sha256TransportRefused { reason: _ } } => false
+    Sha256Unobserved { cause: Sha256LineUnparsed { stdout: _ } } => false
+    Sha256Observed { digest: _ } => false
+  }
+}
+
+fn is_unparsed(o: Sha256Observation, want: String) -> Bool {
+  match o {
+    Sha256Unobserved { cause: Sha256LineUnparsed { stdout: t } } => t == want
+    Sha256Unobserved { cause: Sha256TransportRefused { reason: _ } } => false
+    Sha256Unobserved { cause: Sha256RunFailed { stderr: _ } } => false
+    Sha256Observed { digest: _ } => false
+  }
+}
+
+test fn each_unobserved_cause_is_distinct() -> Bool {
+  is_refused(o: sha256_observation_of_outcome(outcome: RunArgvTransportRefused { reason: "no session" }), want: "no session")
+    && is_failed(o: sha256_observation_of_outcome(outcome: observed_out(stdout: "", success: false, stderr: "boom")), want: "boom")
+    && is_unparsed(o: obs_of(stdout: "garbage"), want: "garbage")
+}
+
+test fn two_equal_observations_agree_and_two_different_differ() -> Bool {
+  let a = obs_of(stdout: hex_a)
+  let same = sha256_observations_agreement(source: a, installed: obs_of(stdout: hex_a))
+  let diff = sha256_observations_agreement(source: a, installed: obs_of(stdout: hex_b))
+  (match same {
+    Sha256Agrees => true
+    Sha256Differs => false
+    Sha256SideUnobserved { side: _, cause: _ } => false
+  }) && (match diff {
+    Sha256Differs => true
+    Sha256Agrees => false
+    Sha256SideUnobserved { side: _, cause: _ } => false
+  })
+}
+
+test fn an_unobserved_side_disagrees_with_its_cause_preserved() -> Bool {
+  let bad = sha256_observation_of_outcome(outcome: observed_out(stdout: "", success: false, stderr: "boom"))
+  match sha256_observations_agreement(source: obs_of(stdout: hex_a), installed: bad) {
+    Sha256SideUnobserved { side: InstalledSide, cause: Sha256RunFailed { stderr: e } } => e == "boom"
+    Sha256SideUnobserved { side: SourceSide, cause: _ } => false
+    Sha256SideUnobserved { side: InstalledSide, cause: Sha256TransportRefused { reason: _ } } => false
+    Sha256SideUnobserved { side: InstalledSide, cause: Sha256LineUnparsed { stdout: _ } } => false
+    Sha256Agrees => false
+    Sha256Differs => false
+  }
 }

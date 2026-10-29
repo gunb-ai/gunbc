@@ -78,7 +78,8 @@ fn spine_step_tag(step: HostStandupStep) -> Int {
     Assimilation { phase: ComputeFabricEnroll } => 10
     Assimilation { phase: GreenPlaceReadiness } => 11
     Assimilation { phase: SessionPlacementEnrollment } => 12
-    Assimilation { phase: StandupAssimilationComplete } => 13
+    Assimilation { phase: InferenceServingProvision } => 13
+    Assimilation { phase: StandupAssimilationComplete } => 14
   }
 }
 
@@ -98,10 +99,14 @@ fn spine_tags_are_linear() -> Bool {
   ).ok
 }
 
-test fn host_standup_spine_is_fourteen_step_linear_prefix_then_p0_p5() -> Bool {
-  host_standup_spine_length() == 14
+// Fifteen: the five prefix rows, then P0..P5 with P4b (inference-serving-provision) added between
+// session placement and the completion gate. The literal is the tag table above, authored here per phase;
+// spine_tags_are_linear is the identity join (row i carries tag i), and the gap ledger must have one row
+// per spine row.
+test fn host_standup_spine_is_fifteen_step_linear_prefix_then_p0_p5() -> Bool {
+  host_standup_spine_length() == 15
     && spine_tags_are_linear()
-    && host_standup_gap_ledger.length() == 14
+    && host_standup_gap_ledger.length() == host_standup_spine_length()
 }
 
 test fn p1c_codex_runtime_provision_spine_row_landed() -> Bool {

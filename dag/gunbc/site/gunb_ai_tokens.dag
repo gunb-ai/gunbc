@@ -1,0 +1,440 @@
+module gunbc.site.gunb_ai_tokens
+
+import std.types { Int, List, String }
+import std.optional { Absent, Present }
+import std.markup { Fragment, Element, attr }
+import std.list { distinct_by_key }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import extdeps.languages.css.values { css_ch, CssLength, CssLengthUnit, Px, Percent, css_length_wire,   CssFontStack, GenericFamily, GenericSystemUi, GenericSansSerif, CssVarRef, css_var_ref_wire }
+import extdeps.languages.css.properties {
+  Background, Border, BorderBottom, BorderCollapse,
+  Color, Display, FontFamily, FontSize, Height, LetterSpacing, MarginBottom, MarginLeft,
+  MarginRight, MarginTop, MaxWidth, Padding, VerticalAlign, Width, CustomProperty,
+}
+import extdeps.languages.css.selectors { ElementSelector, ClassSelector, root_selector }
+import extdeps.accessibility.wcag_contrast {
+  srgb8_contrast_ratio_x100, wcag_aa_normal_text_hundredths,
+  wcag_aa_large_text_and_graphics_hundredths,
+}
+import gunbc.design.material { CssDecl, decl, BuildRule, StaticRule, serialize_rules }
+import gunbc.design.palette { Swatch, swatches_of, swatch_paint }
+import gunbc.design.theme { theme_roles, role_key }
+import gunbc.design.gunb_ai_hues {
+  gunb_ai_hues, near_black, soot, graphite, sand, taupe, umber, warm_white, off_white,
+  moss, moss_deep, clay, clay_deep, brass, brass_deep,
+}
+import gunbc.design.gunb_ai_live_scale {
+  live_scale_token, live_scale_font_token, live_font_sans, live_measure_page, live_measure_wide, live_measure_title, live_measure_prose, live_gap_xs, live_gap_sm, live_gap_md, live_gap_lg, live_gap_xl,
+}
+import gunbc.design.scale {
+  ScaleToken, LengthValue, FontStackValue, scale_decl, scale_value_wire, scale_var,
+  scale_border, named_length_token, border_1,
+}
+import gunbc.site.markup { txt, el, el_class }
+
+// THE TOKEN BINDING for the generated gunb.ai — the tokens layer of the projection
+// (operator picks 2026-10-16, carrier gunbc.plans.gunb_ai_projection_plan §6: colours
+// are swatches from gunbc.design.palette through gunbc.design.gunb_ai_hues, pick A).
+// DESIGN §3: one upstream per fact — this module BINDS site roles to swatches and
+// never re-values them; a consumer reads a TokenSwatch here and resolves through to
+// palette. Nothing in the site layer writes an hsl/hex literal.
+//
+// Measures and the gap rhythm carry the live page's own values as ScaleToken rows
+// (named_length_token, px); the type scale is the operator's landed pick (B compact,
+// relayed 2026-10-17, below). The live page hand-wrote these as px/rem literals in
+// assets/site.css with no .dag home — the inventory's gap row; they are modelled
+// here instead of transcribed.
+//
+// Consumers (DESIGN §3c): test.claim.site_gunb_ai_tokens_witness (claim-run: hue-set
+// admissibility, binding completeness as an identity join, contrast floors, and the
+// RENDERED review page — its :root block, modelled rules and landed type-scale wires),
+// gunbc.site.gunb_ai_tokens_review (renders review_render() to the srv1 review dir).
+
+type TokenSwatch = TokenSwatch {
+  // The site-vocabulary role name (custom property --role). This module is its home.
+  role: String
+  // The palette swatch it resolves to; the swatch is the ONLY value home.
+  swatch: Swatch
+}
+
+data token_canvas: TokenSwatch = TokenSwatch { role: "gunb-canvas", swatch: near_black }
+data token_canvas_raised: TokenSwatch = TokenSwatch { role: "gunb-canvas-raised", swatch: soot }
+data token_canvas_raised2: TokenSwatch = TokenSwatch { role: "gunb-canvas-raised-2", swatch: graphite }
+data token_border: TokenSwatch = TokenSwatch { role: "gunb-border", swatch: umber }
+data token_border_strong: TokenSwatch = TokenSwatch { role: "gunb-border-strong", swatch: taupe }
+data token_text: TokenSwatch = TokenSwatch { role: "gunb-text", swatch: warm_white }
+// The live page's default body colour is warm-white-dim (assets/site.css body rule),
+// a step below `text` — the table would lie if it dropped it.
+data token_text_body: TokenSwatch = TokenSwatch { role: "gunb-text-body", swatch: off_white }
+data token_text_dim: TokenSwatch = TokenSwatch { role: "gunb-text-dim", swatch: sand }
+data token_text_faint: TokenSwatch = TokenSwatch { role: "gunb-text-faint", swatch: taupe }
+data token_accent: TokenSwatch = TokenSwatch { role: "gunb-accent", swatch: moss }
+data token_accent_deep: TokenSwatch = TokenSwatch { role: "gunb-accent-deep", swatch: moss_deep }
+data token_callout: TokenSwatch = TokenSwatch { role: "gunb-callout", swatch: clay }
+data token_callout_deep: TokenSwatch = TokenSwatch { role: "gunb-callout-deep", swatch: clay_deep }
+data token_highlight: TokenSwatch = TokenSwatch { role: "gunb-highlight", swatch: brass }
+data token_highlight_deep: TokenSwatch = TokenSwatch { role: "gunb-highlight-deep", swatch: brass_deep }
+
+data token_swatches: List<TokenSwatch> = [
+  token_canvas, token_canvas_raised, token_canvas_raised2, token_border, token_border_strong,
+  token_text, token_text_body, token_text_dim, token_text_faint,
+  token_accent, token_accent_deep, token_callout, token_callout_deep,
+  token_highlight, token_highlight_deep,
+]
+
+fn swatch_bound(swatch: Swatch) -> Bool {
+  fold(token_swatches, init: false, f: (acc, t) => acc || t.swatch.name == swatch.name)
+}
+
+// Existential: the name IS one of the set's swatch names. (fold, because std has no
+// `any` — std.list.all is the only quantifier built.)
+fn hue_named(name: String) -> Bool {
+  fold(swatches_of(s: gunb_ai_hues), init: false, f: (acc, sw) => acc || sw.name == name)
+}
+
+// The binding is complete as an identity join, not a count (DESIGN §5: "Completeness
+// is an identity join, not a count equality"). Three directions, no pinned numbers:
+// every hue-set swatch is claimed by a role; every binding's swatch IS a hue-set
+// member (a binding cannot smuggle an off-set colour in); and roles are distinct and
+// carry none of the characters a custom-property name would break on (the name is the
+// contract to the CSS emitter, so its shape is checked rather than assumed).
+// Roles are prefixed "gunb-" and must not collide with gunbc.design.theme's register.
+// design.theme.theme_var_decls emits --canvas/--border/--text/--text-dim from the
+// workspace site's Materials (night_canvas is hue 226), so an unprefixed gunb.ai role
+// would be a second authority for the same custom property, last-block-wins.
+// The prefix is the convention; the COLLISION IS THE FACT, so it is checked as an
+// identity join against theme's own role_key rather than inferred from the prefix —
+// if theme ever grows a "gunb-" role, this goes red instead of silently colliding.
+fn role_name_is_wellformed(role: String) -> Bool {
+  starts_with(s: role, prefix: "gunb-")
+    && all(theme_roles, r => role_key(r: r) != role)
+    && !string_contains(s: role, pattern: " ")
+    && !string_contains(s: role, pattern: "{")
+    && !string_contains(s: role, pattern: "}")
+    && !string_contains(s: role, pattern: ":")
+    && !string_contains(s: role, pattern: ";")
+}
+
+fn token_binding_complete() -> Bool {
+  all(swatches_of(s: gunb_ai_hues), sw => swatch_bound(swatch: sw))
+    && all(token_swatches, t => hue_named(name: t.swatch.name))
+    && distinct_by_key(token_swatches, key: fn(t) { t.role }).length() == token_swatches.length()
+    && all(token_swatches, t => role_name_is_wellformed(role: t.role))
+}
+
+// Measures. gunbc.design.scale already owns the measure axis: its measure_prose
+// (80ch) is consumed as-is, and minting a second "measure-prose"/"measure" row here
+// with a different value would be parallel authority (§3). The live page's 896/992px
+// containers are gunb.ai's own widths, so they carry the site prefix in both the
+// Rust name and the custom property — distinct facts, distinct names. The parity
+// audit compares the rendered result.
+data gunb_measure_page: ScaleToken = live_scale_token(name: "gunb-measure-page", m: live_measure_page)
+data gunb_measure_wide: ScaleToken = live_scale_token(name: "gunb-measure-wide", m: live_measure_wide)
+data site_measure_prose: ScaleToken = live_scale_token(name: "measure-prose", m: live_measure_prose)
+data measure_title: ScaleToken = live_scale_token(name: "measure-title", m: live_measure_title)
+
+data gap_xs: ScaleToken = live_scale_token(name: "gap-xs", m: live_gap_xs)
+data gap_sm: ScaleToken = live_scale_token(name: "gap-sm", m: live_gap_sm)
+data gap_md: ScaleToken = live_scale_token(name: "gap-md", m: live_gap_md)
+data gap_lg: ScaleToken = live_scale_token(name: "gap-lg", m: live_gap_lg)
+data gap_xl: ScaleToken = live_scale_token(name: "gap-xl", m: live_gap_xl)
+
+// The operator's pick (option B — compact), relayed 2026-10-17; the review site
+// rendered options A editorial (52/24/17/14/12) and B compact before the pick, and
+// the option rows were deleted with the pick. One storage: these ScaleToken rows are
+// the type scale — the review page below reads them, it never re-declares magnitudes.
+data scale_display: ScaleToken = named_length_token(name: "display", px: 40)
+data scale_heading: ScaleToken = named_length_token(name: "heading", px: 22)
+data scale_body: ScaleToken = named_length_token(name: "body", px: 16)
+data scale_small: ScaleToken = named_length_token(name: "small", px: 13)
+data scale_label: ScaleToken = named_length_token(name: "label", px: 11)
+
+// Body face, typed. A DISTINCT fact from gunbc.design.scale.font_sans: the workspace
+// site self-hosts Roboto (R2 ruling + web_fonts serving), while gunb.ai ships no web
+// fonts at all — its live page used `font-family:system-ui,sans-serif` as a bare
+// string in assets/site.css with no .dag home (the inventory's gap row). Modelled as
+// a font-stack ScaleToken over extdeps.languages.css.values' family rows so the
+// review surface reads a token reference and the stack has one home.
+data font_body: ScaleToken = live_scale_font_token(name: "font-body", live_name: "font-sans", live_stack: live_font_sans)
+
+data gap_tokens: List<ScaleToken> = [gap_xs, gap_sm, gap_md, gap_lg, gap_xl]
+data measure_tokens: List<ScaleToken> = [gunb_measure_page, gunb_measure_wide, site_measure_prose, measure_title]
+data type_scale_tokens: List<ScaleToken> = [scale_display, scale_heading, scale_body, scale_small, scale_label]
+data font_tokens: List<ScaleToken> = [font_body]
+// The 28px chip face: the review surface needs a measure the live page never carried
+// as a name (it wrote `28px` inline). named_length_token — the name is semantic, not
+// a magnitude encoding (design/scale.dag's D3 rule). The 1px hairline is NOT re-
+// minted: gunbc.design.scale.border_1 is upstream's 1px row and scale_border is the
+// modeled `<width> solid <colour>` grammar, so this layer reuses both (§3).
+data chip_swatch: ScaleToken = named_length_token(name: "chip-swatch", px: 28)
+data layout_tokens: List<ScaleToken> = concat(gap_tokens, [border_1, chip_swatch])
+
+fn type_scale_wires() -> List<String> {
+  map(type_scale_tokens, t => join([t.name, "=", scale_value_wire(v: t.value)], ""))
+}
+
+fn token_scale_tokens() -> List<ScaleToken> {
+  concat(layout_tokens, concat(measure_tokens, concat(type_scale_tokens, font_tokens)))
+}
+
+// The whole token layer as :root declarations: swatch paints through
+// gunbc.design.palette.swatch_paint (the hex lives there, once) and scale wires
+// through gunbc.design.scale.scale_decl. No literal colour appears below.
+fn token_root_decls() -> List<CssDecl> {
+  concat(
+    map(token_swatches, t => decl(prop: CustomProperty { name: t.role }, value: swatch_paint(sw: t.swatch))),
+    map(token_scale_tokens(), t => scale_decl(t: t))
+  )
+}
+
+// Contrast floors on the night canvas, in x100 (the unit
+// extdeps.accessibility.wcag_contrast reports). A refusal reads Absent and counts as
+// 0 — fail-closed, a bad channel never passes.
+fn contrast_x100(a: Swatch, b: Swatch) -> Int {
+  match srgb8_contrast_ratio_x100(a: a.color, b: b.color) {
+    Present { value: r } => r
+    Absent => 0
+  }
+}
+
+// Contrast floors, stated as WCAG LEVELS PER ROLE rather than numbers pinned from the
+// current values (review 81584): the thresholds come from
+// extdeps.accessibility.wcag_contrast's modelled constants, so the standard is named,
+// not transcribed. Text roles must clear AA normal text; accent/callout/highlight are
+// used as graphics and large display type, so they clear the AA large-text/graphics
+// level. A role that reads as text at body size (text-faint) is held to the text level.
+// The rule: what a role is FOR decides its floor; the number is the standard's.
+fn token_contrast_floors_hold() -> Bool {
+  contrast_x100(a: warm_white, b: near_black) >= wcag_aa_normal_text_hundredths
+    && contrast_x100(a: off_white, b: near_black) >= wcag_aa_normal_text_hundredths
+    && contrast_x100(a: sand, b: near_black) >= wcag_aa_normal_text_hundredths
+    && contrast_x100(a: taupe, b: near_black) >= wcag_aa_normal_text_hundredths
+    && contrast_x100(a: moss, b: near_black) >= wcag_aa_large_text_and_graphics_hundredths
+    && contrast_x100(a: moss, b: soot) >= wcag_aa_large_text_and_graphics_hundredths
+    && contrast_x100(a: brass, b: near_black) >= wcag_aa_large_text_and_graphics_hundredths
+    && contrast_x100(a: clay, b: near_black) >= wcag_aa_large_text_and_graphics_hundredths
+}
+
+// --- review surface ----------------------------------------------------------
+// Renders the token layer: every hue-set swatch as a named chip (proving the value's
+// one home), the full role table, and one specimen rendered FROM the type scale
+// itself (CSS reads var(--display)/var(--body)/…, the wires are listed via
+// gunbc.design.scale.scale_value_wire — no magnitude is written twice). The ballot
+// (options A editorial / B compact) ran on this page and the operator picked B on
+// 2026-10-17; the option rows were deleted with the pick.
+
+fn swatch_chip(sw: Swatch) -> Fragment {
+    // The chip's paint is a GENERATED rule (review_rules below) keyed by class, never
+    // an inline style string: the value still lives only in palette.
+    el_class("div", "chip", [
+      el_class("i", join(["chip-swatch sw-", sw.name], ""), []),
+      el("code", [ txt(join([sw.name, "  ", swatch_paint(sw: sw)], "")) ]),
+    ])
+}
+
+fn role_row(t: TokenSwatch) -> Fragment {
+  el("tr", [
+    el("td", [ txt(join(["--", t.role], "")) ]),
+    el("td", [ txt(t.swatch.name) ]),
+    el("td", [ el_class("code", "hex", [ txt(swatch_paint(sw: t.swatch)) ]) ]),
+  ])
+}
+
+// `var(--role)` is the read side of the CustomProperty declarations token_root_decls emits.
+// The SHAPE of a var reference is no longer this function's residue: it lives in
+// extdeps.languages.css.values (css_var_ref_wire, css-values-4 §3.10), which is the dissolution
+// trigger this scaffold named — so the scaffold is gone, not left beside the grammar (§6: no
+// second path beside a modelled route). What remains here is only the choice of WHICH field of
+// the row becomes the name.
+//
+// WHICH ERROR CLASS THIS LEAVES UNWRITABLE (review 81528; DESIGN §5 "correctness by
+// construction, not validation"): it takes the TOKEN ROW, not a role string — the same
+// shape scale_var(t: …) already uses. A call site cannot name a role that is not a
+// declared row: role_var(t: token_text_dimm) does not resolve. Reading a role is
+// therefore not validated after the fact, it is unavailable to type wrongly. And
+// witness_all_var_references_resolve still checks the rendered artifact across EVERY
+// reference rather than a hand-pinned pair.
+fn role_var(t: TokenSwatch) -> String {
+  css_var_ref_wire(v: CssVarRef { name: t.role })
+}
+
+// The review surface's CSS as TYPED RULES through gunbc.design.material
+// (BuildRule/decl/serialize_rules) — the same route design.scale and design/theme
+// take — not a string block beside css_block. Magnitudes are ScaleToken references
+// (var(--border-1), var(--chip-swatch), var(--gap-*)), colours are role references,
+// and the per-swatch chip paints are generated from the hue set itself. Zero-length
+// renders through extdeps.languages.css.values.css_length_wire (spec §6.2: a zero
+// length is unitless), so "0" is the wire's output, not a written literal.
+fn zero_length() -> String {
+  css_length_wire(l: CssLength { n: 0, unit: Px })
+}
+
+fn full_width() -> String {
+  css_length_wire(l: CssLength { n: 100, unit: Percent })
+}
+
+fn hairline_solid(edge: TokenSwatch) -> List<CssDecl> {
+  [decl(prop: Border, value: scale_border(w: border_1, color_var: role_var(t: edge)))]
+}
+
+fn margin_four(top: String, right: String, bottom: String, left: String) -> List<CssDecl> {
+  [
+    decl(prop: MarginTop, value: top),
+    decl(prop: MarginRight, value: right),
+    decl(prop: MarginBottom, value: bottom),
+    decl(prop: MarginLeft, value: left),
+  ]
+}
+
+fn review_rules() -> List<BuildRule> {
+  concat(
+    // The token layer itself, as the :root rule material emits it — the bug this
+    // rewrite catches: an earlier draft emitted these declarations BARE inside
+    // <style>, with no selector, so every browser dropped them.
+    [StaticRule { selector: root_selector, decls: token_root_decls() }],
+    concat(
+      // Per-swatch chip paints, generated from the hue set (one home: palette).
+      map(swatches_of(s: gunb_ai_hues), sw => StaticRule {
+        selector: ClassSelector { name: join(["sw-", sw.name], "") },
+        decls: [decl(prop: Background, value: swatch_paint(sw: sw))],
+      }),
+      [
+        StaticRule { selector: ElementSelector { tag: "body" }, decls: concat([
+          decl(prop: Background, value: role_var(t: token_canvas)),
+          decl(prop: Color, value: role_var(t: token_text)),
+          decl(prop: FontFamily, value: scale_var(t: font_body)),
+          decl(prop: FontSize, value: scale_var(t: scale_body)),
+        ], margin_four(top: zero_length(), right: zero_length(), bottom: zero_length(), left: zero_length())) },
+        StaticRule { selector: ElementSelector { tag: "main" }, decls: concat([
+          decl(prop: MaxWidth, value: scale_var(t: gunb_measure_page)),
+          decl(prop: Padding, value: scale_var(t: gap_lg)),
+        ], margin_four(top: zero_length(), right: "auto", bottom: zero_length(), left: "auto")) },
+        StaticRule { selector: ElementSelector { tag: "h1" }, decls: [
+          decl(prop: FontSize, value: scale_var(t: scale_display)),
+        ] },
+        StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
+          decl(prop: FontSize, value: scale_var(t: scale_heading)),
+          decl(prop: Color, value: role_var(t: token_text_dim)),
+        ] },
+        StaticRule { selector: ElementSelector { tag: "a" }, decls: [
+          decl(prop: Color, value: role_var(t: token_accent)),
+        ] },
+        StaticRule { selector: ElementSelector { tag: "table" }, decls: [
+          decl(prop: BorderCollapse, value: "collapse"),
+          decl(prop: Width, value: full_width()),
+        ] },
+        StaticRule { selector: ElementSelector { tag: "td" }, decls: concat([
+          decl(prop: Color, value: role_var(t: token_text_dim)),
+          decl(prop: Padding, value: scale_var(t: gap_xs)),
+        ], [decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: role_var(t: token_border)))]) },
+        StaticRule { selector: ClassSelector { name: "chip" }, decls: concat(concat([
+          decl(prop: Display, value: "inline-block"),
+          decl(prop: Padding, value: scale_var(t: gap_xs)),
+          decl(prop: Background, value: role_var(t: token_canvas_raised)),
+        ], hairline_solid(edge: token_border)), margin_four(top: zero_length(), right: scale_var(t: gap_xs), bottom: scale_var(t: gap_xs), left: zero_length())) },
+        StaticRule { selector: ClassSelector { name: "chip-swatch" }, decls: [
+          decl(prop: Display, value: "inline-block"),
+          decl(prop: Width, value: scale_var(t: chip_swatch)),
+          decl(prop: Height, value: scale_var(t: chip_swatch)),
+          decl(prop: VerticalAlign, value: "middle"),
+          decl(prop: MarginRight, value: scale_var(t: gap_xs)),
+        ] },
+        StaticRule { selector: ClassSelector { name: "specimen" }, decls: concat(concat([
+          decl(prop: Padding, value: scale_var(t: gap_md)),
+          decl(prop: Background, value: role_var(t: token_canvas_raised2)),
+        ], hairline_solid(edge: token_border)), margin_four(top: scale_var(t: gap_md), right: zero_length(), bottom: scale_var(t: gap_md), left: zero_length())) },
+        StaticRule { selector: ClassSelector { name: "spec-display" }, decls: concat([
+          decl(prop: FontSize, value: scale_var(t: scale_display)),
+          decl(prop: Color, value: role_var(t: token_text)),
+        ], margin_four(top: zero_length(), right: zero_length(), bottom: scale_var(t: gap_xs), left: zero_length())) },
+        StaticRule { selector: ClassSelector { name: "spec-heading" }, decls: concat([
+          decl(prop: FontSize, value: scale_var(t: scale_heading)),
+          decl(prop: Color, value: role_var(t: token_text_dim)),
+        ], margin_four(top: zero_length(), right: zero_length(), bottom: scale_var(t: gap_sm), left: zero_length())) },
+        StaticRule { selector: ClassSelector { name: "body-sample" }, decls: [
+          decl(prop: FontSize, value: scale_var(t: scale_body)),
+          decl(prop: Color, value: role_var(t: token_text_dim)),
+          decl(prop: MaxWidth, value: scale_var(t: site_measure_prose)),
+        ] },
+        StaticRule { selector: ClassSelector { name: "label-sample" }, decls: [
+          decl(prop: FontSize, value: scale_var(t: scale_label)),
+          decl(prop: Color, value: role_var(t: token_highlight)),
+          // "0.12em" is a CssDecl VALUE — material's own contract is a string value
+          // beside design/typography.dag's "1.55"/"normal"; the rule above it is the
+          // modeled route. em is not yet a CssLengthUnit arm (values.dag); it enters
+          // with the type layer's typography work, named then.
+          decl(prop: LetterSpacing, value: "0.12em"),
+        ] },
+        StaticRule { selector: ClassSelector { name: "wires" }, decls: [
+          decl(prop: FontSize, value: scale_var(t: scale_small)),
+          decl(prop: Color, value: role_var(t: token_accent)),
+        ] },
+        StaticRule { selector: ClassSelector { name: "hex" }, decls: [
+          decl(prop: Color, value: role_var(t: token_highlight)),
+        ] },
+        StaticRule { selector: ClassSelector { name: "note" }, decls: [
+          decl(prop: Color, value: role_var(t: token_text_faint)),
+        ] },
+        StaticRule { selector: ClassSelector { name: "meta" }, decls: [
+          decl(prop: Color, value: role_var(t: token_accent)),
+          decl(prop: FontSize, value: scale_var(t: scale_small)),
+        ] },
+        StaticRule { selector: ClassSelector { name: "dim" }, decls: [
+          decl(prop: Color, value: role_var(t: token_text_dim)),
+          decl(prop: MaxWidth, value: scale_var(t: site_measure_prose)),
+        ] },
+      ],
+    ),
+  )
+}
+
+fn review_css_text() -> String {
+  serialize_rules(rules: review_rules())
+}
+
+fn review_page() -> Fragment {
+  Element { tag: "html", attributes: [ attr(name: "lang", value: "en") ], children: [
+    el("head", [
+      Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
+      Element { tag: "meta", attributes: [
+        attr(name: "name", value: "viewport"),
+        attr(name: "content", value: "width=device-width, initial-scale=1"),
+      ], children: [] },
+      el("title", [ txt("gunb.ai tokens — operator pick") ]),
+      el("style", [ txt(review_css_text()) ]),
+    ]),
+    el("body", [
+      el("main", [
+        el("h1", [ txt("gunb.ai — tokens layer") ]),
+        el_class("p", "dim", [ txt("Every colour is a gunbc.design.gunb_ai_hues swatch bound to a site role here (operator pick A: gunbc.design.palette is the only colour authority). The swatches and bindings are fixed; the ballot is the type-scale option.") ]),
+        el("h2", [ txt("the hue set — value lives once, in palette") ]),
+        el("div", map(swatches_of(s: gunb_ai_hues), swatch_chip)),
+        el("h2", [ txt("site role → swatch bindings") ]),
+        el("table", map(token_swatches, role_row)),
+        el("h2", [ txt("type scale — operator pick: compact (B), landed as ScaleTokens") ]),
+        el_class("div", "specimen", [
+          el_class("p", "spec-display", [ txt("One structural description.") ]),
+          el_class("p", "spec-heading", [ txt("A compiler with one input: a .dag module.") ]),
+          el_class("p", "body-sample", [ txt("The module is the program — not a DSL bolted onto a host language, not a schema generator with an escape hatch into arbitrary code.") ]),
+          el_class("p", "label-sample", [ txt("GUNBC · TOKENS LAYER · PICK LANDED") ]),
+          el_class("p", "wires", [ txt(join(type_scale_wires(), "   ")) ]),
+        ]),
+      ]),
+    ]),
+  ] }
+}
+
+// A rejected render is a TYPED refusal, not page content (DESIGN §5: every path
+// succeeds fully or fails with a located diagnostic — nothing is fabricated). The
+// writer must handle ReviewEmitRefused explicitly; there is no string that lets a
+// refused emit pass as a rendered page.
+type ReviewRender
+  = ReviewHtml { html: String }
+  | ReviewEmitRefused { reason: String }
+
+fn review_render() -> ReviewRender {
+  match try_serialize_html_source(node: review_page()) {
+    EmitOk { html: h } => ReviewHtml { html: concat("<!DOCTYPE html>\n", h) }
+    EmitRejected { reason: r } => ReviewEmitRefused { reason: r }
+  }
+}

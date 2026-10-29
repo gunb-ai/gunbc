@@ -32,6 +32,7 @@ import std.keyed_roster {
   keyed_roster_build,
 }
 import std.types { NonEmptyStr, String, List }
+import std.algebra { collection_map_shape }
 
 type FrontierSubject
   = PathSubject { path: String }

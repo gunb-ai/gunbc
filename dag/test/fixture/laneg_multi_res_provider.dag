@@ -1,0 +1,17 @@
+module test.fixture.laneg_multi_res_provider
+
+// Lane G (v1-interface-cull-audit@63a464edf01 P1.5 steps 1-2) emission evidence, provider side of
+// the MULTI-FIELD / one-candidate case for test.claim.record_emission_candidate_set_witness.
+// Exactly one record type matches the consumer's two-field literal shape, pinning the changed
+// candidate-set arm's singleton nominal-struct rendering. Its own module, not shared with the
+// ambiguity cases: the candidate pool IS the specimen (witness-cost ruling, as in
+// test.fixture.anonhead_provider).
+
+type LanegPoint {
+  x: Int
+  y: Int
+}
+
+fn takes_point(p: LanegPoint) -> Int {
+  1
+}

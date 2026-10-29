@@ -1,0 +1,224 @@
+module gunbc.runner.runner_revision_job_spec
+
+import gunbc.target_invocation { ClaimHeld, ClaimDidNotHold, ClaimUnobserved }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup, Cons, Empty }
+import extdeps.bazel.label { Label, LabelParse, LabelParsed, LabelRefused, parse_label, render_label }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonString }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_field, json_field_string, FieldAbsent, FieldRead, FieldMalformed,
+}
+import gunbc.runner.runner_claim_set_results { ClaimSetResult }
+
+// THE REVISION JOB'S SUBMISSION: AN IMMUTABLE SUBJECT, AND THE JOB NEVER RESOLVES A REF.
+//
+// The submitter (bright-moth-475's queue) writes one JSON spec: the repository, the exact commit
+// and its tree, and the claims in their declared order, plus an optional PROVENANCE -- how the
+// submitter chose that commit (e.g. "PR #N's head", the commit it resolved to, when, by whom). The
+// job acts only on the subject; provenance is copied into the receipt unchanged and never consulted,
+// so a reader can tell "#N's head at T was X; this is X's result" from a stale one, and the job
+// cannot be told to resolve a moving ref -- there is no field through which to ask.
+//
+// THE SPEC IS INPUT, SO IT IS CHECKED BEFORE ANY VM: an unreadable document, a missing member, a
+// commit or tree that is not a git object id, an empty claims list, a claim that does not parse as a
+// Label, or a label named twice each refuse with a typed cause. Whether a label RESOLVES at the
+// commit is a fact of the commit's own registry, which is tree code, so it is decided in the guest
+// and recorded per claim (exit 2 = no observation), never on the host.
+//
+//   {"repository": "...", "commit": "<40 hex>", "tree": "<40 hex>",
+//    "claims": ["//gunbc/instruments:...", ...],
+//    "provenance": {"ref": "...", "resolved_commit": "...", "observed_at": "...", "observer": "..."}}
+
+// DECLARED FRONTIER (DESIGN 3c): consumed by the revision-job entry (gunbc.runner.runner_revision_job_main,
+// S4b-3b), which runs one job from spec to published receipt. TRIGGER: S4b-3b's stand-in inhabitance
+// claim, the light discriminating claim set run end to end over these staged inputs.
+
+// THE REPOSITORY AUTHORITY. The job fetches and extracts the spec's repository as root, so the spec
+// does not choose it: only an authored repository is admitted, and a foreign one refuses at decode,
+// before any effect. This proves WHICH repository, not that every commit in it is trusted (a fork's
+// refs/pull/N/head is fetchable from this repository too); the staging that handles such content is
+// the declared frontier below.
+//
+// DECLARED FRONTIER (ruling pending, operator): staging runs as root today. TERMINAL SHAPE: staging
+// as a dedicated unprivileged account, root keeping only the cell, jailer and cgroup work.
+// TRIGGER: before any spec names a commit not on main (PR receipts citing job receipts feed it
+// pull-request heads), whichever is first. Until then the vendor step is isolated from the tree's
+// cargo configuration (extdeps.rust.cargo_build cargo_vendor_command).
+data revision_job_admitted_repositories: List<String> = ["https://github.com/gunb-ai/gunbc"]
+
+type RevisionJobProvenance {
+  ref_name: String
+  resolved_commit: String
+  observed_at: String
+  observer: String
+}
+
+type RevisionJobSpec {
+  repository: NonEmptyStr
+  commit: GitObjectId
+  tree: GitObjectId
+  claims: FreeSemigroup<Label>
+  provenance: RevisionJobProvenance?
+}
+
+type RevisionJobSpecRefusal
+  = SpecUnreadable { detail: String }
+  | SpecMemberMissing { member: String }
+  | SpecMemberMalformed { member: String, detail: String }
+  | SpecObjectIdInvalid { member: String, value: String }
+  | SpecClaimsEmpty
+  | SpecClaimNotALabel { index: Int, text: String }
+  | SpecClaimDuplicated { label: String }
+  | SpecRepositoryNotAdmitted { repository: String }
+
+type RevisionJobSpecDecode
+  = RevisionJobSpecDecoded { spec: RevisionJobSpec }
+  | RevisionJobSpecRefused { refusal: RevisionJobSpecRefusal }
+
+fn spec_string(obj: JsonValue, key: String) -> RevisionJobSpecString {
+  match json_field_string(obj: obj, key: key) {
+    FieldAbsent => SpecStringRefused { refusal: SpecMemberMissing { member: key } }
+    FieldMalformed { cause: c } => SpecStringRefused { refusal: SpecMemberMalformed { member: key, detail: c } }
+    FieldRead { value: v } => if v == "" { SpecStringRefused { refusal: SpecMemberMalformed { member: key, detail: "empty" } } } else { SpecStringRead { value: v } }
+  }
+}
+
+type RevisionJobSpecString
+  = SpecStringRead { value: String }
+  | SpecStringRefused { refusal: RevisionJobSpecRefusal }
+
+fn spec_object_id(obj: JsonValue, key: String) -> RevisionJobSpecObjectId {
+  match spec_string(obj: obj, key: key) {
+    SpecStringRefused { refusal: r } => SpecObjectIdRefused { refusal: r }
+    SpecStringRead { value: v } => match git_sha1_object_id(hex: v) {
+      Absent => SpecObjectIdRefused { refusal: SpecObjectIdInvalid { member: key, value: v } }
+      Present { value: oid } => SpecObjectIdRead { oid: oid }
+    }
+  }
+}
+
+type RevisionJobSpecObjectId
+  = SpecObjectIdRead { oid: GitObjectId }
+  | SpecObjectIdRefused { refusal: RevisionJobSpecRefusal }
+
+type ClaimLabelsFold {
+  index: Int
+  labels: List<Label>
+  rendered: List<String>
+  refusal: RevisionJobSpecRefusal?
+}
+
+fn spec_claims(obj: JsonValue) -> RevisionJobSpecClaims {
+  match json_field(obj: obj, key: "claims") {
+    FieldAbsent => SpecClaimsRefused { refusal: SpecMemberMissing { member: "claims" } }
+    FieldMalformed { cause: c } => SpecClaimsRefused { refusal: SpecMemberMalformed { member: "claims", detail: c } }
+    FieldRead { value: v } => match v {
+      JsonArray { elements: els } => {
+        let folded = fold(els, init: ClaimLabelsFold { index: 0, labels: [], rendered: [], refusal: none }, f: (acc, e) => match acc.refusal {
+          Present { value: _ } => acc
+          Absent => match e {
+            JsonString { value: text } => match parse_label(text: text) {
+              LabelRefused { cause: _ } => ClaimLabelsFold { index: acc.index + 1, labels: acc.labels, rendered: acc.rendered, refusal: Present { value: SpecClaimNotALabel { index: acc.index, text: text } } }
+              LabelParsed { label: l } => {
+                let r = render_label(l: l)
+                if count(filter(acc.rendered, x => x == r)) > 0 {
+                  ClaimLabelsFold { index: acc.index + 1, labels: acc.labels, rendered: acc.rendered, refusal: Present { value: SpecClaimDuplicated { label: r } } }
+                } else {
+                  ClaimLabelsFold { index: acc.index + 1, labels: acc.labels + [l], rendered: acc.rendered + [r], refusal: none }
+                }
+              }
+            }
+            _ => ClaimLabelsFold { index: acc.index + 1, labels: acc.labels, rendered: acc.rendered, refusal: Present { value: SpecClaimNotALabel { index: acc.index, text: "(not a string)" } } }
+          }
+        })
+        match folded.refusal {
+          Present { value: r } => SpecClaimsRefused { refusal: r }
+          Absent => match folded.labels {
+            Empty {} => SpecClaimsRefused { refusal: SpecClaimsEmpty }
+            Cons { head: h, tail: t } => SpecClaimsRead { claims: FreeSemigroup { head: h, tail: t } }
+          }
+        }
+      }
+      _ => SpecClaimsRefused { refusal: SpecMemberMalformed { member: "claims", detail: "not an array" } }
+    }
+  }
+}
+
+type RevisionJobSpecClaims
+  = SpecClaimsRead { claims: FreeSemigroup<Label> }
+  | SpecClaimsRefused { refusal: RevisionJobSpecRefusal }
+
+fn spec_provenance(obj: JsonValue) -> RevisionJobSpecProvenance {
+  match json_field(obj: obj, key: "provenance") {
+    FieldAbsent => SpecProvenanceRead { provenance: none }
+    FieldMalformed { cause: c } => SpecProvenanceRefused { refusal: SpecMemberMalformed { member: "provenance", detail: c } }
+    FieldRead { value: p } => match spec_string(obj: p, key: "ref") {
+      SpecStringRefused { refusal: r } => SpecProvenanceRefused { refusal: r }
+      SpecStringRead { value: ref_name } => match spec_string(obj: p, key: "resolved_commit") {
+        SpecStringRefused { refusal: r } => SpecProvenanceRefused { refusal: r }
+        SpecStringRead { value: resolved } => match spec_string(obj: p, key: "observed_at") {
+          SpecStringRefused { refusal: r } => SpecProvenanceRefused { refusal: r }
+          SpecStringRead { value: at } => match spec_string(obj: p, key: "observer") {
+            SpecStringRefused { refusal: r } => SpecProvenanceRefused { refusal: r }
+            SpecStringRead { value: who } => SpecProvenanceRead { provenance: Present { value: RevisionJobProvenance {
+              ref_name: ref_name, resolved_commit: resolved, observed_at: at, observer: who,
+            } } }
+          }
+        }
+      }
+    }
+  }
+}
+
+type RevisionJobSpecProvenance
+  = SpecProvenanceRead { provenance: RevisionJobProvenance? }
+  | SpecProvenanceRefused { refusal: RevisionJobSpecRefusal }
+
+fn decode_revision_job_spec(text: String) -> RevisionJobSpecDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => RevisionJobSpecRefused { refusal: SpecUnreadable { detail: json_document_gap_text(gap: g) } }
+    JsonDocumentParsed { value: doc } => match spec_string(obj: doc, key: "repository") {
+      SpecStringRefused { refusal: r } => RevisionJobSpecRefused { refusal: r }
+      SpecStringRead { value: repo } => if !any(revision_job_admitted_repositories, a => a == repo) {
+        RevisionJobSpecRefused { refusal: SpecRepositoryNotAdmitted { repository: repo } }
+      } else { match spec_object_id(obj: doc, key: "commit") {
+        SpecObjectIdRefused { refusal: r } => RevisionJobSpecRefused { refusal: r }
+        SpecObjectIdRead { oid: commit } => match spec_object_id(obj: doc, key: "tree") {
+          SpecObjectIdRefused { refusal: r } => RevisionJobSpecRefused { refusal: r }
+          SpecObjectIdRead { oid: tree } => match spec_claims(obj: doc) {
+            SpecClaimsRefused { refusal: r } => RevisionJobSpecRefused { refusal: r }
+            SpecClaimsRead { claims: claims } => match spec_provenance(obj: doc) {
+              SpecProvenanceRefused { refusal: r } => RevisionJobSpecRefused { refusal: r }
+              SpecProvenanceRead { provenance: p } => RevisionJobSpecDecoded { spec: RevisionJobSpec {
+                repository: repo as NonEmptyStr, commit: commit, tree: tree, claims: claims, provenance: p,
+              } }
+            }
+          }
+        }
+      } }
+    }
+  }
+}
+
+// ── the job's standing, read from its admitted results ─────────────────────────────────────────
+
+// THREE ANSWERS, AND ONLY ONE QUALIFIES. Every claim held; some claim did not hold with every claim
+// observed; or some claim was not observed (an unresolved label at this commit, or no observation) -- which never counts toward the held arm, whatever the others did, so
+// a typo in a label reads as an unresolved, non-qualifying job naming that label, never a pass.
+type RevisionJobStanding
+  = RevisionJobAllHeld
+  | RevisionJobSomeNotHeld { not_held: List<String> }
+  | RevisionJobSomeUnobserved { unobserved: List<String>, not_held: List<String> }
+
+// Read from each claim's ClaimRouteVerdict: an unobserved claim never counts toward the held arm,
+// whatever the others did.
+fn revision_job_standing(results: List<ClaimSetResult>) -> RevisionJobStanding {
+  let unobserved = map(filter(results, r => match r.verdict { ClaimUnobserved => true  ClaimHeld => false  ClaimDidNotHold => false }), r => r.label as String)
+  let not_held = map(filter(results, r => match r.verdict { ClaimDidNotHold => true  ClaimHeld => false  ClaimUnobserved => false }), r => r.label as String)
+  if count(unobserved) > 0 { RevisionJobSomeUnobserved { unobserved: unobserved, not_held: not_held } }
+  else if count(not_held) > 0 { RevisionJobSomeNotHeld { not_held: not_held } }
+  else { RevisionJobAllHeld }
+}

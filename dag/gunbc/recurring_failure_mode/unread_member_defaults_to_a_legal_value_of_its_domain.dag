@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unread_member_defaults_to_a_legal_value_of_its_domain
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data unread_member_defaults_to_a_legal_value_of_its_domain: RecurringFailureMode = RecurringFailureMode {
   identity: "unread_member_defaults_to_a_legal_value_of_its_domain" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a decoder that cannot read a member substitutes a value the peer could legitimately have sent, so the gap becomes indistinguishable from data** (INVALID STATE: a decode arm for an absent, wrong-typed or unparseable member answers with an inhabitant of the member's own domain -- an empty object for arguments, an empty string for an identifier, zero for a count -- rather than with a refusal or a typed unavailability. HARM: every downstream consumer is reading a value that was never observed, and no consumer can tell, because the substituted value is exactly what a well-formed peer sends when it means that value. The wrongness is therefore SILENT in the DESIGN section 5 sense rather than merely lenient, and it is not caught by any amount of consumer-side care: there is nothing at the consumer to be careful about.)",

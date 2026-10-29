@@ -9,8 +9,7 @@ import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_nod
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.grammar { node_atom_identity_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { ComputationNode, Edge, Instantiation, Node, Positional, Transform, TypeNode, symbol_lexeme }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, ComputationNode, Edge, Instantiation, Node, Positional, Transform, TypeNode, symbol_lexeme, NotADeclaration }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.logic { bool_node }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
@@ -41,8 +40,8 @@ fn ilt_head() -> Node {
 fn ilt_list(elements: List<Node>) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: fold(elements, init: [Edge { label: Positional, target: ilt_head() }], f: fn(acc, e) {
-      list_snoc_item(xs: acc, item: Edge { label: Positional, target: e })
+    children: fold(elements, init: [Edge { label: Positional, target: ilt_head(), declaration: NotADeclaration }], f: fn(acc, e) {
+      list_snoc_item(xs: acc, item: Edge { label: Positional, target: e, declaration: NotADeclaration })
     }),
     occurrence_id: OccurrenceSynthetic
   }
@@ -78,13 +77,13 @@ data ilt_nested_mixed: Node = ilt_list(elements: [ilt_nested_mixed_inner, ilt_ne
 fn ilt_freemonoid_argument(t: Node) -> Optional<Node> {
   match t.kind {
     TypeNode { connective: Instantiation } =>
-      if count(node_positional_child_targets(node: t)) == 2 {
-        match list_at_optional(xs: node_positional_child_targets(node: t), index: 0) {
+      if count(positional_child_target_nodes(node: t)) == 2 {
+        match list_at_optional(xs: positional_child_target_nodes(node: t), index: 0) {
           Present { value: head } =>
             match declaration_reference_path_optional(node: head) {
               Present { value: qn } =>
                 if qn == [^std, ^algebra, ^FreeMonoid] {
-                  list_at_optional(xs: node_positional_child_targets(node: t), index: 1)
+                  list_at_optional(xs: positional_child_target_nodes(node: t), index: 1)
                 } else {
                   optional_absent()
                 }
@@ -132,8 +131,8 @@ fn ilt_freemonoid_of(element: Node) -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: ilt_head() },
-      Edge { label: Positional, target: element }
+      Edge { label: Positional, target: ilt_head(), declaration: NotADeclaration },
+      Edge { label: Positional, target: element, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

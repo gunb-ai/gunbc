@@ -1,0 +1,22 @@
+module test.probe.workflow_run_id_axis_run_field
+
+// A RULE ID, BY REFERENCE, WRITTEN INTO A RUN-ID FIELD. The converse axis: WorkflowRunRecord.run_id
+// holds the run carrier, so the rule carrier must not inhabit it. By reference is the case the seed
+// floor accepts at a field declared Int (gunbc.recurring_failure_mode
+// product_value_at_a_scalar_formal_is_accepted); the field holding the carrier is what refuses it.
+// Read by a_rule_id_carrier_where_a_run_id_belongs_is_refused_at_the_field.
+import extdeps.github.actions_runs { WorkflowRunRecord }
+import extdeps.github.deployment_protection_rule { GitHubDeploymentProtectionRuleId }
+
+data a_rule: GitHubDeploymentProtectionRuleId = GitHubDeploymentProtectionRuleId { value: 1 }
+
+data forged_rule_in_run_field: WorkflowRunRecord = WorkflowRunRecord {
+  run_id: a_rule,
+  event: "e",
+  head_branch: "b",
+  status: "completed",
+  conclusion: "success",
+  created_at_epoch_s: 1,
+  run_started_at_epoch_s: 1,
+  updated_at_epoch_s: 1,
+}

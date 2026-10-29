@@ -242,7 +242,7 @@ fn aw_wire_object() -> SwiftDecl {
         ],
         d: aw_static_func(
           n: "sum",
-          p: [sw_p_(n: "v", t: sw_topt(w: sw_t(n: "Any"))), sw_p(n: "at", t: aw_s()), sw_p(n: "arms", t: sw_tdict(k: aw_s(), v: sw_tarr(e: aw_s())))],
+          p: [sw_p_(n: "v", t: sw_topt(w: sw_t(n: "Any"))), sw_p(n: "at", t: aw_s()), sw_p(n: "arms", t: sw_tdict(k: aw_s(), v: sw_tarr(e: aw_s()))), sw_p(n: "cause", t: aw_s())],
           th: true,
           r: sw_ttuple(e: [sw_tnel(n: "kind", t: aw_s()), sw_tnel(n: "object", t: sw_t(n: "WireObject"))]),
           b: [
@@ -250,7 +250,7 @@ fn aw_wire_object() -> SwiftDecl {
             sw_let(n: "path", e: sw_ternary(c: sw_eq(l: sw_id(n: "at"), r: sw_str(s: "$")), t: sw_str(s: "kind"), e: sw_add(l: sw_id(n: "at"), r: sw_str(s: ".kind")))),
             sw_guard(c: [sw_bind(n: "k", e: sw_sub(b: sw_id(n: "o"), a: [sw_pos(v: sw_str(s: "kind"))]))], e: [aw_refuse(at: sw_id(n: "path"), cause: sw_str(s: "missing"))]),
             sw_guard(c: aw_nonempty_cast(n: "kind", v: sw_id(n: "k"), t: "String"), e: [aw_refuse(at: sw_id(n: "path"), cause: sw_str(s: "not a string"))]),
-            sw_guard(c: [sw_bind(n: "allowed", e: sw_sub(b: sw_id(n: "arms"), a: [sw_pos(v: sw_id(n: "kind"))]))], e: [aw_refuse(at: sw_id(n: "path"), cause: sw_str(s: "not an admitted kind"))]),
+            sw_guard(c: [sw_bind(n: "allowed", e: sw_sub(b: sw_id(n: "arms"), a: [sw_pos(v: sw_id(n: "kind"))]))], e: [aw_refuse(at: sw_id(n: "path"), cause: sw_id(n: "cause"))]),
             sw_ret(e: sw_tuple(e: [sw_pos(v: sw_id(n: "kind")), sw_pos(v: sw_try(e: sw_calln(f: "WireObject", a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: sw_id(n: "at")), sw_arg(l: "allowed", v: sw_add(l: sw_strs(e: ["kind"]), r: sw_id(n: "allowed")))])))])),
           ]
         )
@@ -280,9 +280,6 @@ fn aw_wire_encode() -> SwiftDecl {
     aw_encode_fn(doc: "push_registration_json, ApnsRegistration arm", n: "push", p: "p", t: "ApnsRegistration", members: [
       aw_member_string(key: "kind", value: sw_str(s: "apns")), aw_field_of(p: "p", f: "environment"), aw_field_of(p: "p", f: "topic"), aw_field_of(p: "p", f: "token"),
     ]),
-    aw_encode_fn(doc: "presented_evidence_json, IosAppAttestAttestation arm", n: "evidence", p: "e", t: "IosAppAttestBoundDecisionKey", members: [
-      aw_member_string(key: "kind", value: sw_str(s: "ios_app_attest")), aw_field_of(p: "e", f: "attest_key_id"), aw_field_of(p: "e", f: "attestation_b64"),
-    ]),
     aw_encode_fn(doc: "platform_proof_json, IosAppAttestAssertion arm", n: "proof", p: "p", t: "IosAppAttestAssertion", members: [
       aw_member_string(key: "kind", value: sw_str(s: "ios_app_attest_assertion")), aw_field_of(p: "p", f: "assertion_b64"),
     ]),
@@ -300,13 +297,13 @@ fn aw_wire_encode() -> SwiftDecl {
       aw_field_of(p: "i", f: "capability_text"),
       aw_field_of(p: "i", f: "capability_tag_b64url"),
     ]),
-    sw_doc(c: ["enrolment_request_json"], d: aw_static_func(n: "enrolmentRequest", p: [sw_p_(n: "r", t: sw_t(n: "EnrolmentRequest"))], th: false, r: aw_s(), b: [
+    sw_doc(c: ["google_enrolment_request_json"], d: aw_static_func(n: "googleEnrolmentRequest", p: [sw_p_(n: "r", t: sw_t(n: "GoogleEnrolmentRequest"))], th: false, r: aw_s(), b: [
       sw_expr(e: aw_serialized_object(members: [
-        aw_field_of(p: "r", f: "code"),
         aw_member_string(key: "platform", value: sw_mem(b: sw_path(b: "r", m: "platform"), m: "rawValue")),
         aw_member(key: "decision_key", value: sw_calln(f: "verifyingKey", a: [sw_pos(v: sw_path(b: "r", m: "decision_key"))])),
-        aw_member(key: "evidence", value: sw_calln(f: "evidence", a: [sw_pos(v: sw_path(b: "r", m: "evidence"))])),
-        aw_member(key: "push", value: sw_calln(f: "push", a: [sw_pos(v: sw_path(b: "r", m: "push"))])),
+        aw_field_of(p: "r", f: "attest_key_id"),
+        aw_field_of(p: "r", f: "attestation_b64"),
+        aw_field_of(p: "r", f: "id_token"),
       ])),
     ])),
     sw_doc(c: ["signed_redemption_json"], d: aw_static_func(n: "signedRedemption", p: [sw_p_(n: "r", t: sw_t(n: "SignedRedemption"))], th: false, r: aw_s(), b: [
@@ -378,10 +375,10 @@ fn aw_sum_kind_pattern(bind: SwiftExpr) -> SwiftPattern {
 }
 
 // let (<bind>, o) = try WireObject.sum(v, at: at, arms: ["<kind>": [...]])
-fn aw_sum(bind: SwiftExpr, kind: String, members: List<String>) -> SwiftStmt {
+fn aw_sum(bind: SwiftExpr, kind: String, members: List<String>, cause: String) -> SwiftStmt {
   sw_let_pat(
     p: SwiftTuplePattern { elements: [aw_sum_kind_pattern(bind: bind), sw_pid(n: "o")] },
-    e: sw_try(e: sw_call(f: sw_path(b: "WireObject", m: "sum"), a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: sw_id(n: "at")), sw_arg(l: "arms", v: sw_dict(e: [sw_kv(k: sw_str(s: kind), v: sw_strs(e: members))]))]))
+    e: sw_try(e: sw_call(f: sw_path(b: "WireObject", m: "sum"), a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: sw_id(n: "at")), sw_arg(l: "arms", v: sw_dict(e: [sw_kv(k: sw_str(s: kind), v: sw_strs(e: members))])), sw_arg(l: "cause", v: sw_str(s: cause))]))
   )
 }
 
@@ -405,18 +402,13 @@ fn aw_wire_decode() -> SwiftDecl {
       sw_ret(e: aw_construct_strings(t: "SignatureBytes", o: "o", fields: ["b64url"])),
     ]),
     sw_doc(c: ["Android's arm is modeled and encodable upstream; the app refuses it as the server does."], d: aw_decode_fn(n: "push", p: aw_pany(), r: sw_t(n: "ApnsRegistration"), b: [
-      aw_sum(bind: sw_id(n: "kind"), kind: "apns", members: ["environment", "topic", "token"]),
-      sw_guard(c: [sw_cond(e: sw_eq(l: sw_id(n: "kind"), r: sw_str(s: "apns")))], e: [aw_refuse(at: sw_add(l: sw_id(n: "at"), r: sw_str(s: ".kind")), cause: sw_str(s: "not an admitted push provider"))]),
+      aw_sum(bind: SwiftWildcardExpr, kind: "apns", members: ["environment", "topic", "token"], cause: "not an admitted push provider"),
       sw_let(n: "env", e: aw_ostr(o: "o", key: "environment")),
       sw_guard(c: [sw_cond(e: sw_op(l: sw_eq(l: sw_id(n: "env"), r: sw_str(s: "production")), o: SwiftLogicalOrOperator, r: sw_eq(l: sw_id(n: "env"), r: sw_str(s: "development"))))], e: [aw_refuse(at: sw_str(s: "push.environment"), cause: sw_str(s: "not an APNs environment"))]),
       sw_ret(e: sw_calln(f: "ApnsRegistration", a: [sw_arg(l: "environment", v: sw_id(n: "env")), sw_arg(l: "topic", v: aw_ostr(o: "o", key: "topic")), sw_arg(l: "token", v: aw_ostr(o: "o", key: "token"))])),
     ])),
-    aw_decode_fn(n: "evidence", p: aw_pany(), r: sw_t(n: "IosAppAttestBoundDecisionKey"), b: [
-      aw_sum(bind: SwiftWildcardExpr, kind: "ios_app_attest", members: ["attest_key_id", "attestation_b64"]),
-      sw_ret(e: aw_construct_strings(t: "IosAppAttestBoundDecisionKey", o: "o", fields: ["attest_key_id", "attestation_b64"])),
-    ]),
     aw_decode_fn(n: "proof", p: aw_pany(), r: sw_t(n: "IosAppAttestAssertion"), b: [
-      aw_sum(bind: SwiftWildcardExpr, kind: "ios_app_attest_assertion", members: ["assertion_b64"]),
+      aw_sum(bind: SwiftWildcardExpr, kind: "ios_app_attest_assertion", members: ["assertion_b64"], cause: "not an admitted proof kind"),
       sw_ret(e: aw_construct_strings(t: "IosAppAttestAssertion", o: "o", fields: ["assertion_b64"])),
     ]),
     aw_decode_fn(n: "challenge", p: aw_po(), r: sw_t(n: "RedemptionChallenge"), b: [
@@ -440,15 +432,15 @@ fn aw_wire_decode() -> SwiftDecl {
     aw_decode_fn(n: "verbCapability", p: aw_po(), r: sw_t(n: "VerbCapability"), b: [
       sw_expr(e: aw_construct_strings(t: "VerbCapability", o: "o", fields: ["capability_text", "capability_tag_b64url"])),
     ]),
-    sw_cmt(c: ["Request decoders exist so the envelope fixtures round-trip through the app's own encoders."], d: aw_decode_fn(n: "enrolmentRequest", p: aw_pdata(), r: sw_t(n: "EnrolmentRequest"), b: [
-      sw_let(n: "o", e: aw_document(allowed: ["code", "platform", "decision_key", "evidence", "push"])),
+    sw_cmt(c: ["Request decoders exist so the envelope fixtures round-trip through the app's own encoders."], d: aw_decode_fn(n: "googleEnrolmentRequest", p: aw_pdata(), r: sw_t(n: "GoogleEnrolmentRequest"), b: [
+      sw_let(n: "o", e: aw_document(allowed: ["platform", "decision_key", "attest_key_id", "attestation_b64", "id_token"])),
       aw_expect(key: "platform", admitted: sw_mem(b: sw_path(b: "MobilePlatform", m: "ios"), m: "rawValue"), cause: "not an admitted platform"),
-      sw_ret(e: sw_calln(f: "EnrolmentRequest", a: [
-        sw_arg(l: "code", v: aw_ostr(o: "o", key: "code")),
+      sw_ret(e: sw_calln(f: "GoogleEnrolmentRequest", a: [
         sw_arg(l: "platform", v: sw_dot(n: "ios")),
         sw_arg(l: "decision_key", v: sw_try(e: sw_calln(f: "verifyingKey", a: [sw_pos(v: aw_oobject(o: "o", key: "decision_key", allowed: sw_strs(e: ["suite", "encoding", "point_b64url"])))]))),
-        sw_arg(l: "evidence", v: sw_try(e: sw_calln(f: "evidence", a: [sw_pos(v: aw_omember(key: "evidence")), sw_arg(l: "at", v: sw_str(s: "evidence"))]))),
-        sw_arg(l: "push", v: sw_try(e: sw_calln(f: "push", a: [sw_pos(v: aw_omember(key: "push")), sw_arg(l: "at", v: sw_str(s: "push"))]))),
+        sw_arg(l: "attest_key_id", v: aw_ostr(o: "o", key: "attest_key_id")),
+        sw_arg(l: "attestation_b64", v: aw_ostr(o: "o", key: "attestation_b64")),
+        sw_arg(l: "id_token", v: aw_ostr(o: "o", key: "id_token")),
       ])),
     ])),
     aw_decode_fn(n: "signedRedemption", p: aw_pdata(), r: sw_t(n: "SignedRedemption"), b: [
@@ -460,10 +452,16 @@ fn aw_wire_decode() -> SwiftDecl {
       ])),
     ]),
     aw_decode_fn(n: "pushUpdate", p: aw_pdata(), r: sw_t(n: "ApnsRegistration"), b: list_append(left: aw_json_read(), right: [
-      sw_ret(e: sw_try(e: sw_calln(f: "push", a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: sw_str(s: "$"))]))),
+      sw_ret(e: sw_try(e: sw_calln(f: "push", a: [sw_pos(v: sw_id(n: "v")), sw_arg(l: "at", v: sw_str(s: "push"))]))),
     ])),
     sw_cmt(c: ["Responses."], d: aw_decode_fn(n: "enrolmentGrant", p: aw_pdata(), r: sw_t(n: "EnrolmentGrant"), b: [
       sw_expr(e: sw_calln(f: "EnrolmentGrant", a: [sw_arg(l: "enrollment_id", v: sw_try(e: sw_call(f: sw_mem(b: sw_call(f: sw_path(b: "WireObject", m: "document"), a: [sw_pos(v: sw_id(n: "data")), sw_arg(l: "allowed", v: sw_strs(e: ["enrollment_id"]))]), m: "string"), a: [sw_pos(v: sw_str(s: "enrollment_id"))])))])),
+    ])),
+    sw_cmt(c: ["The enrol route's typed refusal (gunbc.auth.approval_device_wire google_enrolment_refusal_json): the", "prose is kept for the human, the kind is what the app may act on."], d: aw_decode_fn(n: "googleEnrolmentRefusal", p: aw_pdata(), r: aw_s(), b: [
+      sw_let(n: "o", e: sw_try(e: sw_call(f: sw_path(b: "WireObject", m: "document"), a: [sw_pos(v: sw_id(n: "data")), sw_arg(l: "allowed", v: sw_strs(e: ["refused", "enrolment_refusal"]))]))),
+      sw_let(n: "k", e: aw_ostr(o: "o", key: "enrolment_refusal")),
+      sw_guard(c: [sw_cond(e: sw_call(f: sw_mem(b: sw_path(b: "GoogleEnrolmentRefusal", m: "labels"), m: "contains"), a: [sw_pos(v: sw_id(n: "k"))]))], e: [aw_refuse(at: sw_str(s: "enrolment_refusal"), cause: sw_str(s: "not an admitted enrolment refusal"))]),
+      sw_ret(e: sw_id(n: "k")),
     ])),
     aw_decode_fn(n: "pendingList", p: aw_pdata(), r: sw_tarr(e: sw_t(n: "PendingApproval")), b: [
       sw_let(n: "o", e: aw_document(allowed: ["pending"])),
@@ -566,14 +564,14 @@ fn aw_records() -> List<SwiftDecl> {
     SwiftCommentedDecl {
       comments: [
         SwiftLineComment { text: "── Records the wire carries ─────────────────────────────────────────────────────────────────" },
-        SwiftDocLineComment { text: "EnrolmentRequest: the POST /approve/device/enrol body. The login is not sent: the server derives it." },
+        SwiftDocLineComment { text: "GoogleEnrolmentRequest: the POST /approve/device/enrol body. Nothing here names a person: the server derives the login from the verified ID token." },
       ],
-      decl: sw_struct(n: "EnrolmentRequest", i: [sw_t(n: "Equatable")], m: [
-        sw_field(n: "code", t: aw_s()),
+      decl: sw_struct(n: "GoogleEnrolmentRequest", i: [sw_t(n: "Equatable")], m: [
         sw_field(n: "platform", t: sw_t(n: "MobilePlatform")),
         sw_field(n: "decision_key", t: sw_t(n: "VerifyingKey")),
-        sw_field(n: "evidence", t: sw_t(n: "IosAppAttestBoundDecisionKey")),
-        sw_field(n: "push", t: sw_t(n: "ApnsRegistration")),
+        sw_field(n: "attest_key_id", t: aw_s()),
+        sw_field(n: "attestation_b64", t: aw_s()),
+        sw_field(n: "id_token", t: aw_s()),
       ]),
     },
     aw_record(n: "EnrolmentGrant", i: ["Equatable"], fields: ["enrollment_id"]),
@@ -766,8 +764,8 @@ fn aw_client() -> SwiftDecl {
         sw_ret(e: sw_id(n: "data")),
       ],
     },
-    aw_async_func(n: "enrol", p: [sw_p_(n: "r", t: sw_t(n: "EnrolmentRequest"))], r: aw_ret(t: sw_t(n: "EnrolmentGrant")), b: [
-      aw_post(decode: "enrolmentGrant", path: sw_path(b: "Route", m: "enrol"), encode: "enrolmentRequest", args: [sw_pos(v: sw_id(n: "r"))]),
+    aw_async_func(n: "enrolGoogle", p: [sw_p_(n: "r", t: sw_t(n: "GoogleEnrolmentRequest"))], r: aw_ret(t: sw_t(n: "EnrolmentGrant")), b: [
+      aw_post(decode: "enrolmentGrant", path: sw_path(b: "Route", m: "enrol"), encode: "googleEnrolmentRequest", args: [sw_pos(v: sw_id(n: "r"))]),
     ]),
     sw_doc(c: ["POST /approve/device/pending, body = read_authentication_json"], d: aw_async_func(n: "pending", p: [sw_p_(n: "read", t: sw_t(n: "ReadAuth"))], r: aw_ret(t: sw_tarr(e: sw_t(n: "PendingApproval"))), b: [
       aw_post(decode: "pendingList", path: sw_path(b: "Route", m: "pending"), encode: "readRequest", args: [sw_pos(v: sw_id(n: "read"))]),

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_sampled_grant_is_discovered_below_worst_ca
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_sampled_grant_is_discovered_below_worst_case: RecurringFailureMode = RecurringFailureMode {
   identity: "a_sampled_grant_is_discovered_below_worst_case" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a work class's memory grant (gunbc.compute.work_class_grant work_class_grant) is sized from sampled peaks plus a policy-budget headroom, and some run of that class needs more than the grant. Because the reservation and the unit's MemoryMax are one figure (gunbc.compute.host_capacity), the grant is also the cap, so that run is OOM-killed by its own cgroup. HARM: the attempt's work is lost and repeated at the ceiling -- wall time and one ceiling-sized reservation -- and, if no ceiling seat is free, the request is refused for capacity after having already spent a run.",

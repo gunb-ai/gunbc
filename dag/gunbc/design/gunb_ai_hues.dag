@@ -1,0 +1,189 @@
+module gunbc.design.gunb_ai_hues
+
+import std.types { String, Int, List }
+import std.optional { Optional, Absent, Present }
+import extdeps.color.srgb { Srgb8, hsl_to_srgb8 }
+import std.error_primitives { pure_dag_seam_unreachable_int }
+import std.measure { Degree, degree, degree_count, Percent, percent, percent_count }
+import extdeps.languages.css.values {
+  CssHsl, CssColorComponent, ComponentVar, ComponentPercent, CssVarRef,
+}
+import gunbc.design.palette {
+  Swatch, SwatchSet, SwatchSetProvenance, SwatchMember,
+  swatch_filed, swatches_of, swatch_set_admissible,
+}
+
+// Pick A, relayed from the operator 2026-10-16 (gunb.ai projection lane,
+// docs/plans carrier `gunbc.plans.gunb_ai_projection_plan` §6): gunbc.design.palette
+// gains gunb.ai's four hue families as named swatches so palette is the site's ONLY
+// colour authority and the live look is unchanged. Names describe the colour, not the
+// use — so a redesign renaming site usage never renames a swatch. Values are the live
+// page's HSL ramp, projected once into Srgb8: re-derive any of them from
+// gunb-ai/frontend's :root block (`grep -A40 ':root' assets/site.css`), never from
+// this file's comments. When the redesign retunes a hue, the edit is HERE — swatch is
+// the single value home (DESIGN §3). Consumer: gunbc.site.gunb_ai_tokens, which binds
+// each of these into the site token set; nothing else imports this module (DESIGN §3c).
+
+data gunb_ai_hues_provenance: SwatchSetProvenance = HouseAuthored {
+  note: "The four live gunb.ai hue families (warm/umber-sand neutrals, moss, clay, brass) plus their in-family steps, lifted from the hand-maintained site's :root block so palette becomes the only colour authority. Operator pick A 2026-10-16; values track the live look and move when the redesign retunes them.",
+}
+
+data near_black: Swatch = live_swatch(name: "near-black", token: live_token_void)
+data soot: Swatch = live_swatch(name: "soot", token: live_token_void_up)
+data graphite: Swatch = live_swatch(name: "graphite", token: live_token_void_up2)
+
+data sand: Swatch = live_swatch(name: "sand", token: live_token_stone)
+data taupe: Swatch = live_swatch(name: "taupe", token: live_token_stone_dim)
+data umber: Swatch = live_swatch(name: "umber", token: live_token_stone_faint)
+data warm_white: Swatch = live_swatch(name: "warm-white", token: live_token_warm_white)
+data off_white: Swatch = live_swatch(name: "off-white", token: live_token_warm_white_dim)
+
+data moss: Swatch = live_swatch(name: "moss", token: live_token_moss)
+data moss_deep: Swatch = live_swatch(name: "moss-deep", token: live_token_moss_dim)
+data clay: Swatch = live_swatch(name: "clay", token: live_token_clay)
+data clay_deep: Swatch = live_swatch(name: "clay-deep", token: live_token_clay_dim)
+data brass: Swatch = live_swatch(name: "brass", token: live_token_brass)
+data brass_deep: Swatch = live_swatch(name: "brass-deep", token: live_token_brass_dim)
+
+data gunb_ai_hue_members: List<SwatchMember> = [
+  swatch_filed(sw: near_black),
+  swatch_filed(sw: soot),
+  swatch_filed(sw: graphite),
+  swatch_filed(sw: sand),
+  swatch_filed(sw: taupe),
+  swatch_filed(sw: umber),
+  swatch_filed(sw: warm_white),
+  swatch_filed(sw: off_white),
+  swatch_filed(sw: moss),
+  swatch_filed(sw: moss_deep),
+  swatch_filed(sw: clay),
+  swatch_filed(sw: clay_deep),
+  swatch_filed(sw: brass),
+  swatch_filed(sw: brass_deep),
+]
+
+// The page-chrome black, distinct from near_black on purpose. The served page's
+// <meta name="theme-color"> is #0c0d0c (12,13,12) while its --void background is hsl(37,0%,5%) =
+// (13,13,13) = near_black above; both were read off the live page 2026-10-18. Collapsing them into
+// one swatch would silently change what the browser paints in the address bar, so the difference is
+// kept as data.
+//
+// It is a row rather than a member of gunb_ai_hues because that set's completeness rule
+// (gunbc.site.gunb_ai_tokens.token_binding_complete) ranges over every member and requires each to
+// be bound to a token role — and this colour is not a custom property, it is the chrome colour one
+// meta tag carries, so binding it to a --gunb-* role would model a consumer that does not exist.
+// CONSUMER (§3c): gunbc.site.gunb_ai_page reads it through gunbc.design.palette.swatch_paint to
+// fill <meta name="theme-color">; it is not filed in a SwatchSet because nothing would read the set.
+data theme_chrome_black: Swatch = Swatch { name: "theme-chrome-black", color: Srgb8 { r: 12, g: 13, b: 12 } }
+
+data gunb_ai_hues: SwatchSet = SwatchSet {
+  name: "gunb-ai-hues",
+  provenance: gunb_ai_hues_provenance,
+  members: gunb_ai_hue_members,
+}
+
+fn gunb_ai_hues_admissible() -> Bool {
+  swatch_set_admissible(s: gunb_ai_hues)
+}
+
+// The seal's body paint, as gunb.ai's assets/mark.svg fills it (#f4efe6, read off the served file
+// 2026-10-19). It is NOT warm_white (#f4f1ec): the two differ in green and blue, and the favicon's
+// seal reads warmer than the page's text, so collapsing them would repaint the tab icon. Like
+// theme_chrome_black it is a row outside gunb_ai_hues, because it is not a --gunb-* role.
+// CONSUMER (§3c): gunbc.site.gunb_ai_mark reads it through gunbc.design.palette.swatch_paint.
+data seal_white: Swatch = Swatch { name: "seal-white", color: Srgb8 { r: 244, g: 239, b: 230 } }
+
+// THE LIVE RAMP, AS THE SERVED SHEET STATES IT. This module is the SINGLE colour authority for gunb.ai
+// (review 82669 on gunbc#14448): the served stylesheet spells four hue angles and two accent
+// percentages once and writes every colour as hsl()/hsla() over var(--...) references, so those
+// definitions are the values. The Srgb8 swatches above are DERIVED from them (live_swatch, through
+// extdeps.color.srgb.hsl_to_srgb8), and the stylesheet's wire is derived from the same rows
+// (live_token_css). A token meant to differ from its live source would be a typed departure row with a
+// reason; there are none. Re-derive from `:root` in gunb-ai/frontend assets/site.css.
+// CONSUMERS: gunbc.site.gunb_ai_css (the wire) and every swatch row above (the Srgb8).
+
+type HueDegrees {
+  name: String
+  degrees: Degree
+}
+
+type PercentParameter {
+  name: String
+  percent: Percent
+}
+
+type LivePercent
+  = PercentLiteral { n: Percent }
+  | PercentParam { parameter: PercentParameter }
+
+type LiveColorToken {
+  name: String
+  hue: HueDegrees
+  saturation: LivePercent
+  lightness: LivePercent
+  alpha_milli: Optional<Int>
+}
+
+data live_hue_warm: HueDegrees = HueDegrees { name: "hue-warm", degrees: degree(count: 37) }
+data live_hue_moss: HueDegrees = HueDegrees { name: "hue-moss", degrees: degree(count: 134) }
+data live_hue_clay: HueDegrees = HueDegrees { name: "hue-clay", degrees: degree(count: 3) }
+data live_hue_brass: HueDegrees = HueDegrees { name: "hue-brass", degrees: degree(count: 43) }
+
+data live_accent_saturation: PercentParameter = PercentParameter { name: "accent-sat", percent: percent(count: 36) }
+data live_accent_lightness: PercentParameter = PercentParameter { name: "accent-l", percent: percent(count: 48) }
+
+data live_token_moss: LiveColorToken = LiveColorToken { name: "moss", hue: live_hue_moss, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentParam { parameter: live_accent_lightness }, alpha_milli: Absent }
+data live_token_moss_dim: LiveColorToken = LiveColorToken { name: "moss-dim", hue: live_hue_moss, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentLiteral { n: percent(count: 36) }, alpha_milli: Absent }
+data live_token_moss_subtle: LiveColorToken = LiveColorToken { name: "moss-subtle", hue: live_hue_moss, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentParam { parameter: live_accent_lightness }, alpha_milli: Present { value: 140 } }
+data live_token_clay: LiveColorToken = LiveColorToken { name: "clay", hue: live_hue_clay, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentParam { parameter: live_accent_lightness }, alpha_milli: Absent }
+data live_token_clay_dim: LiveColorToken = LiveColorToken { name: "clay-dim", hue: live_hue_clay, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentLiteral { n: percent(count: 36) }, alpha_milli: Absent }
+data live_token_clay_subtle: LiveColorToken = LiveColorToken { name: "clay-subtle", hue: live_hue_clay, saturation: PercentParam { parameter: live_accent_saturation }, lightness: PercentParam { parameter: live_accent_lightness }, alpha_milli: Present { value: 140 } }
+data live_token_brass: LiveColorToken = LiveColorToken { name: "brass", hue: live_hue_brass, saturation: PercentLiteral { n: percent(count: 34) }, lightness: PercentLiteral { n: percent(count: 54) }, alpha_milli: Absent }
+data live_token_brass_dim: LiveColorToken = LiveColorToken { name: "brass-dim", hue: live_hue_brass, saturation: PercentLiteral { n: percent(count: 28) }, lightness: PercentLiteral { n: percent(count: 40) }, alpha_milli: Absent }
+data live_token_brass_subtle: LiveColorToken = LiveColorToken { name: "brass-subtle", hue: live_hue_brass, saturation: PercentLiteral { n: percent(count: 34) }, lightness: PercentLiteral { n: percent(count: 54) }, alpha_milli: Present { value: 130 } }
+data live_token_void: LiveColorToken = LiveColorToken { name: "void", hue: live_hue_warm, saturation: PercentLiteral { n: percent(count: 0) }, lightness: PercentLiteral { n: percent(count: 5) }, alpha_milli: Absent }
+data live_token_void_up: LiveColorToken = LiveColorToken { name: "void-up", hue: live_hue_warm, saturation: PercentLiteral { n: percent(count: 3) }, lightness: PercentLiteral { n: percent(count: 8) }, alpha_milli: Absent }
+data live_token_void_up2: LiveColorToken = LiveColorToken { name: "void-up2", hue: live_hue_warm, saturation: PercentLiteral { n: percent(count: 4) }, lightness: PercentLiteral { n: percent(count: 11) }, alpha_milli: Absent }
+data live_token_stone: LiveColorToken = LiveColorToken { name: "stone", hue: live_hue_warm, saturation: PercentLiteral { n: percent(count: 20) }, lightness: PercentLiteral { n: percent(count: 76) }, alpha_milli: Absent }
+data live_token_stone_dim: LiveColorToken = LiveColorToken { name: "stone-dim", hue: live_hue_warm, saturation: PercentLiteral { n: percent(count: 12) }, lightness: PercentLiteral { n: percent(count: 55) }, alpha_milli: Absent }
+data live_token_stone_faint: LiveColorToken = LiveColorToken { name: "stone-faint", hue: live_hue_warm, saturation: PercentLiteral { n: percent(count: 10) }, lightness: PercentLiteral { n: percent(count: 38) }, alpha_milli: Absent }
+data live_token_warm_white: LiveColorToken = LiveColorToken { name: "warm-white", hue: live_hue_warm, saturation: PercentLiteral { n: percent(count: 27) }, lightness: PercentLiteral { n: percent(count: 94) }, alpha_milli: Absent }
+data live_token_warm_white_dim: LiveColorToken = LiveColorToken { name: "warm-white-dim", hue: live_hue_warm, saturation: PercentLiteral { n: percent(count: 18) }, lightness: PercentLiteral { n: percent(count: 87) }, alpha_milli: Absent }
+data live_token_border_dark: LiveColorToken = LiveColorToken { name: "border-dark", hue: live_hue_warm, saturation: PercentLiteral { n: percent(count: 20) }, lightness: PercentLiteral { n: percent(count: 76) }, alpha_milli: Present { value: 80 } }
+data live_token_border_dark_strong: LiveColorToken = LiveColorToken { name: "border-dark-strong", hue: live_hue_warm, saturation: PercentLiteral { n: percent(count: 20) }, lightness: PercentLiteral { n: percent(count: 76) }, alpha_milli: Present { value: 160 } }
+
+data live_color_tokens: List<LiveColorToken> = [live_token_moss, live_token_moss_dim, live_token_moss_subtle, live_token_clay, live_token_clay_dim, live_token_clay_subtle, live_token_brass, live_token_brass_dim, live_token_brass_subtle, live_token_void, live_token_void_up, live_token_void_up2, live_token_stone, live_token_stone_dim, live_token_stone_faint, live_token_warm_white, live_token_warm_white_dim, live_token_border_dark, live_token_border_dark_strong]
+
+fn live_percent_value(p: LivePercent) -> Int {
+  match p {
+    PercentLiteral { n: n } => 0 + percent_count(p: n)
+    PercentParam { parameter: q } => 0 + percent_count(p: q.percent)
+  }
+}
+
+fn live_percent_component(p: LivePercent) -> CssColorComponent {
+  match p {
+    PercentLiteral { n: n } => ComponentPercent { n: 0 + percent_count(p: n) }
+    PercentParam { parameter: q } => ComponentVar { reference: CssVarRef { name: q.name } }
+  }
+}
+
+fn live_token_css(t: LiveColorToken) -> CssHsl {
+  CssHsl {
+    hue: ComponentVar { reference: CssVarRef { name: t.hue.name } },
+    saturation: live_percent_component(p: t.saturation),
+    lightness: live_percent_component(p: t.lightness),
+    alpha_milli: t.alpha_milli,
+  }
+}
+
+fn live_token_srgb8(t: LiveColorToken) -> Srgb8 {
+  match hsl_to_srgb8(hue: 0 + degree_count(d: t.hue.degrees), sat_pct: live_percent_value(p: t.saturation), light_pct: live_percent_value(p: t.lightness)) {
+    Present { value: c } => c
+    Absent => Srgb8 { r: pure_dag_seam_unreachable_int(), g: pure_dag_seam_unreachable_int(), b: pure_dag_seam_unreachable_int() }
+  }
+}
+
+fn live_swatch(name: String, token: LiveColorToken) -> Swatch {
+  Swatch { name: name, color: live_token_srgb8(t: token) }
+}

@@ -25,6 +25,11 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_183527,
   operator_host_3dde7f,
   operator_host_94c81d,
+  operator_host_mtjade1,
+  operator_host_srv9,
+  operator_host_srv10,
+  operator_host_srv11,
+  operator_host_srv12,
 }
 import gunbc.host_names.gen_z { host_name_first_parts, gen_z_last_parts }
 
@@ -206,11 +211,17 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv14,
-    name: LegacyHostname { label: "srv14" as DnsLabel },
+    name: DrawnHumanName {
+      name: FirstOnly { first: "butch" as DnsLabel },
+      draw: HumanNameDraw { entropy: 155184575423 },
+    },
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv15,
-    name: LegacyHostname { label: "srv15" as DnsLabel },
+    name: DrawnHumanName {
+      name: FirstOnly { first: "bobo" as DnsLabel },
+      draw: HumanNameDraw { entropy: 454684151172 },
+    },
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv16,
@@ -221,6 +232,52 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
     name: DrawnHumanName {
       name: FirstOnly { first: "owen" as DnsLabel },
       draw: HumanNameDraw { entropy: 709187867323 },
+    },
+  },
+  // THE FIVE DRAWN ROWS (2026-10-27), drawn by the P2 model step of
+  // gunbc.plans.fleet_naming_reach_access. srv9-srv12 keep their identity slot as a LEGACY spelling and
+  // mtjade1 keeps its historical one: those spellings are how the operator has always addressed them, and
+  // withdrawing them to make a row look drawn would have replaced a recorded fact with a prettier one.
+  // Each `draw.entropy` is the ticket the allocator indexes the naming corpora with, and the recorded
+  // `name` is exactly what `draw_human_name` yields for that ticket against the rows allocated before it --
+  // the property dag/test/claim/fleet_naming_witness.dag re-draws for EVERY drawn row instead of trusting
+  // this comment. The ticket is the draw proper: the first untaken of the three forms it indexes, so a
+  // drawn member carries ONE label and not three spellings (the plan's P2 wording). The other spellings a
+  // name admits stay what they always were -- selector conveniences of `allocation_selector_forms`,
+  // resolvable only while they pick out exactly one host.
+  HostnameAllocation {
+    fleet_slot: operator_host_mtjade1,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "eric" as DnsLabel },
+      draw: HumanNameDraw { entropy: 282938336220 },
+    },
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv9,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "francis" as DnsLabel },
+      draw: HumanNameDraw { entropy: 507956931964 },
+    },
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv10,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "emerson" as DnsLabel },
+      draw: HumanNameDraw { entropy: 970743951946 },
+    },
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv11,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "mil" as DnsLabel },
+      draw: HumanNameDraw { entropy: 718614163883 },
+    },
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv12,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "bastien" as DnsLabel },
+      draw: HumanNameDraw { entropy: 307940512393 },
     },
   },
 ]

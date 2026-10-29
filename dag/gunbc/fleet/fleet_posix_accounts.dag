@@ -113,6 +113,7 @@ type FleetPosixAccountKey
   | FleetAccountInferenceService
   | FleetAccountPublicationHelper
   | FleetAccountNotificationService
+  | FleetAccountDeployJob
 
 data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",
@@ -149,6 +150,44 @@ data fleet_posix_ci_runner_user: PosixUser = PosixUser {
   gid: 1001,
   shell: LoginShellUnobserved,
 }
+
+// THE DEDICATED WORKER ACCOUNT: the identity a dispatched worker's system unit runs as when its
+// instance declares worker (gunbc.roadmap.roadmap_dashboard_instance HostDashboardInstance). It is a
+// member of NO root-equivalent group: not docker, lxd, sudo or adm, and it has no sudoers line, so a
+// process running as it holds no credential that reaches root. Its only supplementary group is the
+// shared attempt group below, which owns the directories the worker writes. The shell is declared
+// nologin because nothing logs in as it; the systemd unit execs the worker directly.
+//
+// CONVERGER: none in the model yet. The account and group are created by hand on a host that opts an
+// instance in (srv1's lab, by the operator's session), matching these rows exactly. Adding the
+// converge is the capability that retires the hand step, and the prod instance does not opt in until
+// an operator has qualified the lab.
+data fleet_posix_worker_user: PosixUser = PosixUser {
+  name: "gunbc-worker",
+  uid: 1004,
+  gid: 1004,
+  shell: LoginShellObserved { path: fleet_posix_nologin_shell_path },
+}
+
+// THE SHARED ATTEMPT GROUP: the instance's service user and the worker account are its only members.
+data fleet_posix_worker_shared_group_name: NonEmptyStr = "gunbc-attempt"
+
+data fleet_posix_worker_shared_group_gid: Int = 1003
+
+// HOST READING, srv1, 2026-10-17 (bright-moth-475): uid/gid 1002 belong to ubuntu (ubuntu:x:1002:1002),
+// which is why gunbc-worker moved off 1002; 1003 to 1012 were free (1003 is the attempt group's gid above,
+// 1004 is gunbc-worker's). Other ids in use: briansrls 1000, gunbc-fleet 1001, gunbc-publication 995/985,
+// gunbc-ntfy 994/984. A reading, not a declaration: these accounts are not rows here, so a supplied
+// reading at this interface is what the no-collision claim compares against.
+data fleet_srv1_observed_numeric_ids: List<Int> = [1000, 1001, 1002, 995, 985, 994, 984]
+
+// THE GROUPS THE WORKER ACCOUNT BELONGS TO, DECLARED AS A CLOSED LIST: the shared attempt group alone.
+// Membership of any group in fleet_root_equivalent_group_names (gunbc.fleet.fleet_root_equivalent_groups) would hand the worker a credential that
+// reaches root through a daemon socket or sudo, so a declaration check refuses it here. NO CONVERGE OR HOST READBACK CONSUMES THESE ROWS YET: the only consumer is
+// test.claim.roadmap.worker_dedicated_account_witness; the host readback (id gunbc-worker) is the declared
+// frontier whose arrival makes this a host-level guarantee.
+data fleet_posix_worker_supplementary_groups: List<NonEmptyStr> = [fleet_posix_worker_shared_group_name]
+
 
 data fleet_posix_srv3_host_administrator_user: PosixUser = PosixUser {
   name: "ubuntu",
@@ -654,6 +693,13 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
         name_requirements: service_name_requirements,
         sudo_grants: fleet_posix_notification_service_sudo_grants(),
       }
+    FleetAccountDeployJob =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: NoLoginServiceIdentity,
+        name_requirements: service_name_requirements,
+        sudo_grants: fleet_posix_deploy_job_sudo_grants(),
+      }
   }
 }
 
@@ -702,6 +748,18 @@ fn fleet_posix_publication_helper_sudo_grants() -> List<PosixSudoGrant> {
 // own config, and writes its own state directory; none of that needs sudo, and the account is
 // declared empty so a future grant is a visible edit to this function rather than a roster append.
 fn fleet_posix_notification_service_sudo_grants() -> List<PosixSudoGrant> {
+  []
+}
+
+// EMPTY AS A BINARY ROSTER, BY CONSTRUCTION. The account jobs of the deploy slot run as
+// (gunbc.ci.deploy_slot_tenancy deploy_slot_job_user, plan decision D5) holds no whole-binary grant:
+// the root-equivalent entries of fleet_posix_ci_runner_sudo_grants (systemctl, install, apt-get,
+// visudo) are exactly what the split removes from the principal PR code can reach, and giving them
+// to a second account would move the finding rather than close it. Its per-unit authority -- the
+// retirement mask lines and the fabric-cell set-property lines -- is rendered as exact operations in
+// the runner host sudoers (gunbc.runner.runner_host_grants deploy_slot_privileged_operations), which
+// a binary-path PosixSudoGrant cannot express. A future binary grant is a visible edit here.
+fn fleet_posix_deploy_job_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
@@ -1070,6 +1128,7 @@ fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOut
     FleetAccountInferenceService => PrincipalRequiresHostScope { principal: key }
     FleetAccountPublicationHelper => PrincipalRequiresHostScope { principal: key }
     FleetAccountNotificationService => PrincipalRequiresHostScope { principal: key }
+    FleetAccountDeployJob => PrincipalRequiresHostScope { principal: key }
   }
 }
 

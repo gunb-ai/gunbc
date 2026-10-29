@@ -15,6 +15,7 @@ import extdeps.github.log_annotations {
 }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue }
 import std.types { NonEmptyStr, SecretName, Unit, String, List }
+import std.measure { Second, second }
 import std.os.types { KernelFamily }
 import extdeps.toolchain.types { Architecture }
 import extdeps.external_authority { ExternalAuthority }
@@ -90,6 +91,34 @@ fn workflow_run_activity_name(activity: WorkflowRunActivity) -> String {
     WorkflowRunRequestedActivity => "requested"
     WorkflowRunInProgressActivity => "in_progress"
     WorkflowRunCompletedActivity => "completed"
+  }
+}
+
+// WHAT THE PAYLOAD'S workflow_run.display_title HOLDS AT EACH ACTIVITY. GitHub's docs say the field is
+// the run's title, which is its rendered run-name when the workflow sets one, and say nothing about
+// when that rendering happens. The reproduced upstream report (actions/runner#4141, with a
+// reproduction repository) shows that at `requested` both `name` and `display_title` are the
+// workflow's static name and only at `completed` are they the rendered run-name. A consumer that
+// filters a `requested` event on its run-name therefore sees the workflow name and matches nothing.
+// in_progress is UNCITED, not assumed rendered: no source establishes it, so a consumer may not read
+// a rendered title there.
+data workflow_run_requested_title_report: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/actions/runner/issues/4141"
+  }
+}
+
+type WorkflowRunDisplayTitleAtActivity
+  = DisplayTitleIsWorkflowName { ground: ExternalAuthority }
+  | DisplayTitleIsRenderedRunName { ground: ExternalAuthority }
+  | DisplayTitleRenderingUncited
+
+fn workflow_run_display_title_at(activity: WorkflowRunActivity) -> WorkflowRunDisplayTitleAtActivity {
+  match activity {
+    WorkflowRunRequestedActivity => DisplayTitleIsWorkflowName { ground: workflow_run_requested_title_report }
+    WorkflowRunInProgressActivity => DisplayTitleRenderingUncited
+    WorkflowRunCompletedActivity => DisplayTitleIsRenderedRunName { ground: workflow_run_requested_title_report }
   }
 }
 
@@ -413,6 +442,11 @@ type MissingFilesBehavior = Warn | ErrorOut | Ignore
 data max_job_timeout_minutes: Int = 360
 
 data default_job_timeout_minutes: Int = 360
+
+// GitHub's cancellation timeout: when a run is cancelled, always() steps get five minutes and are then
+// force-cancelled (docs.github.com/en/actions/reference/workflows-and-actions/expressions, status check
+// functions, "cancelled" / "always").
+data cancelled_job_always_step_timeout: Second = second(count: 300)
 
 data max_matrix_combinations: Int = 256
 

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.non_fold_residue_diff_scope_misses_an_untouched_flip
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data non_fold_residue_diff_scope_misses_an_untouched_flip: RecurringFailureMode = RecurringFailureMode {
   identity: "non_fold_residue_diff_scope_misses_an_untouched_flip" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a wildcard arm whose scrutinee's INFERRED type is a closed coproduct, in a module no required lane typed, carries no row in gunbc.non_fold_residue non_fold_residue_frontier -- or a row there names a site that no longer carries one -- and every required lane is green. The merge-path check WAS the required floor's DIFF-SCOPED typed verdict (v1_compiler.cli_run.non_fold_residue non_fold_residue_diff_verdict, run in run_required_floor as phase non-fold-residue-diff). That runner and verdict were deleted; the class is now outside every required lane (rung honesty: no enrolled mechanical preventer remains).",
@@ -13,7 +15,7 @@ data non_fold_residue_diff_scope_misses_an_untouched_flip: RecurringFailureMode 
 
     "SEPARATE FROM, AND NOT RESTATED HERE: modules that NO required lane compiles at all are the population of the failure mode module_outside_every_compiled_population_rots_silently (gunbc#12575, a declared frontier until it lands). Measured 2026-09-29 by joining the 2026-09-20 required-lane-resolution-census receipt: 2009 of the 4402 non-test census files, holding 74 of the 189 rostered sites, are in no required lane's graph. This row is only the diff-scope residual INSIDE the floor's prepared subject.",
 
-    "RUNG found at 1 after the floor cut: the typed verdict that held rung 2 for touched modules is deleted with run_required_floor. ATTAINABLE CEILING 3, structurally guaranteed: closedness is decidable from the typed program, so a corpus-wide typed reading refuses the state for every module on every run.",
+    "RUNG found at 1 after the floor cut: the typed verdict that held rung 2 for touched modules is deleted with run_required_floor. Its rung fell under gunbc.rung_drop v1_required_lanes_withdrawn -- the verdict was a phase of the `floor` lane's fold, which that row's population names ('every claim the floor lane folded on a pull request or a merge_group'), and the row already declares its rung 2 was inflated: required_ci_phase_selected selected the floor phase only when a job ran `claim_executor --required-ci --required-lane witnesses`, and fa44b98102 (#13641, landed 2026-10-10) removed the last such job, declaring that fall in the same change. Not restated here. ATTAINABLE CEILING 3, structurally guaranteed: closedness is decidable from the typed program, so a corpus-wide typed reading refuses the state for every module on every run.",
 
     "NEXT-RUNG TRIGGER, at capability grain: the v2 lens (#5364) reads typed scrutinees corpus-wide -- v2.lens.fallback_arm_census derives scrutinee_closed_total for every match in every module from v2 inference on the merge path, rather than from the v1 checker over one pull request's prepared subject. An artifact that types more modules on one run is not sufficient; the capability is corpus-wide typed coverage on every run, enrolled with a red that flips an untouched module's scrutinee through a changed upstream type.",
   ],

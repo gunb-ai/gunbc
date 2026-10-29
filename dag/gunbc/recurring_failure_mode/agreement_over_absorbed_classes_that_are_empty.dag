@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.agreement_over_absorbed_classes_that_are_empty
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data agreement_over_absorbed_classes_that_are_empty: RecurringFailureMode = RecurringFailureMode {
   identity: "agreement_over_absorbed_classes_that_are_empty" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**two instruments agree because the classes one of them ABSORBS happen to be empty** (two counters, reports or readers are compared, they return the same NUMBER, and the agreement is taken as evidence that they measure the same thing.",

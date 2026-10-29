@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_coproduct_declares_one_variant_twice
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_coproduct_declares_one_variant_twice: RecurringFailureMode = RecurringFailureMode {
   identity: "a_coproduct_declares_one_variant_twice" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: one coproduct declaration names the same variant twice. One name, two declarations, in a single type -- the section 3 single-authority defect stated at the grain where the substrate can see it, and distinct from two variants sharing a leaf name under DIFFERENT containment, which is a namespace-identity question and not this row.",
     "HARM: lookup by exact authored name takes the first match and never asks whether a second exists, so the duplicate is not merely tolerated, it is unobservable. Every consumer resolves to the first declaration and the second is dead vocabulary that still reads as declared. Nothing downstream can distinguish the two, so no consumer can report the defect either; the declaration is degenerate and the whole pipeline answers as though it were not.",

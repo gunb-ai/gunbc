@@ -40,6 +40,9 @@ import gunbc.harness.harness_reasoning_wire {
   HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,
   PlacedOnFleetSeat, RunOnOperatorEndpoint, LeasedFromHostedQuota,
 }
+import product.fabric.serving_recipe {
+  serving_recipe_qwen3_8_27b_nvfp4_ninfer, PerGibibyteHour, MoneyPerGibibyteHour,
+}
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiDriverVersionRead, VastAiDriverVersionUnread, VastAiDriverVersionMalformed,
   vast_ai_ingest_search_offer_driver,
@@ -663,10 +666,6 @@ fn flex_held_effective_rate(rate: MoneyPerHour, held: Bool) -> MoneyPerHour {
   }
 }
 
-type PerGibibyteHour
-
-type MoneyPerGibibyteHour = MoneyRate<PerGibibyteHour>
-
 type FlexVramHourly
   = FlexVramHourlyQuoted { rate: MoneyPerGibibyteHour }
   | FlexVramHourlyZeroCapacity
@@ -978,34 +977,9 @@ fn flex_ninfer_qwen_probe() -> FlexCardProbe {
   FlexCardUnitEstablished { unit: Qwen3_8_27bOnNinfer }
 }
 
-type FlexHostDriverMinimum {
-  major: Nat
-  standing: CitedFigureStanding
-}
-
-data flex_ninfer_min_driver: FlexHostDriverMinimum = FlexHostDriverMinimum {
-  major: 580,
-  standing: TranscribedUncited {
-    read_obligation: "read the ninfer Qwen3.8-27b launch image NVIDIA driver major requirement; 580 is a transcribed flex screen, not a cited NVIDIA or ninfer figure" as NonEmptyStr,
-  },
-}
-
-data flex_vllm_min_driver: FlexHostDriverMinimum = FlexHostDriverMinimum {
-  major: 590,
-  standing: TranscribedUncited {
-    read_obligation: "read the vLLM CUDA 13 serving image NVIDIA driver major requirement; 590 is a transcribed flex screen, not a cited NVIDIA or vLLM figure" as NonEmptyStr,
-  },
-}
-
-fn flex_unit_min_host_driver(unit: HarnessServingUnit) -> Nat? {
-  match unit {
-    Qwen3_8_27bOnNinfer => Present { value: flex_ninfer_min_driver.major }
-    DeepseekV4FlashOnVllm => Present { value: flex_vllm_min_driver.major }
-    Glm53FlashOnVllm => Present { value: flex_vllm_min_driver.major }
-    NemotronUltraFreeOnOpenRouter => none
-  }
-}
-
+// The host driver floor is the RECIPE's fact (product.fabric.serving_recipe ServingDriverFloor), screened by
+// product.fabric.flex_vast_shadow flex_offer_screen_by_recipe with its standing; this module reads the offer's
+// driver only.
 fn flex_offer_driver_major(offer: VastAiOffer) -> Nat? {
   match vast_ai_ingest_search_offer_driver(offer: offer) {
     VastAiDriverVersionUnread => none
@@ -1014,22 +988,3 @@ fn flex_offer_driver_major(offer: VastAiOffer) -> Nat? {
   }
 }
 
-fn flex_offer_meets_unit_driver(offer: VastAiOffer, unit: HarnessServingUnit) -> Bool {
-  match flex_unit_min_host_driver(unit: unit) {
-    Absent => true
-    Present { value: min } =>
-      match flex_offer_driver_major(offer: offer) {
-        Absent => false
-        Present { value: observed } => observed >= min
-      }
-  }
-}
-
-fn flex_serving_unit_accepts_offer(
-  required: HarnessServingUnit,
-  observed: FlexCardProbe,
-  offer: VastAiOffer,
-) -> Bool {
-  flex_rented_card_fungible(required: required, observed: observed)
-    && flex_offer_meets_unit_driver(offer: offer, unit: required)
-}

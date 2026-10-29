@@ -48,6 +48,7 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
   NodeStandingRow, RoadmapStandings, StandingsObserved, StandingsUnobserved, roadmap_node_standing,
 }
+import std.host_text { chars }
 
 // The issue command boundary is carrier-independent. This Git realization publishes the issue
 // revision and operation receipt together with an exact remote-ref compare-and-swap. Each read

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.sole_constructor_wrapper_satisfies_a_typecheck_declared_for_its_payload
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data sole_constructor_wrapper_satisfies_a_typecheck_declared_for_its_payload: RecurringFailureMode = RecurringFailureMode {
   identity: "sole_constructor_wrapper_satisfies_a_typecheck_declared_for_its_payload" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a single-field wrapper value passes a typecheck written for its payload and then fails at evaluation on a field the payload has and the wrapper does not** (the two ends disagree about the same coercion: acceptance is transparent, evaluation is not, so the declaration says the value is the payload and the runtime says it is the box.",

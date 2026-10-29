@@ -13,7 +13,9 @@ import v2.extdeps.languages.dag { dag_language_model, dag_pick_target_model, dag
 import v2.extdeps.languages.typescript { ts_target_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.compilers.target_model {
+  IntLiteralUnwired,
   TargetModel,
+  TargetValueExpressionProjection,
   target_project_arrow_body_to_value_expression,
   target_value_expression_projection_from_target,
   target_value_expression_tokens_from_target
@@ -30,7 +32,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SUBJECT IS WHERE A TARGET THAT HAS NOT DECLARED `int_literal_form` REFUSES AN INTEGER LITERAL.
 // `v2.std.compilers.target_model` renders an integer literal through the target's declared literal
-// token class; C, TypeScript and dag declare `IntLiteralUnwired`, so their token fold refuses
+// token class; a projection left `IntLiteralUnwired` (C, TypeScript and dag now declare a form, so the RED unwires the decoded projection) refuses
 // `target_value_expr_int_literal_form_unwired`. The refusal is only useful if it names the authored
 // literal, so each row asserts the reason AND that the locus is the literal's bytes in this source --
 // `606060` sits at bytes 62..68 of the text below. A wire node built with a synthetic occurrence
@@ -67,7 +69,27 @@ type IntLiteralProbeTable {
   dag: IntLiteralTargetVerdict
 }
 
-fn int_literal_target_verdict(arrow: Node, target: TargetModel, spans: SpanIndex) -> IntLiteralTargetVerdict {
+fn int_literal_projection_unwired(p: TargetValueExpressionProjection) -> TargetValueExpressionProjection {
+  TargetValueExpressionProjection {
+    binding_ref_form: p.binding_ref_form,
+    primitive_apply_form: p.primitive_apply_form,
+    callable_apply_form: p.callable_apply_form,
+    closure_form: p.closure_form,
+    effect_apply_form: p.effect_apply_form,
+    conditional_form: p.conditional_form,
+    let_form: p.let_form,
+    loop_form: p.loop_form,
+    record_construct_form: p.record_construct_form,
+    field_access_form: p.field_access_form,
+    match_form: p.match_form,
+    bool_literal_form: p.bool_literal_form,
+    int_literal_form: IntLiteralUnwired,
+    list_introduction_form: p.list_introduction_form,
+    block_evaluation_mode: p.block_evaluation_mode
+  }
+}
+
+fn int_literal_target_verdict(arrow: Node, target: TargetModel, spans: SpanIndex, unwire: Bool) -> IntLiteralTargetVerdict {
   let tokens = bind_outcome(
     o: target_project_arrow_body_to_value_expression(
       arrow: arrow,
@@ -79,7 +101,11 @@ fn int_literal_target_verdict(arrow: Node, target: TargetModel, spans: SpanIndex
       bind_outcome(
         o: target_value_expression_projection_from_target(target: target),
         f: fn(projection) {
-          target_value_expression_tokens_from_target(expr: expr, target: target, projection: projection)
+          target_value_expression_tokens_from_target(
+            expr: expr,
+            target: target,
+            projection: if unwire { int_literal_projection_unwired(p: projection) } else { projection }
+          )
         }
       )
     }
@@ -102,7 +128,7 @@ fn int_literal_unreached_table(reason: Symbol) -> IntLiteralProbeTable {
   }
 }
 
-fn int_literal_probe_table() -> IntLiteralProbeTable {
+fn int_literal_probe_table(unwire: Bool) -> IntLiteralProbeTable {
   let assembled = assemble_program_from_ingest_located(
     ingest: int_literal_probe_ingest,
     admission: Admission {
@@ -121,9 +147,9 @@ fn int_literal_probe_table() -> IntLiteralProbeTable {
             Rejected { diagnostics: d } => int_literal_unreached_table(reason: diagnostics_fatal_reason(d: d))
             Accepted { value: arrow, diagnostics: _ } =>
               IntLiteralProbeTable {
-                c: int_literal_target_verdict(arrow: arrow, target: c_target_model(), spans: assembled.spans),
-                typescript: int_literal_target_verdict(arrow: arrow, target: ts_target_model(), spans: assembled.spans),
-                dag: int_literal_target_verdict(arrow: arrow, target: dag_pick_target_model(), spans: assembled.spans)
+                c: int_literal_target_verdict(arrow: arrow, target: c_target_model(), spans: assembled.spans, unwire: unwire),
+                typescript: int_literal_target_verdict(arrow: arrow, target: ts_target_model(), spans: assembled.spans, unwire: unwire),
+                dag: int_literal_target_verdict(arrow: arrow, target: dag_pick_target_model(), spans: assembled.spans, unwire: unwire)
               }
           }
       }
@@ -139,14 +165,27 @@ fn int_literal_refused_unwired_at_the_literal(v: IntLiteralTargetVerdict) -> Boo
   }
 }
 
+fn int_literal_accepted(v: IntLiteralTargetVerdict) -> Bool {
+  match v {
+    IntLiteralTokensAccepted => true
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL: with the form each target declares, the same literal renders.
+test fn c_typescript_and_dag_render_an_integer_literal_through_the_declared_form_holds() -> Bool {
+  let t = int_literal_probe_table(unwire: false)
+  int_literal_accepted(v: t.c) && int_literal_accepted(v: t.typescript) && int_literal_accepted(v: t.dag)
+}
+
 test fn c_refuses_an_integer_literal_at_the_authored_literal_holds() -> Bool {
-  int_literal_refused_unwired_at_the_literal(v: int_literal_probe_table().c)
+  int_literal_refused_unwired_at_the_literal(v: int_literal_probe_table(unwire: true).c)
 }
 
 test fn typescript_refuses_an_integer_literal_at_the_authored_literal_holds() -> Bool {
-  int_literal_refused_unwired_at_the_literal(v: int_literal_probe_table().typescript)
+  int_literal_refused_unwired_at_the_literal(v: int_literal_probe_table(unwire: true).typescript)
 }
 
 test fn dag_refuses_an_integer_literal_at_the_authored_literal_holds() -> Bool {
-  int_literal_refused_unwired_at_the_literal(v: int_literal_probe_table().dag)
+  int_literal_refused_unwired_at_the_literal(v: int_literal_probe_table(unwire: true).dag)
 }

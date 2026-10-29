@@ -17,6 +17,16 @@ import gunbc.fleet_observation.collector_ownership {
   NotTheRecordingOwner,
   recording_owner,
 }
+import std.durable_transfer {
+  LocalCommitStanding,
+  DownstreamAcceptanceStanding,
+  LocallyCommitted,
+  LocalCommitFailed,
+  LocalCommitNotAttempted,
+  DownstreamAccepted,
+  DownstreamRejected,
+  DownstreamNotOffered,
+}
 import gunbc.fleet_observation.capture_chunk {
   CaptureChunk,
   SourceStreamId,
@@ -32,15 +42,8 @@ import gunbc.fleet_observation.capture_chunk {
   ContinuityEstablished,
   ContinuityGap,
   ContinuityUnknown,
-  LocalCommitStanding,
-  LocallyCommitted,
-  LocalCommitFailed,
-  LocalCommitNotAttempted,
+  DurableCommitProof,
   CapturePersistenceRefusal,
-  DownstreamAcceptanceStanding,
-  DownstreamAccepted,
-  DownstreamRejected,
-  DownstreamNotOffered,
   continuity_covers,
   ContinuityCoverage,
   ContinuityCoversRange,
@@ -156,8 +159,8 @@ type ObservationEnvelope {
   chunk: CaptureChunk
   producer_timestamp: ProducerTimestamp
   received: ReceiveObservation
-  local_commit: LocalCommitStanding
-  downstream: DownstreamAcceptanceStanding
+  local_commit: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>
+  downstream: DownstreamAcceptanceStanding<CapturePersistenceRefusal>
   continuity: StreamContinuity
 }
 
@@ -190,7 +193,7 @@ type SilenceProof sole_constructor {
 type SourceByteFact
   = SourceBytesObserved { digest: ContentHash }
   | SourceProducedNoBytesInRange { proof: SilenceProof }
-  | CoverageGapNotDurablyCommitted { standing: LocalCommitStanding }
+  | CoverageGapNotDurablyCommitted { standing: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> }
   | CoverageGapCommitDoesNotBindThisChunk { binding: CommitBinding }
   | CoverageGapContinuityBroken { continuity: StreamContinuity }
   | CoverageGapContinuityShortOfRange { verified_through: StreamPosition, requested_end: StreamPosition }
@@ -366,7 +369,7 @@ type RetentionExposure
   | ForwardRefused { cause: CapturePersistenceRefusal }
   | ExposedToCollectorHostLoss { refusal: NonEmptyStr }
   | RetentionPromiseUnrostered
-  | NotYetRetained { standing: LocalCommitStanding }
+  | NotYetRetained { standing: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> }
 
 // THE REFUSAL TEXT COMES FROM THE ROSTER, never from a literal here -- a second copy of the sentence
 // would be the duplication DESIGN section 3 forbids, and would drift from the promise it describes.

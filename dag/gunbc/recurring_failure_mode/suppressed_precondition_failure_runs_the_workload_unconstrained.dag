@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.suppressed_precondition_failure_runs_the_workload_unconstrained
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data suppressed_precondition_failure_runs_the_workload_unconstrained: RecurringFailureMode = RecurringFailureMode {
   identity: "suppressed_precondition_failure_runs_the_workload_unconstrained" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a precondition that establishes the ENVIRONMENT a workload runs in fails, its diagnostic is discarded, and the workload proceeds in the unconstrained world while every observable it produces is identical to the constrained one** (INVALID STATE: a run reported as bounded -- capped, sandboxed, flag-carrying, quota-bearing -- when the operation that was to bound it refused. The workload's own output cannot discriminate, because a limit that is never approached and a limit that was never applied produce the same bytes, the same exit code and the same duration.)",

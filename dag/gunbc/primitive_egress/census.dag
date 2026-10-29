@@ -18,7 +18,7 @@ import gunbc.primitive_egress.identity {
   JoinedByD0AliasTable, JoinedByEgressAliasRow, JoinedBySpelling,
   canonical_join, identity_name, form_label,
 }
-import v2.std.decl_ref_resolution { DeclarationRefResolution }
+import v2.std.decl_ref_resolution_host { DeclarationRefResolution }
 import gunbc.primitive_egress.qualification { QualificationContext, qualify_evidence }
 import gunbc.primitive_egress.disposition {
   PrimitiveEvidence, QualifiedEvidence, PrimitiveDisposition, QueryOverAcceptedProduct, NotACompilerQuery, DispositionClass, UnresolvedClass, PureDagComputationClass, BoundHostEffectClass,

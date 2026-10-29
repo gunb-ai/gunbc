@@ -9,7 +9,7 @@ import std.fidelity { TransportFidelity }
 import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto }
-import v2.std.operation_argv { OperationRef }
+import std.operation_argv { OperationRef }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import extdeps.ietf.http_semantics { HttpMethod, HttpStatusClass, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE }
 
@@ -239,7 +239,7 @@ type RestAuthSensitiveIdentity
 // the input-digest limb migration lands and an authenticated replay witness executes against a
 // seed-produced invocation; this note then deletes.
 
-// REST needs a specialization of v2.std.operation_argv.BoundOperationInvocation rather than
+// REST needs a specialization of std.operation_argv.BoundOperationInvocation rather than
 // pretending its shell-only binding list is enough. OperationRef remains the declaration identity
 // authority. The specialization adds the HTTP method, fully realized URI target, the digest of
 // every declared input, and an auth-sensitive digest whose preimage never enters the fixture.

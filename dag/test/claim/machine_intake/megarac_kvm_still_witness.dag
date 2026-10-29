@@ -25,7 +25,9 @@ import gunbc.machine_intake.megarac_kvm_still {
   megarac_kvm_observer_start,
   KvmJournalWord, kvm_journal_event_words,
 }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix, mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake.mtcollins1_boot_row {
+  mtcollins1_boot_retained_artifact_prefix, mtcollins1_kvm_observer_dir
+}
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for }
 import gunbc.host.megarac_operation_standing { MegaRacOperation, MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach }
@@ -161,6 +163,16 @@ test fn owned_process_observations_are_kept_distinct() -> Bool {
   let garbled = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: "garbage") { OwnedUnparseable { pid: _, detail: _ } => true  _ => false }
   let foreign = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: stat_200) { OwnedForeign { pid: _, observed_start: o } => o == "200"  _ => false }
   run && gone && unread && garbled && foreign
+}
+
+// RED: the three unparseable-stat causes were one fixed detail under the wildcard; each now
+// names its own cause, so a truncated comm, a short field list and a non-integer start time differ.
+test fn unparseable_stat_causes_are_distinguished() -> Bool {
+  let rec = "4242 100\n"
+  let comm = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: "4242 (node") { OwnedUnparseable { pid: _, detail: d } => d  _ => "" }
+  let short = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: "4242 (node) S 1") { OwnedUnparseable { pid: _, detail: d } => d  _ => "" }
+  let nonint = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: "4242 (node) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 x 12345 67 18446744073709551615\n") { OwnedUnparseable { pid: _, detail: d } => d  _ => "" }
+  comm != "" && short != "" && nonint != "" && comm != short && comm != nonint && short != nonint
 }
 
 // GAPS ARE RETAINED: an interval over two cadences, a clock that stepped back, and a final gap left

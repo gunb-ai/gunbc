@@ -11,7 +11,7 @@ import v2.std.node_query { BinderTypeEdge, declared_field_from_edge, field_proje
 import v2.std.qualified_name { lexical_reference_label_optional }
 import std.algebra { list_snoc_item }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Authored, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, edge_is_core, node_subtree_nodes, node_with_occurrence_id }
+import v2.std.node { Atom, Authored, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, edge_is_core, node_subtree_nodes, node_with_occurrence_id, NotADeclaration }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -182,7 +182,7 @@ fn fmi_replace_atom(n: Node, from: Symbol, to: Node) -> Node {
   Node {
     kind: n.kind,
     children: fold(n.children, init: [], f: fn(acc, e) {
-      list_snoc_item(xs: acc, item: Edge { label: e.label, target: fmi_replace_binder_type(e: e, from: from, to: to) })
+      list_snoc_item(xs: acc, item: Edge { label: e.label, target: fmi_replace_binder_type(e: e, from: from, to: to), declaration: e.declaration })
     }),
     occurrence_id: n.occurrence_id
   }
@@ -215,7 +215,7 @@ fn fmi_infer_with_member_formal_authored(tree: ResolvedTree) -> Outcome<Bool> {
                     root: fmi_replace_atom(n: tree.root, from: variable, to: int_type),
                     symbol_index: tree.symbol_index,
                     resolved_declarations: tree.resolved_declarations,
-                    lexical_bindings: tree.lexical_bindings,
+                    occurrence_resolutions: tree.occurrence_resolutions, duplicate_binding_records: tree.duplicate_binding_records,
                     module_outcomes: tree.module_outcomes, outcome_index: tree.outcome_index,
     member_kinds: tree.member_kinds,
                     type_declaration_modifiers: tree.type_declaration_modifiers,

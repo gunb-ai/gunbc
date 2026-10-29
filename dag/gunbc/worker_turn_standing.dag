@@ -14,7 +14,19 @@ import extdeps.posix.sh_invocation {
   posix_sh_export_from_file_unreadable_exit,
 }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
-import extdeps.llm.cursor_cli { cursor_cli_program, cursor_api_key_env_var, cursor_cli_program_identity }
+import extdeps.llm.cursor_cli { cursor_api_key_env_var }
+import extdeps.filesystem.filesystem_io {
+  FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  filesystem_established_absence_detail,
+}
+import extdeps.exec.program { ProgramIdentity }
+import extdeps.exec.command { argv_words, ArgvCommand }
+import gunbc.host.cursor_agent_realization {
+  cursor_agent_pinned_program,
+  cursor_agent_executable_path,
+  cursor_agent_pinned_version,
+  cursor_agent_pinned_executable_presence,
+}
 import extdeps.tools.gnu_coreutils { timeout_command }
 import std.measure { Second, second }
 import gunbc.command_runner { run_shell_command_observe }
@@ -47,16 +59,20 @@ import gunbc.codex_harness_credential {
   codex_harness_credential_context,
 }
 import gunbc.dispatch_credential_snapshot { TakenCredentialSnapshot, taken_credential_snapshot_path }
+import gunbc.dispatch_credential_acquisition { CursorAttemptRuntimeRoot, credential_taken_cursor_runtime_root }
 import gunbc.cursor_harness_credential {
-  cursor_status_reading,
-  CursorStatusReading,
-  CursorStatusAuthenticated,
-  CursorStatusUnauthenticated,
-  CursorStatusUnreadable,
+  CursorKeyProbeReading,
+  CursorKeyAccepted,
+  CursorKeyRejected,
+  CursorKeyProbeUnreadable,
+  cursor_key_probe_reading,
+  cursor_bound_key_probe_command,
   cursor_sandbox_preflight_reading,
   cursor_sandbox_discriminating_preflight_command,
   CursorSandboxPreflightReading,
   CursorSandboxReady,
+  CursorSandboxRefused,
+  CursorSandboxRefusal,
   CursorSandboxUnavailable,
   CursorSandboxNotEntered,
   CursorSandboxPreflightUnreadable,
@@ -135,36 +151,55 @@ fn codex_trip_installation(exit_code: Int, stderr: String) -> ProviderInstallati
 }
 
 // THE CURSOR STANDING JOINS THREE FACTS, and the offer is selectable only when all three hold: Cursor
-// accepts the custody key, this host can build the sandbox the worker turn declares, and the
-// account's entitlement and quota are observed. cursor-agent status runs under the custody key,
-// exported inside the child as the spawn does it, and answers only the first; a rejected key refuses
-// first, naming the rejection. The sandbox preflight answers the second without a provider call
-// (gunbc.cursor_harness_credential CursorSandboxPreflightReading): gunbc.cursor_harness_credential
-// cursor_worker_turn_run declares CursorSandboxEnabled so that --force is not unconfined, and a host
-// that cannot build that sandbox fails the turn before the provider -- observed on srv2, 2026-10-16
-// -- so the draw refuses here with the host's cause, before launch or provider contact. It runs after
-// the attempt's receipt-qualified snapshot has been taken (gunbc.roadmap.roadmap_dispatch_actuator
-// cursor_selection_observed takes it first), and the refused selection discards that snapshot. The
-// third is observed by a one-word turn (operator ruling D2, 2026-10-05), whose result shape is
-// modeled from its first live call, so until then the standing is unobserved and the draw refuses --
-// never a fabricated "available".
-data cursor_entitlement_trip_pending_reason: NonEmptyStr = "cursor accepts the custody key, but entitlement and quota are read by a one-word turn whose result shape is modeled from its first live call (operator ruling D2, 2026-10-05); until then the cursor draw refuses" as NonEmptyStr
+// accepts the custody key, this host can build the sandbox the worker turn declares, and the account's
+// entitlement and quota are observed. The key is judged by CursorKeyProbeReading, a --list-models
+// invocation, because it validates the invocation's own CURSOR_API_KEY while `status` reports only the
+// auth stored under the config root (extdeps.llm.cursor_cli, observed 2026-10-17). That probe persists the
+// key under whatever config root it sees, so every invocation here runs under the attempt's own runtime
+// root (gunbc.cursor_harness_credential cursor_runtime_bound_command) and the probe runs only after the
+// sandbox preflight read Ready: a host that cannot sandbox never receives the credential at all. The sandbox
+// preflight answers the second without a provider call (gunbc.cursor_harness_credential
+// CursorSandboxPreflightReading): cursor_worker_turn_run declares CursorSandboxEnabled so that --force is
+// not unconfined, and a host that cannot build that sandbox fails the turn before the provider -- observed
+// on srv2, 2026-10-16 -- so the draw refuses here with the host's cause, before launch or provider contact.
+// Both run after the attempt's runtime root was created and its receipt-qualified snapshot taken
+// (gunbc.roadmap.roadmap_dispatch_actuator cursor_selection_observed takes it first), and the refused
+// selection discards the snapshot and the root. The third is observed by a one-word turn (operator ruling
+// D2, 2026-10-05), whose result shape is modeled from its first live call, so until then the standing is
+// unobserved and the draw refuses -- never a fabricated "available".
+data cursor_entitlement_trip_pending_reason: NonEmptyStr = "the Cursor key is accepted (--list-models) and the sandbox is ready, but entitlement and quota are read by a one-word turn whose result shape is modeled from its first live call, which has not run, so the standing stays unobserved rather than fabricated available" as NonEmptyStr
 
-data cursor_sandbox_unavailable_reason_prefix: String = "cursor accepts the custody key, but this host cannot build the sandbox the worker turn declares, so a turn would fail before the provider: "
+data cursor_sandbox_unavailable_reason_prefix: String = "this host cannot build the sandbox the worker turn declares, so a turn would fail before the provider and the key was not presented: "
 
-fn cursor_standing_from_readings(status: CursorStatusReading, sandbox: CursorSandboxPreflightReading) -> ProviderStanding {
-  match status {
-    CursorStatusAuthenticated => cursor_standing_with_accepted_key(sandbox: sandbox)
-    CursorStatusUnauthenticated { status } =>
-      ProviderStandingUnobserved { reason: join(["cursor rejects the custody key (status ", status, ")"], "") as NonEmptyStr }
-    CursorStatusUnreadable { detail } =>
-      ProviderStandingUnobserved { reason: join(["cursor-agent status output unreadable: ", detail], "") as NonEmptyStr }
+// THE PINNED EXECUTABLE IS THE ONLY PROGRAM THE DRAW RUNS, SO ITS ABSENCE IS ITS OWN REFUSAL, and it is
+// observed before any invocation (cursor_agent_pinned_executable_presence lists the version directory)
+// rather than inferred from a shell's 127. A host without the installed realization reads as this reason,
+// never as a PATH fallback and never as a rejected or unreadable key.
+fn cursor_pinned_realization_absent_reason(detail: String) -> NonEmptyStr {
+  join([
+    "the pinned cursor-agent realization is not installed on this host (",
+    cursor_agent_executable_path(version: cursor_agent_pinned_version),
+    " is not present: ", detail, "); a cursor draw never falls back to a PATH cursor-agent",
+  ], "") as NonEmptyStr
+}
+
+fn cursor_standing_from_key(key: CursorKeyProbeReading) -> ProviderStanding {
+  match key {
+    CursorKeyAccepted => ProviderStandingUnobserved { reason: cursor_entitlement_trip_pending_reason }
+    CursorKeyRejected { detail } =>
+      ProviderStandingUnobserved { reason: join(["the Cursor CLI rejected the custody key: ", detail], "") as NonEmptyStr }
+    CursorKeyProbeUnreadable { exit_code, detail } =>
+      ProviderStandingUnobserved {
+        reason: join(["the Cursor key probe exited ", to_string(value: exit_code), " without a recognized acceptance or rejection: ", detail], "") as NonEmptyStr,
+      }
   }
 }
 
-fn cursor_standing_with_accepted_key(sandbox: CursorSandboxPreflightReading) -> ProviderStanding {
-  match sandbox {
-    CursorSandboxReady => ProviderStandingUnobserved { reason: cursor_entitlement_trip_pending_reason }
+// The sandbox arms that stop the line: the key probe is not reached for any of them. It takes the reading's
+// own refusal (gunbc.cursor_harness_credential CursorSandboxRefusal), so Ready has no constructor here
+// (DESIGN §4b: structurally impossible beats a fail-closed placeholder for an arm no caller can reach).
+fn cursor_standing_from_sandbox_refusal(refusal: CursorSandboxRefusal) -> ProviderStanding {
+  match refusal {
     CursorSandboxUnavailable { detail } =>
       ProviderStandingUnobserved { reason: concat(cursor_sandbox_unavailable_reason_prefix, detail) as NonEmptyStr }
     CursorSandboxNotEntered { detail } =>
@@ -178,52 +213,103 @@ fn cursor_standing_with_accepted_key(sandbox: CursorSandboxPreflightReading) -> 
   }
 }
 
-// THE PREFLIGHT, bounded. It reads no key and makes no provider call; it runs in the caller's working
-// directory, which the sandbox's default policy makes writable to a command that writes nothing. It
-// is evaluated as an argument of the join, so it runs whenever status ran, including when the key was
-// rejected: the join orders the REASONS, not the observations.
+// THE PREFLIGHT, bounded. It reads no key and makes no provider call; it runs under the attempt's runtime
+// root like every other invocation.
 data cursor_sandbox_preflight_bound: Second = second(count: 30)
 data cursor_sandbox_preflight_kill_grace: Second = second(count: 5)
 
-fn cursor_sandbox_preflight_observe() -> CursorSandboxPreflightReading {
+fn cursor_sandbox_preflight_observe(program: ProgramIdentity, root: CursorAttemptRuntimeRoot) -> CursorSandboxPreflightReading {
   let run = run_shell_command_observe(
     command: timeout_command(
       duration: cursor_sandbox_preflight_bound,
       kill_after: cursor_sandbox_preflight_kill_grace,
-      command: cursor_sandbox_discriminating_preflight_command(program: cursor_cli_program_identity()),
+      command: cursor_sandbox_discriminating_preflight_command(program: program, root: root),
     ),
     transport: LocalExec,
   )
   cursor_sandbox_preflight_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
 }
 
-// The status probe BORROWS the attempt's credential snapshot: it reads the sealed value the take
-// returned and keeps the file for the spawn (PosixShKeepFile); the snapshot is taken by the caller
-// (gunbc.roadmap.roadmap_dispatch_actuator cursor_selection_observed).
-fn cursor_observed_standing_from_snapshot(snapshot: TakenCredentialSnapshot) -> ProviderStanding {
-  let path = taken_credential_snapshot_path(snapshot: snapshot)
+// THE KEY PROBE IS BOUNDED: --list-models is network-backed and measured at about 1.3 s wall on srv2, so a
+// stalled network or CLI would otherwise hold selection until the belt limit kills the producer (A3 recovery is
+// crash recovery, not an operating bound). The timeout wraps the WHOLE export-from-file command, so the shell and
+// the exec'd CLI are one process tree under it. A returned 124 stays CursorKeyProbeUnreadable: it is not an
+// observed timeout (gunbc.recurring_failure_mode bare_exit_124_read_as_an_observed_timeout_event).
+data cursor_key_probe_bound: Second = second(count: 30)
+data cursor_key_probe_kill_grace: Second = second(count: 5)
+
+// THE ONE KEYED, BOUNDED PROBE COMMAND: admit name -> export-from-file -> timeout. cursor_key_probe_observe and the
+// wet witness's probe both build it here, so (a), (b), (c) run the production bound and not a parallel copy.
+type CursorBoundedProbeCommand
+  = CursorBoundedProbeReady { command: ArgvCommand }
+  | CursorBoundedProbeNameRefused { spelling: String }
+  | CursorBoundedProbeEmitRefused { name: NonEmptyStr }
+
+fn cursor_bounded_keyed_probe_command(program: ProgramIdentity, root: CursorAttemptRuntimeRoot, key_path: NonEmptyStr) -> CursorBoundedProbeCommand {
   match admit_posix_shell_name(spelling: cursor_api_key_env_var as String) {
-    PosixShellNameRefused { spelling } =>
-      ProviderStandingUnobserved { reason: join(["the cursor credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr }
+    PosixShellNameRefused { spelling } => CursorBoundedProbeNameRefused { spelling: spelling }
     PosixShellNameAdmitted { name } =>
       match posix_sh_export_from_file_then_exec_command(
         name: name,
-        path: path,
-        command: [cursor_cli_program, "status", "--format", "json"],
+        path: key_path,
+        command: argv_words(command: cursor_bound_key_probe_command(program: program, root: root)),
         disposition: PosixShKeepFile,
       ) {
-        PosixShExportExecEmitRefused { name: n } =>
-          ProviderStandingUnobserved { reason: join(["the sh emitter refused the export-and-exec program for ", n as String], "") as NonEmptyStr }
-        PosixShExportExecReady { command } => {
-          let run = run_shell_command_observe(command: command, transport: LocalExec)
-          if run.exit_code == posix_sh_export_from_file_unreadable_exit {
-            ProviderStandingUnobserved {
-              reason: join(["the cursor credential snapshot ", path as String, " is unreadable: ", run.stderr], "") as NonEmptyStr,
-            }
-          } else {
-            cursor_standing_from_readings(status: cursor_status_reading(stdout: run.stdout), sandbox: cursor_sandbox_preflight_observe())
+        PosixShExportExecEmitRefused { name: n } => CursorBoundedProbeEmitRefused { name: n }
+        PosixShExportExecReady { command } =>
+          CursorBoundedProbeReady {
+            command: timeout_command(duration: cursor_key_probe_bound, kill_after: cursor_key_probe_kill_grace, command: command),
           }
+      }
+  }
+}
+
+// The key probe BORROWS the attempt's credential snapshot: it reads the sealed value the take returned and
+// keeps the file for the spawn (PosixShKeepFile). It is reached only when the sandbox read Ready.
+fn cursor_key_probe_observe(program: ProgramIdentity, root: CursorAttemptRuntimeRoot, snapshot: TakenCredentialSnapshot) -> ProviderStanding {
+  let path = taken_credential_snapshot_path(snapshot: snapshot)
+  match cursor_bounded_keyed_probe_command(program: program, root: root, key_path: path) {
+    CursorBoundedProbeNameRefused { spelling } =>
+      ProviderStandingUnobserved { reason: join(["the cursor credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr }
+    CursorBoundedProbeEmitRefused { name: n } =>
+      ProviderStandingUnobserved { reason: join(["the sh emitter refused the export-and-exec program for ", n as String], "") as NonEmptyStr }
+    CursorBoundedProbeReady { command } => {
+      let run = run_shell_command_observe(command: command, transport: LocalExec)
+      if run.exit_code == posix_sh_export_from_file_unreadable_exit {
+        ProviderStandingUnobserved {
+          reason: join(["the cursor credential snapshot ", path as String, " is unreadable: ", run.stderr], "") as NonEmptyStr,
         }
+      } else {
+        cursor_standing_from_key(key: cursor_key_probe_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr))
+      }
+    }
+  }
+}
+
+// THE ORDER IS STRUCTURAL: the pinned path is observed present, then the sandbox preflight runs, then the
+// key probe only on a Ready sandbox, all under the attempt's runtime root (the caller created it and took
+// the snapshot first). Evaluation of arguments is eager, so each step sits inside the previous step's
+// match arm and cannot run when an earlier one stopped the line.
+fn cursor_observed_standing_from_snapshot(snapshot: TakenCredentialSnapshot) -> ProviderStanding {
+  cursor_observed_standing_for_program(program: cursor_agent_pinned_program(), presence: cursor_agent_pinned_executable_presence(), snapshot: snapshot)
+}
+
+// The fold over a SUPPLIED program and its presence observation. The one production call site above supplies
+// the pinned pair; the srv2 stand-in controls (test.claim.cursor_runtime_root_wet_witness) supply a test-only
+// identity, so the real ordering is what they run and no second production identity or fallback exists.
+fn cursor_observed_standing_for_program(program: ProgramIdentity, presence: FilesystemEntryPresence, snapshot: TakenCredentialSnapshot) -> ProviderStanding {
+  let root = credential_taken_cursor_runtime_root(snapshot: snapshot)
+  match presence {
+    FilesystemEntryAbsent(absence) =>
+      ProviderStandingUnobserved { reason: cursor_pinned_realization_absent_reason(detail: filesystem_established_absence_detail(absence: absence)) }
+    FilesystemEntryPresenceIndeterminate { cause } =>
+      ProviderStandingUnobserved { reason: cursor_pinned_realization_absent_reason(detail: cause) }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause } =>
+      ProviderStandingUnobserved { reason: cursor_pinned_realization_absent_reason(detail: cause) }
+    FilesystemEntryListed { directory: _, name: _ } =>
+      match cursor_sandbox_preflight_observe(program: program, root: root) {
+        CursorSandboxReady => cursor_key_probe_observe(program: program, root: root, snapshot: snapshot)
+        CursorSandboxRefused { refusal } => cursor_standing_from_sandbox_refusal(refusal: refusal)
       }
   }
 }

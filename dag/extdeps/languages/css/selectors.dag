@@ -16,8 +16,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // register's simple subjects — ClassSelector (a single .class), ElementSelector (a type/tag
 // selector), PseudoSuffix (a compound of a base selector and one pseudo-class, e.g. a:hover) — and
 // RawSelector is the COUNTED frontier for everything else (descendant combinators like
-// '.frontier-bucket h2', compound type.class like 'li.node', :root and its functional
-// pseudo-classes, the universal '*'). RawSelector carries the exact text so emission is
+// '.frontier-bucket h2', compound type.class like 'li.node', functional pseudo-classes like
+// :not()/:is(), the universal '*'). :root is NOT in that residue: it is a pseudo-class with no
+// base, which PseudoSuffix already models — see root_selector below. RawSelector carries the exact text so emission is
 // byte-identical, and its COUNT is the honest residue number: the fraction of the register still
 // expressed as raw selector text. dissolve_on: the combinator / compound / functional-pseudo
 // grammar lands (Selectors 4 has the structure — descendant/child combinators, compound selectors,
@@ -30,6 +31,16 @@ type SelectorSubject
   | ElementSelector { tag: String }
   | PseudoSuffix { base: String, pseudo: String }
   | RawSelector { text: String }
+
+// The document root, ONCE. Selectors Level 4 §13.1 (#the-root-pseudo) defines :root as a
+// pseudo-class matching the root element, with the same specificity as a type selector — and
+// that specificity is load-bearing for more than one layer: gunbc.site.gunb_ai_tokens emits the
+// unconditional custom properties on it, and gunbc.site.gunb_ai_layout's light variant emits its
+// @media (prefers-color-scheme: light) override on the SAME subject, so the override wins purely
+// by coming later in the sheet. That argument only holds if both sides genuinely name the same
+// selector; two hand-typed PseudoSuffix rows that happen to match today can drift apart
+// tomorrow and silently make light mode unwinnable. One row, both readers.
+data root_selector: SelectorSubject = PseudoSuffix { base: "", pseudo: "root" }
 
 fn selector_subject_wire(s: SelectorSubject) -> String {
   match s {

@@ -1,13 +1,22 @@
 module test.claim.native_app_attest_arm_control
 
-import gunbc.instruments.native_app_attest { same_attestation_arm, AttestationValidationCategoryAbsent, AttestationNonceMismatch }
+// Rewired to the std capability when `same_attestation_arm` deleted (restart note 3 of the
+// constructor-tag design): the mirror's own dissolution condition was that a typed constructor
+// equality could compare AttestationRefusal by arm without cross-arm admission. It is now
+// `std.primitives.same_arm` over a `tag_of` projection, so this witness pins that the std route
+// answers the same two verdicts the mirror did -- and unlike the mirror, it needs no edit when
+// AttestationRefusal grows a refusal arm.
+
+import std.primitives { tag_of, same_arm }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.apple.app_attest { AttestationValidationCategoryAbsent, AttestationNonceMismatch }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn main_fold_absent_vs_nonce_mismatch_is_false() -> Bool {
-  same_attestation_arm(owed: AttestationValidationCategoryAbsent, got: AttestationNonceMismatch) == false
+  !same_arm(tag: tag_of(v: AttestationValidationCategoryAbsent), v: AttestationNonceMismatch)
 }
 
 test fn main_fold_absent_vs_absent_is_true() -> Bool {
-  same_attestation_arm(owed: AttestationValidationCategoryAbsent, got: AttestationValidationCategoryAbsent)
+  same_arm(tag: tag_of(v: AttestationValidationCategoryAbsent), v: AttestationValidationCategoryAbsent)
 }

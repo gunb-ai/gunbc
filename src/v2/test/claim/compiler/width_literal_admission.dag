@@ -1,0 +1,371 @@
+module v2.test.claim.compiler.width_literal_admission
+
+import v2.compiler.infer { infer }
+import v2.compiler.inferred_tree { InferredTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_binding_denotation, dag_canonical_literal_from_node, dag_int_literal_node_from_lexeme, dag_node_is_int_literal_atom, dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, list_append }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol, NotADeclaration }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.infer { InferLiteralElaboratesTo, InferLiteralNotElaborated, InferLiteralElaborationRefused, infer_literal_elaborates_at, infer_machine_width_bits, infer_machine_width_of, infer_machine_width_signedness, infer_type_alias_normalized_at, infer_type_declaration_ref, infer_type_head_and_args }
+import v2.std.node { Atom, Edge, Instantiation, Node, Positional, TypeNode, node_synthetic }
+import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
+import v2.std.symbol_index { empty_symbol_index }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { Absent, Optional, Present, optional_present }
+import std.decl_ref { decl_ref }
+import v2.compiler.resolve { ResolvedTree }
+import std.types { Bool, List, String }
+import std.measure { bit_width }
+import std.integer { Signed, Unsigned }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: A0-2, literal admission against the declared width. An Int literal at a position typed by a
+// width-constrained integer (std.integer UInt8, Int8: Compose<carrier, MachineWidth<N>>) is admitted only
+// when it fits [0, 2^N) / [-2^(N-1), 2^(N-1)); otherwise infer refuses with
+// infer_reason_literal_outside_machine_width. No silent truncation or widening (operator ruling CHECKED).
+//
+// EVERY CLAIM RUNS THE REAL ACCEPTANCE PATH: a module is assembled with the peers below and inferred, and the
+// verdict is read from infer. The peers state exactly the shapes of std.integer / std.machine_constraints /
+// std.nat that the check reads (the declaring paths and the Compose<carrier, MachineWidth<literal>> alias), so
+// the check is exercised by name through the same alias normalization production uses. The positive controls
+// (255 at UInt8, -128 at Int8) share the source shape of the REDs, so a refusal is the width's, not a slip.
+
+data wla_p_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_p_artifact, file_path: "src/v2/pilot/width_literal_admission_p.dag" }
+data wla_nat_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_nat_artifact, file_path: "src/v2/pilot/width_literal_admission_nat.dag" }
+data wla_mc_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_mc_artifact, file_path: "src/v2/pilot/width_literal_admission_mc.dag" }
+data wla_algebra_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_algebra_artifact, file_path: "src/v2/pilot/width_literal_admission_algebra.dag" }
+data wla_int_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_int_artifact, file_path: "src/v2/pilot/width_literal_admission_int.dag" }
+
+data wla_nat_peer: String = "module std.nat\n\ntype Nat\n  = Zero\n  | Succ { prev: Nat }\n"
+data wla_mc_peer: String = "module std.machine_constraints\n\ntype MachineWidth<bits>\n\ntype Compose<Algebra, MachineConstraint>\n"
+data wla_algebra_peer: String = "module std.algebra\n\ntype AbelianGroup<A>\n\ntype GroupCompletion<A>\n"
+
+// The two carrier declarations are std.integer's own (dag/std/integer.dag: `type Int = AbelianGroup<GroupCompletion<Nat>>`,
+// `type UInt = Nat`), and the widths are written over them exactly as it writes them.
+data wla_int_peer: String = "module std.integer\n\nimport std.nat { Nat }\nimport std.algebra { AbelianGroup, GroupCompletion }\nimport std.machine_constraints { Compose, MachineWidth }\n\ntype Int = AbelianGroup<GroupCompletion<Nat>>\n\ntype UInt = Nat\n\ntype UInt8 = Compose<UInt, MachineWidth<8>>\n\ntype Int8 = Compose<Int, MachineWidth<8>>\n\ntype UInt16 = Compose<UInt, MachineWidth<16>>\n"
+
+fn wla_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness { source: Medium { carried: src, fidelity: Lossless }, artifact: artifact, compilation_unit: cu, source_root: V2Tree }
+}
+
+fn wla_assemble(src: String) -> Outcome<ResolvedTree> {
+  wla_assemble_with(src: src, extra: Empty)
+}
+
+fn wla_assemble_with(src: String, extra: List<DagSourceReadWitness>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: wla_source(src: src, artifact: wla_p_artifact, cu: ^width_literal_admission_p_cu),
+      tail: list_append(
+        left: extra,
+        right: Cons {
+          head: wla_source(src: wla_nat_peer, artifact: wla_nat_artifact, cu: ^width_literal_admission_nat_cu),
+          tail: Cons {
+            head: wla_source(src: wla_mc_peer, artifact: wla_mc_artifact, cu: ^width_literal_admission_mc_cu),
+            tail: Cons {
+              head: wla_source(src: wla_algebra_peer, artifact: wla_algebra_artifact, cu: ^width_literal_admission_algebra_cu),
+              tail: Cons { head: wla_source(src: wla_int_peer, artifact: wla_int_artifact, cu: ^width_literal_admission_int_cu), tail: Empty }
+            }
+          }
+        }
+      )
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn wla_inferred(src: String) -> Outcome<InferredTree> {
+  wla_inferred_with(src: src, extra: Empty)
+}
+
+fn wla_inferred_with(src: String, extra: List<DagSourceReadWitness>) -> Outcome<InferredTree> {
+  match wla_assemble_with(src: src, extra: extra) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
+  }
+}
+
+fn wla_reason(src: String) -> Symbol {
+  wla_reason_with(src: src, extra: Empty)
+}
+
+fn wla_reason_with(src: String, extra: List<DagSourceReadWitness>) -> Symbol {
+  match wla_inferred_with(src: src, extra: extra) {
+    Accepted { value: _, diagnostics: _ } => ^accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+  }
+}
+
+// A literal as the argument of a call whose formal is the named width type (the position the existing
+// literal_elaboration claims use).
+fn wla_return_src(type_name: String, literal: String) -> String {
+  concat(concat(concat(concat("module p\n\nimport std.integer { UInt8, Int8 }\n\nfn g(n: ", type_name), ") -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  g(n: "), literal), ")\n}\n")
+}
+
+fn wla_reason_of(type_name: String, literal: String) -> Symbol {
+  wla_reason(src: wla_return_src(type_name: type_name, literal: literal))
+}
+
+// CONTROL FOR THE FIXTURE: the peers assemble and infer when no literal is at the width, so a refusal below is
+// the width's.
+test fn wla_the_peers_alone_are_accepted() -> Bool {
+  wla_reason(src: "module p\n\nimport std.integer { UInt8, Int8 }\n\nfn g(n: UInt8) -> Bool {\n  true\n}\n\nfn h(n: Int8) -> Bool {\n  true\n}\n") == ^accepted
+}
+
+// POSITIVE CONTROLS: the largest UInt8, the smallest and largest Int8 are admitted.
+test fn wla_uint8_255_is_admitted() -> Bool {
+  wla_reason_of(type_name: "UInt8", literal: "255") == ^accepted
+}
+
+test fn wla_uint8_0_is_admitted() -> Bool {
+  wla_reason_of(type_name: "UInt8", literal: "0") == ^accepted
+}
+
+test fn wla_int8_minus_128_is_admitted() -> Bool {
+  wla_reason_of(type_name: "Int8", literal: "-128") == ^accepted
+}
+
+test fn wla_int8_127_is_admitted() -> Bool {
+  wla_reason_of(type_name: "Int8", literal: "127") == ^accepted
+}
+
+// RED: an Int literal 300 at UInt8 refuses, typed, with the width's reason (not any refusal).
+test fn wla_uint8_300_refuses() -> Bool {
+  wla_reason_of(type_name: "UInt8", literal: "300") == ^infer_reason_literal_outside_machine_width
+}
+
+// RED, the boundary: 256 is the first value outside.
+test fn wla_uint8_256_refuses() -> Bool {
+  wla_reason_of(type_name: "UInt8", literal: "256") == ^infer_reason_literal_outside_machine_width
+}
+
+// RED: a negative literal at an unsigned width refuses.
+test fn wla_uint8_minus_1_refuses() -> Bool {
+  wla_reason_of(type_name: "UInt8", literal: "-1") == ^infer_reason_literal_outside_machine_width
+}
+
+// RED, signed boundaries on both sides.
+test fn wla_int8_128_refuses() -> Bool {
+  wla_reason_of(type_name: "Int8", literal: "128") == ^infer_reason_literal_outside_machine_width
+}
+
+test fn wla_int8_minus_129_refuses() -> Bool {
+  wla_reason_of(type_name: "Int8", literal: "-129") == ^infer_reason_literal_outside_machine_width
+}
+
+// LITERAL BOUNDARY at a wider formal, under gunbc.design_ruling coercion_is_the_implicit_safe_subset
+// (DESIGN section 4: an implicit route must be total, exact, semantics-preserving, unique, pure and
+// consent-free). These are boundary (1) of gunbc.recurring_failure_mode
+// .a_width_constrained_integer_admits_a_value_outside_its_width — a bare Int literal at a width position,
+// the same class wla_uint8_300_refuses covers; named for the literal boundary, not for a value crossing
+// (see the typed crossing claims below for that). The named route for changing a value's width is
+// std.machine_width_range machine_width_admits plus the std.machine_word named operations
+// (word_wrapping_add, word_checked_add); there is no implicit narrowing or signedness change.
+// Peers are identical across each pair, so any refusal is the crossing's and not a slip of the fixture.
+
+// A literal whose value needs the wider width is accepted at the wider formal (total, exact).
+fn wla_widen_src(literal: String) -> String {
+  concat(concat("module p\n\nimport std.integer { UInt8, Int8, UInt16 }\n\nfn w(n: UInt16) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  w(n: ", literal), ")\n}\n")
+}
+
+test fn wla_literal_127_is_admitted_at_uint16() -> Bool {
+  wla_reason(src: wla_widen_src(literal: "127")) == ^accepted
+}
+
+// CONTROL FOR THE RED BELOW: the same 1000 is accepted at the UInt16 formal it fits — the refusal is the
+// boundary's, not the literal's.
+test fn wla_literal_1000_is_admitted_at_uint16() -> Bool {
+  wla_reason(src: wla_widen_src(literal: "1000")) == ^accepted
+}
+
+// RED: 1000, in range of UInt16 but outside UInt8, at a UInt8 formal refuses with the width's own reason
+// — the literal is not in the target width's range, so the boundary admits only the checked route.
+fn wla_narrow_src(literal: String) -> String {
+  concat(concat("module p\n\nimport std.integer { UInt8, Int8 }\n\nfn n(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  n(n: ", literal), ")\n}\n")
+}
+
+test fn wla_literal_1000_refuses_at_uint8() -> Bool {
+  wla_reason(src: wla_narrow_src(literal: "1000")) == ^infer_reason_literal_outside_machine_width
+}
+
+// TYPED CROSSINGS at a width formal: a value already TYPED at one width, passed to a formal typed at
+// another. Every reason below was read from execution before it was written (gunbc run of the probe
+// through this fixture's own harness), and the claims assert what the compiler DOES, not what the
+// ruling will eventually license. A width is a checked refinement on Int that stays a bound, so today
+// every crossing of a DIFFERENT width — widening, narrowing or signedness change — refuses inhabitance
+// at the formal; only the same-width application passes, and that is the positive control that makes
+// the refusals discriminating (a fixture slip would refuse all four). The implicit-widening half of the
+// ruling is NOT yet realized at typed crossings: that is the carrier boundary (3), whose restoration
+// trigger the row names as a capability (v2.compiler.infer sees Compose through a sealed head), with
+// owner programs S1a (gunbc#15110) and S1b. The named route for a width change is std.machine_width_range
+// machine_width_admits plus the std.machine_word named operations (word_wrapping_add, word_checked_add).
+
+fn wla_typed_src(body: String) -> String {
+  concat("module p\n\nimport std.integer { UInt8, Int8, UInt16 }\n\n", body)
+}
+
+// CONTROL: same width at the formal — inhabitance holds and the application passes.
+test fn wla_typed_uint8_to_uint8_is_admitted() -> Bool {
+  wla_reason(src: wla_typed_src(body: "fn g8(n: UInt8) -> Bool {\n  true\n}\n\nfn uses(u: UInt8) -> Bool {\n  g8(n: u)\n}\n")) == ^accepted
+}
+
+// RED: a value typed UInt16 at a UInt8 formal refuses at the formal; the same-width control above shows
+// the refusal is the crossing's.
+test fn wla_typed_uint16_to_uint8_refuses() -> Bool {
+  wla_reason(src: wla_typed_src(body: "fn g8(n: UInt8) -> Bool {\n  true\n}\n\nfn uses(u: UInt16) -> Bool {\n  g8(n: u)\n}\n")) == ^application_argument_does_not_inhabit
+}
+
+// RED: the signedness change UInt8 -> Int8 is not widening and refuses at the formal.
+test fn wla_typed_uint8_to_int8_refuses() -> Bool {
+  wla_reason(src: wla_typed_src(body: "fn i8(n: Int8) -> Bool {\n  true\n}\n\nfn uses(u: UInt8) -> Bool {\n  i8(n: u)\n}\n")) == ^application_argument_does_not_inhabit
+}
+
+// Today the widening direction refuses too (the ruling's implicit half is not realized at typed
+// crossings; see the block comment and the row's boundary-(3) restoration trigger and owner programs,
+// S1a gunbc#15110 and S1b — the row records boundary (3) as NOT stalled). This claim goes RED exactly
+// when S1a/S1b land the implicit safe subset here — it pins where that change must land.
+test fn wla_typed_uint8_to_uint16_refuses_until_implicit_widening_lands() -> Bool {
+  wla_reason(src: wla_typed_src(body: "fn g16(n: UInt16) -> Bool {\n  true\n}\n\nfn uses(u: UInt8) -> Bool {\n  g16(n: u)\n}\n")) == ^application_argument_does_not_inhabit
+}
+
+// SUPPLIED INPUTS: the expected type is built as the node infer normalizes to, Compose<carrier, MachineWidth<bits>>,
+// and handed to infer_literal_elaborates_at, the one interface under test.
+fn wla_decl(dotted: String) -> Node { declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: dotted), occurrence_id: OccurrenceSynthetic) }
+
+fn wla_literal(lexeme: String) -> Node {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: n, diagnostics: _ } => n
+    Rejected { diagnostics: _ } => node_synthetic(kind: TypeNode { connective: Atom { identity: ^wla_literal_unbuilt } }, children: [])
+  }
+}
+
+fn wla_edges(args: List<Node>) -> List<Edge> {
+  match args {
+    Empty => []
+    Cons { head: a, tail: rest } => list_append(left: [Edge { label: Positional, target: a, declaration: NotADeclaration }], right: wla_edges(args: rest))
+  }
+}
+
+fn wla_instantiation(head: Node, args: List<Node>) -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: list_append(left: [Edge { label: Positional, target: head, declaration: NotADeclaration }], right: wla_edges(args: args)),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn wla_width_type(carrier: Node, bits: String) -> Node {
+  wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.Compose"), args: [carrier, wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.MachineWidth"), args: [wla_literal(lexeme: bits)])])
+}
+
+fn wla_int_carrier() -> Node {
+  match dag_binding_denotation(sym: ^dag_binding_type_int) {
+    Present { value: t } => t
+    Absent => node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } }, children: [])
+  }
+}
+
+fn wla_verdict(lexeme: String, carrier: Node, bits: String) -> Symbol {
+  match infer_literal_elaborates_at(literal_node: wla_literal(lexeme: lexeme), expected: wla_width_type(carrier: carrier, bits: bits), declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
+    InferLiteralElaboratesTo { destination_type: _ } => ^elaborated
+    InferLiteralNotElaborated => ^not_elaborated
+    InferLiteralElaborationRefused { cause: c } => c
+  }
+}
+
+test fn wla_s_uint8_255() -> Bool { wla_verdict(lexeme: "255", carrier: wla_decl(dotted: "std.nat.Nat"), bits: "8") == ^elaborated }
+test fn wla_s_uint8_300() -> Bool { wla_verdict(lexeme: "300", carrier: wla_decl(dotted: "std.nat.Nat"), bits: "8") == ^infer_reason_literal_outside_machine_width }
+test fn wla_s_int8_127() -> Bool { wla_verdict(lexeme: "127", carrier: wla_int_carrier(), bits: "8") == ^elaborated }
+test fn wla_s_int8_128() -> Bool { wla_verdict(lexeme: "128", carrier: wla_int_carrier(), bits: "8") == ^infer_reason_literal_outside_machine_width }
+test fn wla_s_bits_read() -> Bool { infer_machine_width_bits(t: wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.MachineWidth"), args: [wla_literal(lexeme: "8")])) == optional_present(value: bit_width(count: 8)) }
+test fn wla_s_signedness_nat() -> Bool { infer_machine_width_signedness(carrier: wla_decl(dotted: "std.nat.Nat")) == optional_present(value: Unsigned) }
+test fn wla_s_signedness_int() -> Bool { infer_machine_width_signedness(carrier: wla_int_carrier()) == optional_present(value: Signed) }
+
+
+// FAIL CLOSED ON AN UNREADABLE WIDTH (infer_machine_width_of's WidthUnreadable arm): the type is width-constrained but its
+// width cannot be read, so the literal refuses with the typed reason rather than reaching ordinary grounding, which would
+// accept it. Each RED has a readable twin above (wla_s_uint8_255 is the positive control for the same Compose shape).
+fn wla_verdict_at(lexeme: String, expected: Node) -> Symbol {
+  match infer_literal_elaborates_at(literal_node: wla_literal(lexeme: lexeme), expected: expected, declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
+    InferLiteralElaboratesTo { destination_type: _ } => ^elaborated
+    InferLiteralNotElaborated => ^not_elaborated
+    InferLiteralElaborationRefused { cause: c } => c
+  }
+}
+
+// MachineWidth<PointerWidth>: IntPlatform / UIntPlatform. No constant to read.
+fn wla_pointer_width_type(carrier: Node) -> Node {
+  wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.Compose"), args: [carrier, wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.MachineWidth"), args: [wla_decl(dotted: "std.machine_constraints.PointerWidth")])])
+}
+
+test fn wla_s_pointer_width_refuses() -> Bool { wla_verdict_at(lexeme: "1", expected: wla_pointer_width_type(carrier: wla_int_carrier())) == ^infer_reason_machine_width_not_static }
+test fn wla_s_pointer_width_unsigned_refuses() -> Bool { wla_verdict_at(lexeme: "1", expected: wla_pointer_width_type(carrier: wla_decl(dotted: "std.nat.Nat"))) == ^infer_reason_machine_width_not_static }
+test fn wla_s_undeclared_signedness_refuses() -> Bool { wla_verdict(lexeme: "1", carrier: wla_decl(dotted: "std.machine_constraints.PointerWidth"), bits: "8") == ^infer_reason_machine_width_carrier_signedness_undeclared }
+test fn wla_s_malformed_compose_refuses() -> Bool {
+  wla_verdict_at(lexeme: "1", expected: wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.Compose"), args: [wla_int_carrier()])) == ^infer_reason_machine_width_compose_malformed
+}
+
+// THE ALIAS RULE IS THE CLASS, NOT ONE NAME (review 81560). infer_alias_body_is_phantom keys on the alias BODY
+// resolving to std.constructors Phantom -- the declared marker: a type that denotes no value, whose arguments are
+// the constraint it carries -- so any alias `type M<A, B> = Phantom` keeps its head and its instantiated arguments
+// (infer_type_alias_unfolded_at). The justification is Phantom's declared marker semantics; it is not an inference
+// from "a bodiless type has no inhabitants". Three specimens, none of them Compose:
+//   (1) a differently named Phantom-bodied declaration (Mark) keeps its arguments: Mark<Nat, W16> does not inhabit
+//       Mark<Nat, W8>, while Mark<Nat, W8> does (the positive control, same fixture);
+//   (2) an ordinary alias to it (Mark8 = Mark<Nat, W8>) still unfolds, onto the marker, so it inhabits Mark<Nat, W8>
+//       and not Mark<Nat, W16>;
+//   (3) an unrelated local type NAMED Phantom is not the marker: `type Loose<A, B> = q.Phantom` unfolds, both
+//       instantiations become the one local Phantom, and the cross-width pass is accepted.
+data wla_constructors_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_constructors_artifact, file_path: "src/v2/pilot/width_literal_admission_constructors.dag" }
+data wla_marker_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_marker_artifact, file_path: "src/v2/pilot/width_literal_admission_marker.dag" }
+data wla_unrelated_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_unrelated_artifact, file_path: "src/v2/pilot/width_literal_admission_unrelated.dag" }
+
+data wla_constructors_peer: String = "module std.constructors\n\ntype Phantom\n"
+data wla_marker_peer: String = "module std.wla_marker\n\nimport std.constructors { Phantom }\nimport std.nat { Nat }\nimport std.machine_constraints { MachineWidth }\n\ntype Mark<A, B> = Phantom\n\ntype Mark8 = Mark<Nat, MachineWidth<8>>\n"
+data wla_unrelated_peer: String = "module std.wla_unrelated\n\ntype Phantom\n\ntype Loose<A, B> = Phantom\n"
+
+fn wla_marker_extra() -> List<DagSourceReadWitness> {
+  Cons {
+    head: wla_source(src: wla_constructors_peer, artifact: wla_constructors_artifact, cu: ^width_literal_admission_constructors_cu),
+    tail: Cons {
+      head: wla_source(src: wla_marker_peer, artifact: wla_marker_artifact, cu: ^width_literal_admission_marker_cu),
+      tail: Cons { head: wla_source(src: wla_unrelated_peer, artifact: wla_unrelated_artifact, cu: ^width_literal_admission_unrelated_cu), tail: Empty }
+    }
+  }
+}
+
+fn wla_marker_reason(body: String) -> Symbol {
+  wla_reason_with(
+    src: concat("module p\n\nimport std.wla_marker { Mark, Mark8 }\nimport std.wla_unrelated { Loose }\nimport std.nat { Nat }\nimport std.machine_constraints { MachineWidth }\n\nfn g8(n: Mark<Nat, MachineWidth<8>>) -> Bool {\n  true\n}\n\nfn l8(n: Loose<Nat, MachineWidth<8>>) -> Bool {\n  true\n}\n\n", body),
+    extra: wla_marker_extra()
+  )
+}
+
+test fn wla_marker_fixture_alone_is_accepted() -> Bool {
+  wla_marker_reason(body: "fn same(n: Mark<Nat, MachineWidth<8>>) -> Bool {\n  g8(n: n)\n}\n") == ^accepted
+}
+
+test fn wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit() -> Bool {
+  wla_marker_reason(body: "fn cross(n: Mark<Nat, MachineWidth<16>>) -> Bool {\n  g8(n: n)\n}\n") == ^application_argument_does_not_inhabit
+}
+
+test fn wla_ordinary_alias_to_the_marker_still_unfolds() -> Bool {
+  wla_marker_reason(body: "fn via(n: Mark8) -> Bool {\n  g8(n: n)\n}\n") == ^accepted
+}
+
+test fn wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments() -> Bool {
+  wla_marker_reason(body: "fn viacross(n: Mark8) -> Bool {\n  g16(n: n)\n}\n\nfn g16(n: Mark<Nat, MachineWidth<16>>) -> Bool {\n  true\n}\n") == ^application_argument_does_not_inhabit
+}
+
+test fn wla_an_unrelated_local_phantom_is_not_the_marker() -> Bool {
+  wla_marker_reason(body: "fn lcross(n: Loose<Nat, MachineWidth<16>>) -> Bool {\n  l8(n: n)\n}\n") == ^accepted
+}

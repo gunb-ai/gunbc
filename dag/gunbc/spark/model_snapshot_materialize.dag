@@ -3,6 +3,8 @@ module gunbc.spark.model_snapshot_materialize
 import extdeps.huggingface.hub { HubCacheEnvironment, hub_cache_root_for, hub_cache_environment_words, hub_cache_environment_unset }
 import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
 import std.nat { Nat }
+import std.retry_law { RetryLaw }
+import std.measure { second, second_count }
 import std.content_hash { content_hash_atom, content_hash_of_value, serialize_content_hash }
 import product.host_identity { HostIdentity }
 import std.algebra { trim }
@@ -694,13 +696,20 @@ fn spark_transfer_start(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
 // failure, and the Hub CLI resumes the files it has: a DNS or transport failure costs a retry, not the run.
 // It is BOUNDED, never a loop: at most spark_transfer_restart_burst starts within the interval, then the
 // unit stays failed and the supervision reads TransferExitedFailed, exactly as one failure did before.
-data spark_transfer_restart_delay_seconds: Nat = 120
+// RetryLaw is the backoff the supervisor will ask. StartLimitBurst / StartLimitIntervalSec are
+// systemd burst-window facts, not delay_cap or real_work_failure_bound (DESIGN §3 meaning fork).
+data spark_transfer_retry_law: RetryLaw = RetryLaw {
+  initial_delay: second(count: 120),
+  delay_cap: second(count: 120),
+  real_work_failure_bound: 1,
+}
+
 data spark_transfer_restart_burst: Nat = 30
 data spark_transfer_restart_interval_seconds: Nat = 21600
 
 data spark_transfer_restart_properties: List<String> = [
   "--property=Restart=on-failure",
-  join(["--property=RestartSec=", to_string(spark_transfer_restart_delay_seconds)], ""),
+  join(["--property=RestartSec=", to_string(second_count(s: spark_transfer_retry_law.initial_delay))], ""),
   join(["--property=StartLimitIntervalSec=", to_string(spark_transfer_restart_interval_seconds)], ""),
   join(["--property=StartLimitBurst=", to_string(spark_transfer_restart_burst)], ""),
 ]

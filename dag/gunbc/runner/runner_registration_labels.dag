@@ -1,6 +1,7 @@
 module gunbc.runner.runner_registration_labels
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Bool }
+import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions { SelfHosted, HostedRunner, RunsOnExpression }
 import gunbc.ci.ci_fleet { fleet_compute_offer_for }
@@ -8,6 +9,8 @@ import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { runner_host_label, runner_label_set_union, runner_label_sets_equal }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_job_role { RunnerSlotJobRole, CiJobSlot, DeployJobSlot, runner_slot_job_role }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
 
 // ONE COMPOSITION, EVERY PRODUCER. A registration's labels are made of three facts, each read from
 // the one place that owns it:
@@ -27,6 +30,16 @@ type RunnerRegistrationLabelsResolution
   | RegistrationLabelsRefused { host: HostIdentity, cause: NonEmptyStr }
 
 fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsResolution {
+  runner_registration_labels_of_class(host: host, class_labels: gunbc_runner_slot_desired().labels.github_labels)
+}
+
+// THE CLASS HALF OF THE COMPOSITION IS THE ONLY PART A ROLE CHANGES. A CI slot carries the class
+// label the floor selects on (gunbc-heavy); the deploy slot carries the label of its restricted
+// runner group (gunbc.ci.deploy_slot_tenancy deploy_slot_runner_group_name) and NOT gunbc-heavy, so
+// a job that selects the CI class can never be satisfied by it. The group, not this label, is the
+// wall -- a label is set membership and any workflow can name one -- which is why the label is
+// necessary for fleet-converge to reach the slot and not sufficient to keep anything else off it.
+fn runner_registration_labels_of_class(host: HostIdentity, class_labels: List<String>) -> RunnerRegistrationLabelsResolution {
   match fleet_compute_offer_for(host: host) {
     Absent =>
       RegistrationLabelsRefused {
@@ -38,13 +51,21 @@ fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsRes
         SelfHosted { labels: platform } =>
           RegistrationLabelsResolved {
             labels: runner_label_set_union(
-              a: runner_label_set_union(a: platform, b: gunbc_runner_slot_desired().labels.github_labels),
+              a: runner_label_set_union(a: platform, b: class_labels),
               b: [runner_host_label(host: host)],
             ),
           }
         HostedRunner { label: _ } => registration_labels_refused_not_self_hosted(host: host)
         RunsOnExpression { expression: _ } => registration_labels_refused_not_self_hosted(host: host)
       }
+  }
+}
+
+// ONE SLOT'S LABELS: the host's, with the class its role gives it.
+fn runner_slot_registration_labels(slot: RunnerSlotIdentity) -> RunnerRegistrationLabelsResolution {
+  match runner_slot_job_role(slot: slot) {
+    CiJobSlot => runner_registration_labels(host: slot.host)
+    DeployJobSlot => runner_registration_labels_of_class(host: slot.host, class_labels: [deploy_slot_runner_group_name as String])
   }
 }
 
@@ -66,6 +87,70 @@ fn runner_browser_ready_registration_labels(host: HostIdentity) -> RunnerRegistr
   }
 }
 
+// ── GPU CONTAINER READINESS: A LABEL THE GPU-CONTAINER-TOOLCHAIN CONVERGE GRANTS AND NOTHING ELSE ──
+//
+// Same shape as browser-ready, and the reason is the same: a capability a host can gain and lose has
+// to be a LABEL, so a workflow selects the capability and an unconverged runner cannot take the job.
+// gunbc.runner.runner_gpu_container_toolchain gpu_docker_labels_converge_wet writes it as a template
+// drop-in when that converge's readback holds (rootless Docker reachable by the job user, the NVIDIA
+// container toolkit installed, a CDI spec generated) and removes it when it does not.
+//
+// IT STATES THE CONTAINER HALF ONLY, and that is the one way this label is NOT a copy of
+// browser-ready. It does not assert the slot's job principal is free of root equivalence: the model
+// already classes the docker GROUP as root-equivalent
+// (gunbc.fleet.fleet_posix_accounts fleet_root_equivalent_group_names lists "docker"), which is why
+// the group route is refused and rootless Docker is the shape. A consumer that reads this label as
+// the whole precondition has silently dropped the principal half, so consumers assert on both and
+// answer exit 2 (no observation) for either -- never green.
+data gunbc_gpu_docker_label: String = "gunbc-gpu-docker"
+
+// ── CAPABILITIES AS ROWS, RESTATED BY ONE FOLD ────────────────────────────────────────────────────
+//
+// THE SECOND ONE IS WHERE THE PATTERN HAS TO GENERALIZE, and review 86550 said so. The first capability
+// label (browser, 85-) was written by one producer alone. The second (gpu, 86-) arrived as a second
+// producer, and because systemd applies a template's drop-ins in filename order with the LATER value of a
+// repeated key REPLACING the earlier one, the 86 file is the only LABELS_JSON a host holding both
+// toolchains ever sees — so it had to know the browser label's name and restate it, or silently revoke it.
+// A third capability written the same way would have to know about both of its predecessors plus carry its
+// own read for each, the cost grows quadratically, and forgetting one name silently revokes a label with
+// nothing on the owning side reporting it. That is the same defect this function's own comment describes,
+// one capability later.
+//
+// SO A CAPABILITY IS A ROW, AND THE FOLD IS SHARED. A capability declares a label and the drop-in whose
+// bytes are the evidence that it was earned. Any converge that writes a LABELS_JSON drop-in passes the
+// rows it OBSERVED plus the label it is granting itself, and one function composes the set. Adding a
+// fourth capability adds a row; it does not add a branch to a sibling, and no sibling has to learn its
+// name. Each converge still grants only what its own read-back earned — the fold restates what other
+// converges earned, and refuses when a sibling's evidence cannot be read at all.
+type HostCapabilityRow {
+  label: String
+  // The drop-in whose bytes are the EVIDENCE that this capability was granted by its own converge. Not the
+  // fragment, not a database: the file the owning converge writes when its read-back holds, and removes
+  // when it does not. Reading it is asking the host rather than re-deriving a verdict here, which is what
+  // keeps this module from becoming a second authority on someone else's toolchain.
+  dropin_path: NonEmptyStr
+}
+
+// WHAT A READ OF ONE ROW CAN ANSWER, with the third answer not collapsible into the second. ABSENT is a
+// decision — the file carries no such label, so it is withheld. UNOBSERVABLE is not a decision, it is the
+// read that failed, and treating it as ABSENT would strip a label a host legitimately holds because one ssh
+// blipped, with nothing on the owning side reporting it.
+//
+// THE PREDICATE OVER THESE LIVES BESIDE THE FOLD, in gunbc.runner.runner_capability_labels: deciding
+// whether a witness contributes a label is part of composing the set, and splitting the two would let the
+// predicate and the fold disagree about what HELD means.
+type HostCapabilityWitness
+  = CapabilityHeld { label: String }
+  | CapabilityAbsent { label: String }
+  | CapabilityUnobservable { label: String, cause: String }
+
+// THE FOLD LIVES IN gunbc.runner.runner_capability_labels, beside the rows it validates witnesses
+// against, because validating a witness requires seeing the declared rows and this module must not have to
+// know them. The types above stay here: they are the vocabulary, and the vocabulary has no opinions about
+// which capabilities exist.
+
+
+
 // WHETHER AN OBSERVED REGISTRATION CONFORMS TO ITS SLOT. The host's set exactly, or the host's set
 // plus the readiness label: those are the only two states the converge writes, so both are healthy,
 // and anything else -- another host's label, a stray extra -- is a divergence. Treating the ungranted
@@ -76,12 +161,22 @@ type RegistrationLabelsConformance
   | RegistrationLabelsDiverge
   | RegistrationLabelsUnjudged { host: HostIdentity, cause: NonEmptyStr }
 
+// THE READINESS LABEL IS THE FLOOR'S, so only a slot the floor can run on may carry it; the deploy
+// slot's label set is exactly its own, and a readiness label on it is a divergence.
+fn runner_slot_carries_browser_ready(slot: RunnerSlotIdentity) -> Bool {
+  match runner_slot_job_role(slot: slot) {
+    CiJobSlot => true
+    DeployJobSlot => false
+  }
+}
+
 fn runner_slot_labels_conform(slot: RunnerSlotIdentity, observed: List<String>) -> RegistrationLabelsConformance {
-  match runner_registration_labels(host: slot.host) {
+  match runner_slot_registration_labels(slot: slot) {
     RegistrationLabelsRefused { host: h, cause: c } => RegistrationLabelsUnjudged { host: h, cause: c }
     RegistrationLabelsResolved { labels: host_labels } =>
       if runner_label_sets_equal(a: observed, b: host_labels)
-        || runner_label_sets_equal(a: observed, b: runner_label_set_union(a: host_labels, b: [gunbc_browser_ready_label])) {
+        || (runner_slot_carries_browser_ready(slot: slot)
+          && runner_label_sets_equal(a: observed, b: runner_label_set_union(a: host_labels, b: [gunbc_browser_ready_label]))) {
         RegistrationLabelsConform
       } else {
         RegistrationLabelsDiverge

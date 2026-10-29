@@ -1,0 +1,76 @@
+module extdeps.ninfer.replayed_tokens_total
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count }
+import std.prefixed_line { prefixed_line_last_space_nat, PrefixedLineMiss, PrefixedLineNatUnreadable, PrefixedLineNat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.ninfer.ninfer_serve { extdeps_external_authority_anchor, ninfer_upstream_read_obligation }
+
+// NINFER'S REPLAYED-TOKEN COUNTER LINE, not a gpu-bench kit schema. The metric name is
+// ninfer_replayed_tokens_total; later snapshots overwrite earlier ones (phase counter).
+// A candidate line STARTS WITH the marker prefix (`std.prefixed_line`
+// `prefixed_line_last_space_nat`). A `# TYPE …` comment does not.
+
+data ninfer_replayed_tokens_total_marker: NonEmptyStr = "ninfer_replayed_tokens_total" as NonEmptyStr
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ninfer.replayed_tokens_total",
+      decl_name: "ninfer_replayed_tokens_total_marker",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data ninfer_replayed_tokens_total_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: ninfer_upstream_read_obligation,
+}
+
+type NinferReplayedTokensRead
+  = NinferReplayedTokensRead { tokens: TokenCount }
+  | NinferReplayedTokensAbsent
+  | NinferReplayedTokensMalformed { cause: NonEmptyStr }
+
+fn ninfer_replayed_tokens_line_prefix() -> String {
+  join([ninfer_replayed_tokens_total_marker as String, " "], "")
+}
+
+fn ninfer_replayed_tokens_from_line(line: String) -> NinferReplayedTokensRead? {
+  match prefixed_line_last_space_nat(line: line, prefix: ninfer_replayed_tokens_line_prefix()) {
+    PrefixedLineMiss => none
+    PrefixedLineNatUnreadable => Present {
+      value: NinferReplayedTokensMalformed {
+        cause: join([ninfer_replayed_tokens_total_marker as String, " last token is not a natural"], "") as NonEmptyStr
+      }
+    }
+    PrefixedLineNat { value: n } => Present { value: NinferReplayedTokensRead { tokens: token_count(count: n) } }
+  }
+}
+
+fn ninfer_replayed_tokens_total(log: String) -> NinferReplayedTokensRead {
+  if log == "" {
+    NinferReplayedTokensAbsent
+  } else {
+    fold(split(s: log, delimiter: "\n"), init: NinferReplayedTokensAbsent, f: fn(acc, line) {
+      match acc {
+        NinferReplayedTokensMalformed { cause: c } => NinferReplayedTokensMalformed { cause: c }
+        NinferReplayedTokensAbsent =>
+          match ninfer_replayed_tokens_from_line(line: line) {
+            Absent => NinferReplayedTokensAbsent
+            Present { value: next } => next
+          }
+        NinferReplayedTokensRead { tokens: t } =>
+          match ninfer_replayed_tokens_from_line(line: line) {
+            Absent => NinferReplayedTokensRead { tokens: t }
+            Present { value: next } => next
+          }
+      }
+    })
+  }
+}

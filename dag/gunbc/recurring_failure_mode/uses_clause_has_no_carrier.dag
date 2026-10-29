@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.uses_clause_has_no_carrier
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data uses_clause_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
   identity: "uses_clause_has_no_carrier" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a fn declaration's `uses` clause (`uses net: Network, fs: Filesystem`) states the resources the fn requires, and v2 has no carrier for that requirement: no field of the lowered Arrow, no effect-requirement type the declaration lowers onto. v1 reads it (`v1` `02_parse` `parse_uses_clause`, a resource-use node per entry) and v1's CLI admits a resource method only where the fn declares that resource there, so it is a semantic fact, not trivia -- a fact D13 assigns to derived demand rather than to the header.",

@@ -1,0 +1,37 @@
+module gunbc.plans.gunb_ai_projection
+
+import std.markdown { MarkdownBlock }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+import std.dissolution { unbound_dissolution }
+import gunbc.plans.md_helpers { p }
+
+// THE ONE HOME for the gunb.ai projection inventory. DESIGN §3: a plan's authority
+// is its `.dag` carrier; per `gunbc.design_ruling`
+// `project_documentation_projections_are_not_checkout_artifacts` (2026-10-13) its
+// markdown is not a checkout artifact. Rostered through
+// `gunbc.plan_registry.all_plans` by `gunbc.plan_registry_batch_g`. Figures are
+// never transcribed here: each carries the command that re-derives it, so a rotting
+// number is a failing probe, not an unreachable fact.
+
+fn inventory_body() -> List<MarkdownBlock> {
+  [
+    p(text: "Goal: project gunb.ai from existing gunbc authorities. This inventory supplies tokens→primitives→layout→content→pages→build/deploy; its 2026-10-16 frontend/live-site observations must be reread before action. Each layer needs an executing render/control, not only typecheck or grep."),
+    p(text: "Read gunb-ai/frontend .github/workflows/pages.yml for the staged set (recorded: index.html/assets/CNAME); gh api repos/gunb-ai/frontend/pages for Pages settings; clone/read staged bytes and compare live / to tracked index.html. Derive staleness from frontend pushed_at and gunbc rev-list since that date. Paths excluded from _site (workpad/legacy/docs/PROPOSAL/DESIGN/scripts) were unserved; verify HTTP status and inventory rather than copying byte counts."),
+    p(text: "The deck is LIVE: initDecks queries [data-deck] and creates .card-track, so missing pre-render track was not evidence of dead code. Settled headless Chromium DOM, including cards/nav/receipt rows, overturned that inference. The corrected survey records operator parity-first retention; earlier drop/dead/open-deck bullets must not undo it. Users-system nodes/artifacts/budgets in cards.js still lack modeled homes: type them after masthead/hero/install/footer. Until that layer lands, emit the mount element only, as served HTML does."),
+    p(text: "Recheck icon referrers in the staged files: recorded favicon/touch/maskable assets were unreferenced, while legacy manifest paths pointed to missing /assets/site.webmanifest and /assets/favicon.png. gunbc Pages config and gunbc.io were stale; observed active domain was gunb.ai. These are dated findings, not authority to change publishing."),
+    p(text: "Existing homes: design.brand_mark/brand_mark_assets/brand_mark_raster derive glyphs and exact raster assets; brand_mark_assets_cli v2_cli_main writes via Filesystem.WriteBytes (<binary> <out-dir>). site.brand’s favicon source/path/type and roadmap_serve.SiteFaviconHandler establish serving. Replace the hand-authored assets/mark.svg fork through these owners."),
+    p(text: "design.palette owns Swatch/Srgb8, filed/derived members and HouseAuthored/InspiredByExternal/CitedUpstream provenance; design.catalog owns palette_catalog (island_pastel/okabe_ito/solarized). PICK A (swift-badger-498, 2026-10-16): add warm/moss/brass/clay swatches named by color, derive site tokens with no literals; redesign may change values. design.scale.ScaleToken owns lengths/fonts/radii/spacing, typography.interface_text_decls owns roles; missing public-site register rows belong there, not handwritten CSS properties. Consolidate JetBrains Mono/Noto Sans family literals to one home before tokens."),
+    p(text: "design.theme (day/night, theme_gaps/theme_contrast_ok) and design.material (Material/BuildRule/registers) are authorities behind site.tokens. Reuse site.markup, site.document/site_document_over/site_styles/font nodes, element primitives and web_fonts with extdeps.fonts.google_fonts sources. Copy, links and install snippets still need typed content with named upstreams and link-liveness controls; fixed operator copy must remain distinct from instrument-derived claims."),
+    p(text: "Review precedent: accent_study/moodboard render options; transfer outputs to srv1 (separate worktree), serve on its configured tailnet address and screenshot with headless Chromium. Read SSH configuration for endpoints. Interpreter invocation is gunbc run <module> --function <fn> --arg name=value; positional argv is NativeCliDriver-only."),
+    p(text: "Open: claim/copy upstreams; frontend-as-Pages-target versus gunbc publishing and frontend retirement; modeled site build/hosting; explicit deploy-CI job-roster sign-off. No live publication without an explicit ask. Retire never-served branch material with the old repo. Next, size layer contracts, render 2–4 token options for operator selection before proceeding; final controls must fail for missing assets, dangling links and unknown tokens."),
+  ]
+}
+
+data gunb_ai_projection_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "gunb-ai-projection-inventory",
+  title: "Plan — gunb.ai as a projection of gunbc: pre-modelling inventory",
+  body: inventory_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this inventory when gunb.ai is generated wholly from gunbc .dag models — every page, asset, style token and copy string projected by a gunbc entry point, the hand-maintained gunb-ai/frontend source deleted, and a green witness renders the site and fails on a missing asset, dangling link or unknown token — at which point the inventory of what-was and the home-or-gap table are redundant.") }
+}

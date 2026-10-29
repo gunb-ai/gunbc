@@ -8,7 +8,8 @@ import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbse
 import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
 import product.capacity.event_chain { PartitionId }
 import product.capacity.pool_events { SeatRequest, PoolReleased, pool_full_wire }
-import product.capacity.lease { LeasePolicy, LeaseGrant, QuiescenceRequired }
+import std.resource_release_law { QuiescenceRequired }
+import product.capacity.lease { LeasePolicy, LeaseGrant }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootStanding, FabricStorageRootReady, FabricStorageRootRefused }
 import gunbc.fabric.fabric_event_log {

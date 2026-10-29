@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.excluded_witness_outlives_the_subject_it_names
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data excluded_witness_outlives_the_subject_it_names: RecurringFailureMode = RecurringFailureMode {
   identity: "excluded_witness_outlives_the_subject_it_names" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an excluded witness outlives the subject it names, and reads as coverage of a subject it can no longer see** (INVALID STATE: a witness compiles, is committed, and is kept off every executing cadence by a declared exclusion or freeze; the SUBJECT it names is then moved or deleted by a correct edit elsewhere; and because nothing executes the witness, nothing observes that it now names nothing. The roster still lists it, the exclusion row still explains why it is offline, and both statements are true -- while the assertion itself has become false and unfalsifiable at the same moment.",

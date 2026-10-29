@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_positional_fact_is_obtained_by_searching_for_its_shape
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_positional_fact_is_obtained_by_searching_for_its_shape: RecurringFailureMode = RecurringFailureMode {
   identity: "a_positional_fact_is_obtained_by_searching_for_its_shape" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**WHEN A FACT IS POSITIONAL IN A PRODUCTION, A SEARCH FOR ITS SHAPE IS NOT A READ OF IT.** INVALID STATE: a grammar production fixes WHERE a constituent sits -- the type after the arrow, the value after the colon, the name after the keyword -- and a consumer obtains it by walking the subtree for the first node MATCHING THAT CONSTITUENT'S SHAPE instead of descending to its position. The two agree on every specimen where the shape occurs once, and diverge the moment a nested construct legitimately contains the same shape. The harm is DESIGN section 5's forbidden case and not a rung: the search returns a well-formed node of the right TYPE from the wrong PLACE, every stage downstream accepts it, and no diagnostic is produced anywhere.",

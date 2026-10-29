@@ -40,7 +40,7 @@ test fn witness_unsound_policy_refused() -> Bool {
 
 test fn witness_converge_apply_fail_closed_on_knob_frontier() -> Bool {
   match converge_apply(
-    policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
+    policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()], image_baked: [] },
     transport: LocalShell
   ) {
     FleetConvergeApplied { host_count: n, all_converged: ok } =>
@@ -67,7 +67,7 @@ test fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
 
 test fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {
   !fleet_converge_apply_result_converged(r: converge_apply(
-    policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
+    policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()], image_baked: [] },
     transport: EmitArtifactThenThinRun {
       bootstrap: BootstrapFragment { script: "true" },
       invocation: fleet_converge_thin_invocation(host: operator_host_srv3),

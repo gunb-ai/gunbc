@@ -1,0 +1,282 @@
+module test.claim.roadmap.belt_capture_intent_wet_witness
+
+// THE CANDIDATE CAPTURE UNDER A KILL AT EACH SEAM, over a real git worktree and a real project envelope.
+// A dirty attempt tree with a recorded spawn origin is captured; the prefix of the capture sequence is run by
+// hand up to the kill point, then the rerun is the production entry. Invariants: exactly one SCM commit for the
+// attempt (no double capture), and a capture record at the committed head (no lost capture).
+// On the local-repo wet lane with the exclusion row in gunbc.ci.ci_layer_roots naming the temp-directory write.
+
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance, dispatch_worktree_path_for_instance }
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
+  dashboard_instance_dispatch_attempt_state_root,
+}
+import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap.roadmap_belt_actuate {
+  belt_exec, ExecOk, ExecFailed, ExecRefused,
+  belt_attempt_submission_dir_for_instance,
+  belt_scm_capture_candidate_tree, belt_scm_persist_capture, ScmCandidateMinted, ScmCandidateCaptured, ScmCaptureMintRefused, ScmCaptureMintPoisoned,
+  belt_commit_staged, StagedCommitRecorded,
+  belt_commit_capture_candidate, BeltCommitOutcome, CandidateCaptured,
+  belt_capture_intent_write, belt_capture_intent_read, IntentAbsent, IntentRead,
+  belt_capture_intent_complete, IntentNothingOwed, IntentCompleted,
+  belt_worktree_head_observe, WorktreeHeadObserved,
+  belt_claim_tree_at, belt_claim_content_of, belt_claim_remove_tree,
+}
+import gunbc.roadmap.roadmap_attempt_worktree_claim {
+  ClaimTreePresent, ClaimTreeAbsent, ClaimContentDirty, ClaimContentPushed, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoval,
+}
+import gunbc.roadmap.roadmap_submission {
+  SubmissionCapture, WorkerSubmission, SubmissionReady, SubmissionCaptureRootBound, submission_capture_basename,
+}
+import gunbc.scm.repository_load { load_repository_indexed, RepositoryLoaded, RepositoryLoadRefused }
+import std.optional { Present, Absent }
+import gunbc.scm.repository_envelope { commit_at_reference }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import std.minted_identity { MintedId }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data wit_node: String = "capture-intent-wet-n"
+data wit_attempt: String = "k1"
+
+fn fresh_instance(tag: String) -> HostDashboardInstance {
+  let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_capture_intent_wet_", tag, ".XXXXXX"], "")).path
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["capture-intent-wet-", tag], "") as NonEmptyStr),
+    instance_id: join(["capture-intent-wet-", tag], "") as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18103,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn run_git(dir: String, args: List<String>) -> Bool {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir) {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+fn git_out(dir: String, args: List<String>) -> String {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir) {
+    ExecOk { stdout } => trim(stdout)
+    ExecFailed { program: _, exit_code: _, stderr: _ } => ""
+    ExecRefused { program: _, reason: _ } => ""
+  }
+}
+
+fn plant_dirty(instance: HostDashboardInstance) -> String {
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt)
+  let state = dispatch_attempt_state_path_for_instance(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt)
+  let _root = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
+  let _wt = shell.Mkdir.Parents(path: worktree as FilePath)
+  let _st = shell.Mkdir.Parents(path: state as FilePath)
+  let _sub = shell.Mkdir.Parents(path: belt_attempt_submission_dir_for_instance(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) as FilePath)
+  let seed = instance.repo_root as String
+  let _seed_dir = shell.Mkdir.Parents(path: seed as FilePath)
+  let primed = run_git(dir: seed, args: ["init", "-q"])
+    && run_git(dir: seed, args: ["config", "user.name", "witness"])
+    && run_git(dir: seed, args: ["config", "user.email", "witness@invalid"])
+    && Filesystem.Write(path: join([seed, "/src.dag"], ""), content: "base").success
+    && run_git(dir: seed, args: ["add", "-A"])
+    && run_git(dir: seed, args: ["commit", "-q", "-m", "base"])
+    && run_git(dir: seed, args: ["worktree", "add", "-q", "-f", "-b", "witness", worktree])
+    && run_git(dir: worktree, args: ["config", "user.name", "witness"])
+    && run_git(dir: worktree, args: ["config", "user.email", "witness@invalid"])
+  if !primed { "" } else {
+    let base_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+    let origin_ok = Filesystem.Write(
+      path: join([state, "/", dispatch_spawn_origin_basename], ""),
+      content: join(["{\"base_sha\":\"", base_sha, "\"}"], ""),
+    ).success
+    let dirty = Filesystem.Write(path: join([worktree, "/src.dag"], ""), content: "worker").success
+    if origin_ok && dirty { worktree } else { "" }
+  }
+}
+
+fn sub() -> WorkerSubmission {
+  WorkerSubmission { readiness: SubmissionReady, explanation: "witness", limitations: "none" }
+}
+
+fn msg() -> NonEmptyStr { "witness candidate" as NonEmptyStr }
+
+fn base_of(worktree: String) -> String { git_out(dir: worktree, args: ["rev-parse", "HEAD"]) }
+
+// Prefix of the production sequence: mint, intent, SCM save. Returns the minted ordinal, or -1.
+fn through_scm_save(instance: HostDashboardInstance, worktree: String) -> Int {
+  match belt_scm_capture_candidate_tree(
+    instance: instance, worktree: worktree, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt,
+    message: msg() as String, committed_revision: Absent,
+  ) {
+    ScmCandidateMinted { repository, generation, path, commit_ordinal, commit_root_locator } => {
+      let intent = SubmissionCapture {
+        head_sha: base_of(worktree: worktree), scm_repository: path, scm_commit_ordinal: commit_ordinal,
+        scm_root_locator: SubmissionCaptureRootBound { locator: commit_root_locator }, digest: "d", submission: sub(),
+      }
+      let wrote = match belt_capture_intent_write(instance: instance, worktree: worktree, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt, capture: intent) {
+        Present { value: _ } => false
+        Absent => true
+      }
+      if !wrote { 0 - 1 } else {
+        match belt_scm_persist_capture(mint: ScmCandidateMinted {
+          repository: repository, generation: generation, path: path,
+          commit_ordinal: commit_ordinal, commit_root_locator: commit_root_locator,
+        }) {
+          ScmCandidateCaptured { repository_path: _, commit_ordinal: o, commit_root_locator: _ } => o
+          _ => 0 - 1
+        }
+      }
+    }
+    _ => 0 - 1
+  }
+}
+
+fn envelope_path(instance: HostDashboardInstance, worktree: String) -> String {
+  match belt_scm_capture_candidate_tree(
+    instance: instance, worktree: worktree, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt,
+    message: msg() as String, committed_revision: Absent,
+  ) {
+    ScmCandidateMinted { repository: _, generation: _, path, commit_ordinal: _, commit_root_locator: _ } => path
+    _ => ""
+  }
+}
+
+fn commit_exists(path: String, ordinal: Int) -> Bool {
+  match load_repository_indexed(path: path) {
+    RepositoryLoadRefused { cause: _ } => false
+    RepositoryLoaded { path: _, envelope, generation: _ } =>
+      match commit_at_reference(commits: envelope.commits, reference: RepositoryCommitRef { identity: MintedId { ordinal: ordinal } }) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+fn capture_file_at_head(instance: HostDashboardInstance, worktree: String) -> Bool {
+  let head = base_of(worktree: worktree)
+  head != "" && Filesystem.Read(path: join([
+    belt_attempt_submission_dir_for_instance(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt),
+    "/", submission_capture_basename(head_sha: head)], "")).success
+}
+
+fn intent_cleared(instance: HostDashboardInstance, worktree: String) -> Bool {
+  match belt_capture_intent_read(instance: instance, worktree: worktree, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) {
+    IntentAbsent => true
+    _ => false
+  }
+}
+
+// KILL AFTER THE SCM SAVE, BEFORE THE GIT COMMIT: the rerun reuses the persisted commit; no second SCM commit.
+test fn a_kill_after_the_scm_save_does_not_double_capture() -> Bool {
+  let instance = fresh_instance(tag: "scm")
+  let worktree = plant_dirty(instance: instance)
+  let o = if worktree == "" { 0 - 1 } else { through_scm_save(instance: instance, worktree: worktree) }
+  let rerun = o >= 0 && match belt_commit_capture_candidate(
+    instance: instance, worktree: worktree, node_id: wit_node, attempt_key: wit_attempt,
+    message: msg(), submission: sub(), digest: "d",
+  ) {
+    CandidateCaptured { node_id: _, head_sha: _, message: _ } => true
+    _ => false
+  }
+  let path = if rerun { envelope_path(instance: instance, worktree: worktree) } else { "" }
+  // envelope_path re-mints in memory only; the persisted store must hold ordinal o and not o + 1
+  let held = rerun && commit_exists(path: path, ordinal: o) && !commit_exists(path: path, ordinal: o + 1)
+    && capture_file_at_head(instance: instance, worktree: worktree) && intent_cleared(instance: instance, worktree: worktree)
+  let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
+  held && cleaned.success
+}
+
+// KILL AFTER THE GIT COMMIT, BEFORE THE CAPTURE RECORD: the rerun completes the record at the new head, once.
+test fn a_kill_after_the_commit_does_not_lose_the_capture() -> Bool {
+  let instance = fresh_instance(tag: "commit")
+  let worktree = plant_dirty(instance: instance)
+  let o = if worktree == "" { 0 - 1 } else { through_scm_save(instance: instance, worktree: worktree) }
+  let committed = o >= 0 && match belt_commit_staged(instance: instance, worktree: worktree, message: msg()) {
+    StagedCommitRecorded => true
+    _ => false
+  }
+  let lost_before = committed && !capture_file_at_head(instance: instance, worktree: worktree)
+  let completed = lost_before && match belt_capture_intent_complete(instance: instance, worktree: worktree, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) {
+    IntentCompleted { head_sha: _ } => true
+    _ => false
+  }
+  let again = completed && match belt_capture_intent_complete(instance: instance, worktree: worktree, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) {
+    IntentNothingOwed => true
+    _ => false
+  }
+  let held = again && capture_file_at_head(instance: instance, worktree: worktree) && intent_cleared(instance: instance, worktree: worktree)
+  let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
+  held && cleaned.success
+}
+
+fn declined(removal: ClaimRemoval) -> Bool {
+  match removal {
+    ClaimRemoveDeclined { detail: _ } => true
+    _ => false
+  }
+}
+
+fn was_removed(removal: ClaimRemoval) -> Bool {
+  match removal {
+    ClaimRemoved => true
+    _ => false
+  }
+}
+
+fn tree_present(instance: HostDashboardInstance, worktree: String) -> Bool {
+  match belt_claim_tree_at(instance: instance, path: worktree) {
+    ClaimTreePresent => true
+    _ => false
+  }
+}
+
+fn content_is_dirty(instance: HostDashboardInstance, worktree: String) -> Bool {
+  match belt_claim_content_of(instance: instance, worktree: worktree) {
+    ClaimContentDirty { detail: _ } => true
+    _ => false
+  }
+}
+
+fn content_is_pushed(instance: HostDashboardInstance, worktree: String) -> Bool {
+  match belt_claim_content_of(instance: instance, worktree: worktree) {
+    ClaimContentPushed => true
+    _ => false
+  }
+}
+
+// INHABITANCE OF THE CLAIM'S HOST ADAPTERS over a real linked worktree (the claim witness supplies these as
+// lambdas; this is the one claim that runs the production route): tree_at sees the tree, content_of judges dirty
+// then pushed, and the non-force remove refuses the dirty tree and removes the clean one.
+test fn the_real_claim_adapters_observe_judge_and_remove_a_linked_worktree() -> Bool {
+  let instance = fresh_instance(tag: "adapters")
+  let worktree = plant_dirty(instance: instance)
+  let seed = instance.repo_root as String
+  let remote_ref = worktree != "" && run_git(dir: seed, args: ["update-ref", "refs/remotes/origin/main", "HEAD"])
+  let seen = remote_ref && tree_present(instance: instance, worktree: worktree)
+  let dirty = seen && content_is_dirty(instance: instance, worktree: worktree)
+  let refused = dirty && declined(removal: belt_claim_remove_tree(instance: instance, repo_workdir: seed, path: worktree))
+    && tree_present(instance: instance, worktree: worktree)
+  let pushed = refused && run_git(dir: worktree, args: ["checkout", "--", "src.dag"])
+    && content_is_pushed(instance: instance, worktree: worktree)
+  let removed = pushed && was_removed(removal: belt_claim_remove_tree(instance: instance, repo_workdir: seed, path: worktree))
+    && match belt_claim_tree_at(instance: instance, path: worktree) {
+      ClaimTreeAbsent => true
+      _ => false
+    }
+  let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
+  removed && cleaned.success
+}

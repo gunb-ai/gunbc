@@ -15,7 +15,8 @@ import v2.std.node {
   TypeNode,
   named_edge_target_lookup,
   node_rebuild,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
 
 type UseSiteVerdict
@@ -49,7 +50,7 @@ fn use_site_verdict_to_node(verdict: UseSiteVerdict) -> Node {
       node_synthetic(
         kind: TypeNode { connective: Atom { identity: use_site_verdict_move_field_tag } },
         children: [
-          Edge { label: Authored { name: use_site_verdict_field_edge }, target: use_site_verdict_atom(tag: f) }
+          Edge { label: Authored { name: use_site_verdict_field_edge }, target: use_site_verdict_atom(tag: f), declaration: NotADeclaration }
         ]
       )
     Borrow => use_site_verdict_atom(tag: use_site_verdict_borrow_tag)
@@ -66,7 +67,6 @@ fn use_site_verdict_move_field_of(children: List<Edge>) -> UseSiteVerdict {
         TypeNode { connective: Conj } => Unclassified
         TypeNode { connective: Disj } => Unclassified
         TypeNode { connective: Arrow } => Unclassified
-        TypeNode { connective: Occupancy } => Unclassified
         TypeNode { connective: Instantiation } => Unclassified
         ComputationNode { behavior: _ } => Unclassified
       }
@@ -92,7 +92,6 @@ fn use_site_verdict_of_node(target: Node) -> UseSiteVerdict {
     TypeNode { connective: Conj } => Unclassified
     TypeNode { connective: Disj } => Unclassified
     TypeNode { connective: Arrow } => Unclassified
-    TypeNode { connective: Occupancy } => Unclassified
     TypeNode { connective: Instantiation } => Unclassified
     ComputationNode { behavior: _ } => Unclassified
   }
@@ -111,7 +110,7 @@ fn attach_use_site_verdict(node: Node, verdict: UseSiteVerdict) -> Node {
     n: node,
     children: list_snoc_item(
       xs: node.children,
-      item: Edge { label: Authored { name: use_site_verdict_edge }, target: use_site_verdict_to_node(verdict: verdict) }
+      item: Edge { label: Authored { name: use_site_verdict_edge }, target: use_site_verdict_to_node(verdict: verdict), declaration: NotADeclaration }
     )
   )
 }

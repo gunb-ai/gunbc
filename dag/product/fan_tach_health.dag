@@ -1,6 +1,7 @@
 module product.fan_tach_health
 
-import std.types { Bool, Int, List, Never, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.error_primitives { Never }
 import std.measure { RevolutionsPerMinute }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_fan_tach_expectation {

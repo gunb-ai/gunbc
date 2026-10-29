@@ -59,12 +59,13 @@ import gunbc.machine_intake.mtcollins1_census_image {
   mtcollins1_census_grub_cmdline,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.integer { int_to_decimal_string }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data census_run_a: String = "boot-id=aaaa-1111"
+data census_run_a: String = "boot-id=aaaaaaaa-0000-4000-8000-000000000001"
 
-data census_run_b: String = "boot-id=bbbb-2222"
+data census_run_b: String = "boot-id=aaaaaaaa-0000-4000-8000-000000000002"
 
 fn census_marker(run: String, word: String) -> String {
   concat("=====GUNBC-HOST-CAPTURE mtcollins1 ", run, " ", word, " 2026-09-19T00:00:00Z=====")
@@ -91,7 +92,7 @@ test fn one_run_binds_and_answers_every_verdict_axis() -> Bool {
     HostCaptureOpen { envelope: _ } => false
     HostCaptureNotBegun => false
     HostCaptureBound { envelope: e } =>
-      host_capture_run_identity_value(run: e.run) == "aaaa-1111"
+      host_capture_run_identity_value(run: e.run) == "aaaaaaaa-0000-4000-8000-000000000001"
         && host_capture_bound_nproc_exact(envelope: e, threads: "160")
         && host_capture_bound_workload_stable(envelope: e)
         && host_capture_bound_edac_clean(envelope: e, name: "edac-before")
@@ -139,18 +140,18 @@ test fn a_section_from_another_run_is_not_read() -> Bool {
   }
 }
 
-// THE SAME SPELLING IN TWO DIFFERENT IDENTITY FORMS IS NOT THE SAME RUN. attempt=3 is an ordinal
-// the historical program printed; boot-id=3 would be a kernel boot id. They share a spelling and
+// THE SAME SPELLING IN TWO DIFFERENT IDENTITY FORMS IS NOT THE SAME RUN. attempt=aaaaaaaa-0000-4000-8000-000000000003 is an ordinal
+// the historical program printed; boot-id=aaaaaaaa-0000-4000-8000-000000000003 would be a kernel boot id. They share a spelling and
 // nothing else, so an envelope begun as one and ended as the other may not close -- comparing the
 // projected text alone let exactly that through, which is the confusion the two forms exist to end.
 test fn the_same_text_under_two_identity_forms_is_not_one_run() -> Bool {
   census_binds(capture: concat(
-    census_marker(run: "attempt=3", word: "begin"), "\n", census_sections_body, "\n",
-    census_marker(run: "boot-id=3", word: "end"), "\n",
+    census_marker(run: "attempt=aaaaaaaa-0000-4000-8000-000000000003", word: "begin"), "\n", census_sections_body, "\n",
+    census_marker(run: "boot-id=aaaaaaaa-0000-4000-8000-000000000003", word: "end"), "\n",
   )) == false
     && census_binds(capture: concat(
-      census_marker(run: "boot-id=3", word: "begin"), "\n", census_sections_body, "\n",
-      census_marker(run: "attempt=3", word: "end"), "\n",
+      census_marker(run: "boot-id=aaaaaaaa-0000-4000-8000-000000000003", word: "begin"), "\n", census_sections_body, "\n",
+      census_marker(run: "attempt=aaaaaaaa-0000-4000-8000-000000000003", word: "end"), "\n",
     )) == false
 }
 
@@ -158,12 +159,12 @@ test fn the_same_text_under_two_identity_forms_is_not_one_run() -> Bool {
 // must bind, so the refusal above is the form discriminating and not the text failing to compare.
 test fn the_same_text_under_one_identity_form_is_one_run() -> Bool {
   census_binds(capture: concat(
-    census_marker(run: "attempt=3", word: "begin"), "\n", census_sections_body, "\n",
-    census_marker(run: "attempt=3", word: "end"), "\n",
+    census_marker(run: "attempt=aaaaaaaa-0000-4000-8000-000000000003", word: "begin"), "\n", census_sections_body, "\n",
+    census_marker(run: "attempt=aaaaaaaa-0000-4000-8000-000000000003", word: "end"), "\n",
   ))
     && census_binds(capture: concat(
-      census_marker(run: "boot-id=3", word: "begin"), "\n", census_sections_body, "\n",
-      census_marker(run: "boot-id=3", word: "end"), "\n",
+      census_marker(run: "boot-id=aaaaaaaa-0000-4000-8000-000000000003", word: "begin"), "\n", census_sections_body, "\n",
+      census_marker(run: "boot-id=aaaaaaaa-0000-4000-8000-000000000003", word: "end"), "\n",
     ))
 }
 
@@ -219,12 +220,12 @@ test fn seed_absent_reaches_the_installer_and_never_binds() -> Bool {
   census_binds(capture: census_console_seed_absent_reaches_tui) == false
 }
 
-// THE HISTORICAL IDENTITY FORM IS KEPT APART FROM THE NEW ONE: attempt=3's ordinal parses as an
+// THE HISTORICAL IDENTITY FORM IS KEPT APART FROM THE NEW ONE: attempt=aaaaaaaa-0000-4000-8000-000000000003's ordinal parses as an
 // ordinal, not as a boot id, so a reader can tell which producer wrote the capture.
 test fn the_two_run_identity_forms_are_distinguished() -> Bool {
   let historical = concat(
-    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=3 begin 2026-09-11T01:26:50Z=====\n", census_sections_body, "\n",
-    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=3 end 2026-09-11T01:30:29Z=====\n",
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=aaaaaaaa-0000-4000-8000-000000000003 begin 2026-09-11T01:26:50Z=====\n", census_sections_body, "\n",
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=aaaaaaaa-0000-4000-8000-000000000003 end 2026-09-11T01:30:29Z=====\n",
   )
   match host_capture_bind(capture: historical, machine: mtcollins1_census_machine) {
     HostCaptureUnbound { reason: _ } => false
@@ -232,7 +233,7 @@ test fn the_two_run_identity_forms_are_distinguished() -> Bool {
     HostCaptureNotBegun => false
     HostCaptureBound { envelope: e } =>
       match e.run {
-        HistoricalAttemptOrdinal { ordinal: o } => (o as String) == "3"
+        HistoricalAttemptOrdinal { ordinal: o } => (o as String) == "aaaaaaaa-0000-4000-8000-000000000003"
         KernelBootId { boot_id: _ } => false
       }
   }
@@ -262,7 +263,7 @@ test fn the_workload_requires_pass_status_and_full_coverage() -> Bool {
     && string_contains(s: body, pattern: "sb=$?")
     && string_contains(s: body, pattern: "[ \"$sa\" = 0 ]")
     && string_contains(s: body, pattern: "[ \"$sb\" = 0 ]")
-    && string_contains(s: body, pattern: concat("[ \"$na\" = ", host_capture_workload_chunk_count(workload: mtcollins1_one_socket_workload) as String, " ]"))
+    && string_contains(s: body, pattern: concat("[ \"$na\" = ", int_to_decimal_string(value: host_capture_workload_chunk_count(workload: mtcollins1_one_socket_workload)), " ]"))
     && string_contains(s: body, pattern: host_capture_workload_chunk_paths(workload: mtcollins1_one_socket_workload))
     && string_contains(s: body, pattern: "chunk*") == false
 }
@@ -461,3 +462,19 @@ test fn the_pinned_and_current_derivations_differ_only_by_the_instrument() -> Bo
   }
 }
 
+
+// A MALFORMED BEGIN IS NOT TEXT. A begin marker whose boot id is no Uuid is recognized by its tag, machine and
+// word, so it opens a second envelope and the binding refuses; read as ordinary text it would join the open
+// capture and a later END of the first run would bind the sections that follow it.
+test fn a_malformed_second_begin_does_not_bind_the_first_run() -> Bool {
+  let first_begin = census_marker(run: census_run_a, word: "begin")
+  let malformed = census_marker(run: "boot-id=not-a-uuid", word: "begin")
+  let end_a = census_marker(run: census_run_a, word: "end")
+  let one_run = concat(first_begin, "\n", census_sections_body, "\n", end_a, "\n")
+  let two = concat(first_begin, "\n", malformed, "\n", census_sections_body, "\n", end_a, "\n")
+  census_binds(capture: one_run)
+    && (match host_capture_bind(capture: two, machine: mtcollins1_census_machine) {
+      HostCaptureUnbound { reason: _ } => true
+      _ => false
+    })
+}

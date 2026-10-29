@@ -1,17 +1,32 @@
 module v2.cli.population_verbs
 
 import std.types { Bool, Int, List, Map }
-import std.algebra { Cons, Empty, fold_list, is_empty, length, list_head, list_map, list_reverse, skip, empty_map, map_contains_key, map_insert, map_lookup }
+import std.algebra { string_contains, Cons, Empty, fold_list, is_empty, length, list_head, list_map, list_reverse, skip, empty_map, map_contains_key, map_insert, map_lookup, collection_concat_shape, collection_join_shape }
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
+import v2.cli.parse_verdict_reuse { ParseVerdictBase, ParseVerdictReuseCounts, parse_verdict_reuse_counts_zero, parse_verdict_reuse_counts_add, parse_verdict_reuse_counts_text }
 import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
+import gunbc.parse_verdict_schema {
+  ParseVerdictStanding,
+  Reused,
+  MissIdentityAbsent,
+  MissIdentityMismatch,
+  MissEntryAbsent,
+  MissDigestUnseen,
+  MissDeclaredRefused,
+  parse_verdict_standing,
+  parse_verdict_stored_accepted_line,
+  parse_verdict_receipts_empty_detail,
+}
 import gunbc.source_layout_namespaces { layout_namespaces }
 import gunbc.source_root_read { SourceRootPathsRead, SourceRootPathsRefused, SourceRootWalkTask, source_root_child_path, source_root_walk }
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.module_acquisition { AcquisitionEnv, AcquisitionEnvReady, AcquisitionEnvUnprepared, BoundModulesListed, BoundModulesRefused, MemberParseRefused, MemberParses, PopulationMemberRead, PopulationMemberRefused, SourceRootBinding, acquisition_env, acquisition_header_reader, acquisition_parse, acquisition_probe, enumerate_bound_modules, population_member }
-import v2.compiler.source_authority { LayoutFileHeader, LayoutHolds, LayoutRefused, LayoutVerdict, ModuleFileAbsent, ModuleFilePresent, ModuleFileRef, ModuleFileRefused, layout_check, layout_verdict_holds, layout_verdict_text, module_file_key }
+import v2.compiler.source_authority { SourceStorageLayout, LayoutFileHeader, LayoutHolds, LayoutRefused, LayoutVerdict, ModuleFileAbsent, ModuleFilePresent, ModuleFileRef, ModuleFileRefused, layout_check, layout_verdict_holds, layout_verdict_text, module_file_key }
 import v2.compiler.module_header { ModuleHeaderReader, module_header_read }
 import v2.std.text { String }
+import std.content_hash { content_hash_atom }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ambient_name_homes }
 
 
 // THE WHOLE-POPULATION VERBS. Compiling an entry reads the modules that entry requests and nothing
@@ -157,15 +172,34 @@ type DeclaredRoster {
 
 // What a streaming parse keeps: how many parsed outright, how many members refused exactly as
 // declared, the roster and the keys the walk has judged (a declared refusal is REMAINING until its key
-// is judged, and what remains when the walk ends is a located refusal), and one located line per module
-// the population parse must report (newest first). No tree, no content and no module list survives the
-// member that produced it.
+// is judged, and what remains when the walk ends is a located refusal), one located line per module
+// the population parse must report (newest first), and the Accepted request-key receipts (source
+// digest only — not the tree, not the bytes). No content and no module list survives the member
+// that produced it.
+// THE REUSE STATE OF ONE WALK: Absent basis means reuse was not requested (every module parses, as
+// before); a Present basis answers each module's standing and the counts keep every outcome.
+type ParseVerdictReuse {
+  base: Optional<ParseVerdictBase>
+  counts: ParseVerdictReuseCounts
+}
+
+fn parse_verdict_reuse_off() -> ParseVerdictReuse {
+  ParseVerdictReuse { base: Absent, counts: parse_verdict_reuse_counts_zero(ancestor: Absent) }
+}
+
+fn parse_verdict_reuse_requested(base: ParseVerdictBase) -> ParseVerdictReuse {
+  ParseVerdictReuse { base: Present { value: base }, counts: parse_verdict_reuse_counts_zero(ancestor: base.ancestor) }
+}
+
 type PopulationParse {
   parsed: Int
   declared: Int
   roster: DeclaredRoster
   judged: Map<String, Bool>
   refusals: List<String>
+  accepted_receipts: List<String>
+  compiler: Optional<String>
+  reuse: ParseVerdictReuse
 }
 
 type RosterBuild {
@@ -197,7 +231,7 @@ type PopulationBegin
   = PopulationBegun { tally: PopulationParse }
   | PopulationDeclarationDuplicated { keys: List<String> }
 
-fn population_parse_begin(classes: List<RefusalClass>) -> PopulationBegin {
+fn population_parse_begin(classes: List<RefusalClass>, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationBegin {
   let no_causes: Map<String, String> = empty_map()
   let no_judged: Map<String, Bool> = empty_map()
   let built = fold_list(
@@ -214,7 +248,10 @@ fn population_parse_begin(classes: List<RefusalClass>) -> PopulationBegin {
         declared: 0,
         roster: DeclaredRoster { ordered: list_reverse(xs: built.ordered_reversed), causes: built.causes },
         judged: no_judged,
-        refusals: []
+        refusals: [],
+        accepted_receipts: [],
+        compiler: compiler,
+        reuse: reuse
       }
     }
   } else {
@@ -252,7 +289,10 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
           declared: tally.declared + 1,
           roster: tally.roster,
           judged: population_parse_judged(tally: tally, key: key),
-          refusals: tally.refusals
+          refusals: tally.refusals,
+          accepted_receipts: tally.accepted_receipts,
+          compiler: tally.compiler,
+          reuse: tally.reuse
         }
       } else {
         PopulationParse {
@@ -263,7 +303,10 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
           refusals: Cons {
             head: concat(key, ": ", cause, "; gunbc.parse_population_refusals declares it refused for ", declared_cause),
             tail: tally.refusals
-          }
+          },
+          accepted_receipts: tally.accepted_receipts,
+          compiler: tally.compiler,
+          reuse: tally.reuse
         }
       }
     Absent =>
@@ -272,7 +315,10 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
         declared: tally.declared,
         roster: tally.roster,
         judged: tally.judged,
-        refusals: Cons { head: concat(key, ": ", cause), tail: tally.refusals }
+        refusals: Cons { head: concat(key, ": ", cause), tail: tally.refusals },
+        accepted_receipts: tally.accepted_receipts,
+        compiler: tally.compiler,
+        reuse: tally.reuse
       }
   }
 }
@@ -280,7 +326,7 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
 // THE OTHER DIRECTION OF THE SAME EXACTNESS: a module the declared classes name that parses is not an
 // unchanged state, so the list can only shrink -- a class is retired by the capability, never carried
 // past it.
-fn population_parse_accepted(tally: PopulationParse, key: String) -> PopulationParse {
+fn population_parse_accepted(tally: PopulationParse, key: String, source_digest: String) -> PopulationParse {
   match roster_cause(roster: tally.roster, key: key) {
     Present { value: declared_cause } =>
       PopulationParse {
@@ -291,7 +337,10 @@ fn population_parse_accepted(tally: PopulationParse, key: String) -> PopulationP
         refusals: Cons {
           head: concat(key, ": parses, but gunbc.parse_population_refusals declares it refused for ", declared_cause, "; remove it from its class"),
           tail: tally.refusals
-        }
+        },
+        accepted_receipts: tally.accepted_receipts,
+        compiler: tally.compiler,
+        reuse: tally.reuse
       }
     Absent =>
       PopulationParse {
@@ -299,7 +348,59 @@ fn population_parse_accepted(tally: PopulationParse, key: String) -> PopulationP
         declared: tally.declared,
         roster: tally.roster,
         judged: tally.judged,
-        refusals: tally.refusals
+        refusals: tally.refusals,
+        accepted_receipts: match tally.compiler {
+          Absent => tally.accepted_receipts
+          Present { value: compiler } => Cons {
+            head: parse_verdict_stored_accepted_line(source_digest: source_digest, compiler: compiler),
+            tail: tally.accepted_receipts
+          }
+        },
+        compiler: tally.compiler,
+        reuse: tally.reuse
+      }
+  }
+}
+
+// THE STANDING OF ONE MEMBER, or none when reuse was not requested. A module the declared classes
+// name refused never reuses: a receipt records an Accepted parse, and the declaration says the module
+// does not parse, so the contradiction is for the parse to report, not for a stored line to settle.
+fn population_parse_standing(tally: PopulationParse, key: String, source_digest: String) -> Optional<ParseVerdictStanding> {
+  match tally.reuse.base {
+    Absent => Absent
+    Present { value: base } =>
+      match tally.compiler {
+        Absent => Absent
+        Present { value: i_head } =>
+          match parse_verdict_standing(i_head: i_head, i_base: base.i_base, receipt_lines: base.receipt_lines, source_digest: source_digest) {
+            Reused =>
+              match roster_cause(roster: tally.roster, key: key) {
+                Present { value: _ } => Present { value: MissDeclaredRefused }
+                Absent => Present { value: Reused }
+              }
+            MissIdentityAbsent => Present { value: MissIdentityAbsent }
+            MissIdentityMismatch => Present { value: MissIdentityMismatch }
+            MissEntryAbsent => Present { value: MissEntryAbsent }
+            MissDigestUnseen => Present { value: MissDigestUnseen }
+            MissDeclaredRefused => Present { value: MissDeclaredRefused }
+          }
+      }
+  }
+}
+
+fn population_parse_counted(tally: PopulationParse, standing: Optional<ParseVerdictStanding>) -> PopulationParse {
+  match standing {
+    Absent => tally
+    Present { value: s } =>
+      PopulationParse {
+        parsed: tally.parsed,
+        declared: tally.declared,
+        roster: tally.roster,
+        judged: tally.judged,
+        refusals: tally.refusals,
+        accepted_receipts: tally.accepted_receipts,
+        compiler: tally.compiler,
+        reuse: ParseVerdictReuse { base: tally.reuse.base, counts: parse_verdict_reuse_counts_add(counts: tally.reuse.counts, standing: s) }
       }
   }
 }
@@ -312,13 +413,25 @@ fn population_parse_member(env: AcquisitionEnv, name: String, tally: PopulationP
         declared: tally.declared,
         roster: tally.roster,
         judged: tally.judged,
-        refusals: Cons { head: concat(name, ": ", cause), tail: tally.refusals }
+        refusals: Cons { head: concat(name, ": ", cause), tail: tally.refusals },
+        accepted_receipts: tally.accepted_receipts,
+        compiler: tally.compiler,
+        reuse: tally.reuse
       }
-    PopulationMemberRead { member: member } =>
-      match acquisition_parse(env: env, file: member.file, content: member.content) {
-        MemberParses => population_parse_accepted(tally: tally, key: module_file_key(file: member.file))
-        MemberParseRefused { cause: cause } => population_parse_refused(tally: tally, key: module_file_key(file: member.file), cause: cause)
+    PopulationMemberRead { member: member } => {
+      let key = module_file_key(file: member.file)
+      let source_digest = content_hash_atom(value: member.content).digest as String
+      let standing = population_parse_standing(tally: tally, key: key, source_digest: source_digest)
+      let counted = population_parse_counted(tally: tally, standing: standing)
+      match standing {
+        Present { value: Reused } => population_parse_accepted(tally: counted, key: key, source_digest: source_digest)
+        _ =>
+          match acquisition_parse(env: env, file: member.file, content: member.content) {
+            MemberParses => population_parse_accepted(tally: counted, key: key, source_digest: source_digest)
+            MemberParseRefused { cause: cause } => population_parse_refused(tally: counted, key: key, cause: cause)
+          }
       }
+    }
   }
 }
 
@@ -368,23 +481,47 @@ fn population_parse_report(tally: PopulationParse) -> PopulationReport {
         " declared refusal(s) never met, each on its own line of the report"
       )
     }
-  } else if tally.parsed == 0 {
-    PopulationReport {
-      text: join(lines, "\n"),
-      held: false,
-      detail: "the bound trees store no module under the declared namespaces; a parse over nothing is not a parse of zero"
+  } else if match tally.compiler {
+    Present { value: _ } => is_empty(xs: tally.accepted_receipts)
+    Absent => tally.parsed == 0
+  } {
+    match tally.compiler {
+      Present { value: _ } =>
+        PopulationReport {
+          text: "",
+          held: false,
+          detail: parse_verdict_receipts_empty_detail
+        }
+      Absent =>
+        PopulationReport {
+          text: join(lines, "\n"),
+          held: false,
+          detail: "the bound trees store no module under the declared namespaces; a parse over nothing is not a parse of zero"
+        }
     }
   } else {
-    PopulationReport {
-      text: concat(
-        "population parses: ",
-        int_to_decimal_string(value: tally.parsed),
-        " module(s); ",
-        int_to_decimal_string(value: tally.declared),
-        " refusal(s) declared by gunbc.parse_population_refusals, each met"
-      ),
-      held: true,
-      detail: "every enumerated module parsed or is refused exactly as declared, and every declared refusal was met"
+    match tally.compiler {
+      Present { value: _ } =>
+        PopulationReport {
+          text: match tally.reuse.base {
+            Absent => join(list_reverse(xs: tally.accepted_receipts), "\n")
+            Present { value: _ } => parse_verdict_reuse_counts_text(counts: tally.reuse.counts)
+          },
+          held: true,
+          detail: "every enumerated module parsed or is refused exactly as declared, and every declared refusal was met"
+        }
+      Absent =>
+        PopulationReport {
+          text: concat(
+            "population parses: ",
+            int_to_decimal_string(value: tally.parsed),
+            " module(s); ",
+            int_to_decimal_string(value: tally.declared),
+            " refusal(s) declared by gunbc.parse_population_refusals, each met"
+          ),
+          held: true,
+          detail: "every enumerated module parsed or is refused exactly as declared, and every declared refusal was met"
+        }
     }
   }
 }
@@ -397,29 +534,115 @@ fn population_declaration_duplicated_report(keys: List<String>) -> PopulationRep
   }
 }
 
-fn parse_population_listed(env: AcquisitionEnv, modules: List<String>) -> PopulationReport {
-  match population_parse_begin(classes: parse_population_declared_refusal_classes()) {
+fn parse_population_listed(env: AcquisitionEnv, modules: List<String>, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationReport {
+  match population_parse_begin(classes: parse_population_declared_refusal_classes(), compiler: compiler, reuse: reuse) {
     PopulationDeclarationDuplicated { keys: keys } => population_declaration_duplicated_report(keys: keys)
     PopulationBegun { tally: tally } => population_parse_report(tally: population_parse_go(env: env, pending: modules, tally: tally))
   }
 }
 
-fn parse_population_prepared(env: AcquisitionEnv) -> PopulationReport {
-  match enumerate_bound_modules(layout: env.layout, bindings: env.bindings, namespaces: layout_namespaces()) {
+fn parse_population_prepared(env: AcquisitionEnv, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationReport {
+  match enumerate_bound_modules(layout: env.layout, bindings: env.bindings) {
     BoundModulesRefused { subject: subject, cause: cause } =>
       PopulationReport {
         text: concat(subject, ": ", cause),
         held: false,
         detail: concat("could not enumerate the modules of ", subject)
       }
-    BoundModulesListed { modules: modules } => parse_population_listed(env: env, modules: modules)
+    BoundModulesListed { modules: modules } => parse_population_listed(env: env, modules: modules, compiler: compiler, reuse: reuse)
   }
 }
 
-fn parse_population(bindings: List<SourceRootBinding>) -> PopulationReport {
+fn parse_population(bindings: List<SourceRootBinding>, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationReport {
   match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
     AcquisitionEnvUnprepared { diagnostics: _ } =>
       PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module was observed" }
-    AcquisitionEnvReady { env: env } => parse_population_prepared(env: env)
+    AcquisitionEnvReady { env: env } => parse_population_prepared(env: env, compiler: compiler, reuse: reuse)
+  }
+}
+
+// ---- select-spelled-modules ---------------------------------------------------------------------------
+//
+// THE MODULES THAT SPELL A RULED NAME. The population an ambient-name census must cover at a revision is the
+// modules whose source writes a name some wave moves (gunbc.namespace_cut.ambient_name_home ambient_name_homes,
+// the one roster of those names). The roots are the only input: the names are the roster's, so there is no
+// second place to list them. The population is the declared namespace rows' modules (`enumerate_bound_modules`,
+// names derived FORWARD under the storage rule, never a path mapped back), and a module is selected when its
+// text contains a ruled spelling.
+//
+// THIS IS AN OVER-APPROXIMATION COMPUTED AS THE ANSWER, and says so: selection is by SPELLING, not by binding. A
+// comment, a string literal or a longer identifier that contains the spelling selects its module, which only
+// widens the census; a module that binds the name without writing it cannot exist, because an occurrence is a
+// written spelling. It is a superset of the set a binding-level census would cover, never a subset, and the
+// census still reports a binding row per occurrence, so a selected module with no occurrence contributes none.
+// A module that cannot be read refuses the whole selection: a population that silently lost a member would
+// certify a smaller repository.
+fn spelled_in(content: String, names: List<String>) -> Bool {
+  fold_list(xs: names, empty: false, cons: fn(acc, name) { if acc { true } else { string_contains(s: content, pattern: name) } })
+}
+
+type SpelledSelection
+  = SpelledSelected { names: List<String> }
+  | SpelledRefused { module: String, cause: String }
+
+fn select_spelled_go(
+  layout: SourceStorageLayout,
+  bindings: List<SourceRootBinding>,
+  pending: List<String>,
+  spellings: List<String>,
+  acc: List<String>
+) -> SpelledSelection {
+  match list_head(xs: pending) {
+    Absent => SpelledSelected { names: list_reverse(xs: acc) }
+    Present { value: name } =>
+      match population_member(layout: layout, bindings: bindings, name: name) {
+        PopulationMemberRefused { cause: cause } => SpelledRefused { module: name, cause: cause }
+        PopulationMemberRead { member: member } =>
+          select_spelled_go(
+            layout: layout,
+            bindings: bindings,
+            pending: skip(xs: pending, n: 1),
+            spellings: spellings,
+            acc: if spelled_in(content: member.content, names: spellings) { Cons { head: name, tail: acc } } else { acc }
+          )
+      }
+  }
+}
+
+fn select_spelled_report(selection: SpelledSelection) -> PopulationReport {
+  match selection {
+    SpelledRefused { module: module, cause: cause } =>
+      PopulationReport { text: concat(module, ": ", cause), held: false, detail: concat("could not read ", module) }
+    SpelledSelected { names: names } =>
+      PopulationReport { text: join(names, "\n"), held: true, detail: "" }
+  }
+}
+
+fn select_spelled_listed(env: AcquisitionEnv, modules: List<String>) -> PopulationReport {
+  if is_empty(xs: modules) {
+    PopulationReport { text: "", held: false, detail: "the bound trees enumerate to zero modules; a selection over nothing is not a selection of zero" }
+  } else {
+    select_spelled_report(
+      selection: select_spelled_go(
+        layout: env.layout,
+        bindings: env.bindings,
+        pending: modules,
+        spellings: list_map(xs: ambient_name_homes(), f: fn(row) { row.name as String }),
+        acc: []
+      )
+    )
+  }
+}
+
+fn select_spelled_modules(bindings: List<SourceRootBinding>) -> PopulationReport {
+  match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
+    AcquisitionEnvUnprepared { diagnostics: _ } =>
+      PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module was observed" }
+    AcquisitionEnvReady { env: env } =>
+      match enumerate_bound_modules(layout: env.layout, bindings: env.bindings) {
+        BoundModulesRefused { subject: subject, cause: cause } =>
+          PopulationReport { text: concat(subject, ": ", cause), held: false, detail: concat("could not enumerate the modules of ", subject) }
+        BoundModulesListed { modules: modules } => select_spelled_listed(env: env, modules: modules)
+      }
   }
 }

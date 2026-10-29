@@ -1,12 +1,15 @@
 module std.machine_word
 
 import std.induction { int_pow_bounded }
+import std.power_of_two { bitwise_pow2 }
+import std.machine_width_range { machine_width_admits }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.measure { bits_per_byte, BitWidth, bit_width, bit_width_count }
-import std.integer { UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, qualified_octets, qualified_octet_members }
+import std.integer { Unsigned, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, qualified_octets, qualified_octet_members }
 import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
+import std.algebra { list_push }
 
 // THE FIXED-WIDTH MACHINE WORD, AND WHY IT IS A VALUE-LEVEL WIDTH.
 //
@@ -18,10 +21,9 @@ import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEnd
 // authority -- a width that std.integer cannot spell must not appear here, and one it can spell but
 // this substrate cannot realize refuses by name rather than being omitted (Width64 below).
 //
-// std.bit's Word8..Word128 are a different concept again and are deliberately not reused: they are
-// bit-RECORDS (List<Byte> of List<Bit>) with no cardinality refinement, consumed as type vocabulary
-// by extdeps.languages.rust.primitives and v2.std.machine to NAME a width. They carry no value a
-// fold can compute with. Reusing the name for a computational carrier would be a meaning fork.
+// std.bit declared no word carriers once Word8..Word128 (bit-records with no consumer) were deleted:
+// the octet encoding of a Word is word_to_octets / word_from_octets below, byte order an explicit
+// Endianness argument.
 //
 // ENDIANNESS IS NOT DECLARED HERE. extdeps.toolchain.architecture_profile already owns it, and byte
 // order is one concept whether it is read off an architecture profile or supplied to a conversion.
@@ -35,22 +37,23 @@ type WordWidth
 
 // THE BIT COUNT IS A MEASURE, AND std.measure ALREADY OWNS IT. BitWidth = Measure<Information,
 // One, Nat> is the corpus's carrier for exactly this fact, and std.integer
-// uint8_channel_bit_width_int consumes it for exactly this purpose -- so returning a bare Int here
-// would have been a second representation of a unit the corpus already models, which is section 2's
-// re-invention and section 3's fork in one. The width answers the CARRIER; word_width_bits is the
-// projection to Int for the arithmetic below, derived through bit_width_count rather than spelled
-// independently, which is the same two-step std.integer uses.
-fn word_bit_width(w: WordWidth) -> BitWidth {
+// uint8_channel_bit_width_int consumes it for exactly this purpose -- so a bare Int must not be the
+// only representation of a unit the corpus already models, which is section 2's re-invention and
+// section 3's fork in one. The width-to-count mapping is stated ONCE, as literal arms of
+// word_width_bits, because the Rust emitter reads exactly that total match at a literal width
+// (v1.compiler.emit_rust emit_machine_word_lowered_call); word_bit_width, the carrier, is derived
+// from it through bit_width, the same two-step std.integer uses in the other direction.
+fn word_width_bits(w: WordWidth) -> Int {
   match w {
-    Width8 => bit_width(count: 8)
-    Width16 => bit_width(count: 16)
-    Width32 => bit_width(count: 32)
-    Width64 => bit_width(count: 64)
+    Width8 => 8
+    Width16 => 16
+    Width32 => 32
+    Width64 => 64
   }
 }
 
-fn word_width_bits(w: WordWidth) -> Int {
-  bit_width_count(b: word_bit_width(w: w))
+fn word_bit_width(w: WordWidth) -> BitWidth {
+  bit_width(count: word_width_bits(w: w))
 }
 
 // THE CARRIER. The width travels WITH the value rather than beside it in a caller's convention,
@@ -73,6 +76,9 @@ type WordRefusal
   | WordWidthMismatch { left: WordWidth, right: WordWidth }
   | ShiftAmountOutOfRange { width: WordWidth, amount: Int }
   | OctetCountMismatch { width: WordWidth, expected: Int, observed: Int }
+  | WordOverflow { width: WordWidth }
+  | WordNegativeResult { width: WordWidth }
+  | WordDividesByZero { width: WordWidth }
   | IntegerDoesNotFitOctets { value: Int, octets: Int }
   | OctetCountOutOfRange { observed: Int }
 
@@ -159,8 +165,8 @@ fn word_half_radix(w: WordWidth) -> Int? {
 fn word_of_int(width: WordWidth, value: Int) -> WordResult {
   match word_modulus(w: width) {
     Absent => WordRefused { cause: WordWidthUnrealizable { width: width } }
-    Present { value: m } =>
-      if value < 0 || value >= m {
+    Present { value: _ } =>
+      if !machine_width_admits(signedness: Unsigned, bits: word_bit_width(w: width), value: value) {
         WordRefused { cause: WordValueOutOfRange { width: width, value: value } }
       } else {
         WordReady { word: Word { width: width, value: value } }
@@ -557,6 +563,115 @@ fn word_wrapping_multiply(a: Word, b: Word) -> WordResult {
   }
 }
 
+// CHECKED ARITHMETIC: THE CROSSING IS A TYPED REFUSAL, NOT A WRAP. The operator ruling (CHECKED) makes a
+// width a refinement on Int: wrapping exists only under its own name (word_wrapping_*, above) and every
+// other operation either answers inside [0, 2^bits) or says which edge it crossed -- WordOverflow above the
+// top, WordNegativeResult below zero, WordDividesByZero for a zero divisor. These are the arms the retired
+// std.bounded_nat family answered (BoundedNatArith); that family had no production consumer, so its carrier
+// was deleted rather than kept beside this one (DESIGN 3: one value-level width carrier), and its witnesses
+// moved to test.claim.machine_word_witness as the controls of THESE operations.
+// The range is std.machine_width_range machine_width_admits via word_of_int, the one range authority.
+// The checked product never forms the product: x * y overflows exactly when x > (modulus - 1) / y, so a
+// width whose full product exceeds the host Int is decided without it.
+// THE RANGE IS ANSWERED ONCE, BY word_of_int; THE CHECKED OPERATIONS ONLY NAME WHICH EDGE WAS CROSSED. The
+// result is computed unreduced, handed to word_of_int, and only its WordValueOutOfRange is translated into
+// the edge this operation crosses (above the top for a sum, below zero for a difference). Any other
+// refusal passes through unchanged, so no checked operation carries its own copy of the range test.
+fn word_checked_crossing(result: WordResult, crossing: WordRefusal) -> WordResult {
+  match result {
+    WordRefused { cause: WordValueOutOfRange { width: _, value: _ } } => WordRefused { cause: crossing }
+    WordRefused { cause: c } => WordRefused { cause: c }
+    WordReady { word: w } => WordReady { word: w }
+  }
+}
+
+fn word_checked_add(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          word_checked_crossing(
+            result: word_of_int(width: r.width, value: qualified_word_value(q: x) + qualified_word_value(q: y)),
+            crossing: WordOverflow { width: r.width }
+          )
+      }
+  }
+}
+
+fn word_checked_subtract(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          word_checked_crossing(
+            result: word_of_int(width: r.width, value: qualified_word_value(q: x) - qualified_word_value(q: y)),
+            crossing: WordNegativeResult { width: r.width }
+          )
+      }
+  }
+}
+
+// The guard is a division-based width-overflow preflight: x > (modulus - 1) / y decides overflow of
+// the WIDTH without forming x * y, so it refuses a product that fits the host Int but not the width
+// (Width8 16 x 16) and also keeps an unrepresentable host product from ever being formed. When the
+// guard passes the product is in range and word_of_int still answers it.
+fn word_checked_multiply(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          if qualified_word_value(q: y) == 0 {
+            word_of_int(width: r.width, value: 0)
+          } else if qualified_word_value(q: x) > (r.modulus - 1) / qualified_word_value(q: y) {
+            WordRefused { cause: WordOverflow { width: r.width } }
+          } else {
+            word_checked_crossing(
+              result: word_of_int(width: r.width, value: qualified_word_value(q: x) * qualified_word_value(q: y)),
+              crossing: WordOverflow { width: r.width }
+            )
+          }
+      }
+  }
+}
+
+fn word_checked_divide(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          if qualified_word_value(q: y) == 0 {
+            WordRefused { cause: WordDividesByZero { width: r.width } }
+          } else {
+            word_of_int(width: r.width, value: qualified_word_value(q: x) / qualified_word_value(q: y))
+          }
+      }
+  }
+}
+
+fn word_checked_remainder(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          if qualified_word_value(q: y) == 0 {
+            WordRefused { cause: WordDividesByZero { width: r.width } }
+          } else {
+            word_of_int(width: r.width, value: qualified_word_value(q: x) % qualified_word_value(q: y))
+          }
+      }
+  }
+}
+
 fn word_carrying_add(a: Word, b: Word) -> CarryingSumResult {
   match word_pair_qualified(a: a, b: b) {
     WordPairRefused { cause: c } => CarryingSumRefused { cause: c }
@@ -873,3 +988,158 @@ data machine_word_consumer_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "dissolve-on: the multi-limb magnitude carrier in std.machine_word calls word_carrying_add to propagate carry between limbs. If that carrier lands without consuming it, this declaration and CarryingSum/CarryingSumResult are deleted rather than re-described.")
   ),
 ]
+
+// ── THE REALIZED OPERATIONS: bounded-natural bitwise arithmetic at machine speed ───────────────
+// std.machine_word is the ONE authority for what a bitwise operation on a fixed-width word means:
+// `bitwise_fold` above is the DEFINITION (place by place), and the checked word_* operations
+// are that definition with typed refusals. What the definition cannot be is FAST: it is a loop over
+// the places, and a 32-bit and/xor costs 32 iterations of Int arithmetic through the evaluator.
+// SHA-256 spends ~25 such operations per round, which measured at ~3.2 microseconds per message
+// octet (gunbc.instruments.native_crypto_cost sha256_over_<n>_octets rows) -- the cost of hashing a
+// 3.6 MB executable was ~11.6 s. The earlier std.bitwise answered that with 4-bit table lookups:
+// a second emulation of this concept, 8 lookups per operation, that is now deleted.
+//
+// THE REALIZATION IS THE HOST'S OWN OPERATOR, SELECTED BY A DECLARED ROW. machine_word_apply calls
+// the machine_word_native_operate seam with an operator LABEL (a HostRealizedSeam, std.primitive_projection
+// primitive_machine_word_native_operate); each realization keeps ONE ROW PER LABEL -- the emitted Rust and
+// the seed interpreter share v1_rt MACHINE_WORD_OPERATOR_ROWS, whose text is src/v1/runtime_rust.dag
+// rt_machine_word_ops -- so adding an operation is adding a variant here and a row there, never a branch
+// in the lowering. test.claim.machine_word_witness runs every operator against `bitwise_fold`/the
+// checked word_* definitions, so a wrong row reds a claim and a vector (SHA-256 FIPS 180) instead of
+// silently miscomputing.
+//
+// OPERANDS ARE RESIDUES IN [0, 2^bits) AND AMOUNTS ARE IN [0, bits); the realization REFUSES
+// anything else, and refuses a width its i64 Int cannot hold (bits above 62; Width64 is that
+// boundary, as word_realizable_width states), rather than wrapping or masking.
+type MachineWordOperator
+  = OperatorAnd
+  | OperatorOr
+  | OperatorXor
+  | OperatorNot
+  | OperatorShiftRight
+  | OperatorShiftLeft
+  | OperatorRotateRight
+  | OperatorAddWrapping
+
+fn machine_word_operator_label(op: MachineWordOperator) -> String {
+  match op {
+    OperatorAnd => "and"
+    OperatorOr => "or"
+    OperatorXor => "xor"
+    OperatorNot => "not"
+    OperatorShiftRight => "shift_right"
+    OperatorShiftLeft => "shift_left"
+    OperatorRotateRight => "rotate_right"
+    OperatorAddWrapping => "add_wrapping"
+  }
+}
+
+data machine_word_operators: List<MachineWordOperator> = [
+  OperatorAnd, OperatorOr, OperatorXor, OperatorNot, OperatorShiftRight, OperatorShiftLeft, OperatorRotateRight, OperatorAddWrapping,
+]
+
+// The unchecked-by-type, refusing-by-realization kernel over residues. `b` is the second operand,
+// or the amount for a shift or rotation, and is ignored by OperatorNot.
+// The host seam: a self-call body no realization reaches (a target without the row refuses at
+// realization). `op` is a machine_word_operator_label, `bits` a word_width_bits, `a`/`b` residues.
+fn machine_word_native_operate(op: String, bits: Int, a: Int, b: Int) -> Int {
+  machine_word_native_operate(op: op, bits: bits, a: a, b: b)
+}
+
+fn machine_word_apply(op: MachineWordOperator, width: WordWidth, a: Int, b: Int) -> Int {
+  machine_word_native_operate(op: machine_word_operator_label(op: op), bits: word_width_bits(w: width), a: a, b: b)
+}
+
+fn word32_and(a: Int, b: Int) -> Int {
+  machine_word_apply(op: OperatorAnd, width: Width32, a: a, b: b)
+}
+
+fn word32_or(a: Int, b: Int) -> Int {
+  machine_word_apply(op: OperatorOr, width: Width32, a: a, b: b)
+}
+
+fn word32_xor(a: Int, b: Int) -> Int {
+  machine_word_apply(op: OperatorXor, width: Width32, a: a, b: b)
+}
+
+fn word32_not(a: Int) -> Int {
+  machine_word_apply(op: OperatorNot, width: Width32, a: a, b: 0)
+}
+
+fn word32_add(a: Int, b: Int) -> Int {
+  machine_word_apply(op: OperatorAddWrapping, width: Width32, a: a, b: b)
+}
+
+fn word32_shr(a: Int, n: Int) -> Int {
+  machine_word_apply(op: OperatorShiftRight, width: Width32, a: a, b: n)
+}
+
+fn word32_shl(a: Int, n: Int) -> Int {
+  machine_word_apply(op: OperatorShiftLeft, width: Width32, a: a, b: n)
+}
+
+// Rotate right by n in [0, 32): the low n bits move to the top.
+fn word32_rotr(a: Int, n: Int) -> Int {
+  machine_word_apply(op: OperatorRotateRight, width: Width32, a: a, b: n)
+}
+
+// ── 64-bit words: two 32-bit halves, because 2^64 - 1 exceeds the signed 64-bit Int ────────────
+// This is the carrier word_realizable_width names for Width64 until a multi-limb magnitude exists;
+// every operation is the 32-bit operation on each half, except where bits cross the boundary
+// (addition's carry, shifts and rotations), which are stated explicitly.
+type Word64 {
+  hi: Int
+  lo: Int
+}
+
+fn word64_and(a: Word64, b: Word64) -> Word64 {
+  Word64 { hi: word32_and(a: a.hi, b: b.hi), lo: word32_and(a: a.lo, b: b.lo) }
+}
+
+fn word64_xor(a: Word64, b: Word64) -> Word64 {
+  Word64 { hi: word32_xor(a: a.hi, b: b.hi), lo: word32_xor(a: a.lo, b: b.lo) }
+}
+
+fn word64_or(a: Word64, b: Word64) -> Word64 {
+  Word64 { hi: word32_or(a: a.hi, b: b.hi), lo: word32_or(a: a.lo, b: b.lo) }
+}
+
+fn word64_not(a: Word64) -> Word64 {
+  Word64 { hi: word32_not(a: a.hi), lo: word32_not(a: a.lo) }
+}
+
+// The carry is derived from the wrapped low sum: it wrapped exactly when it is below an addend, so
+// the modulus is never restated here (word_modulus(Width32) stays its one authority).
+fn word64_add(a: Word64, b: Word64) -> Word64 {
+  let lo = word32_add(a: a.lo, b: b.lo)
+  let carry = if lo < a.lo { 1 } else { 0 }
+  Word64 {
+    hi: word32_add(a: word32_add(a: a.hi, b: b.hi), b: carry),
+    lo: lo,
+  }
+}
+
+// Shift right by n in [0, 64).
+fn word64_shr(a: Word64, n: Int) -> Word64 {
+  if n >= 32 {
+    Word64 { hi: 0, lo: word32_shr(a: a.hi, n: n - 32) }
+  } else if n == 0 {
+    a
+  } else {
+    Word64 { hi: word32_shr(a: a.hi, n: n), lo: word32_shr(a: a.lo, n: n) + (a.hi % bitwise_pow2(n: n)) * bitwise_pow2(n: 32 - n) }
+  }
+}
+
+// Rotate right by n in [0, 64): a rotation by 32 or more swaps the halves first.
+fn word64_rotr(a: Word64, n: Int) -> Word64 {
+  if n >= 32 {
+    word64_rotr(a: Word64 { hi: a.lo, lo: a.hi }, n: n - 32)
+  } else if n == 0 {
+    a
+  } else {
+    Word64 {
+      hi: word32_shr(a: a.hi, n: n) + (a.lo % bitwise_pow2(n: n)) * bitwise_pow2(n: 32 - n),
+      lo: word32_shr(a: a.lo, n: n) + (a.hi % bitwise_pow2(n: n)) * bitwise_pow2(n: 32 - n),
+    }
+  }
+}

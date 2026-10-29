@@ -13,8 +13,7 @@ import std.optional { Absent, Present }
 import std.algebra { list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Node, Symbol, TypeNode }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Atom, Node, Symbol, TypeNode }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -33,7 +32,7 @@ fn probe_stmts() -> List<Node> {
 }
 
 fn witness_stmt_is_if(s: Node) -> Bool {
-  match list_at_optional(xs: node_positional_child_targets(node: s), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: s), index: 0) {
     Present { value: tag } =>
       match tag.kind {
         TypeNode { connective: Atom { identity: binding } } =>

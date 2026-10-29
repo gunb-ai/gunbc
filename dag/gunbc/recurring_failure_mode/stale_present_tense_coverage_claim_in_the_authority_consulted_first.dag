@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.stale_present_tense_coverage_claim_in_the_au
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data stale_present_tense_coverage_claim_in_the_authority_consulted_first: RecurringFailureMode = RecurringFailureMode {
   identity: "stale_present_tense_coverage_claim_in_the_authority_consulted_first" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a declaration's own annotation asserts, in the present tense, that an invariant it just gave up is still covered elsewhere, and names a consumer that does not execute** (INVALID STATE: a de-enrolment, re-home or scope narrowing lands together with a sentence of the form \"enforcement is NOT reduced: it executes per-PR via X\", and X is on no executing path.",

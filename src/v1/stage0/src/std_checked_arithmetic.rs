@@ -46,6 +46,39 @@ pub struct IntegerOverflow {
     pub operands: Rc<CheckedIntOperands>,
 }
 
+pub fn integer_overflow_text(cause: Rc<IntegerOverflow>) -> String {
+    {
+        let operation = match cause.operation.clone() {
+            IntegerArithmeticOperation::IntegerAdd => "addition".to_string(),
+            IntegerArithmeticOperation::IntegerSubtract => "subtraction".to_string(),
+            IntegerArithmeticOperation::IntegerMultiply => "multiplication".to_string(),
+            IntegerArithmeticOperation::IntegerNegate => "negation".to_string(),
+        };
+        match (*cause.operands.clone()).clone() {
+            CheckedIntOperands::UnaryOperand { value: v, .. } => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(operation.clone(), " of ".to_string()),
+                    (v.clone()).to_string(),
+                ),
+                " overflows Int".to_string(),
+            ),
+            CheckedIntOperands::BinaryOperands { lhs: l, rhs: r, .. } => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(operation.clone(), " of ".to_string()),
+                            (l.clone()).to_string(),
+                        ),
+                        " and ".to_string(),
+                    ),
+                    (r.clone()).to_string(),
+                ),
+                " overflows Int".to_string(),
+            ),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CheckedInt {

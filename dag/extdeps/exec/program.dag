@@ -78,6 +78,7 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.wc", decl_name: "wc_program"),
     decl_ref(module_path: "extdeps.tools.nbdkit", decl_name: "nbdkit_program"),
     decl_ref(module_path: "extdeps.tools.sha512sum", decl_name: "sha512sum_program"),
+    decl_ref(module_path: "extdeps.tools.base64", decl_name: "base64_program"),
     decl_ref(module_path: "extdeps.tools.gzip", decl_name: "gzip_program"),
     decl_ref(module_path: "extdeps.tools.rustfmt", decl_name: "rustfmt_program"),
     decl_ref(module_path: "extdeps.tools.npm", decl_name: "npm_program"),
@@ -123,9 +124,10 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
 // until their carrier is typed.
 fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
   admit_callers: [
+    decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_stats_query_command"),
     decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program"),
-    decl_ref(module_path: "extdeps.llm.cursor_cli", decl_name: "cursor_cli_program_identity"),
     decl_ref(module_path: "gunbc.host.cursor_agent_realization", decl_name: "cursor_agent_pinned_program"),
+    decl_ref(module_path: "test.claim.cursor_runtime_root_wet_witness", decl_name: "wet_logging_stand_in"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "nproc_program"),
@@ -153,6 +155,16 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_program"),
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_program"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_program"),
+    // nvidia-ctk ships only with the NVIDIA container toolkit package that
+    // extdeps.container.nvidia_container_toolkit's pinned repository serves, so it had never been
+    // minted: nothing in the fleet ran it before the GPU container capability was declared
+    // (operator decision 2026-10-25, node://adhoc-0cabf47d-be0). The absolute path is the one
+    // nvidia-container-toolkit-base installs, measured on the host that carries the shape today
+    // (srv1 2026-10-25: `which nvidia-ctk` -> /usr/bin/nvidia-ctk). The mint sits next to
+    // extdeps.docker.cli docker_program because it is the same capability, seen from the toolkit's
+    // side: the CDI spec this tool writes is what makes `docker run --device nvidia.com/gpu=all`
+    // resolve for a ROOTLESS daemon, which is the half a rootful docker group membership cannot give.
+    decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "nvidia_ctk_program"),
     decl_ref(module_path: "extdeps.tools.e2fsprogs", decl_name: "dumpe2fs_program"),
     decl_ref(module_path: "extdeps.tools.e2fsprogs", decl_name: "mke2fs_program"),
     decl_ref(module_path: "extdeps.tools.env", decl_name: "env_absolute_program"),
@@ -165,14 +177,14 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.id", decl_name: "id_program"),
     decl_ref(module_path: "extdeps.iproute2.ip_neigh", decl_name: "ip_program"),
     decl_ref(module_path: "extdeps.tools.make", decl_name: "make_program"),
-    decl_ref(module_path: "extdeps.package_managers.conda_forge", decl_name: "micromamba_program"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_program"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_server_program"),
-    decl_ref(module_path: "extdeps.package_managers.pip", decl_name: "pip_program"),
+    decl_ref(module_path: "extdeps.package_managers.micromamba", decl_name: "micromamba_at"),
     decl_ref(module_path: "extdeps.procps.kill", decl_name: "kill_program"),
     decl_ref(module_path: "extdeps.procps.ps", decl_name: "ps_program"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_program"),
     decl_ref(module_path: "extdeps.python", decl_name: "python_program"),
+    decl_ref(module_path: "extdeps.python", decl_name: "python_interpreter_at"),
     decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_status_command"),
     decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_identity"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "operation_row_argv_command"),
@@ -189,18 +201,26 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_program"),
     decl_ref(module_path: "extdeps.tools.btrfs_progs", decl_name: "btrfs_program"),
     decl_ref(module_path: "extdeps.tools.kopia", decl_name: "kopia_program_at"),
+    decl_ref(module_path: "extdeps.rust.standalone_installer", decl_name: "rust_standalone_installer_program_at"),
+    decl_ref(module_path: "extdeps.rust.rustc", decl_name: "rustc_program_at"),
+    decl_ref(module_path: "extdeps.gnupg.gpgv", decl_name: "gpgv_program"),
+    decl_ref(module_path: "extdeps.tools.xz", decl_name: "xz_program"),
+    decl_ref(module_path: "extdeps.glibc.ldconfig", decl_name: "ldconfig_program_at"),
     decl_ref(module_path: "extdeps.virtualization.qemu", decl_name: "qemu_system_aarch64_program"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_program"),
     decl_ref(module_path: "extdeps.tools.uname", decl_name: "uname_program"),
     decl_ref(module_path: "extdeps.tools.squashfs_tools", decl_name: "unsquashfs_program"),
     decl_ref(module_path: "extdeps.tools.util_linux_umount", decl_name: "umount_program"),
+    decl_ref(module_path: "extdeps.tools.util_linux_findmnt", decl_name: "findmnt_program"),
     decl_ref(module_path: "extdeps.tools.util_linux_flock", decl_name: "flock_program"),
     decl_ref(module_path: "extdeps.tools.util_linux_setsid", decl_name: "setsid_program"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_path_resolved_program"),
+    decl_ref(module_path: "extdeps.systemd.loginctl", decl_name: "loginctl_path_resolved_program"),
     decl_ref(module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_program"),
     decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),
     decl_ref(module_path: "extdeps.ntfy.access", decl_name: "ntfy_access_list_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_version_probe_command"),
+    decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_extract_bbl_profiles_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_slice_to_project_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
@@ -211,6 +231,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_jailer_run_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_named_arguments_command"),
     decl_ref(module_path: "extdeps.browser.chromium", decl_name: "chromium_version_command"),
   ]
   = ProgramIdentity { invocation: invocation, catalog: UncatalogedDebt }

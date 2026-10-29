@@ -55,7 +55,7 @@ import v2.std.compilers.lexing {
   TokenRule,
   TriviaRule,
   WhitespaceChar,
-  lex_rule_set_token_class_member
+  lex_rule_set_token_class_map
 }
 
 import std.optional {
@@ -81,8 +81,44 @@ import v2.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v2.std.compilers.target_model {
-  ProducedDeclUnwired, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+  PrimitiveRealizationsUnwired,
+  ProducedDeclWired, ProducedDeclSupport, ProducedDeclRenderRows, ProducedSignatureFixed, ProducedSignatureDeclName,
+  ProducedSignatureParams, ProducedSignatureReturnType, ProducedParamName, ProducedParamFixed, ProducedParamType,
+  StatementSequenced, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty, ListIntroductionUnwired }
+import v2.std.compilers.target_model {
+  DeclarationReferenceForm,
+  ModuleScopedPath,
+  TargetAtomTypeShape,
+  TargetFunctionTypeShape,
+  TargetGenericApply,
+  TargetSumTypeShape,
+  TargetTypeExpressionProjection,
+  type_expr_projection_step_algebra,
+  BlockEvaluationMode,
+  ConditionalSelfDelimiting,
+  IntLiteralDecimal,
+  OperandUnchanged,
+  Prepend,
+  TargetBindLetShape,
+  TargetBindingRefShape,
+  TargetBoolLiteralShape,
+  TargetCallApplyShape,
+  TargetClosureShape,
+  TargetConditionalShape,
+  TargetEffectApplyShape,
+  TargetFieldAccessShape,
+  TargetLoopShape,
+  TargetMatchShape,
+  TargetPrimitiveApplyShape,
+  TargetRecordConstructShape,
+  TargetValueExpressionProjection,
+  canonical_operation_op_coerce,
+  target_bind_let_separator_present,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node,
+  value_expr_projection_bundle_node
+}
 import v2.std.node {
   Arrow,
   Atom,
@@ -93,11 +129,13 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.logic { bool_boolean_algebra }
-import std.algebra { Cons, Empty, list_append, BooleanAlgebra, fold_list, list_flat_map, list_map, PointwisePower, empty_map, map_insert }
+import std.algebra { Cons, Empty, list_append, BooleanAlgebra, fold_list, list_flat_map, list_map, PointwisePower, empty_map, map_insert, map_contains_key }
 import v2.std.algebra_structure_signature { approximate_field_type_node, boolean_algebra_type_node, commutative_semiring_type_node, free_monoid_type_node, ordered_ring_type_node }
 import v2.std.text { String }
+import std.host_text { chars }
 
 type SwiftIntWidth
   = Bits8
@@ -357,7 +395,7 @@ fn swift_atom(id: Symbol) -> Node {
 }
 
 fn swift_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn swift_signedness_node(signedness: SwiftIntSignedness) -> Node {
@@ -610,6 +648,181 @@ fn swift_translation_rules_node() -> Node {
 }
 }
 
+// SWIFT'S VALUE FORMS, AS ROWS. Swift states these: a call `f(a, b)`, a memberwise initializer
+// `T(a: 1, b: 2)` (record construction prepends the type name and assigns with a colon), member
+// access `.`, and `true`/`false`. The forms Swift spells differently from the fold's shapes --
+// a closure `{ x in ... }`, a ternary, a statement `let`, `for`/`switch` -- are declared UNWIRED
+// (a token class with no lexeme), the same declared gap rust.dag and typescript.dag carry for
+// the forms they have not wired: serializing one refuses typed, located, never a guessed
+// spelling. An argument LABEL is not a column of TargetCallApplyShape, so a labelled Swift call
+// is a stated gap here, not a thing this row pretends to spell.
+fn swift_value_expression_projection() -> TargetValueExpressionProjection {
+  TargetValueExpressionProjection {
+    binding_ref_form: TargetBindingRefShape { ident_token: ^swift_token_ident },
+    primitive_apply_form: TargetPrimitiveApplyShape {
+      open: ^swift_token_lparen,
+      close: ^swift_token_rparen,
+      separator: ^swift_token_comma
+    },
+    callable_apply_form: TargetCallApplyShape {
+      callee_ident_token: ^swift_token_ident,
+      open: ^swift_token_lparen,
+      separator: ^swift_token_comma,
+      close: ^swift_token_rparen
+    },
+    closure_form: TargetClosureShape {
+      fn_token: ^swift_token_unwired_closure,
+      open: ^swift_token_unwired_closure,
+      separator: ^swift_token_comma,
+      close: ^swift_token_unwired_closure,
+      body_open: ^swift_token_lbrace,
+      body_close: ^swift_token_rbrace,
+      param_ident_token: ^swift_token_ident
+    },
+    effect_apply_form: TargetEffectApplyShape {
+      callees: [],
+      open: ^swift_token_lparen,
+      close: ^swift_token_rparen,
+      separator: ^swift_token_comma
+    },
+    conditional_form: TargetConditionalShape {
+      if_token: ^swift_token_unwired_conditional,
+      then_token: ^swift_token_unwired_conditional,
+      else_token: ^swift_token_unwired_conditional,
+      delimiting: ConditionalSelfDelimiting
+    },
+    let_form: TargetBindLetShape {
+      let_token: ^swift_token_kw_let,
+      assign_token: ^swift_token_equal,
+      in_token: target_bind_let_separator_present(token: ^swift_token_unwired_bind_in)
+    },
+    loop_form: TargetLoopShape { loop_token: ^swift_token_unwired_loop },
+    record_construct_form: TargetRecordConstructShape {
+      open: ^swift_token_lparen,
+      close: ^swift_token_rparen,
+      separator: ^swift_token_comma,
+      assign: ^swift_token_colon,
+      record_literal_names_type: Prepend
+    },
+    field_access_form: TargetFieldAccessShape { dot: ^swift_token_dot },
+    match_form: TargetMatchShape {
+      match_token: ^swift_token_unwired_match,
+      scrutinee_open: ^swift_token_lparen,
+      scrutinee_close: ^swift_token_rparen,
+      open: ^swift_token_lbrace,
+      close: ^swift_token_rbrace,
+      fat_arrow: ^swift_token_unwired_match,
+      arm_separator: ^swift_token_comma
+    },
+    bool_literal_form: TargetBoolLiteralShape {
+      true_token: ^swift_token_kw_true,
+      false_token: ^swift_token_kw_false
+    },
+    int_literal_form: IntLiteralDecimal { literal_token: ^swift_token_int_literal },
+    list_introduction_form: ListIntroductionUnwired,
+    block_evaluation_mode: swift_block_evaluation_mode()
+  }
+}
+
+fn swift_block_evaluation_mode() -> BlockEvaluationMode {
+  swift_produced_decl_render_rows.block_evaluation_mode
+}
+
+// A cast between representations the infer pass already proved Identity or Exact is spelled as its
+// operand (the same row typescript.dag declares). DECLARED GAP: no infix `+` row -- the lexer's
+// `swift_token_operator` class carries its text through a binding, not a fixed token, so an
+// operator realization needs its own fixed token class first; until then an `add` refuses typed.
+fn swift_operator_realizations_catalog_node() -> Node {
+  target_operator_realizations_catalog_node(
+    rows: [
+      target_operator_realization_node(
+        operation: canonical_operation_op_coerce(),
+        shape: OperandUnchanged
+      )
+    ]
+  )
+}
+
+// SWIFT'S TYPE-EXPRESSION FORMS, AS ROWS, cited to The Swift Programming Language 6.x, Language
+// Reference > Types. The edge inhabits the existing TargetTypeExpressionProjection; no fold edit.
+//   atom           `type-identifier`: one identifier lexeme.
+//   conj           `tuple-type`: `(` element, ... `)` with `name: Type` elements. A tuple type with a
+//                  single labeled element is not a Swift type (swiftc refuses the label), a gap the
+//                  fold cannot see; the claims use two fields.
+//   disj           UNWIRED: Swift has no anonymous sum type; a sum is a declared `enum` (swift_decl),
+//                  never a type-position expression, so serializing one refuses typed.
+//   arrow          `function-type`: `(` T, ... `)` `->` R. Swift admits an argument label in a
+//                  function type only as `_ name: Type`, which the row shape (name, separator, type)
+//                  cannot spell, so the label separator is UNWIRED and a labeled arrow refuses typed.
+//   occupancy      `generic-argument-clause` over `Optional`: `Optional<T>`. The sugar `T?`
+//                  (`optional-type`) is deliberately not used: `Optional<Optional<T>>` spells every
+//                  layer, so optional depth is never collapsed (gunbc.design_ruling
+//                  explicit_present_is_the_authoring_policy, optional_sugar_is_declaration_bound).
+//   instantiation  `generic-argument-clause`: `Head<A, B>`.
+fn swift_type_expression_projection() -> TargetTypeExpressionProjection {
+  TargetTypeExpressionProjection {
+    atom_form: TargetAtomTypeShape {
+      surface: ^swift_decl_type_atom,
+      ident_token: ^swift_token_ident
+    },
+    conj_form: TargetGenericApply {
+      surface: ^swift_decl_type_tuple,
+      open: ^swift_token_lparen,
+      separator: ^swift_token_comma,
+      field_label_separator: optional_present(value: ^swift_token_colon),
+      close: ^swift_token_rparen
+    },
+    disj_form: TargetSumTypeShape {
+      surface: ^swift_decl_type_sum,
+      variant_separator: ^swift_token_unwired_sum
+    },
+    arrow_form: TargetFunctionTypeShape {
+      surface: ^swift_decl_type_arrow,
+      open: ^swift_token_lparen,
+      close: ^swift_token_rparen,
+      arrow: ^swift_token_arrow,
+      param_ident_token: ^swift_token_ident,
+      param_type_separator: ^swift_token_unwired_arrow_label,
+      param_list_separator: ^swift_token_comma
+    },
+    optional_instantiation_form: TargetGenericApply {
+      surface: ^swift_decl_type_optional_instantiation,
+      open: ^swift_token_lt,
+      separator: ^swift_token_comma,
+      field_label_separator: optional_absent(),
+      close: ^swift_token_gt
+    },
+    optional_head: ^Optional,
+    instantiation_form: TargetGenericApply {
+      surface: ^swift_decl_type_generic_apply,
+      open: ^swift_token_lt,
+      separator: ^swift_token_comma,
+      field_label_separator: optional_absent(),
+      close: ^swift_token_gt
+    },
+    declaration_reference_form: swift_declaration_reference_form()
+  }
+}
+
+// A CORPUS DECLARATION REFERENCE IS SPELLED `Gunbc.<segment>.<segment>...<name>`: Swift qualifies a
+// member by `.` member access (TSPL, Language Reference > Expressions, `explicit-member-expression`),
+// the root names the Swift module the emission lands in, and every .dag module segment is its own
+// nested namespace, so the joiner is the scope separator itself. THAT IS INJECTIVE: a .dag identifier
+// contains no `.`, so no two distinct qualified names spell alike (a `_` joiner would collide a.b_c
+// with a_b.c; the claims construct that collision). The closure-emit route (gunbc#12239) renders
+// each module as nested namespaces under `Gunbc`; the root is the one row to edit if that layout moves.
+fn swift_declaration_reference_form() -> DeclarationReferenceForm {
+  ModuleScopedPath {
+    root_text: "Gunbc",
+    scope_separator_text: ".",
+    module_segment_joiner: "."
+  }
+}
+
+fn swift_type_expression_projection_bundle_node() -> Node {
+  type_expr_projection_step_algebra(projection: swift_type_expression_projection())
+}
+
 fn swift_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -625,6 +838,18 @@ fn swift_target_model_node() -> Node {
       swift_named_edge(
         name: ^target_model_edge_translation_rules,
         target: swift_translation_rules_node()
+      ),
+      swift_named_edge(
+        name: ^target_model_edge_value_expression_projection,
+        target: value_expr_projection_bundle_node(projection: swift_value_expression_projection())
+      ),
+      swift_named_edge(
+        name: ^target_model_edge_type_expression_projection,
+        target: swift_type_expression_projection_bundle_node()
+      ),
+      swift_named_edge(
+        name: ^target_model_edge_operator_realizations,
+        target: swift_operator_realizations_catalog_node()
       ),
       swift_named_edge(
         name: ^target_model_edge_semantic_decl_emission,
@@ -661,11 +886,52 @@ fn swift_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
+// SWIFT OWNS SWIFT'S SIGNATURE ORDER, DECLARED AS ROWS (the same shared fold the Rust and TypeScript
+// rows feed): `func NAME(` parameters `NAME: TYPE` separated by commas `) -> TYPE {`, a brace close,
+// and a `return` statement. Swift admits an optional `;` terminator, which the row names because
+// StatementSequenced requires one. A declaration's type references resolve through the caller's
+// type_binding (swift_binding_spellings); a type that binding does not spell refuses typed.
+data swift_produced_decl_render_rows: ProducedDeclRenderRows = ProducedDeclRenderRows {
+  signature: [
+    ProducedSignatureFixed { token_class: ^swift_token_kw_func },
+    ProducedSignatureDeclName { token_class: ^swift_token_ident },
+    ProducedSignatureFixed { token_class: ^swift_token_lparen },
+    ProducedSignatureParams,
+    ProducedSignatureFixed { token_class: ^swift_token_rparen },
+    ProducedSignatureFixed { token_class: ^swift_token_arrow },
+    ProducedSignatureReturnType,
+    ProducedSignatureFixed { token_class: ^swift_token_lbrace }
+  ],
+  param_layout: [
+    ProducedParamFixed { token_class: ^swift_token_underscore },
+    ProducedParamName { token_class: ^swift_token_ident },
+    ProducedParamFixed { token_class: ^swift_token_colon },
+    ProducedParamType
+  ],
+  param_separator: [^swift_token_comma],
+  type_ref_token_class: ^swift_token_ident,
+  block_close: [FixedToken { token_class: ^swift_token_rbrace }],
+  block_evaluation_mode: StatementSequenced {
+    return_token: ^swift_token_kw_return,
+    statement_terminator: ^swift_token_semicolon
+  },
+  function_type_realizations: []
+}
+
+fn swift_produced_decl_support() -> ProducedDeclSupport {
+  ProducedDeclWired {
+    render_rows: swift_produced_decl_render_rows,
+    scaffold_relation_rule_name: ^swift_relation_rule_fn_add,
+    scaffold_base_row: swift_grammar_relation_row_node(row: swift_grammar_relation_row())
+  }
+}
+
 fn swift_target_model() -> TargetModel {
   TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    primitive_realizations: PrimitiveRealizationsUnwired,
+    produced_decl_support: swift_produced_decl_support(),
     bundle: swift_target_model_node(),
-    lex: swift_lex(),
+    lex: swift_emit_lex(),
     binding_spellings: swift_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: swift_source_text_authority(),
@@ -676,14 +942,14 @@ fn swift_target_model() -> TargetModel {
 fn swift_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: chars(text: text) }
   }
 }
 
 fn swift_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: KeywordPattern { text: chars(s: text) }
+    pattern: KeywordPattern { text: chars(text: text) }
   }
 }
 
@@ -801,6 +1067,7 @@ fn swift_lex_rules() -> LexRuleSet {
       swift_lex_rule(token_class: ^swift_token_rbracket, text: "]"),
       swift_lex_rule(token_class: ^swift_token_comma, text: ","),
       swift_lex_rule(token_class: ^swift_token_colon, text: ":"),
+      swift_lex_rule(token_class: ^swift_token_underscore, text: "_"),
       swift_lex_rule(token_class: ^swift_token_dot, text: "."),
       swift_lex_rule(token_class: ^swift_token_semicolon, text: ";")
     ],
@@ -810,6 +1077,36 @@ fn swift_lex_rules() -> LexRuleSet {
 
 fn swift_lex() -> LexRules {
   ModeledLexRules { root: swift_lex_rules() }
+}
+
+// EMISSION SPELLS ITS OWN WHITESPACE, as rust.dag does (rust_fn_add_lex_rules `"fn "`, `" -> "`):
+// the serializer concatenates each token's lexeme, so a keyword that ends a token must carry the
+// space that separates it from the next. These spellings are PREPENDED to the ingest rules --
+// lookup by token class is first-match-wins -- and swift_lex() stays the ingest authority the
+// parse claims read, so ingest still reads `func(`, which a `func ` literal would refuse.
+fn swift_emit_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      left: [
+        swift_lex_rule(token_class: ^swift_token_kw_func, text: "func "),
+        swift_lex_rule(token_class: ^swift_token_kw_return, text: "return "),
+        swift_lex_rule(token_class: ^swift_token_arrow, text: " -> "),
+        swift_lex_rule(token_class: ^swift_token_lbrace, text: " { "),
+        swift_lex_rule(token_class: ^swift_token_rbrace, text: " }"),
+        swift_lex_rule(token_class: ^swift_token_comma, text: ", "),
+        swift_lex_rule(token_class: ^swift_token_colon, text: ": "),
+        swift_lex_rule(token_class: ^swift_token_underscore, text: "_ "),
+        swift_lex_rule(token_class: ^swift_token_lt, text: "<"),
+        swift_lex_rule(token_class: ^swift_token_gt, text: ">")
+      ],
+      right: swift_lex_rules().rules
+    ),
+    modes: swift_lex_rules().modes
+  }
+}
+
+fn swift_emit_lex() -> LexRules {
+  ModeledLexRules { root: swift_emit_lex_rules() }
 }
 
 fn swift_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
@@ -1569,11 +1866,14 @@ fn swift_grammar() -> ParseGrammar {
   ModeledGrammar { root: swift_grammar_root() }
 }
 
+// The token-class membership map for swift_lex_rules(), built ONCE and read by key: the
+// membership of a class is a pure function of this module-literal rule set, so per-query
+// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
+data swift_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: swift_lex_rules())
+
 fn swift_lex_token_symbol(sym: Symbol) -> Bool {
-  lex_rule_set_token_class_member(
-    rules: swift_lex_rules(),
-    token_class: sym
-  )
+  map_contains_key(m: swift_lex_token_class_membership, key: sym)
 }
 
 fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {

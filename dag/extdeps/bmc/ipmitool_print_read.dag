@@ -1,0 +1,243 @@
+module extdeps.bmc.ipmitool_print_read
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim, skip }
+import std.host_text { chars }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.bmc.ipmi { IpmiCipherSuite, ipmi_cipher_suite_of_id }
+
+// ipmitool's PRINTED REPORTS, READ BACK: `sel elist` rows, and two configuration reads, `lan print <channel>` (IPMI v2.0 LAN configuration
+// parameters, of which this module reads 23, the RMCP+ cipher suite entries, and 24, the per-entry
+// maximum privilege) and `sol info <channel>` (the SOL configuration parameters). ipmitool renders each
+// parameter as a "<label> : <value>" line; the labels are ipmitool's (lib/ipmi_lanp.c, lib/ipmi_sol.c),
+// the meanings are the specification's (the IPMI v2.0 citation in extdeps.bmc.ipmi_boot_selection).
+// What a controller answered is a receipt in the observing layer, never a row here.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ipmitool/ipmitool/blob/master/lib/ipmi_lanp.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.ipmitool_print_read",
+      decl_name: "IpmiCipherSuitePrivilege",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The value of the first "<label> : <value>" line whose label is exactly `label` (both sides trimmed).
+fn labelled_cells(line: String, label: String) -> List<String> {
+  let cells = split(s: line, delimiter: ":")
+  match first(cells) {
+    Absent => []
+    Present { value: head } =>
+      if trim(head) == label && cells.length() >= 2 { [trim(join(cells.skip(n: 1), ":"))] } else { [] }
+  }
+}
+
+fn ipmitool_labelled_value(stdout: String, label: String) -> String? {
+  first(flat_map(split(s: stdout, delimiter: "\n"), l => labelled_cells(line: l, label: label)))
+}
+
+// ── PARAMETER 24, PER ENTRY OF PARAMETER 23. ipmitool prints the suite ids of parameter 23 as a comma list
+// ("3,17") and parameter 24 as one letter per entry slot ("aXXXXXXXXXXXXXX"), in the same order: the n-th
+// letter is the maximum privilege of the n-th listed suite. X is "unused": the suite is listed but
+// admits no role at all.
+type IpmiCipherPrivilegeMax
+  = CipherSuiteUnused
+  | CipherSuiteCallback
+  | CipherSuiteUser
+  | CipherSuiteOperator
+  | CipherSuiteAdmin
+  | CipherSuiteOem
+
+type IpmiCipherSuitePrivilege { suite: Int, max: IpmiCipherPrivilegeMax }
+
+type IpmiCipherLetter { letter: NonEmptyStr, max: IpmiCipherPrivilegeMax }
+
+data ipmitool_cipher_privilege_letters: List<IpmiCipherLetter> = [
+  IpmiCipherLetter { letter: "X", max: CipherSuiteUnused },
+  IpmiCipherLetter { letter: "c", max: CipherSuiteCallback },
+  IpmiCipherLetter { letter: "u", max: CipherSuiteUser },
+  IpmiCipherLetter { letter: "o", max: CipherSuiteOperator },
+  IpmiCipherLetter { letter: "a", max: CipherSuiteAdmin },
+  IpmiCipherLetter { letter: "O", max: CipherSuiteOem },
+]
+
+fn cipher_max_of_letter(letter: String) -> IpmiCipherPrivilegeMax? {
+  match first(filter(ipmitool_cipher_privilege_letters, l => (l.letter as String) == letter)) {
+    Absent => none
+    Present { value: l } => Present { value: l.max }
+  }
+}
+
+type CipherPairFold = CipherPairsRead { pairs: List<IpmiCipherSuitePrivilege> } | CipherPairsRefused
+
+// Every listed suite must have its letter and every letter must be known; more letters than suites is
+// normal (the field has sixteen slots), fewer is a refusal.
+fn ipmi_cipher_suite_privileges_of_lan_print(stdout: String) -> List<IpmiCipherSuitePrivilege>? {
+  match ipmitool_labelled_value(stdout: stdout, label: "RMCP+ Cipher Suites") {
+    Absent => none
+    Present { value: suites_text } => match ipmitool_labelled_value(stdout: stdout, label: "Cipher Suite Priv Max") {
+      Absent => none
+      Present { value: letters } => {
+        let suites = map(split(s: suites_text, delimiter: ","), t => parse_int(s: trim(t)))
+        if suites.length() > string_length(s: letters) || suites_text == "" { none } else {
+          let none_yet: List<IpmiCipherSuitePrivilege> = []
+          let init: CipherPairFold = CipherPairsRead { pairs: none_yet }
+          let folded = fold(suites, init: init, f: (acc, suite) => match acc {
+            CipherPairsRefused => CipherPairsRefused
+            CipherPairsRead { pairs: ps } => match suite {
+              Absent => CipherPairsRefused
+              Present { value: id } => match cipher_max_of_letter(letter: substring(s: letters, start: ps.length(), end: ps.length() + 1)) {
+                Absent => CipherPairsRefused
+                Present { value: m } => CipherPairsRead { pairs: concat(ps, [IpmiCipherSuitePrivilege { suite: id, max: m }]) }
+              }
+            }
+          })
+          match folded {
+            CipherPairsRefused => none
+            CipherPairsRead { pairs: ps } => Present { value: ps }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn cipher_max_admits_admin(max: IpmiCipherPrivilegeMax) -> Bool {
+  match max {
+    CipherSuiteAdmin => true
+    CipherSuiteOem => false
+    CipherSuiteOperator => false
+    CipherSuiteUser => false
+    CipherSuiteCallback => false
+    CipherSuiteUnused => false
+  }
+}
+
+// A listed suite ID read as the spec's suite (extdeps.bmc.ipmi ipmi_cipher_suite_table), or kept as the ID the
+// controller printed when that table does not list it: an unknown ID is carried, never dropped and never guessed.
+type IpmiCipherSuiteReading
+  = IpmiCipherSuiteListed { suite: IpmiCipherSuite }
+  | IpmiCipherSuiteUnlisted { id: Int }
+
+fn ipmi_cipher_suite_reading_of_id(id: Int) -> IpmiCipherSuiteReading {
+  match ipmi_cipher_suite_of_id(id: id) {
+    Absent => IpmiCipherSuiteUnlisted { id: id }
+    Present { value: s } => IpmiCipherSuiteListed { suite: s }
+  }
+}
+
+// The suites an ADMINISTRATOR session may open with, in the controller's listed order.
+fn ipmi_cipher_suites_admitting_admin(pairs: List<IpmiCipherSuitePrivilege>) -> List<IpmiCipherSuiteReading> {
+  map(filter(pairs, p => cipher_max_admits_admin(max: p.max)), p => ipmi_cipher_suite_reading_of_id(id: p.suite))
+}
+
+// ── SOL CONFIGURATION (`sol info`). The fields a console consumer needs before activating: whether SOL is
+// enabled, the minimum privilege it requires, the volatile bit rate in force, and where the payload is
+// served. The rate is kept as ipmitool prints it ("115.2", kbps).
+type IpmiSolConfiguration {
+  enabled: Bool
+  privilege_level: NonEmptyStr
+  volatile_bit_rate_kbps: NonEmptyStr
+  payload_channel: NonEmptyStr
+  payload_port: Int
+}
+
+fn nonempty(v: String?) -> NonEmptyStr? {
+  match v {
+    Absent => none
+    Present { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } }
+  }
+}
+
+fn ipmi_sol_configuration_of_sol_info(stdout: String) -> IpmiSolConfiguration? {
+  match ipmitool_labelled_value(stdout: stdout, label: "Enabled") {
+    Absent => none
+    Present { value: enabled } => if enabled != "true" && enabled != "false" { none } else {
+      match nonempty(v: ipmitool_labelled_value(stdout: stdout, label: "Privilege Level")) {
+        Absent => none
+        Present { value: privilege } => match nonempty(v: ipmitool_labelled_value(stdout: stdout, label: "Volatile Bit Rate (kbps)")) {
+          Absent => none
+          Present { value: rate } => match nonempty(v: ipmitool_labelled_value(stdout: stdout, label: "Payload Channel")) {
+            Absent => none
+            Present { value: channel } => match ipmitool_labelled_value(stdout: stdout, label: "Payload Port") {
+              Absent => none
+              Present { value: port_text } => match parse_int(s: port_text) {
+                Absent => none
+                Present { value: port } => Present { value: IpmiSolConfiguration {
+                  enabled: enabled == "true", privilege_level: privilege, volatile_bit_rate_kbps: rate,
+                  payload_channel: channel, payload_port: port,
+                } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── `sel elist` ROWS. ipmitool prints one SEL record per line: the record id in lowercase hex, then date,
+// time, sensor, event description and assertion state, separated by " | ", with an optional trailing
+// threshold cell ("Reading 500 < Threshold 500 RPM"). The record's bytes are extdeps.bmc.ipmi_sel's (IPMI
+// v2.0 section 32); this is ipmitool's rendering of them, the same line extdeps.bmc.ipmitool_observed_output
+// ipmitool_sel_elist_line builds. A line with fewer than six cells, or an id that is not hex, refuses the
+// whole report rather than being skipped.
+type IpmitoolSelRow {
+  record_id_hex: NonEmptyStr
+  date: String
+  time: String
+  sensor: String
+  event: String
+  state: String
+}
+
+type SelRowFold = SelRowsRead { rows: List<IpmitoolSelRow> } | SelRowRefused { line: String }
+
+fn hex_text(s: String) -> Bool {
+  s != "" && all(s |> chars, c => (c >= 48 && c <= 57) || (c >= 97 && c <= 102))
+}
+
+fn cell(cells: List<String>, i: Int) -> String {
+  match first(cells.skip(n: i)) {
+    Present { value: c } => trim(c)
+    Absent => ""
+  }
+}
+
+fn sel_row_of_line(line: String) -> IpmitoolSelRow? {
+  let cells = split(s: line, delimiter: " | ")
+  let id = cell(cells: cells, i: 0)
+  if cells.length() < 6 || !hex_text(s: id) { none } else {
+    Present { value: IpmitoolSelRow {
+      record_id_hex: id as NonEmptyStr, date: cell(cells: cells, i: 1), time: cell(cells: cells, i: 2),
+      sensor: cell(cells: cells, i: 3), event: cell(cells: cells, i: 4), state: cell(cells: cells, i: 5),
+    } }
+  }
+}
+
+fn ipmitool_sel_elist_rows(stdout: String) -> List<IpmitoolSelRow>? {
+  let none_yet: List<IpmitoolSelRow> = []
+  let init: SelRowFold = SelRowsRead { rows: none_yet }
+  match fold(filter(split(s: stdout, delimiter: "\n"), l => trim(l) != ""), init: init, f: (acc, l) => match acc {
+    SelRowRefused { line: x } => SelRowRefused { line: x }
+    SelRowsRead { rows: rs } => match sel_row_of_line(line: l) {
+      Absent => SelRowRefused { line: l }
+      Present { value: r } => SelRowsRead { rows: concat(rs, [r]) }
+    }
+  }) {
+    SelRowRefused { line: _ } => none
+    SelRowsRead { rows: rs } => Present { value: rs }
+  }
+}

@@ -15,7 +15,7 @@ import v2.compiler.normalized_tree {
 }
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget }
-import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_enclosing_declaration_paths, symbol_index_owning_module_of }
 import v2.compiler.body_lowering_fold { TypeDeclarationModifierChannel }
 import v2.compiler.resolve {
   empty_module_outcome_index,
@@ -78,6 +78,7 @@ import v2.std.diagnostic {
   Diagnostic,
   Diagnostics,
   ExternalContractUnknown,
+  Locus,
   NonEmptyDiagnostics,
   None,
   Outcome,
@@ -102,7 +103,6 @@ import v2.std.node {
   Authored,
   Disj,
   Arrow,
-  Occupancy,
   Instantiation,
   ComputationNode,
   Atom,
@@ -116,6 +116,7 @@ import v2.std.node {
   well_formed,
   symbol_intern_lexeme,
   symbol_lexeme,
+  NotADeclaration
 }
 import v2.std.passing_candidate_fold {
   ManyPassingCandidates,
@@ -563,7 +564,6 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
           TypeNode { connective: Atom { identity: _ } } => false
           TypeNode { connective: Disj } => false
           TypeNode { connective: Arrow } => false
-          TypeNode { connective: Occupancy } => false
           TypeNode { connective: Instantiation } => false
           ComputationNode { behavior: _ } => false
         },
@@ -616,7 +616,6 @@ fn admit_named_exports(
     TypeNode { connective: Atom { identity: _ } } => state
     TypeNode { connective: Disj } => state
     TypeNode { connective: Arrow } => state
-    TypeNode { connective: Occupancy } => state
     TypeNode { connective: Instantiation } => state
     ComputationNode { behavior: _ } => state
   }
@@ -661,11 +660,31 @@ fn admit_import_visible_entry(
   )
 }
 
+// AN IMPORT-ADMISSION REFUSAL IS LOCATED AT THE IMPORT THAT CAUSED IT, when the caller holds that
+// import's authored locus: NamespaceOnlyY's captured module targets carry the import declaration's own
+// span (v2.std.namespace_alias CapturedImportTarget), exactly the locus the module-not-found arm
+// already reports (admit_imported_module_existence). A caller that carries no locus -- ImportScoped's
+// caller-supplied Import, a captured alias row (v2.std.namespace_alias AliasBindingRow carries none) --
+// passes Absent, and the refusal keeps the port's typed invariant locus: an absence the census
+// reports as FileRefusalAtInvariant, never a position borrowed from another occurrence.
+fn import_admission_diagnostics(reason: Symbol, at: Optional<Locus>) -> NonEmptyDiagnostics {
+  match at {
+    Present { value: locus } =>
+      diagnostics_singleton(d: Diagnostic {
+        reason: reason,
+        at: locus,
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    Absent => resolve_diagnostics(reason: reason)
+  }
+}
+
 // THE ONE CROSS-TREE GATE. ImportScoped then merges named exports (admit_import_entry);
 // NamespaceOnlyY records listed-name origins from captured rows (admit_captured_import_rows)
 // without a second cross_tree_edge_decision.
 fn admit_import_cross_tree_gate(
   import_edge: Import,
+  at: Optional<Locus>,
   state: AdmissionState,
   subject_qn: QualifiedName,
   index: SourceRootIndex,
@@ -678,7 +697,7 @@ fn admit_import_cross_tree_gate(
       match import_edge.visibility {
         ImportHidden =>
           AdmissionRejected {
-            diagnostics: resolve_diagnostics(reason: ^resolve_import_not_visible)
+            diagnostics: import_admission_diagnostics(reason: ^resolve_import_not_visible, at: at)
           }
         ImportVisible =>
           match v2.std.cross_tree.resolution.cross_tree_edge_decision(
@@ -691,11 +710,11 @@ fn admit_import_cross_tree_gate(
             EdgeCrossAdmitted => state
             EdgeCrossDenied =>
               AdmissionRejected {
-                diagnostics: resolve_diagnostics(reason: ^resolve_cross_tree_import_denied)
+                diagnostics: import_admission_diagnostics(reason: ^resolve_cross_tree_import_denied, at: at)
               }
             EdgeCrossAmbiguous =>
               AdmissionRejected {
-                diagnostics: resolve_diagnostics(reason: ^resolve_cross_tree_import_ambiguous)
+                diagnostics: import_admission_diagnostics(reason: ^resolve_cross_tree_import_ambiguous, at: at)
               }
           }
       }
@@ -712,6 +731,7 @@ fn admit_import_entry(
 ) -> AdmissionState {
   match admit_import_cross_tree_gate(
     import_edge: import_edge,
+    at: optional_absent(),
     state: state,
     subject_qn: subject_qn,
     index: index,
@@ -813,6 +833,7 @@ fn admit_imported_modules(
       let edge = Import { target: located.target, visibility: ImportVisible }
       match admit_import_cross_tree_gate(
         import_edge: edge,
+        at: optional_present(value: located.at),
         state: acc,
         subject_qn: subject_qn,
         index: index,
@@ -840,6 +861,7 @@ fn admit_captured_import_rows(
     cons: fn(acc, row) {
       match admit_import_cross_tree_gate(
         import_edge: import_edge_from_binding_row(row: row),
+        at: optional_absent(),
         state: acc,
         subject_qn: subject_qn,
         index: index,
@@ -1221,10 +1243,11 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
 // widen an answer or substitute a reading -- but contributing nothing SILENTLY was the absorbing fallback's
 // other half: a consumer's miss could not say the provider never resolved, so the provider's defect never
 // ranked. Its module and its first refusal chain are recorded (ClosureProviderRefusal) and reach every
-// lookup miss through v2.compiler.resolve resolved_tree_unavailable_provider. A provider that cannot resolve simply has
-// no resolved declarations to offer, so a receiver typed by one of its records refuses at
-// infer_reason_projection_receiver_declaration_unavailable -- the located refusal that names missing
-// evidence.
+// lookup miss through v2.compiler.resolve resolved_tree_unavailable_provider. A provider that cannot resolve has no
+// resolved declarations to offer, and every declaration that mentions one of them -- through any declaration
+// it sits in, a refused coproduct's variant included (closure_callee_blocking_refusal) -- is blocked too, so a
+// subject naming any of them refuses at RESOLVE, resolve_reason_declarer_refused carrying the provider's chain
+// (v2.compiler.resolve unavailable_provider_for_path), the located refusal that names the missing evidence.
 //
 // THIS IS THE ONE-SEAT FORM OF A DEPENDENCY THE DEMAND ENGINE OWNS. Infer(module) depends on
 // Resolve(module) AND Resolve(each provider it consumes); here that is discharged by resolving the whole
@@ -1276,21 +1299,38 @@ fn closure_unavailable_by_module(
   })
 }
 
+// THE CALLEE'S OWNING MODULE IS THE FILL-TIME ONE (v2.std.symbol_index symbol_index_owning_module_of),
+// never the path less its last segment: that is the module only for a module-root declaration, and for a
+// variant (`v2.b.T.V`) it is the coproduct.
 fn closure_unavailable_owner_refusal(
+  index: SymbolIndex,
   unavailable: Map<QualifiedName, NonEmptyDiagnostics>,
   callee: QualifiedName
 ) -> Optional<NonEmptyDiagnostics> {
-  map_lookup(m: unavailable, key: qualified_name_init(qn: callee))
+  match symbol_index_owning_module_of(index: index, path: callee) {
+    Present { value: owner } => map_lookup(m: unavailable, key: owner)
+    Absent => optional_absent()
+  }
 }
 
+// A CALLEE IS BLOCKED WHEN THE ROW IT SITS IN IS: availability is recorded per module-root declaration,
+// so a variant of a blocked coproduct is read through the coproduct's row
+// (v2.std.symbol_index symbol_index_enclosing_declaration_paths, the reader resolve's provider lookup
+// shares), never by its own exact path, which no row carries.
 fn closure_callee_blocking_refusal(
+  index: SymbolIndex,
   blocked: Map<QualifiedName, NonEmptyDiagnostics>,
   unavailable: Map<QualifiedName, NonEmptyDiagnostics>,
   callee: QualifiedName
 ) -> Optional<NonEmptyDiagnostics> {
-  match map_lookup(m: blocked, key: callee) {
+  match fold_list(xs: symbol_index_enclosing_declaration_paths(index: index, path: callee), empty: optional_absent(), cons: fn(found, enclosing) {
+    match found {
+      Present { value: _ } => found
+      Absent => map_lookup(m: blocked, key: enclosing)
+    }
+  }) {
     Present { value: r } => optional_present(value: r)
-    Absent => closure_unavailable_owner_refusal(unavailable: unavailable, callee: callee)
+    Absent => closure_unavailable_owner_refusal(index: index, unavailable: unavailable, callee: callee)
   }
 }
 
@@ -1306,14 +1346,14 @@ fn closure_filter_root_published(root: Node, published: Map<Symbol, Node>) -> No
         if module_binding_edge_is_namespace_body(e: e) {
           list_snoc_item(
             xs: acc,
-            item: Edge { label: e.label, target: closure_filter_root_published(root: e.target, published: published) }
+            item: Edge { label: e.label, target: closure_filter_root_published(root: e.target, published: published), declaration: e.declaration }
           )
         } else {
           match try_edge_declared_binding(e: e) {
             Present { value: b } =>
               match map_lookup(m: published, key: b.name) {
                 Present { value: resolved } =>
-                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: resolved })
+                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: resolved, declaration: e.declaration })
                 Absent => acc
               }
             Absent => list_snoc_item(xs: acc, item: e)
@@ -1328,7 +1368,7 @@ fn closure_filter_root_published(root: Node, published: Map<Symbol, Node>) -> No
       children: fold(root.children, init: [], f: fn(acc, e) {
         list_snoc_item(
           xs: acc,
-          item: Edge { label: e.label, target: closure_filter_root_published(root: e.target, published: published) }
+          item: Edge { label: e.label, target: closure_filter_root_published(root: e.target, published: published), declaration: e.declaration }
         )
       }),
       occurrence_id: root.occurrence_id
@@ -1391,6 +1431,7 @@ fn closure_reverse_components(xs: List<List<String>>) -> List<List<String>> {
 }
 
 fn closure_component_blocking_refusal(
+  index: SymbolIndex,
   rows: Map<String, DeclPhase1Row>,
   blocked: Map<QualifiedName, NonEmptyDiagnostics>,
   unavailable: Map<QualifiedName, NonEmptyDiagnostics>,
@@ -1414,6 +1455,7 @@ fn closure_component_blocking_refusal(
                         hit
                       } else {
                         closure_callee_blocking_refusal(
+                          index: index,
                           blocked: blocked,
                           unavailable: unavailable,
                           callee: callee
@@ -1428,6 +1470,7 @@ fn closure_component_blocking_refusal(
 }
 
 fn closure_phase2_blocked(
+  index: SymbolIndex,
   rows: List<DeclPhase1Row>,
   unavailable: List<ModuleOutcome>
 ) -> Map<QualifiedName, NonEmptyDiagnostics> {
@@ -1448,6 +1491,7 @@ fn closure_phase2_blocked(
   )
   fold_list(xs: components, empty: seed, cons: fn(blocked, component) {
     match closure_component_blocking_refusal(
+      index: index,
       rows: by_path,
       blocked: blocked,
       unavailable: unavailable_by_module,
@@ -1557,12 +1601,12 @@ fn closure_phase1_walk_module(
           let path = qualified_name_snoc(qn: module_qn, segment: binding.name)
           let walk = resolve_labeled_child_edge(
             ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: true),
-            e: Edge { label: Authored { name: binding.name }, target: binding.declaration }
+            e: Edge { label: Authored { name: binding.name }, target: binding.declaration, declaration: NotADeclaration }
           )
           list_snoc_item(
             xs: racc,
             item: match walk {
-              ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
+              ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: _ } =>
                 DeclPhase1Row {
                   module: module_qn,
                   name: binding.name,
@@ -1570,7 +1614,7 @@ fn closure_phase1_walk_module(
                   local: LocallyResolved { node: resolved },
                   callees: closure_collect_declaration_callees(n: resolved, acc: [])
                 }
-              ResolveWalkRefused { first: first, rest: _, observation: _ } =>
+              ResolveWalkRefused { first: first, rest: _, observation: _, partial: _ } =>
                 DeclPhase1Row {
                   module: module_qn,
                   name: binding.name,
@@ -1615,7 +1659,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
           }
         }
       )
-      let blocked = closure_phase2_blocked(rows: phase1.rows, unavailable: phase1.unavailable)
+      let blocked = closure_phase2_blocked(index: phase1.context.symbol_index, rows: phase1.rows, unavailable: phase1.unavailable)
       let index = fold_list(xs: phase1.trees, empty: empty_symbol_index(), cons: fn(acc, nt) {
         match qualified_name_from_module_node(root: nt.root) {
           Rejected { diagnostics: _ } => acc
@@ -1665,7 +1709,8 @@ fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admis
         walk: ResolveWalkRefused {
           first: r,
           rest: [],
-          observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
+          observation: ObservationIncomplete { reason: ^resolve_observation_context_refused },
+          partial: []
         },
         context: context
       }
@@ -1695,7 +1740,8 @@ fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admis
             walk: ResolveWalkRefused {
               first: r,
               rest: [],
-              observation: ObservationIncomplete { reason: ^resolve_observation_namespace_refused }
+              observation: ObservationIncomplete { reason: ^resolve_observation_namespace_refused },
+              partial: []
             },
             context: threaded
           }

@@ -53,6 +53,16 @@ fn tar_extract_command(archive: String, into_directory: String, strip_components
   )
 }
 
+// A REPRODUCIBLE ARCHIVE OF ONE DIRECTORY: the same files produce the same bytes. GNU tar's
+// --sort=name fixes member order, and --mtime/--owner/--group/--numeric-owner fix the metadata a
+// second run would otherwise vary, so a content digest over the archive names its content.
+fn tar_create_reproducible_command(archive: String, from_directory: String) -> ArgvCommand {
+  argv_command(
+    program: tar_program(),
+    arguments: ["-C", from_directory, "--sort=name", "--mtime=@0", "--owner=0", "--group=0", "--numeric-owner", "-cf", archive, "."],
+  )
+}
+
 // CREATE FROM AN EXPLICIT MEMBER LIST, AND NOTHING ELSE. -T names a file of member paths (one per
 // line, relative to -C's directory); --no-recursion stops a listed directory from pulling in members
 // the list did not name, so the archive's membership IS the list -- a caller that filtered the list

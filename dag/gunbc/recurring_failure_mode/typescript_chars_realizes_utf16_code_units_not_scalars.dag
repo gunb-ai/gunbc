@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.typescript_chars_realizes_utf16_code_units_not_scalars
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data typescript_chars_realizes_utf16_code_units_not_scalars: RecurringFailureMode = RecurringFailureMode {
+  identity: "typescript_chars_realizes_utf16_code_units_not_scalars" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**A target's realization of chars returns UTF-16 code units, not the Unicode scalar values the operation is declared to return.** INVALID STATE: `extdeps.languages.typescript.emit` `ts_simple_method_specs` realizes `chars` as `Array.from(recv).map(c => c.charCodeAt(0))`. `Array.from` splits the string into code points, but `charCodeAt(0)` reads each code point's FIRST UTF-16 CODE UNIT. So any scalar above U+FFFF (an astral scalar, for example U+1F600) maps to its high surrogate (55357), not to 128512. The operation's contract is `std.host_text` `chars`: the Unicode scalar values of the host text, in source order, never UTF-16 code units (operator ruling H4, 2026-10-17).",
+    "HARM. Silent wrongness, outside the ladder: the emitted program compiles, runs and returns a list of the right length with a wrong element for every astral scalar, and nothing refuses. Text in BMP scripts (ASCII, Latin, CJK) is unaffected, so ordinary tests stay green; an emoji, a historic script or a mathematical alphanumeric symbol silently changes value. The other realizations agree with the contract: Rust `str::chars` (`v1_compiler.v1_rt` chars) yields scalars, and Python's `[ord(c) for c in recv]` (`extdeps.languages.python.emit`) yields scalars.",
+    "DISTINGUISHING FACTS. The realization is a per-target template row, so the defect is in ONE target row and not in the operation's model. The correct TypeScript form exists in the same language: `codePointAt(0)` on each element of `Array.from(recv)`. The near neighbour is a missing realization, which refuses at realization; this one is present and wrong.",
+    "RUNG FOUND AT: silent wrongness, found by source reading while homing chars in std.host_text (H2/H4 authority PR). No executed TypeScript control exists for chars on astral text. CEILING: mechanically preventable. A per-target conformance witness can execute each target's realization of chars on a fixed scalar battery (empty, ASCII, U+00E9, e + U+0301, U+1F600) and compare it against the declared scalar sequence; the realization is external host behaviour, so structural guarantee would need a modeled semantics for the host string API, which is not modeled.",
+    "SPECIMEN REPAIRED IN THE PR THAT FILED IT (std.host_text authority, review P2): the template now reads `Array.from(recv).map(c => c.codePointAt(0)!)`. Executed receipt, node v20, on `a` U+1F600 `e` U+0301 U+00E9: charCodeAt gave [97, 55357, 101, 769, 233], codePointAt gives [97, 128512, 101, 769, 233], equal to Python's ord. The enrolled control (`test.claim.typescript_extdeps_language_witness` `ts_chars_reads_code_points_not_utf16_code_units`) reads the row's shape, which is mechanically preventable for THIS row only; the class stays below its ceiling, because no target's realization is executed against the contract.",
+    "NEXT-RUNG TRIGGER, naming the CAPABILITY: a cross-target conformance execution of every realized host-text operation against its declared contract, sufficient that a target row returning code units, bytes or graphemes for chars reds before it can be emitted. Repairing this one template is the fix for this specimen, not the trigger; without the conformance execution the next target row can repeat it.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.languages.typescript.emit", decl_name: "ts_simple_method_specs", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.host_text", decl_name: "chars", field: WholeDeclaration },
+  ],
+}

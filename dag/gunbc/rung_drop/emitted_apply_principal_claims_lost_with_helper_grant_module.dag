@@ -1,0 +1,31 @@
+module gunbc.rung_drop.emitted_apply_principal_claims_lost_with_helper_grant_module
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+// THE DECLARED RUNG DROP (DESIGN 4b(3)) for `gunbc.recurring_failure_mode`
+// `emitted_apply_names_the_ci_principal_instead_of_the_applying_one`. That row cited its discriminating
+// RED, its positive control and its two walls as enrolled in
+// test.claim.live_deploy.approval_broker_helper_grant. The Google enrolment cutover deleted that module
+// with the helper-grant leg; the named claims were not found by name in it before the deletion, and no
+// other living witness expresses the CI-versus-operator principal A/B. The class's rung is the minimum
+// across executed evidence, and none executes, so it stands at Mitigatable until the claims are
+// re-grounded; the structural derivation (each emitter's only source of a principal is its DeployAccess
+// parameter) is unchanged but is no longer discriminated by any run.
+data emitted_apply_principal_claims_lost_with_helper_grant_module: RungDrop = RungDrop {
+  identity: "emitted_apply_principal_claims_lost_with_helper_grant_module" as NonEmptyStr,
+
+  subject: "the RED, positive control and wall claims of emitted_apply_names_the_ci_principal_instead_of_the_applying_one, which named test.claim.live_deploy.approval_broker_helper_grant",
+
+  declared: "2026-10-23",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "test.claim.live_deploy.approval_broker_helper_grant, deleted with the helper-grant leg by the Google enrolment cutover (PR 14890)" },
+    population: Enumerated { members: FreeSemigroup { head: "the_operator_local_apply_is_emitted_from_the_operator_local_access", tail: ["the_ci_apply_is_emitted_from_the_ci_access", "an_apply_paired_with_the_other_principal_fails", "an_operator_local_apply_that_probes_only_the_operator_grant_fails"] } },
+    restoration_trigger: "a living witness in test.claim.live_deploy asserts, through apply_intent_from_effects with the DeployAccess supplied, that an apply emitted from the operator-local access names the operator principal (RED on a CI-principal emission) and that the CI access emits the CI principal (positive control), and reaches PASS on a run"
+  } }
+}

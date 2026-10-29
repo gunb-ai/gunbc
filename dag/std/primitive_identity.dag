@@ -8,6 +8,8 @@ import std.algebra {
   CostShape,
   FiniteSupport,
   FinitelySupportedFunctionProfile,
+  FreeMonoidCollectionProfile,
+  FreeMonoidScalarProfile,
   OpenSupport,
   ShapeIterateBody,
   ShapeLinearScan,
@@ -18,7 +20,7 @@ import std.algebra {
   all_algebra_profiles,
   all_algebra_template_names,
 }
-import std.induction { CostBound, cost_linear }
+import std.induction { CostBound, cost_constant, cost_linear, cost_log }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
 import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -31,10 +33,11 @@ import std.primitive_projection {
   primitive_projection_roster, primitive_projection_row_for_declaration,
   primitive_length, primitive_map_insert, primitive_map_get, primitive_lookup, primitive_get, primitive_empty_map,
   primitive_decl_facts, primitive_decl_facts_at, primitive_export_signature_facts, primitive_data_decl_type_facts,
-  primitive_type_declarer_qualified_names,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
   primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_octets_bytes, primitive_pure_dag_seam_unreachable, primitive_to_string,
+  primitive_list_push, primitive_chars, primitive_string_contains, primitive_machine_word_native_operate,
+  primitive_sha256_hex_of_text, primitive_compile_dag_diagnostic_census,
 }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
@@ -339,8 +342,27 @@ fn finite_support_cardinality_param(profile: AlgebraProfile) -> String? {
 type PrimitiveCostStructureUnavailable
   = CostParamNotRecoverableFromSignature { signature_reason: NonEmptyStr }
 
+// WHY A CARRIER-SENSITIVE ARM, AND WHY IT HOLDS BOTH READINGS. Some operations cost differently
+// depending on the carrier that realizes their collection. A single-item append is linear on a
+// carrier that must copy to keep the prior version. On a persistent one (v2.std.value_carrier
+// UpdateVersionPersistence PersistentUpdate) it is amortized constant, logarithmic in the worst
+// case. Reducing that to one bound would choose a carrier where nothing chose it. The fact therefore
+// keeps both readings, and a consumer that cannot name the realizing carrier refuses rather than
+// picking one (std.realization_cost_fidelity ModeledCostCarrierUnselected). The two readings are
+// named fields, not a list keyed by persistence, so a row cannot omit or duplicate a carrier.
+//
+// `amortized` is Absent when the worst case is the only bound claimed. A Present amortized bound
+// never replaces the worst case beside it. This is the structured form of the
+// std.primitives Certainty Amortized standing that the retired contract rows carried as a tag on a
+// String.
+type CarrierCostReading {
+  worst_case: CostBound
+  amortized: CostBound?
+}
+
 type PrimitiveModeledCost
   = StructuredCost { bound: CostBound }
+  | CarrierSensitiveCost { ephemeral: CarrierCostReading, persistent: CarrierCostReading }
   | CoarseCostOnly { shape: CostShape, cause: PrimitiveCostStructureUnavailable }
 
 // THE ONE CONSTRUCTOR THE ROWS GO THROUGH, so the derived parameter reaches every structured row by
@@ -356,6 +378,25 @@ fn linear_support_scan_cost(
   match finite_support_cardinality_param(profile: profile) {
     Present { value: param } => StructuredCost { bound: cost_linear(param: param) }
     Absent => CoarseCostOnly { shape: coarse, cause: unavailable }
+  }
+}
+
+// THE SINGLE-ITEM APPEND, through the same derived axis as the scan above. The ephemeral reading is
+// the copy that preserving the prior version costs. The persistent reading is the RRB vector's
+// push: amortized constant, logarithmic in the worst case. The coarse fallback is ShapeLinearScan,
+// the larger of the two carriers' ranks: without an axis no carrier can be selected, so the bound
+// that holds on either carrier is the one kept.
+fn single_item_append_support_cost(
+  profile: AlgebraProfile,
+  unavailable: PrimitiveCostStructureUnavailable,
+) -> PrimitiveModeledCost {
+  match finite_support_cardinality_param(profile: profile) {
+    Present { value: param } =>
+      CarrierSensitiveCost {
+        ephemeral: CarrierCostReading { worst_case: cost_linear(param: param), amortized: none },
+        persistent: CarrierCostReading { worst_case: cost_log(param: param), amortized: Present { value: cost_constant() } },
+      }
+    Absent => CoarseCostOnly { shape: ShapeLinearScan, cause: unavailable }
   }
 }
 
@@ -858,6 +899,54 @@ data primitive_index_by_cost: PrimitiveCostFact = PrimitiveCostFact {
   cost: CoarseCostOnly { shape: ShapeIterateBody, cause: index_by_cost_cause },
 }
 
+// THE TWO RE-HOMED ROWS. Each operation's only cost record was a std.primitives *_contract row,
+// deleted when its ambient admission retired: chars_contract in #14520, list_push_contract in
+// #14751. These rows restate those facts structurally. They are keyed on the primitive identity
+// that std.primitive_projection binds to the declaration (std.algebra list_push, std.host_text
+// chars), and a consumer reaches them by declaration through primitive_modeled_cost_for_declaration
+// below. Neither row restates a figure the realization was not checked against.
+//
+// list_push. The retired contract said work 1, Amortized, ephemeral n, persistent log n. Both
+// realizations that run are im 15.1.0 Vector: the emitted bridge v1_rt rc_list_push
+// (Rc::make_mut, then push_back) and the interpreter's method_call.list_push arm (clone, then
+// push_back). im documents Vector clone as O(1) and push_back as O(1) amortised and O(log n) worst
+// case. The persistent reading is that, and the axis is the list's length, the free monoid's
+// finite support.
+data primitive_list_push_cost: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_list_push,
+  cost: single_item_append_support_cost(
+    profile: FreeMonoidCollectionProfile,
+    unavailable: carrier_support_axis_no_longer_finite_cause,
+  ),
+}
+
+// chars. The retired contract said work n, Proven, carrier-insensitive. The std.algebra
+// free_monoid_scalar_templates chars row carries ShapeLinearScan, the coarse fact this bound
+// re-derives. The axis is the text's length.
+data primitive_chars_cost: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_chars,
+  cost: linear_support_scan_cost(
+    profile: FreeMonoidScalarProfile,
+    coarse: ShapeLinearScan,
+    unavailable: carrier_support_axis_no_longer_finite_cause,
+  ),
+}
+
+// sha256_hex_of_text, re-homed the same way when std.content_hash declared it and its
+// sha256_hex_of_text_contract retired (work n, output_size 64, Proven, carrier-insensitive). The one
+// running realization (the interpreter's RustCrypto arm, gunbc.host_crypto_digest_seed_growth) encodes
+// the text as UTF-8 and compresses one 64-octet block per 64 octets, so the work is linear in the
+// text's length; a scalar is at most four octets, so the axis is the text's length. The output is a
+// constant 64 digits, which this bound does not carry.
+data primitive_sha256_hex_of_text_cost: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_sha256_hex_of_text,
+  cost: linear_support_scan_cost(
+    profile: FreeMonoidScalarProfile,
+    coarse: ShapeLinearScan,
+    unavailable: carrier_support_axis_no_longer_finite_cause,
+  ),
+}
+
 // THE ROSTER THIS CARRIER NEVER HAD, AND WHAT IT IS NOT. Its sibling `PrimitiveTraversalOrderFact`
 // is gathered by `primitive_d0_traversal_facts`; these five rows were free-floating `data`
 // declarations that no fold reached, which is the DESIGN section 3c dangling state -- well-modeled
@@ -900,7 +989,72 @@ data primitive_d0_cost_facts: List<PrimitiveCostFact> = [
   primitive_map_values_cost,
   primitive_fold_list_cost,
   primitive_index_by_cost,
+  primitive_list_push_cost,
+  primitive_chars_cost,
+  primitive_sha256_hex_of_text_cost,
 ]
+
+// THE DECLARATION-KEYED READ. A cost question is asked of a declaration, and the declaration
+// reaches its primitive only through std.primitive_projection. A declaration that only shares a
+// primitive's spelling is not in that roster, so it is never priced by the primitive's row. Every
+// arm is a distinct fact: the declaration is no primitive projection; it projects a primitive with
+// no cost row; it projects a primitive with more than one row; or it has exactly one row.
+// A PROJECTION IS NOT TRUSTED FOR ITS IDENTITY. The projection roster can name a primitive the
+// declared population does not carry (list_push did, until it was declared), and the projection
+// validator refuses that row as ProjectionNamesUnknownPrimitive. A cost read through the same row
+// would key on an identity the primitive authority rejects, so the lookup asks the declared
+// population first and refuses with its own arm rather than pricing an undeclared primitive.
+type DeclarationModeledCost
+  = DeclarationCostModeled { primitive: PrimitiveIdentity, cost: PrimitiveModeledCost }
+  | DeclarationProjectsNoCostedPrimitive { declaration: DeclarationRef }
+  | DeclarationProjectsUndeclaredPrimitive { declaration: DeclarationRef, primitive: PrimitiveIdentity }
+  | DeclarationPrimitiveCostUnmodeled { primitive: PrimitiveIdentity }
+  | DeclarationPrimitiveCostDuplicated { primitive: PrimitiveIdentity, count: Int }
+
+// The fold sees only how many rows matched, so its accumulator has exactly those three states and
+// no arm of the answer type that a fold step could never produce.
+type PrimitiveCostRowsMatched
+  = NoCostRowMatched
+  | OneCostRowMatched { cost: PrimitiveModeledCost }
+  | CostRowsMatched { count: Int }
+
+fn primitive_cost_rows_matching(facts: List<PrimitiveCostFact>, primitive: PrimitiveIdentity) -> PrimitiveCostRowsMatched {
+  facts |> fold(init: NoCostRowMatched, f: fn(acc, fact) {
+    if primitive_identity_eq(left: fact.primitive, right: primitive) {
+      match acc {
+        NoCostRowMatched => OneCostRowMatched { cost: fact.cost }
+        OneCostRowMatched { cost: _ } => CostRowsMatched { count: 2 }
+        CostRowsMatched { count: n } => CostRowsMatched { count: n + 1 }
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn primitive_modeled_cost_in(
+  facts: List<PrimitiveCostFact>,
+  definitions: List<PrimitiveDefinition>,
+  declaration: DeclarationRef,
+) -> DeclarationModeledCost {
+  match primitive_projection_row_for_declaration(declaration: declaration) {
+    Absent => DeclarationProjectsNoCostedPrimitive { declaration: declaration }
+    Present { value: row } =>
+      if primitive_identity_is_declared_in(definitions: definitions, identity: row.primitive) {
+        match primitive_cost_rows_matching(facts: facts, primitive: row.primitive) {
+          NoCostRowMatched => DeclarationPrimitiveCostUnmodeled { primitive: row.primitive }
+          OneCostRowMatched { cost: c } => DeclarationCostModeled { primitive: row.primitive, cost: c }
+          CostRowsMatched { count: n } => DeclarationPrimitiveCostDuplicated { primitive: row.primitive, count: n }
+        }
+      } else {
+        DeclarationProjectsUndeclaredPrimitive { declaration: declaration, primitive: row.primitive }
+      }
+  }
+}
+
+fn primitive_modeled_cost_for_declaration(declaration: DeclarationRef) -> DeclarationModeledCost {
+  primitive_modeled_cost_in(facts: primitive_d0_cost_facts, definitions: primitive_declared_definitions(), declaration: declaration)
+}
 
 fn primitive_surface_missing_identity_violation(row: PrimitiveSurfaceRow) -> PrimitiveJoinViolation? {
   match row.primitive {
@@ -1096,7 +1250,6 @@ data primitive_projection_target_canonical_names: List<String> = [
   "empty_map",
   "decl_facts",
   "decl_facts_at",
-  "type_declarer_qualified_names",
   "export_signature_facts",
   "data_decl_type_facts",
   "concept_decl_facts",
@@ -1110,18 +1263,44 @@ data primitive_projection_target_canonical_names: List<String> = [
   "pure_dag_seam_unreachable",
   "to_string",
   "string_contains",
+  "chars",
+  "machine_word_native_operate",
+  "sha256_hex_of_text",
+  "compile_dag_diagnostic_census",
+]
+
+// list_push IS DECLARED HERE, AND GROUNDED, because its projection row and its cost row both key on
+// it. std.primitive_projection maps std.algebra list_push to primitive_list_push, and
+// primitive_modeled_cost_for_declaration reaches primitive_list_push_cost through that row, so an
+// undeclared identity made the projection ProjectionNamesUnknownPrimitive and the cost route keyed
+// through a row the projection validator refuses. It is not a canonical-name-only row: std.algebra
+// free_monoid_collection_templates carries exactly one list_push template, so the signature is
+// projected from that profile rather than minted ungrounded.
+data primitive_list_push_definition: PrimitiveDefinition = PrimitiveDefinition {
+  identity: primitive_list_push,
+  semantic_contract: PrimitiveSemanticContract {
+    canonical_name: "list_push" as NonEmptyStr,
+    signature: GroundedInAlgebraTemplate { profile: FreeMonoidCollectionProfile },
+  },
+}
+
+data primitive_projection_target_grounded_definitions: List<PrimitiveDefinition> = [
+  primitive_list_push_definition,
 ]
 
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {
   concat(
-    primitive_d0_definitions,
+    concat(primitive_d0_definitions, primitive_projection_target_grounded_definitions),
     primitive_projection_target_canonical_names |> map(name => primitive_definition_of(name: name))
   )
 }
 
+fn primitive_identity_is_declared_in(definitions: List<PrimitiveDefinition>, identity: PrimitiveIdentity) -> Bool {
+  definitions |> any(fn(d) { primitive_identity_eq(left: d.identity, right: identity) })
+}
+
 fn primitive_identity_is_declared(identity: PrimitiveIdentity) -> Bool {
-  primitive_declared_definitions()
-    |> any(fn(d) { primitive_identity_eq(left: d.identity, right: identity) })
+  primitive_identity_is_declared_in(definitions: primitive_declared_definitions(), identity: identity)
 }
 
 data primitive_projection_query_note: String = "The question a candidate collector asks, and it is TOTAL: every DeclarationRef gets an answer. Absence and divergence are different states at the consumer, which is the distinction a boolean suppress flag could not carry.
@@ -1402,12 +1581,10 @@ data primitive_empty_map_traversal: PrimitiveTraversalOrderFact = PrimitiveTrave
 // The parse-only reflection primitives are CanonicalOrder by EXECUTED READING of their
 // realizations, not by their names. decl_facts routes through coproduct_reflection
 // decl_facts_corpus_walk, whose final step sorts every fact by (rel_path, name, kind_ord) before
-// returning. decl_facts_at is that same census filtered on qualified_name with the surviving rows
-// left in place, so it inherits the order rather than choosing one -- a filter cannot reorder what
-// it does not rebuild. type_declarer_qualified_names is the same reading one key over: it filters
-// that identical census on bare name and TypeItem kind and projects each surviving row's qualified
-// name, so it inherits the order for the same reason and for no separate one -- it rebuilds
-// nothing, and it marshals no declaration nodes at all. export_signature_facts derives from
+// returning. decl_facts_at is that same census filtered on key membership (a qualified name in its
+// qualified-name set, or a TypeItem whose bare name is in its type-name set) with the surviving
+// rows left in place, so it inherits the order rather than choosing one -- a filter cannot reorder
+// what it does not rebuild. export_signature_facts derives from
 // decl_facts_for_roots and preserves that order.
 // concept_decl_facts and data_decl_type_facts route through decls_parse_only_fail_closed, which
 // sorts its module list (decls_parse_only_from_disk) or its inventory entries by source path
@@ -1419,8 +1596,6 @@ data primitive_empty_map_traversal: PrimitiveTraversalOrderFact = PrimitiveTrave
 data primitive_decl_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_decl_facts, order: CanonicalOrder }
 
 data primitive_decl_facts_at_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_decl_facts_at, order: CanonicalOrder }
-
-data primitive_type_declarer_qualified_names_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_type_declarer_qualified_names, order: CanonicalOrder }
 
 data primitive_export_signature_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_export_signature_facts, order: CanonicalOrder }
 
@@ -1471,6 +1646,41 @@ data primitive_pure_dag_seam_unreachable_traversal: PrimitiveTraversalOrderFact 
 // is a scalar whose rendering consults no order. String interpolation lowers to the same Display
 // and is syntax, not a primitive call, so this row covers it only through that shared realization.
 data primitive_to_string_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_to_string, order: CanonicalOrder }
+// FOUR DECLARED PRIMITIVES HAD NO TRAVERSAL FACT, and three were already on main. string_contains
+// (#13871), chars (#14233) and machine_word_native_operate (#14334) were each declared without one,
+// and list_push was about to be the fourth, so determinism_denominator_is_closed_on_declared_primitives
+// was red and the gate refused every tree it read. They are closed together because the obligation
+// belongs to declaring a primitive, not to whichever PR noticed it. string_contains and
+// machine_word_native_operate return a scalar computed from their arguments, with no collection
+// walked, so OrderFreeResult. chars yields the text's scalars in text order, and list_push yields xs
+// followed by item, so each result's order is its input's order: SourcePreservingOrder.
+data primitive_string_contains_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_string_contains, order: OrderFreeResult }
+
+data primitive_machine_word_native_operate_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_machine_word_native_operate, order: OrderFreeResult }
+
+data primitive_chars_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_chars, order: SourcePreservingOrder }
+
+data primitive_list_push_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_list_push, order: SourcePreservingOrder }
+
+// sha256_hex_of_text digests its text's octets in text order (the digest of a reordering is a
+// different digest), and walks no collection whose iteration order is unspecified, so its scalar
+// result consults no order a realization could choose: OrderFreeResult, as for string_contains.
+data primitive_sha256_hex_of_text_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_sha256_hex_of_text, order: OrderFreeResult }
+
+// compile_dag_diagnostic_census reports its rows in the order the COMPILE produced its
+// diagnostics, and says so. The seed's realization (cli_run.rs compile_diagnostic_census_rows)
+// walks the compiled diagnostics vector front to back, pushing a key to `order` the FIRST time it
+// is seen and counting repeats in a side map it only ever queries by key -- the map is never
+// iterated for the result, so no hash order enters the row list, and nothing is sorted. The result
+// is therefore the input's own order, which is SourcePreservingOrder: the same reading
+// concept_decl_facts_live and data_init_decl_facts_live carry for the same shape of walk. NOT
+// CanonicalOrder -- a claim that rows come out sorted by (class, subject_name) would be a fact
+// about a sort the realization does not perform -- and not OrderFreeResult, which would claim the
+// order is never consulted, while claim rows compare positions against each other. Naming this is
+// what makes the claim module's position comparisons (the one-mislabel probe reads rows[0] and
+// rows[1] by class) a stable observation rather than a coin flip between runs.
+data primitive_compile_dag_diagnostic_census_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_compile_dag_diagnostic_census, order: SourcePreservingOrder }
+
 data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
@@ -1480,7 +1690,6 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_empty_map_traversal,
   primitive_decl_facts_traversal,
   primitive_decl_facts_at_traversal,
-  primitive_type_declarer_qualified_names_traversal,
   primitive_export_signature_facts_traversal,
   primitive_data_decl_type_facts_traversal,
   primitive_concept_decl_facts_traversal,
@@ -1493,6 +1702,12 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_octets_bytes_traversal,
   primitive_pure_dag_seam_unreachable_traversal,
   primitive_to_string_traversal,
+  primitive_string_contains_traversal,
+  primitive_machine_word_native_operate_traversal,
+  primitive_chars_traversal,
+  primitive_list_push_traversal,
+  primitive_sha256_hex_of_text_traversal,
+  primitive_compile_dag_diagnostic_census_traversal,
 ]
 
 fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {

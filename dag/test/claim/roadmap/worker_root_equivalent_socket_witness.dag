@@ -1,0 +1,75 @@
+module test.claim.roadmap.worker_root_equivalent_socket_witness
+
+import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
+import std.types { Bool, String, List, NonEmptyStr }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused,
+  systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused,
+}
+import gunbc.compute.unit_bounds {
+  compute_grant_unit_properties, gunbc_user_work_transient_command,
+  worker_root_equivalent_socket_paths,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  dispatch_worker_unit_properties, dispatch_review_unit_properties,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
+import std.measure { kibibyte }
+
+// WORKER-ROOT-EQUIVALENT-1, INTERIM RUNG (gunbc.rung_drop.worker_root_equivalent_socket_denylist).
+// These are MEMBERSHIP claims over the rendered properties: InaccessiblePaths= is a mount-namespace
+// property and binds only where PID 1 builds the namespace (the system-manager launcher), not in the
+// srv1 user manager. Enforcement is qualified live by bright-moth-475 from inside a worker unit.
+fn assignment_words(props: List<SystemdRunProperty>) -> List<String> {
+  props |> map(p =>
+    match systemd_run_property_assignment(property: p) {
+      SystemdRunPropertyAssignmentReady { assignment: a } => a
+      SystemdRunPropertyAssignmentRefused { cause: _ } => ""
+    }
+  )
+}
+
+fn denies_every_socket(props: List<SystemdRunProperty>) -> Bool {
+  worker_root_equivalent_socket_paths.length() > 0
+    && all(worker_root_equivalent_socket_paths, sock =>
+      any(assignment_words(props: props), w => string_contains(s: w, pattern: "InaccessiblePaths=") && string_contains(s: w, pattern: sock)))
+}
+
+fn exit_hook() -> NonEmptyStr { "mkdir -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr }
+
+// CLAIM 1 and 2: every unit kind that runs worker or candidate code. Worker, reviewer/auditor/
+// supervisor (dispatch_review_unit_properties) and verification compute units share the two folds.
+test fn the_worker_unit_denies_the_docker_and_lxd_sockets() -> Bool {
+  let inst = srv2_deploy_dashboard_instance()
+  denies_every_socket(props: dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: exit_hook()))
+}
+
+test fn the_review_audit_and_supervisor_units_deny_the_sockets() -> Bool {
+  let inst = srv2_deploy_dashboard_instance()
+  denies_every_socket(props: dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: exit_hook()))
+}
+
+test fn the_verification_compute_unit_denies_the_sockets() -> Bool {
+  denies_every_socket(props: compute_grant_unit_properties(granted: kibibyte(count: 1024), working_directory: "/wt", process_bounds: none))
+}
+
+// CLAIM 3 (control): the denial removes socket paths only; the worker keeps its writable set.
+test fn the_worker_keeps_its_worktree_scratch_and_git_carve_outs() -> Bool {
+  let inst = srv2_deploy_dashboard_instance()
+  let words = assignment_words(props: dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: exit_hook()))
+  any(words, w => string_contains(s: w, pattern: "ReadWritePaths=/wt /wt"))
+    && any(words, w => string_contains(s: w, pattern: "ReadOnlyPaths=/wt/.git"))
+    && !any(words, w => string_contains(s: w, pattern: "InaccessiblePaths=") && (string_contains(s: w, pattern: "/wt") || string_contains(s: w, pattern: "/.git")))
+}
+
+// CLAIM 4 (inhabitance): the real systemd-run argv the launcher renders carries the denial.
+test fn the_rendered_systemd_run_argv_carries_the_socket_denial() -> Bool {
+  let inst = srv2_deploy_dashboard_instance()
+  let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: exit_hook())
+  match gunbc_user_work_transient_command(unit: "gunbc-attempt-t.service" as NonEmptyStr, properties: props, setenv_bindings: [], command_argv: ["true"]) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command } =>
+      any(argv_words(command: command), w => string_contains(s: w, pattern: "InaccessiblePaths=") && string_contains(s: w, pattern: "/var/run/docker.sock") && string_contains(s: w, pattern: "unix.socket"))
+  }
+}

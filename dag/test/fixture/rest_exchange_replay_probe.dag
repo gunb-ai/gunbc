@@ -6,6 +6,7 @@ import extdeps.github.workflow_runs { WorkflowRunList }
 import extdeps.cloud.gcp.gcp { WifProviderWire, WifProviderListWire, WifPoolWire }
 import extdeps.transports.rest { RestResult }
 import extdeps.cloud.packet_ai { PacketAiStorefrontProduct, PacketAiStorefrontProducts }
+import extdeps.cloud.vast_ai { VastAiOffer, VastAiOffers }
 
 type WireFileShape {
   encoding: String
@@ -126,6 +127,13 @@ service test.RestReplay {
     readonly
     transport rest { method: GET, path: "/answer" }
     response { 200 => WifPoolWire }
+  }
+
+  operation VastOffersPage {
+    output { offers: List<VastAiOffer> from "offers" }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+    response { 200 => VastAiOffers }
   }
 
   operation VerifiedFlag {

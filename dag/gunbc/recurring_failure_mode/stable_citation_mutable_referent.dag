@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.stable_citation_mutable_referent
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data stable_citation_mutable_referent: RecurringFailureMode = RecurringFailureMode {
   identity: "stable_citation_mutable_referent" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**stable citation, mutable referent** (an identifier that names a thing correctly and forever, while the CONTENT served for it is replaced underneath.",

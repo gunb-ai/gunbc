@@ -9,8 +9,9 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.env_binding { EnvBinding, EnvSet }
 import extdeps.tools.mosquitto_pub {
-  mosquitto_pub_options_file_name, mosquitto_pub_options_dir_env,
+  mosquitto_pub_options_file_name,
 }
+import extdeps.freedesktop.xdg_base_directory { xdg_config_home_env }
 
 // THE SECOND CREDENTIAL BINDING ON THIS FLEET, AND IT IS A SIBLING OF THE NETRC ONE RATHER THAN A
 // COPY OF IT.
@@ -49,7 +50,7 @@ type MosquittoOptionsBinding sole_constructor {
 // dereferences to a credential into a value a diagnostic could render. What leaves here is the one
 // thing the transport actually needs.
 fn mosquitto_options_env(binding: MosquittoOptionsBinding) -> List<EnvBinding> {
-  [EnvSet { name: mosquitto_pub_options_dir_env as String, value: binding.dir as String }]
+  [EnvSet { name: xdg_config_home_env as String, value: binding.dir as String }]
 }
 
 // THE FILE'S CONTENT IS THE TOOL'S OWN OPTION SYNTAX, ONE PER LINE, and the account name sits beside

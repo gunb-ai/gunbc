@@ -1,0 +1,157 @@
+module gunbc.runner.runner_revision_job_launch
+
+import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
+import std.optional { Present, Absent }
+import std.measure { ByteSize, Mebibyte, mebibyte, mebibyte_count, byte_size_count, gibibyte_to_byte_size, mebibyte_to_byte_size, HardwareThreadCount, hardware_thread_count_value }
+import product.fabric.work { Work }
+import gunbc.fabric.fabric_required_build_cell { RequiredBuildCellSnapshot }
+import gunbc.runner.runner_microvm_attempt { MicroVmAttempt, runner_microvm_attempt_jail_base, runner_microvm_attempt_slice_property }
+import gunbc.runner.runner_microvm { gunbc_runner_microvm_declared_realization_allowance, jit_drive_newline_sector, jit_drive_utf8_size }
+import gunbc.runner.runner_microvm_network { runner_slot_network }
+import gunbc.runner.runner_attempt_launch {
+  LaunchWithdrawn, AttemptGround, GroundClear, GroundOccupied, AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedPriorResources,
+  LaunchRefusedUnauthorized, LaunchAuthorizedByCellGrant, CellGrantAuthorization, CellGrantAuthorizes,
+  ClaimSetLaunchPayload, BootstrapDeviceStaging, StagedInputDrive, cell_grant_agreement,
+  attempt_jail_chroot_root, jail_kernel_path, jail_rootfs_path, jail_workspace_path, jail_config_path,
+  attempt_unprivileged_uid, attempt_unprivileged_gid, host_busybox_bin, bounded_jailer_command,
+}
+import gunbc.runner.runner_revision_job_stage { RevisionJobStaged }
+import gunbc.runner.runner_revision_job_guest { revision_job_guest_memory }
+import extdeps.virtualization.firecracker {
+  FirecrackerVmConfig, FirecrackerBootSource, FirecrackerDrive, FirecrackerMachineConfig,
+  firecracker_requires_kvm_device, firecracker_block_sector_size,
+  firecracker_vcpu_count_admission, firecracker_vcpu_range_v1_16_1, VcpuCountAdmitted, VcpuCountUnsupported,
+}
+import extdeps.tools.gnu_coreutils { cp_command, install_empty_file_command, install_file_owned_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.busybox { busybox_dd_sparse_image_command }
+import extdeps.tools.e2fsprogs { mke2fs_format_command, Ext2 }
+import extdeps.systemd { MemoryMax, MemorySwapMax, CPUQuota }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting }
+
+// THE REVISION JOB'S LAUNCH: A CELL-GRANTED VM WITH NO NETWORK AND EVERY INPUT ON A DRIVE.
+//
+// Authorization is the cell-grant arm (gunbc.runner.runner_attempt_launch cell_grant_agreement over the
+// snapshot whose holder the controller re-derived): a revision job runs only on a cell its grant
+// holds. The guest has no network interface at all -- the slot's tap exists and is the slot's, but
+// this config attaches none -- so the job's result can depend only on what is staged here. The
+// drives, in the order the guest unit names them (gunbc.runner.runner_revision_job_guest):
+//   vda  the image rootfs, read-only (the guest writes only /work and the results drive);
+//   vdb  the job spec, read-only: the staged environment file, padded to whole sectors;
+//   vdc  the tree archive, read-only;   vdd  the vendor archive, read-only;
+//   vde  the results drive, read-write, raw (never mounted by the host);
+//   vdf  a fresh, empty ext2 work disk, read-write, mounted at /work by the image.
+// Memory: the claims run under the envelope the guest module derives from the CI slot's row (revision_job_claim_envelope, which
+// the guest unit also sets as its own MemoryMax=), the VM's RAM is that plus the guest-OS allowance,
+// and the jailer unit's MemoryMax= is the VM's RAM plus the realization allowance, swap 0.
+
+// DECLARED FRONTIER (DESIGN 3c): consumed by the revision-job entry (gunbc.runner.runner_revision_job_main,
+// S4b-3b), which runs one job from spec to published receipt. TRIGGER: S4b-3b's stand-in inhabitance
+// claim, the light discriminating claim set run end to end over these staged inputs.
+
+data revision_job_work_disk: Mebibyte = mebibyte(count: 49152)
+data revision_job_spec_jail_path: FilePath = "/spec.env"
+data revision_job_tree_jail_path: FilePath = "/tree.tar"
+data revision_job_vendor_jail_path: FilePath = "/vendor.tar"
+data revision_job_results_jail_path: FilePath = "/results.bin"
+
+type RevisionJobGuestImage {
+  kernel: String
+  rootfs: String
+}
+
+
+fn revision_job_vm_config(vcpus: HardwareThreadCount) -> FirecrackerVmConfig {
+  FirecrackerVmConfig {
+    boot_source: FirecrackerBootSource {
+      kernel_image_path: jail_kernel_path,
+      boot_args: "keep_bootcon console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda ro" as NonEmptyStr,
+    },
+    drives: [
+      FirecrackerDrive { drive_id: "revision-job-root", path_on_host: jail_rootfs_path, is_root_device: true, is_read_only: true },
+      FirecrackerDrive { drive_id: "revision-job-spec", path_on_host: revision_job_spec_jail_path, is_root_device: false, is_read_only: true },
+      FirecrackerDrive { drive_id: "revision-job-tree", path_on_host: revision_job_tree_jail_path, is_root_device: false, is_read_only: true },
+      FirecrackerDrive { drive_id: "revision-job-vendor", path_on_host: revision_job_vendor_jail_path, is_root_device: false, is_read_only: true },
+      FirecrackerDrive { drive_id: "revision-job-results", path_on_host: revision_job_results_jail_path, is_root_device: false, is_read_only: false },
+      FirecrackerDrive { drive_id: "revision-job-work", path_on_host: jail_workspace_path, is_root_device: false, is_read_only: false },
+    ],
+    network_interfaces: [],
+    machine_config: FirecrackerMachineConfig { vcpu_count: hardware_thread_count_value(t: vcpus), mem_size_mib: mebibyte_count(m: revision_job_guest_memory()) },
+  }
+}
+
+// The jailer unit'"'"'s MemoryMax=: the VM'"'"'s RAM plus the realization allowance. One function, read by the
+// plan and claimed against the slot row, so the property the plan emits is the one claimed.
+fn revision_job_jailer_memory_property() -> SystemdRunProperty {
+  NamedUnitSetting { property: MemoryMax, value: to_string(byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory())) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))) as NonEmptyStr }
+}
+
+fn revision_job_launch_plan(
+  snapshot: RequiredBuildCellSnapshot,
+  work: Work<NonEmptyStr>,
+  attempt: MicroVmAttempt,
+  allocation_generation: Int,
+  staged: RevisionJobStaged,
+  image: RevisionJobGuestImage,
+  vcpus: HardwareThreadCount,
+  ground: AttemptGround,
+  jailer_binary: String,
+  firecracker_binary: String,
+) -> AttemptLaunchPlan {
+  let authorization = cell_grant_agreement(
+    granted_work: snapshot.work, granted_cell: snapshot.cell, granted_generation: snapshot.generation,
+    holder: snapshot.holder, work: work, attempt: attempt, allocation_generation: allocation_generation,
+  )
+  match authorization {
+    CellGrantAuthorizes { grant: grant } => match firecracker_vcpu_count_admission(range: firecracker_vcpu_range_v1_16_1, count: vcpus) {
+    VcpuCountUnsupported { requested: _, minimum: _, maximum: _ } => LaunchWithdrawn { reason: "the requested vCPU count is outside the Firecracker release's admitted range" }
+    VcpuCountAdmitted { count: admitted } => match ground {
+      GroundOccupied => LaunchRefusedPriorResources
+      GroundClear => {
+        let jail_root = attempt_jail_chroot_root(attempt: attempt, firecracker_binary: firecracker_binary)
+        let work_disk = concat(jail_root, jail_workspace_path as String)
+        let spec = concat(jail_root, revision_job_spec_jail_path as String)
+        LaunchAuthorized {
+          authorization: LaunchAuthorizedByCellGrant { authorization: authorization },
+          payload: ClaimSetLaunchPayload { grant: (grant as String) as NonEmptyStr, device: BootstrapDeviceStaging {
+            host_path: spec,
+            create: install_empty_file_command(path: spec, octal_mode: "0400", uid: attempt_unprivileged_uid, gid: attempt_unprivileged_gid),
+            content: staged.spec_text,
+          } },
+          workspace_grant: mebibyte_to_byte_size(m: revision_job_work_disk),
+          lease_expires_unix: none,
+          runtime_properties: [
+            revision_job_jailer_memory_property(),
+            NamedUnitSetting { property: MemorySwapMax, value: "0" },
+            NamedUnitSetting { property: CPUQuota, value: concat(to_string(hardware_thread_count_value(t: admitted) * 100), "%") as NonEmptyStr },
+          ],
+          tap_device: runner_slot_network(slot: attempt.slot).tap_device,
+          guest_ip_boot_arg: "",
+          slice: runner_microvm_attempt_slice_property(attempt: attempt),
+          jail_root: jail_root,
+          stage_jail_root: mkdir_parents_command(path: jail_root),
+          stage_kernel: cp_command(source: image.kernel, destination: concat(jail_root, jail_kernel_path as String)),
+          stage_rootfs: cp_command(source: image.rootfs, destination: concat(jail_root, jail_rootfs_path as String)),
+          input_drives: [
+            StagedInputDrive { stage: install_file_owned_command(source: staged.tree_archive, destination: concat(jail_root, revision_job_tree_jail_path as String), mode: "0400", uid: attempt_unprivileged_uid, gid: attempt_unprivileged_gid), jail_path: revision_job_tree_jail_path as String },
+            StagedInputDrive { stage: install_file_owned_command(source: staged.vendor_archive, destination: concat(jail_root, revision_job_vendor_jail_path as String), mode: "0400", uid: attempt_unprivileged_uid, gid: attempt_unprivileged_gid), jail_path: revision_job_vendor_jail_path as String },
+            StagedInputDrive { stage: install_file_owned_command(source: staged.results_drive, destination: concat(jail_root, revision_job_results_jail_path as String), mode: "0600", uid: attempt_unprivileged_uid, gid: attempt_unprivileged_gid), jail_path: revision_job_results_jail_path as String },
+          ],
+          workspace_path: work_disk,
+          workspace_create: busybox_dd_sparse_image_command(busybox_bin: host_busybox_bin, image_path: work_disk, size: revision_job_work_disk),
+          workspace_format: mke2fs_format_command(fs: Ext2, image_path: work_disk),
+          kvm_device: firecracker_requires_kvm_device,
+          vm_config: revision_job_vm_config(vcpus: admitted),
+          jailer: bounded_jailer_command(
+            jailer_binary: jailer_binary,
+            jailer_id: attempt.attempt_id.value as String,
+            exec_file: firecracker_binary,
+            chroot_base_dir: runner_microvm_attempt_jail_base(attempt: attempt),
+          ),
+        }
+      }
+    }
+    }
+    refused => LaunchRefusedUnauthorized { authorization: LaunchAuthorizedByCellGrant { authorization: refused } }
+  }
+}

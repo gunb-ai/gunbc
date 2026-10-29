@@ -1,12 +1,13 @@
 module std.integer
 import std.optional { Absent, Present }
 
-import std.algebra { AbelianGroup, GroupCompletion }
+import std.algebra { GroupCompletion, OrderedRing, TotalOrder, Ordering, Less, Equal, Greater, collection_concat_shape }
+import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
 import std.nat { Nat, DecimalDigit, D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, decimal_digit_value, decimal_digit_glyph, decimal_digit_successor, DecimalDigitNext, DecimalDigitCarry }
 import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 import std.measure { bit_width, bit_width_count, bits_per_byte }
 import std.induction { int_pow_bounded }
-import std.types { gt_zero, List, String }
+import std.types { Bool, gt_zero, List, String }
 
 type Int8 = Compose<Int, MachineWidth<8>>
 type Int16 = Compose<Int, MachineWidth<16>>
@@ -20,7 +21,24 @@ type UInt32 = Compose<UInt, MachineWidth<32>>
 type UInt64 = Compose<UInt, MachineWidth<64>>
 type UInt128 = Compose<UInt, MachineWidth<128>>
 
-type Int = AbelianGroup<GroupCompletion<Nat>>
+// THE ONE LANGUAGE-FACING INTEGER, AS A CANONICAL STRUCTURAL CARRIER (operator ruling 2026-10-19, the
+// kernel-type layer rule). NonNegative { n } denotes n and Negative { pred } denotes -(pred + 1): one zero, and
+// the negative arm cannot spell a second one, so given admitted naturals every integer has exactly one
+// constructor value and STRUCTURAL equality -- the tag and its Nat payload, not pointer or provenance
+// equality -- is integer equality. The integer is a VALUE, not the structures over it: its algebra is
+// int_ordered_ring below, a value over Int, and GroupCompletion<Nat> is a construction that normalizes
+// onto it (int_of_group_completion). Its host realization is the machine integer, by the signed
+// KernelGrounding row in gunbc.structural_realization_bindings, which folds both constructors and their
+// patterns into kernel integers; where the machine integer cannot compute a value exactly the
+// realization refuses rather than wrapping. The previous body, AbelianGroup<GroupCompletion<Nat>>, was a
+// record of operations standing where the value belonged.
+//
+// v2.std.integer still declares its own Int (GroupCompletion<Nat>); it is frozen -- nothing new may consume
+// it -- until the declared-name rehoming migration repoints its importers and deletes it. This delivery
+// does not complete that de-fork.
+type Int
+  = NonNegative { n: Nat }
+  | Negative { pred: Nat }
 type UInt = Nat
 
 // THE OCTET CONSTRUCTOR LIVES WITH THE OCTET'S TYPE, AND THE OCTET'S TYPE IS UInt8.
@@ -228,7 +246,7 @@ type NonNegativeInt = Nat
 type PositiveInt    = Nat where gt_zero
 
 fn uint8_channel_bit_width_int() -> Int {
-  bit_width_count(b: bit_width(count: bits_per_byte()))
+  NonNegative { n: bit_width_count(b: bit_width(count: bits_per_byte())) }
 }
 
 fn uint8_channel_inclusive_max_value_derived() -> Int? {
@@ -293,5 +311,111 @@ fn int_digits_to_decimal_string(value: Int) -> String {
     digit
   } else {
     concat(int_digits_to_decimal_string(value: rest), digit)
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ALGEBRA OVER Int: values over the carrier, not the carrier. Each operation is an explicit host
+// terminal on the grounded kernel integer -- `+`, `-`, `*`, `/` and `<` on Int realize as the host operator
+// for a carrier declared in a numeric-realization module (v1.compiler.coercion
+// numeric_realization_declaring_modules), never by reading int_ordered_ring back -- so the record cannot
+// form the cycle int_add -> + -> int_ordered_ring.add -> int_add. The record states which operations the
+// ring IS made of; it is not by itself evidence that the machine operations satisfy the ring laws for every
+// integer: they do so exactly where the realization admits them, and overflow refuses (the realization's
+// boundary, gunbc.structural_realization_bindings).
+// ---------------------------------------------------------------------------------------------
+
+fn int_add(a: Int, b: Int) -> Int {
+  a + b
+}
+
+fn int_negate(a: Int) -> Int {
+  0 - a
+}
+
+// DIRECT, NOT a + (-b): on the overflow-refusing realization, negating the most negative machine integer
+// refuses before any addition, so MIN - MIN and -1 - MIN -- whose answers 0 and MAX are representable --
+// would refuse. Subtraction is its own refusing operation and refuses only where its answer is not.
+fn int_sub(a: Int, b: Int) -> Int {
+  a - b
+}
+
+fn int_mul(a: Int, b: Int) -> Int {
+  a * b
+}
+
+fn int_div_result(a: Int, b: Int) -> Result<Int, DivError> {
+  if b == 0 {
+    Err { value: DivideByZero }
+  } else {
+    Ok { value: a / b }
+  }
+}
+
+// INTEGER ORDER IS AN OPERATION, NOT THE CONSTRUCTORS' ORDER: Negative { pred: 2 } < Negative { pred: 1 } <
+// NonNegative { n: 0 } (-3 < -2 < 0) by the values they denote, whatever order the arms are declared in.
+fn int_compare(a: Int, b: Int) -> Ordering {
+  if a < b {
+    Less
+  } else {
+    if a == b {
+      Equal
+    } else {
+      Greater
+    }
+  }
+}
+
+fn int_eq(a: Int, b: Int) -> Bool {
+  match int_compare(a: a, b: b) {
+    Less => false
+    Equal => true
+    Greater => false
+  }
+}
+
+fn int_ne(a: Int, b: Int) -> Bool {
+  match int_compare(a: a, b: b) {
+    Less => true
+    Equal => false
+    Greater => true
+  }
+}
+
+data int_ordered_ring: OrderedRing<Int> = OrderedRing {
+  add: int_add,
+  sub: int_sub,
+  zero: 0,
+  negate: int_negate,
+  mul: int_mul,
+  div: int_div_result,
+  one: 1,
+  order: TotalOrder { compare: int_compare },
+  eq: int_eq,
+  ne: int_ne
+}
+
+// ---------------------------------------------------------------------------------------------
+// GroupCompletion<Nat> AS A CONSTRUCTION OF THE INTEGERS: a pair (pos, neg) denotes pos - neg, so many pairs
+// denote one integer. The two mappings are NOT raw inverses: f(g(i)) = i, and g(f(pair)) = normalize(pair) --
+// (2, 0) and (4, 2) both map to NonNegative { n: 2 }, and g gives the canonical pair back. A negative value's
+// pair needs neg = pred + 1, so on the machine integer the most negative Int has no Nat to carry its pair and
+// g refuses there (overflow-refusing arithmetic) rather than produce a wrong pair.
+// ---------------------------------------------------------------------------------------------
+
+// Each difference re-enters the naturals inside the branch that has established it is not negative,
+// under std.nat nat_sub's discipline: pos - neg where pos >= neg, and neg - pos - 1 where neg > pos.
+fn int_of_group_completion(g: GroupCompletion<Nat>) -> Int {
+  if g.pos >= g.neg {
+    NonNegative { n: g.pos - g.neg }
+  } else {
+    Negative { pred: g.neg - g.pos - 1 }
+  }
+}
+
+fn group_completion_of_int(i: Int) -> GroupCompletion<Nat> {
+  match i {
+    NonNegative { n: n } => GroupCompletion { pos: n, neg: 0 }
+    Negative { pred: p } => GroupCompletion { pos: 0, neg: p + 1 }
   }
 }

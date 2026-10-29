@@ -1,0 +1,193 @@
+module test.claim.roadmap.session_activation_ensure_wet_witness
+
+import extdeps.shell
+import std.types { Bool, String, List, NonEmptyStr, EpochSecs }
+import gunbc.compute.attempt_lifecycle { AttemptRecord, UnitLifecycle, UnitStillRunning, UnitTerminatedCauseUnknown, AttemptSlotReading }
+import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable }
+import gunbc.roadmap.roadmap_session_placement {
+  SessionPlacementStores, SessionPlacementObservation, SessionPlacementAbsent, SessionPlacementForeign, SessionPlacementUnreadable, session_placement_record_write,
+}
+import gunbc.roadmap.roadmap_session_activation_ensure {
+  ActivationOutcome, ActivationNoop, ActivationRolledBack, ActivationCollected, ActivationRefused, ActivationRed,
+  ActivationPass, ActivationPassRan, ActivationPassRefused, session_activation_ensure_pass_at, session_activation_classify,
+}
+import std.upsert_decision { Noop, Apply, Refuse }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import test.claim.roadmap.session_placement_wet_witness {
+  node_a, key_a, node_b, key_b, host, unit_a, unit_b, fresh_dir, stores_at, reserve_real, ledger_still_holds, slot_a, grant_for,
+  opened_ok, launched_ok, slot_is_terminal, lifecycle_absent, lifecycle_running, release_text,
+}
+import std.measure { kibibyte }
+
+// KILL-AT-EACH-TRANSITION CONTROLS for gunbc.roadmap.roadmap_session_activation_ensure, run for real over a
+// slot store, records directory and ledger the witness creates under /tmp. The unit manager is the one injected
+// seam (a marker file stands for "the unit is loaded"), because a witness may not start a real unit.
+// EVERY ARM REMOVES ITS DIRECTORY: the verdict is computed first, the directory removed, and the removal's
+// success joins the verdict, so a leaked directory is a red, not a silent litter.
+// On the local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), with the exclusion
+// row in gunbc.ci.ci_layer_roots naming the temp-directory write.
+
+fn cleaned(dir: String, verdict: Bool) -> Bool {
+  let r = shell.Remove.RecursiveForce(path: dir)
+  verdict && r.success
+}
+
+fn marker(dir: String, unit: String) -> String { join([dir, "/reset.", unit], "") }
+
+fn reset_marked(dir: String, unit: String) -> Bool { Filesystem.Read(path: marker(dir: dir, unit: unit)).success }
+
+// the manager's view: the unit is `ended_unit` (Finished) until reset-failed has marked it, else absent;
+// every other unit is whatever `others` says.
+fn manager(dir: String, ended_unit: String, others: AttemptUnitObservation, u: NonEmptyStr) -> AttemptUnitObservation {
+  if (u as String) == ended_unit {
+    if reset_marked(dir: dir, unit: u as String) { AttemptUnitAbsent } else { AttemptUnitFinished { exit_status: "failed" } }
+  } else { others }
+}
+
+fn mark_reset(dir: String, u: NonEmptyStr) -> Bool { Filesystem.Write(path: marker(dir: dir, unit: u as String), content: "reset").success }
+
+fn is_noop(o: ActivationOutcome) -> Bool {
+  match o { ActivationNoop { unit: _, why: _ } => true  ActivationRolledBack { unit: _, detail: _ } => false  ActivationCollected { unit: _, detail: _ } => false  ActivationRefused { unit: _, reason: _ } => false  ActivationRed { unit: _, reason: _ } => false }
+}
+fn is_rolled_back(o: ActivationOutcome) -> Bool {
+  match o { ActivationNoop { unit: _, why: _ } => false  ActivationRolledBack { unit: _, detail: _ } => true  ActivationCollected { unit: _, detail: _ } => false  ActivationRefused { unit: _, reason: _ } => false  ActivationRed { unit: _, reason: _ } => false }
+}
+fn is_collected(o: ActivationOutcome) -> Bool {
+  match o { ActivationNoop { unit: _, why: _ } => false  ActivationRolledBack { unit: _, detail: _ } => false  ActivationCollected { unit: _, detail: _ } => true  ActivationRefused { unit: _, reason: _ } => false  ActivationRed { unit: _, reason: _ } => false }
+}
+fn is_refused(o: ActivationOutcome) -> Bool {
+  match o { ActivationNoop { unit: _, why: _ } => false  ActivationRolledBack { unit: _, detail: _ } => false  ActivationCollected { unit: _, detail: _ } => false  ActivationRefused { unit: _, reason: _ } => true  ActivationRed { unit: _, reason: _ } => false }
+}
+
+// THE PASS KEEPS ITS REFUSAL: only a pass that RAN is judged, so a refused pass is never read as an empty one.
+fn only(p: ActivationPass, check: fn(ActivationOutcome) -> Bool) -> Bool {
+  match p {
+    ActivationPassRan { outcomes } => outcomes.length() == 1 && all(outcomes, o => check(o))
+    ActivationPassRefused { detail: _ } => false
+  }
+}
+
+// A store the mint refuses is a refused pass, which only answers false, so no control reads it as green.
+fn pass_on(dir: String, run: fn(SessionPlacementStores) -> ActivationPass) -> ActivationPass {
+  match stores_at(dir: dir) {
+    Absent => ActivationPassRefused { detail: "the witness's session slot store could not be minted" }
+    Present { value: stores } => run(stores)
+  }
+}
+
+fn pass_with(dir: String, ended_unit: String, others: AttemptUnitObservation, lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle, now: EpochSecs) -> ActivationPass {
+  pass_on(dir: dir, run: stores => session_activation_ensure_pass_at(
+    stores: stores, host: host,
+    loaded_of: u => manager(dir: dir, ended_unit: ended_unit, others: others, u: u),
+    lifecycle_of: lifecycle_of,
+    reset_failed: u => mark_reset(dir: dir, u: u),
+    now: now))
+}
+
+// KILL 1: between the placement-record write and the unit start. Inside the launch deadline the start may be
+// in flight: Noop, seat kept. Past it, the attempt is rolled back through the record (slot closed, seat
+// returned, release recorded); a rerun is a Noop, and nothing was reset (no unit ever existed).
+test fn a_kill_between_record_write_and_unit_start_rolls_back_past_the_deadline_and_not_before() -> Bool {
+  let dir = fresh_dir(tag: "k1")
+  let rec = slot_a(opened: 1000)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let opened = opened_ok(dir: dir, rec: rec)
+  let wrote = match stores_at(dir: dir) {
+    Absent => none
+    Present { value: stores } => Present { value: session_placement_record_write(stores: stores, host: host, grant: grant_for(node_id: node_a, attempt_key: key_a, slot: rec), unit_properties: ["MemoryMax=8589934592"]) }
+  }
+  let early = only(p: pass_with(dir: dir, ended_unit: "", others: AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: rec.launch_deadline - 1), check: is_noop)
+  let early_kept = !slot_is_terminal(dir: dir)
+  let late = only(p: pass_with(dir: dir, ended_unit: "", others: AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: rec.launch_deadline + 1), check: is_rolled_back)
+  let rolled = slot_is_terminal(dir: dir) && string_contains(s: release_text(dir: dir), pattern: unit_a())
+  let rerun = only(p: pass_with(dir: dir, ended_unit: "", others: AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: rec.launch_deadline + 2), check: is_noop)
+  let verdict = charged && opened && early && early_kept && late && rolled && rerun && !reset_marked(dir: dir, unit: unit_a())
+  cleaned(dir: dir, verdict: verdict)
+}
+
+// KILL 2: after the unit started. The unit is live: every pass, however late, is a Noop -- nothing is
+// released, nothing stopped, no second unit is started (the module has no start site) -- and the seat stays.
+test fn a_kill_after_unit_start_leaves_the_live_attempt_alone() -> Bool {
+  let dir = fresh_dir(tag: "k2")
+  let rec = slot_a(opened: 1000)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let launched = launched_ok(dir: dir, rec: rec)
+  let one = only(p: pass_with(dir: dir, ended_unit: "", others: AttemptUnitActive, lifecycle_of: lifecycle_running, now: rec.launch_deadline + 99999), check: is_noop)
+  let two = only(p: pass_with(dir: dir, ended_unit: "", others: AttemptUnitActive, lifecycle_of: lifecycle_running, now: rec.launch_deadline + 99999), check: is_noop)
+  let verdict = charged && launched && one && two && !slot_is_terminal(dir: dir) && ledger_still_holds(dir: dir)
+  cleaned(dir: dir, verdict: verdict)
+}
+
+// KILL 3: after the unit exited, before collection. The unit is FAILED and still loaded (the 409
+// stale_session shape). The pass releases through the record, THEN resets exactly that unit; the readback
+// finds the unit gone and the release recorded; a rerun is a Noop.
+test fn a_failed_unit_of_an_ended_attempt_is_released_and_collected_through_its_record() -> Bool {
+  let dir = fresh_dir(tag: "k3")
+  let rec = slot_a(opened: 1000)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let launched = launched_ok(dir: dir, rec: rec)
+  let first = only(p: pass_with(dir: dir, ended_unit: unit_a(), others: AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: rec.launch_deadline - 1), check: is_collected)
+  let done = slot_is_terminal(dir: dir) && reset_marked(dir: dir, unit: unit_a())
+  let rerun = only(p: pass_with(dir: dir, ended_unit: unit_a(), others: AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: rec.launch_deadline + 5), check: is_noop)
+  let verdict = charged && launched && first && done && rerun && !ledger_still_holds(dir: dir)
+  cleaned(dir: dir, verdict: verdict)
+}
+
+// ANOTHER ATTEMPT'S UNIT IS NEVER TOUCHED: attempt A has ended; B's unit is failed and loaded but B has no
+// slot here. Only A's unit is reset; B's marker never appears, and B's unit is not even a subject.
+test fn another_attempts_failed_unit_is_never_collected() -> Bool {
+  let dir = fresh_dir(tag: "k4")
+  let rec = slot_a(opened: 1000)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let launched = launched_ok(dir: dir, rec: rec)
+  let p = pass_on(dir: dir, run: stores => session_activation_ensure_pass_at(
+    stores: stores, host: host,
+    loaded_of: u => if (u as String) == unit_b() { AttemptUnitFinished { exit_status: "failed" } } else { manager(dir: dir, ended_unit: unit_a(), others: AttemptUnitAbsent, u: u) },
+    lifecycle_of: lifecycle_absent,
+    reset_failed: u => mark_reset(dir: dir, u: u),
+    now: rec.launch_deadline + 1))
+  let verdict = charged && launched && only(p: p, check: is_collected) && reset_marked(dir: dir, unit: unit_a()) && !reset_marked(dir: dir, unit: unit_b())
+  cleaned(dir: dir, verdict: verdict)
+}
+
+// A reset that fails keeps the unit and says so (never reads as collected); the release is already recorded.
+test fn a_failed_reset_is_kept_and_never_reported_collected() -> Bool {
+  let dir = fresh_dir(tag: "k5")
+  let rec = slot_a(opened: 1000)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let launched = launched_ok(dir: dir, rec: rec)
+  let p = pass_on(dir: dir, run: stores => session_activation_ensure_pass_at(
+    stores: stores, host: host,
+    loaded_of: u => AttemptUnitFinished { exit_status: "failed" },
+    lifecycle_of: lifecycle_absent,
+    reset_failed: u => false,
+    now: rec.launch_deadline - 1))
+  let verdict = charged && launched && only(p: p, check: is_refused) && slot_is_terminal(dir: dir)
+  cleaned(dir: dir, verdict: verdict)
+}
+
+// Pure cells: no record + a live unit is REFUSED and kept (legacy/debris, the slice-4 sweep); an unreadable or
+// foreign placement changes nothing.
+fn classify_absent(loaded: AttemptUnitObservation) -> Bool {
+  match session_activation_classify(node_id: node_a, attempt_key: key_a, observation: SessionPlacementAbsent { unit: unit_a() }, loaded: loaded, lifecycle: lifecycle_running(u: unit_a() as NonEmptyStr), now: 5000).decision {
+    Refuse { reason: _ } => true
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn a_live_or_lingering_unit_with_no_record_is_refused_and_kept() -> Bool {
+  classify_absent(loaded: AttemptUnitActive) && classify_absent(loaded: AttemptUnitFinished { exit_status: "failed" })
+    && match session_activation_classify(node_id: node_a, attempt_key: key_a, observation: SessionPlacementAbsent { unit: unit_a() }, loaded: AttemptUnitAbsent, lifecycle: lifecycle_absent(u: unit_a() as NonEmptyStr), now: 5000).decision {
+      Noop => true
+      Refuse { reason: _ } => false
+      Apply { plan: _ } => false
+    }
+}
+
+test fn an_unreadable_or_foreign_placement_is_refused_whatever_the_unit_does() -> Bool {
+  let unreadable = session_activation_classify(node_id: node_a, attempt_key: key_a, observation: SessionPlacementUnreadable { unit: unit_a(), detail: "torn" }, loaded: AttemptUnitFinished { exit_status: "failed" }, lifecycle: lifecycle_absent(u: unit_a() as NonEmptyStr), now: 5000)
+  let foreign = session_activation_classify(node_id: node_a, attempt_key: key_a, observation: SessionPlacementForeign { unit: unit_a(), detail: "other attempt" }, loaded: AttemptUnitFinished { exit_status: "failed" }, lifecycle: lifecycle_absent(u: unit_a() as NonEmptyStr), now: 5000)
+  (match unreadable.decision { Refuse { reason: _ } => true  Noop => false  Apply { plan: _ } => false })
+    && (match foreign.decision { Refuse { reason: _ } => true  Noop => false  Apply { plan: _ } => false })
+}

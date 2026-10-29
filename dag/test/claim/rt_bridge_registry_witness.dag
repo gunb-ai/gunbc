@@ -21,3 +21,20 @@ import extdeps.languages.rust.emit { rt_function_registry, rt_bridge_name }
 test fn rt_bridge_name_agrees_with_registry_on_every_row() -> Bool {
   rt_function_registry |> all(entry => rt_bridge_name(name: entry.name) == entry.bridge_name)
 }
+
+// Review 80809: a leftover { name: "never", bridge_name: "never" } sat in rt_function_registry after
+// never() was deleted, while pure_dag_seam_unreachable (which v1_rt still defines) was dropped.
+// rt_bridge_name_agrees_with_registry_on_every_row cannot see that: it only checks name vs
+// bridge_name on each row. gunbc.primitive_runtime_body primitive_runtime_body_check_in IS the
+// subset check (every registry bridge_name must be a v1_rt body) and test.claim.primitive_runtime_body_witness
+// registered_bridge_without_body_refuses proves the checker would have refused. It did not catch
+// this on the required path because v2-bootstrap does not run the primitive-runtime-body phase
+// (gunbc.rung_drop v1_required_lanes_withdrawn). These two rows are the floor-visible control.
+test fn never_is_absent_from_rt_function_registry() -> Bool {
+  !(rt_function_registry |> any(entry => entry.name == "never" || entry.bridge_name == "never"))
+}
+
+test fn pure_dag_seam_unreachable_is_in_rt_function_registry() -> Bool {
+  rt_function_registry |> any(entry =>
+    entry.name == "pure_dag_seam_unreachable" && entry.bridge_name == "pure_dag_seam_unreachable")
+}

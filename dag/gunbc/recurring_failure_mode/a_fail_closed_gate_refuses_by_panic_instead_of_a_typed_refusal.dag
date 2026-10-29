@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.a_fail_closed_gate_refuses_by_panic_instead_of_a_typed_refusal
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_fail_closed_gate_refuses_by_panic_instead_of_a_typed_refusal: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_fail_closed_gate_refuses_by_panic_instead_of_a_typed_refusal" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "every refusal that reaches a process boundary is carried as one typed cause through the typecheck chain and the process edge matches it exhaustively to a declared exit terminal, so a panic or a kill has no path to that boundary" } },
+
+  receipts: [
+    "a fail-closed gate refuses by panic or by a kill instead of a typed refusal: the refusal is correct (the run has no memory bound, so nothing it computes may be trusted to fit) but it reaches the process boundary as a panic, a SIGKILL (rc=137) or a generic exit 1, so a reader cannot tell no observation from a finding or from a crash. DESIGN section 5 requires a loud, typed, located refusal; a panic is loud and untyped, and it is not a verdict.",
+
+    "SPECIMEN, found 2026-10-21 (gunbc C4-H): since the memory-envelope gate, claim_batch under a cgroup whose memory.max is max refused with HostBudgetUnreadable inside typed_module_cache_cap_derivation, a `String` error, which reached the process as an output-policy PolicyResolveFailed exit 1, a panic, or an rc=137 kill, depending on which consumer asked first. The corpus-level exit composition already had a terminal for it (UNOBSERVED, exit 2, gunbc#14692), but the cause never arrived as data: it was a message crossing four `String` returns.",
+
+    "RECOGNITION RULE: a refusal whose cause is a `String` that every layer forwards with `?` can only be classified by spelling, so the edge either parses text or lets the cause fall into the generic failure arm. Ask where the typed cause is first known and carry it as a type from there; or, when the refusal is a function of the run alone, ask it once at the edge ahead of every consumer.",
+
+    "RUNG FOUND AT: mitigatable, and the current rung is mitigatable. The refusal was loud and correct (not silent wrongness), but it surfaced as a panic, a kill or an untyped exit, so only containment existed; the typed edge for HostBudgetUnreadable (gunbc#14696) was withdrawn by gunbc#14745 because the heal runner has no memory bound, so heal refused on every pull request; the class never left mitigatable, since its other causes still reached the process boundary as `String` while that edge existed.",
+    "ATTAINABLE CEILING: structurally guaranteed. Every refusal reaching a process boundary maps through one typed cause to one declared exit terminal, and a panic wrapper over a user- or host-caused condition is refused at ingestion. NEXT-RUNG TRIGGER, at capability grain: a refusal carrier that the process edge must match exhaustively, so an unmapped cause has no constructor. Today every cause, HostBudgetUnreadable included, returns `String` through the typecheck chain, and the `unwrap_or_else(|e| panic!(..))` wrappers over index construction remain.",
+  ],
+
+  evidence: [],
+}

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.located_cause_folded_to_its_reason_at_a_result_boundary
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data located_cause_folded_to_its_reason_at_a_result_boundary: RecurringFailureMode = RecurringFailureMode {
   identity: "located_cause_folded_to_its_reason_at_a_result_boundary" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "A failing stage computes a LOCATED, typed cause -- v2.std.diagnostic Diagnostic: reason, locus, correction, and for a rejection the whole NonEmptyDiagnostics chain -- and a result boundary downstream copies ONE FIELD out of it, the reason symbol, into the carrier it hands on. Every consumer past that boundary then reports WHAT refused and cannot report WHERE, and the information was not missing: it was in hand at the stage and discarded at the seam. DESIGN section 5 requires a typed, located refusal; this row is about the location surviving the trip through a result carrier, which the stage having produced it does not by itself secure.",

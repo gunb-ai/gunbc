@@ -3,7 +3,7 @@ module test.claim.grammar_production_index_witness
 import std.types { Bool, Int, List, String }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { list_snoc_item, list_append, length }
-import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, NotADeclaration }
 import v2.std.witness { Holds, Violates }
 import v2.std.grammar {
   FormalProduction,
@@ -24,7 +24,7 @@ fn pi_atom(s: Symbol) -> Node {
 }
 
 fn pi_conj(children: List<Node>) -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: map(children, c => Edge { label: Positional, target: c }), occurrence_id: OccurrenceSynthetic }
+  Node { kind: TypeNode { connective: Conj }, children: map(children, c => Edge { label: Positional, target: c, declaration: NotADeclaration }), occurrence_id: OccurrenceSynthetic }
 }
 
 // `alternatives` productions of ^pi_item, each led by its own tag, plus one untagged production of three

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.remediation_mutated_view
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data remediation_mutated_view: RecurringFailureMode = RecurringFailureMode {
   identity: "remediation_mutated_view" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "remediation-mutated view (the standard response to a signal OVERWRITES the surface most readers query it through, so the population becomes unreconstructible AT THAT LEVEL and the reader concludes the evidence is gone.",

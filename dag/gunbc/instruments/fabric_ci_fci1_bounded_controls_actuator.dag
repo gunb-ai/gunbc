@@ -1,0 +1,572 @@
+module gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.optional { Present, Absent }
+import std.measure { finite_byte_size_count, FiniteByteSize }
+import extdeps.shell
+import extdeps.shell.exec
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  filesystem_entry_presence, filesystem_listing_observation,
+}
+import gunbc.cli_invoke {
+  NamedArgument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator,
+  admit_named_argument, gunbc_run_invocation_words_with_arguments, invocation_words_bare,
+}
+import extdeps.exec.command { ArgvCommand }
+import extdeps.systemd { SystemdUnitProperty, LoadState, ActiveState, MemoryMax, MemoryHigh, WorkingDirectoryProperty, SliceProperty }
+import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value, systemctl_version_command }
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty,
+  NamedUnitSetting,
+  SystemdRunOption,
+  Pipe,
+  Quiet,
+  Wait,
+  Collect,
+  RunUnit,
+  PropertyLong,
+  EndOfOptions,
+  SystemdRunCommandReady,
+  SystemdRunCommandRefused,
+  systemd_run_command_of,
+  systemd_run_option_words_refused_cause_detail,
+}
+import extdeps.procps.pgrep { pgrep_match_full_command_line_argv, pgrep_scan_outcome, PgrepMatched, PgrepNoMatch, PgrepScanFailed }
+import extdeps.tools.findutils {
+  find_tree_metadata_command,
+  find_tree_regular_files_sha256_command,
+  find_children_named_command,
+}
+import extdeps.tools.hostname { hostname_short_read_command }
+import extdeps.tools.id { id_uid_argv }
+import extdeps.shell { shell_test_is_executable_argv }
+import gunbc.fabric.fci1_bounded_execution_context {
+  Fci1BoundedExecutionContext,
+  Fci1BoundedExecutionContextBuilt,
+  Fci1MemoryMaxNonPositive,
+  Fci1MemoryHighNonPositive,
+  Fci1MemoryHighExceedsMax,
+  fci1_bounded_execution_context,
+}
+import gunbc.live_deploy.slice_bounds { fci1_controls_slice_unit_name }
+import gunbc.instruments.fabric_ci_calibration_actuator { fabric_ci_calibration_argv, fabric_ci_env_required }
+import gunbc.instruments.fabric_control_plane_live_probe { fci1_assert_checkpoint_token }
+
+// THE FCI-1 BOUNDED-DRIVER ONE-AXIS CONTROLS, AS A TYPED ACTUATOR. It starts no Work command and
+// takes no reservation. Every row is its own `systemd-run --wait --collect` transient unit whose
+// child is its own `gunbc run`, and the row is graded on that child's exit status (and, for the two
+// refusal rows, on the cause its diagnostics name): the cgroup envelope, the wrong WorkingDirectory,
+// the unbounded MemoryMax and the exact inner status each stay a separate observed process. The
+// positive row reads the bound the unit was actually given from the child's own cgroup
+// (fci1_bounded_envelope_child), so it is the kernel's envelope that is observed, not the request.
+//
+// Operator contract (run by hand as root on srv3, from the checkout root):
+//   FCI1_GUNBC_BIN=<exact-tree gunbc>  FCI1_CHECKOUT_ROOT=<checkout root>
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_ci_fci1_bounded_controls_actuator.dag \
+//     --function fci1_bounded_controls_run
+//
+// The memory envelope and the driver unit come from the typed gunbc.fabric.fci1_bounded_execution_context,
+// the one authority the generated .env projected; the program words come from the extdeps rows.
+
+data fci1_bounded_controls_entry: String = "dag/gunbc/instruments/fabric_ci_fci1_bounded_controls_actuator.dag"
+data fci1_canonical_allocation_parent: String = "/var/lib/gunbc/fabric"
+data fci1_canonical_allocation_name: String = "allocation"
+data fci1_canonical_allocation_root: String = "/var/lib/gunbc/fabric/allocation"
+data fci1_runtime_root: String = "/run"
+data fci1_runtime_name_glob: String = "fci1-*"
+data fci1_work_process_pattern: NonEmptyStr = "/opt/fabric-cells/.*/(runner|work)" as NonEmptyStr
+data fci1_envelope_refusal_code: Int = 85
+data fci1_exact_status_code: Int = 86
+
+type Fci1Observed {
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+// One process, from the words of an extdeps command (program first). The argv crosses as a list.
+fn fci1_run_words(words: List<String>) -> Fci1Observed {
+  match words.first() {
+    Absent => Fci1Observed { exit_code: 127, stdout: "", stderr: "empty argv" }
+    Present { value: program } =>
+      let observed = shell.Exec.RunArgv(
+        program: program as NonEmptyStr,
+        arguments: fabric_ci_calibration_argv(words: words.skip(n: 1)),
+      )
+      Fci1Observed { exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr }
+  }
+}
+
+fn fci1_run_command(command: ArgvCommand) -> Fci1Observed {
+  fci1_run_words(words: concat([command.program.invocation as String], command.arguments))
+}
+
+fn fci1_diagnostics(observed: Fci1Observed) -> String {
+  concat(observed.stdout, observed.stderr)
+}
+
+// The controls slice is installed, verified and removed by the caller (the emitted fci1_install_controls_slice /
+// fci1_remove_controls_slice, self-rolling-back): this process is itself a gunbc run and needs the slice's
+// standing before it can start, so it cannot be the one to install it. Bounded rows join that slice.
+// ── THE BOUNDED UNIT'S COMMAND ──────────────────────────────────────────────────────────────────
+
+type Fci1UnitBound
+  = Fci1UnitBounded { max: FiniteByteSize, high: FiniteByteSize }
+  | Fci1UnitUnbounded
+
+type Fci1UnitCommand
+  = Fci1UnitCommandBuilt { command: ArgvCommand }
+  | Fci1UnitCommandRefused { detail: String }
+
+fn fci1_unit_properties(working_directory: String, bound: Fci1UnitBound) -> List<SystemdRunProperty> {
+  concat(
+    [NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr }],
+    match bound {
+      Fci1UnitBounded { max, high } => [
+        NamedUnitSetting { property: SliceProperty, value: fci1_controls_slice_unit_name },
+        NamedUnitSetting { property: MemoryMax, value: fci1_bytes_text(size: max) as NonEmptyStr },
+        NamedUnitSetting { property: MemoryHigh, value: fci1_bytes_text(size: high) as NonEmptyStr },
+      ]
+      Fci1UnitUnbounded => [NamedUnitSetting { property: MemoryMax, value: "infinity" as NonEmptyStr }]
+    },
+  )
+}
+
+// systemd-run --quiet --wait --pipe --collect --unit=<unit> --property=... -- <child>
+// --pipe: without it a --wait unit writes to the journal and the RED rows read an empty capture.
+fn fci1_unit_command(unit: NonEmptyStr, working_directory: String, bound: Fci1UnitBound, child_words: List<String>) -> Fci1UnitCommand {
+  let options = concat(
+    [Quiet, Wait, Pipe, Collect, RunUnit { unit: unit }],
+    concat(map(fci1_unit_properties(working_directory: working_directory, bound: bound), p => PropertyLong { property: p }), [EndOfOptions]),
+  )
+  match systemd_run_command_of(options: options, command_argv: child_words) {
+    SystemdRunCommandReady { command } => Fci1UnitCommandBuilt { command: command }
+    SystemdRunCommandRefused { cause } => Fci1UnitCommandRefused { detail: systemd_run_option_words_refused_cause_detail(cause: cause) }
+  }
+}
+
+// `gunbc run` with the relative source roots the control depends on: the WorkingDirectory the unit
+// is given decides whether the workspace root resolves, which is the axis the wrong-cwd row moves.
+// The argv shape is gunbc.cli_invoke's one `gunbc run` builder; only the binary word is added here.
+fn fci1_child_words(gunbc_bin: String, function: String, arguments: List<NamedArgument>) -> List<String> {
+  concat([gunbc_bin], invocation_words_bare(words: gunbc_run_invocation_words_with_arguments(
+    source_roots: ["dag", "src/v2"],
+    entry: fci1_bounded_controls_entry,
+    function: function,
+    claim_run: false,
+    arguments: arguments,
+  )))
+}
+
+// A row's named arguments stay (name, value) pairs until launch, where the sealed NamedArgument
+// admission decides them; a name the transport could not round-trip refuses rather than rebinding.
+type Fci1Arg {
+  name: String
+  value: String
+}
+
+type Fci1ArgsAdmission
+  = Fci1ArgsAdmitted { arguments: List<NamedArgument> }
+  | Fci1ArgsRefused { name: String }
+
+fn fci1_admit_args(args: List<Fci1Arg>) -> Fci1ArgsAdmission {
+  fold(args, init: Fci1ArgsAdmitted { arguments: [] }, f: (acc, a) =>
+    match acc {
+      Fci1ArgsRefused { name: n } => Fci1ArgsRefused { name: n }
+      Fci1ArgsAdmitted { arguments: done } =>
+        match admit_named_argument(name: a.name, value: a.value) {
+          NamedArgumentAdmitted { argument } => Fci1ArgsAdmitted { arguments: concat(done, [argument]) }
+          NamedArgumentNameEmpty => Fci1ArgsRefused { name: a.name }
+          NamedArgumentNameHoldsSeparator { name: n } => Fci1ArgsRefused { name: n }
+        }
+    })
+}
+
+// ── THE CHILD ENTRIES (each its own gunbc process, inside the unit) ─────────────────────────────
+
+// Reads the bound the kernel gave THIS process's cgroup and compares it with the request, then runs
+// the pure entry the original control ran. Exits 85 on a mismatch, so an unbounded or differently
+// bounded unit cannot pass as the positive row.
+fn fci1_cgroup_path(cgroup_file: String) -> String? {
+  match first(filter(split(s: cgroup_file, delimiter: "\n"), l => starts_with(s: l, prefix: "0::"))) {
+    Present { value: l } => Present { value: substring(s: l, start: 3, end: string_length(s: l)) }
+    Absent => none
+  }
+}
+
+fn fci1_cgroup_value(cgroup: String, file: String) -> String? {
+  let read = Filesystem.Read(path: join(["/sys/fs/cgroup", cgroup, "/", file], ""))
+  if read.success { Present { value: trim(s: read.content) } } else { none }
+}
+
+fn fci1_envelope_refused(reason: String) -> ProcessExit {
+  ExitFailure { code: fci1_envelope_refusal_code, reason: reason }
+}
+
+fn fci1_bounded_envelope_child(max: String, high: String) -> ProcessExit {
+  let membership = Filesystem.Read(path: "/proc/self/cgroup")
+  if membership.success == false {
+    fci1_envelope_refused(reason: "own cgroup membership unreadable")
+  } else {
+    match fci1_cgroup_path(cgroup_file: membership.content) {
+      Absent => fci1_envelope_refused(reason: "no cgroup v2 membership line")
+      Present { value: cgroup } =>
+        match fci1_cgroup_value(cgroup: cgroup, file: "memory.max") {
+          Absent => fci1_envelope_refused(reason: "memory.max unreadable")
+          Present { value: observed_max } =>
+            if observed_max != max {
+              fci1_envelope_refused(reason: join(["memory.max is ", observed_max, ", wanted ", max], ""))
+            } else {
+              match fci1_cgroup_value(cgroup: cgroup, file: "memory.high") {
+                Absent => fci1_envelope_refused(reason: "memory.high unreadable")
+                Present { value: observed_high } =>
+                  if observed_high != high {
+                    fci1_envelope_refused(reason: join(["memory.high is ", observed_high, ", wanted ", high], ""))
+                  } else {
+                    fci1_assert_checkpoint_token(token: "none" as NonEmptyStr)
+                  }
+              }
+            }
+        }
+    }
+  }
+}
+
+// A child that exits with the exact status the row wants to see emerge through `--wait`.
+fn fci1_bounded_exact_status_child() -> ProcessExit {
+  ExitFailure { code: fci1_exact_status_code, reason: "FCI-1 bounded control: exact inner status" }
+}
+
+// ── THE ROWS ────────────────────────────────────────────────────────────────────────────────────
+
+type Fci1ControlExpectation
+  = ExpectSuccess
+  | ExpectExactStatus { code: Int }
+  | ExpectRefusalNamed { needles: List<String>, cause: String }
+
+type Fci1ControlRow {
+  name: String
+  unit: NonEmptyStr
+  working_directory: String
+  bound: Fci1UnitBound
+  function: String
+  arguments: List<Fci1Arg>
+  expectation: Fci1ControlExpectation
+}
+
+// The refusal cause a negative row must name, not merely a nonzero status: a row that fails for an
+// unrelated reason (host, binary, corpus) is a red for the wrong cause and must not pass.
+data fci1_wrong_cwd_needles: List<String> = ["workspace root", "process_workspace_root"]
+data fci1_unbounded_needles: List<String> = ["UncappedSystemSlice"]
+
+// The quantity stays a FiniteByteSize through the row model; it is lowered to text only where a
+// systemd property value or a child argv word is built.
+fn fci1_bytes_text(size: FiniteByteSize) -> String {
+  to_string(finite_byte_size_count(size: size))
+}
+
+fn fci1_rows(context: Fci1BoundedExecutionContext, checkout_root: String) -> List<Fci1ControlRow> {
+  let max = context.memory_max
+  let high = match context.memory_high {
+    Present { value: h } => h
+    Absent => max
+  }
+  let bounded = Fci1UnitBounded { max: max, high: high }
+  let positive_args = [Fci1Arg { name: "max", value: fci1_bytes_text(size: max) }, Fci1Arg { name: "high", value: fci1_bytes_text(size: high) }]
+  [
+    Fci1ControlRow { name: "driver-positive", unit: context.driver_unit, working_directory: checkout_root, bound: bounded,
+      function: "fci1_bounded_envelope_child", arguments: positive_args, expectation: ExpectSuccess },
+    Fci1ControlRow { name: "driver-wrong-cwd", unit: "fci1-driver-wrong-cwd-control.service" as NonEmptyStr, working_directory: "/tmp", bound: bounded,
+      function: "fci1_bounded_envelope_child", arguments: positive_args,
+      expectation: ExpectRefusalNamed { needles: fci1_wrong_cwd_needles, cause: "the workspace-root refusal" } },
+    Fci1ControlRow { name: "driver-unbounded", unit: "fci1-driver-unbounded-control.service" as NonEmptyStr, working_directory: checkout_root, bound: Fci1UnitUnbounded,
+      function: "fci1_bounded_envelope_child", arguments: positive_args,
+      expectation: ExpectRefusalNamed { needles: fci1_unbounded_needles, cause: "UncappedSystemSlice" } },
+    Fci1ControlRow { name: "submitter-positive", unit: "fci1-submitter-positive-control.service" as NonEmptyStr, working_directory: checkout_root, bound: bounded,
+      function: "fci1_bounded_envelope_child", arguments: positive_args, expectation: ExpectSuccess },
+    Fci1ControlRow { name: "submitter-wrong-cwd", unit: "fci1-submitter-wrong-cwd-control.service" as NonEmptyStr, working_directory: "/tmp", bound: bounded,
+      function: "fci1_bounded_envelope_child", arguments: positive_args,
+      expectation: ExpectRefusalNamed { needles: fci1_wrong_cwd_needles, cause: "the workspace-root refusal" } },
+    Fci1ControlRow { name: "submitter-unbounded", unit: "fci1-submitter-unbounded-control.service" as NonEmptyStr, working_directory: checkout_root, bound: Fci1UnitUnbounded,
+      function: "fci1_bounded_envelope_child", arguments: positive_args,
+      expectation: ExpectRefusalNamed { needles: fci1_unbounded_needles, cause: "UncappedSystemSlice" } },
+    Fci1ControlRow { name: "exact-status-86", unit: "fci1-exact-status-control.service" as NonEmptyStr, working_directory: checkout_root, bound: bounded,
+      function: "fci1_bounded_exact_status_child", arguments: [], expectation: ExpectExactStatus { code: fci1_exact_status_code } },
+  ]
+}
+
+fn fci1_names_cause(diagnostics: String, needles: List<String>) -> Bool {
+  count(filter(needles, n => string_contains(s: diagnostics, pattern: n))) > 0
+}
+
+// Grade one observed child against its expectation. `None` is a pass; a Some is the refusal.
+fn fci1_grade(row: Fci1ControlRow, observed: Fci1Observed) -> String? {
+  match row.expectation {
+    ExpectSuccess =>
+      if observed.exit_code == 0 { none } else {
+        Present { value: join(["ControlRefused: ", row.name, " exited ", to_string(observed.exit_code), ": ", fci1_diagnostics(observed: observed)], "") }
+      }
+    ExpectExactStatus { code } =>
+      if observed.exit_code == code { none } else {
+        Present { value: join(["ControlRefused: ", row.name, " exact inner status ", to_string(code), " emerged as ", to_string(observed.exit_code)], "") }
+      }
+    ExpectRefusalNamed { needles, cause } =>
+      if observed.exit_code == 0 {
+        Present { value: join(["ControlRefused: ", row.name, " row succeeded"], "") }
+      } else if fci1_names_cause(diagnostics: fci1_diagnostics(observed: observed), needles: needles) {
+        none
+      } else {
+        Present { value: join(["ControlRefused: ", row.name, " row did not name ", cause, ": ", fci1_diagnostics(observed: observed)], "") }
+      }
+  }
+}
+
+// ── THE MANAGER'S OBSERVATION OF A COLLECTED UNIT ───────────────────────────────────────────────
+
+fn fci1_unit_collected(unit: NonEmptyStr) -> String? {
+  let observed = fci1_run_command(command: systemctl_show_properties_command(unit: unit, properties: [LoadState, ActiveState]))
+  let text = fci1_diagnostics(observed: observed)
+  let load = systemctl_show_property_value(text: text, key: "LoadState")
+  let active = systemctl_show_property_value(text: text, key: "ActiveState")
+  match load {
+    Present { value: "not-found" } =>
+      match active {
+        Present { value: "inactive" } => none
+        _ => Present { value: join(["ControlRefused: unit not collected: unit=", unit as String, " observed=", text], "") }
+      }
+    _ => Present { value: join(["ControlRefused: unit not collected: unit=", unit as String, " observed=", text], "") }
+  }
+}
+
+// ── THE STORE, THE RUNTIME ROOT, AND THE WORK PROCESSES (must not move) ─────────────────────────
+
+type Fci1StoreState
+  = Fci1StoreAbsent
+  | Fci1StoreObserved { metadata: String, hashes: String }
+  | Fci1StoreUnobservable { cause: String }
+
+fn fci1_sorted_text(text: String) -> String {
+  join(sort_by(filter(split(s: text, delimiter: "\n"), l => l != ""), l => l), "\n")
+}
+
+// Both walks of a present root, classified. A walk that failed for ANY reason, ENOENT of a descendant
+// that vanished mid-walk included, is unobservable: the root's absence is never read from a walk's
+// stderr, because a recursive find reports a missing descendant with the same text as a missing root.
+fn fci1_store_of_walks(metadata: Fci1Observed, hashes: Fci1Observed) -> Fci1StoreState {
+  if metadata.exit_code != 0 { Fci1StoreUnobservable { cause: metadata.stderr } } else {
+    if hashes.exit_code != 0 { Fci1StoreUnobservable { cause: hashes.stderr } } else {
+      Fci1StoreObserved { metadata: fci1_sorted_text(text: metadata.stdout), hashes: fci1_sorted_text(text: hashes.stdout) }
+    }
+  }
+}
+
+// Root absence is established the one way the filesystem authority allows: by listing the parent and
+// finding no entry (FilesystemEstablishedAbsence). Anything the listing cannot establish is unobservable.
+fn fci1_store_state_at(parent: String, name: String, root: String) -> Fci1StoreState {
+  let listed = Filesystem.List(path: parent)
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: parent, success: listed.success, entries: listed.entries, error: listed.error),
+    name: name,
+  ) {
+    FilesystemEntryAbsent(_) => Fci1StoreAbsent
+    FilesystemEntryListed { directory: _, name: _ } =>
+      fci1_store_of_walks(
+        metadata: fci1_run_command(command: find_tree_metadata_command(root: root)),
+        hashes: fci1_run_command(command: find_tree_regular_files_sha256_command(root: root)),
+      )
+    FilesystemEntryPresenceIndeterminate { cause } => Fci1StoreUnobservable { cause: cause }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause } => Fci1StoreUnobservable { cause: cause }
+  }
+}
+
+fn fci1_store_state() -> Fci1StoreState {
+  fci1_store_state_at(parent: fci1_canonical_allocation_parent, name: fci1_canonical_allocation_name, root: fci1_canonical_allocation_root)
+}
+
+type Fci1RuntimeState
+  = Fci1RuntimeObserved { names: String }
+  | Fci1RuntimeUnobservable { cause: String }
+
+fn fci1_runtime_state() -> Fci1RuntimeState {
+  let listed = fci1_run_command(command: find_children_named_command(root: fci1_runtime_root, name_glob: fci1_runtime_name_glob))
+  if listed.exit_code == 0 { Fci1RuntimeObserved { names: fci1_sorted_text(text: listed.stdout) } } else {
+    Fci1RuntimeUnobservable { cause: listed.stderr }
+  }
+}
+
+type Fci1WorkProcesses
+  = Fci1WorkProcessesAbsent
+  | Fci1WorkProcessesPresent { listing: String }
+  | Fci1WorkProcessesUnobservable { cause: String }
+
+fn fci1_work_processes() -> Fci1WorkProcesses {
+  let observed = fci1_run_words(words: pgrep_match_full_command_line_argv(pattern: fci1_work_process_pattern))
+  match pgrep_scan_outcome(exit_code: observed.exit_code, stdout: observed.stdout, stderr: observed.stderr) {
+    PgrepMatched { listing } => Fci1WorkProcessesPresent { listing: listing }
+    PgrepNoMatch => Fci1WorkProcessesAbsent
+    PgrepScanFailed { exit_code, stderr } => Fci1WorkProcessesUnobservable { cause: join(["pgrep exited ", to_string(exit_code), ": ", stderr], "") }
+  }
+}
+
+fn fci1_store_state_equal(a: Fci1StoreState, b: Fci1StoreState) -> Bool {
+  match a {
+    Fci1StoreAbsent => match b { Fci1StoreAbsent => true  _ => false }
+    Fci1StoreObserved { metadata: am, hashes: ah } => match b { Fci1StoreObserved { metadata: bm, hashes: bh } => am == bm && ah == bh  _ => false }
+    Fci1StoreUnobservable { cause: _ } => false
+  }
+}
+
+fn fci1_runtime_state_equal(a: Fci1RuntimeState, b: Fci1RuntimeState) -> Bool {
+  match a {
+    Fci1RuntimeObserved { names: an } => match b { Fci1RuntimeObserved { names: bn } => an == bn  _ => false }
+    Fci1RuntimeUnobservable { cause: _ } => false
+  }
+}
+
+// ── THE RUN ─────────────────────────────────────────────────────────────────────────────────────
+
+type Fci1RowsOutcome
+  = Fci1RowsPassed
+  | Fci1RowsRefused { reason: String }
+
+fn fci1_run_rows(gunbc_bin: String, rows: List<Fci1ControlRow>) -> Fci1RowsOutcome {
+  match rows.first() {
+    Absent => Fci1RowsPassed
+    Present { value: row } =>
+      match fci1_admit_args(args: row.arguments) {
+        Fci1ArgsRefused { name } => Fci1RowsRefused { reason: concat("ControlRefused: row argument not admitted: ", name) }
+        Fci1ArgsAdmitted { arguments } =>
+          match fci1_unit_command(
+            unit: row.unit,
+            working_directory: row.working_directory,
+            bound: row.bound,
+            child_words: fci1_child_words(gunbc_bin: gunbc_bin, function: row.function, arguments: arguments),
+          ) {
+            Fci1UnitCommandRefused { detail } => Fci1RowsRefused { reason: concat("ControlRefused: unit command refused: ", detail) }
+            Fci1UnitCommandBuilt { command } =>
+              match fci1_grade(row: row, observed: fci1_run_command(command: command)) {
+                Present { value: reason } => Fci1RowsRefused { reason: reason }
+                Absent =>
+                  match fci1_unit_collected(unit: row.unit) {
+                    Present { value: reason } => Fci1RowsRefused { reason: reason }
+                    Absent => fci1_run_rows(gunbc_bin: gunbc_bin, rows: rows.skip(n: 1))
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn fci1_refused(reason: String) -> ProcessExit {
+  ExitFailure { code: 2, reason: reason }
+}
+
+// THE TYPED VERDICT. Acceptance is a value, not an exit status: it is written (create-new, so a stale
+// file refuses) to FCI1_VERDICT_PATH only after every row passed and the store, runtime population and
+// Work-process scan are unchanged. A failed row leaves no verdict file, so absence is the red.
+type Fci1BoundedControlsVerdict
+  = Fci1BoundedControlsAccepted { systemd: String, memory_max: FiniteByteSize, memory_high: FiniteByteSize }
+
+fn fci1_verdict_line(verdict: Fci1BoundedControlsVerdict) -> String {
+  match verdict {
+    Fci1BoundedControlsAccepted { systemd, memory_max, memory_high } =>
+      join(["FCI1BoundedExecutionControlsAccepted|systemd=", systemd, "|memory_max=", to_string(finite_byte_size_count(size: memory_max)), "|memory_high=", to_string(finite_byte_size_count(size: memory_high))], "")
+  }
+}
+
+fn fci1_verdict_emit(verdict_path: String, context: Fci1BoundedExecutionContext) -> ProcessExit {
+  let version = fci1_run_command(command: systemctl_version_command())
+  if version.exit_code != 0 {
+    exit_failure(reason: concat("ControlRefused: systemctl --version failed: ", fci1_diagnostics(observed: version)))
+  } else {
+    let high = match context.memory_high {
+      Present { value: h } => h
+      Absent => context.memory_max
+    }
+    let line = fci1_verdict_line(verdict: Fci1BoundedControlsAccepted {
+      systemd: match first(split(s: trim(s: version.stdout), delimiter: "\n")) { Present { value: v } => v, Absent => "" },
+      memory_max: context.memory_max,
+      memory_high: high,
+    })
+    let created = Filesystem.WriteCreateNew(path: verdict_path, content: concat(line, "\n"))
+    if created.success { ExitSuccess } else {
+      exit_failure(reason: concat("ControlRefused: verdict not written: ", created.error))
+    }
+  }
+}
+
+fn fci1_bounded_controls_after(gunbc_bin: String, checkout_root: String, verdict_path: String, context: Fci1BoundedExecutionContext) -> ProcessExit {
+  let before_store = fci1_store_state()
+  let before_runtime = fci1_runtime_state()
+  match fci1_work_processes() {
+    Fci1WorkProcessesPresent { listing: _ } => exit_failure(reason: "ControlRefused: fabric-cell Work process existed before controls")
+    Fci1WorkProcessesUnobservable { cause } => exit_failure(reason: concat("ControlRefused: Work process scan failed before controls: ", cause))
+    Fci1WorkProcessesAbsent =>
+      match before_store {
+        Fci1StoreUnobservable { cause } => exit_failure(reason: concat("ControlRefused: canonical allocation store unobservable: ", cause))
+        _ =>
+          match fci1_run_rows(gunbc_bin: gunbc_bin, rows: fci1_rows(context: context, checkout_root: checkout_root)) {
+            Fci1RowsRefused { reason } => exit_failure(reason: reason)
+            Fci1RowsPassed =>
+              if !fci1_store_state_equal(a: before_store, b: fci1_store_state()) {
+                exit_failure(reason: "ControlRefused: canonical allocation store changed")
+              } else if !fci1_runtime_state_equal(a: before_runtime, b: fci1_runtime_state()) {
+                exit_failure(reason: "ControlRefused: disposable FCI-1 root population changed")
+              } else {
+                match fci1_work_processes() {
+                  Fci1WorkProcessesAbsent => fci1_verdict_emit(verdict_path: verdict_path, context: context)
+                  _ => exit_failure(reason: "ControlRefused: fabric-cell Work process exists after controls")
+                }
+              }
+          }
+      }
+  }
+}
+
+fn fci1_bounded_controls_on_srv3(gunbc_bin: String, checkout_root: String, verdict_path: String) -> ProcessExit {
+  let executable = fci1_run_words(words: shell_test_is_executable_argv(path: gunbc_bin as FilePath))
+  if executable.exit_code != 0 {
+    fci1_refused(reason: "ControlRefused: exact-tree gunbc absent")
+  } else {
+    match fci1_bounded_execution_context(checkout_root: checkout_root as FilePath) {
+      Fci1MemoryMaxNonPositive { observed } => exit_failure(reason: concat("ControlRefused: MemoryMax not finite-positive: ", to_string(observed)))
+      Fci1MemoryHighNonPositive { observed } => exit_failure(reason: concat("ControlRefused: MemoryHigh not finite-positive: ", to_string(observed)))
+      Fci1MemoryHighExceedsMax { high: _, max: _ } => exit_failure(reason: "ControlRefused: MemoryHigh exceeds MemoryMax")
+      Fci1BoundedExecutionContextBuilt { context } =>
+        fci1_bounded_controls_after(gunbc_bin: gunbc_bin, checkout_root: checkout_root, verdict_path: verdict_path, context: context)
+    }
+  }
+}
+
+fn fci1_bounded_controls_on_host(gunbc_bin: String, checkout_root: String, verdict_path: String) -> ProcessExit {
+  let uid = fci1_run_words(words: id_uid_argv())
+  if uid.exit_code != 0 || trim(s: uid.stdout) != "0" {
+    fci1_refused(reason: "ControlRefused: must run as root on srv3")
+  } else {
+    let host = fci1_run_command(command: hostname_short_read_command())
+    if host.exit_code != 0 || trim(s: host.stdout) != "srv3" {
+      fci1_refused(reason: "ControlRefused: host is not srv3")
+    } else {
+      fci1_bounded_controls_on_srv3(gunbc_bin: gunbc_bin, checkout_root: checkout_root, verdict_path: verdict_path)
+    }
+  }
+}
+
+fn fci1_bounded_controls_run() -> ProcessExit {
+  match fabric_ci_env_required(name: "FCI1_GUNBC_BIN") {
+    Absent => fci1_refused(reason: "ControlRefused: FCI1_GUNBC_BIN unset")
+    Present { value: gunbc_bin } =>
+      match fabric_ci_env_required(name: "FCI1_CHECKOUT_ROOT") {
+        Absent => fci1_refused(reason: "ControlRefused: FCI1_CHECKOUT_ROOT unset")
+        Present { value: checkout_root } =>
+          match fabric_ci_env_required(name: "FCI1_VERDICT_PATH") {
+            Absent => fci1_refused(reason: "ControlRefused: FCI1_VERDICT_PATH unset")
+            Present { value: verdict_path } => fci1_bounded_controls_on_host(gunbc_bin: gunbc_bin, checkout_root: checkout_root, verdict_path: verdict_path)
+          }
+      }
+  }
+}

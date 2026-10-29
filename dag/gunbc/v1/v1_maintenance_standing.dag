@@ -305,7 +305,7 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // vocabulary discriminates: removing the second peel in
 // direct_call_structured_record_literal_resolved_type_mismatch was proposed as the same class and
 // REFUSED on evidence — a differential control over the whole corpus found
-// peel_nominal_alias_identity is not idempotent, so peel(peel(x)) is not a redundant call and its
+// expand_nominal_alias_rhs is not idempotent, so peel(peel(x)) is not a redundant call and its
 // removal would not be behavior-preserving. The control read zero counterexamples through 240,000
 // calls before the first appeared, which is why the count was taken to completion rather than
 // sampled: 21 non-idempotent results over 600,000+ calls. A span-blind rerun then classified them,
@@ -345,8 +345,8 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // is a FIELD LIST, and it exists to type the literal's field initializers. DOWNSTREAM,
 // direct_call_structured_record_literal_resolved_type_mismatch asks
 // application_type_names_compatible, a SEMANTIC relation over authored names:
-// application_type_name_identity per name (lookup_type_by_name followed by
-// peel_nominal_alias_identity), dag_can_cast, type_name_transparently_aliases_to in BOTH
+// application_type_expansion_head_name per name (lookup_type_by_name followed by
+// expand_nominal_alias_rhs), dag_can_cast, type_name_transparently_aliases_to in BOTH
 // directions, and brand_grounds_transparently_to against the formal's declaration. The fact it
 // produces is a NAME IDENTITY verdict, and it exists to decide whether to emit a diagnostic.
 //
@@ -366,10 +366,10 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // admissible, and the item is retired rather than re-scoped.
 //
 // THE ONE FACT THAT WOULD ACTUALLY BE CARRYABLE, named so the next reader does not have to find it
-// again and does not mistake it for live work: application_type_name_identity is a pure function of
+// again and does not mistake it for live work: application_type_expansion_head_name is a pure function of
 // (type_name, type_env, module_name) recomputed per call at this seam. That is the memo class,
 // whose implementation is REJECTED and whose draft (gunbc#8452) is closed as quarry with its design
-// record preserved -- including that peel_nominal_alias_identity is not idempotent (21
+// record preserved -- including that expand_nominal_alias_rhs is not idempotent (21
 // non-idempotent results over 600,000-plus calls; 6 structural, all FreeMonoid gaining a child),
 // which is why the neighbouring second-peel removal at this same function was already refused
 // above. It is not reopened here.
@@ -436,6 +436,19 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // becomes a defect the seed exhibits today and lands squarely in DefectRepairDiagnosticsMayMove.
 // Until then the honest name for the class is dead-code-shaped fabrication, and the honest
 // disposition is refused-and-recorded.
+//
+// A NEAR-MISS, 2026-10-27, which moves the argument and not the disposition. Choosing how the
+// diagnostic.ipmi.Tool lanplus operations take a cipher suite (gunb-ai/gunbc#15262, review 86975), a
+// reviewer-proposed design was a sealed record carrying the words, typed as an operation input and
+// spliced by bare name -- exactly a declared argv element typed to a structured kind. It was checked
+// against this seam before it was built and rejected: the record would have reached ipmitool as one
+// word of its type-and-fields rendering. The part worth keeping is HOW IT WOULD HAVE HIDDEN: the
+// declaration materializer (std.operation_argv shell_materialize_operation_argv) binds the list a
+// witness supplies and never sees the declared type, so a byte-equality witness through it would
+// have stayed green while execution fabricated the argument. So the first specimen this row waits
+// for is not a far-fetched one: it is the natural shape of sealing argv words, and the tree's own
+// argv witnesses would not catch it. Nothing was built, so the tree still has no reachable site and
+// the disposition above stands; the extdeps.bmc.ipmi operations kept a List<String> input instead.
 
 // THE FIRST ADMISSION RECORDED UNDER THE 2026-08-20 PURPOSE TEST, placed deliberately beside the
 // argv fabrication refusal above because the two split on one axis and neither is readable alone.

@@ -124,7 +124,7 @@ import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_
 import gunbc.fleet.app_control_plane_inspection { gunbai_ci_registration_goal }
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
 import gunbc.fleet.fleet_runner_connectivity { github_organization_ref }
-import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
+import gunbc.runner.runner_jit_mint_binding { JitMintBinding, jit_mint_binding, mint_for_binding, observe_jit_mint_control_plane }
 import gunbc.github_effect_perform {
   JitMintPerformance, perform_organization_jit_mint, JitMintReceived, JitMintAppKeyNotCustodied,
   lifecycle_controller_app, lifecycle_controller_app_key,
@@ -312,87 +312,38 @@ fn observe_reservation(slot: RunnerSlotIdentity) -> RequiredBuildCellObservation
 
 // ── stage 4: the credential ─────────────────────────────────────────────────────────────────────
 
-// THE CONTROL PLANE IS OBSERVED FROM THIS PROCESS, UNDER THE CONTROLLER'S OWN KEY, EVERY ATTEMPT.
-// gunbc.runner.runner_jit_mint plan_jit_mint admits a mint only under a GitHubAppControlPlaneState that
-// reports the installation grant, and gunbc.auth.github_app_control_plane_observe
-// observe_github_app_control_plane is the producer that seals it: signer custody (the key's
-// signature accepted by GitHub), the App registration's permissions against the goal, and the
-// installation's grant. An unreachable or refusing control plane is carried INSIDE the state rather
-// than as a separate arm here, and the mint's credential join refuses on it -- so there is no
-// "not observable" path for this module to invent.
+// THE BINDING IS DERIVED ONLY WHERE THE SEALED RESERVATION SNAPSHOT IS HELD. MicroVmCellBinding is an unsealed union and
+// bind_owned_attempt(owned: true) mints its owned arm from a caller's Bool, so this builder and mint_attempt_credential
+// are admitted only along slot_controller_launch_admitted, which obtains the binding from bind_microvm_to_cell over the
+// RequiredBuildCellSnapshot (the cell's ownership observation) before the mint.
+// The microVM attempt's binding of the shared mint rule (gunbc.runner.runner_jit_mint_binding): its
+// subject is the sealed cell-bound attempt, its group the shakedown group, its signer the
+// controller-custodied key.
+fn attempt_mint_binding(binding: MicroVmCellBinding) -> JitMintBinding admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "mint_attempt_credential"),
+] {
+  jit_mint_binding(
+    subject: microvm_registration_subject(binding: binding),
+    runner_group_name: microvm_shakedown_runner_group_name,
+    selected_workflow: microvm_shakedown_selected_workflow(),
+    signer: lifecycle_controller_app_key,
+  )
+}
+
 fn observe_app_control_plane() -> GitHubAppControlPlaneState
   uses net: Network
 {
-  observe_github_app_control_plane(
-    app: lifecycle_controller_app,
-    key: lifecycle_controller_app_key,
-    installation: gunbai_ci_declared_installation_id,
-    required: gunbai_ci_registration_goal.required_permissions,
+  observe_jit_mint_control_plane(
+    signer: lifecycle_controller_app_key,
     reason: "the microVM slot controller observes the gunbai-ci App control plane before minting an attempt's JIT registration" as NonEmptyStr,
   )
 }
 
-fn controller_credential_authority() -> GitHubCredentialAuthority {
-  ManagedAppInstallationCredential {
-    app: gunbai_ci_declared,
-    installation: gunbai_ci_declared_installation_id,
-    profile: GitHubCredentialProfileRef { name: "microvm-slot-controller" },
-  }
-}
-
-fn attempt_dispatch(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState, runner_group: MicrovmRunnerGroupStanding) -> JitMintDispatch admit_callers: [
-  decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "mint_under_observed_group"),
-  decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "mint_attempt_credential"),
-] {
-  dispatch_jit_mint(
-    subject: microvm_registration_subject(binding: binding),
-    authority: controller_credential_authority(),
-    control_plane: state,
-    organization: github_organization_ref(),
-    runner_group: runner_group,
-    attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
-  )
-}
-
-// THE GROUP IS READ ONLY WHEN IT IS THE LAST THING STANDING. The plan is first taken with the
-// not-yet-observed standing: every gate before the group -- cell ownership, the App credential,
-// the attempt binding -- decides there with no I/O, exactly as before, and a dispatch refused by any
-// of them is returned without minting a token. Only when the group is the one remaining refusal is
-// the installation token minted, the organization's runner groups read with it, the sealed observer
-// run over that reading, and the plan taken again with the observed standing -- which is then the
-// ONLY route to JitMintAuthorized, because no other value of the standing's authorizing arm can be
-// written (gunbc.runner.runner_group_restriction_observation). The same token performs the generate.
-fn mint_under_observed_group(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState) -> JitMintPerformance
-  uses net: Network
-{
-  match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id) {
-    ControllerTokenNotMinted { performance: p } => p
-    ControllerTokenMinted { token: t } => {
-      let standing = observe_shakedown_runner_group_restriction(
-        name: microvm_shakedown_runner_group_name,
-        listed: read_runner_groups_with(token: t, organization: github_organization_ref().login),
-      )
-      perform_organization_jit_mint(dispatch: attempt_dispatch(binding: binding, state: state, runner_group: standing), token: t)
-    }
-  }
-}
-
 fn mint_attempt_credential(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState) -> JitMintPerformance
   uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "slot_controller_launch_admitted")]
 {
-  match attempt_dispatch(
-    binding: binding,
-    state: state,
-    runner_group: runner_group_restriction_not_yet_observed(name: microvm_shakedown_runner_group_name),
-  ) {
-    JitMintDispatchRefused { refusal: r } => match r {
-      DispatchRefusedRunnerGroupUnrestricted { group: _, cause: RunnerGroupRestrictionNotYetObserved } =>
-        mint_under_observed_group(binding: binding, state: state)
-      other => JitMintReceived { delivery: JitCredentialNotDispatched { refusal: other } }
-    }
-    JitMintDispatchAuthorized { dispatch: _ } =>
-      mint_under_observed_group(binding: binding, state: state)
-  }
+  mint_for_binding(binding: attempt_mint_binding(binding: binding), state: state).performance
 }
 
 // ── stage 5: the slot network receipt, read from its durable host path ──────────────────────────
@@ -476,10 +427,13 @@ fn slot_controller_on_reservation(
   }
 }
 
-// Both the broker and direct controller must admit the current purpose before any JIT mint.
+// Both the broker and direct controller must admit the current purpose before any JIT mint. THIS FN IS THE MINT'S ENTRY, so it is
+// admitted only from slot_controller_on_reservation, whose microvm_ci_admission gate (withdrawn cell, recovery, executor, purpose,
+// slot/snapshot join) a caller holding a genuine snapshot would otherwise skip.
 fn slot_controller_launch_admitted(slot: RunnerSlotIdentity, snapshot: RequiredBuildCellSnapshot,
   bins: LocusBinaries, image: GuestImageSources, invocation_id: NonEmptyStr) -> SlotControllerOutcome
   uses net: Network, fs: Filesystem
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "slot_controller_on_reservation")]
 {
   if !path_is_executable(path: bins.firecracker) {
     SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } }

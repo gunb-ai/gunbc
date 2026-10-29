@@ -1,9 +1,9 @@
 module v2.test.claim.body_lowering.atom_body_discriminator_helpers
 
-import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text  }
 import std.algebra { list_snoc_item, list_at_optional }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
-import v2.std.node {
+import v2.std.node { positional_child_target_nodes,
   Arrow,
   ArrowBodyForm,
   ComputationBody,
@@ -25,11 +25,7 @@ import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
   classify_arrow_body_form_red_no_computation_body,
   classify_arrow_body_form_red_no_direct_atom
 }
-import v2.std.node_query {
-  find_arrow_body_child,
-  find_named_child,
-  node_positional_child_targets
-}
+import v2.std.node_query { find_arrow_body_child, find_named_child }
 
 import std.optional { Absent, Optional, Present, optional_present }
 
@@ -250,7 +246,7 @@ fn atom_body_discriminator_observed_rows(scope: Node) -> Optional<AtomBodyDiscri
 }
 
 fn atom_body_discriminator_observe() -> AtomBodyDiscriminatorObservation {
-  match conserved_normalize_of_text(path: "atom_body_discriminator_file", text: atom_body_discriminator_module_source, explained: no_explained_drops()) {
+  match conserved_normalize_of_text(path: "atom_body_discriminator_file", text: atom_body_discriminator_module_source) {
     Rejected { diagnostics: d } => RouteRejected { diagnostics: d }
     Accepted { value: normalized, diagnostics: _ } =>
       let root = normalized.root
@@ -317,7 +313,7 @@ fn atom_body_discriminator_named_binding_count(domain: Node) -> Int {
 fn atom_body_discriminator_parameter_count(arrow: Node) -> Optional<Int> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
-      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
         Present { value: domain } =>
           optional_present(value: atom_body_discriminator_named_binding_count(domain: domain))
         Absent => Absent

@@ -80,10 +80,19 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 // inherit a literal; preserving it is deliberate -- tightening a live directory is a host-behaviour
 // change this arm refuses to hide inside a migration. It dissolves with the other two arms, directory
 // by directory, as each one's dependents are declared.
+//
+// THE SETGID TRAVERSE ARM (2750) is the directory a group may enter but not write, whose children must
+// still land in that group. An explicit 0750 strips the setgid bit a parent handed down, so a child made
+// inside it takes its creator's primary group instead of the shared one; a dispatch attempt directory
+// that a dedicated worker account only traverses, holding the worker's group-writable scratch child, is
+// the first such directory (gunbc.roadmap.roadmap_dispatch_actuator attempt_state_prepare_argvs_for_instance).
 type DeclaredDirectoryMode
   = DirectoryOwnerOnly
   | DirectoryOwnerAllGroupTraverse
+  | DirectoryOwnerAllGroupTraverseSetgid
   | DirectoryOwnerAllEveryoneTraverse
+  | DirectoryOwnerGroupWritableSetgid
+  | DirectoryOwnerGroupWritableSetgidSticky
 
 fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
   match m {
@@ -103,6 +112,14 @@ fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
       setgid: false,
       sticky: false,
     }
+    DirectoryOwnerAllGroupTraverseSetgid => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: true, write: false, execute: true },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: true,
+      sticky: false,
+    }
     DirectoryOwnerAllEveryoneTraverse => FileMode {
       owner: PermissionBits { read: true, write: true, execute: true },
       group: PermissionBits { read: true, write: false, execute: true },
@@ -110,6 +127,42 @@ fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
       setuid: false,
       setgid: false,
       sticky: false,
+    }
+    // THE WORKER-SHARED DIRECTORY (2770): the owner and one named group read, write and traverse, nobody
+    // else does, and a child inherits the group. It exists for a directory a dedicated worker account
+    // (gunbc.fleet.fleet_posix_accounts fleet_posix_worker_user) writes while the instance's service
+    // user keeps owning it. Group-writability is spelled here once, as a named arm, because the
+    // module's rule is that no consumer spells a group-writable directory. DISSOLUTION: with the
+    // ManagedDirectory route's owning-group capability named above, this arm becomes a derived mode.
+    DirectoryOwnerGroupWritableSetgid => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: true, write: true, execute: true },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: true,
+      sticky: false,
+    }
+    // THE SHARED, GROUP-WRITABLE DIRECTORY THAT HOLDS OTHER PRINCIPALS' FILES (03770): 2770 plus the
+    // sticky bit. WHY THE STICKY IS NEEDED HERE AND NOT AT 2770 -- stated at its measured truth, not
+    // as a git requirement (git sets no +t under core.sharedRepository and asks for none; this is
+    // not what git mandates, it is what a group-writable directory holding two principals' files
+    // requires of its own). rename(2) and unlink(2) take their permission from the CONTAINING
+    // directory, not from the entry: in a group-writable objects/ without +t, any member of the
+    // attempt group may mv the OWNER's objects/pack aside and plant a symlink at that path, which
+    // the owner's next repack then follows and writes THROUGH -- the group member thereby writes
+    // through the owner's identity. Under +t, rename/unlink of an entry the caller does not own is
+    // EPERM, which is the refusal the wet arms measured. THE MEASURED STICKY-BOUNDARY FALSIFICATION
+    // pins both sides: unlink of the owner's file by a group peer returns EPERM under +t and
+    // succeeds WITHOUT it. This is the companion of the directory's group-writability (the same
+    // companion chmod spells as the a+t word, extdeps.tools.chmod chmod_directory_sticky_mode), so
+    // the arm that grants group writes and the arm that fences them stay one fact per directory.
+    DirectoryOwnerGroupWritableSetgidSticky => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: true, write: true, execute: true },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: true,
+      sticky: true,
     }
   }
 }

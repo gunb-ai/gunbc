@@ -1,0 +1,382 @@
+module gunbc.runner.runner_revision_job_toolchain
+
+import std.integer { int_to_decimal_string }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.resources { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.xz { xz_decompress_keep_command }
+import extdeps.tools.dpkg_deb { dpkg_deb_extract_command, dpkg_deb_control_fields_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.gnu_coreutils { ln_symbolic_force_command, cp_preserve_if_absent_command }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell, sha256sum_stdin_digest_via_shell }
+import extdeps.gnupg.gpgv { gpgv_verify_cleartext_command, gpgv_valid_primary_fingerprints }
+import extdeps.glibc.ldconfig { ldconfig_root_command }
+import extdeps.os.ubuntu_ports_archive { ubuntu_ports_archive_root, ubuntu_ports_package_url }
+import extdeps.debian.version { DebianAlternative, parse_debian_relationships, constraint_satisfied }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
+import gunbc.runner.revision_job_toolchain_pins {
+  ToolchainPinnedDeb, toolchain_pinned_debs, toolchain_closure_roots, toolchain_archive_signing_key_fingerprint,
+  toolchain_archive_suite, toolchain_inrelease_sha256, toolchain_packages_index_path,
+  toolchain_packages_index_sha256,
+}
+
+// THE REVISION-JOB IMAGE'S C TOOLCHAIN CLOSURE, FROM PINNED ROWS TO AN INSTALLED TREE.
+//
+// The rows (gunbc.runner.revision_job_toolchain_pins) are a TRANSCRIPTION of a signed index; three
+// things make them trustworthy, each executed rather than asserted:
+//
+//   1. THE CHAIN. The instrument fetches InRelease, requires its SHA-256 to equal the pin, verifies it
+//      with gpgv against the archive keyring AND requires a VALIDSIG whose primary-key fingerprint is the
+//      pinned one, requires the signed text to list Packages.xz at the pinned SHA-256, fetches that
+//      file and requires the same digest, and decompresses it. Every row's Package, Version,
+//      Architecture, SHA256, Filename, Depends and Pre-Depends must equal its stanza there.
+//   2. COMPLETENESS. Every relation of every row (Depends and Pre-Depends, versioned constraints read
+//      with Debian's own version order, extdeps.debian.version) is satisfied by another row, and every
+//      closure root is a row. A row's relation that cannot be read refuses.
+//   3. THE RECEIPT GATE. The instrument writes a receipt keyed by the canonical row digest and the
+//      Packages.xz digest; the image build recomputes the row digest and refuses PinnedRowsUnproven
+//      unless that receipt exists. Editing a row changes the digest, so an edited row is unproven
+//      until the instrument runs again over the signed index.
+//
+// At build time each .deb is fetched by its row's Filename, its SHA-256 must equal the row's, and its
+// own control fields (dpkg-deb -f) must equal the row's -- a deb whose bytes match but whose control
+// says something else refuses. It is then extracted (dpkg-deb -x: no maintainer script runs) and the
+// maintainer-script effects this closure needs are applied as modeled steps (toolchain_effect_commands).
+
+// ── canonical rows and their digest ─────────────────────────────────────────────────────────────
+
+fn toolchain_row_canonical(r: ToolchainPinnedDeb) -> String {
+  join([
+    r.deb.package as String, r.deb.version as String, r.deb.architecture as String, r.deb.sha256 as String, r.deb.filename as String,
+    r.depends, r.pre_depends, join(map(r.alternatives, a => concat(concat(a.relation, "=>"), a.chosen)), ";"),
+  ], "\t")
+}
+
+fn toolchain_rows_canonical(rows: List<ToolchainPinnedDeb>) -> String {
+  concat(join(map(rows, r => toolchain_row_canonical(r: r)), "\n"), "\n")
+}
+
+type ToolchainRowsDigest = ToolchainRowsDigested { hex: NonEmptyStr } | ToolchainRowsDigestUnavailable { reason: String }
+
+fn toolchain_rows_digest(rows: List<ToolchainPinnedDeb>) -> ToolchainRowsDigest {
+  match sha256sum_stdin_digest_via_shell(content: toolchain_rows_canonical(rows: rows)) {
+    Sha256FileDigest { digest: d } => ToolchainRowsDigested { hex: d.hex as NonEmptyStr }
+    Sha256FileDigestUnavailable { path: _, reason: r } => ToolchainRowsDigestUnavailable { reason: r }
+  }
+}
+
+fn toolchain_closure_receipt_path(store: String, rows_digest: String) -> String {
+  join([store, "/toolchain-closure/", rows_digest, ".", toolchain_packages_index_sha256 as String], "")
+}
+
+fn toolchain_closure_receipt_body(rows_digest: String) -> String {
+  join([
+    "closed rows=", rows_digest, " index=", toolchain_packages_index_sha256 as String,
+    " inrelease=", toolchain_inrelease_sha256 as String, " signer=", toolchain_archive_signing_key_fingerprint as String, "\n",
+  ], "")
+}
+
+// ── completeness ────────────────────────────────────────────────────────────────────────────────
+
+type ToolchainCompleteness
+  = ToolchainClosed
+  | ToolchainOpen { unsatisfied: List<String> }
+  | ToolchainRelationUnreadable { package: String, field: String }
+
+fn alternative_satisfied(rows: List<ToolchainPinnedDeb>, alt: DebianAlternative) -> Bool {
+  count(filter(rows, r => r.deb.package as String == alt.package && match alt.constraint {
+    Absent => true
+    Present { value: c } => constraint_satisfied(constraint: c, candidate: r.deb.version as String)
+  })) > 0
+}
+
+// One relation: a single alternative must be satisfied by a row; a '|' relation must have a recorded
+// choice naming one of its alternatives, and THAT alternative must be satisfied -- the closure is held
+// to the branch it took, not to whichever happens to be present.
+fn relation_satisfied(rows: List<ToolchainPinnedDeb>, owner: ToolchainPinnedDeb, relation: List<DebianAlternative>) -> Bool {
+  if count(relation) == 1 { count(filter(relation, a => alternative_satisfied(rows: rows, alt: a))) == 1 }
+  else {
+    count(filter(relation, a => count(filter(owner.alternatives, c => c.chosen == a.package)) > 0 && alternative_satisfied(rows: rows, alt: a))) > 0
+  }
+}
+
+fn row_unsatisfied(rows: List<ToolchainPinnedDeb>, r: ToolchainPinnedDeb, field: String) -> List<String>? {
+  match parse_debian_relationships(field: field) {
+    Absent => none
+    Present { value: relations } => Present { value: map(filter(relations, rel => !relation_satisfied(rows: rows, owner: r, relation: rel)),
+      rel => concat(concat(r.deb.package as String, " needs "), join(map(rel, a => a.package), " | "))) }
+  }
+}
+
+fn toolchain_closure_completeness(rows: List<ToolchainPinnedDeb>, roots: List<NonEmptyStr>) -> ToolchainCompleteness {
+  let missing_roots = map(filter(roots, root => count(filter(rows, r => r.deb.package as String == root as String)) == 0), root => concat("root ", root as String))
+  let duplicated = map(filter(rows, r => count(filter(rows, o => o.deb.package as String == r.deb.package as String)) > 1), r => concat("duplicate row ", r.deb.package as String))
+  let walked = fold(rows, init: Present { value: missing_roots + duplicated }, f: (acc, r) => match acc {
+    Absent => none
+    Present { value: open } => match row_unsatisfied(rows: rows, r: r, field: r.depends) {
+      Absent => none
+      Present { value: d } => match row_unsatisfied(rows: rows, r: r, field: r.pre_depends) {
+        Absent => none
+        Present { value: p } => Present { value: open + d + p }
+      }
+    }
+  })
+  match walked {
+    Absent => match filter(rows, r => match parse_debian_relationships(field: r.depends) { Absent => true  Present { value: _ } => false }).first() {
+      Present { value: r } => ToolchainRelationUnreadable { package: r.deb.package as String, field: "Depends" }
+      Absent => match filter(rows, r => match parse_debian_relationships(field: r.pre_depends) { Absent => true  Present { value: _ } => false }).first() {
+        Present { value: r } => ToolchainRelationUnreadable { package: r.deb.package as String, field: "Pre-Depends" }
+        Absent => ToolchainRelationUnreadable { package: "", field: "" }
+      }
+    }
+    Present { value: open } => if count(open) == 0 { ToolchainClosed } else { ToolchainOpen { unsatisfied: open } }
+  }
+}
+
+// ── stanzas: the index and a deb's own control file, read the same way ─────────────────────────
+
+// A field of one RFC-822-style stanza, with continuation lines folded to single spaces. Absent when
+// the field is not present.
+fn stanza_field(stanza: String, name: String) -> String? {
+  let lines: List<String> = stanza.split(delimiter: "\n")
+  let prefix = concat(name, ":")
+  let walked = fold(lines, init: { found: false, done: false, value: "" }, f: (st, line) =>
+    if st.done { st }
+    else if st.found {
+      if starts_with(s: line, prefix: " ") || starts_with(s: line, prefix: "\t") { { found: true, done: false, value: concat(concat(st.value, " "), trim(s: line)) } }
+      else { { found: true, done: true, value: st.value } }
+    } else if starts_with(s: line, prefix: prefix) {
+      { found: true, done: false, value: trim(s: substring(s: line, start: string_length(s: prefix), end: string_length(s: line))) }
+    } else { st })
+  if walked.found { Present { value: walked.value } } else { none }
+}
+
+fn field_or_empty(stanza: String, name: String) -> String {
+  match stanza_field(stanza: stanza, name: name) { Present { value: v } => v  Absent => "" }
+}
+
+// The fields a row pins that a deb's own control file also carries, compared exactly. Empty when they
+// agree; otherwise one entry per disagreeing field.
+fn stanza_disagreements(r: ToolchainPinnedDeb, stanza: String, source: String) -> List<String> {
+  let pairs = [
+    { field: "Package", pinned: r.deb.package as String },
+    { field: "Version", pinned: r.deb.version as String },
+    { field: "Architecture", pinned: r.deb.architecture as String },
+    { field: "Depends", pinned: r.depends },
+    { field: "Pre-Depends", pinned: r.pre_depends },
+  ]
+  map(filter(pairs, p => field_or_empty(stanza: stanza, name: p.field) != p.pinned), p => join([r.deb.package as String, " ", p.field, ": pinned '", p.pinned, "' ", source, " '", field_or_empty(stanza: stanza, name: p.field), "'"], ""))
+}
+
+fn control_disagreements(r: ToolchainPinnedDeb, control: String) -> List<String> {
+  stanza_disagreements(r: r, stanza: control, source: "control")
+}
+
+fn index_disagreements(r: ToolchainPinnedDeb, stanza: String) -> List<String> {
+  let index_pairs = [
+    { field: "SHA256", pinned: r.deb.sha256 as String },
+    { field: "Filename", pinned: r.deb.filename as String },
+  ]
+  stanza_disagreements(r: r, stanza: stanza, source: "index")
+    + map(filter(index_pairs, p => field_or_empty(stanza: stanza, name: p.field) != p.pinned), p => join([r.deb.package as String, " ", p.field, ": pinned '", p.pinned, "' index '", field_or_empty(stanza: stanza, name: p.field), "'"], ""))
+}
+
+// ── the chain (the instrument's half) ───────────────────────────────────────────────────────────
+
+type ToolchainIndexChain
+  = ToolchainIndexVerified { packages: String }
+  | ToolchainIndexRefused { step: NonEmptyStr, detail: String }
+
+fn file_matches(path: String, expected: NonEmptyStr) -> Bool {
+  match sha256sum_file_digest_via_shell(path: path as NonEmptyStr) {
+    Sha256FileDigest { digest: d } => d.hex as String == expected as String
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+  }
+}
+
+fn signed_text_lists_index(verified: String) -> Bool {
+  count(filter(verified.split(delimiter: "\n"), line => {
+    let words = filter(trim(s: line).split(delimiter: " "), w => w != "")
+    count(words) == 3 && match words.first() { Present { value: h } => h == toolchain_packages_index_sha256 as String  Absent => false }
+      && match skip(words, 2).first() { Present { value: p } => p == toolchain_packages_index_path as String  Absent => false }
+  })) > 0
+}
+
+// `dir` must be fresh. xz refuses a leftover; gpgv overwrites its output, which is why that output is
+// read only after this run's VALIDSIG.
+fn verify_toolchain_index(dir: String, keyring: String) -> ToolchainIndexChain {
+  let base = join([ubuntu_ports_archive_root, "dists/", toolchain_archive_suite as String], "")
+  let inrelease = concat(dir, "/InRelease")
+  let verified_path = concat(dir, "/InRelease.verified")
+  let packages_xz = concat(dir, "/Packages.xz")
+  if !process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: dir), transport: LocalExec)) {
+    ToolchainIndexRefused { step: "mkdir", detail: dir }
+  } else if !process_outcome_admitted(outcome: run_shell_command_capture(command: curl_download_command(url: concat(base, "/InRelease"), destination: inrelease), transport: LocalExec)) {
+    ToolchainIndexRefused { step: "fetch-inrelease", detail: base }
+  } else if !file_matches(path: inrelease, expected: toolchain_inrelease_sha256) {
+    ToolchainIndexRefused { step: "inrelease-pin", detail: "InRelease does not match its pinned SHA-256" }
+  } else if !shell.PosixCommandV.Check(command: "gpgv" as NonEmptyStr).exists {
+    // Checked before the spawn: an absent verifier is a missing host requirement, not a bad signature,
+    // and spawning it would abort the run rather than return a refusal.
+    ToolchainIndexRefused { step: "verifier-missing", detail: "gpgv is not on this host's PATH" }
+  } else { match run_shell_command_capture(command: gpgv_verify_cleartext_command(keyring: keyring, signed_file: inrelease, output: verified_path), transport: LocalExec) {
+    ProcessRefused { exit_code: c, stderr: e } => ToolchainIndexRefused { step: "signature", detail: join(["gpgv exit ", to_string(c), ": ", e], "") }
+    ProcessOutputAbsent => ToolchainIndexRefused { step: "signature", detail: "gpgv printed no status" }
+    // Exit 0 alone is not enough: gpgv writes the output even on a bad signature, so the signed text is
+    // read only once the pinned PRIMARY key has a VALIDSIG in this run's status.
+    ProcessOutputPresent { text: status } =>
+      if count(filter(gpgv_valid_primary_fingerprints(status: status), f => f == toolchain_archive_signing_key_fingerprint as String)) == 0 {
+        ToolchainIndexRefused { step: "signer", detail: concat("no VALIDSIG from the pinned primary key in: ", status) }
+      } else if !signed_text_lists_index(verified: Filesystem.Read(path: verified_path).content) {
+        ToolchainIndexRefused { step: "index-listed", detail: "the signed InRelease does not list Packages.xz at its pinned SHA-256" }
+      } else if !process_outcome_admitted(outcome: run_shell_command_capture(command: curl_download_command(url: join([base, "/", toolchain_packages_index_path as String], ""), destination: packages_xz), transport: LocalExec)) {
+        ToolchainIndexRefused { step: "fetch-packages", detail: toolchain_packages_index_path as String }
+      } else if !file_matches(path: packages_xz, expected: toolchain_packages_index_sha256) {
+        ToolchainIndexRefused { step: "packages-pin", detail: "Packages.xz does not match the digest the signed InRelease lists" }
+      } else if !process_outcome_admitted(outcome: run_shell_command_capture(command: xz_decompress_keep_command(archive: packages_xz), transport: LocalExec)) {
+        ToolchainIndexRefused { step: "decompress", detail: packages_xz }
+      } else { ToolchainIndexVerified { packages: concat(dir, "/Packages") } }
+  } }
+}
+
+type ToolchainRowsProof
+  = ToolchainRowsProven { receipt: String }
+  | ToolchainRowsRefused { reasons: List<String> }
+
+// THE INSTRUMENT: re-read every row from the verified index, check completeness, and only then write
+// the receipt the build gates on. One stanza per row, found by its Package field; a package with no
+// stanza, or with more than one, refuses.
+fn prove_toolchain_rows(store: String, dir: String, keyring: String) -> ToolchainRowsProof {
+  match verify_toolchain_index(dir: dir, keyring: keyring) {
+    ToolchainIndexRefused { step: s, detail: d } => ToolchainRowsRefused { reasons: [join([s as String, ": ", d], "")] }
+    ToolchainIndexVerified { packages: p } => {
+      let stanzas = filter(Filesystem.Read(path: p).content.split(delimiter: "\n\n"), st => trim(s: st) != "")
+      let pinned_names = map(toolchain_pinned_debs, r => r.deb.package as String)
+      let relevant = filter(stanzas, st => count(filter(pinned_names, n => field_or_empty(stanza: st, name: "Package") == n)) > 0)
+      let row_reasons = flat_map(toolchain_pinned_debs, r => {
+        let mine = filter(relevant, st => field_or_empty(stanza: st, name: "Package") == r.deb.package as String)
+        if count(mine) != 1 { [join([r.deb.package as String, ": ", int_to_decimal_string(value: count(mine)), " stanzas in the index, expected exactly one"], "")] }
+        else { match mine.first() { Present { value: st } => index_disagreements(r: r, stanza: st)  Absent => [] } }
+      })
+      let closure_reasons = match toolchain_closure_completeness(rows: toolchain_pinned_debs, roots: toolchain_closure_roots) {
+        ToolchainClosed => []
+        ToolchainOpen { unsatisfied: u } => u
+        ToolchainRelationUnreadable { package: pk, field: f } => [join(["unreadable ", f, " of ", pk], "")]
+      }
+      if count(row_reasons) + count(closure_reasons) > 0 { ToolchainRowsRefused { reasons: row_reasons + closure_reasons } }
+      else { match toolchain_rows_digest(rows: toolchain_pinned_debs) {
+        ToolchainRowsDigestUnavailable { reason: r } => ToolchainRowsRefused { reasons: [r] }
+        ToolchainRowsDigested { hex: h } => {
+          let path = toolchain_closure_receipt_path(store: store, rows_digest: h as String)
+          let made = process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: concat(store, "/toolchain-closure")), transport: LocalExec))
+          let written = made && (Filesystem.WriteCreateNew(path: path, content: toolchain_closure_receipt_body(rows_digest: h as String)).success
+            || Filesystem.Read(path: path).content == toolchain_closure_receipt_body(rows_digest: h as String))
+          if written { ToolchainRowsProven { receipt: path } } else { ToolchainRowsRefused { reasons: [concat("writing the receipt failed: ", path)] } }
+        }
+      } }
+    }
+  }
+}
+
+// ── the build's half ────────────────────────────────────────────────────────────────────────────
+
+// THE CLOSURE AN IMAGE MAY INSTALL: minted only by prepare_toolchain_closure, after the receipt gate,
+// every deb's digest and every deb's control fields held.
+type RevisionJobToolchainClosure sole_constructor {
+  rows_digest: NonEmptyStr
+  debs: List<String>
+  libc6_version: NonEmptyStr
+}
+
+type ToolchainClosurePreparation
+  = ToolchainClosurePrepared { closure: RevisionJobToolchainClosure }
+  | PinnedRowsUnproven { rows_digest: String, expected_receipt: String }
+  | ToolchainClosureRefused { reasons: List<String> }
+
+fn deb_path(debs_dir: String, r: ToolchainPinnedDeb) -> String {
+  join([debs_dir, "/", r.deb.package as String, "_", r.deb.sha256 as String, ".deb"], "")
+}
+
+fn deb_reasons(debs_dir: String, r: ToolchainPinnedDeb) -> List<String> {
+  let path = deb_path(debs_dir: debs_dir, r: r)
+  let fetched = file_matches(path: path, expected: r.deb.sha256)
+    || process_outcome_admitted(outcome: run_shell_command_capture(command: curl_download_command(url: ubuntu_ports_package_url(p: r.deb), destination: path), transport: LocalExec))
+  if !fetched { [concat("fetch failed: ", r.deb.filename as String)] }
+  else if !file_matches(path: path, expected: r.deb.sha256) { [concat("SHA-256 does not match its row: ", r.deb.filename as String)] }
+  else { match run_shell_command_capture(command: dpkg_deb_control_fields_command(archive: path, fields: ["Package", "Version", "Architecture", "Depends", "Pre-Depends"]), transport: LocalExec) {
+    ProcessOutputPresent { text: control } => control_disagreements(r: r, control: control)
+    ProcessOutputAbsent => [concat("no control fields: ", r.deb.filename as String)]
+    ProcessRefused { exit_code: _, stderr: e } => [join(["dpkg-deb -f refused ", r.deb.filename as String, ": ", e], "")]
+  } }
+}
+
+fn prepare_toolchain_closure(store: String, debs_dir: String) -> ToolchainClosurePreparation {
+  match toolchain_rows_digest(rows: toolchain_pinned_debs) {
+    ToolchainRowsDigestUnavailable { reason: r } => ToolchainClosureRefused { reasons: [r] }
+    ToolchainRowsDigested { hex: h } => {
+      let receipt = toolchain_closure_receipt_path(store: store, rows_digest: h as String)
+      if Filesystem.Read(path: receipt).content != toolchain_closure_receipt_body(rows_digest: h as String) {
+        PinnedRowsUnproven { rows_digest: h as String, expected_receipt: receipt }
+      } else if !process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: debs_dir), transport: LocalExec)) {
+        ToolchainClosureRefused { reasons: [concat("mkdir ", debs_dir)] }
+      } else {
+        let reasons = flat_map(toolchain_pinned_debs, r => deb_reasons(debs_dir: debs_dir, r: r))
+        match filter(toolchain_pinned_debs, r => r.deb.package as String == "libc6").first() {
+          Absent => ToolchainClosureRefused { reasons: reasons + ["the closure has no libc6 row"] }
+          Present { value: libc } =>
+            if count(reasons) > 0 { ToolchainClosureRefused { reasons: reasons } }
+            else { ToolchainClosurePrepared { closure: RevisionJobToolchainClosure {
+              rows_digest: h, debs: map(toolchain_pinned_debs, r => deb_path(debs_dir: debs_dir, r: r)), libc6_version: libc.deb.version,
+            } } }
+        }
+      }
+    }
+  }
+}
+
+// THE MAINTAINER-SCRIPT EFFECTS THIS CLOSURE NEEDS, AS MODELED STEPS. Read from the 88 debs' scripts
+// (S4b-3c, 2026-10-15):
+//   - gcc's postinst registers the `cc` alternative to /usr/bin/gcc: /usr/bin/cc -> /usr/bin/gcc.
+//   - cpp's postinst registers /lib/cpp -> /usr/bin/cpp (/lib is usr/lib in this tree).
+//   - libc-bin's postinst installs /etc/nsswitch.conf from /usr/share/libc-bin/nsswitch.conf when
+//     the file is absent, and leaves an existing one alone: cp --update=none.
+//   - libc6 and 58 other library packages fire the ldconfig trigger, which libc-bin's postinst answers
+//     with `ldconfig -r`: the CLOSURE's own ldconfig.real (static-pie, so the host runs it), rooted at
+//     the tree, rebuilds etc/ld.so.cache. /usr/sbin/ldconfig is a wrapper script that execs
+//     /sbin/ldconfig.real by absolute path, so it is not run from the host.
+// RECORDED AS NO EFFECT ON THE BUILD: the c89/c99 and rmt alternatives (nothing invokes them), libc6's
+// upgrade logic (service restarts and version checks on a running system; there is none), doc and
+// conffile helpers, libselinux's tmpfiles registration, and dpkg's vendor setup. git, gcc and ld are
+// shipped as files by their packages and need no script.
+// THE LINKS ARE RELATIVE, so they resolve inside the tree from wherever it is examined: an absolute
+// /usr/bin/gcc, tested from the build host as <tree>/usr/bin/cc, resolves the HOST's gcc, and the
+// image build's acceptance check would certify the host rather than the tree.
+fn toolchain_effect_commands(tree: String) -> List<ArgvCommand> {
+  [
+    ln_symbolic_force_command(target: "gcc", link_name: concat(tree, "/usr/bin/cc")),
+    ln_symbolic_force_command(target: "../bin/cpp", link_name: concat(tree, "/usr/lib/cpp")),
+    cp_preserve_if_absent_command(source: concat(tree, "/usr/share/libc-bin/nsswitch.conf"), destination: concat(tree, "/etc/nsswitch.conf")),
+    ldconfig_root_command(ldconfig: concat(tree, "/usr/sbin/ldconfig.real"), root: tree),
+  ]
+}
+
+// Extraction in row order, then the effects. dpkg-deb -x runs no maintainer script and resolves nothing.
+fn toolchain_tree_commands(tree: String, closure: RevisionJobToolchainClosure) -> List<ArgvCommand> {
+  map(closure.debs, d => dpkg_deb_extract_command(archive: d, into_directory: tree)) + toolchain_effect_commands(tree: tree)
+}
+
+// What the image's toolchain receipt records about the closure: the row digest it was proven under,
+// and that the closure's glibc set (libc6, libc-bin, libc-dev-bin, libc6-dev, all one release)
+// replaces the base image's glibc files. Only the closure's version is stated: the base has no
+// package database, so what it carried before is not a package fact this receipt can name.
+fn toolchain_receipt_lines(closure: RevisionJobToolchainClosure) -> String {
+  join([
+    "toolchain-closure rows=", closure.rows_digest as String, " index=", toolchain_packages_index_sha256 as String, "\n",
+    "glibc ", closure.libc6_version as String, " (libc6, libc-bin, libc-dev-bin, libc6-dev from the closure) replaces the base image's glibc files\n",
+  ], "")
+}

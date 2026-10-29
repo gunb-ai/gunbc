@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.match_arms_of_disagreeing_applications_are_not_refused
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data match_arms_of_disagreeing_applications_are_not_refused: RecurringFailureMode = RecurringFailureMode {
+  identity: "match_arms_of_disagreeing_applications_are_not_refused" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**match arms that apply ONE generic declaration at different type arguments are accepted, and the emitted Rust does not compile** (invalid state: `match n { 1 => CtlCons { value: 1 }  _ => CtlCons { value: \"s\" } }` over `type CtlList<T> = CtlNil | CtlCons { value: T }` joins to one arm type with no diagnostic. The same disagreement in the two branches of an `if` is refused, `if branches resolve to incompatible types`, so the match arm-join (v1.compiler.infer match_arm_join_diagnostics) is the weaker twin of the branch join.",
+
+    "SPECIMEN measured on the binary built from gunbc#14036: a bare `CtlNil` arm beside `CtlCons<Int>` and `CtlCons<String>`, and the pair `CtlCons<Int>`, `CtlCons<String>` alone, both compile clean; the join drops nothing in the second case, so the hole is independent of the bare-declaration rule. RUNG FOUND AT, PER PATH (the class rung is the minimum): the v1 checker is OUTSIDE THE LADDER (silent wrongness at the DESIGN 4b floor `values inhabit declared types`); the Rust emission path is caught by rustc as E0308, mitigation only. CEILING: 3 (structurally guaranteed): the declaration and both applications are resolved facts at the join. NEXT-RUNG TRIGGER: one arm-join rule serves match and if alike (single authority): the match arm-join reuses the branch join's agreement check, keyed on equal DeclarationRef with unequal type arguments.",
+  ],
+
+  evidence: [],
+}

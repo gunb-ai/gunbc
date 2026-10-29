@@ -1,0 +1,68 @@
+module test.claim.runner_service_slot_controller_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import std.optional { Absent, Present }
+import product.host_identity { HostIdentity }
+import gunbc.runner.runner_jit_deregistration { SlotListenerExitedClean, SlotListenerExitedNonzero, SlotNeverLaunched, SlotListenerOutcomeUnobserved, SlotLostBoot, SlotUnitStopping }
+import gunbc.runner.runner_service_slot_controller {
+  ListenerNotLaunched, ListenerExited, service_slot_exit_of,
+  service_slot_rebuild, ServiceSlotUnitUnparsed,
+}
+import gunbc.machine_intake.host_capture_envelope { KernelBootId }
+import extdeps.uuid { uuid_of }
+import gunbc.runner.runner_host_unit_slot { service_boot_id_of }
+import gunbc.host.host_control_route { HostControlStanding, HostControlRefused, BmcHostNotManaged }
+
+// EVERY EXIT ARM MAPS to an OBSERVED termination (the label only: the observed status, never a job result,
+// since actions/runner also exits 0 on token expiry and deprovision), so every arm reaches ensure_jit_runner_deregistered.
+test fn a_zero_listener_exit_is_a_clean_exit_and_claims_no_job() -> Bool {
+  match service_slot_exit_of(run: ListenerExited { exit_code: 0 }) {
+    SlotListenerExitedClean => true
+    SlotListenerExitedNonzero { cause: _ } => false
+    SlotNeverLaunched { cause: _ } => false
+    SlotListenerOutcomeUnobserved { cause: _ } => false
+    SlotLostBoot { superseded_by: _ } => false
+    SlotUnitStopping { unit: _ } => false
+  }
+}
+
+// RED: a nonzero status must not read as a clean exit.
+test fn a_nonzero_listener_exit_is_not_a_clean_exit() -> Bool {
+  match service_slot_exit_of(run: ListenerExited { exit_code: 3 }) {
+    SlotListenerExitedNonzero { cause: c } => (c as String) == "listener exited with status 3"
+    SlotListenerExitedClean => false
+    SlotNeverLaunched { cause: _ } => false
+    SlotListenerOutcomeUnobserved { cause: _ } => false
+    SlotLostBoot { superseded_by: _ } => false
+    SlotUnitStopping { unit: _ } => false
+  }
+}
+
+test fn an_unlaunched_listener_is_never_launched() -> Bool {
+  match service_slot_exit_of(run: ListenerNotLaunched { cause: "x" as NonEmptyStr }) {
+    SlotNeverLaunched { cause: _ } => true
+    SlotListenerExitedClean => false
+    SlotListenerExitedNonzero { cause: _ } => false
+    SlotListenerOutcomeUnobserved { cause: _ } => false
+    SlotLostBoot { superseded_by: _ } => false
+    SlotUnitStopping { unit: _ } => false
+  }
+}
+
+// RED: a unit name outside the service-slot grammar rebuilds no slot.
+test fn a_non_service_slot_unit_name_is_unparsed() -> Bool {
+  let refused = HostControlRefused { refusal: BmcHostNotManaged { host: "mtcollins1" as HostIdentity } }
+  match uuid_of(text: "0f8fad5b-d9cb-469f-a165-70867728950e") {
+    Absent => false
+    Present { value: uuid } =>
+  match service_boot_id_of(run: KernelBootId { boot_id: uuid }) {
+    Absent => false
+    Present { value: boot } =>
+      match service_slot_rebuild(host: refused, identity: "mtcollins1" as HostIdentity, boot: boot, unit: "ssh.service") {
+        ServiceSlotUnitUnparsed { unit: _ } => true
+        _ => false
+      }
+  }
+  }
+}

@@ -5,8 +5,8 @@ use self::AnnotationLineShape::*;
 use self::AnnotationPlacement::*;
 use self::AnnotationScope::*;
 pub use crate::std_algebra::{
-    empty_map, int_total_order, length, list_at_optional, list_snoc_item, list_sort_by_key,
-    map_insert, map_lookup, map_support_keys,
+    collection_concat_shape, empty_map, int_total_order, length, list_at_optional, list_push,
+    list_snoc_item, list_sort_by_key, map_insert, map_lookup, map_support_keys,
 };
 pub use crate::std_coercion::unicode_scalar_unfold;
 pub use crate::std_occurrence_identity::OccurrenceId;
@@ -115,10 +115,7 @@ pub fn advance_line_prefix_indent_only(previous: bool, code_points: Rc<Vec<i64>>
 }
 
 pub fn advance_line_prefix_indent_only_text(previous: bool, lexeme: String) -> bool {
-    advance_line_prefix_indent_only(
-        previous.clone(),
-        crate::std_coercion::unicode_scalar_unfold(lexeme.clone()),
-    )
+    advance_line_prefix_indent_only(previous, crate::std_coercion::unicode_scalar_unfold(lexeme))
 }
 
 pub fn placement_from_line_prefix(indent_only: bool) -> AnnotationPlacement {
@@ -206,7 +203,7 @@ pub struct AnnotationRegionIndex {
 }
 
 pub fn region_extent_start(r: Rc<AnnotationRegion>) -> i64 {
-    r.extent.clone().start.clone()
+    r.extent.start.clone()
 }
 
 pub fn annotation_region_index(
@@ -241,7 +238,10 @@ pub fn annotation_region_index(
                 .fold(
                     children_seed.clone(),
                     |acc: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
-                     key: _| match v1_rt::lookup(&grouped, key.clone()) {
+                     key: Rc<AnnotationScope>| match v1_rt::lookup(
+                        &grouped,
+                        key.clone(),
+                    ) {
                         Some(siblings) => v1_rt::rc_map_insert(
                             acc.clone(),
                             key.clone(),
@@ -262,7 +262,7 @@ pub fn annotation_children(
     index: Rc<AnnotationRegionIndex>,
     scope: Rc<AnnotationScope>,
 ) -> Rc<Vec<Rc<AnnotationRegion>>> {
-    match v1_rt::lookup(&index.children.clone(), scope.clone()) {
+    match v1_rt::lookup(&index.children.clone(), scope) {
         Some(siblings) => siblings.clone(),
         std::option::Option::None => Rc::new(vec![]),
     }
@@ -274,50 +274,52 @@ pub fn siblings_starting_at_or_before(
     mut __tco_loop_lo: i64,
     mut __tco_loop_hi: i64,
 ) -> i64 {
-    loop {
-        #[allow(unused_mut)]
-        let mut siblings = __tco_loop_siblings;
-        #[allow(unused_mut)]
-        let mut at = __tco_loop_at;
-        #[allow(unused_mut)]
-        let mut lo = __tco_loop_lo;
-        #[allow(unused_mut)]
-        let mut hi = __tco_loop_hi;
-        if (lo.clone() >= hi.clone()) {
-            break lo.clone();
-        } else {
-            let mid = v1_rt::int_div(v1_rt::int_add(lo.clone(), hi.clone()), 2);
-            let item = v1_rt::list_get_optional(&siblings, mid.clone());
-            match item.clone() {
-                Some(r) => {
-                    if (r.extent.clone().start.clone() <= at.clone()) {
-                        {
-                            let __tco_0 = siblings;
-                            let __tco_1 = at;
-                            let __tco_2 = v1_rt::int_add(mid.clone(), 1);
-                            let __tco_3 = hi;
-                            __tco_loop_siblings = __tco_0;
-                            __tco_loop_at = __tco_1;
-                            __tco_loop_lo = __tco_2;
-                            __tco_loop_hi = __tco_3;
-                            continue;
-                        }
-                    } else {
-                        {
-                            let __tco_0 = siblings;
-                            let __tco_1 = at;
-                            let __tco_2 = lo;
-                            let __tco_3 = mid.clone();
-                            __tco_loop_siblings = __tco_0;
-                            __tco_loop_at = __tco_1;
-                            __tco_loop_lo = __tco_2;
-                            __tco_loop_hi = __tco_3;
-                            continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut siblings = __tco_loop_siblings;
+            #[allow(unused_mut)]
+            let mut at = __tco_loop_at;
+            #[allow(unused_mut)]
+            let mut lo = __tco_loop_lo;
+            #[allow(unused_mut)]
+            let mut hi = __tco_loop_hi;
+            if (lo.clone() >= hi.clone()) {
+                break lo.clone();
+            } else {
+                let mid = v1_rt::int_div(v1_rt::int_add(lo.clone(), hi.clone()), 2);
+                let item = v1_rt::list_get_optional(&siblings, mid.clone());
+                match item.clone() {
+                    Some(r) => {
+                        if (r.extent.start.clone() <= at.clone()) {
+                            {
+                                let __tco_0 = siblings;
+                                let __tco_1 = at;
+                                let __tco_2 = v1_rt::int_add(mid.clone(), 1);
+                                let __tco_3 = hi;
+                                __tco_loop_siblings = __tco_0;
+                                __tco_loop_at = __tco_1;
+                                __tco_loop_lo = __tco_2;
+                                __tco_loop_hi = __tco_3;
+                                continue;
+                            }
+                        } else {
+                            {
+                                let __tco_0 = siblings;
+                                let __tco_1 = at;
+                                let __tco_2 = lo;
+                                let __tco_3 = mid.clone();
+                                __tco_loop_siblings = __tco_0;
+                                __tco_loop_at = __tco_1;
+                                __tco_loop_lo = __tco_2;
+                                __tco_loop_hi = __tco_3;
+                                continue;
+                            }
                         }
                     }
-                }
-                std::option::Option::None => {
-                    break lo.clone();
+                    std::option::Option::None => {
+                        break lo.clone();
+                    }
                 }
             }
         }
@@ -347,50 +349,54 @@ pub fn annotation_gap_in(
     mut __tco_loop_origin: Rc<SourceSpan>,
     mut __tco_loop_depth: i64,
 ) -> Rc<AnnotationGap> {
-    loop {
-        #[allow(unused_mut)]
-        let mut index = __tco_loop_index;
-        #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope;
-        #[allow(unused_mut)]
-        let mut origin = __tco_loop_origin;
-        #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth;
-        let siblings = annotation_children(index.clone(), scope.clone());
-        let n = siblings_starting_at_or_before(
-            siblings.clone(),
-            origin.start.clone(),
-            0,
-            crate::std_algebra::length(siblings.clone()),
-        );
-        let candidate = if (n.clone() == 0) {
-            std::option::Option::None
-        } else {
-            v1_rt::list_get_optional(&siblings, v1_rt::int_sub(n.clone(), 1))
-        };
-        let inside = match candidate.clone() {
-            Some(c) => (region_contains(c.extent.clone(), origin.clone()) && (depth.clone() > 0)),
-            std::option::Option::None => false,
-        };
-        let containing = region_when(inside.clone(), candidate.clone());
-        match containing.clone() {
-            Some(inner) => {
-                let __tco_0 = index;
-                let __tco_1 = inner.scope.clone();
-                let __tco_2 = origin;
-                let __tco_3 = v1_rt::int_sub(depth, 1);
-                __tco_loop_index = __tco_0;
-                __tco_loop_scope = __tco_1;
-                __tco_loop_origin = __tco_2;
-                __tco_loop_depth = __tco_3;
-                continue;
-            }
-            std::option::Option::None => {
-                break Rc::new(AnnotationGap {
-                    scope: scope.clone(),
-                    before: region_scope(candidate.clone()),
-                    after: region_scope(v1_rt::list_get_optional(&siblings, n.clone())),
-                });
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut index = __tco_loop_index;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            #[allow(unused_mut)]
+            let mut origin = __tco_loop_origin;
+            #[allow(unused_mut)]
+            let mut depth = __tco_loop_depth;
+            let siblings = annotation_children(index.clone(), scope.clone());
+            let n = siblings_starting_at_or_before(
+                siblings.clone(),
+                origin.start.clone(),
+                0,
+                crate::std_algebra::length(siblings.clone()),
+            );
+            let candidate = if (n.clone() == 0) {
+                std::option::Option::None
+            } else {
+                v1_rt::list_get_optional(&siblings, v1_rt::int_sub(n.clone(), 1))
+            };
+            let inside = match candidate.clone() {
+                Some(c) => {
+                    (region_contains(c.extent.clone(), origin.clone()) && (depth.clone() > 0))
+                }
+                std::option::Option::None => false,
+            };
+            let containing = region_when(inside, candidate.clone());
+            match containing.clone() {
+                Some(inner) => {
+                    let __tco_0 = index;
+                    let __tco_1 = inner.scope.clone();
+                    let __tco_2 = origin;
+                    let __tco_3 = v1_rt::int_sub(depth, 1);
+                    __tco_loop_index = __tco_0;
+                    __tco_loop_scope = __tco_1;
+                    __tco_loop_origin = __tco_2;
+                    __tco_loop_depth = __tco_3;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break Rc::new(AnnotationGap {
+                        scope: scope.clone(),
+                        before: region_scope(candidate.clone()),
+                        after: region_scope(v1_rt::list_get_optional(&siblings, n.clone())),
+                    });
+                }
             }
         }
     }
@@ -401,12 +407,7 @@ pub fn annotation_gap_of(
     origin: Rc<SourceSpan>,
     depth: i64,
 ) -> Rc<AnnotationGap> {
-    annotation_gap_in(
-        index.clone(),
-        Rc::new(AnnotationScope::FileScope),
-        origin.clone(),
-        depth.clone(),
-    )
+    annotation_gap_in(index, Rc::new(AnnotationScope::FileScope), origin, depth)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -430,7 +431,7 @@ pub fn annotation_attach_step(
     depth: i64,
 ) -> Rc<AnnotationAttachAcc> {
     {
-        let gap = annotation_gap_of(index.clone(), capture.origin.clone(), depth.clone());
+        let gap = annotation_gap_of(index, capture.origin.clone(), depth);
         let continues = ((capture.preceded_by_annotation_line.clone()
             && !capture.preceded_by_blank_line.clone())
             && acc.pending_adjacent.clone());
@@ -446,9 +447,9 @@ pub fn annotation_attach_step(
                                 v1_rt::concat("\n".to_string(), capture.text.clone()),
                             ),
                             origin: Rc::new(SourceSpan {
-                                file: open.origin.clone().file.clone(),
-                                start: open.origin.clone().start.clone(),
-                                end: capture.origin.clone().end.clone(),
+                                file: open.origin.file.clone(),
+                                start: open.origin.start.clone(),
+                                end: capture.origin.end.clone(),
                             }),
                             placement: open.placement.clone(),
                         })),

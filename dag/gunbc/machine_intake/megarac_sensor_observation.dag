@@ -44,7 +44,7 @@ fn megarac_sdr_socket_naming(host: AdmittedMegaRacHost) -> MegaRacSdrSocketNamin
   match host.operation {
     MegaRacSdrSocketNaming =>
       if bmc_firmware_release_identity_eq(a: host.firmware, b: megarac_firmware_0_32) {
-        SdrSocketNamingBound { naming: MegaRacSdrSocketNamingRule { host: host.binding.host.host, firmware: host.firmware, prefix: megarac_sdr_socket_prefix_0_32 } }
+        SdrSocketNamingBound { naming: MegaRacSdrSocketNamingRule { host: host.host.host, firmware: host.firmware, prefix: megarac_sdr_socket_prefix_0_32 } }
       } else {
         SdrSocketNamingRefused { reason: concat("no SDR socket naming is read for MegaRAC firmware ", host.firmware.raw_version as String) as NonEmptyStr }
       }

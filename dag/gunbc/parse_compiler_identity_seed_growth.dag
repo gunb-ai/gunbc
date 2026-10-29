@@ -1,0 +1,24 @@
+module gunbc.parse_compiler_identity_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// The parse-compiler identity digest still lives in the seed because keep_generation_one_executable
+// and prepare_emitted_compiler_for_entry are seed-retained. The named entries and wire are
+// gunbc.parse_verdict_schema; this row is the host fold that hashes those entries' import_closure_live,
+// the emitted Rust of those modules, src/v1/stage0_runtime, and rustc.
+data parse_compiler_identity_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "parse_compiler_identity_entries", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "feed_identity_file", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "dag_module_name_from_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "feed_runtime_crate", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "parse_compiler_identity_digest", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "write_parse_verdict_github_outputs", field: WholeDeclaration }
+  ],
+  reason: "The publisher keys GHA blobs on a parse-compiler identity the generation-one binary must print as a sidecar before YAML can name the cache key. That binary is prepared in the seed (prepare_emitted_compiler_for_entry). The digest membership is already declared in gunbc.parse_verdict_schema parse_compiler_identity_entries; this host fold is the SHA-256 over those paths' live closures, matching emitted .rs, the runtime crate, and rustc. A product HIT cannot form that preimage (no per-module .rs) and writes no sidecar. CONSUMED IN THIS CHANGE: keep_generation_one_executable copies the binary to RUNNER_TEMP/v2-native-cli-gen-one (fixed basename, no glob); write_parse_verdict_github_outputs binds compiler_identity on GITHUB_OUTPUT; parse-population --write-identity/--receipts writes the two blobs.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these items when the v2.cli.compile_cli door computes the same parse-compiler identity from gunbc.parse_verdict_schema and writes the sidecar without the seed's native_lane_runner digest. WHAT DOES NOT RETIRE THEM: moving the hasher to another seed file; hashing the CLI-closure identity instead; or a product-HIT binary-sha stand-in.",
+  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs parse_compiler_identity_digest, called from prepare_emitted_compiler_for_entry only when entry is src/v2/cli/compile_cli.dag (fresh emit); self-host compile.dag writes no sidecar, behind gunbc test //gunbc/instruments:v2-native-cli"
+}

@@ -3,7 +3,7 @@ module gunbc.primitive_egress.qualification
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import v2.std.decl_index { ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem, decl_facts_is_fn_like }
-import v2.std.decl_ref_resolution {
+import v2.std.decl_ref_resolution_host {
   DeclarationRefResolution, DeclarationRefResolved, DeclarationRefModuleAbsent, DeclarationRefDeclarationAbsent,
   DeclarationRefFieldAbsent, DeclarationRefAmbiguous, DeclarationIdentity,
 }

@@ -1,0 +1,557 @@
+module product.fabric.serving_recipe
+
+import std.types { NonEmptyStr, Bool, Int, List, String, Port }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import std.rational { NonzeroNatFraction }
+import std.measure {
+  MoneyAmountMicro, MoneyPerHour, MoneyRate, ByteSize, money_rate_micros, Second, second_count, TokensPerSecond, tokens_per_second, tokens_per_second_count,
+  money_amount_micro, money_amount_micro_count, money_per_hour_micros,
+  byte_size, byte_size_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size,
+}
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import extdeps.currency.currency { CurrencyCode, currency_code_eq, Usd }
+import gunbc.serving.rented_ninfer_source { RentedWeightsPlacement, RentedArtifactSource, NinferEngineRelease, ninfer_serve_81c8ce09_sm120_release, rented_qwen3_8_27b_nvfp4_weights_placement, rented_weights_source }
+import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
+import extdeps.gpu.types { GpuDeviceCatalogRow, gpu_catalog_row_eq }
+import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog, nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
+import extdeps.nvidia.cuda_toolkit_release { cuda_13_0_driver_requirement }
+import extdeps.vllm.local_inference_lab_build { VllmEngineRelease, local_inference_lab_vllm_release }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.huggingface.hub { HubCheckpointManifest }
+import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
+import gunbc.serving.srv1_serving_launch { srv1_serving_ground }
+import gunbc.harness.harness_reasoning_wire {
+  HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_serving_unit_compatibility,
+  HarnessUnitsIdentical, HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,
+}
+
+// A SERVING RECIPE IS ONE JOINT FACT: which model artifact, on which engine build, needs which
+// cards, how much disk, which cache tiers, started from where, answering at what rate. It was a
+// handful of literals beside the Vast roster walk (flex_qwen_*), which fused one deployment into the
+// policy and could not carry to an owned card. A recipe says nothing about WHERE the card comes from:
+// a rented Vast card and an owned card are both ServingCardSupply, judged by the same
+// serving_recipe_accepts_card and priced by the same serving_card_hourly. Whether both reach
+// product.fabric.selection select_supply as SupplierOffer quotes is witnessed (serving_recipe_witness)
+// but has no production caller yet: see serving_recipe_frontier, row serving_card_hourly.
+//
+// Figures this repository has not read from an upstream are TranscribedUncited (DESIGN 4d): the
+// operator's readings carry that standing and say so, and nothing here promotes them.
+
+// A RECIPE IS KEYED BY DECLARATION IDENTITY (std.decl_ref decl_ref / declaration_ref_eq), as the vendor rows are:
+// a new recipe is a new row, not an edit to a closed enum or to an equality function.
+
+// ── model artifact ───────────────────────────────────────────────────────────────────────────
+// WHICH BYTES A CARD RUNS HAS ONE AUTHORITY: a placed model REFERENCES gunbc.serving.rented_ninfer_source
+// RentedWeightsPlacement (the digest-pinned model row plus its object key) and an ninfer engine REFERENCES
+// NinferEngineRelease; the recipe redeclares no digest, url or rev. A model with no landed pin is named only,
+// and says so.
+type ServingWeightsSource
+  = WeightsPlacedOnObjectStore { placement: RentedWeightsPlacement }
+  // THE HUGGING FACE PIN, the generalization gunbc.plans.flex_supplier_generalization
+  // generalization_55 declared ("over a Hugging Face repo at a pinned revision... Flash-Next moves
+  // from WeightsNamedUnpinned to the pinned revision observed on the image"). The pin is the
+  // publisher's own manifest row (extdeps.huggingface.hub HubCheckpointManifest: revision, shard
+  // count, byte totals, read record) — a digest the provision leg can verify, which
+  // WeightsNamedUnpinned could never give. `quantization` is what the ENGINE reported loading
+  // ("nvfp4_csf" for the lab checkpoint, from its startup log), never a restatement of the
+  // repository name (DESIGN 4d).
+  | WeightsPinnedAtHub { checkpoint: HubCheckpointManifest, quantization: NonEmptyStr? }
+  | WeightsNamedUnpinned { weights: NonEmptyStr, quantization: NonEmptyStr? }
+
+type ServingModelArtifact {
+  source: ServingWeightsSource
+  served_model_id: NonEmptyStr?
+}
+
+// ── engine build ─────────────────────────────────────────────────────────────────────────────
+// The engine is a REFERENCE to its own release row in the engine's own module (ninfer:
+// gunbc.serving.rented_ninfer_source NinferEngineRelease; the lab vLLM build:
+// extdeps.vllm.local_inference_lab_build), so no hub enumerates engine products (DESIGN 3, external
+// upstream decomposition).
+
+// ── card requirements ────────────────────────────────────────────────────────────────────────
+// A recipe requires cards by REFERENCE to the cited catalog rows (extdeps.gpu.nvidia) or by a VRAM figure.
+// A provider's spelling of a card (a Vast gpu_name) is an INGEST concern that maps to a catalog row; it is
+// not part of the recipe.
+type ServingCardRequirement
+  = CardIsAnyCatalogProduct { identity: NonEmptyStr, products: List<GpuDeviceCatalogRow> }
+
+type ServingDriverFloor {
+  major: Nat
+  standing: CitedFigureStanding
+}
+
+// ── cache tiers (GPU, then host RAM, then disk session cache) ────────────────────────────────
+type ServingCacheSizing
+  = CacheNone
+  | CacheFractionOfHost { fraction: NonzeroNatFraction }
+
+type ServingCacheTiers {
+  ram: ServingCacheSizing
+  disk: ServingCacheSizing
+}
+
+// ── start route ──────────────────────────────────────────────────────────────────────────────
+// A recipe whose weights are PLACED starts from that placement: the route is derived from
+// ServingWeightsSource (serving_start_source), so a placed source and its start route cannot disagree.
+// A recipe whose weights are unpinned carries an observed route with its own standing.
+// How a setting or route is grounded (DESIGN 4d). An OPERATOR POLICY choice is established policy, cited
+// to the dated design ruling that made it; an empirical reading keeps its CitedFigureStanding.
+type ServingSettingStanding
+  = SettingOperatorPolicy { ruling: DeclarationRef }
+  | SettingReading { standing: CitedFigureStanding }
+
+type ServingStartRoute
+  = StartFromPlacedWeights
+  // Starting from a checkpoint pinned at the model hub: the weights row is a HubCheckpointManifest
+  // (a digest exists), and `hub_fallback` false is the standing rule that a pinned revision is
+  // downloaded and never re-resolved behind the pin. Its standing is the observation that the
+  // serving host's launcher downloads by revision, held by the row that reads it.
+  | StartFromHubPinned { hub_fallback: Bool, standing: ServingSettingStanding }
+  | StartFromObjectStoreObserved { store: NonEmptyStr, hub_fallback: Bool, standing: ServingSettingStanding }
+  | StartRouteUnread { read_obligation: NonEmptyStr }
+
+type ServingStartSource
+  = StartSourcePlaced { source: RentedArtifactSource }
+  | StartSourceObserved { store: NonEmptyStr, hub_fallback: Bool, standing: ServingSettingStanding }
+  | StartSourceHubPinned { checkpoint: HubCheckpointManifest, hub_fallback: Bool, standing: ServingSettingStanding }
+  | StartSourcePlacementMissing
+  | StartSourceUnread
+
+fn serving_start_source(recipe: ServingRecipe) -> ServingStartSource {
+  match recipe.start {
+    StartFromPlacedWeights =>
+      match recipe.model.source {
+        WeightsPlacedOnObjectStore { placement: p } => StartSourcePlaced { source: rented_weights_source(placement: p) }
+        WeightsNamedUnpinned { weights: _, quantization: _ } => StartSourcePlacementMissing
+        // A recipe that STARTS from placed weights but carries a HUB PIN has no placement to resolve:
+        // the pin is the bytes, and there is no object-store placement to fetch them from. Same answer
+        // as the named-and-unpinned arm for the same reason — nothing is placed — but spelled separately
+        // so the mismatch stays visible: an arm here is a per-variant STANDING, not a catch-all (a
+        // wildcard would silently absorb any future ServingWeightsSource variant). This arm is what
+        // #15222 owed when it added WeightsPinnedAtHub (§6b: enumerate the siblings of the match you
+        // extend); without it the whole closure through product.fabric.serving_recipe refuses to
+        // resolve as non-exhaustive.
+        WeightsPinnedAtHub { checkpoint: _, quantization: _ } => StartSourcePlacementMissing
+      }
+    StartFromHubPinned { hub_fallback: fb, standing: sd } =>
+      match recipe.model.source {
+        WeightsPinnedAtHub { checkpoint: c, quantization: _ } => StartSourceHubPinned { checkpoint: c, hub_fallback: fb, standing: sd }
+        WeightsPlacedOnObjectStore { placement: _ } => StartSourcePlacementMissing
+        WeightsNamedUnpinned { weights: _, quantization: _ } => StartSourcePlacementMissing
+      }
+    StartFromObjectStoreObserved { store: st, hub_fallback: fb, standing: sd } =>
+      StartSourceObserved { store: st, hub_fallback: fb, standing: sd }
+    StartRouteUnread { read_obligation: _ } => StartSourceUnread
+  }
+}
+
+// Chosen or observed settings of a recipe carry their standing (DESIGN 4d): none of these is a measured
+// compatibility fact, and a consumer reads the standing instead of assuming one.
+type ServingSettingStandings {
+  disk: ServingSettingStanding
+  cache: ServingSettingStanding
+  port: ServingSettingStanding
+}
+
+// ── throughput: an operator reading, never a constant ────────────────────────────────────────
+type ServingThroughput
+  = ThroughputOperatorReading { tokens_per_second: TokensPerSecond, at_concurrency: Nat, standing: CitedFigureStanding }
+  | ThroughputUnread
+
+// The engine is the engine's own typed release row (each in its own module), so a provision phase reads
+// the release's pins (ninfer: installed-file pins) to verify an install. A new engine FAMILY adds an arm
+// here (with its own extdeps module); a new RELEASE of an existing family adds a release row in the
+// existing arm's module, never an arm and never a string.
+type ServingEngine
+  = EngineNinfer { build: NinferEngineRelease }
+  | EngineVllm { build: VllmEngineRelease }
+
+type ServingRecipe {
+  id: DeclarationRef
+  model: ServingModelArtifact
+  engine: ServingEngine
+  catalog_unit: HarnessServingUnit?
+  published_tcp_port: Port
+  cards: List<ServingCardRequirement>
+  driver_floor: ServingDriverFloor
+  disk: ByteSize
+  cache: ServingCacheTiers
+  start: ServingStartRoute
+  throughput: ServingThroughput
+  settings: ServingSettingStandings
+}
+
+fn gib(n: Nat) -> ByteSize {
+  gibibyte_to_byte_size(g: gibibyte(count: n))
+}
+
+data serving_card_class_rtx_pro_5000_blackwell: ServingCardRequirement = CardIsAnyCatalogProduct {
+  identity: "rtx-pro-5000-blackwell",
+  products: [nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog],
+}
+
+data serving_card_class_rtx_pro_6000_blackwell: ServingCardRequirement = CardIsAnyCatalogProduct {
+  identity: "rtx-pro-6000-blackwell",
+  products: [nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog],
+}
+
+// Recipe (a). The 580 floor moved here from product.fabric.flex_market flex_ninfer_min_driver: the
+// floor is the recipe's fact, not a market constant. It stays a transcribed flex screen.
+data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
+  id: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer"),
+  model: ServingModelArtifact {
+    source: WeightsPlacedOnObjectStore { placement: rented_qwen3_8_27b_nvfp4_weights_placement },
+    served_model_id: Present { value: operator_pod_ninfer_launch.model_id },
+  },
+  engine: EngineNinfer { build: ninfer_serve_81c8ce09_sm120_release },
+  catalog_unit: Present { value: Qwen3_8_27bOnNinfer },
+  published_tcp_port: operator_pod_listen_port,
+  cards: [serving_card_class_rtx_pro_5000_blackwell, serving_card_class_rtx_pro_6000_blackwell],
+  driver_floor: ServingDriverFloor {
+    major: 580,
+    standing: TranscribedUncited {
+      read_obligation: "read the ninfer Qwen3.8-27b launch image NVIDIA driver major requirement; 580 is a transcribed flex screen, not a cited NVIDIA or ninfer figure" as NonEmptyStr,
+    },
+  },
+  disk: gib(n: 32),
+  cache: ServingCacheTiers { ram: CacheNone, disk: CacheNone },
+  start: StartFromPlacedWeights,
+  throughput: ThroughputUnread,
+  settings: ServingSettingStandings {
+    disk: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+    cache: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+    port: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+  },
+}
+
+// Recipe (b). The driver floor DERIVES from the CUDA 13 the recipe needs (the Vast template's cuda_max_good >= 13),
+// as NVIDIA's CUDA toolkit release notes state it, so it is cited and no longer a transcribed screen. Every other figure below
+// that is not structural is an operator reading: about 900 tokens per second at 16 concurrent; 400 GiB disk;
+// weights and saved kernel tuning started from the object store with no Hugging Face fallback.
+data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
+  id: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
+  // THE CHECKPOINT IS PINNED (2026-10-25). The manifest is the Hub model API's own answer for
+  // revision dc5b8ab2... (extdeps.local_inference_lab.qwen3_8_flash_next), and `quantization` is
+  // what the ENGINE reported LOADING in its startup log — not the repository name restated
+  // (gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading.weight_quantization).
+  model: ServingModelArtifact {
+    source: WeightsPinnedAtHub {
+      checkpoint: qwen3_8_flash_next_manifest,
+      quantization: Present { value: srv1_serving_startup_reading.weight_quantization },
+    },
+    // Left unread, UNCHANGED from main (`none`). The engine's own advertised name is an OBSERVED
+    // value carried by gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading and read
+    // from there by its consumers (gunbc.serving.srv1_serving_launch srv1_router_upstream_launch_facts);
+    // THIS field is the FLEX advertised identifier, whose wall the flex/template domain governs
+    // (test.claim.fabric.flex_vast_shadow_witness: the template refuses while it is unread). Flipping
+    // it here would move that domain's gate from this PR.
+    served_model_id: none,
+  },
+  engine: EngineVllm { build: local_inference_lab_vllm_release },
+  catalog_unit: none,
+  // The inference server listens on 18000 (HTTPS, self-signed, bearer password); the image's Caddy portal owns 8000.
+  // Read from the secret-free template by crisp-seal-306 (Flex L2), 2026-10-19.
+  published_tcp_port: 18000,
+  cards: [serving_card_class_rtx_pro_6000_blackwell],
+  driver_floor: ServingDriverFloor {
+    major: cuda_13_0_driver_requirement.min_driver_major,
+    standing: cuda_13_0_driver_requirement.standing,
+  },
+  disk: gib(n: 400),
+  cache: ServingCacheTiers {
+    ram: CacheFractionOfHost { fraction: NonzeroNatFraction { num: 1, denom_predecessor: 1 } },
+    disk: CacheFractionOfHost { fraction: NonzeroNatFraction { num: 1, denom_predecessor: 1 } },
+  },
+  // srv1's launcher downloads by revision into its HF cache (the wrapper's HF_HOME mount and the
+  // engine's own model= line, read through the srv1 serving launch receipt); no fallback
+  // re-resolution behind the pin. The standing is that observation, not the flex template ruling
+  // this row cited while its weights were unpinned.
+  start: StartFromHubPinned {
+    hub_fallback: false,
+    standing: SettingReading { standing: srv1_serving_ground() },
+  },
+  throughput: ThroughputOperatorReading {
+    tokens_per_second: tokens_per_second(count: 900),
+    at_concurrency: 16,
+    standing: TranscribedUncited {
+      read_obligation: "operator reading: about 900 tokens per second at 16 concurrent on one RTX PRO 6000; measure on the lab build before relying on it" as NonEmptyStr,
+    },
+  },
+  settings: ServingSettingStandings {
+    disk: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+    cache: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+    port: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+  },
+}
+
+// Harness catalog unit: the recipe's own catalog_unit field (Flash-Next has none, see serving_recipe_frontier).
+
+// Two recipes are interchangeable only when identical, or when both name catalog units that the
+// catalog says are fungible. A recipe with no catalog unit is interchangeable with nothing else.
+fn serving_recipes_interchangeable(left: ServingRecipe, right: ServingRecipe) -> Bool {
+  if declaration_ref_eq(a: left.id, b: right.id) {
+    true
+  } else {
+    match left.catalog_unit {
+      Absent => false
+      Present { value: l } =>
+        match right.catalog_unit {
+          Absent => false
+          Present { value: r } =>
+            match harness_serving_unit_compatibility(required: l, observed: r) {
+              HarnessUnitsIdentical => true
+              HarnessUnitsCatalogFungible => true
+              HarnessUnitsIncompatible { required: _, observed: _ } => false
+            }
+        }
+    }
+  }
+}
+
+// ── does a card satisfy a recipe ─────────────────────────────────────────────────────────────
+type ServingCardFacts {
+  product: GpuDeviceCatalogRow?
+  vram: ByteSize
+  driver_major: Nat?
+}
+
+type ServingCardVerdict
+  = CardAccepted { class: NonEmptyStr }
+  | CardRefusedWrongCard
+  | CardRefusedDriverBelowFloor { required: Nat, observed: Nat }
+  | CardRefusedDriverUnread
+  | CardScreenedOnUncitedFloor { class: NonEmptyStr, required: Nat, observed: Nat, floor_met: Bool }
+
+fn serving_requirement_identity(r: ServingCardRequirement) -> NonEmptyStr {
+  match r {
+    CardIsAnyCatalogProduct { identity: i, products: _ } => i
+  }
+}
+
+fn serving_requirement_matches(card: ServingCardFacts, r: ServingCardRequirement) -> Bool {
+  match r {
+    CardIsAnyCatalogProduct { identity: _, products: ps } =>
+      match card.product {
+        Absent => false
+        Present { value: p } =>
+          fold(ps, init: false, f: (acc, q) => if acc { true } else { gpu_catalog_row_eq(a: p, b: q) })
+      }
+  }
+}
+
+fn serving_first_matching_requirement(card: ServingCardFacts, classes: List<ServingCardRequirement>) -> ServingCardRequirement? {
+  fold(
+    classes,
+    init: none,
+    f: (acc, r) =>
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent => if serving_requirement_matches(card: card, r: r) { Present { value: r } } else { none }
+      },
+  )
+}
+
+fn serving_driver_verdict(recipe: ServingRecipe, card: ServingCardFacts, identity: NonEmptyStr) -> ServingCardVerdict {
+  match card.driver_major {
+    Absent => CardRefusedDriverUnread
+    Present { value: observed } =>
+      match recipe.driver_floor.standing {
+        TranscribedUncited { read_obligation: _ } =>
+          CardScreenedOnUncitedFloor { class: identity, required: recipe.driver_floor.major, observed: observed, floor_met: observed >= recipe.driver_floor.major }
+        _ =>
+          if observed < recipe.driver_floor.major {
+            CardRefusedDriverBelowFloor { required: recipe.driver_floor.major, observed: observed }
+          } else {
+            CardAccepted { class: identity }
+          }
+      }
+  }
+}
+
+// A card that meets no requirement is WrongCard; a matching card is then judged on the driver floor.
+fn serving_recipe_accepts_card(recipe: ServingRecipe, card: ServingCardFacts) -> ServingCardVerdict {
+  match serving_first_matching_requirement(card: card, classes: recipe.cards) {
+    Present { value: r } => serving_driver_verdict(recipe: recipe, card: card, identity: serving_requirement_identity(r: r))
+    Absent => CardRefusedWrongCard
+  }
+}
+
+// ── card supply: rented and owned are one concept ────────────────────────────────────────────
+// Storage and VRAM are both money per GiB-hour: one rate carrier (MoneyRate over this period marker),
+// shared with product.fabric.flex_market's VRAM ranking, which imports it from here.
+type PerGibibyteHour
+
+type MoneyPerGibibyteHour = MoneyRate<PerGibibyteHour>
+
+type ServingDiskRate {
+  rate: MoneyPerGibibyteHour
+}
+
+type ServingCardSupply
+  = RentedCardSupply { dph: MoneyPerHour, disk_rate: ServingDiskRate }
+  | OwnedCardSupply { capital: MoneyAmountMicro, currency: CurrencyCode, amortization: Second }
+
+type ServingHourlyCost
+  = HourlyCostQuoted { rate: MoneyPerHour }
+  | HourlyCostEstimated { rate: MoneyPerHour, standing: CitedFigureStanding }
+  | HourlyCostUnamortizable
+  | HourlyCostCurrencyMismatch
+
+// The standing a setting contributes to anything computed from it: operator policy and a cited reading
+// are established; an uncited reading is not.
+fn serving_setting_uncited(setting: ServingSettingStanding) -> CitedFigureStanding? {
+  match setting {
+    SettingOperatorPolicy { ruling: _ } => none
+    SettingReading { standing: sd } =>
+      match sd {
+        TranscribedUncited { read_obligation: _ } => Present { value: sd }
+        _ => none
+      }
+  }
+}
+
+// Disk is part of a rented card's cost: the recipe's disk need priced at the host's storage rate and
+// added to the card's dph. The disk size is the recipe's setting, so a cost computed from an UNCITED disk
+// size is Estimated, never Quoted. An owned card's cost is its capital over the declared amortization
+// horizon (an owned card is not free: ruling of 2026-08-27 in product.fabric.selection).
+fn serving_card_hourly(recipe: ServingRecipe, supply: ServingCardSupply) -> ServingHourlyCost {
+  match supply {
+    RentedCardSupply { dph: dph, disk_rate: disk } =>
+      if currency_code_eq(a: dph.currency, b: disk.rate.currency) {
+        let rate = MoneyPerHour {
+          amount: money_amount_micro(
+            count: money_per_hour_micros(q: dph)
+              + money_rate_micros(q: disk.rate) * gibibyte_count(g: gibibyte_ceiling(b: recipe.disk)),
+          ),
+          currency: dph.currency,
+        }
+        match serving_setting_uncited(setting: recipe.settings.disk) {
+          Present { value: sd } => HourlyCostEstimated { rate: rate, standing: sd }
+          Absent => HourlyCostQuoted { rate: rate }
+        }
+      } else {
+        HourlyCostCurrencyMismatch
+      }
+    OwnedCardSupply { capital: capital, currency: currency, amortization: amortization } =>
+      let seconds = second_count(s: amortization)
+      if seconds == 0 {
+        HourlyCostUnamortizable
+      } else {
+        HourlyCostQuoted {
+          rate: MoneyPerHour {
+            amount: money_amount_micro(count: (money_amount_micro_count(m: capital) * 3600 + (seconds - 1)) / seconds),
+            currency: currency,
+          },
+        }
+      }
+  }
+}
+
+// ── cost per accepted unit ───────────────────────────────────────────────────────────────────
+// The accepted unit is a served token. Throughput is an operator reading carried on the recipe, so a
+// recipe without one has no unit cost rather than a made-up one. The cost is Quoted only when EVERY
+// input is established: an uncited throughput or an Estimated hourly cost makes it Estimated.
+type ServingUnitCost
+  = UnitCostQuoted { amount: MoneyAmountMicro, currency: CurrencyCode }
+  | UnitCostEstimated { amount: MoneyAmountMicro, currency: CurrencyCode, standings: List<CitedFigureStanding> }
+  | UnitCostThroughputUnread
+  | UnitCostHourlyUnavailable
+
+fn serving_cost_per_million_tokens(recipe: ServingRecipe, hourly: ServingHourlyCost) -> ServingUnitCost {
+  match hourly {
+    HourlyCostUnamortizable => UnitCostHourlyUnavailable
+    HourlyCostCurrencyMismatch => UnitCostHourlyUnavailable
+    HourlyCostQuoted { rate: r } => serving_unit_cost_at(recipe: recipe, hourly: r, hourly_standing: none)
+    HourlyCostEstimated { rate: r, standing: sd } => serving_unit_cost_at(recipe: recipe, hourly: r, hourly_standing: Present { value: sd })
+  }
+}
+
+fn serving_unit_cost_at(recipe: ServingRecipe, hourly: MoneyPerHour, hourly_standing: CitedFigureStanding?) -> ServingUnitCost {
+  match recipe.throughput {
+    ThroughputUnread => UnitCostThroughputUnread
+    ThroughputOperatorReading { tokens_per_second: rate, at_concurrency: _, standing: sd } =>
+      let tps = tokens_per_second_count(r: rate)
+      if tps == 0 {
+        UnitCostThroughputUnread
+      } else {
+        let amount = money_amount_micro(count: (money_per_hour_micros(q: hourly) * 1000000 + (tps * 3600 - 1)) / (tps * 3600))
+        let throughput_uncited = match sd {
+          TranscribedUncited { read_obligation: _ } => true
+          _ => false
+        }
+        let hourly_uncited = match hourly_standing {
+          Present { value: _ } => true
+          Absent => false
+        }
+        if !throughput_uncited && !hourly_uncited {
+          UnitCostQuoted { amount: amount, currency: hourly.currency }
+        } else {
+          // every uncited input's obligation survives into the estimate
+          UnitCostEstimated {
+            amount: amount,
+            currency: hourly.currency,
+            standings: concat(
+              if throughput_uncited { [sd] } else { [] },
+              match hourly_standing {
+                Present { value: hs } => [hs]
+                Absent => []
+              },
+            ),
+          }
+        }
+      }
+  }
+}
+
+// What select_supply may take as a quote. An Estimated cost is a bet and is refused as an established
+// price (DESIGN 4d): the selection fold is handed only a Quoted cost.
+type ServingSelectionQuote
+  = SelectionQuoteEstablished { amount: MoneyAmountMicro, currency: CurrencyCode }
+  | SelectionQuoteRefusedEstimated { standings: List<CitedFigureStanding> }
+  | SelectionQuoteRefusedUnavailable
+
+fn serving_unit_cost_for_selection(cost: ServingUnitCost) -> ServingSelectionQuote {
+  match cost {
+    UnitCostQuoted { amount: a, currency: c } => SelectionQuoteEstablished { amount: a, currency: c }
+    UnitCostEstimated { amount: _, currency: _, standings: ss } => SelectionQuoteRefusedEstimated { standings: ss }
+    UnitCostThroughputUnread => SelectionQuoteRefusedUnavailable
+    UnitCostHourlyUnavailable => SelectionQuoteRefusedUnavailable
+  }
+}
+
+// ── cache sizes adapt to the host ────────────────────────────────────────────────────────────
+fn serving_cache_bytes(sizing: ServingCacheSizing, host: ByteSize) -> ByteSize {
+  match sizing {
+    CacheNone => byte_size(count: 0)
+    CacheFractionOfHost { fraction: f } =>
+      byte_size(count: byte_size_count(b: host) * f.num / (f.denom_predecessor + 1))
+  }
+}
+
+// ── declared frontiers ───────────────────────────────────────────────────────────────────────
+data serving_recipe_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
+    reason: "Flash-Next has no HarnessServingUnit arm: its request wire, tool-call parser, reasoning field and served model id are unread, and an arm would have to invent them in every exhaustive unit match. Until then it is interchangeable with nothing and placed by no harness turn. ServingCacheSizing (host RAM and disk session cache fractions) is declared here because neither extdeps.vllm.kv_cache nor an LMCache module models the host-RAM and disk tiers: no extdeps.lmcache exists and this repository has read none of LMCache.",
+    dissolution: unbound_dissolution(description: "(1) an extdeps module for the lab vLLM build and Qwen3.8-Flash-Next citing its wire, parser, reasoning and served-model facts, and a HarnessServingUnit arm built from it; (2) an extdeps.lmcache module citing tier configuration, after which ServingCacheTiers references it. SUFFICIENT FOR deleting this row."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer"),
+    reason: "Throughput and cache tiers are unread (unit cost is UnitCostThroughputUnread, not a guess); disk, cache and port settings are operator policy (flex_operator_template_v2). The disk, cache and setting standings have no production reader: the derivation gunbc.serving.serving_provision_derivation reads the placement, engine release, port, start source and served model id but is itself run only by witnesses (see its frontier row), and nothing reads disk, cache sizes or settings.",
+    dissolution: unbound_dissolution(description: "a consumer reads the recipe's cache sizes (serving_cache_bytes), disk and setting standings, plus an operator or measured throughput reading. SUFFICIENT FOR deleting this row."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.vllm.local_inference_lab_build", decl_name: "local_inference_lab_vllm_release"),
+    reason: "The lab vLLM release row is read only by test.claim.fabric.serving_recipe_witness (flash_next_engine_ref_names_the_lab_release_row) through the Flash-Next recipe's engine reference; no production code resolves an engine reference to its release.",
+    dissolution: unbound_dissolution(description: "a vllm launch argv is modeled, after which the provision derivation (gunbc.serving.serving_provision_derivation serving_provision_derive) resolves ServingRecipe.engine to this release row instead of refusing typed; its source and flags stay TranscribedUncited until read. SUFFICIENT FOR deleting this row."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_card_hourly"),
+    reason: "serving_card_hourly, serving_cost_per_million_tokens, serving_cache_bytes and serving_recipes_interchangeable are called only by test.claim.fabric.serving_recipe_witness. The Vast shadow field (flex_offer_in_shadow_field) screens by recipe but does not yet price a card's disk or quote it to select_supply, and nothing yet reads cache sizes or recipe interchangeability. Disk-in-cost is therefore a witnessed model, not an executing route.",
+    dissolution: unbound_dissolution(description: "the flex M3 wet loop quoting each shadow-field offer through serving_card_hourly into product.fabric.selection select_supply (flex_select_supply_consumer_frontier), and a consumer reading serving_cache_bytes. SUFFICIENT FOR deleting this row."),
+  ),
+]

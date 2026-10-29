@@ -1,6 +1,7 @@
 module product.capacity.pool_events
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { Measure, measure_count }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int }
@@ -16,6 +17,7 @@ import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
   AppendDecision, AppendAdmitted, AppendStale, EventDecode, EventDecoded, EventUndecodable,
 }
+import std.durable_compare_and_set { cas_generation }
 import product.capacity.lease { LeasePolicy, LeaseGrant, lease_grant, lease_fence_of }
 
 // THE EVENTS A POOL'S PARTITION CARRIES, AND THE FOLD THAT TURNS A CHAIN OF THEM BACK INTO A POOL.
@@ -270,6 +272,10 @@ fn grant_from_admission<Q, S>(request: SeatRequest<Q, S>, admission: AppendDecis
   match admission {
     AppendStale { expected: _, observed: _ } => none
     AppendAdmitted { new_head: h, generation: g } =>
-      Present { value: lease_grant(reference: request.reference, fence: lease_fence_of(admitting_event: h, generation: g), granted_at: request.at, policy: policy) }
+      match cas_generation(n: g as Int) {
+        Absent => none
+        Present { value: cg } =>
+          Present { value: lease_grant(reference: request.reference, fence: lease_fence_of(admitting_event: h, generation: cg), granted_at: request.at, policy: policy) }
+      }
   }
 }

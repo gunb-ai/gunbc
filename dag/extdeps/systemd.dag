@@ -14,6 +14,7 @@ import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatRea
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd.systemd_contracts { systemd_unit_active_state_wire_contract }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -96,19 +97,30 @@ type SystemdUnitProperty
   | WantsProperty
   | InvocationIDProperty
   | FragmentPathProperty
+  | StandardInputProperty
   | StandardOutputProperty
   | StandardErrorProperty
   | ProtectSystemProperty
   | ProtectHomeProperty
   | PrivateTmpProperty
   | ReadWritePathsProperty
+  // systemd.exec(5) BindPaths=: a space-separated list of SOURCE[:DESTINATION[:OPTIONS]] bind mounts made in the
+  // unit's own mount namespace, which is how a unit sees a private path at a name other units also use.
+  | BindPathsProperty
   | ReadOnlyPathsProperty
+  // systemd.exec(5) InaccessiblePaths=: paths made unreachable in the unit's mount namespace.
+  | InaccessiblePathsProperty
   | RemainAfterExitProperty
   | RuntimeMaxSecProperty
   | CollectModeProperty
   | JobProperty
   | NoNewPrivilegesProperty
   | RestrictSUIDSGIDProperty
+  // systemd.exec(5) UMask=: the file mode creation mask of the unit's processes (an octal word).
+  | UMaskProperty
+  // systemd.resource-control(5) Delegate=: the unit owns its cgroup subtree, so a non-root User= can write the
+  // memory controller files below it and the memory envelope read of its cgroup is bounded, not absent.
+  | DelegateProperty
 
 // THE WIRE SPELLING AS A SEALED WORD, SO THE CLOSED TYPE SURVIVES ALL THE WAY TO THE ARGV.
 //
@@ -181,20 +193,112 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     WantsProperty => "Wants" as NonEmptyStr
     InvocationIDProperty => "InvocationID" as NonEmptyStr
     FragmentPathProperty => "FragmentPath" as NonEmptyStr
+    StandardInputProperty => "StandardInput" as NonEmptyStr
     StandardOutputProperty => "StandardOutput" as NonEmptyStr
     StandardErrorProperty => "StandardError" as NonEmptyStr
     ProtectSystemProperty => "ProtectSystem" as NonEmptyStr
     ProtectHomeProperty => "ProtectHome" as NonEmptyStr
     PrivateTmpProperty => "PrivateTmp" as NonEmptyStr
     ReadWritePathsProperty => "ReadWritePaths" as NonEmptyStr
+    BindPathsProperty => "BindPaths" as NonEmptyStr
     ReadOnlyPathsProperty => "ReadOnlyPaths" as NonEmptyStr
+    InaccessiblePathsProperty => "InaccessiblePaths" as NonEmptyStr
     RemainAfterExitProperty => "RemainAfterExit" as NonEmptyStr
     RuntimeMaxSecProperty => "RuntimeMaxSec" as NonEmptyStr
     CollectModeProperty => "CollectMode" as NonEmptyStr
     JobProperty => "Job" as NonEmptyStr
     NoNewPrivilegesProperty => "NoNewPrivileges" as NonEmptyStr
     RestrictSUIDSGIDProperty => "RestrictSUIDSGID" as NonEmptyStr
+    UMaskProperty => "UMask" as NonEmptyStr
+    DelegateProperty => "Delegate" as NonEmptyStr
   }
+}
+
+// THE PROPERTIES THAT CARRY FILESYSTEM PATHS A UNIT IS HANDED (systemd.exec(5), systemd.service(5)):
+// the working directory, the runtime directory systemd creates, the environment files the unit reads,
+// the start, stop and stop-post command paths, the writable, read-only, bind and inaccessible path
+// lists, and the stream targets. A consumer that must account for every path a unit is handed asks THIS
+// predicate, so a path-carrying setting is a fact of the upstream and not a list a consumer keeps beside
+// the unit. THE MATCH IS EXHAUSTIVE WITH NO WILDCARD: a property added to SystemdUnitProperty has no arm
+// here until it is classified, so the omission is a compile-time refusal and never a silent false.
+// FragmentPathProperty is false by classification: it is the unit file's own location read back from
+// the manager, not a path the unit is handed.
+fn systemd_property_carries_paths(property: SystemdUnitProperty) -> Bool {
+  match property {
+    MemoryMax => false
+    MemorySwapMax => false
+    MemoryHigh => false
+    CPUWeight => false
+    CPUQuota => false
+    CPUQuotaPerSecUSec => false
+    MemoryCurrent => false
+    MemoryPeak => false
+    TasksMax => false
+    TasksCurrent => false
+    ControlGroup => false
+    SliceProperty => false
+    PartOf => false
+    ActiveEnterTimestampMonotonic => false
+    ActiveState => false
+    MainPID => false
+    LoadState => false
+    UnitFileState => false
+    SubState => false
+    Result => false
+    ExecMainStatus => false
+    ExecStartProperty => true
+    ExecStopProperty => true
+    ExecStopPostProperty => true
+    User => false
+    WorkingDirectoryProperty => true
+    RuntimeDirectoryProperty => true
+    Unit => false
+    NextElapseUSecMonotonic => false
+    AccuracyUSec => false
+    TimersMonotonic => false
+    ExecMainStartTimestampMonotonic => false
+    ExecMainExitTimestampMonotonic => false
+    NeedDaemonReload => false
+    IdProperty => false
+    KillModeProperty => false
+    ExitTypeProperty => false
+    EnvironmentProperty => false
+    EnvironmentFilesProperty => true
+    PassEnvironmentProperty => false
+    AfterProperty => false
+    WantsProperty => false
+    InvocationIDProperty => false
+    FragmentPathProperty => false
+    StandardInputProperty => true
+    StandardOutputProperty => true
+    StandardErrorProperty => true
+    ProtectSystemProperty => false
+    ProtectHomeProperty => false
+    PrivateTmpProperty => false
+    ReadWritePathsProperty => true
+    BindPathsProperty => true
+    ReadOnlyPathsProperty => true
+    InaccessiblePathsProperty => true
+    RemainAfterExitProperty => false
+    RuntimeMaxSecProperty => false
+    CollectModeProperty => false
+    JobProperty => false
+    NoNewPrivilegesProperty => false
+    RestrictSUIDSGIDProperty => false
+    UMaskProperty => false
+    DelegateProperty => false
+  }
+}
+
+// systemd.exec(5) ReadWritePaths=/ReadOnlyPaths=: entries are space-separated, and an entry prefixed
+// with '-' is ignored when the path does not exist. The prefix is a wire spelling of one typed fact
+// (missing-ok), so a caller passes the Bool and never writes the character.
+data systemd_path_list_separator: String = " "
+
+data systemd_path_missing_ok_prefix: String = "-"
+
+fn systemd_path_list_entry_wire(path: String, missing_ok: Bool) -> String {
+  if missing_ok { join([systemd_path_missing_ok_prefix, path], "") } else { path }
 }
 
 data systemd_unit_load_state_not_found_wire: NonEmptyStr = "not-found" as NonEmptyStr
@@ -276,7 +380,7 @@ fn systemd_time_span_unit_usec(unit: String) -> Nat? {
 }
 
 fn systemd_time_span_split(part: String) -> SystemdTimeSpanPart? {
-  let scan = fold(chars(s: part), init: 0, f: (n, c) =>
+  let scan = fold(chars(text: part), init: 0, f: (n, c) =>
     if n < 0 { n } else if c >= 48 && c <= 57 { n + 1 } else { 0 - n - 1 })
   let digits = if scan < 0 { 0 - scan - 1 } else { scan }
   if digits == 0 {
@@ -616,7 +720,7 @@ fn systemd_unit_name_char_admitted(cp: Int) -> Bool {
 }
 
 fn systemd_unit_name_first_disallowed(stem: String) -> String? {
-  match fold(chars(s: stem), init: SystemdUnitNameCharsWalking { index: 0 }, f: (acc, cp) =>
+  match fold(chars(text: stem), init: SystemdUnitNameCharsWalking { index: 0 }, f: (acc, cp) =>
     match acc {
       SystemdUnitNameCharHit { index: i } => SystemdUnitNameCharHit { index: i }
       SystemdUnitNameCharsWalking { index: i } =>

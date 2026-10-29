@@ -1,12 +1,12 @@
 module v2.std.project_to_core_predicate
 
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, collection_count_shape }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.model_core {
   model_core_primitive_fact_axis_is_core,
   model_core_primitive_fact_axis_is_surface
 }
-import v2.std.node { Conj, Edge, Authored, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, node_rebuild, well_formed, StructuralLabel }
+import v2.std.node { Conj, Edge, Authored, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, node_rebuild, well_formed, StructuralLabel, NotADeclaration }
 
 fn project_to_core_axis_is_core(name: Symbol) -> Bool {
   model_core_primitive_fact_axis_is_core(axis: name)
@@ -31,7 +31,7 @@ fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
           n: acc,
           children: list_snoc_item(
             xs: acc.children,
-            item: Edge { label: edge.label, target: projected_target }
+            item: Edge { label: edge.label, target: projected_target, declaration: edge.declaration }
           )
         )
       }
@@ -40,7 +40,7 @@ fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
         n: acc,
         children: list_snoc_item(
           xs: acc.children,
-          item: Edge { label: edge.label, target: projected_target }
+          item: Edge { label: edge.label, target: projected_target, declaration: edge.declaration }
         )
       )
     Positional =>
@@ -48,7 +48,7 @@ fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
         n: acc,
         children: list_snoc_item(
           xs: acc.children,
-          item: Edge { label: edge.label, target: projected_target }
+          item: Edge { label: edge.label, target: projected_target, declaration: edge.declaration }
         )
       )
   }

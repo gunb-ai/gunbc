@@ -4,7 +4,7 @@ import std.types { Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs }
 import std.nat { Nat }
 import std.measure { Measure, measure_add, measure_le }
 import extdeps.accounting.budget { Appropriation }
-import product.capacity.lease { ReleaseLaw, FencedResource, QuiescenceRequired }
+import std.resource_release_law { ReleaseLaw, FencedResource, QuiescenceRequired }
 import extdeps.accounting.encumbrance {
   Encumbrance, EncumbranceState, Held, Expended, Released,
   EncumbranceLedger, EncumbranceOutcome, LedgerAdvanced, EncumbranceRefused,

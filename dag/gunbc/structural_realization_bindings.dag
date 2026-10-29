@@ -3,7 +3,7 @@ module gunbc.structural_realization_bindings
 import std.optional { Present, Absent }
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding, KernelMintDeclaration }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding, KernelMintDeclaration, PeanoGroundingView, SignedGroundingView, KernelGroundingArm, UnboundedIntegers, UnboundedNaturals }
 import std.coercion { ConversionPlan, UnfoldPhase, InverseUnfoldPhase }
 import std.operator_realization { StructuralOrderingBinding }
 
@@ -116,8 +116,25 @@ data structural_ordering_rows: List<StructuralOrderingBinding> = [
 // value (DirectLiteral) exactly when std.types range admits it (min 0, no max). v2 infer reads this row to
 // elaborate a literal at Nat and derives `-1`'s refusal from the range -- Nat has no literal homomorphism
 // row, so the two rosters still partition (std.literal_elaboration, "a declaration is never both").
+//
+// std.integer Int's row (operator ruling 2026-10-19: one Int, a canonical structural carrier) declares NO
+// bound: every kernel integer is an integer. Its view is SIGNED and names its arms, because both carry one
+// natural and no shape tells them apart: NonNegative { n } denotes n, Negative { pred } denotes
+// -(pred + 1). That the machine integer can REPRESENT a given value, or compute a given operation
+// exactly, is not this row's claim: it is the realization's admission, and the seed refuses where it is
+// not exact (overflow-refusing arithmetic, v1.compiler.emit_rust expr_realizes_as_refusing_int) rather than
+// wrapping or saturating.
 data kernel_grounding_rows: List<KernelGrounding> = [
-  KernelGrounding { source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat"), min: Present { value: 0 }, max: Absent }
+  KernelGrounding { source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat"), extent: UnboundedNaturals, view: PeanoGroundingView },
+  KernelGrounding {
+    source_kind: KernelIntLiteral,
+    carrier: decl_ref(module_path: "std.integer", decl_name: "Int"),
+    extent: UnboundedIntegers,
+    view: SignedGroundingView {
+      nonnegative: KernelGroundingArm { constructor: "NonNegative", payload: "n" },
+      negative: KernelGroundingArm { constructor: "Negative", payload: "pred" }
+    }
+  }
 ]
 
 // KernelMintDeclaration). The seed's kernel Optional -- what `T?` resolves to -- is

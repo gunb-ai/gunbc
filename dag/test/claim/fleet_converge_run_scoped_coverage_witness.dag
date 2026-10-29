@@ -1,0 +1,202 @@
+module test.claim.fleet_converge_run_scoped_coverage_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import gunbc.auth.branch_dispatch_federation { run_scoped_mode_named, run_scoped_modes, RunScopedMode, MainUsesFleetIdentity, run_scoped_mode_eligible }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire, expected_fleet_converge_yml,
+  FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
+  fleet_converge_unfederated_run_scoped_refusal_of, fleet_converge_unfederated_run_scoped_refusal,
+  fleet_converge_run_scoped_step_if, fleet_converge_branch_account_expression, fleet_converge_jobs, fleet_converge_job, fleet_converge_mode_job_id,
+  FleetConvergeWorkflowMode, DashboardDeploy, FullHostPlan,
+  fleet_converge_branch_run_grant_await_job, fleet_converge_branch_run_grant_await_job_id, fleet_converge_branch_run_grant_wait_if,
+  fleet_converge_grant_wait_placement_refusal, needs_result_is,
+  fleet_converge_grant_wait_admits, fleet_converge_grant_required_expression, GrantWaitSucceeded, GrantWaitSkipped, GrantWaitFailed, GrantWaitCancelled,
+  MtCollins1Boot, fleet_converge_mtcollins1_boot_job_if,
+}
+import extdeps.github.expressions { LogicalAnd, LogicalNot }
+import extdeps.github.actions { Step, RunStep, UsesStep, Job, SelfHosted, HostedRunner, RunsOnExpression }
+import extdeps.github.expressions { serialize_expression }
+import std.types { Int }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn rendered() -> String {
+  match expected_fleet_converge_yml() {
+    FleetConvergeYamlGenerated { content } => content
+    FleetConvergeYamlGenerationRefused { reason: _ } => ""
+  }
+}
+
+type ModeCoverage = Covered | MainOnly
+
+// THE CENSUS: every fleet-converge mode classified by executing the relation the generator reads.
+fn coverage_of(mode: String) -> ModeCoverage {
+  match run_scoped_mode_named(mode: mode) { Present { value: _ } => Covered  Absent => MainOnly }
+}
+
+fn covered_wires() -> List<String> {
+  filter(map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m)), w => coverage_of(mode: w) == Covered)
+}
+
+fn uncovered_wires() -> List<String> {
+  filter(map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m)), w => coverage_of(mode: w) == MainOnly)
+}
+
+// POSITIVE: plan and apply are covered, dashboard_deploy is deliberately not (its job holds no credential, so a
+// grant would be enforced only by the branch's own workflow text), and the census partitions every mode.
+test fn plan_and_apply_are_covered_dashboard_deploy_is_not_and_the_census_partitions_every_mode() -> Bool {
+  covered_wires().contains("plan") && covered_wires().contains("apply") && !covered_wires().contains("dashboard_deploy")
+    && uncovered_wires().contains("dashboard_deploy")
+    && covered_wires().length() + uncovered_wires().length() == fleet_converge_workflow_modes.length()
+}
+
+fn step_id_of(s: Step) -> String {
+  match s { RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+            UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" } }
+}
+
+fn step_if_of(s: Step) -> String {
+  match s { RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
+            UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" } }
+}
+
+fn step_id_of_opt(s: Step?) -> String {
+  match s { Present { value: v } => step_id_of(s: v)  Absent => "" }
+}
+
+fn step_if_of_opt(s: Step?) -> String {
+  match s { Present { value: v } => step_if_of(s: v)  Absent => "" }
+}
+
+fn step_index(steps: List<Step>, id: String) -> Int {
+  step_index_from(steps: steps, id: id, i: 0)
+}
+
+fn step_index_from(steps: List<Step>, id: String, i: Int) -> Int {
+  if i >= steps.length() { 0 - 1 } else if step_id_of_opt(s: steps[i]) == id { i } else { step_index_from(steps: steps, id: id, i: i + 1) }
+}
+
+fn mode_of_wire(wire: String) -> FleetConvergeWorkflowMode? {
+  filter(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m) == wire).first()
+}
+
+fn executing_job(mode: FleetConvergeWorkflowMode) -> Job? {
+  filter(fleet_converge_jobs(), j => j.id == (fleet_converge_mode_job_id(mode: mode) as String)).first()
+}
+
+// THE JOB-SCOPED JOIN: the mode's own executing job needs the grant-wait job, runs only after that wait
+// succeeded or was skipped, and holds no wait of its own; the wait names the mode and the off-main ref.
+// Reading the whole yml would be satisfied by another job's edge.
+fn job_waits_for_the_grant(j: Job, mode_wire: String) -> Bool {
+  j.needs.contains(fleet_converge_branch_run_grant_await_job_id as String)
+    && match j.if_condition {
+      Present { value: c } => c.contains(serialize_expression(expression: needs_result_is(job: fleet_converge_branch_run_grant_await_job_id, result: "success")))
+      Absent => false
+    }
+    && step_index(steps: j.steps, id: "branch_run_grant_await") < 0
+    && fleet_converge_branch_run_grant_wait_if().contains(join(["github.event.inputs.mode == '", mode_wire, "'"], ""))
+    && fleet_converge_branch_run_grant_wait_if().contains("github.ref != 'refs/heads/main'")
+}
+
+fn without_the_grant_wait(j: Job) -> Job {
+  Job { id: j.id, name: j.name, runner: j.runner, environment: j.environment, steps: j.steps, needs: filter(j.needs, n => n != (fleet_converge_branch_run_grant_await_job_id as String)),
+    env: j.env, outputs: j.outputs, if_condition: j.if_condition, timeout_minutes: j.timeout_minutes, continue_on_error: j.continue_on_error, concurrency: j.concurrency, permissions: j.permissions }
+}
+
+// POSITIVE, JOB-SCOPED: plan and apply (fleet identity) wait for the grant through their own executing
+// job's edge.
+test fn each_covered_mode_waits_for_the_grant_in_its_own_job_before_its_work() -> Bool {
+  all(["plan", "apply"], w => match mode_of_wire(wire: w) {
+    Absent => false
+    Present { value: m } => match executing_job(mode: m) {
+      Absent => false
+      Present { value: j } => job_waits_for_the_grant(j: j, mode_wire: w)
+    }
+  })
+}
+
+// RED, JOB-SCOPED: removing the executing job's edge to the wait turns the join RED while the workflow as
+// a whole still renders the wait job, so a whole-file grep would stay green.
+test fn removing_the_executing_jobs_grant_wait_goes_red() -> Bool {
+  match executing_job(mode: FullHostPlan) {
+    Absent => false
+    Present { value: j } =>
+      job_waits_for_the_grant(j: j, mode_wire: "plan")
+        && !job_waits_for_the_grant(j: without_the_grant_wait(j: j), mode_wire: "plan")
+  }
+}
+
+fn on_runner(j: Job, labels: List<String>) -> Job {
+  Job { id: j.id, name: j.name, runner: SelfHosted { labels: labels }, environment: j.environment, steps: j.steps, needs: j.needs,
+    env: j.env, outputs: j.outputs, if_condition: j.if_condition, timeout_minutes: j.timeout_minutes, continue_on_error: j.continue_on_error, concurrency: j.concurrency, permissions: j.permissions }
+}
+
+// THE srv1 DEADLOCK (boot run 39895480515 held srv1-01 waiting for grant run 39895564897, whose
+// gcp-iam-converge job needs srv1): the wait runs GitHub-hosted, no fleet job holds it, and a wait placed
+// on srv1 refuses emission. The emitted roster is the positive control.
+test fn the_grant_wait_holds_no_fleet_runner_and_a_wait_on_srv1_refuses() -> Bool {
+  (match fleet_converge_branch_run_grant_await_job().runner { HostedRunner { label: _ } => true  SelfHosted { labels: _ } => false  RunsOnExpression { expression: _ } => false })
+    && all(filter(fleet_converge_jobs(), j => j.id != (fleet_converge_branch_run_grant_await_job_id as String)), j => step_index(steps: j.steps, id: "branch_run_grant_await") < 0)
+    && (match fleet_converge_grant_wait_placement_refusal(jobs: fleet_converge_jobs()) { Present { value: _ } => false  Absent => true })
+    && (match fleet_converge_grant_wait_placement_refusal(jobs: [on_runner(j: fleet_converge_branch_run_grant_await_job(), labels: ["self-hosted", "linux", "arm64", "srv1"])]) {
+      Present { value: r } => r.contains("branch-run-grant-await")
+      Absent => false
+    })
+}
+
+// RED: dashboard_deploy is outside the relation, so its job has no grant wait and no branch-pool sign-in, and
+// the eligibility rule gives it no grant off main (it keeps today's main-only route).
+test fn dashboard_deploy_keeps_the_main_only_route() -> Bool {
+  (match executing_job(mode: DashboardDeploy) {
+    Absent => false
+    Present { value: j } => !any(j.steps, s => step_id_of(s: s) == "branch_run_grant_await")
+      && !j.needs.contains(fleet_converge_branch_run_grant_await_job_id as String)
+  }) && !fleet_converge_branch_run_grant_wait_if().contains("github.event.inputs.mode == 'dashboard_deploy'")
+    && (match run_scoped_mode_eligible(mode: "dashboard_deploy", branch: "work/x") { Present { value: _ } => false  Absent => true })
+}
+
+// RED: a mode outside the relation is named in neither the generator's grant-wait/branch-pool condition
+// nor the branch account expression, so it keeps the main-only sign-in. The two are the only places the
+// branch pool is selected, and both are derived from the relation.
+test fn a_mode_outside_the_relation_gets_no_branch_pool_signin() -> Bool {
+  uncovered_wires().length() > 0
+    && all(uncovered_wires(), w =>
+      !fleet_converge_run_scoped_step_if.contains(join(["github.event.inputs.mode == '", w, "'"], ""))
+        && !fleet_converge_branch_account_expression().contains(join(["github.event.inputs.mode == '", w, "'"], "")))
+}
+
+// RED: a row whose account_id names no federation makes generation refuse, naming its mode and account;
+// the real relation is admitted (positive control), so the refusal is the row's, not a blanket one.
+test fn a_row_with_an_unknown_account_refuses_generation_naming_mode_and_account() -> Bool {
+  let bad = RunScopedMode { mode: "apply", account_id: "no-such-run-account", main_route: MainUsesFleetIdentity }
+  (match fleet_converge_unfederated_run_scoped_refusal_of(rows: concat(run_scoped_modes(), [bad])) {
+    Present { value: r } => r.contains("mode apply account_id no-such-run-account")
+    Absent => false
+  }) && (match fleet_converge_unfederated_run_scoped_refusal() { Present { value: _ } => false  Absent => true })
+}
+
+// RED: "the wait was skipped" is not "no grant was required". A branch boot, whose selection
+// (select_boot_credential_source off main) requires the grant, refuses when its wait was skipped, as do a
+// branch plan and a branch hetzner read. CONTROLS: a boot at reviewed main, where the selection names the
+// dedicated identity and no grant, proceeds over a skipped wait; a succeeded wait admits; a failed or
+// cancelled one does not. The boot job's rendered gate carries the same law: its skipped arm is
+// conjoined with the negated requirement the predicate reads.
+test fn a_required_grant_whose_wait_was_skipped_refuses_and_a_main_boot_proceeds() -> Bool {
+  !fleet_converge_grant_wait_admits(mode: MtCollins1Boot, on_reviewed_main: false, result: GrantWaitSkipped)
+    && !fleet_converge_grant_wait_admits(mode: FullHostPlan, on_reviewed_main: false, result: GrantWaitSkipped)
+    && (match mode_of_wire(wire: "hetzner_cloud_server_read") {
+      Present { value: h } => !fleet_converge_grant_wait_admits(mode: h, on_reviewed_main: true, result: GrantWaitSkipped)
+      Absent => false
+    })
+    && fleet_converge_grant_wait_admits(mode: MtCollins1Boot, on_reviewed_main: true, result: GrantWaitSkipped)
+    && fleet_converge_grant_wait_admits(mode: FullHostPlan, on_reviewed_main: true, result: GrantWaitSkipped)
+    && fleet_converge_grant_wait_admits(mode: MtCollins1Boot, on_reviewed_main: false, result: GrantWaitSucceeded)
+    && !fleet_converge_grant_wait_admits(mode: MtCollins1Boot, on_reviewed_main: false, result: GrantWaitFailed)
+    && !fleet_converge_grant_wait_admits(mode: MtCollins1Boot, on_reviewed_main: false, result: GrantWaitCancelled)
+    && fleet_converge_mtcollins1_boot_job_if.contains(serialize_expression(expression: LogicalAnd {
+      left: needs_result_is(job: fleet_converge_branch_run_grant_await_job_id, result: "skipped"),
+      right: LogicalNot { operand: fleet_converge_grant_required_expression() },
+    }))
+}

@@ -1,0 +1,365 @@
+module gunbc.roadmap.roadmap_session_activation_ensure
+
+import std.types { String, Bool, List, NonEmptyStr, EpochSecs }
+import std.upsert_decision { ObservationVerdict, Noop, Apply, Refuse, UpsertClassification, Converged, Drifted, Inaccessible, UnknownRefused }
+import extdeps.systemd.systemctl
+import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.compute.attempt_lifecycle {
+  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
+  AttemptRecord, UnitLifecycle, UnitLifecycleUnknown,
+  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease, recovery_trigger,
+  AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation,
+}
+import gunbc.roadmap.roadmap_session_placement {
+  SessionPlacementStores, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent,
+  SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, session_placement_observe_at, session_release_settled,
+  session_attempt_name_of, session_unit_wire, session_unit_unnameable_detail, session_settle_one, session_worker_unit_lifecycle_for_instance,
+  SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused,
+  SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused,
+  session_settlement_wire,
+}
+
+// ONE ACTIVATION IDENTITY FOR A SESSION CONTAINER: THE ATTEMPT'S OWN RECORD
+// (gunbc.recurring_failure_mode an_attempt_crashed_between_state_init_and_container_start_is_unrecoverable).
+//
+// The pair "placement record" + "transient unit" has no honest write order, so this module does not choose
+// one. It observes both sides under the identity the record already names (node, attempt key, hence unit),
+// decides over the PAIR, applies, and reads both sides back. It is an ensure over std.upsert_decision shaped
+// like gunbc.compute.compute_seat_ensure, and it adds no record, codec, path or start site: the record is
+// gunbc.roadmap.roadmap_session_placement's, the release is its settlement door (session_settle_one), and the
+// unit is the one the record names (session_unit), never one found by scanning.
+//
+// ROLLBACK-ONLY (operator ruling on the slice-2 derivation). There is no roll-forward: starting a unit from
+// a recovered record would be a second start site, and could start a second worker for an attempt whose first
+// start was merely slow. A recovery therefore only ever ends in a rolled-back absence; redispatch mints a
+// fresh attempt through normal admission.
+//
+//   unit live (any record state)                          -> Noop; never stopped, never collected
+//   record, no unit, inside the launch deadline           -> Noop (the start may be in flight)
+//   record, no unit, past the deadline / ended by record  -> Apply: release through the settlement door
+//   record, unit loaded and ENDED (failed/exited)         -> Apply: release, then reset-failed that unit
+//   release recorded, ended unit still loaded            -> Apply: reset-failed that unit
+//   no record, unit live or lingering                     -> Refuse, KEPT (legacy/debris: the slice-4 sweep)
+//   record foreign / unreadable, manager unreadable      -> Refuse, KEPT
+//
+// A unit is collected only when (1) the manager proves it ended, (2) its name is session_unit of THIS
+// record's node and attempt. Release precedes collection, so the evidence the settlement reads is gone only
+// after the record says so. Readback is independent of the door's own report: the placement is re-observed
+// and the unit re-read, and success is only "release recorded and unit not loaded".
+type ActivationPlan
+  = ActivationRelease { node_id: String, attempt_key: String, reason: String }
+  | ActivationReleaseThenCollect { node_id: String, attempt_key: String, reason: String }
+  | ActivationCollect { node_id: String, attempt_key: String, reason: String }
+
+type ActivationOutcome
+  = ActivationNoop { unit: String, why: String }
+  | ActivationRolledBack { unit: String, detail: String }
+  | ActivationCollected { unit: String, detail: String }
+  | ActivationRefused { unit: String, reason: String }
+  | ActivationRed { unit: String, reason: String }
+
+type ActivationPass
+  = ActivationPassRan { outcomes: List<ActivationOutcome> }
+  | ActivationPassRefused { detail: String }
+
+fn activation_refuse(verdict: ObservationVerdict, reason: String) -> UpsertClassification<ActivationPlan> {
+  UpsertClassification { verdict: verdict, decision: Refuse { reason: reason as NonEmptyStr } }
+}
+
+fn activation_noop() -> UpsertClassification<ActivationPlan> {
+  UpsertClassification { verdict: Converged, decision: Noop }
+}
+
+fn activation_apply(plan: ActivationPlan) -> UpsertClassification<ActivationPlan> {
+  UpsertClassification { verdict: Drifted, decision: Apply { plan: plan } }
+}
+
+// THE PURE DECISION over one attempt: the placement observation, the unit as the manager reads it, the
+// lifecycle (the unit, else its exit record), and the clock.
+fn session_activation_classify(
+  node_id: String,
+  attempt_key: String,
+  observation: SessionPlacementObservation,
+  loaded: AttemptUnitObservation,
+  lifecycle: UnitLifecycle,
+  now: EpochSecs,
+) -> UpsertClassification<ActivationPlan> {
+  match observation {
+    SessionPlacementUnreadable { unit: _, detail } => activation_refuse(verdict: Inaccessible, reason: join(["the placement could not be read (", detail, "); nothing is changed"], ""))
+    SessionPlacementForeign { unit: _, detail } => activation_refuse(verdict: UnknownRefused, reason: join(["the placement is not this attempt's (", detail, "); nothing is changed"], ""))
+    SessionPlacementUnnameable { detail } => activation_refuse(verdict: UnknownRefused, reason: join(["this attempt has no nameable unit (", detail, "); there is nothing to derive a collection from and nothing is changed"], ""))
+    SessionPlacementAbsent { unit: u } =>
+      match loaded {
+        AttemptUnitAbsent => activation_noop()
+        AttemptUnitActive => activation_refuse(verdict: UnknownRefused, reason: join(["unit ", u as String, " is live but this attempt has no placement record; it is not collected (legacy or debris, left to the one-time sweep)"], ""))
+        AttemptUnitFinished { exit_status: _ } => activation_refuse(verdict: UnknownRefused, reason: join(["unit ", u as String, " lingers ended with no placement record to derive its collection from; it is kept (legacy or debris, left to the one-time sweep)"], ""))
+        AttemptUnitUnreadable { reason } => activation_refuse(verdict: Inaccessible, reason: join(["the manager could not be read (", reason, "); nothing is changed"], ""))
+      }
+    SessionPlacementObserved { slot: rec, grant: _, returned } =>
+      match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+        Absent => activation_refuse(verdict: UnknownRefused, reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key))
+        Present { value: expected } =>
+          if rec.unit != (expected as String) {
+            activation_refuse(verdict: UnknownRefused, reason: join(["the slot names unit ", rec.unit, ", not this attempt's unit; it is never touched"], ""))
+          } else {
+            session_activation_classify_held(node_id: node_id, attempt_key: attempt_key, rec: rec, loaded: loaded, lifecycle: lifecycle, now: now, released: session_release_settled(r: returned))
+          }
+      }
+  }
+}
+
+fn session_activation_classify_held(
+  node_id: String,
+  attempt_key: String,
+  rec: AttemptRecord,
+  loaded: AttemptUnitObservation,
+  lifecycle: UnitLifecycle,
+  now: EpochSecs,
+  released: Bool,
+) -> UpsertClassification<ActivationPlan> {
+  match loaded {
+    AttemptUnitActive => activation_noop()
+    AttemptUnitUnreadable { reason } => activation_refuse(verdict: Inaccessible, reason: join(["the manager could not be read (", reason, "); nothing is changed"], ""))
+    AttemptUnitFinished { exit_status: _ } =>
+      if released {
+        activation_apply(plan: ActivationCollect { node_id: node_id, attempt_key: attempt_key, reason: "the release is recorded and the ended unit still blocks redispatch" })
+      } else {
+        activation_apply(plan: ActivationReleaseThenCollect { node_id: node_id, attempt_key: attempt_key, reason: "the unit ended and is still loaded" })
+      }
+    AttemptUnitAbsent =>
+      if released {
+        activation_noop()
+      } else {
+        match recovery_trigger(record: rec, lifecycle: lifecycle, now: now) {
+          RecoveryMayTerminate { reason } => activation_apply(plan: ActivationRelease { node_id: node_id, attempt_key: attempt_key, reason: reason })
+          RecoveryTerminalRecordMayRelease { state: _ } => activation_apply(plan: ActivationRelease { node_id: node_id, attempt_key: attempt_key, reason: "the slot is closed and no settled release is recorded" })
+          RecoveryTooEarly { deadline: _, now: _ } => activation_noop()
+          RecoveryUnitNotEnded { lifecycle: u } =>
+            match u {
+              UnitLifecycleUnknown { detail } => activation_refuse(verdict: UnknownRefused, reason: join(["the unit's lifecycle is unknown (", detail, "); the charge is kept"], ""))
+              _ => activation_noop()
+            }
+        }
+      }
+  }
+}
+
+fn activation_reset_failed(unit: NonEmptyStr) -> Bool {
+  let r = systemd.Systemctl.ResetFailedUserUnit(unit: unit)
+  match r.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => false
+    ShellExited => r.success
+  }
+}
+
+fn activation_released_wire(s: SessionSettlement) -> Bool {
+  match s {
+    SessionSettlementReleaseAttempted { unit: _, freed: _, detail: _ } => true
+    SessionSettlementDone { unit: _, why: _ } => true
+    SessionSettlementKept { unit: _, why: _ } => false
+    SessionSettlementRefused { unit: _, detail: _ } => false
+  }
+}
+
+// THE READBACK: the placement is re-observed and the unit re-read. Both must agree the attempt is gone.
+fn session_activation_settled(
+  stores: SessionPlacementStores,
+  host: String,
+  node_id: String,
+  attempt_key: String,
+  loaded_of: fn(NonEmptyStr) -> AttemptUnitObservation,
+) -> Bool {
+  let unit_gone = match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    Absent => false
+    Present { value: unit } =>
+      match loaded_of(unit) {
+        AttemptUnitAbsent => true
+        AttemptUnitActive => false
+        AttemptUnitFinished { exit_status: _ } => false
+        AttemptUnitUnreadable { reason: _ } => false
+      }
+  }
+  let release_recorded = match session_placement_observe_at(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key) {
+    SessionPlacementObserved { slot: _, grant: _, returned } => session_release_settled(r: returned)
+    SessionPlacementAbsent { unit: _ } => false
+    SessionPlacementUnreadable { unit: _, detail: _ } => false
+    SessionPlacementForeign { unit: _, detail: _ } => false
+    SessionPlacementUnnameable { detail: _ } => false
+  }
+  unit_gone && release_recorded
+}
+
+fn session_activation_collect(
+  stores: SessionPlacementStores,
+  host: String,
+  node_id: String,
+  attempt_key: String,
+  loaded_of: fn(NonEmptyStr) -> AttemptUnitObservation,
+  reset_failed: fn(NonEmptyStr) -> Bool,
+  detail: String,
+) -> ActivationOutcome {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key) }
+    Present { value: unit } =>
+      if !reset_failed(unit) {
+        ActivationRefused { unit: unit as String, reason: join(["the ended unit could not be reset (", detail, "); the release is recorded and the unit is kept"], "") }
+      } else if session_activation_settled(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, loaded_of: loaded_of) {
+        ActivationCollected { unit: unit as String, detail: detail }
+      } else {
+        ActivationRed { unit: unit as String, reason: join(["the unit was reset but the readback still finds it loaded or the release unrecorded (", detail, ")"], "") }
+      }
+  }
+}
+
+fn session_activation_apply(
+  stores: SessionPlacementStores,
+  host: String,
+  plan: ActivationPlan,
+  lifecycle: UnitLifecycle,
+  now: EpochSecs,
+  loaded_of: fn(NonEmptyStr) -> AttemptUnitObservation,
+  reset_failed: fn(NonEmptyStr) -> Bool,
+) -> ActivationOutcome {
+  match plan {
+    ActivationRelease { node_id, attempt_key, reason } =>
+      match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+        Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key) }
+        Present { value: unit } => {
+          let settled = session_settle_one(stores: stores, host: host, key: unit, lifecycle: lifecycle, now: now)
+          if activation_released_wire(s: settled) && session_activation_settled(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, loaded_of: loaded_of) {
+            ActivationRolledBack { unit: unit as String, detail: reason }
+          } else if activation_released_wire(s: settled) {
+            ActivationRed { unit: unit as String, reason: join(["the door reported a release the readback does not find: ", session_settlement_wire(s: settled)], "") }
+          } else {
+            ActivationRefused { unit: unit as String, reason: session_settlement_wire(s: settled) }
+          }
+        }
+      }
+    ActivationReleaseThenCollect { node_id, attempt_key, reason } =>
+      match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+        Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key) }
+        Present { value: unit } => {
+          let settled = session_settle_one(stores: stores, host: host, key: unit, lifecycle: lifecycle, now: now)
+          if activation_released_wire(s: settled) {
+            session_activation_collect(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, loaded_of: loaded_of, reset_failed: reset_failed, detail: reason)
+          } else {
+            ActivationRefused { unit: unit as String, reason: join(["the release was not recorded, so the unit is kept: ", session_settlement_wire(s: settled)], "") }
+          }
+        }
+      }
+    ActivationCollect { node_id, attempt_key, reason } =>
+      session_activation_collect(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, loaded_of: loaded_of, reset_failed: reset_failed, detail: reason)
+  }
+}
+
+// ONE ATTEMPT: observe, decide, apply, read back.
+fn session_activation_ensure_one(
+  stores: SessionPlacementStores,
+  host: String,
+  node_id: String,
+  attempt_key: String,
+  loaded_of: fn(NonEmptyStr) -> AttemptUnitObservation,
+  lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle,
+  reset_failed: fn(NonEmptyStr) -> Bool,
+  now: EpochSecs,
+) -> ActivationOutcome {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key) }
+    Present { value: unit } => {
+      let classified = session_activation_classify(
+        node_id: node_id, attempt_key: attempt_key,
+        observation: session_placement_observe_at(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key),
+        loaded: loaded_of(unit), lifecycle: lifecycle_of(unit), now: now)
+      match classified.decision {
+        Noop => ActivationNoop { unit: unit as String, why: "converged or the attempt is live or inside its launch deadline" }
+        Refuse { reason } => ActivationRefused { unit: unit as String, reason: reason as String }
+        Apply { plan } => session_activation_apply(stores: stores, host: host, plan: plan, lifecycle: lifecycle_of(unit), now: now, loaded_of: loaded_of, reset_failed: reset_failed)
+      }
+    }
+  }
+}
+
+// THE PASS enumerates the slot store -- the attempt's own records -- never the unit population, so a unit
+// no record names (another attempt's, or debris) is not even a subject. It runs after the settlement pass.
+fn session_activation_ensure_pass_at(
+  stores: SessionPlacementStores,
+  host: String,
+  loaded_of: fn(NonEmptyStr) -> AttemptUnitObservation,
+  lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle,
+  reset_failed: fn(NonEmptyStr) -> Bool,
+  now: EpochSecs,
+) -> ActivationPass {
+  match attempt_slot_keys(store: stores.slots.slots) {
+    AttemptSlotKeysListed { keys } =>
+      ActivationPassRan {
+        outcomes: map(keys, k =>
+          match attempt_slot_read(store: stores.slots.slots, reference: k) {
+            AttemptSlotHeld { record: rec, generation: _ } =>
+              match session_attempt_name_of(identity: rec.identity) {
+                Present { value: n } => session_activation_ensure_one(stores: stores, host: host, node_id: n.node_id, attempt_key: n.attempt_key, loaded_of: loaded_of, lifecycle_of: lifecycle_of, reset_failed: reset_failed, now: now)
+                Absent => ActivationRefused { unit: k as String, reason: "the slot binds an identity that names no node and attempt; it is kept" }
+              }
+            AttemptSlotAbsent => ActivationNoop { unit: k as String, why: "no slot is held" }
+            AttemptSlotUnreadable { detail } => ActivationRefused { unit: k as String, reason: join(["the slot is unreadable: ", detail], "") }
+          }),
+      }
+    AttemptSlotKeysRefused { detail: d } => ActivationPassRefused { detail: join(["the session slot store: ", d], "") }
+  }
+}
+
+fn session_activation_outcome_wire(o: ActivationOutcome) -> String {
+  match o {
+    ActivationNoop { unit, why } => join([unit, ": noop (", why, ")"], "")
+    ActivationRolledBack { unit, detail } => join([unit, ": rolled back (", detail, ")"], "")
+    ActivationCollected { unit, detail } => join([unit, ": collected (", detail, ")"], "")
+    ActivationRefused { unit, reason } => join([unit, ": kept (", reason, ")"], "")
+    ActivationRed { unit, reason } => join([unit, ": RED (", reason, ")"], "")
+  }
+}
+
+fn session_activation_pass_wire(p: ActivationPass) -> String {
+  match p {
+    ActivationPassRan { outcomes } => join(map(outcomes, o => session_activation_outcome_wire(o: o)), "; ")
+    ActivationPassRefused { detail } => join(["session activation ensure refused: ", detail], "")
+  }
+}
+
+fn session_activation_as_settlement(o: ActivationOutcome) -> SessionSettlement {
+  match o {
+    ActivationNoop { unit, why: _ } => SessionSettlementDone { unit: unit, why: session_activation_outcome_wire(o: o) }
+    ActivationRolledBack { unit, detail: _ } => SessionSettlementDone { unit: unit, why: session_activation_outcome_wire(o: o) }
+    ActivationCollected { unit, detail: _ } => SessionSettlementDone { unit: unit, why: session_activation_outcome_wire(o: o) }
+    ActivationRefused { unit, reason: _ } => SessionSettlementKept { unit: unit, why: session_activation_outcome_wire(o: o) }
+    ActivationRed { unit, reason: _ } => SessionSettlementRefused { unit: unit, detail: session_activation_outcome_wire(o: o) }
+  }
+}
+
+// THE BELT'S ONE CALL: the ensure runs AFTER the settlement pass whose result it takes, so the order is a
+// data dependency and not a convention, and its outcomes ride the same result the spawn pass already
+// matches on. An unreadable slot store or clock refuses the whole pass, as the settlement does.
+fn session_activation_ensure_after_settlement(instance: HostDashboardInstance, stores: SessionPlacementStores, settled: SessionSettlePass) -> SessionSettlePass {
+  match settled {
+    SessionSettlePassRefused { detail: _ } => settled
+    SessionSettlePassRan { settlements } =>
+      match now_epoch_seconds() {
+        Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the activation ensure compares against the launch deadline" }
+        Present { value: now } =>
+          match session_activation_ensure_pass_at(
+            stores: stores,
+            host: instance.host_identity as String,
+            loaded_of: u => attempt_unit_observation(unit: u),
+            lifecycle_of: u => session_worker_unit_lifecycle_for_instance(instance: instance, unit: u),
+            reset_failed: activation_reset_failed,
+            now: now,
+          ) {
+            ActivationPassRan { outcomes } => SessionSettlePassRan { settlements: concat(settlements, map(outcomes, o => session_activation_as_settlement(o: o))) }
+            ActivationPassRefused { detail } => SessionSettlePassRefused { detail: detail }
+          }
+      }
+  }
+}

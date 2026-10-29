@@ -9,8 +9,7 @@ import v2.test.claim.compiler.compile_eval_thesis_proof { compile_eval_thesis_te
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional, qualified_name_last_segment, qualified_name_to_dotted_string }
 import std.optional { Absent, Optional, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Edge, Instantiation, Node, Positional, TypeNode, node_subtree_nodes, node_synthetic, symbol_intern_lexeme }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { node_same_occurrence, positional_child_target_nodes, Atom, Edge, Instantiation, Node, Positional, TypeNode, node_subtree_nodes, node_synthetic, symbol_intern_lexeme, NotADeclaration }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.std.list_introduction { list_introduction_head_path }
 import v2.extdeps.languages.dag { dag_binding_denotation }
@@ -90,7 +89,7 @@ fn cca_formals() -> List<Node> {
       match collection_roster_signature_arrow(row: row) {
         Absent => Empty
         Present { value: arrow } =>
-          match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+          match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
             Absent => Empty
             Present { value: domain } =>
               match infer_formals_from_domain(domain: domain) {
@@ -117,8 +116,8 @@ fn cca_list_of(element: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
-      Edge { label: Positional, target: element }
+      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration },
+      Edge { label: Positional, target: element, declaration: NotADeclaration }
     ]
   )
 }
@@ -126,7 +125,7 @@ fn cca_list_of(element: Node) -> Node {
 // SUPPLIED: the signature has two formals, both the one bounded carrier M.
 test fn cca_signature_is_two_formals_over_one_carrier() -> Bool {
   match cca_formals() {
-    Cons { head: a, tail: Cons { head: b, tail: Empty } } => a == collection_roster_carrier_type() && a == b
+    Cons { head: a, tail: Cons { head: b, tail: Empty } } => node_same_occurrence(a: a, b: collection_roster_carrier_type()) && node_same_occurrence(a: a, b: b)
     _ => false
   }
 }
@@ -140,8 +139,8 @@ test fn cca_mismatched_element_instantiates_to_a_different_list() -> Bool {
       match infer_match_generic_formal(formal: formal, produced: cca_list_of(element: cca_pair_type()), type_params: [^collection_roster_carrier], instances: Empty, declarations: empty_symbol_index()) {
         InferFormalShapeMismatch => false
         InferFormalMatched { instances: bound } =>
-          infer_type_instantiated(t: formal, instances: bound) == cca_list_of(element: cca_pair_type())
-            && infer_type_instantiated(t: formal, instances: bound) != cca_list_of(element: cca_int_type())
+          node_same_occurrence(a: infer_type_instantiated(t: formal, instances: bound), b: cca_list_of(element: cca_pair_type()))
+            && !node_same_occurrence(a: infer_type_instantiated(t: formal, instances: bound), b: cca_list_of(element: cca_int_type()))
       }
   }
 }

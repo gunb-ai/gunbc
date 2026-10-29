@@ -1,0 +1,45 @@
+module test.claim.live_deploy.apply_no_refused_marker_witness
+
+import std.types { Bool, String, List }
+import std.algebra { string_contains }
+import gunbc.shell_command_text { shell_command_text_of_node }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_reason_lexemes }
+import v2.extdeps.languages.bash_build {
+  bash_build_if_else, bash_build_stmt_list_from_nodes, bash_build_command_from_lits,
+}
+
+data refused_marker: String = "__GUNBC_BASH_EMIT_REFUSED__"
+
+// The three apply-emission claims that stood here (the live srv1 apply script, and the object-source
+// Decide step alone) were deleted with the bash apply emitter they read (gunbc#14660): the typed apply
+// builds no bash for that step. The serializer claims below are #14586's repair and stay enrolled.
+
+// THE REFUSAL NAMES ITS CAUSE: the old shape (an `if` node standing as else body, not wrapped in a
+// statement list) is refused by the serializer, and the text the caller embeds carries the located
+// reason rather than a constant. Controls the diagnosis above: this is the construct #14134 built.
+test fn a_refused_intent_marker_carries_the_serializers_reason() -> Bool {
+  let colon = bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])])
+  let bare_nested = bash_build_if_else(
+    cond: bash_build_command_from_lits(lits: ["true"]),
+    then_body: colon,
+    else_body: bash_build_if_else(cond: bash_build_command_from_lits(lits: ["true"]), then_body: colon, else_body: colon),
+  )
+  let text = shell_command_text_of_node(stmt: bare_nested)
+  string_contains(s: text, pattern: refused_marker)
+    && string_contains(s: text, pattern: "bash_fold_serialize_stmt_list_shape_refused")
+}
+
+// THE SERIALIZER REFUSES AN OVER-ARITY LIST: a bare `if` node standing where a statement list is
+// expected has more than the (prefix, statement) children; the fold must refuse with the shape
+// reason rather than keep children 0/1 and drop the rest (DESIGN section 5).
+test fn the_serializer_refuses_an_over_arity_statement_list_with_its_reason() -> Bool {
+  let colon = bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])])
+  let inner = bash_build_if_else(cond: bash_build_command_from_lits(lits: ["true"]), then_body: colon, else_body: colon)
+  let bare_nested = bash_build_if_else(cond: bash_build_command_from_lits(lits: ["true"]), then_body: colon, else_body: inner)
+  match bash_fold_serialize_node(stmt: bare_nested) {
+    Rejected { diagnostics: ds } =>
+      string_contains(s: diagnostics_reason_lexemes(diagnostics: ds), pattern: "bash_fold_serialize_stmt_list_shape_refused")
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

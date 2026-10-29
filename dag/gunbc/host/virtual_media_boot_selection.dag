@@ -1,0 +1,166 @@
+// A VIRTUAL-MEDIA BOOT SELECTION, DERIVED FROM THE PLATFORM + CONTROLLER FACTS.
+//
+// This is the generic derivation that replaces the two host-name dispatches (the boot arm's
+// boot_selection and the reset arm's reset_boot_selection) that each branched on whether the host
+// was mtcollins1 and, if so, minted mtcollins1_virtual_media_boot_selection. Instead of a
+// host-name branch, the selection is DERIVED from two facts the host carries: the platform
+// architecture its board establishes (gunbc.host.board_platform_facts) and the controller's
+// virtual-media capability (gunbc.host.controller_capability). A second machine whose board
+// admits the same SoC (Aarch64) and whose controller row carries the same media profile gets the
+// same selection with no code change — only data rows.
+//
+// The refusal is TYPED, not collapsed to "no selection": the derivation refuses with a cause that
+// names WHY it could not decide — the architecture was unestablished (the board's families do not
+// agree, or no board fact was reachable), the architecture is established but not one the IPMI
+// virtual-media boot selection can express (today only Aarch64 is derivable), or the controller
+// does not establish a virtual-media surface. Each refusal names its cause so a caller can act on
+// it rather than treat a refused boot as an unselected one.
+module gunbc.host.virtual_media_boot_selection
+
+import std.types { String }
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, uefi_once_boot_selection }
+import extdeps.board_soc { BoardSocArchitectureStanding }
+import extdeps.bmc.access_profile { BmcAccessObservationStanding }
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
+import gunbc.host.controller_capability { controller_capability, CapabilityFactStanding, CapabilityUnestablished }
+import gunbc.host.board_platform_facts { host_board_architecture }
+import gunbc.host.host_capability_row {
+  host_capability_row, HostCapabilityRowResolved, HostCapabilityRowUnobserved,
+  HostCapabilityRowNoCurrentRelease,
+}
+import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
+import gunbc.host.bmc_release_capability_catalog {
+  MegaRacReleaseCapabilityKnown, MegaRacReleaseCapabilityUncatalogued,
+  MegaRacReleaseCapabilityAmbiguous,
+}
+
+// WHY A VIRTUAL-MEDIA BOOT SELECTION COULD BE REFUSED. Named for the failing fact so a caller can
+// distinguish the causes instead of collapsing them to "no selection". The arms are listed without
+// interleaved comments (the corpus convention the binding parser recovers):
+//   - ArchitectureUnestablished: the board establishes no firmware architecture -- its SoC families
+//     do not agree, or no board fact is reachable from the observed controller. There is no
+//     architecture to express the selection in.
+//   - ArchitectureUnsupported: the board establishes an architecture, but it is not one the IPMI
+//     virtual-media boot selection can express. Today only Aarch64 is derivable; the x86 constructor
+//     is a future addition, not a widened boolean, so a non-Aarch64 platform is refused with its
+//     architecture named.
+//   - VirtualMediaUnestablished: the platform architecture is established (Aarch64), but the
+//     controller does not establish a virtual-media surface: the IPMI row carries no virtual-media
+//     capability (virtual media, NBD-proxy media, or OEM remote media). There is no media surface to
+//     attach the boot image through.
+type VirtualMediaBootSelectionRefusal
+  = ArchitectureUnestablished
+  | ArchitectureUnsupported { architecture: Architecture }
+  | VirtualMediaUnestablished
+
+// THE OUTCOME OF THE DERIVATION: an admitted selection, or a typed refusal.
+type VirtualMediaBootSelectionOutcome
+  = VirtualMediaBootSelectionAdmitted { selection: IpmiBootSelection, capability_row: BmcFirmwareReleaseCapabilityRow }
+  | VirtualMediaBootSelectionRefused { cause: VirtualMediaBootSelectionRefusal }
+
+// THE VIRTUAL-MEDIA BOOT SELECTION. Derive the one-shot IPMI boot selection from the platform
+// architecture the host's board establishes and the controller's virtual-media capability.
+//
+// The architecture gate runs first: an unestablished or non-expressible architecture refuses
+// before the media fact is even consulted, because without an expressible architecture there is
+// no selection to attach a media surface to. On an established Aarch64 platform, the media gate
+// decides whether the controller can attach a medium at all.
+fn virtual_media_boot_selection(
+  arch: BoardSocArchitectureStanding,
+  media: CapabilityFactStanding,
+  capability_row: BmcFirmwareReleaseCapabilityRow?,
+) -> VirtualMediaBootSelectionOutcome {
+  match arch {
+    Unestablished => VirtualMediaBootSelectionRefused { cause: ArchitectureUnestablished }
+    Established { architecture: a } =>
+      if a == Aarch64 {
+        match media {
+          CapabilityUnestablished => VirtualMediaBootSelectionRefused { cause: VirtualMediaUnestablished }
+          CapabilityEstablished =>
+            // THE ROW TRAVELS WITH THE ADMITTANCE, and this is the ONE place the Admitted arm is
+            // minted, so the pairing cannot be dodged at a call site: a standing can only say
+            // Established when the very row that established it is handed in, and the row rides the
+            // outcome. Every later consumer (the handoff admission) must answer its capability
+            // questions off the release the boot was admitted on; a consumer that re-resolves from a
+            // different observation -- the historical probe receipt, say -- is the reflash-staleness
+            // defect re-opened at a different layer. Carrying the row makes the honest path the short
+            // path and the stale path require deliberate re-derivation.
+            match capability_row {
+              Absent =>
+                // an Established standing with no row behind it is the pairing defect itself; refuse
+                // rather than mint an Admitted outcome whose capability has no receipt
+                VirtualMediaBootSelectionRefused { cause: VirtualMediaUnestablished }
+              Present { value: row } =>
+                VirtualMediaBootSelectionAdmitted {
+                  selection: uefi_once_boot_selection(device: IpmiBootCdrom),
+                  capability_row: row,
+                }
+            }
+        }
+      } else {
+        VirtualMediaBootSelectionRefused { cause: ArchitectureUnsupported { architecture: a } }
+      }
+  }
+}
+
+// INTERNAL PAIR OF (standing, row) from the one resolution pass, so the deciding standing and the
+// row it came from cannot be split into two lookups that might disagree.
+type SelectedFromRow {
+  media: CapabilityFactStanding
+  row: BmcFirmwareReleaseCapabilityRow?
+}
+
+// THE REFUSAL'S TEXT, for a caller that prints it. Each cause names the failing fact so a refused
+// boot is located, not treated as an unselected one.
+fn virtual_media_boot_selection_refusal_text(cause: VirtualMediaBootSelectionRefusal) -> String {
+  match cause {
+    ArchitectureUnestablished => "its board establishes no firmware architecture (the SoC families it admits do not agree, or no board fact is reachable from its observed controller)"
+    ArchitectureUnsupported { architecture: a } => concat("its board establishes ", architecture_diagnostic_name(arch: a) as String, ", which the IPMI virtual-media boot selection cannot express (today only Aarch64 is derivable)")
+    VirtualMediaUnestablished => "its controller does not establish a virtual-media surface (the IPMI capability row carries no virtual-media, NBD-proxy, or OEM remote media value)"
+  }
+}
+
+
+// THE ONE DERIVATION BOTH BOOT ARMS CALL. Both arms must answer the same question -- can this
+// controller, on this platform, attach a virtual-media image -- so they call THIS and nothing else.
+// Two local implementations of it existed (the boot arm's own match and the reset arm's), and they had
+// already drifted: the boot arm named each refusal arm, the reset arm folded them into a catch-all, so
+// one fact was decided two ways and the next refusal arm would have reached one and not the other
+// (DESIGN.md Sec 6b: the trigger for generalization is the second local implementation of one rule).
+//
+// The arms stay TWO entry fns -- gunbc.host.managed_host_boot boot_selection and
+// gunbc.host.host_reset_boot_selection reset_boot_selection -- because WHICH boot a reset returns
+// through is reset policy and which a one-shot boot selects is boot policy; keeping two entry points is
+// what stops the arms being cross-wired, and test.claim.host.managed_host_boot_witness
+// w_the_reset_and_boot_arms_each_decide_their_own_selection pins that neither accepts the other's
+// value. What is shared is the derivation, not the policy.
+//
+// The named arms are deliberate, once and here: each refusal reason stays VISIBLE as a reason a
+// selection refuses, rather than absorbed into a catch-all that cannot distinguish "nobody read the
+// controller" (Unobserved) from "nobody has read this build" (NoCurrentRelease). All four answer alike
+// -- an unestablished capability admits no selection, and the historical probe receipt is NOT read back
+// as a fallback -- but each is its own arm so a future divergence has somewhere to live. The catalog's
+// own refusals (Uncatalogued, Ambiguous) stay separate INSIDE the catalog, where their repairs differ:
+// go read the build, vs fix the catalog.
+fn decide_virtual_media_boot_selection(
+  evidence: MegaRacOperationEvidence,
+  access: BmcAccessObservationStanding,
+) -> VirtualMediaBootSelectionOutcome {
+  let arch = host_board_architecture(access: access)
+  // ONE PASS over the resolved row: the standing decides, the row rides. The refusals carry no row --
+  // there is no row to carry, and that is what they refuse for -- so the carrier is an Option and the
+  // selector refuses an Admitted outcome whose row went missing rather than defaulting one in.
+  let resolved =
+    match host_capability_row(evidence: evidence, access: access) {
+      HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityKnown { row: row } } =>
+        SelectedFromRow { media: controller_capability(row: row).virtual_media, row: Present { value: row } }
+      HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityUncatalogued { firmware: _ } } =>
+        SelectedFromRow { media: CapabilityUnestablished, row: none }
+      HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityAmbiguous { firmware: _, count: _ } } =>
+        SelectedFromRow { media: CapabilityUnestablished, row: none }
+      HostCapabilityRowUnobserved { endpoint: _ } => SelectedFromRow { media: CapabilityUnestablished, row: none }
+      HostCapabilityRowNoCurrentRelease { endpoint: _ } => SelectedFromRow { media: CapabilityUnestablished, row: none }
+    }
+  virtual_media_boot_selection(arch: arch, media: resolved.media, capability_row: resolved.row)
+}

@@ -1,0 +1,57 @@
+module test.claim.gpu_bench_v2_receipt_inhabitance_witness
+
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import std.measure { token_count_value }
+import extdeps.filesystem.filesystem_io
+import extdeps.gpu_bench.request_v2 {
+  gpu_bench_parse_jsonl, GpuBenchRequestV2Parsed, GpuBenchRequestV2StreamUnreadable,
+}
+import gunbc.serving.gpu_bench_warm_standing {
+  gpu_bench_warm_standing_with_ninfer_log,
+  WarmValid, WarmOverCapacity, WarmRejected, WarmCapacityUnread,
+}
+import extdeps.gpu_bench.kit_log {
+  gpu_bench_capacity_ok_tokens, CapacityOkRead, CapacityOkAbsent, CapacityOkMalformed,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data gpu_bench_v2_warm_ninfer_jsonl_path: String = "fixtures/gpu_bench/pro6000ws_600w_v2/warm_ninfer_nvfp4_pro6000ws_600w.jsonl"
+data gpu_bench_v2_auto_log_path: String = "fixtures/gpu_bench/pro6000ws_600w_v2/auto.log"
+
+// THE FIRST V2 RUN ON srv2 (PRO 6000 WS 600 W, NInfer NVFP4 KV). Kit schema gpu-bench/request/v2.
+// Deleting this file must make this inhabitance red: the fold executes the real committed bytes.
+
+test fn committed_v2_jsonl_parses() -> Bool {
+  let body = filesystem_read(path: gpu_bench_v2_warm_ninfer_jsonl_path).content
+  match gpu_bench_parse_jsonl(text: body) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } => count(rs) > 8
+  }
+}
+
+test fn committed_auto_log_capacity_is_1920000() -> Bool {
+  let log = filesystem_read(path: gpu_bench_v2_auto_log_path).content
+  match gpu_bench_capacity_ok_tokens(log: log) {
+    CapacityOkAbsent => false
+    CapacityOkMalformed { cause: _ } => false
+    CapacityOkRead { tokens: t } => token_count_value(t: t) == 1920000
+  }
+}
+
+test fn first_v2_ninfer_warm_run_is_unread_until_the_counter_is_cited() -> Bool {
+  let body = filesystem_read(path: gpu_bench_v2_warm_ninfer_jsonl_path).content
+  let log = filesystem_read(path: gpu_bench_v2_auto_log_path).content
+  match gpu_bench_parse_jsonl(text: body) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } =>
+      match gpu_bench_warm_standing_with_ninfer_log(records: rs, log: log) {
+        WarmCapacityUnread { cause: c } => string_contains(s: c as String, pattern: "not an upstream-published contract")
+        WarmValid { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmRejected { cause: _ } => false
+      }
+  }
+}

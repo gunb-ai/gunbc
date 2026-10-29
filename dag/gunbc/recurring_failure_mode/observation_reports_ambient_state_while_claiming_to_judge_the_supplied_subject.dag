@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.observation_reports_ambient_state_while_claiming_to_judge_the_supplied_subject
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data observation_reports_ambient_state_while_claiming_to_judge_the_supplied_subject: RecurringFailureMode = RecurringFailureMode {
+  identity: "observation_reports_ambient_state_while_claiming_to_judge_the_supplied_subject" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**An observation whose output is a function of ambient process or host state, read as a judgement of the credential, input or subject the caller supplied, reports a fact about a different subject** (INVALID STATE: the reading names the supplied subject and its value was produced by the ambient one; harm: a wrong key reads accepted, or a good key reads rejected, with a plausible typed verdict and no refusal).",
+    "SPECIMEN, observed on srv2 2026-10-17 with cursor-agent 2026.09.15-d2fe57e: `cursor-agent status` reports ONLY the stored auth under $XDG_CONFIG_HOME/cursor/auth.json and never the CURSOR_API_KEY it is given. The Cursor standing judged the custody key with `status`, so a host whose operator was logged in read every supplied key as authenticated. The key fact was false from the day it was written; it was a fact about the home directory.",
+    "DISTINGUISHING FACTS: the subject is supplied through one channel (an environment variable) and the observation's authority comes through another (a file under HOME or XDG_CONFIG_HOME); the two agree whenever the ambient state was produced by the same subject, which is why the defect survives every control run on the author's own host. A control that discriminates must hold valid ambient state beside an invalid supplied subject.",
+    "RUNG FOUND AT: mitigatable. CEILING: structurally guaranteed for a given tool, by running the observation under a fresh, attempt-owned root so there is no ambient state to read (gunbc.dispatch_credential_acquisition CursorAttemptRuntimeRoot) and by judging with an observation that exercises the supplied credential (gunbc.cursor_harness_credential CursorKeyProbeReading). NEXT-RUNG TRIGGER: the step-3 pinned-program wiring that binds HOME and XDG_CONFIG_HOME on every Cursor invocation.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.cursor_harness_credential", decl_name: "cursor_key_probe_reading", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.dispatch_credential_acquisition", decl_name: "CursorAttemptRuntimeRoot", field: WholeDeclaration },
+  ],
+}

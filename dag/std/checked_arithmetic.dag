@@ -1,11 +1,12 @@
 module std.checked_arithmetic
-import std.optional { Present }
+import std.optional { Present, Absent }
 
 import std.nat { Nat }
+import std.types { String }
 
 // THE FINITE-MACHINE INTEGER BOUNDARY, in one place.
 //
-// std.integer models Int as AbelianGroup<GroupCompletion<Nat>> - the mathematical integers, which
+// std.integer models Int as NonNegative { n: Nat } | Negative { pred: Nat } - the mathematical integers, which
 // have no bound. Every realization of that model does: the v1 seed and the emitted Rust both carry
 // an Int as i64. Those are two different statements, and code that says "this operation is total
 // and exact" while running on the second one is asserting the first about the second.
@@ -76,6 +77,25 @@ type CheckedIntOperands
 type IntegerOverflow {
   operation: IntegerArithmeticOperation
   operands: CheckedIntOperands
+}
+
+// THE TEXT OF AN OVERFLOW CAUSE, written from its declared fields. A cause handed to a String
+// position as itself would be rendered by the host's debug form
+// (gunbc.recurring_failure_mode a_nominal_value_reaches_a_string_position_and_renders_host_debug_text),
+// so a consumer that reports one in prose asks this module, which owns the type. The operands are
+// written through the kernel to_string rather than std.integer int_to_decimal_string, because
+// std.integer reaches this module through std.induction and the import would be a cycle.
+fn integer_overflow_text(cause: IntegerOverflow) -> String {
+  let operation = match cause.operation {
+    IntegerAdd => "addition"
+    IntegerSubtract => "subtraction"
+    IntegerMultiply => "multiplication"
+    IntegerNegate => "negation"
+  }
+  match cause.operands {
+    UnaryOperand { value: v } => concat(operation, " of ", to_string(value: v), " overflows Int")
+    BinaryOperands { lhs: l, rhs: r } => concat(operation, " of ", to_string(value: l), " and ", to_string(value: r), " overflows Int")
+  }
 }
 
 type CheckedInt

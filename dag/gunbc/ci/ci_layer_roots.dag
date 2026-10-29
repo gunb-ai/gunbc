@@ -332,6 +332,16 @@ data excl_run_verdict_exit_status_dissolve: DissolutionCondition = unbound_disso
 data excl_closing_contract_execution_reason: String = "SUBSTANTIATED per-row (authored 2026-09-20 beside the mechanism it covers): every fn in this file drives shell.Mktemp.DirWithTemplate, Filesystem.Write, gunbc.WitnessBin.Run and shell.Remove.RecursiveForce to spawn a REAL child claim-run of a PLANTED witness and adjudicate its exit status — the behavioral discrimination controls for the execution arm of gunbc.roadmap.roadmap_closing_contract_authoring (a witness that resolves and passes → PASS; unresolvable imports → typed resolve refusal; a resolved-but-false arm → typed failure). The hermetic envelope refuses each of those effects by construction ('no mock_response for operation Run'), the refusal is correct, and the file cannot be made hermetic: the subject IS the child process's exit status, which no in-process assertion observes, and mocking the invocation would let the discrimination claims pass against a fabricated status — precisely the defect (a textual oracle greening a witness that cannot resolve) this file exists to detect. The fixtures are planted into a mktemp source root under target/ at run time rather than committed, because a committed witness with unresolvable imports would fail every whole-root resolve it was swept into. Enrolled in bin_witness_wet_entries beside the run_verdict exit-status rows, the same class excl_run_verdict_exit_status_reason substantiates; the file's production inhabitance is the belt verify route, which executes closing_contract_authored itself."
 
 data excl_closing_contract_execution_dissolve: DissolutionCondition = unbound_dissolution(description: "the claim runner's exit-status seam becomes observable without a subprocess (the terminal excl_bin_wet_dissolve names); then this file's three claims re-enroll as ordinary hermetic discovery rows, the bin_witness_wet_entries rows and this exclusion row delete together. A mock_response for Run does NOT discharge it: a mocked status is authored data, so the discrimination claims would be re-checked against the mock rather than against a real child claim-run — the vacuous pass the file's header records.")
+
+data excl_claim_batch_parse_gate_reason: String = "SUBSTANTIATED per-row (authored 2026-10-20, gunbc#14369 measurement): both fns drive shell.Mktemp.DirWithTemplate, Filesystem.Write, gunbc.WitnessBin.Run and shell.Remove.RecursiveForce to spawn a REAL claim_batch child over a PLANTED module pair and adjudicate its exit status and output shape, so the hermetic envelope refuses each effect by construction (no mock_response for operation Run). The subject IS the child process exit status, which no in-process assertion observes and a Rust integration test could not carry to the merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path). The unparsable library is planted into a mktemp source root under target/ at run time rather than committed, because a committed unparsable .dag poisons every run that walks its root. Scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule as ExpectedToHold. The refusal row passes only the planted root; the control must also pass --source-root dag so gunbc.output_policy resolves, and the child then walks the whole tree. That control runs over bin_witness_wet_per_row_wall_budget_seconds, which nothing on this lane arms: the admission is DECLARED as gunbc.guarantee_stall local_repo_wet_lane_per_row_wall_budget_unarmed_stall, which owns the mechanism and the capability trigger. Its wall is re-derived by running the function through claim_batch --wet and reading the child [pre-entry] phase lines, not copied here."
+
+data excl_claim_batch_parse_gate_dissolve: DissolutionCondition = unbound_dissolution(description: "the module-index walk returns its parse refusal as a typed result carrying whether the file is inside the entry's closure (gunbc.recurring_failure_mode parse_refusal_exits_as_failed_observation next trigger), so the exit-1 closure case is witnessable in process without a subprocess; then these rows move to the execution corpus and this row and the two schedule entries delete together.")
+
+data excl_claim_batch_unobserved_exit_reason: String = "SUBSTANTIATED per-row (authored 2026-10-21, gunbc#14539): both fns drive shell.Mktemp.DirWithTemplate, Filesystem.Write, gunbc.WitnessBin.Run and shell.Remove.RecursiveForce to spawn a REAL claim_batch child over a PLANTED module pair and adjudicate its exit status and output shape, so the hermetic envelope refuses each effect by construction (no mock_response for operation Run). The subject IS the child process exit status: collapsing EntryResolveRefusal::ClosureDiagnostics into the unobserved arm flips exit 1 to 2 and the in-process unit tests (pure over two bools and over refusal classification) cannot see the CLI wiring. A Rust integration test would sit off the merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path). The closure error is planted into a mktemp root under target/ at run time, never committed. Scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule as ExpectedToHold. The missing-entry row passes only the planted root; the closure-error row must also pass --source-root dag so gunbc.output_policy resolves, so its child walks the whole tree and runs over bin_witness_wet_per_row_wall_budget_seconds, which no path that runs local_repo_wet_schedule() arms (--eval-budget-ms arms the CPU/eval budget, not wall time; the only production set_witness_wall_budget call is in reach_base_standings, which has zero callers). That over-budget admission is stated here, and the same mechanism is declared as gunbc.guarantee_stall local_repo_wet_lane_per_row_wall_budget_unarmed_stall, whose population names this file. This note dissolves if a wall budget or an in-process exit seam is armed on this lane."
+
+data excl_claim_batch_exit_two_reason: String = "SUBSTANTIATED per-row: the three fns drive shell.Mktemp.DirWithTemplate, Filesystem.Write, gunbc.WitnessBin.Run and shell.Remove.RecursiveForce to spawn a REAL claim_batch child over a PLANTED entry whose claim returns a ProcessExit, and adjudicate the child's exit status and output line. The subject IS the process exit status of a claim that returns ExitFailure code 2 (no observation, exit 2, UNOBSERVED) against code 1 (exit 1, FAIL) and a held claim (exit 0); the hermetic envelope refuses each effect by construction (no mock_response for operation Run), and the in-process tests cannot see the CLI wiring. The entry is planted into a mktemp root under target/ at run time, never committed. Scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule as ExpectedToHold. Each child passes --source-root dag so std.process resolves, so it walks the whole tree and runs over bin_witness_wet_per_row_wall_budget_seconds, the same unarmed-wall-budget mechanism declared at gunbc.guarantee_stall local_repo_wet_lane_per_row_wall_budget_unarmed_stall, whose population names this file."
+
+data excl_claim_batch_unobserved_exit_dissolve: DissolutionCondition = unbound_dissolution(description: "the claim runner exit-status seam becomes observable without a subprocess (the terminal excl_bin_wet_dissolve names); then these rows move to the execution corpus and this row and the two schedule entries delete together.")
 data excl_shell_spawn_refused_reason: String = "SUBSTANTIATED per-row: the subject of test.claim.shell_spawn_refused_real_execution_witness is whether the host can spawn argv[0], and whether the seed's shell transport turns a failed spawn into ShellSpawnRefused rather than aborting the evaluation. Both are facts about the real spawn, so the file cannot be made hermetic: a mock_response for test.ShellSpawnProbe.Observed would be authored data, and the discriminating red (an absent binary yields ShellSpawnRefused) would pass against a fabricated refusal whether or not the transport realizes one. Its fns are scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, which the required floor executes: the only effect is spawning a local program (true, false, an absent name) -- no network, no cargo, no remote host, no writes."
 
 data excl_manager_unaskable_reason: String = "SUBSTANTIATED per-row, and it is its OWN row rather than a second use of excl_shell_spawn_refused_reason because that reason substantiates a DIFFERENT SUBJECT AND A DIFFERENT EFFECT SET (review 69970): it says in terms that the subject of test.claim.shell_spawn_refused_real_execution_witness is whether the host can spawn argv[0], and that its only effect is spawning a local program. The subject here is a SYSTEMD USER MANAGER -- whether gunbc.compute.work_provider_local read_user_unit_property folds a refused spawn of systemctl into a property that was NOT QUERIED, so the two unit readings reach their own unavailable arm instead of the whole evaluation ending as a shell-spawn-refused runtime error with the seat charged and the producer lease held. The effects are the manager probe, systemctl ShowUserProperty for four unit properties, and a cgroup events read: a superset of the neighbour row's one effect, over a different boundary. DESIGN section 3b: a home that resolves but owns only part of the scope a row claims is a scope/ownership mismatch on the row. The negative half that admits it to the same LANE is the one every member shares: no network, no cargo, no remote host, no install media, and nothing written outside what the witness creates."
@@ -388,6 +398,31 @@ data excl_install_media_reason: String = "real host-effect execution witness (sh
 
 data excl_local_repo_wet_reason: String = "real host-effect execution witness over a THROWAWAY LOCAL REPOSITORY -- refused by the hermetic envelope, so excluded from the discovery corpus, and executed instead by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule). This row is NOT the dark bin-wet class: every function in the named file is on that schedule, the floor decodes it, runs each member wet, and joins the observed terminals back to the roster at identity grain, so a member that stops executing refuses rather than reading as covered."
 
+// THE ADMITTED EFFECT OF WORKER-ROOT-EQUIVALENT-3'S BUILDER WITNESSES: ARGV EXECUTION OF PRODUCTION
+// COMMAND BUILDERS over a THROWAWAY LOCAL REPOSITORY, where the assertion is the EFFECT THE PROCESSES
+// LEAVE BEHIND -- the config key `git config --get core.sharedRepository` reports, the octal mode
+// `find -printf %m` reports, the packed-refs file `test -f` sees. Named rather than folded into
+// excl_local_repo_wet_reason because the substance differs: those witnesses drive shell operations,
+// these run the ArgvCommand values the roadmap hands to systemd and to the provision executor, through
+// argv_words and RunArgv, which is the same path the shipper takes. THE WALLS ARE HONOURED: no argv is
+// minted by the witness (the builders are extdeps/git and extdeps/tools/findutils, the admitted homes),
+// no re-shelling happens (argv_words' word list goes to RunArgv as program ++ arguments, so a
+// word-splitting defect cannot hide behind a shell's own splitting), and the raw-word helper is used
+// only for the claim's own instruments -- mkdir/touch/chmod to build the tree, git init/commit to seed
+// it, find/test to READ a mode at a path the builders refuse to walk. THE SHARED NEGATIVE HALF HOLDS:
+// no network, no cargo, no remote host, no srv1, no GPU card, no systemd unit, no sudo, and every
+// directory is one the fn created and removes. WHY IT CANNOT BE HERMETIC, stated for the dissolution:
+// a mocked RunArgv would replay authored bytes and re-check the DECODER, which is the supplied-input
+// claim again -- the whole point is that find and git, not the model's opinion of them, decide whether
+// the argv is executable and whether the modes land. At 2dc2b8de3f98 five git builders rendered
+// `git env GIT_CONFIG_GLOBAL=... git config` and exited 1 with "git: 'env' is not a git command", the
+// migration's chmod carried an unclosed `(` so find refused the expression and the grant never ran, and
+// every word-list claim over those argvs stayed green. That is the class this row exists to keep
+// executing.
+data excl_local_repo_wet_argv_execution_reason: String = "real host-effect execution witness over a THROWAWAY LOCAL REPOSITORY whose assertions are the effects EXECUTED ARGV leaves behind -- git's own config readback, find's own octal-mode readback, the packed-refs file test -f sees. Refused by the hermetic envelope, on the route the witness ACTUALLY TAKES: it spawns through the production route, gunbc.command_runner run_shell_command_capture over CommandTransport LocalExec (the same call the provision executor and the actuator make), which reaches the host effect at shell.Exec.RunArgv -- and neither that operation nor shell.Mktemp.Dir has a mock_response, so a hermetic run refuses rather than replaying authored bytes. THE ROUTE IS NAMED BECAUSE IT WAS MEASURED, NOT GUESSED: calling shell.Exec.RunArgv DIRECTLY, which an earlier cut of this witness did, fails on the wet runtime with 'unknown service operation: shell.Exec.RunArgv' (measured by srv1 job-wre3c, whose verdicts are not transcribed here per DESIGN 6 -- the job is the instrument, its tally is not the fact), so RunArgv is the underlying host effect and NOT the admissible call site; command_runner is the module that turns an ArgvCommand into a local process, and going through it is also what makes the claim test the shipping path rather than a parallel one. Excluded from the discovery corpus accordingly and executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule). Its builders are minted in their admitted homes (extdeps/git, extdeps/tools/findutils, extdeps/tools/chmod, extdeps/tools/chown) and run as built, never re-spelled by the witness. No network, no cargo, no remote host, no srv1, no GPU card, no systemd unit, no sudo, nothing outside a directory the fn created and removes."
+
+data excl_local_repo_wet_argv_execution_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the CAPTURE ROUTE the witness uses -- run_shell_command_capture over LocalExec, and the shell.Exec.RunArgv host effect it reaches, plus shell.Mktemp.Dir -- at a strength SUFFICIENT FOR the observed-effect shape: stdout, stderr and exit code bound to the argv that produced them, so an argv the host could not exec refuses under the mock instead of replaying authored bytes. Then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes. Per-call canned responses do NOT discharge it: they decouple the effect from the argv, which is the exact defect this file was written to catch (this witness exists because argv-shape claims stayed green over commands that could not run -- the git env prefix, the -c gc.auto = 0 split, the unbalanced find group, the doubled {} +).")
+
 data excl_local_repo_wet_browser_ready_label_reason: String = "real host-effect execution witness whose effect is ARGV EXECUTION THAT WRITES INSIDE A THROWAWAY TEMP DIRECTORY -- the readiness-label converge (gunbc.runner.runner_browser_toolchain browser_ready_labels_converge_wet) driven over LocalShell with the unprivileged posture parameterization against a mktemp scratch root: dd writes the scratch drop-in, cat reads it back, rm -f removes it, the scratch is removed. Refused by the hermetic envelope (shell.Exec over argv and shell.Mktemp.Dir have no mock_response), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. IT IS A DISTINCT ADMITTED EFFECT FROM ITS NEIGHBOURS AND IS NAMED RATHER THAN FOLDED IN: unlike excl_local_repo_wet_tempdir_write_reason the writes go through EXECUTED ARGV (dd/cat/rm over the host-effect transport), not a Filesystem.Write call; unlike excl_local_repo_wet_bash_materialized_reason a file IS written and read; unlike excl_local_repo_wet_host_probe_reason the probe writes. What admits it to the same lane is the shared negative half: no network, no cargo, no remote host, no install media, no sudo (the unprivileged posture skips daemon-reload with a typed cause), and nothing outside a directory the witness created and removes. The production FLEET route is a different row's subject: the declared stall is rostered as gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall."
 
 data excl_local_repo_wet_browser_ready_label_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the argv-over-host-effect-transport legs and shell.Mktemp.Dir, sufficient for the converge's write-then-proceed and remove-then-proceed folds to be asserted under fixed mocks at the scratch destination; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes. The FleetSsh production route's own stall (gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall) is NOT this row's trigger: the receipts keep executing over LocalShell regardless of when the shared transport admits that arm.")
@@ -400,6 +435,16 @@ data excl_local_repo_wet_digest_stdin_reason: String = "real host-effect capture
 
 data excl_local_repo_wet_digest_stdin_dissolve: DissolutionCondition = unbound_dissolution(description: "hermetic response coverage for extdeps.tools.sha256sum Sha256.DigestStdin becomes sufficient to execute all enrolled capture-verification assertions through verify_memory_capture_content and read_verified_memory_capture, including known-answer, changed-content refusal, and committed-artifact replay controls. Verify those identities on the hermetic route, explicitly re-enroll them in discovery, and remove their LocalRepoWetLane exclusions, corresponding wet schedule entries and DigestStdin route gaps together; only then delete this reason/trigger. Mktemp.Dir, Filesystem.Write or git mock coverage alone cannot discharge this trigger.")
 
+// THE EFFECT THIS WITNESS ACTUALLY PERFORMS, named rather than borrowed. It is NOT
+// excl_local_repo_wet_tempdir_write_reason's effect: that reason says "no git operation runs", and
+// here the subject IS a git execution -- production's own capture route reaches git hash-object and
+// the staging install through compute_exec -> gunbc.WitnessBin.Run. Admitting this file under a
+// reason that denies the effect it exercises would make the roster's account of the lane false,
+// which is what the neighbour reasons insist on naming separately.
+data excl_output_capture_absence_wet_reason: String = "real host-effect execution witness: each row EXECUTES production's build-output capture route (gunbc.compute.work_provider_local compute_return_outputs) against a throwaway temp checkout on the runner's own host, so its effects are gunbc.WitnessBin.Run (git hash-object, and the staging install, both reached through production's own compute_exec -- not through a supplied pair or a mock), shell.Mktemp.DirWithTemplate, shell.Remove.RecursiveForce, and the Filesystem write/read/list verbs. None has a mock_response, so the hermetic envelope refuses before any verdict and the capture's absent-output refusal would go unexecuted; the local-repo wet lane executes it. EVERY WRITE ROOT THE ROUTE REACHES IS ENUMERATED IN THE WITNESS HEADER AND IS A CHILD OF THE DIRECTORY THE WITNESS CREATES AND REMOVES (the layout paths it derives are checked with starts_with against that root): the instance's own roots -- instance_root (hence layout.checkout/work_dir/target_dir through compute_root) and its materialization store, which is WitnessScratchRoot here rather than the fleet's /tmp/gunbc_compute_<frame> scratch -- are all children of the shell.Mktemp.Dir, and every row's Bool ANDs production_paths_stay_inside_root (each derived path is under that root, and the staging tree is not under materialization_store_frame_root_prefix) with root_lists_own_writes (a recursive listing of that root names the file the row wrote) and with the tree being removed and the host then answering not_found for it. The fleet frame-scratch population under /tmp/gunbc_compute_* is listed before and after the run and carried in the case record as REPORTED EVIDENCE for the PR body, per the manager's ruling; it is not an input to the Bool, because traffic in an unrelated /tmp path says nothing about where this run wrote. No network, no cargo, no remote host, no install media. It is ENROLLED AT IDENTITY GRAIN in the wet lane -- three rows: these claim rows, this exclusion row, and the v2.workflow.floor_route_gap expectations -- because a wet witness enrolled in only part of the triple is the incomplete-triple state chunk_21's header records as having blocked the merge queue, and because a control about silent absence must not itself be silently absent."
+
+data excl_output_capture_absence_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "these identities re-enroll as ordinary hermetic discovery rows only when the hermetic route can execute production's capture path itself, which needs response coverage for gunbc.WitnessBin.Run (and for the staging install and the Filesystem write verbs) rather than for the step's inputs -- supplying readings at the step boundary is what the HERMETIC twin test.claim.compute.output_capture_absence_witness already does, and it is not a substitute: DESIGN 3's pairing obligation forbids supplied inputs removing the last execution of the real path. WHAT THE TRIGGER REQUIRES IS NOT A BETTER MOCK BUT THE SEED CAPABILITY THAT gunbc.hermetic_mock_fidelity NAMES IN A TYPED CARRIER: `fabricated_fact_next_trigger` says an arm may only answer as a function of the operation's declared inputs, and that capability does not exist yet -- `eval_mock_response` evaluates arms in an EMPTY environment, so an input-discriminating arm is unwritable in this seed. That is what keeps this trigger from firing on a witness's initiative: the only arm an author could add today is the unconditional kind the same module filed as a defect and had deleted on 2026-08-23 (`hermetic_mock_fidelity_rows`, `mock_arm_is_fabricating`), which fabricates the very success this witness exists to refuse. No operator ruling is needed to hold that, and none is claimed here: the module carries it. Until the capability lands, these rows stay in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, this exclusion row and the v2.workflow.floor_route_gap expectations land and leave TOGETHER, and removing one alone is the incomplete triple this row exists to prevent.")
+
 data excl_local_repo_wet_bash_materialized_reason: String = "real host-effect execution witness whose effect is EXECUTING A MATERIALIZED EFFECT-PLAN SCRIPT UNDER BASH (shell.Exec.Run over the sealed transport script) -- refused by the hermetic envelope (no mock_response for operation Run), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), every function in the file on that schedule. THIS IS A DISTINCT ADMITTED EFFECT FROM ITS NEIGHBOURS AND IS NAMED RATHER THAN FOLDED IN: the commands the scripts run are id -u, test -x / test -f over fixed paths, printf and true -- directly or through a Let-bound shell variable -- so no repository is built (not excl_local_repo_wet_reason), nothing is written (not excl_local_repo_wet_tempdir_write_reason), and the probe is of the EMITTED BYTES' behaviour under a real shell rather than of a host tool's presence (not excl_local_repo_wet_host_probe_reason). What admits it to the same lane is the shared negative half: no network, no cargo, no remote host, no install media, nothing outside the process. THIS FILE'S MOVE: on gunbc#11357 it is one of the entry files that leaves the bin-witness wet class -- whose standing excl_bin_wet_reason records and whose restoration that row leaves to the lanes that do it -- and gains a real per-PR executor, because the If / Let / Call witnesses became changed identities ending in a route gap, which the floor admits only with a wet terminal joined (changed_witness_planned_without_terminal_verdict). The three members that predate that change are enrolled deliberately alongside them: under the dark class they were not evidence either."
 
 data excl_local_repo_wet_bash_materialized_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Exec.Run over a sealed transport script and the emitted-bytes assertions are re-checked under a fixed mock -- which the transport_script_stdin_byte_fidelity note already refuses as vacuous for a byte-fidelity claim -- OR the bin-witness wet class regains an executing per-PR consumer; then these fns re-enroll there, drop off local_repo_wet_schedule, and this row deletes")
@@ -408,23 +453,47 @@ data excl_local_repo_wet_host_probe_reason: String = "real host-effect execution
 
 data excl_local_repo_wet_host_probe_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.PosixCommandV.Check, so observe_host_cli_dependency can be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
 
-data excl_local_repo_wet_device_route_store_read_reason: String = "real host-effect execution witness over the App Attest device routes whose one claim is the gate's discriminating control: under a bound realization the read proceeds past device_crypto_admission into the enrolment store's Filesystem.Read (gunbc.auth.approval_device_redemption observe_enrollment over approval_device_store_root), which has no mock_response. The route takes no store as a parameter, so the store cannot be supplied at the claim's interface. The effect is READ-ONLY: nothing is written, no network is reached, and the claim asserts only that the answer is not the realization reason, which holds whether the slot is absent, unreadable or present. So excluded from the discovery corpus and executed by the required floor's local-repo wet lane."
+data excl_local_repo_wet_device_route_store_read_reason: String = "real host-effect execution witness over the App Attest device routes whose one claim is the gate's discriminating control: under a bound realization the read proceeds past device_crypto_gate into the enrolment store's Filesystem.Read (gunbc.auth.approval_device_redemption observe_google_enrolment over approval_device_store_root), which has no mock_response. The route takes no store as a parameter, so the store cannot be supplied at the claim's interface. The effect is READ-ONLY: nothing is written, no network is reached, and the claim asserts only that the answer is not the realization reason, which holds whether the slot is absent, unreadable or present. So excluded from the discovery corpus and executed by the required floor's local-repo wet lane."
 
-data excl_local_repo_wet_device_route_store_read_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for Filesystem.Read sufficient for observe_enrollment to be driven under a fixed store, OR the device read routes take their store observation as a supplied value; then the control re-enrolls as an ordinary hermetic discovery row in test.claim.approval_device_routes_witness, drops off local_repo_wet_schedule, and this row deletes")
+// THE OUTSIDE-DISCOVERY-ROOTS CENSUS's reads. NAMED AS ITS OWN ADMITTED EFFECT rather than folded into a
+// neighbour, which is this corpus's convention (see excl_local_repo_wet_bash_materialized_reason and
+// excl_local_repo_wet_host_probe_reason, both of which spell out why they are not the row above them).
+// The two effects are `shell.Exec.RunArgv` twice, both READ-ONLY over the checkout: `git -C . ls-files
+// '*.dag'` and `git -C . grep -E -l <declaration pattern> -- '*.dag'`, through
+// gunbc.command_runner.run_shell_command_capture. RunArgv carries no mock_response, so hermetic discovery
+// REFUSES rather than skipping -- and neither read can be supplied at the claim's interface without
+// falsifying what is under test: the fact is what the index ACTUALLY tracks under the subject
+// v1_claim_scoped_witness_batch_deleted_note declares, so an injected listing would re-check the census
+// against authored data and the pairing would witness nothing.
+//
+// WHY IT IS NOT ITS NEIGHBOURS: no repository is created (not excl_local_repo_wet_reason), nothing is
+// written anywhere (not excl_local_repo_wet_tempdir_write_reason, ..._browser_ready_label_reason or
+// ..._scm_guarded_save_reason), no script materialises (not ..._bash_materialized_reason), no host tool's
+// presence is probed (not ..._host_probe_reason -- the git binary's absence is a typed ListingRefused, not
+// the verdict), no checksum is taken (not ..._digest_stdin_reason), and no store, profile, device route or
+// fleet path is entered (not ..._device_route_store_read_reason, ..._profile_store_reason,
+// ..._enrolment_code_reason, ..._ntfy_runtime_readback_reason, ..._authorized_key_enroll_reason). What
+// admits it to the same lane is the shared negative half every member states: no network, no cargo, no
+// remote host, no install media, nothing outside the process, nothing written.
+//
+// WHY THE VERDICT IS HOST-INDEPENDENT: both reads answer from the checked-out tree, which is the same tree
+// the claim file itself is read from, and the assertions are containments over tracked paths -- no clock, no
+// locale, no host tool beyond the git that the lane's other git-touching members already require. The red
+// this member CAN produce is route unreachability (no git: both reads answer typed refusals, the census
+// reports ListingUnread and the pairing claim goes red rather than quiet) and drift between the note's
+// declared subject and what the index tracks under it -- which is the finding the census exists to report.
+data excl_local_repo_wet_outside_roots_census_reason: String = "real host-read execution witness over the TRACKED INDEX OF THE CHECKOUT -- two READ-ONLY shell.Exec.RunArgv effects (git -C . ls-files and git -C . grep -E -l of the claim declaration shape, through gunbc.command_runner.run_shell_command_capture), neither of which carries a mock_response, so hermetic discovery refuses them rather than skipping them. Excluded from the discovery corpus and executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), every function in test.claim.outside_discovery_roots_census_real_execution on that schedule. NOT THE THROWAWAY-REPOSITORY PROPERTY excl_local_repo_wet_reason NAMES: no repository is created and nothing is written; the reads describe the tree the claim file itself is read from. The listing cannot be supplied at the claim's interface without falsifying the fact under test -- an authored listing would re-check the census against the data that produced it."
+
+data excl_local_repo_wet_outside_roots_census_dissolve: DissolutionCondition = unbound_dissolution(description: "response coverage lands for shell.Exec.RunArgv over the two git reads (ls-files and grep -E -l of the claim declaration shape), so the listing and the marker answer can be asserted against a fixed recorded answer while a separate route still checks them against a real index; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes. Filesystem or git mock coverage that stops short of these two argv responses cannot discharge this trigger.")
+
+
+data excl_local_repo_wet_device_route_store_read_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for Filesystem.Read sufficient for observe_google_enrolment to be driven under a fixed store, OR the device read routes take their store observation as a supplied value; then the control re-enrolls as an ordinary hermetic discovery row in test.claim.approval_device_routes_witness, drops off local_repo_wet_schedule, and this row deletes")
 
 data excl_local_repo_wet_tempdir_write_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Mktemp.Dir and Filesystem.Write, sufficient for sha256sum_verify_via_shell to be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
-
-data excl_local_repo_wet_enrolment_code_reason: String = "real host-effect execution witness over the approval broker's enrolment code whose subjects are reached only through two effects with no mock_response: a FILESYSTEM WRITE INTO A THROWAWAY TEMP DIRECTORY (shell.Mktemp.DirWithTemplate, then the enrolment slot's file CAS, then shell.Remove.RecursiveForce of that directory -- the same admitted effect excl_local_repo_wet_tempdir_write_reason names) and ONE READ OF THE KERNEL ENTROPY SOURCE (Urandom.ReadBytes, sixteen octets). The entropy read is named rather than folded into the tempdir row because it is a different effect: it writes nothing, and its value is deliberately unpredictable, so the claim that reads it asserts only the SHAPE the real read produces (32 lowercase hex characters) -- the inhabitance half of DESIGN section 3's pairing obligation, whose supplied-octets half runs hermetically in test.claim.approval_device_enrolment_code_witness. Shared negative half: no network, no cargo, no remote host, nothing outside a directory the witness created and removes. Excluded from the discovery corpus and executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), every function in the named file on that schedule."
 
 data excl_local_repo_wet_blackjack_shuffle_reason: String = "real host-effect execution witness over the Blackjack shuffle: the claim makes one kernel-entropy read through Urandom.ReadBytes, writes nothing, and asserts only that decoding the result, deriving a seed, and shuffling the standard deck produces a 52-card permutation. Its deterministic counterpart supplies fixed octets in test.claim.examples.blackjack_shuffle_witness_test. Excluded from the discovery corpus and executed by the required floor's local-repo wet lane."
 
 data excl_local_repo_wet_blackjack_shuffle_dissolve: DissolutionCondition = unbound_dissolution(description: "a fixed-octets mock_response lands for Urandom.ReadBytes; then this claim re-enrols as an ordinary hermetic discovery row, drops off local_repo_wet_schedule, and this row deletes")
-
-data excl_local_repo_wet_enrolment_code_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Mktemp.DirWithTemplate and the file CAS writes sufficient for the enrolment slot write to be driven under a fixed store, and a fixed-octets mock_response lands for Urandom.ReadBytes; then both fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
-
-data excl_local_repo_wet_ntfy_runtime_readback_reason: String = "real host-effect execution witness over the approval broker's enrolment-code root, gunbc.auth.approval_device_enrolment_code issue_device_enrolment_code, which accepts only a release revision and whose first effect is gunbc.auth.approval_ntfy_access_readback approval_ntfy_runtime_reading: READ-ONLY HOST PROCESS READS through shell.Exec.RunArgv (systemctl show, cat of /proc files, getconf, stat, id, the ntfy binary's version and access listing, tailscale serve status, several under sudo -n), for which the hermetic route has no published mock case. None of them writes; the claim asserts the verb refuses before any code is minted and that the store root is never created, and that holds on EVERY host because every reading's verdict is a refusal (a failed or inactive unit, a runtime gap, or -- the claim passing a revision that is never installed -- the per-release process-observation helper's read failing), so admitting it imports no host-conditional red. The same module's second claim runs that helper entry (gunbc.auth.approval_ntfy_runtime_observe approval_ntfy_runtime_observe) for real and asserts its printed outcome decodes through the verb's codec, which holds on every host (a refusal naming its read, or an observation). Every refusal arm is witnessed hermetically over supplied readings in test.claim.approval_ntfy_access_readback_witness; this is the one claim that runs the real root. Excluded from the discovery corpus and executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule)."
-
-data excl_local_repo_wet_ntfy_runtime_readback_dissolve: DissolutionCondition = unbound_dissolution(description: "a published mock case lands for shell.Exec.RunArgv sufficient to drive every read in the complete gunbc.auth.approval_ntfy_access_readback reads_in_order population that approval_ntfy_runtime_reading takes, under a fixed reading, and issue_device_enrolment_code's refusal before the clock, the entropy read and the store is re-checked under it; then the fn re-enrolls as an ordinary hermetic discovery row, drops off local_repo_wet_schedule, and this row deletes")
 
 data excl_local_repo_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the git plumbing these witnesses reach and the assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
 
@@ -554,8 +623,38 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_tempdir_write_dissolve},
+  // THE OUTSIDE-DISCOVERY-ROOTS CENSUS's pairing claims, and why they are here rather than in the hermetic
+  // corpus: both of the census's inputs are `shell.Exec.RunArgv` effects -- a real `git ls-files` and a real
+  // `git grep -E -l` of the claim declaration shape -- and RunArgv carries no mock_response, so hermetic
+  // discovery REFUSES them rather than skipping them. That refusal is the envelope working, not a defect to
+  // route around: supplying the listing at the claim's interface instead would check the census against the
+  // very data it produced, while the fact at issue is what the index ACTUALLY tracks under the subject
+  // v1_claim_scoped_witness_batch_deleted_note declares. So the claims run on the local-repo wet lane and
+  // stay visible in coverage instead of going dark. Both reads are read-only over the checkout -- no network,
+  // no remote host, no Cargo, nothing written -- and a missing git is a typed refusal that takes the claim
+  // RED (the census reports ListingUnread) rather than letting it pass on an empty population.
+  WitnessExclusionRow {
+    pattern: "outside_discovery_roots_census_real_execution.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_outside_roots_census_reason,
+    dissolution: excl_local_repo_wet_outside_roots_census_dissolve},
   WitnessExclusionRow {
     pattern: "seeded_filler_real_execution.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_tempdir_write_dissolve},
+  WitnessExclusionRow {
+    pattern: "base64_tool_real_execution_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_tempdir_write_dissolve},
+  WitnessExclusionRow {
+    pattern: "posix_quoted_remote_word_real_execution_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_tempdir_write_dissolve},
+  WitnessExclusionRow {
+    pattern: "site_pxe_edge_chainloader_real_execution_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_tempdir_write_dissolve},
@@ -606,6 +705,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE roster gate (~15m serial interpreted resolve; runtime filesystem_read data deps invisible to closure attribution — see accumulator_copy_roster_gate_exclusion_note)",
     dissolution: excl_roster_gate_dissolve},
+  WitnessExclusionRow {
+    pattern: "test/claim/revision_job_fixture/",
+    classification: FixtureExplicitRoster,
+    reason: "revision-job stand-in fixtures (test.claim.revision_job_fixture.revision_job_light_claims): one observation that holds and one that DELIBERATELY does not, run only by exact label from the stand-in's claim list so the results frame carries a non-zero exit in a declared order; excluded so the deliberate red is never read as a real one by discovery, claim runs or censuses",
+    dissolution: unbound_dissolution(description: "the revision job's stand-in is retired or re-pointed at a corpus claim set; the fixture module and this row delete together")
+  },
   WitnessExclusionRow {
     pattern: "test/claim/enforcement/",
     classification: OfflineLocalRecipe,
@@ -866,7 +971,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "frontier_probe_closure_matrix_integration.dag",
     classification: FalsifierRehomedBinWet,
-    reason: "PR #7762 frontier probe closure integration matrix (operator msg_b51df9e7): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet eval wall: below_cap 784772ms, second_root 742109ms (130x and 123x bin_witness_wet_per_row_wall_budget_seconds). Scheduled consumer: FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows. Cheap wet controls (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms measured eval) run per-PR on GithubActionsCiJob via src/v2/test/claim/workflow/frontier_probe_closure_readthrough.dag — not 523ms/181ms (those were erroneous full-resolve figures from an earlier exclusion row before read-through was split out).",
+    reason: "PR #7762 frontier probe closure integration matrix (operator msg_b51df9e7): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet eval wall: below_cap 784772ms, second_root 742109ms (130x and 123x bin_witness_wet_per_row_wall_budget_seconds). Declared but UNREALIZED consumer: the FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows name a cadence whose executor (falsifier.yml) was deleted at 611fd02770/#8283, so no scheduled run executes these two claims today; the loss is carried by the typed frontier falsifier_rehomed_roster_rows and the rung drop gunbc.rung_drop.falsifier_rehomed_rows_unexecuted (#14615). Cheap wet controls (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms measured eval) run per-PR on GithubActionsCiJob via src/v2/test/claim/workflow/frontier_probe_closure_readthrough.dag — not 523ms/181ms (those were erroneous full-resolve figures from an earlier exclusion row before read-through was split out).",
     dissolution: unbound_dissolution(description: "measured eval for below_cap and second_root lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR discovery consciously, or delete when emit-stage positives are no longer full-pipeline priced")
   },
   WitnessExclusionRow {
@@ -902,15 +1007,50 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_closing_contract_execution_reason,
     dissolution: excl_closing_contract_execution_dissolve},
   WitnessExclusionRow {
+    pattern: "claim_batch_parse_gate_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_claim_batch_parse_gate_reason,
+    dissolution: excl_claim_batch_parse_gate_dissolve},
+  WitnessExclusionRow {
+    pattern: "claim_batch_unobserved_exit_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_claim_batch_unobserved_exit_reason,
+    dissolution: excl_claim_batch_unobserved_exit_dissolve},
+  WitnessExclusionRow {
+    pattern: "claim_batch_exit_two_unobserved_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_claim_batch_exit_two_reason,
+    dissolution: excl_claim_batch_unobserved_exit_dissolve},
+  WitnessExclusionRow {
+    pattern: "claim_batch_outcomes_out_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_claim_batch_exit_two_reason,
+    dissolution: excl_claim_batch_unobserved_exit_dissolve},
+  WitnessExclusionRow {
     pattern: "mtcollins1_census_image_local_wet.dag",
     classification: LocalRepoWetLane,
     reason: "SUBSTANTIATED per-row: one fn reads a committed artifact through Filesystem.Read, one reaches shell.Exec.RunArgv through gunbc.command_runner.run_shell_command_observe, and one drives gunbc.provisioning.seeded_install_media_publish resolve_seeded_image against a shell.Mktemp.Dir directory; none carries a mock_response, so hermetic discovery REFUSES rather than skipping. Their subjects are a real file's bytes and a real process's output: the attempt=3 host capture parsed under the reconstructed envelope grammar, and the capture program the renderer writes executed under `sh -c` and parsed back. A mocked read or a mocked stdout would re-check the parser against authored data, which is the supplied-input half test.claim.machine_intake.mtcollins1_census_image_witness already covers; this file is the inhabitance half DESIGN section 3 requires beside it. THE EXECUTION IS PURELY LOCAL -- one file read inside the checkout and `sh -c` over echo/printf with a halt of `true`, no network, no remote host, no Cargo -- which is why it belongs on the local-repo wet lane." as String,
     dissolution: unbound_dissolution(description: "Filesystem.Read and shell.Exec.RunArgv gain input-varying mock_response coverage over a checkout file and a process's stdout -- at which point these fns re-enrol as ordinary hermetic discovery rows and this row deletes. A fixed-output mock does NOT discharge it: the parser would be re-checked against the fixture rather than against what the renderer's program prints")},
   WitnessExclusionRow {
+    pattern: "fan_observe_local_wet.dag",
+    classification: LocalRepoWetLane,
+    reason: "SUBSTANTIATED per-row: every fn here reaches shell.Exec.RunArgv or extdeps.filesystem.filesystem_io Filesystem.Write/Read/Delete at its first effect, and the hermetic route has no arm for either, so hermetic discovery REFUSES (Filesystem Write: NoMockResponse; shell.Exec.RunArgv: UnpublishedMockCase) rather than skipping. Their subject is what bash itself does with the mtcollins1 fan step's emitted text: the credential prelude's EXIT trap under set -u, and the outcome tail (rendered from the model and extracted from the committed fleet-converge.yml) reading a receipt the real writer fan_write_boot_phase_observation produced. A mocked exit status or file would re-check authored data, which is the supplied-value half test.claim.machine_intake.fan_observe_witness already covers hermetically. THE EXECUTION IS PURELY LOCAL -- bash, sed and rm over claim-private flat paths and target/mtcollins1-fan-observation.txt inside the checkout, WIF_ACCESS_TOKEN unset so no credential fetch is reached; no network, no BMC, no Cargo." as String,
+    dissolution: unbound_dissolution(description: "shell.Exec.RunArgv and Filesystem gain input-varying mock_response coverage that can express what bash does with an emitted script under set -euo pipefail -- at which point these fns re-enrol as ordinary hermetic discovery rows and this row deletes. A fixed-output mock does NOT discharge it: the tail would be re-checked against the fixture rather than against what bash does with the bytes the step ships")},
+  WitnessExclusionRow {
     pattern: "approval_broker_helper_readback_real_execution.dag",
     classification: LocalRepoWetLane,
     reason: "SUBSTANTIATED per-row: every fn here reaches shell.Exec.RunArgv through gunbc.command_runner.run_shell_command_observe over extdeps.languages.bash.invocation bash_program_command, and RunArgv carries no mock_response, so hermetic discovery refuses. Its subject is the exit status of a real bash under set -euo pipefail running the approval broker's helper snapshot readback (gunbc.live_deploy.emit helper_snapshot_readback_command_at): a find that FAILS must stop the stage before the grant, which is a fact about errexit semantics that no in-process assertion observes and no mock honestly supplies (side-chat review on 15f470cfc8). THE EXECUTION IS PURELY LOCAL: mktemp -d, mkdir, chmod, ln, mv, find and test inside a temp directory the program removes on exit; no network, no remote host, no Cargo. SIZE IS DERIVED: six invocations, the clean control plus one per refusal arm (missing snapshot, missing ancestor, writable entry, snapshot symlink, symlinked ancestor)." as String,
     dissolution: unbound_dissolution(description: "shell.Exec.RunArgv gains input-varying mock_response coverage that can express a nonzero exit from a failed command substitution under errexit -- at which point these fns re-enrol as ordinary hermetic discovery rows and this row deletes. A fixed-status mock does NOT discharge it: a mocked status is authored data, and the subject here is what bash itself does with a failed find")},
+  WitnessExclusionRow {
+    pattern: "approval_device_crypto_sidecar_readback_real_execution.dag",
+    classification: LocalRepoWetLane,
+    reason: "SUBSTANTIATED per-row: every fn here reaches shell.Exec.RunArgv through gunbc.command_runner.run_shell_command_observe over extdeps.languages.bash.invocation bash_program_command, and RunArgv carries no mock_response, so hermetic discovery refuses. Its subject is what curl does with the argv extdeps.http.client PostStdinWithinRetryingRefused declares (materialized from the declaration) against a loopback listener that appears after a delay: inside the startup bound it is reached, past the bound or never it exits 7, and the old PostStdinWithin command exits 7 on the inside case. THE EXECUTION IS LOCAL: a free 127.0.0.1 port, a python3 http listener the harness starts and kills, a mktemp directory; no remote host, no Cargo. SIZE IS DERIVED: three bound cases, one old-command control and one authority-agreement fold." as String,
+    dissolution: unbound_dissolution(description: "shell.Exec.RunArgv gains input-varying mock_response coverage that can express a listener appearing after a delay -- at which point these fns re-enrol as ordinary hermetic discovery rows and this row deletes. A fixed-status mock does NOT discharge it: the subject is what curl itself does with the retry flags")},
+  WitnessExclusionRow {
+    pattern: "observed_sha256_guard_real_execution.dag",
+    classification: LocalRepoWetLane,
+    reason: "SUBSTANTIATED per-row: every fn here reaches shell.Exec.RunArgv through gunbc.command_runner.run_shell_command_observe over extdeps.languages.bash.invocation bash_program_command, and RunArgv carries no mock_response, so hermetic discovery refuses. Its subject is what a real bash does with the text v2.workflow.effect_plan_bash_materialize emits for an ObservedSha256EnvWrite leaf (gunbc.live_deploy.effect_leaf observed_sha256_env_write_effect): an unreadable, empty, short, uppercase, non-hex, separator-less or single-space observation must exit with the typed cause's status before the dest file is written, and a valid line must write exactly NAME=<digest>. THE EXECUTION IS LOCAL: sudo and install are shadowed shell functions and the files live under one scratch directory in /tmp; no network, no remote host, no Cargo. SIZE IS DERIVED: one positive control, the refusal arms and one agreement fold over lower_hex_64." as String,
+    dissolution: unbound_dissolution(description: "shell.Exec.RunArgv gains input-varying mock_response coverage that can express a nonzero exit from a failed grep guard under errexit -- at which point these fns re-enrol as ordinary hermetic discovery rows and this row deletes. A fixed-status mock does NOT discharge it: the subject is what bash itself does with the guard")},
   WitnessExclusionRow {
     pattern: "spark_snapshot_verify_wrapper_local_wet.dag",
     classification: LocalRepoWetLane,
@@ -948,6 +1088,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "materialized_ssh_key_file_real_execution_witness.dag",
+    classification: BinWitnessWet,
+    reason: excl_install_media_reason,
+    dissolution: excl_install_media_dissolve},
+  WitnessExclusionRow {
+    pattern: "bmc_credential_off_disk_real_execution_witness.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
@@ -1057,11 +1202,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
-    pattern: "proc_self_cgroup_real_execution_witness.dag",
-    classification: BinWitnessWet,
-    reason: excl_install_media_reason,
-    dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
     pattern: "shell_spawn_refused_real_execution_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_shell_spawn_refused_reason,
@@ -1117,6 +1257,16 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "output_capture_absence_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_output_capture_absence_wet_reason,
+    dissolution: excl_output_capture_absence_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "fci1_bounded_store_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "host_capacity_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -1137,6 +1287,31 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "session_activation_ensure_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "attempt_worktree_claim_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "deploy_transition_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "belt_commit_outcome_persist_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "belt_capture_intent_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "dispatch_worker_writable_sandbox_wet_witness.dag",
     classification: OfflineLocalRecipe,
     reason: excl_attempt_launcher_grant_on_runner_host_reason,
@@ -1146,6 +1321,23 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "worker_git_subtree_builder_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_argv_execution_reason,
+    dissolution: excl_local_repo_wet_argv_execution_dissolve},
+  // THE SIBLING: THE APPLY'S TWO GIT STEPS AND THE SPAWN'S ENTRY GRANT, RUN. Same route and the same
+  // reason -- but this one earns its exclusion on the operations it EXECUTES rather than the argv it
+  // builds: dashboard_apply_provision_op's posture and migration arms go through their production
+  // transport, belt_worker_git_entry_grant_readback is called as the spawn calls it, and the tree is
+  // graded afterwards by git and by find. It cannot join the hermetic corpus because those arms are real
+  // processes over a throwaway repository, and its row must not be deleted while the dry fold over the
+  // model's rows is the only other thing standing between a broken grant and a green build.
+  WitnessExclusionRow {
+    pattern: "worker_git_subtree_apply_spawn_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_argv_execution_reason,
+    dissolution: excl_local_repo_wet_argv_execution_dissolve},
   WitnessExclusionRow {
     pattern: "roadmap_dogfood_route_wet_witness.dag",
     classification: LocalRepoWetLane,
@@ -1197,27 +1389,32 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "approval_decision_store_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "approval_google_enrolment_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "approval_device_routes_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_device_route_store_read_reason,
     dissolution: excl_local_repo_wet_device_route_store_read_dissolve},
-  WitnessExclusionRow {
-    pattern: "approval_device_enrolment_code_wet_witness.dag",
-    classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_enrolment_code_reason,
-    dissolution: excl_local_repo_wet_enrolment_code_dissolve},
   WitnessExclusionRow {
     pattern: "blackjack_shuffle_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_blackjack_shuffle_reason,
     dissolution: excl_local_repo_wet_blackjack_shuffle_dissolve},
   WitnessExclusionRow {
-    pattern: "approval_ntfy_access_readback_wet_witness.dag",
-    classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_ntfy_runtime_readback_reason,
-    dissolution: excl_local_repo_wet_ntfy_runtime_readback_dissolve},
-  WitnessExclusionRow {
     pattern: "durable_exclusive_hold_file_store_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "durable_exclusive_hold_nonholder_release_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
@@ -1619,6 +1816,19 @@ fn bin_wet(entry: String, f: String) -> ScheduleWitnessEntry {
 
 data spark_verify_wrapper_local_wet_enrolment_note: String = "A NOTE STOOD HERE CLAIMING THE WET VERIFY CONTRACT WAS UNWRITABLE, AND IT WAS FALSE. It read three constructors -- TransportScript, cli_surface_of_literal_words and ArgvCommand -- concluded that every route from rendered text to a running process is closed to a witness, and justified DELETING the file that tried. Two of those three readings were correct about their own wall. The conclusion drawn from them was not.\n\nTHE ADMITTED ROUTE EXISTS AND WAS SIMPLY NOT FOUND. extdeps.posix.sh_invocation.posix_sh_program_command appears in argv_command's own admit_callers list, and gunbc.command_runner.run_shell_command_observe appears in cli_surface_of_literal_words'. Composing those two is a witness driving PRODUCTION BUILDERS, which is precisely what the walls require: they forbid MINTING an argv, never running one that an admitted builder produced. The deleted file's actual defect was that it minted its own; the remedy was composition, not abandonment.\n\nAND THE SUBJECT IS THE BUILDER'S INTENDED CASE. posix_sh_program_command's annotation refuses a caller spelling one program's argv inside a string; what this contract tests is a genuine shell PROGRAM BODY -- `cmd; rc=$?; if [ $rc -eq 0 ]; then echo OK; else echo FAILED; fi; exit $rc`. The previous deletion was argued from the wall's purpose, and the purpose points the other way.\n\nWHY THIS MATTERS BEYOND ONE FILE: the false note recorded an IMPOSSIBILITY on a carrier. A wrong value is caught the first time it is used; a wrong impossibility is never used at all, and every later reader inherits it as settled. It sat beside a correct observation -- that bin_witness_wet_entries has had no executing consumer since 2026-08-15 -- which made the whole row read as established.\n\nCURRENT STANDING: the contract is locally executable through an admitted production bridge and is enrolled in the LocalRepoWetLane schedule, whose cadence executes and produces candidate-bound terminals. What was missing was enrolment and composition, never substrate capability."
 
+// THE NOTE'S SUBJECT, TYPED (review 84153 #1, 2026-10-21). The note above declares its subject inside prose
+// -- "the entries under src/v1/tests/claim have NO executing consumer" -- and prose is something no
+// mechanism can read (§4c). The outside-discovery-roots census CLASSIFIES paths by that subject: the receipt
+// lines that say a finding sits "within the subject the note declares" must cite the note's own subject,
+// not a copy of it, or a note rewrite would leave the census sorting by the old subject while still
+// crediting the note -- wrong, silently. So the subject is declared as data HERE, beside the note that
+// owns it, and the census imports this row instead of spelling the path. The tie between carrier and prose
+// is not left to goodwill: v2.test.claim.outside_discovery_roots_census_witness
+// #the_subject_carrier_and_the_note_prose_agree asserts the note's String actually names this directory,
+// so a rewrite that drops the subject turns that claim RED instead of drifting quietly. One fact, one
+// home (§3); the claim is the seam that keeps the prose and the carrier a single statement.
+data v1_claim_scoped_witness_batch_deleted_subject_directory: String = "src/v1/tests/claim"
+
 data v1_claim_scoped_witness_batch_deleted_note: String = "THE SCOPED WITNESS BATCH IS DELETED (2026-08-15), and with it the only ScopedWitnessBatch instance that ever existed. It ran five file-grain v1 claim entries under a dag plus src/v1 source-root envelope, in a sequential child worker, so the v1 compiler closure could be resolved without widening witness_layer_roots for everything else.\n\nWHY IT COULD NOT SURVIVE AFFECTED-SET SELECTION. It was the last SelectionApplied consumer on the required path, and its 720-second clamp was derived (PR #8259) from a measured 565-second wall on the assumption that unrelated PRs skip it. With selection deleted the two available readings were both wrong: run it every PR and the required floor grows by roughly nine minutes under a clamp basis that no longer describes it, or keep a selection mechanism alive for one batch. Its cost was also never really the witnesses — the same receipt measured about 390 seconds of closure materialization before the first witness line and about 30 seconds of witness evaluation, so it was paying a whole second subject preparation to check thirty rows.\n\nWHAT THIS NARROWS, stated rather than implied: the entries under src/v1/tests/claim have NO executing consumer. They are not covered by ordinary discovery, whose roots are dag plus src/v2. Their generated stage0 emissions still compile into the seed crate, which is not execution. This is a real loss of coverage over v1 parser and namespace-binding behavior, taken deliberately as part of deleting the floor rather than discovered later, and it is NOT backstopped by any cadence — the cadence lane those rows might have moved to was refused for the same reason the per-PR slot was: a second subject envelope is the defect, not the schedule it runs on.\n\nRESTORATION: one prepared subject spanning dag, src/v1 and src/v2, at which point a separate envelope, a separate worker, a separate clamp and a separate receipt family all stop existing and these rows are ordinary discovery."
 
 // `witness_fold_src_v1_coverage_gap_note` STOOD HERE UNTIL 2026-09-02 AND IS RETIRED, NOT LOST.
@@ -1713,14 +1923,20 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness.dag", f: "compile_clean_shard_verdict_compose_laws_hold"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness.dag", f: "compile_clean_shard_verdict_compose_RED_on_injected_failure"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness.dag", f: "compile_clean_shard_a_exemplar_compile_green"),
-  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness.dag", f: "compile_clean_shard_roster_is_well_formed"),
-  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness.dag", f: "compile_clean_shard_totality_algebra_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_seam_witness.dag", f: "cross_shard_seam_algebra_holds"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution.dag", f: "http_client_get_roundtrip_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution.dag", f: "http_client_get_missing_target_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/host/host_build_cache_provision_real_execution_witness.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag", f: "witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"),
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag", f: "witness_write_owner_only_refuses_when_path_already_exists"),
+  bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag", f: "ssh_key_mode_probe_distinguishes_unobservable_from_wrong_mode"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_netrc_is_owner_only_and_gone_after_a_call_that_succeeded"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_netrc_is_owner_only_and_gone_after_a_call_that_failed"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_srv3_login_body_is_owner_only_and_gone_after_a_login_that_succeeded"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_srv3_login_body_is_owner_only_and_gone_after_a_login_that_failed"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "a_failed_rotation_reaches_the_bmc_call_and_leaves_no_credential_behind"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_password_body_reaches_curl_on_stdin_and_never_as_a_path"),
+  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "a_file_name_that_leaves_the_bracket_directory_is_refused_and_touches_nothing_outside"),
   bin_wet(entry: "dag/test/claim/repo_local_git_config_real_execution.dag", f: "repo_local_git_config_actuator_sets_local_bindings_by_real_execution"),
   bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness.dag", f: "a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution"),
   bin_wet(entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness.dag", f: "a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution"),
@@ -1733,10 +1949,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution.dag", f: "unmerged_index_with_no_markers_refuses_by_real_execution"),
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution.dag", f: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution.dag", f: "space_and_tab_named_paths_admit_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness.dag", f: "bash_assign_from_source_refuses_missing_shell_holds"),
-  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness.dag", f: "bash_assign_from_source_refuses_ambiguous_shell_holds"),
-  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness.dag", f: "bash_assign_from_source_refuses_malformed_shell_holds"),
-  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness.dag", f: "bash_assign_from_source_observed_shell_holds"),
   bin_wet(entry: "dag/test/claim/stage0_rust_host_observation_live_witness.dag", f: "live_rust_observation_matches_actions_subject"),
   bin_wet(entry: "dag/test/claim/roadmap/roadmap_receipt_continuity_live_witness.dag", f: "live_roadmap_acceptance_history_integrity_holds"),
   bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness.dag", f: "host_effect_plan_typed_read_witness_holds_by_real_execution"),
@@ -1745,7 +1957,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness.dag", f: "effect_plan_bash_fail_fast_prevents_later_operation_execution"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness.dag", f: "effect_plan_bash_metachar_and_newline_cannot_open_a_statement"),
   bin_wet(entry: "dag/test/claim/transport_script_stdin_byte_fidelity_witness.dag", f: "transport_script_stdin_delivers_exact_bytes"),
-  bin_wet(entry: "dag/test/claim/transport_script_stdin_byte_fidelity_witness.dag", f: "transport_script_stdin_fidelity_is_independent_of_terminal_newline"),
+  bin_wet(entry: "dag/test/claim/transport_script_stdin_byte_fidelity_witness.dag", f: "transport_script_stdout_is_independent_of_a_payload_terminal_newline"),
   bin_wet(entry: "dag/test/claim/push_event_witness_wet.dag", f: "witness_push_before_from_fixture_file"),
   bin_wet(entry: "dag/test/claim/push_event_witness_wet.dag", f: "witness_push_before_payload_read_refused_on_missing_path"),
   bin_wet(entry: "dag/test/claim/host/host_cli_dependency_wet_witness.dag", f: "observe_echo_wet_posix_command_v_check_does_not_crash"),
@@ -1870,6 +2082,62 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     dissolution: unbound_dissolution(description: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR")
   }
 ]
+
+// THE TYPED FRONTIER FOR COMMIT-ROSTER ROWS THAT RODE FalsifierCadenceJob, and it is a list beside
+// falsifier_rehomed_bin_wet_rows rather than additions to it because that list is specifically the
+// bin_witness_wet per-row-budget overflow (falsifier_cadence_surface_note, before its correction,
+// said exactly this) -- mixing the two would give one name two meanings (DESIGN 3). The row shape is
+// shared on purpose: reason plus dissolution is what a re-home owes, whatever it was re-homed from.
+//
+// WHY THESE ROWS LEFT gunbc.commit_workflow commit_gate_roster (falsifier-surface leaf, node
+// adhoc-cea8e60d-505): FalsifierCadenceJob stopped being an executing surface, and a row enrolled
+// only on it is a bare de-enrollment. None of the five functions is returned to
+// GithubActionsCiJob here: that would re-open the batch-4 over-budget that re-homed them (batch-4 clamp
+// FLOOR-BATCH-OVER-BUDGET, run 30148859947), so they are carried here, typed, until an executor
+// exists. Walls: witness_row_cost_basis.tsv records 12481ms (wall, run 30550328673, srv_fleet_arm64)
+// for witness_parse_binding_fidelity_distinct_identifiers_holds, over the five-second per-PR
+// budget, which is the measured reason that row stays out of the floor; the bind/loop census rows
+// have no recorded reading there, so none is claimed for them.
+// The two frontier_probe rows that also rode the commit roster were the SAME identities already in
+// falsifier_rehomed_bin_wet_rows (a duplicate enrolment); they stay there and appear once.
+data falsifier_rehomed_roster_rows: List<RehomedBinWetRow> = [
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag",
+    function: "bind_census_ingested_executes_holds",
+    reason: "Re-homed off the per-PR floor onto FalsifierCadenceJob by the batch-4 over-budget clamp (run 30148859947); that surface's executor, falsifier.yml, was deleted at 611fd02770 (#8283), so the row ran nowhere while reading as enrolled. The file's other functions keep their per-PR file-grain enrolment.",
+    dissolution: unbound_dissolution(description: "an executor runs this row (candidate: the known-red instrument once parallel queues land) and it is receipted there, or its measured wall fits the per-PR floor and it re-enrolls on GithubActionsCiJob; then delete this row")
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag",
+    function: "bind_census_ingested_wrong_value_red_holds",
+    reason: "RED-control pole of bind_census_ingested_executes_holds: re-homed with it so the discriminating pair stays together; same dead executor.",
+    dissolution: unbound_dissolution(description: "fires with bind_census_ingested_executes_holds dissolution (same file, same mechanism)")
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag",
+    function: "loop_census_ingested_executes_holds",
+    reason: "Re-homed off the per-PR floor onto FalsifierCadenceJob by the batch-4 over-budget clamp (run 30148859947); same dead executor as bind_census_ingested_executes_holds.",
+    dissolution: unbound_dissolution(description: "an executor runs this row (candidate: the known-red instrument once parallel queues land) and it is receipted there, or its measured wall fits the per-PR floor and it re-enrolls on GithubActionsCiJob; then delete this row")
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag",
+    function: "loop_census_ingested_wrong_value_red_holds",
+    reason: "RED-control pole of loop_census_ingested_executes_holds: re-homed with it; same dead executor.",
+    dissolution: unbound_dissolution(description: "fires with loop_census_ingested_executes_holds dissolution (same file, same mechanism)")
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/long/parse_binding_fidelity_witness.dag",
+    function: "witness_parse_binding_fidelity_distinct_identifiers_holds",
+    reason: "Re-homed off the per-PR floor onto FalsifierCadenceJob by the batch-4 over-budget clamp (run 30148859947); same dead executor. Its cheap sibling witness_resolve_distinct_param_bindings_holds stays per-PR.",
+    dissolution: unbound_dissolution(description: "an executor runs this row (candidate: the known-red instrument once parallel queues land) and it is receipted there, or its measured wall fits the per-PR floor and it re-enrolls on GithubActionsCiJob; then delete this row")
+  }
+]
+
+fn falsifier_rehomed_roster_entries() -> List<ScheduleWitnessEntry> {
+  fold(falsifier_rehomed_roster_rows, init: [], f: fn(acc, r) {
+    concat(acc, [bin_wet(entry: r.entry, f: r.function)])
+  })
+}
 
 fn falsifier_rehomed_bin_wet_entries() -> List<ScheduleWitnessEntry> {
   fold(falsifier_rehomed_bin_wet_rows, init: [], f: fn(acc, r) {

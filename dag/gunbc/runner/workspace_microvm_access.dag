@@ -78,6 +78,7 @@ fn workspace_connection_from_observations(
         } else { workspace_connection_after_boot(identity: identity, route: route, systemd_invocation: systemd_invocation, console: console, scanned_keys: scanned_keys) }
       }
     GitHubRunnerWorkload { registration_id: _ } => WorkspaceConnectionUnavailable { reason: "attempt is not a workspace workload" }
+    ClaimSetWorkload { grant: _, tree: _ } => WorkspaceConnectionUnavailable { reason: "attempt is not a workspace workload" }
   } }
 }
 

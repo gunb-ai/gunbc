@@ -9,7 +9,13 @@ import std.content_hash { Sha256Digest }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingLinkReading, ServingLinkSwitchNoop, ServingLinkSwitchCommands, ServingLinkSwitchRefusedUnreadable, serving_link_switch }
-import extdeps.tools.util_linux_setsid { setsid_fork_words }
+import extdeps.tools.util_linux_setsid { setsid_fork_command }
+import extdeps.posix.process { PosixProcessStdoutAndStderrToOneFile, PosixFileTruncate }
+import extdeps.posix.shell_command_language { admit_posix_redirect_pathname, PosixRedirectPathAdmitted, PosixRedirectPathRefused }
+import gunbc.remote_shell_command { RemoteExecCommandBuilt, RemoteExecCommandRefused, RemoteExecCommandRefusalCause, remote_exec_command_rendered }
+import gunbc.command_runner { command_over_transport_refusal_reason }
+import gunbc.host.host_effect_argv_stdio { host_effect_argv_stdio_remote_command }
+import gunbc.serving.serving_key_grant { ServingKeyGrant, serving_key_grant_name }
 import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable }
 
 // THE SERVE-LAUNCH LEG IS CONVERGENCE, NOT A SCRIPT (DESIGN 3d). Before it acts it takes an independent
@@ -39,40 +45,53 @@ fn serving_serve_decision(launch: NinferServeLaunch, reading: ServingServeReadin
   }
 }
 
-// THE SERVE API KEY IS A GRANT BOUND TO THE ALLOCATION, never a literal, and no such binding exists yet:
-// gunbc.serving.rented_host_grant is the ssh-access authorization and not this key. So the only arm is the
-// unbound one, and a launch that would need the key refuses on it. The detach mechanism is likewise a host
+// THE SERVE API KEY IS A GRANT BOUND TO THE ALLOCATION, never a literal (gunbc.serving.serving_key_grant;
+// gunbc.serving.rented_host_grant is the ssh-access authorization and not this key). The bound arm carries the
+// grant and never the key text (the leg and ninfer_serve_launch_argv have no key field, so the key cannot reach argv by construction), and no secret source delivers the key yet, so a bound launch still refuses
+// typed on the missing delivery. An unbound launch refuses as before. The detach mechanism is likewise a host
 // fact nobody has read (whether the card's PID 1 is systemd), so it is a typed refusal and not an assumption.
 type ServingServeKeyBinding
   = ServingServeKeyUnbound { grant_name: NonEmptyStr }
+  | ServingServeKeyBound { grant: ServingKeyGrant }
 
-// THE DETACH IS setsid, AND ITS OUTPUT ROUTE IS NOT MODELED. The card's PID 1 is bash and its systemd manager
-// reports offline, so systemd_run (extdeps.systemd.systemd_run) cannot start a transient unit there; that is a
-// host fact of this card, which is why that tool is not used for this launch. setsid detaches the engine, but
-// a detached engine whose stdout is still the ssh channel holds the session open or dies on SIGPIPE, and the
-// repository models no route that sets a child's stdout to a file (FleetSsh runs portable argv with no shell,
-// and no posix redirection model exists). The leg therefore refuses typed and carries the words it would have
-// run, so the blocked step is visible and countable rather than hand-written as shell.
+// THE DETACH IS setsid --fork WITH STDOUT AND STDERR SET TO THE SERVE LOG. The card's PID 1 is bash and its
+// systemd manager reports offline, so systemd_run (extdeps.systemd.systemd_run) cannot start a transient unit
+// there; setsid detaches the engine, and the engine's stdout and stderr go to the log named by the store roots
+// (run.sh's `> serve.log 2>&1`, truncating) so the ssh channel is not held open and the engine does not die on
+// SIGPIPE. The leg carries the one remote command string the login shell re-parses
+// (gunbc.host.host_effect_argv_stdio host_effect_argv_stdio_remote_command), or the typed cause the render refused.
 type ServingDetachLeg
-  = ServingDetachRefusedNoStdoutToFileRoute { detach_words: List<String> }
+  = ServingDetachRendered { remote_command: NonEmptyStr }
+  | ServingDetachRefusedLogPath { path: NonEmptyStr }
+  | ServingDetachRefusedRender { cause: RemoteExecCommandRefusalCause }
 
-fn serving_detach_leg(launch_argv: List<String>) -> ServingDetachLeg {
-  ServingDetachRefusedNoStdoutToFileRoute { detach_words: setsid_fork_words(command: launch_argv) }
+fn serving_detach_leg(roots: ServingStoreRoots, launch_argv: List<String>) -> ServingDetachLeg {
+  match admit_posix_redirect_pathname(path: roots.serve_log as String) {
+    PosixRedirectPathRefused { cause: _ } => ServingDetachRefusedLogPath { path: roots.serve_log }
+    PosixRedirectPathAdmitted { path: p } =>
+      match host_effect_argv_stdio_remote_command(command: setsid_fork_command(command: launch_argv), stdio: PosixProcessStdoutAndStderrToOneFile { path: p, mode: PosixFileTruncate }) {
+        RemoteExecCommandBuilt { command: c } => ServingDetachRendered { remote_command: remote_exec_command_rendered(command: c) }
+        RemoteExecCommandRefused { cause: c } => ServingDetachRefusedRender { cause: c }
+      }
+  }
 }
 
-// THE LEG REFUSES FOR ITS FIRST UNMET CAUSE (the key) AND NAMES THE SECOND (the detach) beside it.
+// THE LEG REFUSES FOR THE UNMET KEY GRANT AND CARRIES THE DETACH COMMAND IT WOULD RUN beside it.
 type ServingLaunchLeg
   = ServingLaunchNoop
   | ServingLaunchRefusedReadback { cause: String }
   | ServingLaunchRefusedUnmetCauses { key_grant: NonEmptyStr, detach: ServingDetachLeg }
+  | ServingLaunchRefusedKeyNotDelivered { key_grant: NonEmptyStr, detach: ServingDetachLeg }
 
-fn serving_launch_leg(launch: NinferServeLaunch, launch_argv: List<String>, reading: ServingServeReading, key: ServingServeKeyBinding) -> ServingLaunchLeg {
+fn serving_launch_leg(roots: ServingStoreRoots, launch: NinferServeLaunch, launch_argv: List<String>, reading: ServingServeReading, key: ServingServeKeyBinding) -> ServingLaunchLeg {
   match serving_serve_decision(launch: launch, reading: reading) {
     Noop => ServingLaunchNoop
     Refuse { reason: r } => ServingLaunchRefusedReadback { cause: r as String }
     Apply { plan: _ } =>
       match key {
-        ServingServeKeyUnbound { grant_name: g } => ServingLaunchRefusedUnmetCauses { key_grant: g, detach: serving_detach_leg(launch_argv: launch_argv) }
+        ServingServeKeyUnbound { grant_name: g } => ServingLaunchRefusedUnmetCauses { key_grant: g, detach: serving_detach_leg(roots: roots, launch_argv: launch_argv) }
+        ServingServeKeyBound { grant: kg } =>
+          ServingLaunchRefusedKeyNotDelivered { key_grant: serving_key_grant_name(subject: kg.subject), detach: serving_detach_leg(roots: roots, launch_argv: launch_argv) }
       }
   }
 }
@@ -103,30 +122,39 @@ fn serving_startup_program(
       ServingLinkSwitchCommands { commands: cs } => ServingPlacementCommands { commands: cs }
       ServingLinkSwitchRefusedUnreadable { cause: c } => ServingPlacementRefusedLinkUnreadable { cause: c }
     },
-    launch: serving_launch_leg(launch: launch, launch_argv: launch_argv, reading: reading, key: key),
+    launch: serving_launch_leg(roots: roots, launch: launch, launch_argv: launch_argv, reading: reading, key: key),
   }
 }
 
 data serving_serve_launch_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.serving_launch", decl_name: "serving_launch_leg"),
-    reason: "the serving API key has no typed binding to the allocation, so a launch that needs it refuses and no launch command is emitted by the full sequence",
-    dissolution: unbound_dissolution(description: "trigger:S4 binds the serving API key as a grant to the allocation — sufficient for the full-sequence claim to emit the launch command"),
+    reason: "the serving API key is bound as a grant to the allocation but no secret source delivers its text to the launch, so a bound launch refuses on the missing delivery and no launch command is emitted by the full sequence",
+    dissolution: unbound_dissolution(description: "a secret source that delivers the granted key to the engine without placing it in argv, sufficient for the full-sequence claim to emit the launch command"),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.serving_launch", decl_name: "serving_detach_leg"),
-    reason: "no modeled route sets a child's stdout to a file, so a setsid-detached engine would keep the ssh channel as stdout; the card's PID 1 is bash and its systemd manager is offline, so systemd_run is not used",
-    dissolution: unbound_dissolution(description: "a modeled route that sets a launched program's stdout and stderr to a file over the card's transport, sufficient for the launch leg to emit the detached launch command"),
+    ref: decl_ref(module_path: "gunbc.harness.harness_operator_route", decl_name: "harness_operator_route"),
+    reason: "harness_operator_route is the last executing api-key path and is kept until the bound grant replaces its bearer path",
+    dissolution: unbound_dissolution(description: "the bound serving key grant has an executing key delivery that replaces the harness_operator_route bearer path, sufficient to retire harness_operator_route"),
   ),
 ]
 
 // THE VERSIONED RECEIPT (the runner_guest_image standing shape): the program's rendered text, one placement
 // command per line then the launch leg's standing, so a reader sees what the lab would run and where it stops.
+fn serving_detach_text(detach: ServingDetachLeg) -> String {
+  match detach {
+    ServingDetachRendered { remote_command: c } => c as String
+    ServingDetachRefusedLogPath { path: p } => concat("refused: the serve log path is not a redirectable pathname: ", p as String)
+    ServingDetachRefusedRender { cause: c } => concat("refused: the detach command could not be rendered for the login shell: ", command_over_transport_refusal_reason(cause: c))
+  }
+}
+
 fn serving_launch_leg_text(leg: ServingLaunchLeg) -> String {
   match leg {
     ServingLaunchNoop => "launch: noop (already serving the pinned model)"
     ServingLaunchRefusedReadback { cause: c } => concat("launch: refused on readback: ", c)
-    ServingLaunchRefusedUnmetCauses { key_grant: g, detach: _ } => concat("launch: refused: serve key grant unbound (", concat(g as String, "); and no modeled stdout-to-file route for the detach)"))
+    ServingLaunchRefusedUnmetCauses { key_grant: g, detach: d } => concat("launch: refused: serve key grant unbound (", concat(g as String, concat("); detach: ", serving_detach_text(detach: d))))
+    ServingLaunchRefusedKeyNotDelivered { key_grant: g, detach: d } => concat("launch: refused: serve key grant bound (", concat(g as String, concat(") but no secret source delivers the key; detach: ", serving_detach_text(detach: d))))
   }
 }
 

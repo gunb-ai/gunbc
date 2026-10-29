@@ -1,7 +1,8 @@
 module gunbc.rung_drop.user_manager_worker_write_boundary_unenforced
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // Grain: write confinement of dashboard attempt workers started as systemd --user transients.
@@ -16,19 +17,13 @@ data user_manager_worker_write_boundary_unenforced: RungDrop = RungDrop {
 
   declared: "2026-10-14",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
-      replacement: "system-manager transients with User= started by gunbc.roadmap.attempt_system_unit_launch attempt_system_unit_launch_cli from the root-owned sha-addressed launcher release (sudoers grant emitted by gunbc.live_deploy.emit attempt_system_unit_grant_steps). The launcher is modeled; it is not live on srv1 until that grant is installed on a runner host and the wet launcher claims execute. A property-membership witness is not the replacement.",
+      replacement: "system-manager transients with User= started by gunbc.roadmap.attempt_system_unit_launch attempt_system_unit_launch_cli from the root-owned sha-addressed launcher release (a system oneshot started by a .path unit on the spool request directory, installed by gunbc.live_deploy.apply_legs deploy_apply_attempt_drain_plan). The launcher is modeled; it is not live on srv1 until those drain units are installed on a runner host and the wet launcher claims execute. A property-membership witness is not the replacement.",
     },
-    population: [
-      "every dashboard attempt worker started through systemd-run --user on srv1, including gunbc-attempt-* transients under the live and lab instances",
-      "VERIFIED 2026-10-14 by bright-moth-475 on srv1 (issuecomment-6175000334): systemd-run --user -p ProtectHome=read-only -p ProtectSystem=strict sh -c \"touch $HOME/x\" succeeds, including with PrivateUsers=yes; a live unit wrote <IR>/bin which is not in its ReadWritePaths",
-      "NOT in the population: system-manager units (PID 1) where those properties do apply; hosts where unprivileged userns is not restricted; the dry membership claims in test.claim.roadmap.dispatch_worker_confinement_witness, which remain true of the rendered plan and do not establish this rung",
-    ],
-    restoration_trigger: "THE CAPABILITY: the attempt-system-unit launcher grant installed on a runner host (root-owned release + sudoers pin), sufficient for test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness to run as a gated consumer. Evidence is a dispatched gunbc-attempt-* worker on srv1 lab, started through that grant as a system-manager transient with User= and the production property set, refused when it writes outside ReadWritePaths — writes_through_the_launcher_to_bin_and_source_hooks_are_refused going green on that host (bright-moth-475 runs those wet cells on srv1 lab after deploying the grant). WHAT DOES NOT RETIRE THIS ROW: rendering Protect* correctly; narrowing ReadWritePaths; adding another hermetic membership claim; modeling the launcher without the grant installed on a runner host and that wet executing.",
-  },
+    population: Enumerated { members: FreeSemigroup { head: "every dashboard attempt worker started through systemd-run --user on srv1, including gunbc-attempt-* transients under the live and lab instances", tail: ["VERIFIED 2026-10-14 by bright-moth-475 on srv1 (issuecomment-6175000334): systemd-run --user -p ProtectHome=read-only -p ProtectSystem=strict sh -c \"touch $HOME/x\" succeeds, including with PrivateUsers=yes; a live unit wrote <IR>/bin which is not in its ReadWritePaths", "UPDATE 2026-10-21 (bright-moth-475, srv1, systemd 255): the worker property set now includes extdeps.systemd.systemd_run EmptyCapabilityBoundingSet, and the user manager FAILS EXEC SETUP for that shape (status 218 EXIT_CAPABILITIES, systemd.exec(5) Process Exit Codes; modeled at extdeps.systemd.service_exec exec_setup_failure_of_status). The worker command never runs: this shape fails closed instead of silently dropping the mount sandbox, and the direct probes say nothing about the mount sandbox (they were once scored refused; test.claim.roadmap.sandbox_touch_reading now reads them never-ran). Production no longer starts workers through the user manager with this property set: gunbc.roadmap.roadmap_belt_actuate starts them as system-manager transients through gunbc.roadmap.attempt_system_unit_launch attempt_system_unit_enqueue_start / the launcher. The rung and trigger are unchanged: no evidence here that a user-manager shape WITHOUT the empty bounding set is still unenforced beyond the 2026-10-14 verification above.", "NOT in the population: system-manager units (PID 1) where those properties do apply; hosts where unprivileged userns is not restricted; the dry membership claims in test.claim.roadmap.dispatch_worker_confinement_witness, which remain true of the rendered plan and do not establish this rung"] } },
+    restoration_trigger: "THE CAPABILITY: the attempt-system-unit launcher installed on a runner host (root-owned release + the spool drain units), sufficient for test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness to run as a gated consumer. Evidence is a dispatched gunbc-attempt-* worker on srv1 lab, started through that grant as a system-manager transient with User= and the production property set, refused when it writes outside ReadWritePaths — writes_through_the_launcher_to_bin_and_source_hooks_are_refused going green on that host (bright-moth-475 runs those wet cells on srv1 lab after deploying the grant). WHAT DOES NOT RETIRE THIS ROW: rendering Protect* correctly; narrowing ReadWritePaths; adding another hermetic membership claim; modeling the launcher without the grant installed on a runner host and that wet executing.",
+  } }
 }

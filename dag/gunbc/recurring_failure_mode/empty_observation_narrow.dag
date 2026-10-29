@@ -1,12 +1,16 @@
 module gunbc.recurring_failure_mode.empty_observation_narrow
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data empty_observation_narrow: RecurringFailureMode = RecurringFailureMode {
   identity: "empty_observation_narrow" as NonEmptyStr,
 
+  rung: RungUnread { cause: NoRungStated },
+
   receipts: [
+    "SPECIMEN (gunbc#15209, the ambient-name-census kit): with the kit declared (ambient_name_census_standing_with_kit), the kit run refused both of its source roots (native_lane_source_roots_refused: the kit tree passed as a second dag root) and printed no kit_fixture binding row, yet the reader returned `ambient-name-census: held` with exit 0 -- main 895cb9cc50d3, run 40308189351: 0 kit_fixture rows, 2 duplicate-root refusals, held. The sibling label namespace-wave-binding-diff refused the same absence with exit 2, so the window was loud on one label and silent on the other. Repair in the same PR: a declared kit with no observed binding row refuses 2 (kit_unobserved, naming the kit root); RED is the patched reader over a tree whose kit cannot bind, and the positive control is the overlaid head observing every kit row.",
+
     "**empty-observation narrow** (the absorbing fallback's mirror: ⊥-as-answer conflated with ⊥-as-ignorance — an observation that could not express what changed rendered as the verdict \"nothing is affected\", so the run narrows to nothing instead of widening.",
 
     "Strictly worse than the widen §5 already forbids: a widen is merely expensive, a narrow is silently uncovered.",

@@ -1,6 +1,9 @@
 module gunbc.harness.hosted_failure
 
 import std.types { String, HttpStatus }
+import std.retry_law { RetryHint, RetryHintNone, RetryHintDelay, RetryHintUnresolved }
+import gunbc.retry_http_hint { retry_hint_from_http }
+import std.measure { second_count }
 import extdeps.ietf.http_semantics {
   HttpStatusClass, ClientError, ServerError, Informational, Successful, Redirection,
   http_status_class_of, HttpRetryAfter, http_retry_after_wire,
@@ -36,10 +39,25 @@ fn hosted_http_failure_label(f: HostedHttpFailure) -> String {
   }
 }
 
+fn hosted_retry_hint_wire(hint: RetryHint) -> String {
+  match hint {
+    RetryHintNone => "retry law: no delay hint"
+    RetryHintDelay { delay: d } =>
+      join(["retry law: delay lower bound ", to_string(second_count(s: d)), " s"], "")
+    RetryHintUnresolved { cause: c } =>
+      join(["retry law: hint unreadable (", c as String, "); not admissible"], "")
+  }
+}
+
 fn hosted_http_failure_wire(f: HostedHttpFailure) -> String {
   match f {
     HostedRateLimited { status: s, retry_after: r, body_note: n } =>
-      join(["hosted upstream answered ", to_string(s), " rate limited; ", http_retry_after_wire(r: r), "; ", n, "; the request was NOT retried"], "")
+      join([
+        "hosted upstream answered ", to_string(s), " rate limited; ",
+        http_retry_after_wire(r: r), "; ",
+        hosted_retry_hint_wire(hint: retry_hint_from_http(after: r)), "; ",
+        n, "; the request was NOT retried",
+      ], "")
     HostedServerError { status: s, body_note: n } =>
       join(["hosted upstream answered ", to_string(s), " (5xx); ", n, "; the request was NOT retried"], "")
     HostedClientError { status: s, body_note: n } =>

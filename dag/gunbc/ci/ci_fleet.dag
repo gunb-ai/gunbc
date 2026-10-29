@@ -1,6 +1,7 @@
 module gunbc.ci.ci_fleet
 
-import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
+import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for, enrollment_for_host }
+import gunbc.fleet.fleet_host_backing { backing_converge_realization, ConvergeApplied, ImageBaked, ConvergeRealization }
 import gunbc.fleet.fleet_intent {
   ComputeHost,
   ExecutionSurface,
@@ -17,7 +18,10 @@ import gunbc.fleet.fleet_intent {
 }
 import gunbc.fleet.fleet_intent { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog, altra_q8030_catalog }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, ObservedByReceipt, observed_receipt }
+import std.decl_ref { decl_ref }
+import std.goal_assessment { ObservationEstablished, ObservationRefused }
+import gunbc.host.host_memory_observation { mtcollins1_census_cpu_bios_model }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.memory.types { MemoryKind, Dram }
@@ -27,7 +31,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, NamedField }
 import std.measure { byte_size, hertz, MoneyAmountMicro, money_amount_micro_count }
 import std.nat { Nat }
-import std.types { NonEmptyStr, List, LogicalTime, Bool }
+import std.types { NonEmptyStr, List, LogicalTime, Bool, String }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
 
 type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
@@ -127,9 +131,10 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 // gunbc.machine_intake.mtcollins1_socket1_investigation_observation read sockets 1, cpus 80,
 // numa_nodes 1, and the witness checks this offer's thread count against those readings.
 //
-// THE PART IDENTITY IS A BET, TYPED ON mtcollins1_socket0_cpu_part_standing (DESIGN §4d), not only
-// in this comment. The operator reports an Ampere Altra engineering sample in socket 0
-// (mtcollins1_socket_cpus); no model number has been read off it. Q80-30 is the corpus's only
+// THE PART IDENTITY IS READ, NOT DEDUCED: mtcollins1_socket0_cpu_part_standing is observed by the census
+// capture's lscpu BIOS model line (dmidecode, run 39010930690) and falls back to a typed bet (DESIGN §4d)
+// if that line stops naming the row. The operator reports an Ampere Altra engineering sample in socket 0
+// (mtcollins1_socket_cpus). Q80-30 is the corpus's only
 // 80-core Altra row, chosen because its thread count equals the measured 80. Width reads that
 // count; catalog model number and Hertz are TranscribedUncited until the census reads them.
 //
@@ -137,13 +142,38 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 // arrives as HostUsableRamMeasured, read by gunbc.host.host_memory_observation host_usable_ram_from_capture
 // from a census boot's meminfo receipt, and only from a HostCaptureBound envelope.
 //
-// NOT IN fleet_owned_compute_offer_catalog, and that is a declared frontier, not an omission.
-// Production committed_width_of(host_width_facts(mtcollins1)) is therefore
-// RunnerWidthUnresolved { WidthComputeOfferAbsent }, not a derived slot count of zero.
-// The CPU axis still has a consumer on this row: compute_host_cpu_admitted_width reads its
-// processors. Catalog enrolment remains a separate frontier.
-data mtcollins1_socket0_cpu_part_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "read the Ampere model number and advertised per-thread frequency off socket 0 on a one-socket census boot (lscpu Model name / dmidecode type 4); until that read, binding altra_q8030_catalog (and its Hertz) is a bet matching the measured 80 threads, not a deduced part identity",
+// IN fleet_owned_compute_offer_catalog: its committed width is derived through fleet_intent_offers like
+// any enrolled host's. The CPU axis has a second consumer on this row: compute_host_cpu_admitted_width
+// reads its processors.
+// The standing is a fold over the census capture, so a capture whose firmware string does not name the
+// catalog row's model number falls back to the typed bet rather than keeping a citation it lost. Only the
+// MODEL NUMBER is matched; the catalog's sustained Hertz is the vendor brief's figure, which the line's
+// "@ 3.0GHz" corroborates but this fold does not parse.
+fn mtcollins1_socket0_cpu_part_standing() -> CitedFigureStanding {
+  match mtcollins1_census_cpu_bios_model() {
+    ObservationEstablished { observed: line } =>
+      if cpu_bios_line_names_part(line: line, model_number: altra_q8030_catalog.model_number) {
+        ObservedByReceipt {
+          observed: observed_receipt(receipt: decl_ref(
+            module_path: "gunbc.host.host_memory_observation",
+            decl_name: "mtcollins1_census_cpu_bios_model",
+          ))
+        }
+      } else {
+        mtcollins1_socket0_cpu_part_bet()
+      }
+    ObservationRefused { cause: _ } => mtcollins1_socket0_cpu_part_bet()
+  }
+}
+
+fn cpu_bios_line_names_part(line: String, model_number: String) -> Bool {
+  string_contains(s: line, pattern: concat("Processor ", model_number, " "))
+}
+
+fn mtcollins1_socket0_cpu_part_bet() -> CitedFigureStanding {
+  TranscribedUncited {
+    read_obligation: "read the Ampere model number and advertised per-thread frequency off socket 0 on a one-socket census boot (lscpu Model name / dmidecode type 4); until that read, binding altra_q8030_catalog (and its Hertz) is a bet matching the measured 80 threads, not a deduced part identity",
+  }
 }
 
 data mtcollins1_socket0_cpu: CpuFacts = CpuFacts {
@@ -173,12 +203,33 @@ data mtcollins1_offer: ComputeOffer = ComputeOffer {
   cost_quote: none,
 }
 
-data fleet_owned_compute_offer_catalog: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer]
+data fleet_owned_compute_offer_catalog: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer, mtcollins1_offer]
 
 data fleet_intent_offers: List<ComputeOffer> = filter(
   fleet_owned_compute_offer_catalog,
   o => any(hosts_enrolled_for(wanted: CiRunnerParticipation), h => (h as String) == (o.supply.physical.identity as String)),
 )
+
+// THE PARTITION OF THE ENROLLED OFFERS BY HOW THEIR RUNNER PROGRAM IS REALIZED, stated once here so no
+// reader branches on OS delivery: a reader that SSH-applies a host takes the converge-applied arm, the
+// image build input takes the image-baked arm. fleet_intent_offers stays the union (width, offer lookup
+// and registration read the host whichever way it is realized).
+fn offer_realization_is(o: ComputeOffer, wanted: ConvergeRealization) -> Bool {
+  match enrollment_for_host(host: o.supply.physical.identity) {
+    Absent => false
+    Present { value: e } => backing_converge_realization(backing: e.backing) == wanted
+  }
+}
+
+data fleet_converge_applied_offers: List<ComputeOffer> = filter(fleet_intent_offers, o => offer_realization_is(o: o, wanted: ConvergeApplied))
+
+data fleet_image_baked_offers: List<ComputeOffer> = filter(fleet_intent_offers, o => offer_realization_is(o: o, wanted: ImageBaked))
+
+// THE SAME CLASSIFIER ANSWERS "WHY IS THIS ENROLLED HOST ABSENT FROM THE CONVERGE-APPLIED PLAN": it is
+// realized by image, not unenrolled. runner_host_deployment_for reads this for its refusal cause.
+fn fleet_host_is_image_baked(host: HostIdentity) -> Bool {
+  any(fleet_image_baked_offers, o => (o.supply.physical.identity as String) == (host as String))
+}
 
 fn fleet_compute_offer_for(host: HostIdentity) -> ComputeOffer? {
   fold(fleet_intent_offers, init: none, f: (acc, o) =>

@@ -21,6 +21,7 @@ fn fixture_dashboard_receipt() -> LiveDeployApplyReceipt {
         workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
         run_id: "1003",
         run_revision: apply_receipt_fixture_r,
+        execution_revision: apply_receipt_fixture_r,
       },
       expected_revision: apply_receipt_fixture_r,
       fleet: LiveDeployFleetProvenance { plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: "a1b2c3d4e5f60718", plan_receipt_identity: "1111111111111111", apply_receipt_identity: "2222222222222222" },

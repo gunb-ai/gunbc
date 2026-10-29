@@ -1,0 +1,52 @@
+module gunbc.recurring_failure_mode.a_claim_that_runtime_errors_is_dropped_as_no_verdict_rather_than_red
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+
+// FILED ON MANAGER INSTRUCTION (merry-fox-82, 2026-10-17, on PR gunb-ai/gunbc#14063), from a specimen
+// that two harnesses disagreed about. Its own PR on purpose: the row is a claim about the claim runner,
+// not about the code under review, and a failure-mode row must not ride in on a lane whose diff it is
+// reporting on. The harm was searched for before it was written: the five nearest rows are named below
+// and each is refused on a located difference, none of them is this.
+data a_claim_that_runtime_errors_is_dropped_as_no_verdict_rather_than_red: RecurringFailureMode = RecurringFailureMode {
+    identity: "a_claim_that_runtime_errors_is_dropped_as_no_verdict_rather_than_red" as NonEmptyStr,
+
+    rung: RungUnread { cause: FoundAtAmbiguous },
+
+    receipts: [
+      "**a claim whose evaluation raises a runtime error is dropped instead of reported, and the run that dropped it reports the claims it did execute as a complete pass** (INVALID STATE: an executor prints one verdict line per claim it FINISHED evaluating and treats a claim that died mid-evaluation as a claim that was never in the batch, so the reported total is the population of survivors.)",
+
+      "HARM: a wrong answer in the most trusted channel there is. The claim was executed -- it was not skipped, not declined, not absent from a schedule -- and it RAISED before producing a Bool, so it established nothing. Note what this row does and does not call false: the claim itself is not false (it never returned a value, and calling it false would invent a verdict the run did not render); the RUN is red, because an entry whose claims do not all establish true has not been shown to hold. The declared and scheduled population is 14; the RENDERED verdict population silently shrinks to 13. The run prints `13 PASS`, zero `FAIL`, a fraction whose numerator equals its denominator, and the reader concludes the class is covered. There is no line to notice. Worse, the arithmetic is self-consistent: the denominator is computed from what ran, so nothing inside the report can be short.",
+
+      "SPECIMEN (gunb-ai/gunbc, PR #14063, head 3041e2b4500, 2026-10-17). `test.claim.host.managed_host_witness` declares 14 claims. The ordinary route -- `gunbc run --source-root dag --source-root src/v2 --claim-run --entry dag/test/claim/host/managed_host_witness.dag` -- reported `13/13 PASS`. Nothing in that output distinguishes 13 of 13 from 14 of 14. The second harness, `claim_batch --source-root dag --source-root src/v2 --entry <the same entry> --functions <the names the first harness had not printed>`, named the missing one and its cause: `FAIL w_a_row_whose_smpro_site_names_another_controller_mints_no_subject (runtime error [no-such-field]: no field 'endpoint' on type 'SmproSiteStanding')`. The defect was real and in the lane's own code -- a witness had been handed an admitted-site STANDING where the record demanded the admitted SITE, and a downstream projection read `.endpoint` off the standing. The claim raised and established nothing. The route the lane had been citing as evidence said the entry was green.",
+
+      "AN INDEPENDENT SECOND REASON why PASS/FAIL lines alone are not completeness -- stated separately because it is a DIFFERENT failure and shares no root with the one above, and because it removes the other signal a reader reaches for when a report looks thin. When a module in an entry's closure fails to RESOLVE, `gunbc run --claim-run` prints `0 PASS / 0 FAIL` with no verdict lines at all while both CI gates stay green: three of six entries did exactly that at head 3a322a22483, caused by a two-word call-shape mismatch in a file three of the six do not otherwise touch. A reader who treats an empty report as 'nothing to run' has accepted a green gate over an entry that never evaluated a single claim. (A third observation -- that claim_batch's process exit code failed to track its own verdict lines, with fully-passing entries exiting 1 and the entry containing the FAIL exiting 0 -- is DELIBERATELY NOT claimed here. It contradicts the executable as written: src/v1/stage0/src/bin/claim_batch.rs maps ClaimOutcome::RuntimeError to a FAIL and sets any_failed, which exits 1. That measurement was therefore of some other thing -- a pipeline's status, a wrapper, or a stale binary -- and until it can be bound to an exact executable, full invocation and immediately captured status, it is not evidence of anything and belongs in no row.)",
+
+      "THE CONTRACT THAT DETECTS IT, which is a discipline and not a mechanism, and is therefore NOT a rung. A count comparison is not the test -- `grep -c` returns a number, which cannot be compared by name against anything, and equal counts with different names is exactly this hole. The derivation is a two-way set difference over NAMES: (a) declared = the claim names from the entry: take each line beginning 'test fn', keep the third whitespace field, drop everything from the first open paren onward, sort and dedupe; (b) reported = the names that printed a verdict, `awk on REPORT keeping only lines whose first field is PASS or FAIL, printing the second field, sort -u`; (c) require BOTH `comm -23 declared reported` and `comm -13 declared reported` to be EMPTY -- the first catches a claim that ran and printed nothing, which is this class, and the second catches a verdict for a name no one declared, which is its mirror and cannot be found from the first. `0 names reported` with `declared > 0` is the resolve case above and is a harness fault, never a pass. Applied across an integrated six-entry set it found the one non-establishing claim in 67, and found zero such claims anywhere else -- which is what makes the class worth a row rather than a footnote: it fired exactly once in a battery, and when it fired the report was 100 per cent confident.",
+
+      "WHY IT IS NOT ONE OF THE ROWS BESIDE IT, checked against each rather than assumed, because five are close enough to be tempting.",
+
+      "It is not `witness_module_absent_from_the_executed_set`: there, the module is correct and its crime is that no schedule names it, so nothing runs. The repair is enrolment. Here the claim IS enrolled and DOES run; the module is on disk, scheduled, resolved and evaluated, and the reader of that row's receipts would find nothing to enrol. The defect is downstream of execution, in how a completed evaluation that raised is rendered.",
+
+      "It is not `census_instrument_silently_drops_items`: that instrument drops ITEMS while parsing a file, and the population it reports is smaller than the file. Here no declared or scheduled claim item is dropped before evaluation. The RENDERED-VERDICT set shrinks, after one evaluation raises, and the runner incorrectly promotes that 13-name survivor set into the report's denominator. What is lost is not an item but a VERDICT, and it is lost in the error channel of the evaluator, after the item was already counted and scheduled.",
+
+      "It is not `green_floor_executes_no_claim_whose_verdict_a_body_change_can_move`: there the claims are genuinely red at the head and the merge path simply never invokes the lane that would run them. Here the lane IS invoked, on the right population, at the right head.",
+
+      "It is not `non_verdict_disposition_surfaces_as_refusal`, which is the closest neighbour and the one whose name this row most risks being folded into. That row's gate COMPUTES the difference between 'this subject is wrong' and 'I did not finish looking at this subject' and then discards it at an aggregate boundary -- the disposition is available and thrown away. Here the difference is never computed: a raised error is not classified as a non-verdict anywhere, so there is no discarded distinction to recover, only an absent line.",
+
+      "It is not `a_result_filter_admits_only_anticipated_failures`, where a reader pipes a tool through a grep written for the failures they expected. This is the tool's own rendering, with no filter added by anyone, and the failure shape here -- a typed interpreter error naming a field and a type -- is exactly the shape a reader would have grepped for had it been printed.",
+
+      "RUNG FOUND AT: 1. Both reasons above are needed to put it there and neither is a rung: the swallowed raise means a report can be silently incomplete, and the resolve case means a report can be silently EMPTY -- while the gate stays green. Rung 2 needs a mechanism that EXECUTES and STAYS ENROLLED; there is no standing gate that compares declared names against executed names for any entry, so the class was caught twice by hand, by two different sessions, in the same week, and neither caught it from a report. The ceiling is 2, mechanically reachable and not reached: a claim runner that renders a raised error as a FAIL line carrying the typed cause -- rather than omitting the line -- makes the state unwritable for that entry, and a run that refuses when its named-verdict set is smaller than its declared set -- or that treats an entry which resolved nothing as a refusal rather than an empty pass -- turns the discipline into the gate. Both belong to the claim runner's owners, not to a lane reporting on it, which is why this is a row and not a fix.",
+
+      "WHAT WOULD FALSIFY THIS ROW, so the next appender can check it cheaply rather than trusting it: run any entry whose claims all pass, then break ONE claim body so its evaluation raises (a field read that does not exist is the smallest edit). If the ordinary route prints a FAIL naming that claim, or refuses the run, the class is repaired at rung 2 and this row should be retired with a repair receipt naming the change that did it.",
+    ],
+
+    evidence: [
+      DeclarationRef {
+        module_path: "test.claim.host.managed_host_witness",
+        decl_name: "w_a_row_whose_smpro_site_names_another_controller_mints_no_subject",
+        field: WholeDeclaration,
+      },
+    ],
+  }

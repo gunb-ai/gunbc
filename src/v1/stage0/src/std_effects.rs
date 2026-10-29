@@ -14,8 +14,8 @@ pub use crate::extdeps_ietf_http_semantics::HttpMethod;
 use crate::extdeps_ietf_http_semantics::HttpMethod::{
     CONNECT, DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT, TRACE,
 };
-pub use crate::extdeps_uri_path::PathTemplate;
-pub use crate::extdeps_uri_path::{has_path_params, last_path_param};
+pub use crate::extdeps_uri_path::{has_path_params, last_path_param, PathTemplate};
+pub use crate::std_algebra::collection_map_shape;
 pub use crate::std_optional::Optional;
 pub use crate::std_types::List;
 use crate::v1_rt;
@@ -189,7 +189,7 @@ impl CompositionVerdict {
 pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionVerdict> {
     effects.iter().cloned().fold(
         Rc::new(CompositionVerdict::IdempotentComposition),
-        |acc: Rc<CompositionVerdict>, e: _| match (*acc.clone()).clone() {
+        |acc: Rc<CompositionVerdict>, e: Rc<OperationEffect>| match (*acc.clone()).clone() {
             CompositionVerdict::BrokenBy {
                 first_breaker: breaker,
                 ..

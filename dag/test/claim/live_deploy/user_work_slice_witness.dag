@@ -2,6 +2,7 @@ module test.claim.live_deploy.user_work_slice_witness
 
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLevel, CgroupMemoryLevelRead, CgroupMemoryUnlimited, parse_cgroup_memory_limit }
 import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.algebra { non_empty_to_list }
 import std.optional { Present, Absent }
 import std.measure { byte_size_count, kibibyte, byte_size }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -39,6 +40,7 @@ import gunbc.compute.unit_bounds {
   gunbc_user_work_wait_command, gunbc_user_work_transient_command,
   user_work_scope_wrap_prefix_argv,
   user_work_scope_standing, user_work_scope_standing_with_root_memory,
+  UserWorkHostFacility, HostWithCgroups, HostWithoutCgroups, user_work_host_facility_standing, OperatorHostWithoutCgroups,
   user_work_scope_standing_effect, user_work_scope_standing_wire,
   user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
   user_work_scope_systemd_manager_dir, user_work_scope_buildbuddy_run_id_env_name,
@@ -110,7 +112,7 @@ test fn user_work_slice_max_is_pool_slots_times_the_runner_ceiling() -> Bool {
     UserWorkPoolSlotsDerived { slots } =>
       slots == user_work_charged_slots
         && byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
-          == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * 4
+          == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * 2
         && byte_size_count(b: user_work_charged_in_served_allowance())
           == byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
   }
@@ -160,7 +162,7 @@ test fn the_grant_launch_binds_the_declared_slice_once() -> Bool {
 
 test fn the_reviewer_launch_binds_the_declared_slice_once() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
-  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: none)
+  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr)
   !has_property(props: props, needle: slice_needle())
     && match gunbc_user_work_transient_command(unit: "gunbc-review-t.service" as NonEmptyStr, properties: props, setenv_bindings: [], command_argv: ["true"]) {
       SystemdRunCommandRefused { cause: _ } => false
@@ -935,9 +937,9 @@ test fn slice_control_caps_include_sessions_and_broker_on_srv1_only() -> Bool {
     SliceControlNotOwed => false
     SliceControlRefused { cause: _ } => false
     SliceControlDerived { caps } =>
-      caps.length() == 2
-        && any(caps, c => c.unit as String == "sessions.slice" && byte_size_count(b: c.memory_max) == 137438953472)
-        && any(caps, c => c.unit as String == "gunbc-approval-broker.slice" && byte_size_count(b: c.memory_max) == 17179869184 && byte_size_count(b: c.memory_high) == 15032385536)
+      non_empty_to_list(xs: caps).length() == 2
+        && any(non_empty_to_list(xs: caps), c => c.unit as String == "sessions.slice" && byte_size_count(b: c.memory_max) == 137438953472)
+        && any(non_empty_to_list(xs: caps), c => c.unit as String == "gunbc-approval-broker.slice" && byte_size_count(b: c.memory_max) == 17179869184 && byte_size_count(b: c.memory_high) == 15032385536)
         && match slice_control_caps_for(host: operator_host_srv3) {
           SliceControlNotOwed => true
           SliceControlDerived { caps: _ } => false
@@ -1247,4 +1249,26 @@ test fn the_seed_slice_list_equals_the_declared_capped_rows_plus_sessions() -> B
     "",
   )
   string_contains(s: seed, pattern: join(["const RECOGNIZED_SYSTEM_SLICES: &[&str] = &[\n", rendered, "];"], ""))
+}
+
+// A host without cgroups: only an operator's terminal run outside CI is admitted, and it skips the
+// wrap with its wire; a non-terminal or CI run there refuses; a cgroup host is not classified here.
+test fn a_host_without_cgroups_admits_only_an_operator_terminal_run() -> Bool {
+  let admitted = match user_work_host_facility_standing(host: HostWithoutCgroups { stdin_terminal: true }, github_actions: false) {
+    Present { value: s } => match user_work_scope_standing_effect(s: s) {
+      SkipUserWorkScope { standing: _ } => user_work_scope_standing_wire(s: s) == "OperatorHostWithoutCgroups:no memory bound on this host"
+      _ => false
+    }
+    Absent => false
+  }
+  let refused_without_terminal = match user_work_host_facility_standing(host: HostWithoutCgroups { stdin_terminal: false }, github_actions: false) {
+    Present { value: s } => match user_work_scope_standing_effect(s: s) { RefuseUserWorkScope { standing: _ } => true  _ => false }
+    Absent => false
+  }
+  let refused_in_ci = match user_work_host_facility_standing(host: HostWithoutCgroups { stdin_terminal: true }, github_actions: true) {
+    Present { value: s } => match user_work_scope_standing_effect(s: s) { RefuseUserWorkScope { standing: _ } => true  _ => false }
+    Absent => false
+  }
+  let cgroup_host_unclassified = match user_work_host_facility_standing(host: HostWithCgroups, github_actions: false) { Absent => true  Present { value: _ } => false }
+  admitted && refused_without_terminal && refused_in_ci && cgroup_host_unclassified
 }

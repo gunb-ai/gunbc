@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.admit_callers_names_no_caller_for_a_data_declaration
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data admit_callers_names_no_caller_for_a_data_declaration: RecurringFailureMode = RecurringFailureMode {
   identity: "admit_callers_names_no_caller_for_a_data_declaration" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "INVALID STATE: an admit_callers-sealed mint called from a module-scope `data` declaration is refused with caller `<module>.<unknown>`, whatever the admit list says. v1.compiler.infer's admission arm resolves the caller from the enclosing FUNCTION scope; a data declaration has none, so the Absent arm names no caller and ConstructorCallAdmissionRefused fires. An admit list entry naming the data declaration is therefore unsatisfiable: the roster can SAY the row is admitted and the compiler can never agree.",
     "SPECIMEN, 2026-09-29, the program census (extdeps.exec.program). Its identity rows were first written `data git_program: ProgramIdentity = uncataloged_program(invocation: \"git\")` with each row named in uncataloged_program's admit list; every one refused as `extdeps.git.<unknown>`. The rows were rewritten as nullary functions (`fn git_program() -> ProgramIdentity = ...`), which is a WORKAROUND of this gap, not a modeling choice: a constant is the natural form of an identity row, and every reader now spells a call.",

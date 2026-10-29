@@ -1,0 +1,67 @@
+module test.claim.host.verified_archive_install_local_shell_recorder
+
+import std.types { String, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import gunbc.host.verified_archive_install {
+  staged_archive_fetch_commands, staged_archive_install_commands,
+  publish_staged_tree_command,
+}
+import gunbc.runner.runner_qemu_toolchain { qemu_toolchain_staged_archive }
+import extdeps.virtualization.qemu { qemu_8_2_2_ubuntu_noble_arm64 }
+import gunbc.runner.runner_browser_toolchain { node_release_archive, runner_browser_toolchain_node }
+import gunbc.runner.runner_microvm_host_ready {
+  firecracker_fetch_commands, firecracker_install_commands,
+}
+import extdeps.virtualization.firecracker { firecracker_release_aarch64 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// BYTES RECORDED ON srv1 AT 6f242e4c520 (parent of #13925; recorder-reachable files identical to
+// merge-base 3ead368baf). 1436 B, sha256 0576bda7a834e4684ff01c66b1617c1c3c9dcc58219f43b18df8d195e98a808f.
+// Bright-moth-475 job-14068, rc 0. The dag string escapes are the only change.
+data s3a_local_shell_legs_recorded_at_6f242e4c520: String = "qemu-fetch\n/usr/bin/mkdir\n  | -p\n  | /b/archives/pool/main/q/qemu\ncurl\n  | -fsL\n  | -o\n  | /b/archives/pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb\n  | https://ports.ubuntu.com/ubuntu-ports/pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb\nqemu-install\n/usr/bin/mkdir\n  | -p\n  | /b/staging.X/.\ndpkg-deb\n  | -x\n  | /b/archives/pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb\n  | /b/staging.X/.\nqemu-publish\nmv\n  | -T\n  | /b/staging.X\n  | /b/root\nbrowser-node-fetch\n/usr/bin/mkdir\n  | -p\n  | /b/archives\ncurl\n  | -fsL\n  | -o\n  | /b/archives/node-v24.21.0-linux-arm64.tar.xz\n  | https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-arm64.tar.xz\nbrowser-node-install\n/usr/bin/mkdir\n  | -p\n  | /b/staging.X/node\ntar\n  | xf\n  | /b/archives/node-v24.21.0-linux-arm64.tar.xz\n  | -C\n  | /b/staging.X/node\n  | --strip-components=1\nbrowser-publish\nmv\n  | -T\n  | /b/staging.X\n  | /b/root\nfirecracker-fetch\n/usr/bin/mkdir\n  | -p\n  | /r/scratch\n/usr/bin/mkdir\n  | -p\n  | /r/v1.16.1-aarch64\ncurl\n  | -fsL\n  | -o\n  | /r/scratch/firecracker-v1.16.1-aarch64.tgz\n  | https://github.com/firecracker-microvm/firecracker/releases/download/v1.16.1/firecracker-v1.16.1-aarch64.tgz\nfirecracker-install\ntar\n  | xf\n  | /r/scratch/firecracker-v1.16.1-aarch64.tgz\n  | -C\n  | /r/scratch\n  | --strip-components=0\ncp\n  | /r/scratch/release-v1.16.1-aarch64/firecracker-v1.16.1-aarch64\n  | /r/v1.16.1-aarch64/firecracker\n"
+
+data local_shell_legs_path: String = "target/verified-archive-install-local-shell-legs.txt"
+
+fn argv_record_line(command: ArgvCommand) -> String {
+  join(argv_words(command: command), "\n  | ")
+}
+
+fn argv_list_record(commands: List<ArgvCommand>) -> String {
+  join(map(commands, c => argv_record_line(command: c)), "\n")
+}
+
+fn local_shell_legs_record_text() -> String {
+  let qemu_a = qemu_toolchain_staged_archive(a: qemu_8_2_2_ubuntu_noble_arm64.archive)
+  let node = node_release_archive(n: runner_browser_toolchain_node)
+  join(
+    [
+      "qemu-fetch\n",
+      argv_list_record(commands: staged_archive_fetch_commands(archives_dir: "/b/archives", a: qemu_a)),
+      "\nqemu-install\n",
+      argv_list_record(commands: staged_archive_install_commands(archives_dir: "/b/archives", tree: "/b/staging.X", a: qemu_a)),
+      "\nqemu-publish\n",
+      argv_record_line(command: publish_staged_tree_command(staging: "/b/staging.X", root: "/b/root")),
+      "\nbrowser-node-fetch\n",
+      argv_list_record(commands: staged_archive_fetch_commands(archives_dir: "/b/archives", a: node)),
+      "\nbrowser-node-install\n",
+      argv_list_record(commands: staged_archive_install_commands(archives_dir: "/b/archives", tree: "/b/staging.X", a: node)),
+      "\nbrowser-publish\n",
+      argv_record_line(command: publish_staged_tree_command(staging: "/b/staging.X", root: "/b/root")),
+      "\nfirecracker-fetch\n",
+      argv_list_record(commands: firecracker_fetch_commands(root: "/r", rel: firecracker_release_aarch64, scratch: "/r/scratch")),
+      "\nfirecracker-install\n",
+      argv_list_record(commands: firecracker_install_commands(root: "/r", rel: firecracker_release_aarch64, scratch: "/r/scratch")),
+      "\n",
+    ],
+    "",
+  )
+}
+
+fn local_shell_legs_record() -> ProcessExit {
+  let w = Filesystem.Write(path: local_shell_legs_path, content: local_shell_legs_record_text())
+  if w.success { ExitSuccess } else { exit_failure(reason: join(["recorder write failed: ", w.error], "")) }
+}

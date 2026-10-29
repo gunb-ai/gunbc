@@ -1,0 +1,116 @@
+module test.claim.nominal_cast_wall_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_count_at_key, census_blocking_rows, census_total_count,
+  // EVERY REFUSAL CLAIM HERE IS KEYED (class + subject_name + blocking), the form
+  // gunbc.compile_diagnostic_census documents. The subject of an InternalError row is the message
+  // truncated at 80 characters (compile_clean_internal_error_histogram_name), so the subjects below
+  // are validate_cast's own refusal text for the probe's source spelling.
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTED EVIDENCE THAT A NOMINAL VALUE HAS NO IMPLICIT ROUTE TO A STRING THROUGH `as`, on the
+// source -> .dag-acceptance path (gunbc.recurring_failure_mode
+// a_nominal_value_reaches_a_string_position_and_renders_host_debug_text, chain (i)). Before
+// v1.compiler.infer validate_cast refused a nominal source with no declared route, the checker
+// ABSTAINED and v1_interpreter eval_cast rendered the host's debug text. The RED is the specimen's
+// shape (a record carrier cast to String, #14732) and its coproduct sibling; the controls keep the
+// wall from being a wrecking ball: a String refinement still casts, an
+// identity cast of the nominal still compiles, and the DECLARED conversion route (a function the
+// author names) compiles. PATH SCOPE: compile acceptance only; the concat/join route is a different
+// chain (ii) and is not measured here.
+
+fn refusals(source: String, subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "InternalError", subject_name: subject, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data record_as_string_source: String = "module probe_nominal_cast_record\nimport std.types { String, Int }\ntype P { value: Int }\nfn text(p: P) -> String { p as String }\n"
+
+data coproduct_as_string_source: String = "module probe_nominal_cast_coproduct\nimport std.types { String, Int }\ntype C = Red | Green { n: Int }\nfn text(c: C) -> String { c as String }\n"
+
+data int_as_string_source: String = "module probe_nominal_cast_int\nimport std.types { String, Int }\nfn text(n: Int) -> String { n as String }\n"
+
+data refinement_as_string_source: String = "module probe_nominal_cast_refinement\nimport std.types { String, NonEmptyStr }\nfn text(s: NonEmptyStr) -> String { s as String }\n"
+
+data identity_cast_source: String = "module probe_nominal_cast_identity\nimport std.types { Int }\ntype P { value: Int }\nfn same(p: P) -> P { p as P }\n"
+
+data declared_conversion_source: String = "module probe_nominal_cast_declared\nimport std.types { String, Int }\nimport std.integer { int_to_decimal_string }\ntype P { value: Int }\nfn p_wire_text(p: P) -> String { int_to_decimal_string(value: p.value) }\nfn text(p: P) -> String { p_wire_text(p: p) }\n"
+
+data nat_as_int_source: String = "module probe_nominal_cast_nat\nimport std.types { Int }\nimport std.nat { Nat }\nfn widen(n: Nat) -> Int { n as Int }\n"
+
+data none_as_optional_source: String = "module probe_nominal_cast_none\nimport std.types { Int }\nfn absent() -> Int? { none as Int? }\n"
+
+data foreign_unit_as_string_source: String = "module probe_nominal_cast_foreign_unit\nimport std.types { String, Int }\ntype Unit { v: Int }\nfn text(u: Unit) -> String { u as String }\n"
+
+data bool_as_string_source: String = "module probe_nominal_cast_bool\nimport std.types { String, Bool }\nfn text(b: Bool) -> String { b as String }\n"
+
+test fn a_foreign_declaration_spelled_unit_is_not_the_placeholder_and_is_refused() -> Bool {
+  refusals(
+    source: foreign_unit_as_string_source,
+    subject: "invalid cast: Unit as String: a nominal value has no declared conversion",
+  ) == 1
+}
+
+test fn a_record_cast_to_string_with_no_declared_route_is_refused() -> Bool {
+  refusals(
+    source: record_as_string_source,
+    subject: "invalid cast: P as String: a nominal value has no declared conversion",
+  ) == 1
+}
+
+test fn a_coproduct_cast_to_string_with_no_declared_route_is_refused() -> Bool {
+  refusals(
+    source: coproduct_as_string_source,
+    subject: "invalid cast: C as String: a nominal value has no declared conversion",
+  ) == 1
+}
+
+// WAS A GREEN CONTROL (control_int_as_string_is_accepted), kept accepted by instruction while the
+// Int fork was open. Operator ruling via stern-bat-401, 2026-10-24: `n as String` over a kernel Int
+// has no declared route either (DESIGN section 4), so it refuses at check, under the non-text wall's
+// message (test.claim.non_text_cast_into_text_wall_witness), and stays enrolled here as a regression
+// control. The declared route below names std.integer int_to_decimal_string.
+test fn int_as_string_with_no_declared_route_is_refused() -> Bool {
+  blocking_total(source: int_as_string_source) >= 1
+}
+
+test fn control_refinement_as_string_is_accepted() -> Bool {
+  blocking_total(source: refinement_as_string_source) == 0
+}
+
+test fn control_nominal_identity_is_accepted() -> Bool {
+  blocking_total(source: identity_cast_source) == 0
+}
+
+test fn control_declared_conversion_is_accepted() -> Bool {
+  blocking_total(source: declared_conversion_source) == 0
+}
+
+test fn control_nat_as_int_is_accepted() -> Bool {
+  blocking_total(source: nat_as_int_source) == 0
+}
+
+test fn control_none_as_optional_is_accepted() -> Bool {
+  blocking_total(source: none_as_optional_source) == 0
+}
+
+test fn a_bool_cast_to_string_is_refused() -> Bool {
+  refusals(
+    source: bool_as_string_source,
+    subject: "invalid cast: Bool as String: a nominal value has no declared conversion",
+  ) == 1
+}

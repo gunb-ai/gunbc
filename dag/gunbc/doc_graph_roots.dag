@@ -14,7 +14,7 @@ import gunbc.plan { Plan, plan_path, plan_doc_path, PlanRetirement, PlanRetiresW
 import gunbc.plan_registry { all_plans }
 import v2.lens.doc_reachability { doc_graph_clean_holds, doc_graph_orphan_clean_holds }
 import std.algebra { list_flat_map }
-import v2.std.decl_ref_resolution { declaration_ref_resolves_live }
+import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count_live }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster {
   KeyedRosterBuild,
@@ -183,11 +183,10 @@ fn hand_authored_works_refs_all_resolve() -> Bool {
   match hand_authored_doc_binds_population() {
     HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
     HandAuthoredDocBindsBuilt { binds: _ } => {
-      let pool = hand_authored_works_resolution_pool_roots()
-      all(
-        hand_authored_production_doc_declaration_refs(),
-        r => declaration_ref_resolves_live(ref: r, pool_roots: pool)
-      )
+      cited_declaration_ref_refusal_count_live(
+        refs: hand_authored_production_doc_declaration_refs(),
+        pool_roots: hand_authored_works_resolution_pool_roots()
+      ) == 0
     }
   }
 }
@@ -297,16 +296,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_route_key", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject KeyRelation describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "layering-imports-reference-repoint-design",
-    primary_work: DeclarationRef { module_path: "v2.std.layer", decl_name: "LayerImportFact", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "v2.std.layer_import_scan", decl_name: "layer_import_facts_live", field: WholeDeclaration },
-      DeclarationRef { module_path: "v2.std.layer", decl_name: "layer_prefix_from_dotted_qualified_name", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject LayerImportFact describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,

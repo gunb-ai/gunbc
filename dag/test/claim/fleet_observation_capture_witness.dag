@@ -5,22 +5,24 @@ import std.nat { Nat }
 import std.measure { ByteSize, byte_size, ObservationInstant, ClockDomain, ProcessMonotonic, SharedMonotonic, ClockBasis, WallClock }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set {
+  cas_generation, cas_generation_first,
+  CasSlotObservationRefused,
+  CasOutcome,
+  CasStoreRefused,
+  CasAttempt, ExpectSlotAbsent, CasReadableAbsent, cas_decide_readable,
+  CasUnreadableContentMissing,
+  CasUnreadableReadRefused,
+}
 import std.temporal_effect {
   HeldLease,
   LeaseEpoch,
   LeaseAbsent,
   LeaseRunningExpected,
-  LeaseRunningStale,
+  LeaseRunningPastExpiry,
   LeasePortForeign,
   LeaseInaccessible,
-}
-import std.durable_compare_and_set { CasSlotObservationRefused,
-  CasOutcome,
-  CasCommitted,
-  CasStoreRefused,
-  CasSlotVersion,
-  CasUnreadableContentMissing,
-  CasUnreadableReadRefused,
 }
 import gunbc.fleet_observation.collector_ownership {
   CollectorSessionId,
@@ -51,6 +53,16 @@ import gunbc.fleet_observation.collector_ownership {
   NotTheRecordingOwner,
   recording_owner,
 }
+import std.durable_transfer {
+  LocalCommitStanding,
+  DownstreamAcceptanceStanding,
+  LocallyCommitted,
+  LocalCommitFailed,
+  LocalCommitNotAttempted,
+  DownstreamAccepted,
+  DownstreamRejected,
+  DownstreamNotOffered,
+}
 import gunbc.fleet_observation.capture_chunk {
   CaptureChunk,
   ChunkOccurrence,
@@ -64,10 +76,7 @@ import gunbc.fleet_observation.capture_chunk {
   PositionIncomparable,
   source_stream_eq,
   SourceStreamRange,
-  LocalCommitStanding,
-  LocallyCommitted,
-  LocalCommitFailed,
-  LocalCommitNotAttempted,
+  DurableCommitProof,
   CapturePersistenceRefusal,
   SpoolDiskExhausted,
   ChunkCorruptOnReadBack,
@@ -75,9 +84,6 @@ import gunbc.fleet_observation.capture_chunk {
   ChunkRetentionExpired,
   ChunkCommitRefused,
   ChunkCommitLostRace,
-  DownstreamAcceptanceStanding,
-  DownstreamAccepted,
-  DownstreamNotOffered,
   StreamContinuity,
   ContinuityEstablished,
   ContinuityGap,
@@ -221,7 +227,7 @@ fn t_lease(generation: Int) -> HeldLease {
       lease_key: "synthetic-endpoint"
       resource_fingerprint: content_hash_of_value(value: "synthetic-endpoint")
       owner_fingerprint: content_hash_of_value(value: "synthetic-collector-a")
-      generation: generation
+      generation: match cas_generation(n: generation) { Present { value: g } => g  Absent => cas_generation_first() }
     },
     observed: LeaseRunningExpected
   }
@@ -267,9 +273,9 @@ fn t_chunk(seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat, len: Nat
 fn t_envelope(
   ownership: EndpointOwnership,
   chunk: CaptureChunk,
-  local_commit: LocalCommitStanding,
+  local_commit: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>,
   continuity: StreamContinuity,
-  downstream: DownstreamAcceptanceStanding,
+  downstream: DownstreamAcceptanceStanding<CapturePersistenceRefusal>,
 ) -> ObservationEnvelope {
   ObservationEnvelope {
     binding: SourceMachineBinding {
@@ -295,21 +301,29 @@ fn t_envelope(
   }
 }
 
+// THE COMMITTED OUTCOME IS OBTAINED FROM THE FOLD, NOT AUTHORED. An absent slot with an
+// ExpectSlotAbsent attempt is the supplied hypothesis; cas_decide_readable is the real producer that
+// turns it into CasCommitted at the first generation, so no witness builds the success arm itself.
+fn t_committed_through_the_fold(payload: NonEmptyStr) -> CasOutcome<NonEmptyStr> {
+  cas_decide_readable(
+    attempt: CasAttempt {
+      key: "slot",
+      expected: ExpectSlotAbsent,
+      proposed: payload,
+      proposed_content: content_hash_of_value(value: payload),
+    },
+    readable: CasReadableAbsent,
+  )
+}
+
 // THE FIXTURE MINTS THROUGH THE REAL CONSTRUCTOR, not by authoring a standing. That is the whole
 // point of the repair: a receipt exists only because a compare-and-set committed something, and what
 // it attests is what the store committed. A fixture that built LocallyCommitted directly could still
 // line the digests up by hand, which is the circularity being removed.
 // THE COMMIT FIXTURE GOES THROUGH THE REAL CONSTRUCTOR, and now it MUST: LocallyCommitted carries a
 // sealed DurableCommitProof, so a witness cannot author a committed standing at all.
-fn t_commit_for(payload: NonEmptyStr) -> LocalCommitStanding {
-  let outcome: CasOutcome<NonEmptyStr> = CasCommitted {
-    committed: CasSlotVersion {
-      generation: 1
-      content: content_hash_of_value(value: payload)
-      value: payload
-    }
-  }
-  local_commit_from_cas(outcome: outcome)
+fn t_commit_for(payload: NonEmptyStr) -> LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> {
+  local_commit_from_cas(outcome: t_committed_through_the_fold(payload: payload))
 }
 
 // ── THE CENTRAL WALL ───────────────────────────────────────────────────────────────────────────
@@ -573,13 +587,7 @@ fn payloads_equal(left: CaptureChunk, right: CaptureChunk) -> Bool {
 // THE ONLY ROUTE TO LocallyCommitted IS A CAS COMMIT, and each store refusal keeps its own remedy
 // rather than collapsing to one failure.
 test fn w_commit_standing_comes_only_from_cas() -> Bool {
-  let good: CasOutcome<NonEmptyStr> = CasCommitted {
-    committed: CasSlotVersion {
-      generation: 1
-      content: content_hash_of_value(value: "chunk")
-      value: "chunk"
-    },
-  }
+  let good: CasOutcome<NonEmptyStr> = t_committed_through_the_fold(payload: "chunk")
   let missing: CasOutcome<NonEmptyStr> = CasStoreRefused {
     cause: CasSlotObservationRefused { cause: CasUnreadableContentMissing { referenced: content_hash_of_value(value: "absent") } }
   }
@@ -603,8 +611,8 @@ test fn w_foreign_session_is_never_stolen() -> Bool {
 test fn w_ownership_transitions_are_distinguished() -> Bool {
   acquired(outcome: acquire_ownership(session: t_session, observed: LeaseAbsent, observed_generation: 0, requested_generation: 1))
   && renewed(outcome: acquire_ownership(session: t_session, observed: LeaseRunningExpected, observed_generation: 4, requested_generation: 4))
-  && taken_over(outcome: acquire_ownership(session: t_session, observed: LeaseRunningStale, observed_generation: 4, requested_generation: 5))
-  && refuses_backwards(outcome: acquire_ownership(session: t_session, observed: LeaseRunningStale, observed_generation: 9, requested_generation: 2))
+  && taken_over(outcome: acquire_ownership(session: t_session, observed: LeaseRunningPastExpiry, observed_generation: 4, requested_generation: 5))
+  && refuses_backwards(outcome: acquire_ownership(session: t_session, observed: LeaseRunningPastExpiry, observed_generation: 9, requested_generation: 2))
 }
 
 // RELEASE IS OBSERVED, AND ONLY THE HOLDER MAY RELEASE. A collector that simply stops is
@@ -614,7 +622,7 @@ test fn w_ownership_transitions_are_distinguished() -> Bool {
 test fn w_release_is_observed_and_only_by_the_holder() -> Bool {
   released(outcome: release_ownership(session: t_session, observed: LeaseRunningExpected, observed_generation: 4, held_generation: 4))
   && refuses_unheld_release(outcome: release_ownership(session: t_session, observed: LeaseAbsent, observed_generation: 0, held_generation: 4))
-  && refuses_unheld_release(outcome: release_ownership(session: t_session, observed: LeaseRunningStale, observed_generation: 4, held_generation: 4))
+  && refuses_unheld_release(outcome: release_ownership(session: t_session, observed: LeaseRunningPastExpiry, observed_generation: 4, held_generation: 4))
   && refuses_foreign(outcome: release_ownership(session: t_session, observed: LeasePortForeign, observed_generation: 4, held_generation: 4))
   && refuses_backwards(outcome: release_ownership(session: t_session, observed: LeaseRunningExpected, observed_generation: 9, held_generation: 4))
 }
@@ -1356,7 +1364,7 @@ fn is_recording_owner(id: RecordingOwnerIdentity) -> Bool {
 
 
 
-fn is_committed(standing: LocalCommitStanding) -> Bool {
+fn is_committed(standing: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>) -> Bool {
   match standing {
     LocallyCommitted { proof: _ } => true
     LocalCommitFailed { cause: _ } => false
@@ -1364,7 +1372,7 @@ fn is_committed(standing: LocalCommitStanding) -> Bool {
   }
 }
 
-fn is_reference_missing(standing: LocalCommitStanding) -> Bool {
+fn is_reference_missing(standing: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>) -> Bool {
   match standing {
     LocalCommitFailed { cause: cause } =>
       match cause {
@@ -1380,7 +1388,7 @@ fn is_reference_missing(standing: LocalCommitStanding) -> Bool {
   }
 }
 
-fn is_commit_refused(standing: LocalCommitStanding) -> Bool {
+fn is_commit_refused(standing: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>) -> Bool {
   match standing {
     LocalCommitFailed { cause: cause } =>
       match cause {

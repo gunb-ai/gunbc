@@ -107,12 +107,12 @@ struct WireObject {
 
     /// A sum: the "kind" member selects the arm, and the object then admits exactly THAT arm's
     /// members — a member of another arm is refused (decode per arm, never per union).
-    static func sum(_ v: Any?, at: String, arms: [String: [String]]) throws -> (kind: String, object: WireObject) {
+    static func sum(_ v: Any?, at: String, arms: [String: [String]], cause: String) throws -> (kind: String, object: WireObject) {
         guard let o = v as? [String: Any] else { throw WireError.refused(at: at, cause: "not an object") }
         let path = at == "$" ? "kind" : at + ".kind"
         guard let k = o["kind"] else { throw WireError.refused(at: path, cause: "missing") }
         guard let kind = k as? String, !kind.isEmpty else { throw WireError.refused(at: path, cause: "not a string") }
-        guard let allowed = arms[kind] else { throw WireError.refused(at: path, cause: "not an admitted kind") }
+        guard let allowed = arms[kind] else { throw WireError.refused(at: path, cause: cause) }
         return (kind, try WireObject(v, at: at, allowed: ["kind"] + allowed))
     }
 
@@ -144,11 +144,6 @@ enum WireEncode {
         .object([("kind", .string("apns")), ("environment", .string(p.environment)), ("topic", .string(p.topic)), ("token", .string(p.token))])
     }
 
-    /// presented_evidence_json, IosAppAttestAttestation arm
-    static func evidence(_ e: IosAppAttestBoundDecisionKey) -> WireJson {
-        .object([("kind", .string("ios_app_attest")), ("attest_key_id", .string(e.attest_key_id)), ("attestation_b64", .string(e.attestation_b64))])
-    }
-
     /// platform_proof_json, IosAppAttestAssertion arm
     static func proof(_ p: IosAppAttestAssertion) -> WireJson {
         .object([("kind", .string("ios_app_attest_assertion")), ("assertion_b64", .string(p.assertion_b64))])
@@ -164,9 +159,9 @@ enum WireEncode {
         .object([("audience", .string(i.audience)), ("enrollment_id", .string(i.enrollment_id)), ("challenge", challenge(i.challenge)), ("escalation_id", .string(i.escalation_id)), ("request_revision", .string(i.request_revision)), ("stored_request_text", .string(i.stored_request_text)), ("decision", .string(i.decision.rawValue)), ("capability_text", .string(i.capability_text)), ("capability_tag_b64url", .string(i.capability_tag_b64url))])
     }
 
-    /// enrolment_request_json
-    static func enrolmentRequest(_ r: EnrolmentRequest) -> String {
-        WireJson.object([("code", .string(r.code)), ("platform", .string(r.platform.rawValue)), ("decision_key", verifyingKey(r.decision_key)), ("evidence", evidence(r.evidence)), ("push", push(r.push))]).serialized
+    /// google_enrolment_request_json
+    static func googleEnrolmentRequest(_ r: GoogleEnrolmentRequest) -> String {
+        WireJson.object([("platform", .string(r.platform.rawValue)), ("decision_key", verifyingKey(r.decision_key)), ("attest_key_id", .string(r.attest_key_id)), ("attestation_b64", .string(r.attestation_b64)), ("id_token", .string(r.id_token))]).serialized
     }
 
     /// signed_redemption_json
@@ -210,20 +205,14 @@ enum WireDecode {
 
     /// Android's arm is modeled and encodable upstream; the app refuses it as the server does.
     static func push(_ v: Any?, at: String) throws -> ApnsRegistration {
-        let (kind, o) = try WireObject.sum(v, at: at, arms: ["apns": ["environment", "topic", "token"]])
-        guard kind == "apns" else { throw WireError.refused(at: at + ".kind", cause: "not an admitted push provider") }
+        let (_, o) = try WireObject.sum(v, at: at, arms: ["apns": ["environment", "topic", "token"]], cause: "not an admitted push provider")
         let env = try o.string("environment")
         guard env == "production" || env == "development" else { throw WireError.refused(at: "push.environment", cause: "not an APNs environment") }
         return ApnsRegistration(environment: env, topic: try o.string("topic"), token: try o.string("token"))
     }
 
-    static func evidence(_ v: Any?, at: String) throws -> IosAppAttestBoundDecisionKey {
-        let (_, o) = try WireObject.sum(v, at: at, arms: ["ios_app_attest": ["attest_key_id", "attestation_b64"]])
-        return IosAppAttestBoundDecisionKey(attest_key_id: try o.string("attest_key_id"), attestation_b64: try o.string("attestation_b64"))
-    }
-
     static func proof(_ v: Any?, at: String) throws -> IosAppAttestAssertion {
-        let (_, o) = try WireObject.sum(v, at: at, arms: ["ios_app_attest_assertion": ["assertion_b64"]])
+        let (_, o) = try WireObject.sum(v, at: at, arms: ["ios_app_attest_assertion": ["assertion_b64"]], cause: "not an admitted proof kind")
         return IosAppAttestAssertion(assertion_b64: try o.string("assertion_b64"))
     }
 
@@ -242,10 +231,10 @@ enum WireDecode {
     }
 
     // Request decoders exist so the envelope fixtures round-trip through the app's own encoders.
-    static func enrolmentRequest(_ data: Data) throws -> EnrolmentRequest {
-        let o = try WireObject.document(data, allowed: ["code", "platform", "decision_key", "evidence", "push"])
+    static func googleEnrolmentRequest(_ data: Data) throws -> GoogleEnrolmentRequest {
+        let o = try WireObject.document(data, allowed: ["platform", "decision_key", "attest_key_id", "attestation_b64", "id_token"])
         try o.expect("platform", MobilePlatform.ios.rawValue, "not an admitted platform")
-        return EnrolmentRequest(code: try o.string("code"), platform: .ios, decision_key: try verifyingKey(o.object("decision_key", allowed: ["suite", "encoding", "point_b64url"])), evidence: try evidence(o.members["evidence"], at: "evidence"), push: try push(o.members["push"], at: "push"))
+        return GoogleEnrolmentRequest(platform: .ios, decision_key: try verifyingKey(o.object("decision_key", allowed: ["suite", "encoding", "point_b64url"])), attest_key_id: try o.string("attest_key_id"), attestation_b64: try o.string("attestation_b64"), id_token: try o.string("id_token"))
     }
 
     static func signedRedemption(_ data: Data) throws -> SignedRedemption {
@@ -260,12 +249,21 @@ enum WireDecode {
         } catch {
             throw WireError.refused(at: "$", cause: error.localizedDescription)
         }
-        return try push(v, at: "$")
+        return try push(v, at: "push")
     }
 
     // Responses.
     static func enrolmentGrant(_ data: Data) throws -> EnrolmentGrant {
         EnrolmentGrant(enrollment_id: try WireObject.document(data, allowed: ["enrollment_id"]).string("enrollment_id"))
+    }
+
+    // The enrol route's typed refusal (gunbc.auth.approval_device_wire google_enrolment_refusal_json): the
+    // prose is kept for the human, the kind is what the app may act on.
+    static func googleEnrolmentRefusal(_ data: Data) throws -> String {
+        let o = try WireObject.document(data, allowed: ["refused", "enrolment_refusal"])
+        let k = try o.string("enrolment_refusal")
+        guard GoogleEnrolmentRefusal.labels.contains(k) else { throw WireError.refused(at: "enrolment_refusal", cause: "not an admitted enrolment refusal") }
+        return k
     }
 
     static func pendingList(_ data: Data) throws -> [PendingApproval] {
@@ -324,13 +322,13 @@ extension WireDecode {
 }
 
 // ── Records the wire carries ─────────────────────────────────────────────────────────────────
-/// EnrolmentRequest: the POST /approve/device/enrol body. The login is not sent: the server derives it.
-struct EnrolmentRequest: Equatable {
-    var code: String
+/// GoogleEnrolmentRequest: the POST /approve/device/enrol body. Nothing here names a person: the server derives the login from the verified ID token.
+struct GoogleEnrolmentRequest: Equatable {
     var platform: MobilePlatform
     var decision_key: VerifyingKey
-    var evidence: IosAppAttestBoundDecisionKey
-    var push: ApnsRegistration
+    var attest_key_id: String
+    var attestation_b64: String
+    var id_token: String
 }
 
 struct EnrolmentGrant: Equatable {
@@ -492,8 +490,8 @@ struct Client {
         return data
     }
 
-    func enrol(_ r: EnrolmentRequest) async throws -> EnrolmentGrant {
-        try WireDecode.enrolmentGrant(await send("POST", Route.enrol, body: WireEncode.enrolmentRequest(r)))
+    func enrolGoogle(_ r: GoogleEnrolmentRequest) async throws -> EnrolmentGrant {
+        try WireDecode.enrolmentGrant(await send("POST", Route.enrol, body: WireEncode.googleEnrolmentRequest(r)))
     }
 
     /// POST /approve/device/pending, body = read_authentication_json

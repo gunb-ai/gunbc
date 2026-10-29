@@ -1,0 +1,486 @@
+module test.claim.fleet.site_pxe_edge_receipts_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, Fnv1a64, Fnv1a64Structural }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.network.mac { Eui48Address, mac_address }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.provisioning.network_boot { ProxyDhcp }
+import std.list { first_where }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64, BiosX86, HttpBootX86_64, HttpBootArm64, DhcpProcessorArchitecture, dhcp_processor_architecture_code, dhcp_processor_architecture_members, dhcp_processor_architecture_from_code }
+import product.placement_supply { SiteIdentity }
+import gunbc.fleet.site_pxe_edge_receipts {
+  EdgeOfferObservation, EdgeOfferObserved, EdgeOfferUnobserved,
+  ClientRequestObservation, ClientRequestObserved, ClientRequestUnobserved,
+  ClientResponseObservation, ClientResponseAccepted, ClientNoResponseAccepted,
+  SuppliedEdgeOffer, SuppliedClientExchange,
+  client_architecture_claim, ClientArchitectureRecognized, ClientArchitectureUnrecognized,
+  SuppliedEdgeBound, SuppliedEdgeBindingRefused, EdgeOfferNotObserved, EdgeOfferWithoutAuthority,
+  SuppliedClientBound, SuppliedClientBindingRefused, ClientRequestNotObserved, ClientRequestWithoutAuthority,
+  ClientRequestUnanswered, ClientArchitectureNotRecognized,
+  SuppliedExchangeBound, SuppliedExchangeRefused, AcceptedResponseHasNoEdgeOffer, EdgeDigestUnobserved,
+  ClientDigestUnobserved, DigestFamiliesIncomparable, DigestDisagrees, AcceptedFilenameDisagrees,
+  AcceptedFromNotNextServer, OfferPrecedesRequest, AcceptancePrecedesOffer,
+  NoCandidateOfferMatchesAcceptance, AmbiguousOfferCandidates,
+  bind_supplied_edge_offer, bind_supplied_client_exchange, bind_supplied_netboot_exchange, untaken_offers, selected_offers
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// EVERY VALUE BELOW IS SYNTHETIC and exists only inside these test functions. The octets, stamps
+// and digests name no real machine, exchange or file; they are the smallest inputs that tell the
+// binder's arms apart.
+fn synthetic_mac(last: Int) -> Eui48Address {
+  mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: last)
+}
+
+fn synthetic_ip(last: Int) -> Ipv4Address {
+  ipv4_address(octet1: 10, octet2: 0, octet3: 0, octet4: last)
+}
+
+fn synthetic_source() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.fleet.site_pxe_edge_receipts_witness", decl_name: "synthetic_source")
+}
+
+fn synthetic_digest_a() -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })
+}
+
+fn synthetic_digest_b() -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" })
+}
+
+fn synthetic_edge_obs(mac: Eui48Address, xid: Int, digest: ContentHash?, at: Int, source: DeclarationRef?) -> EdgeOfferObservation {
+  EdgeOfferObserved {
+    site: "synthetic-site" as SiteIdentity,
+    serving_address: synthetic_ip(last: 2),
+    client_mac: mac,
+    transaction: xid,
+    direction: ProxyDhcp,
+    offered_filename: "synthetic-boot.efi" as NonEmptyStr,
+    next_server: synthetic_ip(last: 2),
+    chainloader_digest: digest,
+    offered_at: at,
+    source: source,
+  }
+}
+
+fn synthetic_client_obs(mac: Eui48Address, xid: Int, code: Int, requested: Int, response: ClientResponseObservation, source: DeclarationRef?) -> ClientRequestObservation {
+  ClientRequestObserved { client_mac: mac, transaction: xid, architecture_code: code, requested_at: requested, response: response, source: source }
+}
+
+fn synthetic_accept(filename: String, from: Ipv4Address, digest: ContentHash?, at: Int) -> ClientResponseObservation {
+  ClientResponseAccepted { accepted_filename: filename as NonEmptyStr, accepted_from: from, fetched_digest: digest, accepted_at: at }
+}
+
+// An offer to the same client and exchange from a different server, to tell a join by identity
+// apart from a join by list position.
+fn offer_from(server_last: Int, digest: ContentHash?, at: Int) -> List<SuppliedEdgeOffer> {
+  bound_edge(obs: EdgeOfferObserved {
+    site: "synthetic-site" as SiteIdentity,
+    serving_address: synthetic_ip(last: server_last),
+    client_mac: synthetic_mac(last: 1),
+    transaction: 77,
+    direction: ProxyDhcp,
+    offered_filename: "synthetic-boot.efi" as NonEmptyStr,
+    next_server: synthetic_ip(last: server_last),
+    chainloader_digest: digest,
+    offered_at: at,
+    source: Present { value: synthetic_source() },
+  })
+}
+
+fn accepting_from_two() -> List<SuppliedClientExchange> {
+  good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30)
+}
+
+fn bound_edge(obs: EdgeOfferObservation) -> List<SuppliedEdgeOffer> {
+  match bind_supplied_edge_offer(observation: obs) {
+    SuppliedEdgeBound { supplied: r } => [r]
+    SuppliedEdgeBindingRefused { refusal: _ } => []
+  }
+}
+
+fn bound_client(obs: ClientRequestObservation) -> List<SuppliedClientExchange> {
+  match bind_supplied_client_exchange(observation: obs) {
+    SuppliedClientBound { supplied: r } => [r]
+    SuppliedClientBindingRefused { refusal: _ } => []
+  }
+}
+
+fn good_edge(digest: ContentHash?, at: Int) -> List<SuppliedEdgeOffer> {
+  bound_edge(obs: synthetic_edge_obs(mac: synthetic_mac(last: 1), xid: 77, digest: digest, at: at, source: Present { value: synthetic_source() }))
+}
+
+fn good_client(filename: String, from: Ipv4Address, digest: ContentHash?, accepted: Int) -> List<SuppliedClientExchange> {
+  bound_client(obs: synthetic_client_obs(mac: synthetic_mac(last: 1), xid: 77, code: 11, requested: 10, response: synthetic_accept(filename: filename, from: from, digest: digest, at: accepted), source: Present { value: synthetic_source() }))
+}
+
+// The outcome of one pairing as a closed kind, so a witness names its expectation by variant and
+// a misspelled expectation cannot compile.
+type AttemptKind
+  = KindBound
+  | KindNoEdgeOffer
+  | KindEdgeDigestUnobserved
+  | KindClientDigestUnobserved
+  | KindFamilies
+  | KindDigest
+  | KindFilename
+  | KindFrom
+  | KindOfferBeforeRequest
+  | KindAcceptBeforeOffer
+  | KindNoCandidate
+  | KindAmbiguous
+
+fn attempt_kind(clients: List<SuppliedClientExchange>, edges: List<SuppliedEdgeOffer>) -> AttemptKind? {
+  match clients.first() {
+    Absent => Absent
+    Present { value: c } =>
+      match bind_supplied_netboot_exchange(client: c, edges: edges) {
+        SuppliedExchangeBound { supplied: _ } => Present { value: KindBound }
+        SuppliedExchangeRefused { refusal: r } =>
+          match r {
+            AcceptedResponseHasNoEdgeOffer { client_mac: _, transaction: _ } => Present { value: KindNoEdgeOffer }
+            EdgeDigestUnobserved => Present { value: KindEdgeDigestUnobserved }
+            ClientDigestUnobserved => Present { value: KindClientDigestUnobserved }
+            DigestFamiliesIncomparable => Present { value: KindFamilies }
+            DigestDisagrees { edge: _, client: _ } => Present { value: KindDigest }
+            AcceptedFilenameDisagrees { offered: _, accepted: _ } => Present { value: KindFilename }
+            AcceptedFromNotNextServer { next_server: _, accepted_from: _ } => Present { value: KindFrom }
+            OfferPrecedesRequest { requested_at: _, offered_at: _ } => Present { value: KindOfferBeforeRequest }
+            AcceptancePrecedesOffer { offered_at: _, accepted_at: _ } => Present { value: KindAcceptBeforeOffer }
+            NoCandidateOfferMatchesAcceptance { candidates: _ } => Present { value: KindNoCandidate }
+            AmbiguousOfferCandidates { candidates: _ } => Present { value: KindAmbiguous }
+          }
+      }
+  }
+}
+
+fn attempt_refusal_is(clients: List<SuppliedClientExchange>, edges: List<SuppliedEdgeOffer>, want: AttemptKind) -> Bool {
+  match attempt_kind(clients: clients, edges: edges) {
+    Absent => false
+    Present { value: got } => got == want
+  }
+}
+
+test fn synthetic_matching_exchange_binds() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: KindBound,
+  )
+}
+
+test fn edge_observation_without_authority_is_refused() -> Bool {
+  match bind_supplied_edge_offer(observation: synthetic_edge_obs(mac: synthetic_mac(last: 1), xid: 1, digest: none, at: 1, source: none)) {
+    SuppliedEdgeBindingRefused { refusal: r } => match r {
+      EdgeOfferWithoutAuthority => true
+      EdgeOfferNotObserved => false
+    }
+    SuppliedEdgeBound { supplied: _ } => false
+  }
+}
+
+test fn unobserved_edge_offer_is_its_own_refusal() -> Bool {
+  match bind_supplied_edge_offer(observation: EdgeOfferUnobserved) {
+    SuppliedEdgeBindingRefused { refusal: r } => match r {
+      EdgeOfferNotObserved => true
+      EdgeOfferWithoutAuthority => false
+    }
+    SuppliedEdgeBound { supplied: _ } => false
+  }
+}
+
+test fn client_observation_without_authority_is_refused() -> Bool {
+  match bind_supplied_client_exchange(observation: synthetic_client_obs(mac: synthetic_mac(last: 1), xid: 1, code: 11, requested: 1, response: synthetic_accept(filename: "f", from: synthetic_ip(last: 2), digest: none, at: 2), source: none)) {
+    SuppliedClientBindingRefused { refusal: r } => match r {
+      ClientRequestWithoutAuthority => true
+      ClientRequestNotObserved => false
+      ClientRequestUnanswered { client_mac: _, transaction: _, requested_at: _ } => false
+      ClientArchitectureNotRecognized { code: _ } => false
+    }
+    SuppliedClientBound { supplied: _ } => false
+  }
+}
+
+test fn unobserved_client_request_is_refused() -> Bool {
+  match bind_supplied_client_exchange(observation: ClientRequestUnobserved) {
+    SuppliedClientBindingRefused { refusal: r } => match r {
+      ClientRequestNotObserved => true
+      ClientRequestWithoutAuthority => false
+      ClientRequestUnanswered { client_mac: _, transaction: _, requested_at: _ } => false
+      ClientArchitectureNotRecognized { code: _ } => false
+    }
+    SuppliedClientBound { supplied: _ } => false
+  }
+}
+
+test fn request_nobody_answered_is_the_unanswered_refusal() -> Bool {
+  match bind_supplied_client_exchange(observation: synthetic_client_obs(mac: synthetic_mac(last: 1), xid: 5, code: 11, requested: 9, response: ClientNoResponseAccepted, source: Present { value: synthetic_source() })) {
+    SuppliedClientBindingRefused { refusal: r } => match r {
+      ClientRequestUnanswered { client_mac: _, transaction: x, requested_at: t } => x == 5 && t == 9
+      ClientRequestNotObserved => false
+      ClientRequestWithoutAuthority => false
+      ClientArchitectureNotRecognized { code: _ } => false
+    }
+    SuppliedClientBound { supplied: _ } => false
+  }
+}
+
+test fn unrecognized_architecture_code_is_carried_and_refused() -> Bool {
+  match bind_supplied_client_exchange(observation: synthetic_client_obs(mac: synthetic_mac(last: 1), xid: 1, code: 99, requested: 1, response: synthetic_accept(filename: "f", from: synthetic_ip(last: 2), digest: none, at: 2), source: Present { value: synthetic_source() })) {
+    SuppliedClientBindingRefused { refusal: r } => match r {
+      ClientArchitectureNotRecognized { code: c } => c == 99
+      ClientRequestNotObserved => false
+      ClientRequestWithoutAuthority => false
+      ClientRequestUnanswered { client_mac: _, transaction: _, requested_at: _ } => false
+    }
+    SuppliedClientBound { supplied: _ } => false
+  }
+}
+
+test fn accepted_answer_with_no_edge_offer_is_refused_distinctly() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: [],
+    want: KindNoEdgeOffer,
+  )
+}
+
+test fn offer_nobody_took_is_reported_not_refused() -> Bool {
+  length(untaken_offers(edges: good_edge(digest: none, at: 20), clients: [])) == 1
+    && length(untaken_offers(edges: good_edge(digest: none, at: 20), clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: none, accepted: 30))) == 0
+}
+
+test fn digest_disagreement_between_views_is_refused() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_b() }, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: KindDigest,
+  )
+}
+
+test fn missing_edge_digest_is_refused_not_assumed_equal() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: good_edge(digest: none, at: 20),
+    want: KindEdgeDigestUnobserved,
+  )
+}
+
+test fn missing_client_digest_is_refused_not_assumed_equal() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: none, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: KindClientDigestUnobserved,
+  )
+}
+
+test fn cross_family_digests_are_incomparable_not_different() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: Fnv1a64(Fnv1a64Structural { digest: "0000000000000000" }) }, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: KindFamilies,
+  )
+}
+
+test fn accepted_filename_that_was_not_offered_is_refused() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "other.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: KindFilename,
+  )
+}
+
+test fn accepted_from_a_host_other_than_next_server_is_refused() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 9), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: KindFrom,
+  )
+}
+
+test fn client_accepting_before_the_edge_offered_is_refused() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 15),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: KindAcceptBeforeOffer,
+  )
+}
+
+test fn offer_stamped_before_the_request_is_refused() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 5),
+    want: KindOfferBeforeRequest,
+  )
+}
+
+test fn same_client_with_a_different_transaction_is_not_the_offers_exchange() -> Bool {
+  attempt_refusal_is(
+    clients: bound_client(obs: synthetic_client_obs(mac: synthetic_mac(last: 1), xid: 78, code: 11, requested: 10, response: synthetic_accept(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, at: 30), source: Present { value: synthetic_source() })),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: KindNoEdgeOffer,
+  )
+}
+
+test fn offer_join_does_not_depend_on_list_order() -> Bool {
+  attempt_refusal_is(
+    clients: accepting_from_two(),
+    edges: concat(offer_from(server_last: 2, digest: Present { value: synthetic_digest_a() }, at: 20), offer_from(server_last: 3, digest: Present { value: synthetic_digest_b() }, at: 20)),
+    want: KindBound,
+  )
+    && attempt_refusal_is(
+      clients: accepting_from_two(),
+      edges: concat(offer_from(server_last: 3, digest: Present { value: synthetic_digest_b() }, at: 20), offer_from(server_last: 2, digest: Present { value: synthetic_digest_a() }, at: 20)),
+      want: KindBound,
+    )
+}
+
+test fn two_offers_the_client_accepted_are_ambiguous_in_either_order() -> Bool {
+  attempt_refusal_is(
+    clients: accepting_from_two(),
+    edges: concat(offer_from(server_last: 2, digest: Present { value: synthetic_digest_a() }, at: 20), offer_from(server_last: 2, digest: Present { value: synthetic_digest_b() }, at: 21)),
+    want: KindAmbiguous,
+  )
+    && attempt_refusal_is(
+      clients: accepting_from_two(),
+      edges: concat(offer_from(server_last: 2, digest: Present { value: synthetic_digest_b() }, at: 21), offer_from(server_last: 2, digest: Present { value: synthetic_digest_a() }, at: 20)),
+      want: KindAmbiguous,
+    )
+}
+
+test fn no_candidate_offer_names_the_accepted_server_is_refused() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 9), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: concat(offer_from(server_last: 2, digest: Present { value: synthetic_digest_a() }, at: 20), offer_from(server_last: 3, digest: Present { value: synthetic_digest_a() }, at: 20)),
+    want: KindNoCandidate,
+  )
+}
+
+test fn competing_offer_the_client_passed_over_stays_untaken() -> Bool {
+  match first_where(xs: untaken_offers(edges: concat(offer_from(server_last: 2, digest: none, at: 20), offer_from(server_last: 3, digest: none, at: 20)), clients: accepting_from_two()), keep: e => true) {
+    Absent => false
+    Present { value: left } => left.next_server == synthetic_ip(last: 3)
+  }
+}
+
+// The independent referent: RFC 4578 section 2.1 spells these codes, so the oracle does not read
+// the module under test. An exhaustive match forces a new union arm to name its expected code here.
+fn rfc4578_code(a: DhcpProcessorArchitecture) -> Int {
+  match a {
+    BiosX86 => 0
+    UefiX86_64 => 7
+    UefiArm64 => 11
+    HttpBootX86_64 => 16
+    HttpBootArm64 => 19
+  }
+}
+
+fn decodes_to_itself(a: DhcpProcessorArchitecture) -> Bool {
+  match dhcp_processor_architecture_from_code(code: dhcp_processor_architecture_code(a: a)) {
+    Present { value: got } => got == a
+    Absent => false
+  }
+}
+
+fn arm_agrees_with_rfc4578(a: DhcpProcessorArchitecture) -> Bool {
+  dhcp_processor_architecture_code(a: a) == rfc4578_code(a: a) && decodes_to_itself(a: a)
+}
+
+// Variant identity, not code equality: two arms sharing a code would decode the later one to the
+// earlier, which fails here.
+test fn every_listed_member_decodes_to_itself_so_codes_are_distinct() -> Bool {
+  match first_where(xs: dhcp_processor_architecture_members, keep: a => !decodes_to_itself(a: a)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// Covers each current union arm by name, so a member dropped from the list goes red. A SIXTH arm
+// is caught only when this is extended; that gap is the typed frontier row
+// site_pxe_edge_receipts_frontier_rows, not a claim the witness closes.
+test fn every_current_union_arm_matches_rfc4578_and_is_a_listed_member() -> Bool {
+  arm_agrees_with_rfc4578(a: BiosX86) && arm_agrees_with_rfc4578(a: UefiX86_64) && arm_agrees_with_rfc4578(a: UefiArm64) && arm_agrees_with_rfc4578(a: HttpBootX86_64) && arm_agrees_with_rfc4578(a: HttpBootArm64)
+}
+
+test fn consumer_decodes_through_the_upstream_inverse() -> Bool {
+  match client_architecture_claim(code: 11) {
+    ClientArchitectureRecognized { architecture: got } => got == UefiArm64
+    ClientArchitectureUnrecognized { code: _ } => false
+  }
+}
+
+// Two offers that share MAC, xid, server and filename and differ only in digest: nothing in the
+// client's acceptance tells them apart, so the join is ambiguous and NEITHER is marked chosen.
+fn twin_offers() -> List<SuppliedEdgeOffer> {
+  concat(offer_from(server_last: 2, digest: Present { value: synthetic_digest_a() }, at: 20), offer_from(server_last: 2, digest: Present { value: synthetic_digest_b() }, at: 21))
+}
+
+test fn ambiguous_twin_offers_are_both_untaken_and_none_is_chosen() -> Bool {
+  length(selected_offers(edges: twin_offers(), clients: accepting_from_two())) == 0
+    && length(untaken_offers(edges: twin_offers(), clients: accepting_from_two())) == 2
+}
+
+test fn unique_selection_chooses_exactly_the_named_offer() -> Bool {
+  length(selected_offers(edges: concat(offer_from(server_last: 2, digest: none, at: 20), offer_from(server_last: 3, digest: none, at: 20)), clients: accepting_from_two())) == 1
+}
+
+// ---- Outside-call probes: the lower mint chain is admit_callers-sealed --------------------------
+// Each probe is SOURCE HANDED TO THE COMPILER, because an outside call to a sealed helper is
+// unwritable in the accepted corpus and so cannot be a fn here. The control is the lawful entry
+// with the same parameter shapes; the class and subject are named so a probe refused for any other
+// reason does not count. The sources carry no observation: every value is a parameter.
+data probe_header: String = "module probe_site_pxe_edge_receipts\nimport std.types { List }\nimport gunbc.fleet.site_pxe_edge_receipts { SuppliedEdgeOffer, SuppliedClientExchange, SuppliedExchangeBinding, bind_supplied_netboot_exchange, bind_matched_attempt, bind_matched_digests }\n"
+
+data probe_control_source: String = probe_header + "fn lawful(c: SuppliedClientExchange, es: List<SuppliedEdgeOffer>) -> SuppliedExchangeBinding { bind_supplied_netboot_exchange(client: c, edges: es) }\n"
+data probe_attempt_source: String = probe_header + "fn outside(e: SuppliedEdgeOffer, c: SuppliedClientExchange) -> SuppliedExchangeBinding { bind_matched_attempt(edge: e, client: c) }\n"
+data probe_digests_source: String = probe_header + "fn outside(e: SuppliedEdgeOffer, c: SuppliedClientExchange) -> SuppliedExchangeBinding { bind_matched_digests(edge: e, client: c) }\n"
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+test fn the_lawful_entry_is_not_refused_by_any_seal() -> Bool {
+  blocking_count_for_class_and_subject(c: census_of(source: probe_control_source), wanted: "ConstructorCallAdmissionRefused", subject: "bind_supplied_netboot_exchange") == 0
+    && blocking_count_for_class_and_subject(c: census_of(source: probe_control_source), wanted: "ConstructorCallAdmissionRefused", subject: "bind_matched_attempt") == 0
+    && blocking_count_for_class_and_subject(c: census_of(source: probe_control_source), wanted: "ConstructorCallAdmissionRefused", subject: "bind_matched_digests") == 0
+}
+
+test fn an_outside_caller_cannot_reach_the_attempt_check_directly() -> Bool {
+  blocking_count_for_class_and_subject(c: census_of(source: probe_attempt_source), wanted: "ConstructorCallAdmissionRefused", subject: "bind_matched_attempt") >= 1
+}
+
+test fn an_outside_caller_cannot_mint_agreement_from_the_digest_compare_alone() -> Bool {
+  blocking_count_for_class_and_subject(c: census_of(source: probe_digests_source), wanted: "ConstructorCallAdmissionRefused", subject: "bind_matched_digests") >= 1
+}
+
+// One offer, to the right client and exchange, from a server the client did NOT accept from: the
+// binder refuses it with its specific disagreement, and it is still an untaken offer.
+fn lone_offer_to_other_server() -> List<SuppliedEdgeOffer> {
+  offer_from(server_last: 2, digest: none, at: 20)
+}
+
+fn client_accepting_from_nine() -> List<SuppliedClientExchange> {
+  good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 9), digest: none, accepted: 30)
+}
+
+test fn lone_offer_the_client_did_not_accept_is_refused_and_stays_untaken() -> Bool {
+  attempt_refusal_is(clients: client_accepting_from_nine(), edges: lone_offer_to_other_server(), want: KindFrom)
+    && length(untaken_offers(edges: lone_offer_to_other_server(), clients: client_accepting_from_nine())) == 1
+    && length(selected_offers(edges: lone_offer_to_other_server(), clients: client_accepting_from_nine())) == 0
+}

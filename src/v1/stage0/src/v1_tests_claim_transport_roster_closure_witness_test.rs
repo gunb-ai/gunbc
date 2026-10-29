@@ -15,9 +15,8 @@ use crate::v1_std_core::TransportKind::{
 pub use crate::v1_std_core::{
     classify_transport, file_transport_node, is_local_transport, local_transport_node,
     make_expr_node, make_field_init_node, make_transport_node, no_span, rest_transport_node,
-    shell_transport_node,
+    shell_transport_node, ExprData, NewlineIndex, Node, TransportKind,
 };
-pub use crate::v1_std_core::{ExprData, NewlineIndex, Node, TransportKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -46,7 +45,7 @@ pub fn str_expr(s: String) -> Rc<Node> {
 
 pub fn kind_name(t: Rc<Node>) -> String {
     match crate::v1_std_core::classify_transport(
-        t.clone(),
+        t,
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
     ) {
         Some(TransportKind::RestTransport) => "rest".to_string(),

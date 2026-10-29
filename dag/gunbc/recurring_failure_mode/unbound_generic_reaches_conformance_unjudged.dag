@@ -1,10 +1,13 @@
 module gunbc.recurring_failure_mode.unbound_generic_reaches_conformance_unjudged
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data unbound_generic_reaches_conformance_unjudged: RecurringFailureMode = RecurringFailureMode {
   identity: "unbound_generic_reaches_conformance_unjudged" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a call's generic parameter is never bound, so the call's result type stays an unresolved type parameter, and that unresolved type reaches a declared-type position (a direct-call argument, a declared return) where v1.compiler.infer's conformance does not judge it. The program is Accepted, and the value that arrives has a type the declaration forbids.",
@@ -26,7 +29,17 @@ data unbound_generic_reaches_conformance_unjudged: RecurringFailureMode = Recurr
     "PARTIAL CLOSURE, gunbc#13418: the LAMBDA-RETURN member closes. A generic fixed only by a lambda argument's return is now solved from it (v1.compiler.infer infer_call_arguments_generic_pass, lambda_callable_type and unify_callable_generics), so p8, p8b and p9 REFUSE `expected Primitive(String), got Primitive(Int)` at the located position instead of being Accepted. p7b STAYS OPEN: its lambda comes BEFORE the argument that fixes T, so in round 1 the lambda's return is still the unresolved callable_param and is dropped, round 2 contributes nothing, and R stays unbound and passes conformance unjudged. That is the stated two-round bound, and this row's wall (refuse an unresolved generic at a declared-type position) is what closes it, not more rounds.",
 
     "RUNG FOUND AT: below the floor (silent acceptance). CEILING: 3 -- an unresolved type parameter at a declared-type position is a modeled state, decidable at the conformance site. NEXT TRIGGER: a call whose result type is an unresolved generic parameter, reaching a declared-type position, refuses with a typed located 'cannot infer <param> here; annotate' diagnostic. Evidence: p7b, the lambda before the argument that fixes its parameter, refuses with that cause; it is the wall's discriminating member, enrolled today as the boundary pin in test.claim.lambda_return_solves_generic_witness. `apply2(f: fn(v) { v }, x: 1)` under a declared -> Int is the accepted control. p8, p8b and p9 are no longer members: since gunbc#13418 they refuse the concrete Int-vs-String mismatch, and they stay enrolled in that witness as closure controls. That wall refuses some code main accepts today, by design, and lands as its own step with its own census of the sites that newly refuse.",
+
+    "ARITY-N BINDER, FINAL-ELSE OBSERVATION (gunbc#14594). v1.compiler.infer unify_generics now descends equal-positive-arity applications pairwise (unify_generic_child_pairs), so a multi-parameter generic such as Map<K, V> or a user ApPair<A, B> binds its type arguments where it previously bound none; that closes one admission route for this class. Its final else arm (child counts differ, or a side has none) still returns the bindings unchanged, so a generic name occurring only under such a pair stays unbound. BOUNDED OBSERVATION, executed in test.claim.generic_arity_n_descent_witness, each as a keyed differential against a matched-head fixture. Map formal against a bare Int actual, and ApPair formal against an ApMapBox actual, are each refused by ordinary argument compatibility: exactly one added blocking DeclaredTypeNotInhabited at the argument for the named parameter (arity_n_else_map_formal_bare_actual, arity_n_else_pair_formal_mapbox_actual); a matched-head ApPair call is accepted (arity_n_else_pair_matched_head_accepted). Map formal against an Optional<Int> actual, and List formal against a Map actual, are ACCEPTED with no added blocking diagnostic (arity_n_else_*_open_accepted): in both the final else arm binds nothing and the call compiles. These four shapes are all that is established; the two accepted shapes are pinned as open, not as a wall, and what happens when heads match and child counts differ is not established.",
+
+    "UNMEASURED POPULATION: how many corpus or user call sites reach the final else arm, and for how many a generic name is still free afterward. unify_generics returns only Map<String, Node>, so it has no channel for a count or a diagnostic; the only code that knows which generic names stayed unbound is infer_call_arguments_generic_pass. No count was taken, and none is claimed. The arm adds no rung to this class: its silent remainder, if any, sits below the floor with the rest of the class.",
+
+    "TRIGGER (unchanged capability, named at the site that can judge): PR-2 lands a typed, located refusal of a generic name still free after binding, at infer_call_arguments_generic_pass. The else arm needs no change then; the refusal counts the population above.",
+
+    "FORM GUARD ON THE ARITY-N DESCENT (2026-10-24, regression bisected to #14594). A list element read through `.last()` (and `|> first()`) arrives at unify_generics as the coproduct DECLARATION (Disj, one child per variant), not as the application with its type arguments. Against an application formal of equal arity, unify_generic_child_pairs bound R to a variant node, and every match over the receipt's own variants refused `variant not found` (gunbc.machine_intake.arrival_converge arrival_prefix_outcomes_through_bmc_secure; 49 claims of test.claim.machine_intake.machine_intake_arrival_converge_witness). The descent now requires one connective on both sides, since a child is a type argument only under an application. The binding is then empty and R stays free on this route: a further admission route for this class, owned by the element read that loses its type arguments, not by the binder. Enrolled: test.claim.generic_arity_n_descent_witness arity_n_ctl_declaration_actual_binds_no_variant, FALSE at main 476be2f5386d and TRUE with the guard; the 28 existing claims of that witness pass unchanged",
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "test.claim.generic_arity_n_descent_witness", decl_name: "arity_n_ctl_declaration_actual_binds_no_variant", field: WholeDeclaration },
+  ],
 }

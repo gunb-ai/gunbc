@@ -55,17 +55,28 @@ data runner_microvm_cell_readiness_disposition: ConstructionMechanism = SingleAu
 type MicroVmWorkload
   = GitHubRunnerWorkload { registration_id: NonEmptyStr }
   | WorkspaceWorkload { bootstrap_identity: NonEmptyStr, image_identity: NonEmptyStr, lease_expires_unix: Int }
+  // A revision job (gunbc.runner.runner_revision_job_guest): the grant that authorized the cell and
+  // the admitted tree it runs. Two records agreeing on both are one job. Constructed by the
+  // revision-job entry (S4b-3b, its declared frontier); every consumer already matches it.
+  | ClaimSetWorkload { grant: NonEmptyStr, tree: NonEmptyStr }
 
 fn microvm_workload_same(a: MicroVmWorkload, b: MicroVmWorkload) -> Bool {
   match a {
     GitHubRunnerWorkload { registration_id: ar } => match b {
       GitHubRunnerWorkload { registration_id: br } => (ar as String) == (br as String)
       WorkspaceWorkload { bootstrap_identity: _, image_identity: _, lease_expires_unix: _ } => false
+      ClaimSetWorkload { grant: _, tree: _ } => false
     }
     WorkspaceWorkload { bootstrap_identity: ab, image_identity: ai, lease_expires_unix: ae } => match b {
       GitHubRunnerWorkload { registration_id: _ } => false
       WorkspaceWorkload { bootstrap_identity: bb, image_identity: bi, lease_expires_unix: be } =>
         (ab as String) == (bb as String) && (ai as String) == (bi as String) && ae == be
+      ClaimSetWorkload { grant: _, tree: _ } => false
+    }
+    ClaimSetWorkload { grant: ag, tree: at } => match b {
+      ClaimSetWorkload { grant: bg, tree: bt } => (ag as String) == (bg as String) && (at as String) == (bt as String)
+      GitHubRunnerWorkload { registration_id: _ } => false
+      WorkspaceWorkload { bootstrap_identity: _, image_identity: _, lease_expires_unix: _ } => false
     }
   }
 }

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.octet_offset_consumed_by_a_scalar_indexed_te
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data octet_offset_consumed_by_a_scalar_indexed_text_operation: RecurringFailureMode = RecurringFailureMode {
   identity: "octet_offset_consumed_by_a_scalar_indexed_text_operation" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE: an offset measured in UTF-8 OCTETS is handed to a text operation that indexes Unicode SCALARS. The v2 tokenizer counts every walk offset in octets (v2.compiler.tokenize lexeme_utf8_octet_count), so every v2.std.diagnostic ByteRange the span index resolves to is an octet range. `substring` and `string_length` index scalars: the emitted runtime walks chars(). Both are plain Int, so nothing stops an octet offset from reaching substring. On ASCII text the two agree, which is why the defect passes every ASCII fixture and is silent on the first multibyte character.",

@@ -3,6 +3,7 @@ module extdeps.filesystem.filesystem_io
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, Bytes, FilePath, Int, List, String, NonEmptyStr }
+import std.algebra { collection_join_shape }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -596,6 +597,13 @@ fn filesystem_entry_presence(
         )
       }
   }
+}
+
+// THE EFFECTFUL FORM: list the directory now and fold the reading. Every consumer that asks whether
+// one named entry exists binds this rather than re-sequencing List and the fold itself.
+fn listed_entry_presence(directory: String, name: String) -> FilesystemEntryPresence {
+  let listed = Filesystem.List(path: directory)
+  filesystem_entry_presence(listing: filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error), name: name)
 }
 
 // THE WHOLE OBSERVATION IS ONE FOLD SO THAT NO CALLER HAS TO SEQUENCE IT CORRECTLY. Presence is

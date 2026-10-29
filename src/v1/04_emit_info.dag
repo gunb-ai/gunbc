@@ -23,9 +23,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParamete
 import std.types { is_kernel_type }
 import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
-import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, bare_occurrence_binding }
+import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided, bare_occurrence_binding }
 import v1.compiler.infer_types {
-  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
+  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary,
   normalize_access_type_node, resolved_type,
   child_type_node, emit_map_has, node_type_equals
 }
@@ -279,11 +279,14 @@ type TypeDeclIndex {
 
 // WHAT A BARE LEAF DENOTES AT ONE OCCURRENCE: v1.compiler.infer_env bare_occurrence_binding (own file,
 // then named import, then kernel -- the typechecker's lookup_binding order), joined here to the
-// declaration identity this index keys on.
+// declaration identity this index keys on. OccurrenceUnbound is bare_occurrence_binding's positive
+// `binds nothing`; OccurrenceUndecided is no answer, including a binding to a declaration this index
+// does not identify, which is a bound name and never reads as an unbound one.
 type TypeDeclOccurrenceBinding
   = OccurrenceDeclaredHere { identity: String }
   | OccurrenceImported { identity: String }
   | OccurrenceIsKernelName
+  | OccurrenceUnbound
   | OccurrenceUndecided
 
 // TypeDeclKernelSpellingUndecided IS ITS OWN ARM BECAUSE IT IS A DIFFERENT FACT FROM AMBIGUITY.
@@ -500,6 +503,7 @@ fn type_decl_spelling_route(index: TypeDeclIndex, authored: String, leaf: String
       OccurrenceDeclaredHere { identity: _ } => RouteReferencingModuleDeclarer
       OccurrenceIsKernelName => RouteKernelMint
       OccurrenceImported { identity: _ } => RouteReferencingModuleImport
+      OccurrenceUnbound => RouteLeafSpelling
       OccurrenceUndecided => RouteLeafSpelling
     }
   }
@@ -512,6 +516,7 @@ fn type_decl_occurrence_identity(index: TypeDeclIndex, leaf: String, reference: 
     OccurrenceDeclaredHere { identity: identity } => Present { value: identity }
     OccurrenceIsKernelName => type_decl_kernel_mint_declarer(index: index, leaf: leaf)
     OccurrenceImported { identity: identity } => Present { value: identity }
+    OccurrenceUnbound => none
     OccurrenceUndecided => none
   }
 }
@@ -534,6 +539,7 @@ fn type_decl_occurrence_binding(index: TypeDeclIndex, leaf: String, reference: N
           }
       }
     BareOccurrenceIsKernelName => OccurrenceIsKernelName
+    BareOccurrenceUnbound => OccurrenceUnbound
     BareOccurrenceUndecided => OccurrenceUndecided
   }
 }
@@ -579,14 +585,20 @@ type EmitGraphInfo {
   type_decl_items: TypeDeclIndex
   data_variant_wire_spellings: Map<String, DataVariantWireSpelling>
   fn_decl_items: Map<String, Node>
+  fn_decl_identity_items: Map<String, Node>
   fn_map_key_bounds: Map<String, List<String>>
+  fn_equality_bounds: Map<String, List<String>>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
   positional_payload_variants: Set<String>
 
   shared_types: Set<String>
   ownership_index: Map<String, Set<String>>
+  // Per function, the occurrences v1.compiler.ownership build_moved_argument_occurrences proved to be
+  // a binding's only use, at a by-value argument: keyed by occurrence, never by spelling.
+  moved_argument_index: Map<String, Set<Int>>
   movable: Set<String>
+  moved_argument_occurrences: Set<Int>
   variant_to_enum: Map<String, String>
   owned_bindings: Set<String>
 
@@ -603,11 +615,19 @@ type EmitGraphInfo {
   fn_return_type: Node?
   expected_type: Node?
 
-  // The one list parameter of the function being emitted whose Cons-tail is realized as an index
-  // into an unchanged base ("" = none), and the tail binders that advance it, each with its spine
-  // depth. Derived once per fn by v1.compiler.emit_rust tco_cursor_plan from the use graph.
-  tco_cursor_param: String
+  // The list parameters of the function being emitted whose Cons-tail is realized as an index
+  // into an unchanged base (empty = none), and the tail binders that advance them, each with its
+  // spine depth, keyed by the parameter it advances (v1.compiler.emit_rust cursor_tail_key). Derived once per fn by v1.compiler.emit_rust tco_cursor_plan from the use graph.
+  tco_cursor_params: List<String>
   tco_cursor_tails: Map<String, Int>
+  // The function is lowered by tail recursion modulo cons (v1.compiler.emit_rust is_trmc_eligible):
+  // its loop carries `__trmc_out`, the heads emitted so far, and every exit appends to it.
+  trmc_out: Bool
+
+  // Terminal record literals (keyed by span start) whose same-typed base parameter dies at the
+  // literal, mapped to that parameter. Derived once per fn by v1.compiler.ownership
+  // analyze_dying_base_sites; empty for a fn that is TCO-lowered.
+  dying_base_sites: Map<String, String>
 
   item_leaf_owner_modules: Map<String, LeafOwner>
 }
@@ -616,6 +636,7 @@ type EmitInfoBuildState {
   type_summaries: TypeSummaryIndex
   type_decl_items: TypeDeclIndex
   fn_decl_items: Map<String, Node>
+  fn_decl_identity_items: Map<String, Node>
   structural_alias_fn_surface_names: Map<String, List<String>>
   structural_alias_direct_fn_names: Set<String>
 }
@@ -627,13 +648,17 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     type_decl_items: empty_type_decl_index(),
     data_variant_wire_spellings: empty_map(),
     fn_decl_items: empty_map(),
+    fn_decl_identity_items: empty_map(),
     fn_map_key_bounds: empty_map(),
+    fn_equality_bounds: empty_map(),
     recursive_type_set: empty_set(),
     fielded_variants: empty_set(),
     positional_payload_variants: empty_set(),
     shared_types: empty_set(),
     ownership_index: empty_map(),
+    moved_argument_index: empty_map(),
     movable: empty_set(),
+    moved_argument_occurrences: empty_set(),
     variant_to_enum: empty_map(),
     owned_bindings: empty_set(),
     read_only_params_index: empty_map(),
@@ -647,8 +672,10 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     fn_type_env: empty_type_env(),
     fn_return_type: none,
     expected_type: none,
-    tco_cursor_param: "",
-    tco_cursor_tails: empty_map()
+    tco_cursor_params: [],
+    tco_cursor_tails: empty_map(),
+    trmc_out: false,
+    dying_base_sites: empty_map()
   }
 }
 
@@ -659,13 +686,17 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
+    fn_equality_bounds: emit_info.fn_equality_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
     shared_types: emit_info.shared_types,
     ownership_index: emit_info.ownership_index,
+    moved_argument_index: emit_info.moved_argument_index,
     movable: emit_info.movable,
+    moved_argument_occurrences: emit_info.moved_argument_occurrences,
     variant_to_enum: emit_info.variant_to_enum,
     owned_bindings: emit_info.owned_bindings,
     read_only_params_index: emit_info.read_only_params_index,
@@ -678,8 +709,10 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     fn_type_env: env,
     fn_return_type: emit_info.fn_return_type,
     expected_type: emit_info.expected_type,
-    tco_cursor_param: emit_info.tco_cursor_param,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_params: emit_info.tco_cursor_params,
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    trmc_out: emit_info.trmc_out,
+    dying_base_sites: emit_info.dying_base_sites
   }
 }
 
@@ -690,13 +723,17 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
+    fn_equality_bounds: emit_info.fn_equality_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
     shared_types: emit_info.shared_types,
     ownership_index: emit_info.ownership_index,
+    moved_argument_index: emit_info.moved_argument_index,
     movable: emit_info.movable,
+    moved_argument_occurrences: emit_info.moved_argument_occurrences,
     variant_to_enum: emit_info.variant_to_enum,
     owned_bindings: emit_info.owned_bindings,
     read_only_params_index: emit_info.read_only_params_index,
@@ -709,8 +746,10 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     fn_type_env: emit_info.fn_type_env,
     fn_return_type: fn_return_type,
     expected_type: fn_return_type,
-    tco_cursor_param: emit_info.tco_cursor_param,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_params: emit_info.tco_cursor_params,
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    trmc_out: emit_info.trmc_out,
+    dying_base_sites: emit_info.dying_base_sites
   }
 }
 
@@ -726,13 +765,17 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
+    fn_equality_bounds: emit_info.fn_equality_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
     shared_types: emit_info.shared_types,
     ownership_index: emit_info.ownership_index,
+    moved_argument_index: emit_info.moved_argument_index,
     movable: emit_info.movable,
+    moved_argument_occurrences: emit_info.moved_argument_occurrences,
     variant_to_enum: emit_info.variant_to_enum,
     owned_bindings: emit_info.owned_bindings,
     read_only_params_index: emit_info.read_only_params_index,
@@ -745,8 +788,10 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     fn_type_env: emit_info.fn_type_env,
     fn_return_type: emit_info.fn_return_type,
     expected_type: expected_type,
-    tco_cursor_param: emit_info.tco_cursor_param,
-    tco_cursor_tails: emit_info.tco_cursor_tails
+    tco_cursor_params: emit_info.tco_cursor_params,
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    trmc_out: emit_info.trmc_out,
+    dying_base_sites: emit_info.dying_base_sites
   }
 }
 
@@ -1169,6 +1214,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
       type_summaries: state.type_summaries,
       type_decl_items: type_decl_index_insert(index: state.type_decl_items, owner_module: module_name, decl_name: decl_name, item: item),
       fn_decl_items: state.fn_decl_items,
+      fn_decl_identity_items: state.fn_decl_identity_items,
       structural_alias_fn_surface_names: structural_alias_fn_surface_names,
       structural_alias_direct_fn_names: structural_alias_direct_fn_names
     }
@@ -1180,6 +1226,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
       type_summaries: state.type_summaries,
       type_decl_items: state.type_decl_items,
       fn_decl_items: map_insert(state.fn_decl_items, decl_name, item),
+      fn_decl_identity_items: map_insert(state.fn_decl_identity_items, type_decl_identity(owner_module: module_name, decl_name: decl_name), item),
       structural_alias_fn_surface_names: state.structural_alias_fn_surface_names,
       structural_alias_direct_fn_names: state.structural_alias_direct_fn_names
     }
@@ -1224,6 +1271,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
         type_summaries: next_summaries,
         type_decl_items: state.type_decl_items,
         fn_decl_items: state.fn_decl_items,
+        fn_decl_identity_items: state.fn_decl_identity_items,
         structural_alias_fn_surface_names: state.structural_alias_fn_surface_names,
         structural_alias_direct_fn_names: state.structural_alias_direct_fn_names
       }

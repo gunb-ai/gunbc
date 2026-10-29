@@ -28,6 +28,13 @@ type DesignRuling {
   provenance: String
 }
 
+data bmc_secure_goes_live_per_controller_family: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bmc_secure_goes_live_per_controller_family"),
+  decided: "2026-10-28",
+  section: "3",
+  provenance: "Operator answers to session cool-owl-599 on staffing the brief that retires gunbc.tools.bmc_onboard for BMC credential rotation. (1) The state-shaped BmcSecure (gunbc.machine_intake.bmc_secure cut O1b) may become the live authority for the ASRock ALTRAD8UD / OpenBMC family while the rotation-event path stays frozen as mtcollins1's standing under ruling C (eager-gull-22, 2026-10-04), on the condition that mtcollins1's own cutover is left near a flag switch rather than stranded: \"yeah thats fine assuming the code is basically a flag switch to finish the mtcollins migration - i don't want to leave it on an island/stranded\". (2) A build that forces the published credential's change on first login is behaviour modeled per version and interacted with, and in that state the password write is the first rotation; the converge rotates at the earliest point and never redundantly: \"thats behavior we have to model per version and interact with ... Our workflow should be smart enough to rotate credentials at the earliest place, and not do it redundantly\" (gunbc.machine_intake.bmc_credential_policy). (3) Failed-login probes against an account with a lockout budget are avoided where a derivation is available, and otherwise accounted for: \"we can't do lockout bound reads basically - or, we have to account for them - i would avoid it if possible\" (bmc_secure PublishedCredentialRetiredOnTheManagedAccount). (4) srv1-srv4, the same board family, are in scope for the cutover; the Supermicro H11SSL units are folded in, with their per-unit bootstrap credential held in the operator's sheet for now.",
+}
+
 data conformance_needs_attention: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "conformance_needs_attention"),
   decided: "2026-09-06",
@@ -47,6 +54,27 @@ data authorization_pattern_is_a_selection: DesignRuling = DesignRuling {
   decided: "2026-09-19",
   section: "3b",
   provenance: "Added to the conformance domain row on that date; the census gunbc.auth.privileged_effect_census classifies every site by executing the selection.",
+}
+
+data one_approval_route_for_every_privileged_action: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_approval_route_for_every_privileged_action"),
+  decided: "2026-10-22",
+  section: "3b",
+  provenance: "Operator ruling on the policy question gunbc#14694 left open: \"i prefer everything to go thru one route\". Every disruptive or privileged action, including FleetOnce actions with host-root reach on srv1, is approved through the approval broker route AccessRequest -> ApprovalCapability -> redeem_capability (gunbc.auth.access_request, approval_capability, approval_broker), fronted by the iOS approval app; the administrator edge is not a second approval route. Applied in gunbc.auth.authorization_pattern_selection candidate_patterns (the edge is a candidate only for an effect that must run unattended), so FleetOnce plus host-root reach selects OperatorApprovedCapability.",
+}
+
+data the_initial_convergence_is_the_only_approval: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_initial_convergence_is_the_only_approval"),
+  decided: "2026-10-25",
+  section: "3b",
+  provenance: "Operator ruling, refining one_approval_route_for_every_privileged_action for effects that recur: \"ultimately the initial convergence is the only thing being approved, everything else is just granted THAT approval (assuming its sufficient)\", with the aim that \"anything sensitive [is] done through an approval\" rather than through revision or branch pinning. The operator approves one convergence through the broker route; each effect that convergence entails runs inside the attempt that claimed that approval and is admitted against its std.scoped_authorization OperatorGrant (plan identity, scopes, expiry, claim), and an insufficient approval is a fresh request, never a widening. Applied in gunbc.auth.authorization_pattern_selection as WitnessDischarge EntailedByApprovedConvergence and the ApprovedConvergenceGrant candidate, and in gunbc.auth.privileged_effect_census convergence_lineage_defects, which admits a lineage root only where the root itself selects OperatorApprovedCapability; the srv1 host-root writes take the srv1 root-mutation job's approval as their root.",
+}
+
+data srv1_root_mutation_approval_is_filed_by_the_job: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_root_mutation_approval_is_filed_by_the_job"),
+  decided: "2026-10-26",
+  section: "3b",
+  provenance: "Operator ruling choosing between two routes for the srv1 root-mutation approval: (A) gunbc.plans.ntfy_deployment_gate_approval option A, a new least-privilege GitHub App answering a custom deployment protection rule on srv1-production after the operator approves, or (B) each srv1 root-mutation job files one access request with the approval broker as its first step and proceeds only on the operator's device-redeemed approval, through gunbc.auth.approval_gate, with the environment kept for its main-only branch rule. The operator chose B (\"B is fine\"). B supersedes option A of that plan, which had been approved by default and never answered. The approval check runs in reviewed main rather than in GitHub's gate, the census pattern already admitted for the runner-group create; the environment's required reviewer is removed by the operator only after the step has been seen to admit one approval and refuse one denial on a real dispatch. Realized by gunbc.fleet.srv1_root_mutation_approval_run.",
 }
 
 data coercion_is_the_implicit_safe_subset: DesignRuling = DesignRuling {
@@ -168,6 +196,20 @@ data optional_sugar_is_declaration_bound: DesignRuling = DesignRuling {
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): `T?` is declaration-bound sugar. `T?` denotes the canonical Optional declaration application and introduces its precise acquisition dependency. Local homonyms cannot redirect it. A missing or incompatible authority refuses; it never recreates a kernel mint. This grants no broad ambient prelude and does not make constructor names available unqualified.",
 }
 
+data where_refinements_retire_for_checked_constructors: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "where_refinements_retire_for_checked_constructors"),
+  decided: "2026-10-02",
+  section: "4",
+  provenance: "Operator ruling, previously recorded only in the v2.compiler.infer comment above infer_where_predicate_set_edge: where-refinements are being deleted from the language, replaced by checked constructors returning Optional, so no infer judgment for a where-refinement's predicate calls is coming. Retirement trigger: where-refinement clauses are removed in favour of checked constructors returning Optional, sufficient for no where-predicate call to reach infer; the infer arm and its reason are then deleted with the clause.",
+}
+
+data literal_only_refinement_judgment_is_interim: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "literal_only_refinement_judgment_is_interim"),
+  decided: "2026-10-23",
+  section: "4",
+  provenance: "Operator decision, 2026-10-23, relayed by keen-heron-809 (Manager 3, N7 infer wall) to Seat 17: a one-obligation-per-literal judgment is admitted as an INTERIM exception to where_refinements_retire_for_checked_constructors. A literal at a call argument or record field whose declared type is a where-refinement of the literal's own type is admitted by v2.compiler.infer and owed to v2.compiler.refinement_discharge, the one judge; non-literals still refuse. It is a declared scaffold, gunbc.rung_drop literal_only_where_refinement_judgment, and the PR states the divergence. Retirement trigger: the NonEmptyStr structural cut lands, sufficient for no where-refinement clause to reach infer; the demand producer and post-pass are then deleted with the clause.",
+}
+
 data nonemptiness_is_constructed_or_proved: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "nonemptiness_is_constructed_or_proved"),
   decided: "2026-10-13",
@@ -210,6 +252,48 @@ data physical_and_guest_control_remain_distinct: DesignRuling = DesignRuling {
   provenance: "Operator, adopting the side-chat design review of 2026-10-14 given to session merry-fox-82. Physical machines and microVM guests do not share inventory, controller, media or power interfaces. They may share runtime identity, OS and configuration convergence, workload assignment, attempt and incarnation vocabulary, and independent-readback transaction semantics after the physical boot or guest start boundary.",
 }
 
+data fan_policy_is_one_fleet_management_workflow: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fan_policy_is_one_fleet_management_workflow"),
+  decided: "2026-10-17",
+  section: "3",
+  provenance: "Operator, to session merry-fox-82, answering whether the boot may set BMC fan control back to automatic: 'yes it can set the fan control back to whatever the fan policy demands, which is probably managed at a different layer - basically make sure all the machines share a fan policy somewhere' and 'personally i wouldn't tie fan policy to boot - its a separate management workflow entirely, you can have it gate boot if you want, but it needs to be modeled separately regardless'. Fan policy is one fleet-wide authority that every fan-controlled physical host shares (microVM guests have no fan controller and do not inhabit it), converged by its own management workflow, which may write BMC fan control to whatever the policy demands. The boot transaction does not own, author or independently decide fan policy, and may consume the fan-policy convergence standing as an admission gate. Any fan-control restoration a boot initiates must consume or invoke that one convergence authority; boot may not carry a boot-owned or per-family fan policy path of its own. A per-BMC-family fan route (MegaRAC, OpenBMC, Supermicro) is an adapter behind that one policy, never a policy of its own. The operator also reports that the mtcollins1 fans were under automatic management with a 20 percent setting in force, recorded as an operator account, not a machine reading.",
+}
+
+data dimm_population_is_admitted_permissively: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dimm_population_is_admitted_permissively"),
+  decided: "2026-10-17",
+  section: "4d",
+  provenance: "Operator, to session merry-fox-82, after mtcollins1 booted a mixed RDIMM population: 'we have to be as permissive as possible with ram combinations - it eases burden on humans/tech while installing - managing infinite combinations of ddr4 ram is not worth the time' and 'we have to model those interactions per platform if needed - in general, we assume same rank same type (RDIMM, etc) different speed is valid'. Standing direction: a DIMM population is not refused for mixing speeds when rank and module type agree; that default is a typed operator assumption, not a vendor fact. A platform may narrow or widen it only through a per-platform row citing its upstream or a committed observation of that platform, and the DRAM firmware's own training verdict on the booted population is the authority on what a unit actually accepted. This row cites no run: the populations and verdicts behind it are recorded with their own evidence.",
+}
+
+data mtcollins1_ci_runner_enrolment_approved: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_ci_runner_enrolment_approved"),
+  decided: "2026-10-17",
+  section: "6",
+  provenance: "Operator, to session merry-fox-82, asked whether to approve enrolling mtcollins1 as a CI runner host: 'regarding mtcollins, yes, we need stateless runner registration'. The operator approves enrolling mtcollins1 for CI runner participation through gunbc.ci.ci_fleet and gunbc.fleet.fleet_enrollment, served by the diskless runner host route (gunbc.runner.runner_host_medium; the 2026-10-03 ephemeral diskless ruling in gunbc.session_residency). Runner registration must be stateless: slots are re-registered by each boot from modeled state, with no registration state surviving on the host between boots. The slot count is derived from the measured capture, never authored.",
+}
+
+data mtcollins1_in_memory_app_credential_per_boot: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_in_memory_app_credential_per_boot"),
+  decided: "2026-10-17",
+  section: "3",
+  provenance: "Operator, relayed by session merry-fox-82 to session snappy-koi-83, answering question Q1 of the mtcollins1 stateless runner registration design (whether the diskless runner host may hold a GitHub App installation credential so its slots mint their own JIT registrations, the srv1 microVM slot controller precedent): 'Q1. yes'. Approved: a GitHub App credential pushed to mtcollins1 after each boot over the controlled-host route, held in memory only, so the on-host slot loop can mint, deliver and deregister one ephemeral JIT runner per job through gunbc.runner.runner_jit_perform and gunbc.runner.runner_jit_deregistration. The credential is never written to the host's disk and never committed; a powered-off host holds none. Whether a new fleet-converge mode counts toward job_roster_closed_to_growth (Q3) is a separate ruling, fleet_converge_modes_are_outside_the_job_roster.",
+}
+
+data fleet_converge_modes_are_outside_the_job_roster: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fleet_converge_modes_are_outside_the_job_roster"),
+  decided: "2026-10-17",
+  section: "Building & checks",
+  provenance: "Operator, relayed by session merry-fox-82 to session snappy-koi-83, answering question Q3 of the mtcollins1 stateless runner registration design. merry-fox-82 asked: '(b) No, modes are operations inside the existing workflow, and your rule is only about the list of jobs CI runs on pull requests'. The operator answered: 'b is preferred', and clarified: 'for this stuff i really don't care about github workflows - its just a convenience for us for WIF i believe'. For fleet operations the GitHub workflow is only the realization that obtains workload-identity-federation credentials (transport), never the authority: what a mode does is decided by the .dag model and the ruling it cites, so adding or changing a mode needs no roster sign-off. SCOPE: a new mode of gunbc.fleet.fleet_converge_workflow is an operation inside the existing dispatch-only fleet-converge workflow and does not count toward job_roster_closed_to_growth. That ruling still governs the jobs CI runs on pull requests and merge groups, and adding one of those still needs operator sign-off. This ruling does not exempt a mode from authorization: a mode that writes to a machine or to GitHub still cites the ruling or authorization pattern that admits its effect.",
+}
+
+data operator_delegates_fan_control_to_the_fleet_policy: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_delegates_fan_control_to_the_fleet_policy"),
+  decided: "2026-10-17",
+  section: "3",
+  provenance: "Operator, to session merry-fox-82, on fan control: 'Regarding fan control, you can do whatever you want.' The operator delegates fan-control writes to the fleet fan policy and its convergence workflow (fan_policy_is_one_fleet_management_workflow); binding a BMC fan-control write route needs no further per-route operator approval. Every write still passes the authorization-pattern selection, independent readback and the standing safety rule (the thermal guard trips toward automatic, and every exit leaves automatic control enabled).",
+}
+
 data v1_seed_emitted_byte_write_exception: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_seed_emitted_byte_write_exception"),
   decided: "2026-10-16",
@@ -221,12 +305,134 @@ data flex_market_policy_is_operator_decided: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_market_policy_is_operator_decided"),
   decided: "2026-10-15",
   section: "3d",
-  provenance: "Operator, via deep-otter-797 on gunbc#14014. The interruptible flex market's policy grounds are operator decisions: bid levels 3/5, 4/5 and 1 of the class median, the 5/4 held switch premium, the $1.34 fleet cap, and the objective that lower cost per GiB-hour is better (cost and fungibility only). They are cited to this row, never to a pull request. Empirical couplings, that more samples make a productive-hour reading reliable or that price predicts preemption, stay TranscribedUncited bets, so a choice resting on one is FlexLevelNeedsEvidence until a cited authority is supplied.",
+  provenance: "Operator, via deep-otter-797 on gunbc#14014. The interruptible flex market's policy grounds are operator decisions: bid levels 3/5, 4/5 and 1 of the class median, the 5/4 held switch premium, the fleet cap (initially $1.34/h, raised by flex_fleet_cap_raised_to_three_dollars), and the objective that lower cost per GiB-hour is better (cost and fungibility only). They are cited to this row, never to a pull request. Empirical couplings, that more samples make a productive-hour reading reliable or that price predicts preemption, stay TranscribedUncited bets, so a choice resting on one is FlexLevelNeedsEvidence until a cited authority is supplied.",
+}
+
+data flex_fleet_cap_raised_to_three_dollars: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_fleet_cap_raised_to_three_dollars"),
+  decided: "2026-10-16",
+  section: "3d",
+  provenance: "Operator, via deep-otter-797 on gunbc#14150: the interruptible flex fleet rate cap is raised from $1.34/h to $3.00/h (it covers two Flash-Next cards at about $1.40/h each); raising the cap is fine, the limit is not a big deal long-term. This supersedes only the cap figure in flex_market_policy_is_operator_decided; the $50 trial total is unchanged.",
+}
+
+// THE INSTRUMENT FLEET RUNS IN PARALLEL; THE EDGE THE OLD GROUP IMPOSED IS NOT RESTORED AND IS NOT
+// MISSED. Recorded here because the change that took the global instrument queue apart is authorized
+// by nothing else. The operator rejected (2026-10-21, on #14613) the premise that removing the global
+// group loses a guarantee: isolation between jobs is the SLOT's job (gunbc.runner.runner_slot_desired
+// + gunbc.host.memory_envelope), and a concurrency group never isolated anything -- it only serialized
+// dispatches. So no rung drop stands here for a "lost upper edge", because there was no edge worth
+// having. Where isolation genuinely fails today -- the live unit shape drifting from the declared slot
+// shape, above all MemorySwapMax -- is a fleet-convergence class of its own and is filed as
+// gunbc.recurring_failure_mode the_live_runner_unit_memory_shape_drifts_from_the_declared_slot, not as
+// a queue compensation.
+data instrument_measurement_queues_run_in_parallel: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "instrument_measurement_queues_run_in_parallel"),
+  decided: "2026-10-20",
+  section: "Building & checks",
+  provenance: "Operator, to bright-swift-151 via warm-wolf-570: approved PARALLEL measurement queues. The single 'instrument-dispatch-queued' concurrency group put every instrument dispatch behind one run; key the group per dispatch so unrelated measurements run in parallel while one label on one ref still cannot run twice. Carried with the approval, stated at what the head holds (reworded 2026-10-21 on the #14613 review, which found this clause claiming more than the head does): no new job; each run refuses before the prelude when its granted cgroup bound is under its demand row -- the guard step reads the least numeric memory.high/memory.max on its own cgroup path plus MemTotal (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_guard_statements), so the refusal is on memory.high/memory.max, not on an OOM kill after the fact; the swap bound is OBSERVED ONLY -- the same step reads and prints memory.swap.max, and a refusal on swap is an outstanding rung, not a held guarantee. OPERATOR ISOLATION RULING, 2026-10-21 on #14613, recorded in this provenance because DesignRuling carries no other field (schema: reference, decided, section, provenance): the premise that removing the global group LOSES a guarantee is REJECTED. Work isolation is the authority -- 'a job shouldn't have to worry about what is running on the machine' -- and a concurrency group never provided isolation, it only serialized dispatches. What keeps one instrument run from harming another job on the shared self-hosted pool is the SLOT, not the queue: gunbc.runner.runner_slot_desired declares the per-slot shape (memory_max 23622320128, memory_high 22548578304, MemorySwapMax 0, TasksMax 16384) and gunbc.host.memory_envelope gives it teeth -- memory.high throttles early, memory.max refuses late, MemorySwapMax 0 means an overrun is refused rather than silently swapped. So this ruling restores NO upper edge on concurrent instrument occupancy and no such edge is missed. WHAT DOES NOT HOLD TODAY is a different class and is filed as its own ledger row rather than as a queue compensation: the live fleet does not match the declared slot shape (an operator reading of srv3-20 and srv3-01 gave memory.high 26843545600, memory.max 27917287424 and MemorySwapMax 34359738368 -- the first two match the competing floor-pinned values in gunbc.floor.floor_demand rather than the slot row, and the swap is 32 GiB where the slot declares zero), so the swap half of the isolation story is not enforced on those hosts. See gunbc.recurring_failure_mode the_live_runner_unit_memory_shape_drifts_from_the_declared_slot.",
+}
+
+data approval_enrolment_is_google_sign_in: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "approval_enrolment_is_google_sign_in"),
+  decided: "2026-10-23",
+  section: "3",
+  provenance: "Operator, via wise-bat-528 to clever-eagle-893: 'i think this all just sucks - can i just log in to google oidc on my phone? and thats all?' ... 'thats fine - please do it now, can you basically remove everything except google enrollment'. Google sign-in on the phone IS enrolment of the approval app: one native iOS OIDC sign-in, in the same step the app creates its Secure-Enclave decision key (Face ID gated) and App Attest key and registers them bound to the verified Google identity. Each approval stays Face ID plus a signature by that key. Removed, delete-first: enrolment codes, QR, SSH issuance, ntfy code delivery, the fleet-converge issue mode, and the SubmissionUnknown/re-read app machinery. App states are signed-out, enrolled, revoked; a failed sign-in is only 'sign in again'. The server notifies on each new device and lists devices with revoke. The broker process is unchanged; only enrolment is replaced.",
+}
+
+// THE DRAIN BOUND IS DERIVED, NOT RATIFIED AS A NUMBER (2026-10-23). The row at
+// gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy carried a ratified literal
+// (wait_bound 2700s) on the premise that 'no source declares the longest job'. The premise is false:
+// the fleet-targeted generated workflows declare job timeouts (gunbc.witness.compiler_gate_workflow
+// compiler_gate_emit_build_timeout_minutes = 90, and a v2-bootstrap job runs ~55 minutes), and the
+// literal bit srv3 cap converge run 39961292233 — every cap withheld on 'the drain bound of 2700s
+// was exceeded' while honest work ran.
+data drain_wait_bound_is_derived_from_declared_job_timeouts: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "drain_wait_bound_is_derived_from_declared_job_timeouts"),
+  decided: "2026-10-23",
+  section: "Self-hosting and the fleet",
+  provenance: "Operator ruling 2026-10-23, relayed by sleek-owl-397: wait_bound in gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy is DERIVED from the declared job timeouts of the fleet-targeted generated workflows (90 min today, plus the poll interval); it replaces the 2700s literal. The population rule was ruled by clever-crane-830 the same day: a job is in the fold iff its runner selects the fleet pool AND its workflow's modeled trigger set holds an autonomous trigger (push, pull_request, schedule, merge_group, workflow_call, workflow_run) — the work GitHub can park on a slot with no operator at the keyboard. Dispatch-only fleet jobs (instrument-dispatch, fleet-converge's build) are excluded by the same predicate, with the residual declared: if one is running when a drain starts it can exceed the bound and the bracket refuses typed (caps withheld), fail-closed, the dispatching operator owning the sequencing. The fold lives at gunbc.runner.runner_fleet_job_timeout_census; the control test.claim.runner.runner_fleet_job_timeout_bound_witness goes red if a population member's declared timeout exceeds the bound.",
+}
+
+data flex_operator_template_v2: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"),
+  decided: "2026-10-16",
+  section: "4d",
+  provenance: "Operator, via deep-otter-797 on gunbc#14150: both flex serving templates are operator policy, not empirical readings. The Qwen3.8-27B NVFP4 ninfer template ('qwen oct 11'): the vastai/vllm:v0.30.0-cuda-13.0 host image, 32 GiB disk, no cache tier, published port 8000. The Qwen3.8-Flash-Next template: 400 GiB disk, host RAM and disk session-cache tiers at one half of the host each, published port 8000, and an object-store (R2) start with no Hugging Face fallback. They are choices, so they carry this ruling as their standing. This does NOT cover empirical figures: the 580 driver floor, the 1 GiB name/VRAM tolerance and throughput stay TranscribedUncited, and anything computed from them is Estimated, never established.",
+}
+
+data flex_first_recipe_is_flash_next: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_first_recipe_is_flash_next"),
+  decided: "2026-10-18",
+  section: "3d",
+  provenance: "Operator, via deep-otter-797 (Flex L1): the first flex recipe is Flash-Next on the RTX PRO 6000 Blackwell class (Workstation, Max-Q and Server editions); 27B-on-ninfer stays modelled and is not selected. The Vast template filters read from the operator's Vast account on 2026-10-18 (cuda_max_good >= 13, cpu_ram >= 128000 MB, gpu_ram >= 90000 MB, inet_down >= 1000, verified) are operator policy under flex_market_policy_is_operator_decided; the gpu_ram floor replaces the 1 GiB name/VRAM tolerance as the VRAM screen. The driver floor is not policy: it derives from the CUDA 13 the filter requires and is cited to NVIDIA's CUDA toolkit release notes. Throughput and price stay operator readings.",
+}
+
+data runner_host_sudoers_is_installed: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_host_sudoers_is_installed"),
+  decided: "2026-10-18",
+  section: "3b",
+  provenance: "Operator decision, default (dashboard msg_b6241e41, relayed by sleek-owl-397), reversing the 2026-09-22 decision that the rendered gunbc-ghrunner.sudoers stays modeled and uninstalled: the RENDERED rule alone is installed on the runner hosts at /etc/sudoers.d/gunbc-ghrunner through gunbc.runner.runner_host_file_converge, validated by visudo on the staging path before the rename, 0440 root-owned, read back and compared, refusing typed on any mismatch, with no catch-all and no widening beyond the rendered lines. Cause: srv3 apply 39127216304 and srv4 apply 39128728092 failed at the first host-wide grant (sudo: a password is required) because nothing installed the file.",
+}
+
+data runner_listener_admission_is_mask_roster_and_no_worker: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_listener_admission_is_mask_roster_and_no_worker"),
+  decided: "2026-10-21",
+  section: "4b",
+  provenance: "Operator ruling B at the root of the runner host cap bracket (sleek-owl-397, relayed by clever-crane-830): a running idle listener is admitted to the write and its stop only when its unit is masked, the organization roster says its registration is busy=false and its cgroup holds no Runner.Worker, all re-read immediately before the stop; there is no deregister because nothing re-registers a long-lived slot; the read-to-stop window is a typed residual (gunbc.runner.runner_host_cap_bracket listener_restart_residual) and re-registration a declared frontier (listener_reregistration_frontier). Supersedes the mask-only closure for running idle listeners.",
+}
+
+data emit_build_subjects_are_the_two_compiler_products: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "emit_build_subjects_are_the_two_compiler_products"),
+  decided: "2026-10-09",
+  section: "Building & checks",
+  provenance: "Operator ruling with the v1 withdrawal (gunbc#13658, second round: the required job \"requires fresh emission/build of both retained products\"): the subjects of gunbc.emitted_subject_build_gate emitted_subject_build_rows are the two retained compiler products, //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli, and a third subject row is a growth the operator vetoed. Until 2026-10-24 the veto lived only as a comment on test.claim.compiler_gate_emit_build_lane_witness the_job_runs_both_retained_emit_build_subjects, which quotes the roster as remaining the two compiler products; that comment landed in gunbc#13641 and its quotation has no other source in the repository. Re-raised and confirmed on 2026-10-24 by merry-fox-82 when gunbc#14984 built a native control over gunbc.fleet.fleet_convergence_verdict: it stays run by name, and enrolling it would reverse this ruling and goes to the operator.",
+}
+
+data pattern_atom_naming_a_visible_value_is_never_a_binder: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "pattern_atom_naming_a_visible_value_is_never_a_binder"),
+  decided: "2026-10-25",
+  section: "5",
+  provenance: "Ruling by tidy-ant-251 (Manager 1), 2026-10-25, on the bare-atom match-arm binding work (gunbc#15125): a bare atom in pattern position is a binder unless it names something the arm can already see, and then it never silently shadows it. A pattern atom naming a frame value refuses with one cause covering both readings (rename to bind, or compare with an equality guard), replacing binder_hides_visible_value for pattern atoms at either pattern position; a pattern atom naming a module-level value refuses only for a `data` constant, since a module function stays admitted exactly as root shadowing always allowed. It is decided at v2.compiler.resolve resolve_pattern_atom_naming_a_frame_value, with the module-level half in resolve_pattern_atom_names_module_value.",
+}
+
+data unread_catch_all_binder_refuses: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "unread_catch_all_binder_refuses"),
+  decided: "2026-10-25",
+  section: "5",
+  provenance: "Ruling by tidy-ant-251 (Manager 1), 2026-10-25, on the bare-atom match-arm binding work (gunbc#15125): with a bare arm atom now binding its arm, an arm that never reads its own catch-all binder is a mistake the author should hear about, not a binding that silently exists — it refuses at resolve, and the remedy the refusal names is to write `_`. Decided at v2.compiler.resolve resolve_catch_all_binder_read_gate; the widening-over-a-nullary companion refusal lives at v2.compiler.infer infer_coproduct_catch_all_binder_widening_over_a_nullary.",
+}
+
+data cross_tree_admission_is_namespace_membership: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "cross_tree_admission_is_namespace_membership"),
+  decided: "2026-10-25",
+  section: "3",
+  provenance: "Operator ratified 2026-10-25 (escalation msg_6f0857a6) a decision by root coordinator sleek-owl-397, relayed by tidy-ant-251, on the per-root fundamentality defect, where native resolve denied every dag->v2 import that the seed admits: fix the model and do not move the importers. Narrowed the same day from 'rank per namespace' to membership, with no direction rule, once the namespace-grain import census showed one 23-namespace cycle spanning both trees, so any strict order would deny live edges that no ruling forbids. A crossing is admitted when both namespaces have a row in gunbc.source_layout_namespaces and refused when either has none; the storage lookup is the one enforcement site, and the population route asks the same membership read; name resolution keeps only the active-root denials. Applied in gunbc#15080 (v2.std.cross_tree.import_model cross_tree_import_admitted).",
+}
+
+data native_claim_route_admits_the_docker_cli: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_claim_route_admits_the_docker_cli"),
+  decided: "2026-10-25",
+  section: "Building & checks",
+  provenance: "Operator ruling relayed by calm-crab-645 (msg_396b4514), answering proud-bear-756's escalation msg_127d75bc: the router proxy falsifier (plan gunbc.plans.fabric_serving_router, S1b) takes route (a), native-process-effect, over a seed producer or a live receipt. Process spawn is a declared .dag effect, and one native route's denominator is extended on the D11 row (gunbc.plans.demand_engine_program); the seed does not grow. As built, and with calm-crab-645's conditions of msg_49fe21ca: std.compiler_entry native_claim_route_denominator admits exactly extdeps.docker.cli_service DockerCli, a fixed-argv shell-transport service whose image, name, network and paths arrive as parameters; generic exec (extdeps.shell.exec, held at an empty roster by the meta_exec_confinement lens) stays out; a runner with no reachable docker daemon answers no observation (exit 2), never a skip or a green.",
+}
+
+data macos_operator_terminal_runs_without_a_memory_bound: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "macos_operator_terminal_runs_without_a_memory_bound"),
+  decided: "2026-10-28",
+  section: "Building & checks",
+  provenance: "Operator ruling to wise-bat-528, 2026-10-28, answering the option 'A: admit an operator-attended macOS run without a cgroup wrap, with a notice; CI and servers unchanged' with 'A is fine'. Context: the IAM root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) is run from the operator's Mac, which has no cgroup facility, so every gunbc run there refused CgroupUnreadable. As built (gunbc#15316): macOS, GITHUB_ACTIONS unset, and stdin a terminal classify as OperatorHostWithoutCgroups and skip the wrap with a notice; every other macOS run still refuses. The loss is declared as gunbc.rung_drop.macos_operator_terminal_run_unbounded.",
 }
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    macos_operator_terminal_runs_without_a_memory_bound,
+    cross_tree_admission_is_namespace_membership,
+    native_claim_route_admits_the_docker_cli,
+    emit_build_subjects_are_the_two_compiler_products,
     job_roster_closed_to_growth,
+    runner_listener_admission_is_mask_roster_and_no_worker,
+    runner_host_sudoers_is_installed,
+    flex_first_recipe_is_flash_next,
     conformance_needs_attention,
     consumption_interrogated_separately,
     epistemic_humility_is_symmetric,
@@ -234,6 +440,9 @@ fn design_rulings() -> List<DesignRuling> {
     root_generalization_closes_breadth,
     instrument_is_a_row_not_a_flag,
     authorization_pattern_is_a_selection,
+    one_approval_route_for_every_privileged_action,
+    the_initial_convergence_is_the_only_approval,
+    srv1_root_mutation_approval_is_filed_by_the_job,
     coercion_is_the_implicit_safe_subset,
     text_crossings_go_through_the_unfold,
     v2_better_than_the_seed,
@@ -247,13 +456,29 @@ fn design_rulings() -> List<DesignRuling> {
     explicit_present_is_the_authoring_policy,
     optional_sugar_is_declaration_bound,
     nonemptiness_is_constructed_or_proved,
+    where_refinements_retire_for_checked_constructors,
+    literal_only_refinement_judgment_is_interim,
     native_first_complete_cuts,
     machine_mode_names_drop_the_unit,
     one_physical_machine_boot_transaction,
     physical_and_guest_control_remain_distinct,
+    fan_policy_is_one_fleet_management_workflow,
+    dimm_population_is_admitted_permissively,
+    mtcollins1_ci_runner_enrolment_approved,
+    mtcollins1_in_memory_app_credential_per_boot,
+    fleet_converge_modes_are_outside_the_job_roster,
+    operator_delegates_fan_control_to_the_fleet_policy,
     v1_seed_emitted_byte_write_exception,
     production_is_main_only_lab_admits_integration,
     flex_market_policy_is_operator_decided,
+    flex_fleet_cap_raised_to_three_dollars,
+    flex_operator_template_v2,
+    instrument_measurement_queues_run_in_parallel,
+    approval_enrolment_is_google_sign_in,
+    drain_wait_bound_is_derived_from_declared_job_timeouts,
+    pattern_atom_naming_a_visible_value_is_never_a_binder,
+    unread_catch_all_binder_refuses,
+    bmc_secure_goes_live_per_controller_family,
   ]
 }
 

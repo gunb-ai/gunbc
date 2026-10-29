@@ -5,6 +5,7 @@ import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { declaration_ref_eq }
 import extdeps.uri { Uri, File }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
 
 type ExternalAuthority {
   uri: Uri
@@ -47,6 +48,8 @@ fn observed_receipt(receipt: DeclarationRef) -> ObservedReceipt
     decl_ref(module_path: "gunbc.cloudflare.r2_conditional_put_race_probe", decl_name: "r2_conditional_put_linearizability_ground"),
     decl_ref(module_path: "product.breakout_leg_programming", decl_name: "fs_nvidia_eth_leg_coding_standing"),
     decl_ref(module_path: "gunbc.host.host_software_surface", decl_name: "srv1_software_inhabitance_ground"),
+    decl_ref(module_path: "gunbc.ci.ci_fleet", decl_name: "mtcollins1_socket0_cpu_part_standing"),
+    decl_ref(module_path: "gunbc.host.srv1_serving_startup_receipt", decl_name: "srv1_serving_startup_ground"),
   ]
   = ObservedReceipt { receipt: receipt }
 

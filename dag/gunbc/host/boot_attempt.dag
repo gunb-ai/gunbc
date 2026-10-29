@@ -1,0 +1,665 @@
+module gunbc.host.boot_attempt
+
+// THE NEUTRAL BOOT-ATTEMPT RECORDS (managed-host untangle, cut 4d-ii; operator ruling 2026-10-14:
+// one physical machine boot transaction, physical and guest control remain distinct). This module is
+// the LOWER half of the boot attempt: the records every machine's boot produces, described by facts
+// that do not depend on which controller protocol (MegaRAC/IPMI/Redfish) read them. Adapters depend
+// on the core, never the core on an adapter: the controller-specific readings (SEL, SDR, sensors,
+// inventory, param5, chassis power, the Redfish URLs) and the MegaRAC-shaped diagnostic live in the
+// controller's adapter module (gunbc.machine_intake.megarac_boot_diagnostic_bundle), which imports
+// THIS module. What neutrality holds here is per-DECLARATION (review 85832): NO TYPE IN THIS MODULE NAMES A CONTROLLER PROTOCOL: no type is extdeps.bmc.ipmi*, no
+// megarac_*, and the run record carries the adapter's diagnostic BY REFERENCE (the retained artifact
+// path plus its digest, and the neutral findings), not by the adapter's reading type.
+//
+// THE BOUNDARY LEAK, DISCHARGED (review 85832; §4d-ii, node://adhoc-18598508-4f4). The
+// paragraph this slot carried said the core was protocol-free per-DECLARATION but not
+// per-CLOSURE: it borrowed six console declarations out of two machine-named modules
+// (SpanConsoleReading and span_console_readings from
+// gunbc.machine_intake.mtcollins1_power_on_account; ConsoleMilestoneObservation,
+// mtcollins1_console_milestones and console_milestone_sighting_text from
+// gunbc.machine_intake.mtcollins1_console_milestone_observation), and those imports dragged
+// the machines' SEL/SDR/memory parsers into the core's closure. That is no longer true: the
+// re-home landed. Every console declaration this module used to declare or borrow now lives
+// at gunbc.host.boot_console_observation (the capture, ConsoleReading and its readers, the
+// span pair taking already-split spans, and the whole console milestone module), and this
+// module imports NOTHING console-shaped -- the closure is clean, per-declaration and
+// per-module. The debt ended DISCHARGED: the six items on the typed carrier below name the
+// RETIRED homes, the census lacks every one, and boot_attempt_console_debt_status reads
+// DissolutionFired (std.dissolution retires_dissolution; DESIGN §5). A row that wants its
+// console reading imports it from the neutral home.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { Second, second }
+import std.algebra { FreeSemigroup }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, DissolutionStatus, dissolution_status, retires_dissolution }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
+import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming }
+
+// ── THE NEUTRAL POWER STATE ───────────────────────────────────────────────────────────────────────
+// The on/off the boot observes, protocol-agnostic: the controller's raw reading (MegaRAC's
+// ChassisPowerObservation, a future controller's own) maps to this. Unread carries why, so a state the
+// boot could not establish says which read failed. (Correction 1: minted on proven absence.)
+
+type HostPowerState
+  = PowerOn
+  | PowerOff
+  | PowerUnread { reason: NonEmptyStr }
+
+fn host_power_text(state: HostPowerState) -> String {
+  match state {
+    PowerOn => "on"
+    PowerOff => "off"
+    PowerUnread { reason: r } => concat("unobserved: ", r as String)
+  }
+}
+
+// THE MEDIA PRESENTATION STATE, protocol-agnostic: is the medium the attempt wants actually being
+// served, and if not, in which of three different ways not. The three are NOT interchangeable and the
+// old two-arm shape collapsed two of them:
+//
+//   Presented                    — the controller says the medium is being served.
+//   PresentationSessionHeld      — it was served, but only while OUR attach session lived, and that
+//                                  session is now closed. A presentation that dies with the session is
+//                                  not a presentation the boot will find; it is also not a failed read.
+//   PresentationNotServed        — the controller answered, and what it answered is that the medium is
+//                                  not being served, with its reason. "Not attempted" used to be this
+//                                  arm's name, which read as "nobody looked" for a look that was made
+//                                  and came back negative.
+//   PresentationUnread           — the read itself did not answer. Indeterminate: neither served nor
+//                                  not served is known.
+//
+// The adapter classifies an ATTACH result and a read-only LOOK with two different functions
+// (megarac_presentation / megarac_look_presentation). They must not share one: an attach result and a
+// look are different observations, and classifying a look with the attach classifier reports every
+// healthy look as "not attempted", because a look is by construction not an attach.
+
+type BootPresentation
+  = Presented
+  | PresentationSessionHeld { detail: NonEmptyStr }
+  | PresentationNotServed { reason: NonEmptyStr }
+  | PresentationUnread { reason: NonEmptyStr }
+
+// THE ONE RENDERING of a presentation state, beside host_power_text for the same reason: the media
+// attach line, the handoff after-look line and the end-of-attempt look line all describe this one
+// concept, and an arm added here shows up in all three at once. Anywhere else that needs these words
+// asks for them; a fourth match on BootPresentation outside these two fns is the drift this prevents.
+fn presentation_text(p: BootPresentation) -> String {
+  match p {
+    Presented => "presented"
+    PresentationSessionHeld { detail: d } => concat("served only under our attach session: ", d as String)
+    PresentationNotServed { reason: r } => concat("not served: ", r as String)
+    PresentationUnread { reason: r } => concat("unread: ", r as String)
+  }
+}
+
+// ── THE MEDIA ATTACH, AS THIS ATTEMPT'S RECORD ────────────────────────────────────────────────────
+// The handoff is gated on this record, and the run record carries the same record (side chat on
+// gunbc#12425). What the boot was gated on — which intended medium and its verified digest, the
+// redirection wire, when — reaches the actuation, the attempt and this record as a value, including
+// the refusal and timeout arms, never as a bare exit.
+//
+// NEUTRAL (managed-host untangle, cut 4d-ii): the raw MegaRAC evidence (the attempt's transport log,
+// the chassis power reading, the MegaRacAttachResult) lives in the adapter; this record keeps the
+// classification — which medium (name + verified digest), the power state around the attach, whether
+// a stale medium was powered off first, and the presentation state after. `ready` is NOT a stored
+// field (correction 2): it is derivable from the record's own presentation field, so it is a fn.
+
+type StaleMediumPowerOff
+  = StalePowerOffNotNeeded { reason: NonEmptyStr }
+  | StalePowerOffObserved { stale_image: String, before: HostPowerState }
+  | StalePowerOffCommandRefused { stale_image: String, before: HostPowerState }
+  | StalePowerOffNotObserved { stale_image: String, before: HostPowerState, last: HostPowerState }
+
+fn stale_power_off_text(record: StaleMediumPowerOff) -> String {
+  match record {
+    StalePowerOffNotNeeded { reason: r } => concat("no power-off: ", r as String)
+    StalePowerOffObserved { stale_image: i, before: b } => join(["powered off (was ", host_power_text(state: b), ") to replace stale '", i, "', observed off"], "")
+    StalePowerOffCommandRefused { stale_image: i, before: _ } => join(["chassis power off for stale '", i, "' was refused by the controller"], "")
+    StalePowerOffNotObserved { stale_image: i, before: _, last: l } => join(["chassis power off for stale '", i, "' was sent but never observed off; last read ", host_power_text(state: l)], "")
+  }
+}
+
+type MediaAttachRecord
+  = MediaAttachNotAttempted { reason: NonEmptyStr }
+  | MediaAttachAttempted {
+      medium_image_name: NonEmptyStr,
+      medium_image_sha256: NonEmptyStr,
+      power: HostPowerState,
+      stale_power_off: StaleMediumPowerOff,
+      presentation: BootPresentation
+    }
+fn media_attach_text(record: MediaAttachRecord) -> String {
+  match record {
+    MediaAttachNotAttempted { reason: r } => concat("not attempted: ", r as String)
+    MediaAttachAttempted { medium_image_name: n, medium_image_sha256: h, power: p, stale_power_off: s, presentation: pr } =>
+      join([
+        "'", n, "' (sha256: ", h, ") ",
+        match p {
+          PowerOff => "attached with the host off"
+          PowerOn => "attached (host was on)"
+          PowerUnread { reason: rr } => join(["attached (host was unobserved: ", rr as String, ")"], "")
+        },
+        "; ", (stale_power_off_text(record: s) as String),
+        "; presentation: ",
+        presentation_text(p: pr)
+      ], "")
+  }
+}
+
+// THE HANDOFF. The boot hands off to the OS, then reads back the presentation to confirm the medium
+// the OS is actually booting from is the one it attached. The adapter's raw readback is its fact; this
+// record keeps the neutral outcome (confirmed / attempted-unconfirmed / refused) and the presentation
+// state after.
+
+// Two arms, not three. A third, "the controller refused the handoff", was here and was deleted: the
+// raw record the adapter stores is built from the handoff COMMAND's exit (exit 0 => confirmed, a
+// failure => attempted-but-unconfirmed), so no observation can ever produce a refusal, the classifier
+// that is the only writer has no arm for one, and the harness never raises one. An arm nothing can
+// construct is not safety, it is a word in the vocabulary that means nothing.
+type HandoffCallResult
+  = HandoffConfirmed
+  | HandoffAttemptedUnconfirmed { reason: NonEmptyStr }
+
+type HandoffMedia
+  = HandoffMediaNotReached { reason: NonEmptyStr }
+  | HandoffMediaWithheldAtRecheck { reason: NonEmptyStr }
+  | HandoffMediaAttempted {
+      handoff: HandoffCallResult,
+      after: BootPresentation
+    }
+
+fn handoff_media_text(record: HandoffMedia) -> String {
+  match record {
+    HandoffMediaNotReached { reason: r } => concat("not reached: ", r as String)
+    HandoffMediaWithheldAtRecheck { reason: r } => concat("withheld at re-check: ", r as String)
+    HandoffMediaAttempted { handoff: h, after: a } =>
+      join(["attempted: ",
+        match h {
+          HandoffConfirmed => "confirmed"
+          HandoffAttemptedUnconfirmed { reason: rr } => join(["attempted, unconfirmed: ", rr as String], "")
+        },
+        "; presentation after: ",
+        presentation_text(p: a)], "")
+  }
+}
+
+// THE END MEDIA. The final presentation look, taken after the OS has come up, as its own record. The
+// adapter's raw read is its fact; this keeps the neutral presentation state.
+
+type EndMedia
+  = EndMediaNotTaken { reason: NonEmptyStr }
+  | EndMediaObserved { look: BootPresentation }
+
+fn end_media_text(record: EndMedia) -> String {
+  match record {
+    EndMediaNotTaken { reason: r } => concat("not taken: ", r as String)
+    EndMediaObserved { look: l } =>
+      // One prefix over the ONE presentation rendering. The end look and the handoff after-look are
+      // the same kind of fact read at a different moment, so they render identically apart from which
+      // moment the line names; a fifth presentation arm is one edit in presentation_text, not three.
+      concat("end look ", presentation_text(p: l))
+  }
+}
+
+// ── THE POWER AFTER THE ATTEMPT, TERMINAL-NEUTRAL ─────────────────────────────────────────────────
+// (Correction 3.) The terminal is the consumer's, not the boot's: the diagnostic census's END marker
+// is the census consumer's fact. The boot records the power state it observed and the terminal marker
+// it saw (if any), and classifies the power against it. Whether that terminal was the census's END is
+// the census consumer's mapping (it reads its own census END marker). PoweredOffAfterTerminal /
+// PoweredOffWithoutTerminal replace the census-specific arm names.
+
+type TerminalObserved
+  = TerminalMarker { marker: NonEmptyStr }
+  | TerminalNotObserved
+
+fn terminal_text(t: TerminalObserved) -> String {
+  match t {
+    TerminalMarker { marker: m } => join(["terminal observed: '", m, "'"], "")
+    TerminalNotObserved => "no terminal observed"
+  }
+}
+
+type PowerAfterAttempt
+  = PoweredOffAfterTerminal
+  | PoweredOffWithoutTerminal
+  | PoweredOnAfterAttempt
+  | PowerAfterUnobserved { reason: NonEmptyStr }
+  | PowerAfterNotTaken { reason: NonEmptyStr }
+
+// THE CLASSIFICATION, from the power state and whether a terminal marker was observed. The census
+// consumer passes its own census END marker (or TerminalNotObserved if the marker was not seen); the
+// boot does not know the census exists.
+
+// THE READING, BEFORE THE PAIRING. A consumer that never made the read at all (no account modeled to
+// read with, no time left in the budget) must say so, and that is not the same fact as a read that
+// failed: HostPowerState describes what a read ANSWERED, so "not taken" belongs on the reading, not on
+// an arm of PowerAfterAttempt. Without this carrier the adapter kept its own MegaRacPowerAfter sum to
+// state it -- a second home for the pairing (review 81601).
+type HostPowerReading
+  = HostPowerRead { state: HostPowerState }
+  | HostPowerNotTaken { reason: NonEmptyStr }
+
+fn power_after_attempt(power: HostPowerReading, terminal: TerminalObserved) -> PowerAfterAttempt {
+  match power {
+    HostPowerNotTaken { reason: r } => PowerAfterNotTaken { reason: r }
+    HostPowerRead { state: s } =>
+      match s {
+        PowerOn => PoweredOnAfterAttempt
+        PowerOff =>
+          match terminal {
+            TerminalMarker { marker: _ } => PoweredOffAfterTerminal
+            TerminalNotObserved => PoweredOffWithoutTerminal
+          }
+        PowerUnread { reason: r } => PowerAfterUnobserved { reason: r }
+      }
+  }
+}
+
+fn power_after_text(p: PowerAfterAttempt) -> String {
+  match p {
+    PoweredOffAfterTerminal => "off after the observed terminal marker (expected: the attempt's image ends with a power-off)"
+    PoweredOffWithoutTerminal => "off without an observed terminal marker"
+    PoweredOnAfterAttempt => "on"
+    PowerAfterUnobserved { reason: r } => concat("unobserved: ", r as String)
+    PowerAfterNotTaken { reason: r } => concat("not taken: ", r as String)
+  }
+}
+
+// ── THE BOOT OVERRIDE CONSUMPTION, NEUTRAL ────────────────────────────────────────────────────────
+// (Correction 6.) The input is the pending-before and pending-after classification, not the raw IPMI
+// param5 read: the controller's adapter reads its param5 and classifies pending/not-pending, and the
+// core derives the consumption from the two Booleans plus whether the boot went through the override's
+// device. No IPMI type crosses into this module.
+
+type BootOverrideConsumption
+  = OverrideConsumedByAttempt
+  | OverrideNoLongerPendingAfterAttempt
+  | OverridePendingBeforeAttempt
+  | OverrideStillPendingAfterAttempt
+  | OverrideNotHandedOff { reason: NonEmptyStr }
+  | OverrideConsumptionUnread { reason: NonEmptyStr }
+
+// WHAT ONE PARAMETER-5 READ CAN SAY, before anything is decided about consumption. Three states, not
+// two: the flag matched this attempt's override, it did not, or the read never answered -- and the
+// last one carries WHY, which is the half a Bool loses. A consumer that reads the controller reduces
+// its own reading to this and hands it here; that reduction is the adapter's job, the decision below is
+// not its to make (review 81601: this decision had a second copy in the adapter, and production called
+// that copy).
+type BootOverrideStanding
+  = OverrideFlagPending
+  | OverrideFlagNotPending
+  | OverrideReadUnanswered { reason: NonEmptyStr }
+
+fn boot_override_consumption(before: BootOverrideStanding, after: BootOverrideStanding, booted_through_override_device: Bool) -> BootOverrideConsumption {
+  match before {
+    OverrideReadUnanswered { reason: r } => OverrideConsumptionUnread { reason: r }
+    OverrideFlagPending => OverridePendingBeforeAttempt
+    OverrideFlagNotPending =>
+      match after {
+        OverrideReadUnanswered { reason: r } => OverrideConsumptionUnread { reason: r }
+        OverrideFlagPending => OverrideStillPendingAfterAttempt
+        OverrideFlagNotPending =>
+          if booted_through_override_device {
+            OverrideConsumedByAttempt
+          } else {
+            OverrideNoLongerPendingAfterAttempt
+          }
+      }
+  }
+}
+
+fn override_consumption_text(c: BootOverrideConsumption) -> String {
+  match c {
+    OverrideConsumedByAttempt => "consumed by this attempt: cleared after a terminal marker, which only a boot of the override's device prints"
+    OverrideNoLongerPendingAfterAttempt => "no longer pending after the attempt, but no boot through the override's device was observed, so consumption by this attempt is not established"
+    OverridePendingBeforeAttempt => "ALREADY PENDING before this attempt set it; consumption not attributable"
+    OverrideStillPendingAfterAttempt => "STILL PENDING after the attempt; not consumed"
+    OverrideNotHandedOff { reason: r } => concat("not handed off: ", r as String)
+    OverrideConsumptionUnread { reason: r } => concat("undetermined: ", r as String)
+  }
+}
+
+// ── THE ATTEMPT IDENTITY ───────────────────────────────────────────────────────────────────────────
+// The attempt's own identity (run id), or why it could not be read.
+
+type AttemptIdentityReading
+  = AttemptRunId { run_id: NonEmptyStr }
+  | AttemptIdentityUnavailable { variable: NonEmptyStr, detail: String }
+
+fn attempt_identity_text(a: AttemptIdentityReading) -> String {
+  match a {
+    AttemptRunId { run_id: r } => r as String
+    AttemptIdentityUnavailable { variable: v, detail: d } => concat("UNAVAILABLE: ", v as String, " could not be read: ", d)
+  }
+}
+
+// ── THE ADAPTER'S DIAGNOSTIC, BY REFERENCE ────────────────────────────────────────────────────────
+// The by-reference pointer (operator ruling 2026-10-14). The run record does not carry the adapter's
+// diagnostic by its MegaRAC type; it names where the adapter retained it (a path under the attempt's
+// retained-artifact prefix) and the neutral findings. The adapter reads its own diagnostic back from
+// that path.
+
+type DiagnosticRef
+  = DiagnosticRetained {
+      path: NonEmptyStr,
+      digest: Sha256FileDigest
+    }
+  | DiagnosticNotRetained { reason: NonEmptyStr }
+  | DiagnosticUnavailable { reason: NonEmptyStr }
+
+fn diagnostic_ref_text(d: DiagnosticRef) -> String {
+  match d {
+    // The digest is part of the reference -- it is how a consumer proves the file at that path is the
+    // bytes this attempt captured -- so the renderer names it rather than dropping it.
+    DiagnosticRetained { path: p, digest: dg } => match dg {
+      Sha256FileDigest { digest: x } => concat(concat("retained at ", p), concat(" (sha256 ", x.hex as String))
+      Sha256FileDigestUnavailable { path: up, reason: r } =>
+        concat(concat("retained at ", p), concat(" (digest unavailable for ", concat(up, concat(": ", r))))
+    }
+    DiagnosticNotRetained { reason: r } => concat("not retained: ", r as String)
+    DiagnosticUnavailable { reason: r } => concat("unavailable: ", r as String)
+  }
+}
+
+// ── THE NEUTRAL FINDINGS, IN TWO KINDS ────────────────────────────────────────────────────────────
+// (correction 4: no stringly catch-all; every arm is a named, typed fact about the attempt. Findings
+// the boot could not type — a controller-specific read failure, a raw reading — stay in the adapter's
+// findings, not here.)
+//
+// Two kinds, because they have two different sources and DESIGN §3 wants each fact in exactly one:
+//
+//   StandingFinding      — a fact the run record's own fields CANNOT state, because it was observed
+//                          beside the attempt rather than in it: which BMC channels failed, and whether
+//                          the per-attempt credential was removed. Only a caller can supply these, so
+//                          they are STORED on the record.
+//   Derived               — a classification OF a field the record already holds: an attach that is not
+//                          ready is what `media` says, a handoff that was refused is what `handoff_media`
+//                          says, an override still pending is what `override` says. These are never
+//                          stored. `run_record_findings` derives them, so the answer cannot disagree
+//                          with the fields it is read from and cannot be stated twice. An earlier
+//                          revision stored ONE `findings` list beside those fields and APPENDED these
+//                          same classifications to it, which let a caller report a fact twice or report
+//                          one its own fields contradict — review 81154, the same class of defect as
+//                          correction 2's removal of the stored `ready`.
+//
+
+
+// A fact observed BESIDE the attempt, that none of its fields can state.
+//
+// EveryReadFailed carries the failed channel NAMES and nothing else. It used to carry a `count: Int`
+// beside them, which was the same fact with two writers: a value could say count: 3 while naming one
+// channel, and the only thing that could have caught it was a witness asserting the two agreed --
+// validation standing in for construction, which §5 rules out ("a check restating a constraint the model
+// already carries is a second representation of it") and which this module already refuses for the
+// stored `ready` (correction 2). count is `length(channels)`; anyone who needs the number asks the list.
+//
+// `channels` is a FreeSemigroup, not a List (§3b Cardinality: nonemptiness belongs on
+// std.algebra::FreeSemigroup). "Every read failed" with no channel named is not a fact anyone could act
+// on, yet List permitted it; here the head exists by construction, so there is no empty value to refuse.
+type StandingFinding
+  = EveryReadFailed { channels: FreeSemigroup<NonEmptyStr> }
+  | CredentialMayRemain
+
+type DerivedFinding
+  = MediaAttachNotReady { record: MediaAttachRecord }
+  | MediaAttachSessionHeld { record: MediaAttachRecord }
+  | HandoffWithheldAtRecheck { handoff: HandoffMedia }
+  | HandoffUnconfirmed { handoff: HandoffMedia }
+  | OverrideNotConsumed { consumption: BootOverrideConsumption }
+  | PoweredOffWithoutTerminalMarker
+  | PresentationAfterHandoff { presentation: BootPresentation }
+
+// THE DERIVED FINDINGS HAVE ONE RENDERING, here, beside the sum and beside the derivation that mints
+// them. The adapter used to render two of them ("the one-shot boot override was still pending...", "the
+// host was powered off after the attempt without an observed terminal...") from its OWN copies of the
+// two decisions; those copies are deleted (review 81601), and a finding the core derives is a finding
+// the core renders. The two sentences are unchanged, so a reader of the bundle sees the same text.
+fn derived_finding_text(f: DerivedFinding) -> String {
+  match f {
+    MediaAttachNotReady { record: _ } => "media attach: the presentation was not ready for this attempt"
+    MediaAttachSessionHeld { record: _ } => "media attach: the presentation was served only while our own session held it"
+    HandoffWithheldAtRecheck { handoff: _ } => "the pre-handoff recheck withheld the handoff, so no boot-device or power write was made"
+    HandoffUnconfirmed { handoff: _ } => "the boot-device and power handoff was attempted and not confirmed"
+    OverrideNotConsumed { consumption: c } => override_not_consumed_text(c: c)
+    PoweredOffWithoutTerminalMarker => "the host was powered off after the attempt without an observed terminal: the image did not reach its end"
+    PresentationAfterHandoff { presentation: p } => concat("after the handoff the presentation was still served: ", presentation_text(p: p))
+  }
+}
+
+// THE OVERRIDE FINDING'S SENTENCES, in the module that owns the consumption sum. The two the harness
+// used to write itself are kept verbatim; the rest route through override_consumption_text so a reader
+// sees one vocabulary for one sum.
+fn override_not_consumed_text(c: BootOverrideConsumption) -> String {
+  match c {
+    OverrideStillPendingAfterAttempt => "the one-shot boot override was still pending after the attempt: the host did not boot through it"
+    OverridePendingBeforeAttempt => "a boot override matching this attempt's was already pending before it was set, so its consumption cannot be attributed to this attempt"
+    _ => override_consumption_text(c: c)
+  }
+}
+
+// THE ANSWER TO "WHAT WENT WRONG WITH THIS ATTEMPT", kept as the TWO sources it has rather than one
+// flattened list. Two sums may not share an arm name in this language, which is a fact of the checker
+// and a fact of the design at once: the two lists answer different questions and a single vocabulary
+// would let one carry the other's facts. `run_record_findings` is the only way to ask.
+type RunRecordFindings {
+  standing: List<StandingFinding>,
+  derived: List<DerivedFinding>,
+}
+
+
+// ── THE RUN RECORD ────────────────────────────────────────────────────────────────────────────────
+// THE RECORD OF ONE BOOT ATTEMPT, neutral (operator ruling 2026-10-14). It carries the attempt's
+// classifications (media, handoff, end media, power-after, override), the attempt's own timing
+// instrument, the attempt identity, and the BY-REFERENCE pointer to the adapter's diagnostic plus the
+// neutral findings. It does NOT carry: the raw controller readings (they live in the adapter), the
+// Ampere SMpro readings (Ampere is a platform capability, cut 2 — snappy-seal-211), or the raw IPMI
+// param5 (the override consumption is a classification, correction 6).
+
+type BootRunRecord {
+  terminal: TerminalObserved,
+  end_media: EndMedia,
+  handoff_media: HandoffMedia,
+  media: MediaAttachRecord,
+  override: BootOverrideConsumption,
+  power_after: PowerAfterAttempt,
+  timing: BootPhaseTiming,
+  identity: AttemptIdentityReading,
+  diagnostic: DiagnosticRef,
+  // Standing facts only (see StandingFinding): what the attempt observed BESIDE these fields. A
+  // finding the fields themselves state has no arm here, so it cannot be stored, duplicated, or
+  // contradicted. Ask run_record_findings, which returns the standing list it stores and the derived
+  // list it computes as the TWO things they are -- it does not flatten them into one vocabulary, so a
+  // consumer cannot mistake a stored claim for a computed one or vice versa.
+  standing: List<StandingFinding>
+}
+
+
+// ── THE RUN RECORD, AS A FINDINGS LIST AND AS TEXT ────────────────────────────────────────────────
+
+// THE ONE WAY TO ASK WHAT WENT WRONG. Two sources are concatenated, each with exactly one home:
+//
+//   record.standing      — stored, because no field states it (which BMC channels failed, whether the
+//                          per-attempt credential was removed).
+//   derived from fields  — computed here, never stored: a not-ready attach is what `media` says, a
+//                          withheld / refused / unconfirmed handoff is what `handoff_media` says, an
+//                          override still pending is what `override` says, a powered-off run with no
+//                          terminal marker is what `power_after` and `terminal` say together.
+//
+// Review 81154: these used to be APPENDED to a stored `findings` list, so a caller could store one of
+// them and have it reported twice, or store one its own fields contradict. Narrowing the stored field
+// to `StandingFinding` makes both unwritable rather than merely wrong -- §5's construction over
+// validation, and the same correction the stored `ready` boolean already got.
+
+fn run_record_findings(record: BootRunRecord) -> RunRecordFindings {
+  RunRecordFindings {
+    standing: record.standing,
+    derived: run_record_derived_findings(record: record),
+  }
+}
+
+// The seven classifications, read out of the record's own fields. Split out so a witness can assert a
+// single derived finding without also having to assert the standing list the caller supplied.
+fn run_record_derived_findings(record: BootRunRecord) -> List<DerivedFinding> {
+  // An attach that was never attempted is not a not-ready attach, and a medium served only under our
+  // own closing session is a different fact from one the controller refused to serve: the three are the
+  // harness's own three arms (media_attach_harness), restated here from the fields the record holds.
+  // This is the ONE match on BootPresentation that classifies, beside presentation_text which renders.
+  // A readiness predicate used to sit here too (media_attach_ready), answering "can this boot proceed"
+  // by folding session-held and not-served together -- the same fold the stored `ready` boolean got in
+  // correction 2, and it had no caller, so both are gone: a finding must keep those arms apart, and a
+  // consumer that wants to proceed asks the arms rather than a Bool that flattens them (review 81263 F1,
+  // ctrl's predicate-dissolution rule).
+  let attach = match record.media {
+    MediaAttachNotAttempted { reason: _ } => []
+    MediaAttachAttempted {
+      medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, presentation: p
+    } =>
+      match p {
+        Presented => []
+        PresentationNotServed { reason: _ } => [MediaAttachNotReady { record: record.media }]
+        PresentationSessionHeld { detail: _ } => [MediaAttachSessionHeld { record: record.media }]
+        // The read never answered, so neither "not ready" nor "session held" is known; the record's own
+        // presentation field already says that, and a finding repeating it would be a second home for it.
+        PresentationUnread { reason: _ } => []
+      }
+  }
+  let handoff =
+    match record.handoff_media {
+      HandoffMediaNotReached { reason: _ } => []
+      HandoffMediaWithheldAtRecheck { reason: _ } => [HandoffWithheldAtRecheck { handoff: record.handoff_media }]
+      // The call result and the after-look are two separate facts of one record, and the harness raises
+      // a finding for each: an unconfirmed (or refused) call, and a medium still being served after the
+      // handoff. Both are read from the fields here, so a record cannot state one and omit the other.
+      HandoffMediaAttempted { handoff: h, after: a } =>
+        (match h {
+           HandoffConfirmed => []
+           HandoffAttemptedUnconfirmed { reason: _ } => [HandoffUnconfirmed { handoff: record.handoff_media }]
+         })
+        + (match a { Presented => []  _ => [PresentationAfterHandoff { presentation: a }] })
+    }
+  let override =
+    match record.override {
+      OverrideConsumedByAttempt => []
+      OverrideNoLongerPendingAfterAttempt => []
+      OverridePendingBeforeAttempt => [OverrideNotConsumed { consumption: record.override }]
+      OverrideStillPendingAfterAttempt => [OverrideNotConsumed { consumption: record.override }]
+      OverrideNotHandedOff { reason: _ } => []
+      OverrideConsumptionUnread { reason: _ } => []
+    }
+  let power =
+    match record.power_after {
+      PoweredOffWithoutTerminal => [PoweredOffWithoutTerminalMarker]
+      _ => []
+    }
+  attach + handoff + override + power
+}
+
+// THE RUN RECORD, RENDERED. The run section's text, one line per classification, in the order the
+// harness reads it.
+
+
+// ── THE NEUTRAL BUDGET (correction 5: only the publish allowance is core; the Redfish
+// read budgets belong to the adapter; the console bound moved with its block to
+// gunbc.host.boot_console_observation console_bound) ─────────────────────────────
+// The allowance for the medium publish (the time the medium image is written to the medium before the
+// attach is read back as served). A policy bound, not a mtcollins1 measurement. It carries its unit in
+// its type -- the same carrier the row's `publish_allowance` field and the moved `console_bound`
+// (gunbc.host.boot_console_observation) use -- so a second cannot be mistaken for a millisecond or a count at any consumer. A row that runs
+// with this default adopts it; the value has one authority (review 81074).
+
+data publish_allowance: Second = second(count: 60)
+
+
+// THE DEBT, ON A CARRIER A PROGRAM CAN READ (review 81187, DESIGN §5: "a dissolution condition
+// describes how admitted debt ends; it does not authorize creating it"). The header paragraph says in
+// prose what this row says in data, and the prose is not what the debt is tracked by: this is a
+// DissolutionCondition, so std.dissolution answers "is the console debt still live?" from the
+// declaration census without anyone rereading a comment.
+//
+// THE SHAPE IS DELIBERATE: a retirement trigger, not a forward one. The forward shape would name
+// gunbc.host.boot_console_observation as where the declarations live -- and while that re-home was only
+// planned, naming it would have been a promise about a name someone may still choose not to use, the
+// fabricated-citation class a runner spec refuses by name (std.dissolution's header says the same, and
+// says the retirement trigger was missing for want of an author, not for want of a reason). A
+// retirement trigger instead names where a declaration was DECLARED when the debt was admitted, so the
+// condition is verifiable: THE DEBT IS NOW DISCHARGED. The re-home landed (4d-ii,
+// node://adhoc-18598508-4f4) -- ConsoleReading is no longer declared here, the two machine-named modules
+// no longer declare the five borrowings, and every successor is declared at
+// gunbc.host.boot_console_observation -- so the census lacks all six items and the fold below reads
+// DissolutionFired. The refs list keeps naming the RETIRED homes on purpose: that is what a retirement
+// trigger is, and deleting it would erase the debt's history rather than discharge it (a discharged
+// debt still says what was paid).
+data boot_attempt_console_reading_decl_ref: DeclarationRef = decl_ref(
+  module_path: "gunbc.host.boot_attempt",
+  decl_name: "ConsoleReading",
+)
+
+// THE WHOLE DEBT, AS DATA (reviews 81263 F3, 85810): SIX declarations, ONE population -- all RETIRED.
+// Five were borrowed from two machine-named modules (gunbc.machine_intake.mtcollins1_power_on_account
+// and gunbc.machine_intake.mtcollins1_console_milestone_observation) and one was the local
+// ConsoleReading the split retires; the 4d-ii re-home retired all six into
+// gunbc.host.boot_console_observation. Naming only ConsoleReading (as the carrier did first)
+// under-reported the debt -- and a carrier whose status question reads only part of the population is
+// the same fact with two answers, the exact shape review 85810 rejected. So the status fold below reads
+// THIS list and nothing else (single source): the debt is discharged when the census lacks every item,
+// and which specific borrowing is left is readable without anyone rereading a comment. Today the census
+// lacks every item, so the fold answers Fired.
+data boot_attempt_console_debt_refs: List<DeclarationRef> = [
+  boot_attempt_console_reading_decl_ref,
+  decl_ref(module_path: "gunbc.machine_intake.mtcollins1_power_on_account", decl_name: "SpanConsoleReading"),
+  decl_ref(module_path: "gunbc.machine_intake.mtcollins1_power_on_account", decl_name: "span_console_readings"),
+  decl_ref(
+    module_path: "gunbc.machine_intake.mtcollins1_console_milestone_observation",
+    decl_name: "ConsoleMilestoneObservation",
+  ),
+  decl_ref(
+    module_path: "gunbc.machine_intake.mtcollins1_console_milestone_observation",
+    decl_name: "mtcollins1_console_milestones",
+  ),
+  decl_ref(
+    module_path: "gunbc.machine_intake.mtcollins1_console_milestone_observation",
+    decl_name: "console_milestone_sighting_text",
+  ),
+]
+
+fn boot_attempt_console_debt_condition(ref: DeclarationRef) -> DissolutionCondition {
+  retires_dissolution(ref: ref)
+}
+
+// WHICH BORROWINGS ARE STILL LIVE, given the declaration census. An empty answer is the debt being gone.
+fn boot_attempt_console_debt_outstanding(present_decls: List<DeclarationRef>) -> List<DeclarationRef> {
+  filter(boot_attempt_console_debt_refs, ref => match dissolution_status(
+    condition: boot_attempt_console_debt_condition(ref: ref),
+    present_decls: present_decls,
+  ) {
+    DissolutionPending => true
+    DissolutionFired => false
+    // Unbound (only reachable for an UnboundDissolution condition, which none of these are) counts as
+    // OUTSTANDING: a condition nobody wired up is not evidence the debt is gone. Failing closed here means
+    // a mistyped carrier keeps the debt visible instead of silently discharging it (§5, "a failure arm
+    // refuses, never widens").
+    DissolutionUnbound => true
+  })
+}
+
+// THE ONE QUESTION THE CARRIER ANSWERS, as a FOLD over the outstanding list (review 85810): the debt is
+// discharged exactly when nothing borrowed is still present, so "is it gone?" has ONE source -- the
+// outstanding fold -- and cannot disagree with it. An answer keyed to one declaration only (as the first
+// carrier did, naming ConsoleReading while five mtcollins1_ borrowings sat beside it) is the same fact
+// with two writers, which is exactly what this fold removes. CONSUMERS today: the mapping witness
+// (megarac_boot_record_mapping_witness) -- claims (b)/(c)/(c2) exercise the fold's LOGIC on a census the
+// witness assembles, and claim (d) feeds it a population BUILT FROM A CORPUS READ (v2.std.decl_index
+// decl_facts_at), which is what review 86612 required: a fold nobody hands the real corpus to is a lens
+// nothing gates on (§6). At dissolution, the re-home that retires these six declarations (work item
+// node://adhoc-de73c7a1-87b) flips this to Fired by making the census lack them -- no other code path may
+// assert the debt is gone. CAVEAT carried from std.dissolution's header:
+// an empty census reports FIRED, which is "nothing is present" and not a default -- a caller must hand
+// over the real declaration population or it is answering about a corpus it never read.
+fn boot_attempt_console_debt_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {
+  if length(xs: boot_attempt_console_debt_outstanding(present_decls: present_decls)) == 0 {
+    DissolutionFired
+  } else {
+    DissolutionPending
+  }
+}

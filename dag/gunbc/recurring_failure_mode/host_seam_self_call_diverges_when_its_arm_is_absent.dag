@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.host_seam_self_call_diverges_when_its_arm_is
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data host_seam_self_call_diverges_when_its_arm_is_absent: RecurringFailureMode = RecurringFailureMode {
   identity: "host_seam_self_call_diverges_when_its_arm_is_absent" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**a host-realized seam whose body calls its own name diverges instead of refusing when its interpreter arm is absent** INVALID STATE: a `.dag` declaration whose whole body is an application of the declaration's own name, with its own parameters forwarded at the same arity, MEANS `realized by the host` and READS as ordinary recursion. The meaning lives only in a dispatch arm the running binary may or may not carry (`gunbc.v1.v1_interpreter_primitive_surface` `v1_interpreter_primitive_arms`, realized as spelling matches in `v1.compiler.interpreter` ahead of user-fn resolution). When the binary carries no arm for the spelling, the name resolves to the declaration and the call recurses until `CALL_DEPTH_LIMIT`; nothing anywhere on that path knows a seam was reached.",

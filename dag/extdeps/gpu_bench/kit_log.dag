@@ -1,0 +1,89 @@
+module extdeps.gpu_bench.kit_log
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, token_count_value }
+import std.prefixed_line { prefixed_line_last_space_nat, PrefixedLineMiss, PrefixedLineNatUnreadable, PrefixedLineNat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.gpu_bench.request_v2 { extdeps_external_authority_anchor }
+
+// THE GPU-BENCH KIT'S PROCESS LOG, not the per-request JSONL and not a ninfer metric.
+// CAPACITY_OK <n> is printed by the kit when it records measured KV tokens. Independently
+// versioned with the kit on srv2:~/gpu-bench; the kit commit lives once on
+// extdeps.gpu_bench.request_v2.extdeps_external_authority_anchor.
+// A candidate line STARTS WITH the marker prefix (same prefixed-line Nat crossing as ninfer).
+
+data gpu_bench_capacity_ok_marker: NonEmptyStr = "CAPACITY_OK" as NonEmptyStr
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.gpu_bench.kit_log",
+      decl_name: "gpu_bench_capacity_ok_marker",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data gpu_bench_capacity_ok_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+type GpuBenchCapacityOkRead
+  = CapacityOkRead { tokens: TokenCount }
+  | CapacityOkAbsent
+  | CapacityOkMalformed { cause: NonEmptyStr }
+
+fn gpu_bench_capacity_ok_line_prefix() -> String {
+  join([gpu_bench_capacity_ok_marker as String, " "], "")
+}
+
+fn gpu_bench_capacity_ok_from_line(line: String) -> GpuBenchCapacityOkRead? {
+  match prefixed_line_last_space_nat(line: line, prefix: gpu_bench_capacity_ok_line_prefix()) {
+    PrefixedLineMiss => none
+    PrefixedLineNatUnreadable => Present {
+      value: CapacityOkMalformed {
+        cause: join([gpu_bench_capacity_ok_marker as String, " last token is not a natural"], "") as NonEmptyStr
+      }
+    }
+    PrefixedLineNat { value: cap } => Present { value: CapacityOkRead { tokens: token_count(count: cap) } }
+  }
+}
+
+fn gpu_bench_capacity_ok_tokens(log: String) -> GpuBenchCapacityOkRead {
+  if log == "" {
+    CapacityOkAbsent
+  } else {
+    fold(split(s: log, delimiter: "\n"), init: CapacityOkAbsent, f: fn(acc, line) {
+      match acc {
+        CapacityOkMalformed { cause: c } => CapacityOkMalformed { cause: c }
+        CapacityOkAbsent =>
+          match gpu_bench_capacity_ok_from_line(line: line) {
+            Absent => CapacityOkAbsent
+            Present { value: next } => next
+          }
+        CapacityOkRead { tokens: t } =>
+          match gpu_bench_capacity_ok_from_line(line: line) {
+            Absent => CapacityOkRead { tokens: t }
+            Present { value: next } =>
+              match next {
+                CapacityOkMalformed { cause: c } => CapacityOkMalformed { cause: c }
+                CapacityOkAbsent => CapacityOkRead { tokens: t }
+                CapacityOkRead { tokens: n } =>
+                  if token_count_value(t: t) == token_count_value(t: n) {
+                    CapacityOkRead { tokens: t }
+                  } else {
+                    CapacityOkMalformed {
+                      cause: join([gpu_bench_capacity_ok_marker as String, " snapshots disagree"], "") as NonEmptyStr
+                    }
+                  }
+              }
+          }
+      }
+    })
+  }
+}

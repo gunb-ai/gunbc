@@ -1,0 +1,172 @@
+module gunbc.runner.runner_revision_job_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.measure { measure_count }
+import std.content_hash { serialize_content_hash }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
+import extdeps.bazel.label { render_label }
+import extdeps.git.object_store { git_object_id_wire_hex }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, json_object, json_array, json_kv, json_string, json_int, serialize_json }
+import product.fabric.execution { Receipt, ExecutionReceipt }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.runner.runner_claim_set_results { ClaimSetResult }
+import gunbc.target_invocation { claim_route_verdict_exit }
+import gunbc.runner.runner_revision_job_stage { RevisionJobInputDigests }
+import gunbc.runner.runner_revision_job_spec {
+  RevisionJobSpec, RevisionJobProvenance, RevisionJobStanding, RevisionJobAllHeld, RevisionJobSomeNotHeld,
+  RevisionJobSomeUnobserved, revision_job_standing,
+}
+
+// THE REVISION JOB'S IMMUTABLE RECEIPT, AND WHERE A READER FINDS IT.
+//
+// One JSON document naming everything the result depends on and everything it says: the subject
+// (repository, commit, tree, claims in order), the submitter's provenance exactly as submitted, the
+// input digests the job ran on (tree, lockfile, cargo identity, vendor set), the fabric Receipt the
+// cell was settled with (its key, attempt, lease and billable seconds), each claim's exit, and the
+// job's standing (gunbc.runner.runner_revision_job_spec RevisionJobStanding: all held / some did not
+// hold / some unobserved -- only the first qualifies).
+//
+// PUBLICATION IS CONTENT-ADDRESSED AND CREATE-ONLY. The document is written to a staging name, its
+// SHA-256 read back with sha256sum, and linked create-only to receipts/<sha256>.json, so an address
+// names exactly its bytes and nothing can replace them. A reader finds the receipts for a commit
+// through an APPEND-ONLY index: by-commit/<commit>/<sha256>, each entry created once and holding the
+// receipt's address -- an observation record, never a mutable "latest". Publishing the same receipt
+// twice finds both names already present and reads as already published, not as a failure.
+
+// DECLARED FRONTIER (DESIGN 3c): consumed by the revision-job entry (gunbc.runner.runner_revision_job_main,
+// S4b-3b), which runs one job from spec to published receipt. TRIGGER: S4b-3b's stand-in inhabitance
+// claim, the light discriminating claim set run end to end over these staged inputs.
+
+type RevisionJobReceiptDocument {
+  spec: RevisionJobSpec
+  inputs: RevisionJobInputDigests
+  receipt: Receipt<NonEmptyStr>
+  results: List<ClaimSetResult>
+}
+
+fn standing_json(s: RevisionJobStanding) -> JsonValue {
+  match s {
+    RevisionJobAllHeld => json_object(members: [json_kv(key: "verdict", value: json_string(s: "all-held")), json_kv(key: "qualifies", value: JsonBool { value: true })])
+    RevisionJobSomeNotHeld { not_held: n } => json_object(members: [
+      json_kv(key: "verdict", value: json_string(s: "some-not-held")), json_kv(key: "qualifies", value: JsonBool { value: false }),
+      json_kv(key: "not_held", value: json_array(elements: map(n, l => json_string(s: l)))),
+    ])
+    RevisionJobSomeUnobserved { unobserved: u, not_held: n } => json_object(members: [
+      json_kv(key: "verdict", value: json_string(s: "some-unobserved")), json_kv(key: "qualifies", value: JsonBool { value: false }),
+      json_kv(key: "unobserved", value: json_array(elements: map(u, l => json_string(s: l)))),
+      json_kv(key: "not_held", value: json_array(elements: map(n, l => json_string(s: l)))),
+    ])
+  }
+}
+
+fn provenance_json(p: RevisionJobProvenance?) -> JsonValue {
+  match p {
+    Absent => JsonNull
+    Present { value: v } => json_object(members: [
+      json_kv(key: "ref", value: json_string(s: v.ref_name)),
+      json_kv(key: "resolved_commit", value: json_string(s: v.resolved_commit)),
+      json_kv(key: "observed_at", value: json_string(s: v.observed_at)),
+      json_kv(key: "observer", value: json_string(s: v.observer)),
+    ])
+  }
+}
+
+// THE DOCUMENT, OR NOTHING. A revision job is settled with an ExecutionReceipt; a fabric receipt of
+// any other kind (materialization, settlement) does not describe a job run, so it renders no
+// document -- never one with its billable time, outputs or completion left null.
+fn revision_job_receipt_json(d: RevisionJobReceiptDocument) -> String? {
+  match d.receipt.payload {
+    ExecutionReceipt { step_id: _, outputs: o, billable: b, completed_at: t } => Present { value: revision_job_execution_receipt_json(d: d, outputs: json_string(s: serialize_content_hash(hash: o) as String), billable: json_int(n: measure_count(b)), completed_at: json_string(s: t as String)) }
+    _ => none
+  }
+}
+
+fn revision_job_execution_receipt_json(d: RevisionJobReceiptDocument, outputs: JsonValue, billable: JsonValue, completed_at: JsonValue) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "kind", value: json_string(s: "gunbc.revision-job-receipt.v1")),
+    json_kv(key: "subject", value: json_object(members: [
+      json_kv(key: "repository", value: json_string(s: d.spec.repository as String)),
+      json_kv(key: "commit", value: json_string(s: git_object_id_wire_hex(oid: d.spec.commit) as String)),
+      json_kv(key: "tree", value: json_string(s: git_object_id_wire_hex(oid: d.spec.tree) as String)),
+      json_kv(key: "claims", value: json_array(elements: [json_string(s: render_label(l: d.spec.claims.head))] + map(d.spec.claims.tail, l => json_string(s: render_label(l: l))))),
+    ])),
+    json_kv(key: "provenance", value: provenance_json(p: d.spec.provenance)),
+    json_kv(key: "inputs", value: json_object(members: [
+      json_kv(key: "tree", value: json_string(s: d.inputs.tree as String)),
+      json_kv(key: "lockfile", value: json_string(s: serialize_content_hash(hash: d.inputs.lockfile) as String)),
+      json_kv(key: "cargo", value: json_string(s: d.inputs.cargo_identity as String)),
+      json_kv(key: "vendor_set_sha256", value: json_string(s: d.inputs.vendor_set as String)),
+    ])),
+    json_kv(key: "fabric_receipt", value: json_object(members: [
+      json_kv(key: "key", value: json_string(s: d.receipt.id.key as String)),
+      json_kv(key: "attempt", value: json_string(s: d.receipt.attempt.key as String)),
+      json_kv(key: "cell", value: json_string(s: d.receipt.lease.lease_key as String)),
+      json_kv(key: "generation", value: json_int(n: d.receipt.lease.generation)),
+      json_kv(key: "outputs", value: outputs),
+      json_kv(key: "billable_seconds", value: billable),
+      json_kv(key: "completed_at", value: completed_at),
+    ])),
+    json_kv(key: "results", value: json_array(elements: map(d.results, r => json_object(members: [
+      json_kv(key: "claim", value: json_string(s: r.label as String)),
+      json_kv(key: "exit", value: json_int(n: claim_route_verdict_exit(v: r.verdict))),
+    ])))),
+    json_kv(key: "standing", value: standing_json(s: revision_job_standing(results: d.results))),
+  ]))
+}
+
+type RevisionJobPublication
+  = RevisionJobPublished { address: NonEmptyStr, index_entry: String }
+  | RevisionJobAlreadyPublished { address: NonEmptyStr }
+  | RevisionJobPublicationRefused { step: NonEmptyStr, detail: String }
+
+fn publish_revision_job_receipt(store_root: String, staging_path: String, d: RevisionJobReceiptDocument) -> RevisionJobPublication {
+  match revision_job_receipt_json(d: d) {
+  Absent => RevisionJobPublicationRefused { step: "receipt-payload", detail: "the fabric receipt is not an ExecutionReceipt, so it describes no job run" }
+  Present { value: body } => {
+  let commit = git_object_id_wire_hex(oid: d.spec.commit) as String
+  let staged = Filesystem.WriteCreateNew(path: staging_path, content: body)
+  if !staged.success { RevisionJobPublicationRefused { step: "write-staging", detail: staged.error } }
+  else { match run_shell_command_capture(command: sha256sum_file_command(path: staging_path), transport: LocalExec) {
+    ProcessRefused { exit_code: _, stderr: e } => RevisionJobPublicationRefused { step: "sha256", detail: e }
+    ProcessOutputAbsent => RevisionJobPublicationRefused { step: "sha256", detail: "sha256sum printed nothing" }
+    ProcessOutputPresent { text: line } => match sha256sum_line_digest(line: line) {
+      Absent => RevisionJobPublicationRefused { step: "sha256", detail: line }
+      Present { value: digest } => {
+        let address = digest.hex as String
+        let receipt_path = join([store_root, "/receipts/", address, ".json"], "")
+        let index_dir = join([store_root, "/by-commit/", commit], "")
+        let index_entry = join([index_dir, "/", address], "")
+        let dirs_ok = match run_shell_command_capture(command: mkdir_parents_command(path: concat(store_root, "/receipts")), transport: LocalExec) {
+          ProcessRefused { exit_code: _, stderr: _ } => false
+          _ => match run_shell_command_capture(command: mkdir_parents_command(path: index_dir), transport: LocalExec) {
+            ProcessRefused { exit_code: _, stderr: _ } => false
+            _ => true
+          }
+        }
+        if !dirs_ok { RevisionJobPublicationRefused { step: "mkdir", detail: store_root } }
+        else {
+          // THE RECEIPT FIRST, THE INDEX ONLY OVER A GOOD RECEIPT: the index entry is written only once
+          // the address holds exactly these bytes (newly linked, or already present and equal), so a
+          // refusal never leaves an index entry naming a publication the caller was told failed.
+          let linked = Filesystem.LinkCreateNew(source: staging_path, path: receipt_path)
+          if !linked.success && Filesystem.Read(path: receipt_path).content != body {
+            RevisionJobPublicationRefused { step: "link-receipt", detail: linked.error }
+          } else {
+            let indexed = Filesystem.WriteCreateNew(path: index_entry, content: concat(receipt_path, "\n"))
+            if indexed.success { RevisionJobPublished { address: address as NonEmptyStr, index_entry: index_entry } }
+            else if Filesystem.Read(path: index_entry).content == concat(receipt_path, "\n") { RevisionJobAlreadyPublished { address: address as NonEmptyStr } }
+            else { RevisionJobPublicationRefused { step: "index-entry", detail: indexed.error } }
+          }
+        }
+      }
+    }
+  } }
+  }
+  }
+}

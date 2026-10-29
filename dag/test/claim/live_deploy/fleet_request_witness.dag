@@ -118,6 +118,10 @@ fn desired_for(m: ConvergedMember) -> MemberIdentity {
     ServiceProcess => desired_process()
     DirectoryRoot { path: _ } => desired_bin()
     OidcConfigFile => desired_bin()
+    // WORKER-ROOT-EQUIVALENT-3: dedicated-worker members, never in this witness's release roster --
+    // total-and-unreached, like the DirectoryRoot/OidcConfigFile rows it sits beside.
+    GitWorkerSubtree { path: _, child: _ } => desired_bin()
+    RepositorySharedPosture { path: _ } => desired_bin()
   }
 }
 
@@ -130,6 +134,8 @@ fn desired_for_unit(unit: NonEmptyStr, m: ConvergedMember) -> MemberIdentity {
     ServiceProcess => desired_process()
     DirectoryRoot { path: _ } => desired_bin()
     OidcConfigFile => desired_bin()
+    GitWorkerSubtree { path: _, child: _ } => desired_bin()
+    RepositorySharedPosture { path: _ } => desired_bin()
   }
 }
 
@@ -371,7 +377,9 @@ test fn the_plan_fold_consumes_live_deploy_converge_without_emitting_host_effect
     LiveDeployFleetRequestAdmitted { desired, basis } => {
       let req = live_deploy_converge_request(desired: desired, basis: basis)
       let subject = fleet_converge_plan_subject(request: req)
-      let artifact = fleet_converge_plan_artifact_of_request(request: req, prior_generation: 0)
+      match fleet_converge_plan_artifact_of_request(request: req, prior_generation: 0) {
+        Absent => false
+        Present { value: artifact } => {
       let shell = fleet_converge_apply_shell(
         request: req,
         terminal: fleet_converge_apply_terminal(request: req),
@@ -398,6 +406,8 @@ test fn the_plan_fold_consumes_live_deploy_converge_without_emitting_host_effect
           }
         AwaitingCapability { capability: _ } => false
         _ => false
+      }
+        }
       }
     }
     _ => false
@@ -517,7 +527,9 @@ test fn a_nonempty_live_deploy_plan_awaits_c8_and_cannot_report_fully_applied() 
     LiveDeployFleetRequestAdmitted { desired, basis } => {
       let req = live_deploy_converge_request(desired: desired, basis: basis)
       let subject = fleet_converge_plan_subject(request: req)
-      let artifact = fleet_converge_plan_artifact_of_request(request: req, prior_generation: 0)
+      match fleet_converge_plan_artifact_of_request(request: req, prior_generation: 0) {
+        Absent => false
+        Present { value: artifact } => {
       let from_id = member_identity_wire(i: ExecutableIdentity { digest: bin_b() })
       let to_id = member_identity_wire(i: ExecutableIdentity { digest: bin_a() })
       plan_mutation_count(plan: basis.effects) > 0
@@ -543,6 +555,8 @@ test fn a_nonempty_live_deploy_plan_awaits_c8_and_cannot_report_fully_applied() 
           _ => false
         })
         && count(fleet_converge_apply_shell_axis_lines(request: req)) == 0
+        }
+      }
     }
     _ => false
   }

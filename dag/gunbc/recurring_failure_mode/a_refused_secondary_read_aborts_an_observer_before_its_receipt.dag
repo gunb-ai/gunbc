@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_refused_secondary_read_aborts_an_observer_before_its_receipt
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_refused_secondary_read_aborts_an_observer_before_its_receipt: RecurringFailureMode = RecurringFailureMode {
   identity: "a_refused_secondary_read_aborts_an_observer_before_its_receipt" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a refused secondary read aborts an observer before its receipt** (an observer that reads several independent facts writes its receipt only from the conjunction of all of them, so one later read refusing throws away the earlier facts it had already established, and the run leaves no record of what it did observe).",

@@ -1,0 +1,85 @@
+module gunbc.rung_climb
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import gunbc.dashboard_node_uri { dashboard_node_uri_scheme, text_spells_a_dashboard_node_uri }
+
+// THE REFERENT-FREE CORE OF A DESIGN section 4b(2) NEXT-RUNG TRIGGER, shared by every carrier that
+// says why a class sits below its ceiling: gunbc.guarantee_stall (a standing stall, whose trigger
+// additionally carries the lifecycle referents it asked to deliver) and
+// gunbc.recurring_failure_mode (a ledger row). The capability a trigger names is a fact about the
+// climb; `awaiting` is a separate fact about who was asked, and a lifecycle referent reaches
+// roadmap_model and extdeps.github. A reader of rungs should not import that closure (section 3,
+// transitive reach), so the blocker and the capability wall live here and guarantee_stall composes
+// them with `awaiting` -- the types are re-used, never mirrored. The rung itself is
+// gunbc.guarantee_rung.
+
+// WHY A CLASS IS BELOW ITS CEILING, section 4b(2): the two cases that can still climb. The third
+// case section 4b(2) names, "cannot climb further", has NO CONSTRUCTOR HERE ON PURPOSE: the ceiling
+// is the attainable one (DESIGN section 4b), so a class that cannot climb stands AT its ceiling and
+// says why in AtCeiling.ceiling_reason (gunbc.recurring_failure_mode RungStanding). Every carrier
+// that takes this type is therefore below its ceiling by construction and cannot be handed the
+// contradiction; test.claim.rung_climb_witness enrols that as a RED the compiler must refuse.
+// AwaitsOneGrounding carries the authority it waits on: a stall that cannot name what it is
+// waiting for is not waiting, it is unbuilt, and the two rank differently for work.
+//
+// THE CAPABILITY LIVES IN ONE PLACE, THE TRIGGER (section 4b: the trigger names the capability
+// restored). The blocker therefore carries only a TYPED REFERENCE to the awaited authority, never a
+// second prose statement of the same capability: two texts for one climb were two answers that
+// could disagree, and 34 rows had already diverged.
+type GroundingAuthority
+  = GroundingDeclared { reference: DeclarationRef }
+  | GroundingUndeclared
+
+type ClimbBlocker
+  = AwaitsOneGrounding { grounding: GroundingAuthority }
+  | ClimbableButUnbuilt
+
+fn grounding_authority_label(g: GroundingAuthority) -> String {
+  match g {
+    GroundingDeclared { reference: r } => declaration_ref_display_key(ref: r)
+    GroundingUndeclared => "the trigger capability, not yet declared"
+  }
+}
+
+fn climb_blocker_label(b: ClimbBlocker) -> String {
+  match b {
+    AwaitsOneGrounding { grounding: g } => concat("awaits one grounding: ", grounding_authority_label(g: g))
+    ClimbableButUnbuilt => "climbable now but unbuilt"
+  }
+}
+
+// THE SECOND WALL OVER THE SAME FIELD, AND IT IS A DIFFERENT SUBJECT FROM THE FIRST. 4b(2) asks
+// whether a trigger was NAMED; this asks whether what was named is a capability rather than a
+// lifecycle-bounded referent's ending. A row can satisfy the first and fail this one, which is the
+// state every migrated row here was in.
+type TriggerAdmission
+  = TriggerAdmitted
+  | TriggerCapabilityEmpty { subject: String }
+  | TriggerCapabilitySpellsAReferent { subject: String, scheme: String }
+
+// The wall over a bare capability string; guarantee_stall's wall over a NextRungTrigger delegates here.
+fn trigger_capability_admission(subject: String, capability: String) -> TriggerAdmission {
+  if capability == "" {
+    TriggerCapabilityEmpty { subject: subject }
+  } else {
+    if text_spells_a_dashboard_node_uri(text: capability) {
+      TriggerCapabilitySpellsAReferent { subject: subject, scheme: dashboard_node_uri_scheme }
+    } else {
+      TriggerAdmitted
+    }
+  }
+}
+
+fn trigger_admission_label(a: TriggerAdmission) -> String {
+  match a {
+    TriggerAdmitted => "admitted"
+    TriggerCapabilityEmpty { subject: subj } => concat("untracked stall, no trigger named: ", subj)
+    TriggerCapabilitySpellsAReferent { subject: subj, scheme: sch } =>
+      concat(
+        concat("trigger rests on a lifecycle-bounded referent spelled into its capability (", sch),
+        concat("): ", subj),
+      )
+  }
+}
+

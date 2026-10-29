@@ -347,7 +347,7 @@ pub fn octets_bytes(o: Rc<Vec<i64>>) -> Vec<u8> {
 
 /// std.error_primitives pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved
 /// unreachable was evaluated, and then it diverges, as the interpreter's arm refuses.
-pub fn pure_dag_seam_unreachable() -> i64 {
+pub fn pure_dag_seam_unreachable() -> ! {
     panic!("std.error_primitives pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated")
 }
 
@@ -371,6 +371,13 @@ pub fn substring(s: &str, start: i64, end: i64) -> String {
     let take_len = end.saturating_sub(start);
     record_substring_chars_walked(s, start, take_len);
     s.chars().skip(start).take(take_len).collect()
+}
+
+// std.host_text chars: the Unicode scalar values of host text, in source order. A Rust `char`
+// is exactly one Unicode scalar value, so `str::chars` is the declared semantics, not an
+// approximation of it (never bytes, graphemes or UTF-16 code units).
+pub fn chars(text: &str) -> Rc<Vec<i64>> {
+    Rc::new(text.chars().map(|c| c as i64).collect())
 }
 
 pub fn string_contains(s: &str, sub: String) -> bool {
@@ -759,8 +766,32 @@ pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
     m.values().cloned().collect()
 }
 
+// ONE APPEND RULE FOR BOTH ENTRY POINTS (list_concat and rc_list_concat; #14997 found the second one
+// still on the plain append). An empty right side is the identity and an empty left takes the right
+// side whole, so neither copies an element. A right side of at most LIST_CONCAT_ELEMENTWISE_MAX members
+// is moved in one push at a time: im Vector append onto a growing left is superlinear for small right
+// sides (gunbc.recurring_failure_mode non_empty_append_on_a_persistent_vector_is_superlinear; the
+// threshold is a one-off bench crossover receipted there, and append_chain_ladder checks linearity at 8
+// elements). Above it, append keeps its sub-linear join. The right side is consumed, never cloned.
+pub const LIST_CONCAT_ELEMENTWISE_MAX: usize = 4096;
+
+pub fn append_persistent<T: Clone>(a: &mut Vec<T>, b: Vec<T>) {
+    if b.is_empty() {
+        return;
+    }
+    if a.is_empty() {
+        *a = b;
+        return;
+    }
+    if b.len() <= LIST_CONCAT_ELEMENTWISE_MAX {
+        a.extend(b);
+    } else {
+        a.append(b);
+    }
+}
+
 pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
-    a.append(b);
+    append_persistent(&mut a, b);
     a
 }
 
@@ -879,6 +910,72 @@ mod list_slice_tests {
             assert_eq!(list_take(&xs, n), copying_take, "take {}", n);
         }
     }
+
+    // From #14997 (calm-ferret-416): every shape of both entry points agrees with plain extension,
+    // including both sides of LIST_CONCAT_ELEMENTWISE_MAX.
+    #[test]
+    fn append_agrees_with_extension_for_every_shape() {
+        for (l, r) in [
+            (0usize, 0usize),
+            (0, 1),
+            (0, 5),
+            (5, 0),
+            (5, 1),
+            (5, 2),
+            (7, 3000),
+            (3000, 1),
+            (9, LIST_CONCAT_ELEMENTWISE_MAX),
+            (9, LIST_CONCAT_ELEMENTWISE_MAX + 1),
+        ] {
+            let a: Vec<i64> = (0..l as i64).collect();
+            let b: Vec<i64> = (100..100 + r as i64).collect();
+            let want: std::vec::Vec<i64> = a.iter().chain(b.iter()).cloned().collect();
+            let bare = list_concat(a.clone(), b.clone());
+            assert_eq!(
+                bare.iter().cloned().collect::<std::vec::Vec<_>>(),
+                want,
+                "bare {} {}",
+                l,
+                r
+            );
+            let rc = rc_list_concat(Rc::new(a), Rc::new(b));
+            assert_eq!(
+                rc.iter().cloned().collect::<std::vec::Vec<_>>(),
+                want,
+                "rc {} {}",
+                l,
+                r
+            );
+        }
+    }
+
+    // THE RED CONTROL FOR THE IDENTITY ARMS (#14997): an empty left takes the right side whole and an
+    // empty right side is the identity, so neither copies an element; walking and cloning the right
+    // side (the arm this replaced) counts one clone per member.
+    #[test]
+    fn an_empty_side_copies_no_element() {
+        let cps = non_ascii_code_points(50);
+        let (_, left_empty) = clones_during(|| list_concat(Vec::new(), cps.clone()));
+        assert_eq!(left_empty, 0);
+        let (_, right_empty) = clones_during(|| list_concat(cps.clone(), Vec::new()));
+        assert_eq!(right_empty, 0);
+        let rc = Rc::new(cps);
+        let (_, rc_left_empty) = clones_during(|| rc_list_concat(Rc::new(Vec::new()), rc.clone()));
+        assert_eq!(rc_left_empty, 0);
+        let (_, rc_right_empty) = clones_during(|| rc_list_concat(rc.clone(), Rc::new(Vec::new())));
+        assert_eq!(rc_right_empty, 0);
+    }
+
+    // THE RED CONTROL FOR THE CONSUMING ARM: a uniquely held right side under the threshold is moved
+    // into the left, so no member is cloned; the clone-per-member walk this replaced counts 50.
+    #[test]
+    fn a_uniquely_held_right_side_is_moved_not_cloned() {
+        let left = Rc::new(non_ascii_code_points(3));
+        let right = non_ascii_code_points(50);
+        let (out, clones) = clones_during(|| rc_list_concat(left, Rc::new(right)));
+        assert_eq!(out.len(), 53);
+        assert_eq!(clones, 0);
+    }
 }
 
 pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
@@ -973,9 +1070,21 @@ pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
     v
 }
 
+// The Rc entry point of the append rule above: an empty side returns the other Rc untouched, and the
+// right side is unwrapped when uniquely held (else the O(1) persistent clone) so it is moved, not copied.
 pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
+    if b.is_empty() {
+        return a;
+    }
+    if a.is_empty() {
+        return b;
+    }
+    let owned = match Rc::try_unwrap(b) {
+        Ok(v) => v,
+        Err(rc) => (*rc).clone(),
+    };
     let mut result = a;
-    Rc::make_mut(&mut result).append((*b).clone());
+    append_persistent(Rc::make_mut(&mut result), owned);
     result
 }
 
@@ -1219,6 +1328,166 @@ pub fn is_emoji_ident(cp: i64) -> bool {
             ) && !unicode_ident::is_xid_continue(c)
         })
         .unwrap_or(false)
+}
+
+// std.machine_word machine_word_native_operate: bitwise arithmetic on a fixed-width word at the host's
+// own operators. ONE ROW PER OPERATOR LABEL (std.machine_word machine_word_operator_label): a new
+// operation is a new row here and a variant there, never a branch in the lowering. Operands are
+// residues in [0, 2^bits); the second operand of a shift or rotation is an amount in [0, bits); and
+// bits is in 1..=62 because the carrier is an i64 (std.machine_word word_realizable_width). Anything
+// else REFUSES -- no wrapping, masking or clamping substitutes for the operand the caller meant.
+pub enum MachineWordSecond {
+    Operand,
+    Amount,
+    Unused,
+}
+
+pub struct MachineWordOperatorRow {
+    pub label: &'static str,
+    pub second: MachineWordSecond,
+    pub apply: fn(u128, u128, u32) -> u128,
+}
+
+pub const MACHINE_WORD_OPERATOR_ROWS: [MachineWordOperatorRow; 8] = [
+    MachineWordOperatorRow {
+        label: "and",
+        second: MachineWordSecond::Operand,
+        apply: |a, b, _| a & b,
+    },
+    MachineWordOperatorRow {
+        label: "or",
+        second: MachineWordSecond::Operand,
+        apply: |a, b, _| a | b,
+    },
+    MachineWordOperatorRow {
+        label: "xor",
+        second: MachineWordSecond::Operand,
+        apply: |a, b, _| a ^ b,
+    },
+    MachineWordOperatorRow {
+        label: "not",
+        second: MachineWordSecond::Unused,
+        apply: |a, _, bits| ((1u128 << bits) - 1) ^ a,
+    },
+    MachineWordOperatorRow {
+        label: "shift_right",
+        second: MachineWordSecond::Amount,
+        apply: |a, n, _| a >> n,
+    },
+    MachineWordOperatorRow {
+        label: "shift_left",
+        second: MachineWordSecond::Amount,
+        apply: |a, n, bits| (a << n) & ((1u128 << bits) - 1),
+    },
+    MachineWordOperatorRow {
+        label: "rotate_right",
+        second: MachineWordSecond::Amount,
+        apply: |a, n, bits| ((a >> n) | (a << (bits - n as u32))) & ((1u128 << bits) - 1),
+    },
+    MachineWordOperatorRow {
+        label: "add_wrapping",
+        second: MachineWordSecond::Operand,
+        apply: |a, b, bits| (a + b) & ((1u128 << bits) - 1),
+    },
+];
+
+const fn machine_word_same_spelling(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+// Resolved at COMPILE time of the emitted program from the operator LABEL the emitter folded out of
+// std.machine_word machine_word_operator_label at a literal call site, so a label with no row is a
+// build error.
+pub const fn machine_word_row_index(label: &str) -> usize {
+    let mut i = 0;
+    while i < MACHINE_WORD_OPERATOR_ROWS.len() {
+        if machine_word_same_spelling(MACHINE_WORD_OPERATOR_ROWS[i].label, label) {
+            return i;
+        }
+        i += 1;
+    }
+    panic!("std.machine_word: no operator row for this label")
+}
+
+#[inline(always)]
+pub fn machine_word_operate_row(
+    row: &MachineWordOperatorRow,
+    bits: i64,
+    a: i64,
+    b: i64,
+) -> Result<i64, String> {
+    if !(1..=62).contains(&bits) {
+        return Err(format!("std.machine_word machine_word_native_operate: width {} bits is not realizable on an i64 carrier (1..=62)", bits));
+    }
+    let modulus = 1i64 << bits;
+    if a < 0 || a >= modulus {
+        return Err(format!(
+            "std.machine_word machine_word_native_operate: operand {} is outside [0, 2^{})",
+            a, bits
+        ));
+    }
+    match row.second {
+        MachineWordSecond::Operand => {
+            if b < 0 || b >= modulus {
+                return Err(format!(
+                    "std.machine_word machine_word_native_operate: operand {} is outside [0, 2^{})",
+                    b, bits
+                ));
+            }
+        }
+        MachineWordSecond::Amount => {
+            if b < 0 || b >= bits {
+                return Err(format!(
+                    "std.machine_word machine_word_native_operate: amount {} is outside [0, {})",
+                    b, bits
+                ));
+            }
+        }
+        MachineWordSecond::Unused => {}
+    }
+    Ok((row.apply)(a as u128, b as u128, bits as u32) as i64)
+}
+
+pub fn machine_word_native_operate_checked(
+    op: &str,
+    bits: i64,
+    a: i64,
+    b: i64,
+) -> Result<i64, String> {
+    let row = MACHINE_WORD_OPERATOR_ROWS
+        .iter()
+        .find(|row| row.label == op)
+        .ok_or_else(|| {
+            format!(
+                "std.machine_word machine_word_native_operate: no operator row for label {}",
+                op
+            )
+        })?;
+    machine_word_operate_row(row, bits, a, b)
+}
+
+// The literal-call-site realization: the SAME row and the SAME refusals, with the row and the
+// width fixed at compile time so the host operator is inlined. Refusal panics in release too.
+#[inline(always)]
+pub fn machine_word_operate_at<const ROW: usize, const BITS: i64>(a: i64, b: i64) -> i64 {
+    machine_word_operate_row(&MACHINE_WORD_OPERATOR_ROWS[ROW], BITS, a, b)
+        .unwrap_or_else(|refusal| panic!("{}", refusal))
+}
+
+pub fn machine_word_native_operate(op: &str, bits: i64, a: i64, b: i64) -> i64 {
+    machine_word_native_operate_checked(op, bits, a, b)
+        .unwrap_or_else(|refusal| panic!("{}", refusal))
 }
 
 // FreeMonoid host bridge (String = FreeMonoid<Char>) — relocated from v2_std_algebra
@@ -1668,6 +1937,203 @@ pub fn observed_thread_cpu_nanos(_label: String) -> i64 {
     (ts.tv_sec as i64)
         .saturating_mul(1_000_000_000)
         .saturating_add(ts.tv_nsec as i64)
+}
+
+/// THE EMITTED REALIZATION OF std.realization_measurement ObserveAllocationAtSubject.
+///
+/// CountingAllocator is the global allocator of exactly the binaries whose entry `uses`
+/// AllocationCounter (v1.compiler.emit_rust native claim main); no other emitted binary installs it.
+/// It counts allocator OPERATIONS (alloc, alloc_zeroed, realloc) and the bytes they request, both
+/// monotone. It sees no Rc retain and no persistent-collection copy-on-write except as the
+/// allocation it causes. The reads below REFUSE in a process whose allocator is not this one:
+/// zero is a reading, absence is not.
+/// A CountingAllocator carries its OWN counters, so an instance a test builds is isolated from the
+/// process's installed one. The installed instance is the `static` the selected realization declares
+/// (v1.compiler.emit_rust native claim main) and then REGISTERS before any read; availability is
+/// that registration and nothing else -- never a nonzero count, never set in a binary that did not
+/// select this allocator.
+pub struct CountingAllocator {
+    operations: std::sync::atomic::AtomicU64,
+    bytes_requested: std::sync::atomic::AtomicU64,
+}
+
+impl CountingAllocator {
+    pub const fn new() -> Self {
+        CountingAllocator {
+            operations: std::sync::atomic::AtomicU64::new(0),
+            bytes_requested: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    fn counted(&self, bytes: usize) {
+        self.operations
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.bytes_requested
+            .fetch_add(bytes as u64, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+unsafe impl std::alloc::GlobalAlloc for CountingAllocator {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        self.counted(layout.size());
+        std::alloc::System.alloc(layout)
+    }
+    unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
+        self.counted(layout.size());
+        std::alloc::System.alloc_zeroed(layout)
+    }
+    unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, new_size: usize) -> *mut u8 {
+        self.counted(new_size);
+        std::alloc::System.realloc(ptr, layout, new_size)
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+        std::alloc::System.dealloc(ptr, layout)
+    }
+}
+
+pub enum AllocationAxis {
+    Operations,
+    BytesRequested,
+}
+
+/// THE ONE READER. `None` is UNOBSERVABLE -- no counting provider was selected for this process --
+/// and is not a count of zero: a process that never selected the provider still allocates, and a
+/// provider that observed nothing reads `Some(0)`.
+pub fn allocation_reading(
+    provider: Option<&CountingAllocator>,
+    axis: AllocationAxis,
+) -> Option<u64> {
+    let provider = provider?;
+    Some(match axis {
+        AllocationAxis::Operations => provider
+            .operations
+            .load(std::sync::atomic::Ordering::Relaxed),
+        AllocationAxis::BytesRequested => provider
+            .bytes_requested
+            .load(std::sync::atomic::Ordering::Relaxed),
+    })
+}
+
+static REGISTERED_ALLOCATION_PROVIDER: std::sync::atomic::AtomicPtr<CountingAllocator> =
+    std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
+/// The selected realization's own statement that its installed allocator is the counting provider.
+pub fn register_counting_allocator(provider: &'static CountingAllocator) {
+    REGISTERED_ALLOCATION_PROVIDER.store(
+        provider as *const CountingAllocator as *mut CountingAllocator,
+        std::sync::atomic::Ordering::Release,
+    );
+}
+
+fn registered_allocation_provider() -> Option<&'static CountingAllocator> {
+    let registered = REGISTERED_ALLOCATION_PROVIDER.load(std::sync::atomic::Ordering::Acquire);
+    // SAFETY: register_counting_allocator is the only store and it stores a 'static reference.
+    unsafe { registered.as_ref() }
+}
+
+fn allocation_counter_read(axis: AllocationAxis, name: &str) -> i64 {
+    match allocation_reading(registered_allocation_provider(), axis) {
+        Some(n) => {
+            if n > i64::MAX as u64 {
+                i64::MAX
+            } else {
+                n as i64
+            }
+        }
+        None => {
+            eprintln!("REFUSED: {} is unobservable: this process did not select the counting allocator (its entry does not use AllocationCounter)", name);
+            std::process::exit(2);
+        }
+    }
+}
+
+pub fn observed_allocation_available(_label: String) -> bool {
+    registered_allocation_provider().is_some()
+}
+
+pub fn observed_allocation_operations(_label: String) -> i64 {
+    allocation_counter_read(AllocationAxis::Operations, "allocation operations")
+}
+
+pub fn observed_allocation_bytes(_label: String) -> i64 {
+    allocation_counter_read(AllocationAxis::BytesRequested, "allocation bytes")
+}
+
+#[cfg(test)]
+mod counting_allocator_tests {
+    use super::*;
+    use std::alloc::{GlobalAlloc, Layout};
+
+    fn reading(a: &CountingAllocator) -> (u64, u64) {
+        (
+            allocation_reading(Some(a), AllocationAxis::Operations).unwrap(),
+            allocation_reading(Some(a), AllocationAxis::BytesRequested).unwrap(),
+        )
+    }
+
+    #[test]
+    fn alloc_counts_one_operation_and_its_requested_bytes() {
+        let a = CountingAllocator::new();
+        let layout = Layout::from_size_align(32, 8).unwrap();
+        let p = unsafe { a.alloc(layout) };
+        assert!(!p.is_null());
+        assert_eq!(reading(&a), (1, 32));
+        unsafe { a.dealloc(p, layout) };
+    }
+
+    #[test]
+    fn alloc_zeroed_counts_one_operation_and_its_requested_bytes() {
+        let a = CountingAllocator::new();
+        let layout = Layout::from_size_align(64, 8).unwrap();
+        let p = unsafe { a.alloc_zeroed(layout) };
+        assert!(!p.is_null());
+        assert_eq!(reading(&a), (1, 64));
+        unsafe { a.dealloc(p, layout) };
+    }
+
+    #[test]
+    fn realloc_counts_one_operation_and_its_new_size() {
+        let a = CountingAllocator::new();
+        let small = Layout::from_size_align(32, 8).unwrap();
+        let p = unsafe { a.alloc(small) };
+        assert!(!p.is_null());
+        let before = reading(&a);
+        let grown = unsafe { a.realloc(p, small, 96) };
+        assert!(!grown.is_null());
+        let after = reading(&a);
+        assert_eq!((after.0 - before.0, after.1 - before.1), (1, 96));
+        unsafe { a.dealloc(grown, Layout::from_size_align(96, 8).unwrap()) };
+    }
+
+    #[test]
+    fn dealloc_counts_nothing() {
+        let a = CountingAllocator::new();
+        let layout = Layout::from_size_align(48, 8).unwrap();
+        let p = unsafe { a.alloc(layout) };
+        assert!(!p.is_null());
+        let before = reading(&a);
+        unsafe { a.dealloc(p, layout) };
+        assert_eq!(reading(&a), before);
+    }
+
+    #[test]
+    fn a_process_without_the_provider_reads_unobservable_not_zero() {
+        // This test process allocates but selected no counting allocator and registered none.
+        let work: std::vec::Vec<u8> = std::vec::Vec::with_capacity(64);
+        assert!(work.capacity() >= 64);
+        assert!(registered_allocation_provider().is_none());
+        assert_eq!(allocation_reading(None, AllocationAxis::Operations), None);
+        assert_eq!(
+            allocation_reading(None, AllocationAxis::BytesRequested),
+            None
+        );
+        // The positive control: a provider that observed nothing reads zero, which is a reading.
+        let idle = CountingAllocator::new();
+        assert_eq!(
+            allocation_reading(Some(&idle), AllocationAxis::Operations),
+            Some(0)
+        );
+    }
 }
 
 fn int_relu(x: i64) -> i64 {

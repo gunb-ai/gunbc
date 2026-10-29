@@ -3,7 +3,7 @@ module v2.cli.compile_cli
 import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, collection_concat_shape }
 import v2.compiler.self_host.closure_emission {
   closure_emission_first_refusal,
   closure_emission_json,
@@ -22,10 +22,15 @@ import v2.compiler.module_acquisition {
   acquisition_ingest,
   enumerate_bound_modules
 }
-import v2.cli.population_verbs { PopulationReport, check_layout, parse_population }
-import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population }
+import v2.cli.population_verbs { PopulationReport, check_layout, parse_population, select_spelled_modules, parse_verdict_reuse_off, parse_verdict_reuse_requested }
+import v2.cli.parse_verdict_reuse { parse_verdict_base_read }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population, cli_verb_select_spelled_modules }
+import v2.cli.parse_verdict_invocation {
+  cli_option_compiler, cli_option_reuse_from, cli_option_write_identity, cli_option_receipts,
+  cli_option_source_root
+}
 import v2.cli.repository_layout { repository_storage_layout }
-import gunbc.source_layout_namespaces { layout_namespaces }
 import v2.cli.source_root_bindings {
   SourceRootBindings,
   SourceRootsBound,
@@ -179,7 +184,14 @@ type CliVerb
   = CliEmitClosure { entry: String, source_roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliIfArmReaderDifferential { source_roots: FreeMonoid<String> }
   | CliCheckLayout { source_roots: FreeMonoid<String> }
-  | CliParsePopulation { source_roots: FreeMonoid<String> }
+  | CliSelectSpelledModules { source_roots: FreeMonoid<String> }
+  | CliParsePopulation {
+      source_roots: FreeMonoid<String>,
+      compiler: Optional<String>,
+      write_identity: Optional<String>,
+      receipts: Optional<String>,
+      reuse_from: Optional<String>
+    }
 
 // THE VERBS WHOSE ONLY OPTION IS --source-root. They parse identically and differ in spelling, usage
 // and the verb they select, so the parser carries which of them it is walking instead of one pair of
@@ -188,19 +200,30 @@ type CliRootsVerb
   = CliRootsDifferential
   | CliRootsCheckLayout
   | CliRootsParsePopulation
+  | CliRootsSelectSpelled
 
-data cli_roots_verbs: List<CliRootsVerb> = [CliRootsDifferential, CliRootsCheckLayout, CliRootsParsePopulation]
+data cli_roots_verbs: List<CliRootsVerb> = [CliRootsDifferential, CliRootsCheckLayout, CliRootsParsePopulation, CliRootsSelectSpelled]
 
 fn cli_roots_verb_spelling(kind: CliRootsVerb) -> String {
   match kind {
     CliRootsDifferential => cli_verb_if_arm_reader_differential
     CliRootsCheckLayout => cli_verb_check_layout
     CliRootsParsePopulation => cli_verb_parse_population
+    CliRootsSelectSpelled => cli_verb_select_spelled_modules
   }
 }
 
 fn cli_roots_verb_usage(kind: CliRootsVerb) -> String {
-  concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
+  match kind {
+    CliRootsParsePopulation =>
+      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]... [--compiler <identity>] [--write-identity <path>] [--receipts <path>] [--reuse-from <dir>]")
+    CliRootsDifferential =>
+      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
+    CliRootsCheckLayout =>
+      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
+    CliRootsSelectSpelled =>
+      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
+  }
 }
 
 fn cli_roots_verb_of_spelling(spelling: String) -> Optional<CliRootsVerb> {
@@ -213,11 +236,26 @@ fn cli_roots_verb_of_spelling(spelling: String) -> Optional<CliRootsVerb> {
   )
 }
 
-fn cli_roots_verb_selected(kind: CliRootsVerb, roots: FreeMonoid<String>) -> CliVerb {
+fn cli_roots_verb_selected(
+  kind: CliRootsVerb,
+  roots: FreeMonoid<String>,
+  compiler: Optional<String>,
+  write_identity: Optional<String>,
+  receipts: Optional<String>,
+  reuse_from: Optional<String>
+) -> CliVerb {
   match kind {
     CliRootsDifferential => CliIfArmReaderDifferential { source_roots: roots }
     CliRootsCheckLayout => CliCheckLayout { source_roots: roots }
-    CliRootsParsePopulation => CliParsePopulation { source_roots: roots }
+    CliRootsSelectSpelled => CliSelectSpelledModules { source_roots: roots }
+    CliRootsParsePopulation =>
+      CliParsePopulation {
+        source_roots: roots,
+        compiler: compiler,
+        write_identity: write_identity,
+        receipts: receipts,
+        reuse_from: reuse_from
+      }
   }
 }
 
@@ -241,12 +279,58 @@ type CliParseState
   | CliParseSeekRootValue { entry: String, roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliParseSeekEntryValue { entry: String, roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliParseSeekTargetValue { entry: String, roots: FreeMonoid<String> }
-  | CliParseSeekRootsOption { kind: CliRootsVerb, roots: FreeMonoid<String> }
-  | CliParseSeekRootsValue { kind: CliRootsVerb, roots: FreeMonoid<String> }
+  | CliParseSeekRootsOption {
+      kind: CliRootsVerb,
+      roots: FreeMonoid<String>,
+      compiler: Optional<String>,
+      write_identity: Optional<String>,
+      receipts: Optional<String>,
+      reuse_from: Optional<String>
+    }
+  | CliParseSeekRootsValue {
+      kind: CliRootsVerb,
+      roots: FreeMonoid<String>,
+      compiler: Optional<String>,
+      write_identity: Optional<String>,
+      receipts: Optional<String>,
+      reuse_from: Optional<String>
+    }
+  | CliParseSeekCompilerValue {
+      kind: CliRootsVerb,
+      roots: FreeMonoid<String>,
+      write_identity: Optional<String>,
+      receipts: Optional<String>,
+      reuse_from: Optional<String>
+    }
+  | CliParseSeekWriteIdentityValue {
+      kind: CliRootsVerb,
+      roots: FreeMonoid<String>,
+      compiler: Optional<String>,
+      receipts: Optional<String>,
+      reuse_from: Optional<String>
+    }
+  | CliParseSeekReceiptsValue {
+      kind: CliRootsVerb,
+      roots: FreeMonoid<String>,
+      compiler: Optional<String>,
+      write_identity: Optional<String>,
+      reuse_from: Optional<String>
+    }
+  | CliParseSeekReuseFromValue {
+      kind: CliRootsVerb,
+      roots: FreeMonoid<String>,
+      compiler: Optional<String>,
+      write_identity: Optional<String>,
+      receipts: Optional<String>
+    }
   | CliParseFailed { reason: Symbol, detail: String }
 
-data cli_option_source_root: String = "--source-root"
-
+// THE OPTION SPELLINGS MOVED to v2.cli.parse_verdict_invocation, joining the verb spellings that already
+// moved to v2.cli.population_verb_names for the same reason: while they lived here, every consumer that
+// needed a spelling either imported this whole closure or minted a copy -- and one of those copies was
+// the content hash that CERTIFIES the invocation, so a rename here could leave the emitted command and
+// the certifying stamp agreeing with each other and both wrong. This module PARSES them; it no longer
+// owns how they are spelled elsewhere. The parser is a consumer of the declaration, not its authority.
 data cli_option_entry: String = "--entry"
 
 data cli_option_target: String = "--target"
@@ -276,7 +360,15 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
         CliParseSeekOption { entry: "", roots: Empty, target: cli_default_emit_target }
       } else {
         match cli_roots_verb_of_spelling(spelling: arg) {
-          Present { value: kind } => CliParseSeekRootsOption { kind: kind, roots: Empty }
+          Present { value: kind } =>
+            CliParseSeekRootsOption {
+              kind: kind,
+              roots: Empty,
+              compiler: optional_absent(),
+              write_identity: optional_absent(),
+              receipts: optional_absent(),
+              reuse_from: optional_absent()
+            }
           Absent =>
             CliParseFailed {
               reason: ^cli_unknown_verb,
@@ -284,23 +376,213 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
             }
         }
       }
-    CliParseSeekRootsOption { kind: kind, roots: roots } =>
+    CliParseSeekRootsOption { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
       if arg == cli_option_source_root {
-        CliParseSeekRootsValue { kind: kind, roots: roots }
+        CliParseSeekRootsValue {
+          kind: kind,
+          roots: roots,
+          compiler: compiler,
+          write_identity: write_identity,
+          receipts: receipts,
+          reuse_from: reuse_from
+        }
       } else {
-        CliParseFailed {
-          reason: ^cli_unknown_option,
-          detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+        if arg == cli_option_compiler {
+          match kind {
+            CliRootsParsePopulation =>
+              CliParseSeekCompilerValue {
+                kind: kind,
+                roots: roots,
+                write_identity: write_identity,
+                receipts: receipts,
+                reuse_from: reuse_from
+              }
+            CliRootsDifferential =>
+              CliParseFailed {
+                reason: ^cli_unknown_option,
+                detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+              }
+            CliRootsCheckLayout =>
+              CliParseFailed {
+                reason: ^cli_unknown_option,
+                detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+              }
+            CliRootsSelectSpelled =>
+              CliParseFailed {
+                reason: ^cli_unknown_option,
+                detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+              }
+          }
+        } else {
+          if arg == cli_option_write_identity {
+            match kind {
+              CliRootsParsePopulation =>
+                CliParseSeekWriteIdentityValue {
+                  kind: kind,
+                  roots: roots,
+                  compiler: compiler,
+                  receipts: receipts,
+                  reuse_from: reuse_from
+                }
+              CliRootsDifferential =>
+                CliParseFailed {
+                  reason: ^cli_unknown_option,
+                  detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                }
+              CliRootsCheckLayout =>
+                CliParseFailed {
+                  reason: ^cli_unknown_option,
+                  detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                }
+              CliRootsSelectSpelled =>
+                CliParseFailed {
+                  reason: ^cli_unknown_option,
+                  detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                }
+            }
+          } else {
+            if arg == cli_option_receipts {
+              match kind {
+                CliRootsParsePopulation =>
+                  CliParseSeekReceiptsValue {
+                    kind: kind,
+                    roots: roots,
+                    compiler: compiler,
+                    write_identity: write_identity,
+                    reuse_from: reuse_from
+                  }
+                CliRootsDifferential =>
+                  CliParseFailed {
+                    reason: ^cli_unknown_option,
+                    detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                  }
+                CliRootsCheckLayout =>
+                  CliParseFailed {
+                    reason: ^cli_unknown_option,
+                    detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                  }
+                CliRootsSelectSpelled =>
+                  CliParseFailed {
+                    reason: ^cli_unknown_option,
+                    detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                  }
+              }
+            } else {
+              if arg == cli_option_reuse_from {
+                match kind {
+                  CliRootsParsePopulation =>
+                    CliParseSeekReuseFromValue {
+                      kind: kind,
+                      roots: roots,
+                      compiler: compiler,
+                      write_identity: write_identity,
+                      receipts: receipts
+                    }
+                  CliRootsDifferential =>
+                    CliParseFailed {
+                      reason: ^cli_unknown_option,
+                      detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                    }
+                  CliRootsCheckLayout =>
+                    CliParseFailed {
+                      reason: ^cli_unknown_option,
+                      detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                    }
+                  CliRootsSelectSpelled =>
+                    CliParseFailed {
+                      reason: ^cli_unknown_option,
+                      detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                    }
+                }
+              } else {
+                CliParseFailed {
+                  reason: ^cli_unknown_option,
+                  detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                }
+              }
+            }
+          }
         }
       }
-    CliParseSeekRootsValue { kind: kind, roots: roots } =>
+    CliParseSeekReuseFromValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts } =>
+      if cli_arg_is_option(arg: arg) {
+        CliParseFailed {
+          reason: ^cli_reuse_from_missing_value,
+          detail: concat(cli_option_reuse_from, " takes a directory, and an option followed it")
+        }
+      } else {
+        CliParseSeekRootsOption {
+          kind: kind,
+          roots: roots,
+          compiler: compiler,
+          write_identity: write_identity,
+          receipts: receipts,
+          reuse_from: optional_present(value: arg)
+        }
+      }
+    CliParseSeekCompilerValue { kind: kind, roots: roots, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
+      if cli_arg_is_option(arg: arg) {
+        CliParseFailed {
+          reason: ^cli_compiler_missing_value,
+          detail: concat(cli_option_compiler, " takes the parse-compiler identity, and an option followed it")
+        }
+      } else {
+        CliParseSeekRootsOption {
+          kind: kind,
+          roots: roots,
+          compiler: optional_present(value: arg),
+          write_identity: write_identity,
+          receipts: receipts,
+          reuse_from: reuse_from
+        }
+      }
+    CliParseSeekWriteIdentityValue { kind: kind, roots: roots, compiler: compiler, receipts: receipts, reuse_from: reuse_from } =>
+      if cli_arg_is_option(arg: arg) {
+        CliParseFailed {
+          reason: ^cli_write_identity_missing_value,
+          detail: concat(cli_option_write_identity, " takes a path, and an option followed it")
+        }
+      } else {
+        CliParseSeekRootsOption {
+          kind: kind,
+          roots: roots,
+          compiler: compiler,
+          write_identity: optional_present(value: arg),
+          receipts: receipts,
+          reuse_from: reuse_from
+        }
+      }
+    CliParseSeekReceiptsValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, reuse_from: reuse_from } =>
+      if cli_arg_is_option(arg: arg) {
+        CliParseFailed {
+          reason: ^cli_receipts_missing_value,
+          detail: concat(cli_option_receipts, " takes a path, and an option followed it")
+        }
+      } else {
+        CliParseSeekRootsOption {
+          kind: kind,
+          roots: roots,
+          compiler: compiler,
+          write_identity: write_identity,
+          receipts: optional_present(value: arg),
+          reuse_from: reuse_from
+        }
+      }
+    CliParseSeekRootsValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
       if cli_arg_is_option(arg: arg) {
         CliParseFailed {
           reason: ^cli_source_root_missing_value,
           detail: concat(cli_option_source_root, " takes a directory, and an option followed it")
         }
       } else {
-        CliParseSeekRootsOption { kind: kind, roots: Cons { head: arg, tail: roots } }
+        CliParseSeekRootsOption {
+          kind: kind,
+          roots: Cons { head: arg, tail: roots },
+          compiler: compiler,
+          write_identity: write_identity,
+          receipts: receipts,
+          reuse_from: reuse_from
+        }
       }
     CliParseSeekRootValue { entry: entry, roots: roots, target: target } =>
       if cli_arg_is_option(arg: arg) {
@@ -360,7 +642,13 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
 }
 
 fn cli_arg_is_option(arg: String) -> Bool {
-  (arg == cli_option_source_root) || (arg == cli_option_entry) || (arg == cli_option_target)
+  (arg == cli_option_source_root)
+    || (arg == cli_option_entry)
+    || (arg == cli_option_target)
+    || (arg == cli_option_compiler)
+    || (arg == cli_option_write_identity)
+    || (arg == cli_option_receipts)
+    || (arg == cli_option_reuse_from)
 }
 
 fn cli_parse_finish(state: CliParseState) -> CliPlan {
@@ -384,19 +672,48 @@ fn cli_parse_finish(state: CliParseState) -> CliPlan {
         reason: ^cli_target_missing_value,
         detail: concat(cli_option_target, " takes a target name, and none followed it")
       }
-    CliParseSeekRootsValue { kind: _, roots: _ } =>
+    CliParseSeekReuseFromValue { kind: _, roots: _, compiler: _, write_identity: _, receipts: _ } =>
+      CliPlanRefused {
+        reason: ^cli_reuse_from_missing_value,
+        detail: concat(cli_option_reuse_from, " takes a directory, and none followed it")
+      }
+    CliParseSeekCompilerValue { kind: _, roots: _, write_identity: _, receipts: _, reuse_from: _ } =>
+      CliPlanRefused {
+        reason: ^cli_compiler_missing_value,
+        detail: concat(cli_option_compiler, " takes the parse-compiler identity, and none followed it")
+      }
+    CliParseSeekWriteIdentityValue { kind: _, roots: _, compiler: _, receipts: _, reuse_from: _ } =>
+      CliPlanRefused {
+        reason: ^cli_write_identity_missing_value,
+        detail: concat(cli_option_write_identity, " takes a path, and none followed it")
+      }
+    CliParseSeekReceiptsValue { kind: _, roots: _, compiler: _, write_identity: _, reuse_from: _ } =>
+      CliPlanRefused {
+        reason: ^cli_receipts_missing_value,
+        detail: concat(cli_option_receipts, " takes a path, and none followed it")
+      }
+    CliParseSeekRootsValue { kind: _, roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } =>
       CliPlanRefused {
         reason: ^cli_source_root_missing_value,
         detail: concat(cli_option_source_root, " takes a directory, and none followed it")
       }
-    CliParseSeekRootsOption { kind: kind, roots: roots } =>
+    CliParseSeekRootsOption { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
       if length(xs: roots) == 0 {
         CliPlanRefused {
           reason: ^cli_no_source_root,
           detail: concat(cli_roots_verb_spelling(kind: kind), " needs at least one source root -- ", cli_roots_verb_usage(kind: kind))
         }
       } else {
-        CliPlanParsed { verb: cli_roots_verb_selected(kind: kind, roots: list_reverse(xs: roots)) }
+        CliPlanParsed {
+          verb: cli_roots_verb_selected(
+            kind: kind,
+            roots: list_reverse(xs: roots),
+            compiler: compiler,
+            write_identity: write_identity,
+            receipts: receipts,
+            reuse_from: reuse_from
+          )
+        }
       }
     CliParseSeekOption { entry: entry, roots: roots, target: target } =>
       if length(xs: roots) == 0 {
@@ -437,7 +754,8 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
         CliEmitClosure { entry: _, source_roots: roots, target: _ } => roots
         CliIfArmReaderDifferential { source_roots: roots } => roots
         CliCheckLayout { source_roots: roots } => roots
-        CliParsePopulation { source_roots: roots } => roots
+        CliSelectSpelledModules { source_roots: roots } => roots
+        CliParsePopulation { source_roots: roots, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => roots
       }
   }
 }
@@ -496,7 +814,9 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
             cli_if_arm_reader_differential_outcome(census: if_arm_reader_differential(ingest: ingest))
           }
         CliCheckLayout { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_check_layout)
-        CliParsePopulation { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_parse_population)
+        CliSelectSpelledModules { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_select_spelled_modules)
+        CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } =>
+          cli_verb_takes_no_ingest(verb: cli_verb_parse_population)
         CliEmitClosure { entry: entry, source_roots: _, target: target } =>
           if length(xs: ingest) == 0 {
             CliRunRefused {
@@ -658,7 +978,7 @@ fn cli_run_acquired(plan: CliPlan, bindings: List<SourceRootBinding>, entries: L
 }
 
 fn cli_run_differential(plan: CliPlan, bindings: List<SourceRootBinding>) -> CliRunOutcome {
-  match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings, namespaces: layout_namespaces()) {
+  match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings) {
     BoundModulesListed { modules: modules } => cli_run_acquired(plan: plan, bindings: bindings, entries: modules)
     BoundModulesRefused { subject: subject, cause: cause } =>
       CliRunRefused {
@@ -668,13 +988,116 @@ fn cli_run_differential(plan: CliPlan, bindings: List<SourceRootBinding>) -> Cli
   }
 }
 
+fn write_if_path(path: Optional<String>, content: String, what: String) -> Optional<String> {
+  match path {
+    Absent => optional_absent()
+    Present { value: p } => {
+      let w = Filesystem.Write(path: p, content: content)
+      if w.success {
+        optional_absent()
+      } else {
+        optional_present(value: concat(concat("could not write ", what), concat(": ", w.error)))
+      }
+    }
+  }
+}
+
+fn parse_population_written(
+  bindings: List<SourceRootBinding>,
+  compiler: Optional<String>,
+  write_identity: Optional<String>,
+  receipts: Optional<String>,
+  reuse_from: Optional<String>
+) -> PopulationReport {
+  match reuse_from {
+    Present { value: dir } => parse_population_reusing(bindings: bindings, compiler: compiler, write_identity: write_identity, receipts: receipts, dir: dir)
+    Absent => parse_population_published(bindings: bindings, compiler: compiler, write_identity: write_identity, receipts: receipts)
+  }
+}
+
+// REUSE IS THE PULL-REQUEST MODE AND PUBLISHING IS THE MAIN MODE; they do not combine. Reuse reports
+// counts where publishing reports the receipts, so writing receipts from a reuse walk would store
+// counts as a verdict. The combination is refused rather than ordered.
+fn parse_population_reusing(
+  bindings: List<SourceRootBinding>,
+  compiler: Optional<String>,
+  write_identity: Optional<String>,
+  receipts: Optional<String>,
+  dir: String
+) -> PopulationReport {
+  match compiler {
+    Absent => PopulationReport { text: "", held: false, detail: "--reuse-from requires --compiler" }
+    Present { value: _ } =>
+      match write_identity {
+        Present { value: _ } => PopulationReport { text: "", held: false, detail: "--reuse-from does not combine with --write-identity or --receipts" }
+        Absent =>
+          match receipts {
+            Present { value: _ } => PopulationReport { text: "", held: false, detail: "--reuse-from does not combine with --write-identity or --receipts" }
+            Absent =>
+              parse_population(
+                bindings: bindings,
+                compiler: compiler,
+                reuse: parse_verdict_reuse_requested(base: parse_verdict_base_read(dir: dir))
+              )
+          }
+      }
+  }
+}
+
+fn parse_population_published(
+  bindings: List<SourceRootBinding>,
+  compiler: Optional<String>,
+  write_identity: Optional<String>,
+  receipts: Optional<String>
+) -> PopulationReport {
+  let needs_compiler =
+    match write_identity { Present { value: _ } => true  Absent => match receipts { Present { value: _ } => true  Absent => false } }
+  if needs_compiler {
+    match compiler {
+      Absent =>
+        PopulationReport {
+          text: "",
+          held: false,
+          detail: "--write-identity and --receipts require --compiler"
+        }
+      Present { value: cid } => {
+        let report = parse_population(bindings: bindings, compiler: compiler, reuse: parse_verdict_reuse_off())
+        if !report.held {
+          report
+        } else {
+          match write_if_path(path: write_identity, content: cid, what: "parse-compiler identity") {
+            Present { value: detail } => PopulationReport { text: "", held: false, detail: detail }
+            Absent =>
+              match write_if_path(path: receipts, content: report.text, what: "parse-verdict receipts") {
+                Present { value: detail } => PopulationReport { text: "", held: false, detail: detail }
+                Absent => report
+              }
+          }
+        }
+      }
+    }
+  } else {
+    parse_population(bindings: bindings, compiler: compiler, reuse: parse_verdict_reuse_off())
+  }
+}
+
 fn cli_run_bound(plan: CliPlan, verb: CliVerb, bindings: List<SourceRootBinding>) -> CliRunOutcome {
   match verb {
     CliEmitClosure { entry: entry, source_roots: _, target: _ } =>
       cli_run_acquired(plan: plan, bindings: bindings, entries: [entry])
     CliIfArmReaderDifferential { source_roots: _ } => cli_run_differential(plan: plan, bindings: bindings)
     CliCheckLayout { source_roots: _ } => cli_population_reported(report: check_layout(bindings: bindings))
-    CliParsePopulation { source_roots: _ } => cli_population_reported(report: parse_population(bindings: bindings))
+    CliSelectSpelledModules { source_roots: _ } => cli_population_reported(report: select_spelled_modules(bindings: bindings))
+    CliParsePopulation { source_roots: _, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
+      cli_population_reported(
+        report: parse_population_written(
+          bindings: bindings,
+          compiler: compiler,
+          write_identity: write_identity,
+          receipts: receipts,
+          reuse_from: reuse_from
+        )
+      )
   }
 }
 

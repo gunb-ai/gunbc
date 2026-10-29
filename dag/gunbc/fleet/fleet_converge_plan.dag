@@ -15,6 +15,16 @@ import gunbc.fleet.fleet_plan_artifact_location { fleet_reviewed_plan_path, flee
 
 import gunbc.fleet.fleet_plan_bundle { fleet_plan_component_hash, fleet_plan_bundle_hash }
 
+import extdeps.sudo.nopasswd_decision { SudoDecisionQuery }
+import gunbc.fleet.fleet_host_grant_coverage {
+  HostGrantObservation,
+  HostGrantRow,
+  host_grant_rows,
+  host_grant_queries,
+  host_grant_baseline_rows,
+  host_grant_awaiting_capability,
+  host_grant_plan_lines,
+}
 import gunbc.fleet.fleet_converge_terminal { AwaitingCapability, FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, fleet_converge_apply_terminal_of_wire, fleet_converge_apply_terminal_wire }
 
 import gunbc.fleet.fleet_generation_execution { fleet_generation_directory, fleet_generation_lock, fleet_generation_path, fleet_generation_writer }
@@ -29,8 +39,7 @@ import gunbc.workspace_allocation_operations { workspace_launch_operations, work
 import gunbc.workspace_allocation_store { WorkspaceReleased }
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
-import std.measure { byte_size_count }
-import std.algebra { trim }
+import std.algebra { trim, contains, skip, list_head, string_contains, length }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_display_key }
@@ -44,6 +53,8 @@ import std.content_hash {
   ContentHash,
   content_hash_combine_structural,
 }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { CasGeneration, cas_generation_following, cas_generation_count }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseEpoch, held_lease }
 import extdeps.exec.command { ArgvCommand }
 import v2.extdeps.languages.bash_build {
@@ -177,24 +188,18 @@ import gunbc.host.host_axis_caps {
   CapMember,
   CapMemberAt,
   caps_reconcile,
-  desired_cap_member,
+  derived_runner_slot_cap_members,
   cap_upsert_script,
 }
-import gunbc.host.host_converge {
-  gunbc_runner_per_slot_dropin_path,
-  gunbc_runner_per_slot_swap_dropin_path,
-  gunbc_runner_per_slot_high_dropin_path,
-  gunbc_runner_per_slot_tasks_dropin_path,
-  systemd_memory_max_property,
-  systemd_memory_high_property,
-  systemd_memory_swap_max_property,
-  systemd_tasks_max_property,
-}
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
-  retirement_baseline_rows,
+  RetirementWireDecoded,
+  RetirementWireUndecodable,
+  retirement_baseline_header_rows,
+  retirement_standing_admits_drift,
+  retirement_standing_from_wire,
+  retirement_unit_standing_rows,
   transition_baseline_rows,
 }
 import gunbc.runner.runner_slot_provision {
@@ -233,6 +238,7 @@ import gunbc.runner.runner_service_activation {
   runner_activation_safety_report,
 }
 import extdeps.access.posix { file_mode_octal }
+import std.integer { int_to_decimal_string }
 
 type TimerRetirementMemberAt = NonEmptyStr
 
@@ -396,6 +402,7 @@ type FleetConvergeRequest
       observed_activation_readiness: RunnerActivationReadiness
       observed_unit_standings: RunnerUnitStandings
       observed_retirement: SlotRetirementEvidence
+      observed_host_grants: HostGrantObservation
     }
   | LaunchEnvironmentConverge {
       host: NonEmptyStr
@@ -423,7 +430,7 @@ fn live_deploy_converge_request(desired: DesiredDeployment, basis: LiveDeployMem
 
 fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeScope {
   match request {
-    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } => FullHost
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: _ } => FullHost
     LaunchEnvironmentConverge { host: _, observed_timers: _ } => LaunchEnvironment
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FabricAllocationStoreOnly
@@ -436,7 +443,7 @@ fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeS
 
 fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
   match request {
-    FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } => h
+    FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: _ } => h
     LaunchEnvironmentConverge { host: h, observed_timers: _ } => h
     FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
     FabricAllocationStoreConverge { host: h, observed_allocation_store: _ } => h
@@ -506,7 +513,7 @@ fn fleet_converge_plan_subject(request: FleetConvergeRequest) -> FleetConvergePl
 }
 
 fn fleet_converge_member_set_fingerprint(request: FleetConvergeRequest) -> ContentHash {
-  content_hash_of_value(value: observed_baseline_text(request: request) as NonEmptyStr)
+  content_hash_of_value(value: observed_identity_text(request: request) as NonEmptyStr)
 }
 
 fn fleet_converge_apply_subject_host_matches(planned_host: NonEmptyStr, observed_host: NonEmptyStr) -> Bool {
@@ -612,7 +619,7 @@ fn fleet_converge_apply_artifact_admits(
                 store_path: fabric_allocation_store_substrate_spec().path,
                 observed: allocation_store_substrate_prestate_wire(prestate: prestate),
               }
-            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } => ApplyMemberSetMismatch
+            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: _ } => ApplyMemberSetMismatch
             LaunchEnvironmentConverge { host: _, observed_timers: _ } => ApplyMemberSetMismatch
             FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
             WorkspaceSlotCommissioningConverge { basis: _ } => ApplyMemberSetMismatch
@@ -628,7 +635,11 @@ fn fleet_converge_apply_artifact_admits(
                 LiveDeployAwaitingWetApply { capability } =>
                   ApplyAwaitingCapability { capability: capability }
               }
-            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } => ApplyAdmitted
+            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: grants } =>
+              match host_grant_awaiting_capability(rows: fleet_converge_host_grant_rows(host: fleet_converge_request_host(request: observed), grants: grants)) {
+                Present { value: capability } => ApplyAwaitingCapability { capability: capability }
+                Absent => ApplyAdmitted
+              }
             LaunchEnvironmentConverge { host: _, observed_timers: _ } => ApplyAdmitted
             FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyAdmitted
             WorkspaceSlotCommissioningConverge { basis: _ } => ApplyAdmitted
@@ -695,7 +706,7 @@ fn fleet_converge_apply_admission_refusal_text(admission: FleetConvergeApplyAdmi
     ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
       join(["AllocationStorePrestateMismatch namespace_path=", n as String, " store_path=", p as String, " observed=", o, "; rerun plan and review"], "")
     ApplyAwaitingCapability { capability: c } =>
-      join(["AwaitingCapability ", c, " — the member plan is nonempty and wet apply is not this arm"], "")
+      join(["AwaitingCapability ", c, " — apply refuses before any host mutation until this capability is present"], "")
   }
 }
 
@@ -723,7 +734,7 @@ fn fleet_converge_scope_matches(planned: FleetConvergeScope, observed: FleetConv
 
 fn fleet_converge_plan_held_lease(
   subject: FleetConvergePlanSubject,
-  prior_generation: Int,
+  generation: CasGeneration,
   owner_fingerprint: ContentHash,
 ) -> HeldLease {
   held_lease(
@@ -731,7 +742,7 @@ fn fleet_converge_plan_held_lease(
       lease_key: fleet_converge_plan_lease_key(host: subject.host),
       resource_fingerprint: fleet_converge_plan_resource_fingerprint(subject: subject),
       owner_fingerprint: owner_fingerprint,
-      generation: prior_generation + 1,
+      generation: generation,
     },
     observed: LeaseAbsent,
   )
@@ -767,6 +778,253 @@ fn fleet_converge_apply_generation_stale(planned_generation: Int, store_generati
 // compares two values and says no. Making the crossing genuinely unwritable would mean the plan
 // artifact handing over its scope as a typed field rather than a hex string, which this commit
 // does not do.
+// THE PLAN BODY IS WHERE THE PLANNED ROWS LIVE, AND IT IS ALREADY AUTHENTICATED. The persisted
+// observed_baseline.hex and subject_member_set.txt are digests, so they cannot say WHICH row
+// drifted; plan.txt embeds the baseline text, and plan.txt is recomputed into plan_artifact_hash
+// before apply admits anything (fleet_converge_plan_manifest, DerivedFromBoundAuthority). So the
+// planned rows are read out of bytes apply has already verified, and NO hash is minted from them:
+// the located refusal is a presentation of two row lists, never a second identity.
+data fleet_converge_plan_baseline_section: String = "observed_baseline"
+data fleet_converge_plan_observed_only_section: String = "observed_only_rows"
+data fleet_converge_plan_monotone_section: String = "monotone_premise_rows"
+
+fn fleet_converge_plan_section_end_marker(section: String) -> String {
+  concat(section, "_end:")
+}
+
+type PlannedBaselineRows
+  = PlannedBaselineRowsRead { rows: List<String> }
+  | PlannedBaselineRowsUnavailable { cause: String }
+
+fn plan_text_before(text: String, marker: String) -> String? {
+  list_head(xs: split(s: text, delimiter: marker))
+}
+
+fn plan_text_after_last(text: String, marker: String) -> String? {
+  list_head(xs: reverse(split(s: text, delimiter: marker)))
+}
+
+fn plan_text_lines(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+}
+
+fn plan_marker_count(text: String, marker: String) -> Int {
+  length(split(s: text, delimiter: marker)) - 1
+}
+
+// FRAMING IS EXACT, NEVER CHOSEN. Free text (a cap's content) enters the plan body unescaped, so a
+// marker-looking line inside it is indistinguishable from a boundary. The producer emits each boundary
+// exactly once, so any other count (an injected copy, a missing one, or an end before its start) is
+// refused by name; no occurrence is ever selected. The verdict is a declared sum, never a sentinel.
+type PlanFramingVerdict
+  = PlanFramed
+  | PlanFramingFaulted { cause: String }
+
+fn plan_section_framing_fault(plan_body: String, section: String) -> PlanFramingVerdict {
+  let start = concat("\n", section, ":\n")
+  let end = concat("\n", fleet_converge_plan_section_end_marker(section: section))
+  let starts = plan_marker_count(text: plan_body, marker: start)
+  let ends = plan_marker_count(text: plan_body, marker: end)
+  if starts == 0 {
+    PlanFramingFaulted { cause: concat("plan.txt carries no ", section, ": section") }
+  } else if ends == 0 {
+    PlanFramingFaulted { cause: concat("plan.txt carries no ", fleet_converge_plan_section_end_marker(section: section), " marker (minted before the rows were delimited)") }
+  } else if starts != 1 {
+    PlanFramingFaulted { cause: concat("plan.txt carries ", int_to_decimal_string(value: starts), " ", section, ": boundaries (framing must be exact; embedded or duplicated boundary)") }
+  } else if ends != 1 {
+    PlanFramingFaulted { cause: concat("plan.txt carries ", int_to_decimal_string(value: ends), " ", fleet_converge_plan_section_end_marker(section: section), " boundaries (framing must be exact; embedded or duplicated boundary)") }
+  } else {
+    match list_head(xs: reverse(split(s: plan_body, delimiter: start))) {
+      Absent => PlanFramingFaulted { cause: concat("plan.txt ", section, " section is empty") }
+      Present { value: after_start } =>
+        if string_contains(s: after_start, pattern: end) {
+          PlanFramed
+        } else {
+          PlanFramingFaulted { cause: concat("plan.txt ", section, " end boundary precedes its start (misordered)") }
+        }
+    }
+  }
+}
+
+fn plan_framing_fault_cause(v: PlanFramingVerdict) -> String? {
+  match v {
+    PlanFramed => Absent
+    PlanFramingFaulted { cause: c } => Present { value: c }
+  }
+}
+
+fn plan_framing_fault(plan_body: String) -> String? {
+  list_head(
+    xs: flat_map(
+      [fleet_converge_plan_baseline_section, fleet_converge_plan_observed_only_section, fleet_converge_plan_monotone_section],
+      sec => match plan_framing_fault_cause(v: plan_section_framing_fault(plan_body: plan_body, section: sec)) {
+        Absent => []
+        Present { value: c } => [c]
+      },
+    ),
+  )
+}
+
+fn fleet_converge_planned_section_rows(plan_body: String, section: String) -> PlannedBaselineRows {
+  let start = concat("\n", section, ":\n")
+  let end = concat("\n", fleet_converge_plan_section_end_marker(section: section))
+  match plan_framing_fault(plan_body: plan_body) {
+    Present { value: fault } => PlannedBaselineRowsUnavailable { cause: fault }
+    Absent =>
+      match plan_text_before(text: plan_body, marker: end) {
+        Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt ", section, " section is empty") }
+        Present { value: through_rows } =>
+          match plan_text_after_last(text: through_rows, marker: start) {
+            Absent => PlannedBaselineRowsUnavailable { cause: concat("plan.txt ", section, " section is empty") }
+            Present { value: block } => PlannedBaselineRowsRead { rows: plan_text_lines(text: block) }
+          }
+      }
+  }
+}
+
+fn fleet_converge_planned_baseline_rows(plan_body: String) -> PlannedBaselineRows {
+  fleet_converge_planned_section_rows(plan_body: plan_body, section: fleet_converge_plan_baseline_section)
+}
+
+fn baseline_row_in(rows: List<String>, row: String) -> Bool {
+  contains(xs: rows, item: row, eq: (a, b) => a == b)
+}
+
+// THE REFUSAL TEXT FOR A MEMBER-SET DRIFT: the row-level symmetric difference, planned side first.
+// "-" rows were in the plan and are gone; "+" rows were not planned and are now observed. Unavailable
+// planned rows degrade to printing the observed rows with the cause, never to a bare "drifted".
+fn fleet_converge_member_set_drift_text(plan_body: String, observed: FleetConvergeRequest) -> String {
+  let observed_rows = split(s: observed_identity_text(request: observed), delimiter: "\n")
+  match fleet_converge_planned_baseline_rows(plan_body: plan_body) {
+    PlannedBaselineRowsUnavailable { cause: why } =>
+      join(concat(["planned rows unavailable: ", why, "; observed rows:"], observed_rows), "\n")
+    PlannedBaselineRowsRead { rows: planned_rows } =>
+      join(
+        concat(
+          concat(
+            ["row-level difference (- planned only, + observed only):"],
+            map(filter(planned_rows, r => !baseline_row_in(rows: observed_rows, row: r)), r => concat("- ", r)),
+          ),
+          map(filter(observed_rows, r => !baseline_row_in(rows: planned_rows, row: r)), r => concat("+ ", r)),
+        ),
+        "\n",
+      )
+  }
+}
+
+// THE RETIREMENT STANDINGS ARE A PREMISE THAT MAY MOVE IN ONE DIRECTION. Teardown is rendered from a
+// plan-time RetirementComplete and apply.sh re-checks nothing, so planned complete / observed anything
+// else would rm -rf against a unit that is no longer retired. Planned pending / observed complete only
+// under-actuates (the plan withheld that teardown and still does), so it admits. Everything else,
+// including a unit that appears or vanishes, refuses naming the unit and both standings. The empty
+// string is "admitted"; any text is the located refusal.
+fn retirement_row_unit(row: String) -> String {
+  match list_head(xs: split(s: row, delimiter: "=")) { Absent => row  Present { value: u } => u }
+}
+
+fn retirement_row_standing(row: String) -> String {
+  match list_head(xs: skip(xs: split(s: row, delimiter: "="), n: 1)) { Absent => ""  Present { value: t } => t }
+}
+
+// A row is exactly <unit>=<wire>. Any further "=" field is undecodable, never silently dropped.
+fn retirement_row_field_count(row: String) -> Int {
+  length(split(s: row, delimiter: "="))
+}
+
+fn retirement_row_for_unit(rows: List<String>, unit: String) -> String? {
+  list_head(xs: filter(rows, r => retirement_row_unit(row: r) == unit))
+}
+
+fn retirement_unit_planned(rows: List<String>, unit: String) -> Bool {
+  match retirement_row_for_unit(rows: rows, unit: unit) { Absent => false  Present { value: _ } => true }
+}
+
+fn retirement_undecodable_line(unit: String, wire: String) -> String? {
+  Present { value: concat("retirement undecodable: ", unit, " has wire standing '", wire, "' that no standing renders to") }
+}
+
+fn retirement_decoded_drift_line(unit: String, planned: RunnerRetirementStanding, observed: RunnerRetirementStanding, planned_wire: String, observed_wire: String) -> String? {
+  if retirement_standing_admits_drift(planned: planned, observed: observed) {
+    Absent
+  } else {
+    Present { value: concat("retirement drift: ", unit, " planned ", planned_wire, ", now ", observed_wire) }
+  }
+}
+
+fn retirement_standing_drift_line(planned: String, observed: String?) -> String? {
+  let unit = retirement_row_unit(row: planned)
+  let planned_wire = retirement_row_standing(row: planned)
+  match observed {
+    Absent => Present { value: concat("retirement drift: ", unit, " planned ", planned_wire, ", now unobserved (absent from the observation)") }
+    Present { value: o } => {
+      let observed_wire = retirement_row_standing(row: o)
+      if retirement_row_field_count(row: planned) != 2 {
+        retirement_undecodable_line(unit: unit, wire: planned_wire)
+      } else if retirement_row_field_count(row: o) != 2 {
+        retirement_undecodable_line(unit: unit, wire: observed_wire)
+      } else {
+        match retirement_standing_from_wire(unit: unit, wire: planned_wire) {
+          RetirementWireUndecodable { unit: u, wire: w } => retirement_undecodable_line(unit: u, wire: w)
+          RetirementWireDecoded { standing: p } =>
+            match retirement_standing_from_wire(unit: unit, wire: observed_wire) {
+              RetirementWireUndecodable { unit: u, wire: w } => retirement_undecodable_line(unit: u, wire: w)
+              RetirementWireDecoded { standing: q } =>
+                retirement_decoded_drift_line(unit: unit, planned: p, observed: q, planned_wire: planned_wire, observed_wire: observed_wire)
+            }
+        }
+      }
+    }
+  }
+}
+
+// Admitted, or refused with at least one located line: an empty refusal is unwritable.
+type RetirementDriftVerdict
+  = RetirementDriftAdmitted
+  | RetirementDriftRefused { first: String, rest: List<String> }
+
+fn retirement_drift_verdict_of(lines: List<String>) -> RetirementDriftVerdict {
+  match list_head(xs: lines) {
+    Absent => RetirementDriftAdmitted
+    Present { value: f } => RetirementDriftRefused { first: f, rest: skip(lines, 1) }
+  }
+}
+
+fn retirement_drift_present_lines(opts: List<String?>) -> List<String> {
+  flat_map(opts, o => match o {
+    Absent => []
+    Present { value: l } => [l]
+  })
+}
+
+fn fleet_converge_retirement_drift_text(plan_body: String, observed: FleetConvergeRequest) -> RetirementDriftVerdict {
+  let observed_rows = monotone_premise_rows(request: observed)
+  match fleet_converge_planned_section_rows(plan_body: plan_body, section: fleet_converge_plan_monotone_section) {
+    PlannedBaselineRowsUnavailable { cause: why } =>
+      RetirementDriftRefused { first: concat("retirement drift: planned standings unavailable: ", why), rest: [] }
+    PlannedBaselineRowsRead { rows: block } => {
+      let planned_rows = filter(block, r => r != "")
+      retirement_drift_verdict_of(
+        lines: concat(
+          retirement_drift_present_lines(
+            opts: map(planned_rows, p => retirement_standing_drift_line(planned: p, observed: retirement_row_for_unit(rows: observed_rows, unit: retirement_row_unit(row: p)))),
+          ),
+          map(
+            filter(observed_rows, o => !retirement_unit_planned(rows: planned_rows, unit: retirement_row_unit(row: o))),
+            o => concat("retirement drift: ", retirement_row_unit(row: o), " not planned, now ", retirement_row_standing(row: o)),
+          ),
+        ),
+      )
+    }
+  }
+}
+
+fn retirement_drift_verdict_text(v: RetirementDriftVerdict) -> String {
+  match v {
+    RetirementDriftAdmitted => ""
+    RetirementDriftRefused { first: f, rest: r } => join(concat([f], r), "\n")
+  }
+}
+
 fn fleet_converge_member_set_fingerprint_matches(
   planned_fingerprint_text: String,
   observed: FleetConvergeRequest,
@@ -1373,6 +1631,7 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       observed_activation_readiness: readiness,
       observed_unit_standings: standings,
       observed_retirement: retirement_evidence,
+      observed_host_grants: grants,
     } => {
       let slot_refused = fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence)
       let cap_refused = fleet_converge_cap_refusal_count(host: host, observed_caps: observed_caps)
@@ -1380,7 +1639,9 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
       let activation_refused = fleet_converge_activation_refusal_count(host: host, readiness: readiness, standings: standings)
       let total = slot_refused + cap_refused + timer_refused + fabric_refused + activation_refused
-      if total == 0 {
+      match host_grant_awaiting_capability(rows: fleet_converge_host_grant_rows(host: host, grants: grants)) {
+        Present { value: capability } => AwaitingCapability { capability: capability }
+        Absent => if total == 0 {
         FullyApplied
       } else {
         PartiallyApplied {
@@ -1396,6 +1657,7 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
             "",
           ),
         }
+      }
       }
     }
     LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } => {
@@ -1447,6 +1709,7 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
       observed_activation_readiness: readiness,
       observed_unit_standings: standings,
       observed_retirement: retirement_evidence,
+      observed_host_grants: grants,
     } =>
       concat(
         concat(
@@ -1461,15 +1724,24 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
             concat(["# runner-service-activation"], fleet_converge_activation_lines(host: host, readiness: readiness, standings: standings)),
             fleet_converge_activation_declaration_lines(),
           ),
-          concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells)),
+          concat(
+            ["# fabric-cell"],
+            concat(
+              fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+              concat(["# host-wide-sudo-grants"], host_grant_plan_lines(rows: fleet_converge_host_grant_rows(host: host, grants: grants))),
+            ),
+          ),
         ),
       )
     LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
       concat(["# timer-retirement"], membership_plan_lines_timer(plan: timer_retirement_plan(observed: observed_timers)))
     FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
       concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells))
-    WorkspaceSlotCommissioningConverge { basis } => [workspace_commissioning_basis_rows(basis: basis)]
-    WorkspaceCommissioningDependencyConverge { plan } => [host_kernel_dependency_row(plan: plan)] + host_kernel_dependency_action_lines(plan: plan)
+    // An observed basis row is a baseline fact: observed_identity_text renders it once, and that copy
+    // is what observed_baseline_hex authenticates and the executor reads (exactly one credential row).
+    // The axis section carries only what the basis implies, so it never repeats the row.
+    WorkspaceSlotCommissioningConverge { basis: _ } => []
+    WorkspaceCommissioningDependencyConverge { plan } => host_kernel_dependency_action_lines(plan: plan)
     WorkspaceAllocationConverge { basis: selected, release_dir: installed } => [
       "# workspace allocation: dispatch existing slot controller; readiness is observed separately",
       concat("workspace-launch-directive:", workspace_launch_directive_text(directive: workspace_launch_directive(basis: selected, release_dir: installed))),
@@ -1505,6 +1777,7 @@ fn fleet_converge_plan_refusal_counter_lines(request: FleetConvergeRequest) -> L
       observed_activation_readiness: readiness,
       observed_unit_standings: standings,
       observed_retirement: retirement_evidence,
+      observed_host_grants: _,
     } =>
       [
         concat("# scope=", fleet_converge_scope_wire(scope: FullHost)),
@@ -1663,7 +1936,7 @@ fn fleet_converge_cap_axis(host: NonEmptyStr, observed_caps: List<CapMember>) ->
         cause: "this host has no runner deploy row, so no per-slot cap population is derivable for it",
       }
     RunnerHostDeployFound { deploy: _ } =>
-      CapAxisPlanned { plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps) }
+      CapAxisPlanned { plan: caps_reconcile(desired: derived_runner_slot_cap_members(), observed: observed_caps) }
   }
 }
 
@@ -1680,32 +1953,6 @@ fn fleet_converge_cap_lines(host: NonEmptyStr, observed_caps: List<CapMember>) -
       [concat(concat("REFUSED-HOST-NOT-ADMITTED cap-axis host=", h as String), concat(" cause=", c))]
     CapAxisPlanned { plan: p } => membership_plan_lines_cap(plan: p)
   }
-}
-
-fn fleet_converge_desired_caps() -> List<CapMember> {
-  let slot = gunbc_runner_slot_desired()
-  [
-    desired_cap_member(
-      dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
-      property: systemd_memory_max_property,
-      bytes_value: to_string(byte_size_count(b: slot.memory_max)) as NonEmptyStr,
-    ),
-    desired_cap_member(
-      dropin_path: gunbc_runner_per_slot_high_dropin_path as NonEmptyStr,
-      property: systemd_memory_high_property,
-      bytes_value: to_string(byte_size_count(b: slot.memory_high)) as NonEmptyStr,
-    ),
-    desired_cap_member(
-      dropin_path: gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr,
-      property: systemd_memory_swap_max_property,
-      bytes_value: to_string(byte_size_count(b: slot.memory_swap_max)) as NonEmptyStr,
-    ),
-    desired_cap_member(
-      dropin_path: gunbc_runner_per_slot_tasks_dropin_path as NonEmptyStr,
-      property: systemd_tasks_max_property,
-      bytes_value: to_string(slot.tasks_max) as NonEmptyStr,
-    ),
-  ]
 }
 
 // AN UNREADABLE FABRIC POPULATION CONTRIBUTES A ROW, NOT AN ABSENCE OF ROWS, AND THAT IS THE POINT
@@ -1920,10 +2167,98 @@ fn fabric_cell_baseline_rows(population: FabricCellObservationDecision) -> List<
   }
 }
 
-// THE BASELINE IS DERIVED FROM THE REQUEST, so the rows that exist are exactly the families the
-// request named. The fabric-only arm emits the scope, the host and the fabric rows and nothing
-// else -- not empty timer rows, which would assert the host has no timers.
-fn observed_baseline_text(request: FleetConvergeRequest) -> String {
+// EVERY BASELINE ROW FAMILY DECLARES WHETHER IT IS A PREMISE OF ACTUATION. The standing is a field
+// of the family, so a new family cannot be added without choosing, and the subject identity is the
+// fold over the PremiseOfActuation families only (observed_identity_text). A family that is
+// ObservedOnly is still observed and still printed in plan.txt; it just does not decide admission.
+// PremiseAdmittingMonotoneDrift is judged row by row at apply (fleet_converge_retirement_drift_text)
+// instead of hashed: a standing may move in the one direction that under-actuates.
+type BaselineStanding
+  = PremiseOfActuation
+  | ObservedOnly
+  | PremiseAdmittingMonotoneDrift
+
+type BaselineFamily {
+  standing: BaselineStanding
+  rows: List<String>
+}
+
+// One selector per standing, each matching every variant, so a fourth BaselineStanding fails to
+// compile here rather than being classed as "not equal" by a wildcard.
+fn premise_family_rows(f: BaselineFamily) -> List<String> {
+  match f.standing {
+    PremiseOfActuation => f.rows
+    ObservedOnly => []
+    PremiseAdmittingMonotoneDrift => []
+  }
+}
+
+fn observed_only_family_rows(f: BaselineFamily) -> List<String> {
+  match f.standing {
+    PremiseOfActuation => []
+    ObservedOnly => f.rows
+    PremiseAdmittingMonotoneDrift => []
+  }
+}
+
+fn monotone_family_rows(f: BaselineFamily) -> List<String> {
+  match f.standing {
+    PremiseOfActuation => []
+    ObservedOnly => []
+    PremiseAdmittingMonotoneDrift => f.rows
+  }
+}
+
+fn full_host_baseline_families(
+  host: NonEmptyStr,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+  observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellObservationDecision,
+  standings: RunnerUnitStandings,
+  retirement_evidence: SlotRetirementEvidence,
+  grants: HostGrantObservation,
+) -> List<BaselineFamily> {
+      [
+        BaselineFamily {
+          standing: PremiseOfActuation,
+          rows: concat(
+            [fleet_converge_scope_wire(scope: FullHost), concat("host:", host as String)],
+            concat(
+              map(observed_timers, m => concat("timer:", m.unit_name as String)),
+              concat(
+                map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
+                map(observed_slots, m => join(["slot:", runner_slot_member_key(m: m) as String, "=", runner_slot_provenance_wire(p: m.provenance)], "")),
+              ),
+            ),
+          ),
+        },
+        BaselineFamily {
+          standing: PremiseOfActuation,
+          rows: concat(
+            fabric_cell_baseline_rows(population: observed_fabric_cells),
+            concat(
+              transition_baseline_rows(host: host as HostIdentity),
+              retirement_baseline_header_rows(evidence: retirement_evidence),
+            ),
+          ),
+        },
+        BaselineFamily {
+          standing: PremiseOfActuation,
+          rows: host_grant_baseline_rows(observation: grants, rows: fleet_converge_host_grant_rows(host: host, grants: grants)),
+        },
+        BaselineFamily {
+          standing: ObservedOnly,
+          rows: runner_unit_standings_baseline_rows(standings: standings),
+        },
+        BaselineFamily {
+          standing: PremiseAdmittingMonotoneDrift,
+          rows: retirement_unit_standing_rows(evidence: retirement_evidence),
+        },
+      ]
+}
+
+fn observed_baseline_families(request: FleetConvergeRequest) -> List<BaselineFamily> {
   match request {
     FullHostConverge {
       host: host,
@@ -1934,29 +2269,68 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
       observed_activation_readiness: _,
       observed_unit_standings: standings,
       observed_retirement: retirement_evidence,
+      observed_host_grants: grants,
+    } =>
+      full_host_baseline_families(
+        host: host,
+        observed_timers: observed_timers,
+        observed_caps: observed_caps,
+        observed_slots: observed_slots,
+        observed_fabric_cells: observed_fabric_cells,
+        standings: standings,
+        retirement_evidence: retirement_evidence,
+        grants: grants,
+      )
+    _ => [BaselineFamily { standing: PremiseOfActuation, rows: split(s: observed_scoped_baseline_text(request: request), delimiter: "\n") }]
+  }
+}
+
+fn observed_identity_text(request: FleetConvergeRequest) -> String {
+  join(flat_map(observed_baseline_families(request: request), f => premise_family_rows(f: f)), "\n")
+}
+
+fn observed_only_rows(request: FleetConvergeRequest) -> List<String> {
+  flat_map(observed_baseline_families(request: request), f => observed_only_family_rows(f: f))
+}
+
+fn monotone_premise_rows(request: FleetConvergeRequest) -> List<String> {
+  flat_map(observed_baseline_families(request: request), f => monotone_family_rows(f: f))
+}
+
+// THE BASELINE IS DERIVED FROM THE REQUEST, so the rows that exist are exactly the families the
+// request named. The fabric-only arm emits the scope, the host and the fabric rows and nothing
+// else -- not empty timer rows, which would assert the host has no timers.
+fn observed_baseline_text(request: FleetConvergeRequest) -> String {
+  join(flat_map(observed_baseline_families(request: request), f => f.rows), "\n")
+}
+
+// The non-FullHost scopes: each is one family of premise rows. FullHost is the family roster above.
+fn observed_scoped_baseline_text(request: FleetConvergeRequest) -> String {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: _,
+      observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
+      observed_host_grants: grants,
     } =>
       join(
-        concat(
-          concat(
-            concat(
-              [fleet_converge_scope_wire(scope: FullHost), concat("host:", host as String)],
-              map(observed_timers, m => concat("timer:", m.unit_name as String)),
-            ),
-            concat(
-                map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
-                concat(
-                  map(observed_slots, m => join(["slot:", runner_slot_member_key(m: m) as String, "=", runner_slot_provenance_wire(p: m.provenance)], "")),
-                  runner_unit_standings_baseline_rows(standings: standings),
-                ),
-              ),
+        flat_map(
+          full_host_baseline_families(
+            host: host,
+            observed_timers: observed_timers,
+            observed_caps: observed_caps,
+            observed_slots: observed_slots,
+            observed_fabric_cells: observed_fabric_cells,
+            standings: standings,
+            retirement_evidence: retirement_evidence,
+            grants: grants,
           ),
-          concat(
-            fabric_cell_baseline_rows(population: observed_fabric_cells),
-            concat(
-              transition_baseline_rows(host: host as HostIdentity),
-              retirement_baseline_rows(evidence: retirement_evidence),
-            ),
-          ),
+          f => premise_family_rows(f: f),
         ),
         "\n",
       )
@@ -2257,6 +2631,17 @@ fn fleet_converge_lease_owner() -> NonEmptyStr {
 // whole command, and gunbc.runner.runner_host_grants renders the grant from this same operation, so the
 // words the guard runs and the words the grant admits cannot drift (they did: this argv spelled the
 // mode `755` beside an authority that now spells it with its set-id digit).
+// THE GRANT PREMISES OF THIS APPLY: the host-wide grants (run inside the flock as the lease owner) and
+// the generation-store ensure (run by the invoker, before the flock). The rows and the queries the CLI
+// asks are both derived from these two lists' one source, so what is asked is what is judged.
+fn fleet_converge_host_grant_rows(host: NonEmptyStr, grants: HostGrantObservation) -> List<HostGrantRow> {
+  host_grant_rows(host: host, observation: grants, lease_owner: fleet_converge_lease_owner(), invoker_ops: [fleet_converge_generation_store_ensure()])
+}
+
+fn fleet_converge_host_grant_queries(host: NonEmptyStr) -> List<SudoDecisionQuery> {
+  host_grant_queries(host: host, lease_owner: fleet_converge_lease_owner(), invoker_ops: [fleet_converge_generation_store_ensure()])
+}
+
 fn fleet_converge_generation_store_ensure() -> ExecutorPrivilegedOperation {
   EnsureOwnedDirectory {
     path: fleet_converge_generation_store_dir as NonEmptyStr,
@@ -2535,7 +2920,7 @@ fn fleet_converge_apply_shell(
         "# generated at plan time — apply MUST NOT recompute membership_reconcile",
       ],
       concat(
-        fleet_converge_apply_shell_axis_lines(request: request),
+        fleet_converge_apply_shell_body_lines(request: request),
         [fleet_converge_apply_terminal_line(terminal: terminal)],
       ),
     ),
@@ -2543,9 +2928,34 @@ fn fleet_converge_apply_shell(
   )
 }
 
+// A BLOCKING GRANT PRODUCES A REFUSAL-ONLY, NON-ACTUATING ARTIFACT. The CLI gate refuses first, but the
+// artifact is itself reviewed and carried, so it must not contain the effects its own terminal says
+// were never admitted: when a host-wide grant is missing or unobserved the body is the refusal and
+// nothing else -- no axis line of any family, so no `sudo` line anywhere in the executable body.
+fn fleet_converge_apply_shell_blocking_capability(request: FleetConvergeRequest) -> String? {
+  match request {
+    FullHostConverge { host: host, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: grants } =>
+      host_grant_awaiting_capability(rows: fleet_converge_host_grant_rows(host: host, grants: grants))
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } => Absent
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => Absent
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => Absent
+    WorkspaceSlotCommissioningConverge { basis: _ } => Absent
+    WorkspaceCommissioningDependencyConverge { plan: _ } => Absent
+    WorkspaceAllocationConverge { basis: _, release_dir: _ } => Absent
+    LiveDeployConverge { desired: _, basis: _ } => Absent
+  }
+}
+
+fn fleet_converge_apply_shell_body_lines(request: FleetConvergeRequest) -> List<String> {
+  match fleet_converge_apply_shell_blocking_capability(request: request) {
+    Present { value: capability } => [concat("# REFUSED, NON-ACTUATING: no effect line is emitted because ", capability)]
+    Absent => fleet_converge_apply_shell_axis_lines(request: request)
+  }
+}
+
 fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
   match request {
-    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } =>
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _, observed_host_grants: _ } =>
       "this script runs timer teardown, the host-wide executor grants, runner-slot reconciliation (additions, authorized retirement inhibition via systemctl mask --now, and completed-retirement tree removal), and fabric-cell ensure effects"
     LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
       "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
@@ -2572,6 +2982,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
       observed_activation_readiness: readiness,
       observed_unit_standings: standings,
       observed_retirement: retirement_evidence,
+      observed_host_grants: _,
     } =>
       concat(
         concat(
@@ -2762,7 +3173,8 @@ fn fleet_converge_plan_artifact(
   observed_activation_readiness: RunnerActivationReadiness,
   observed_unit_standings: RunnerUnitStandings,
   observed_retirement: SlotRetirementEvidence,
-) -> FleetConvergePlanArtifact {
+  observed_host_grants: HostGrantObservation,
+) -> FleetConvergePlanArtifact? {
   fleet_converge_plan_artifact_of_request(
     request: FullHostConverge {
       host: host,
@@ -2773,6 +3185,7 @@ fn fleet_converge_plan_artifact(
       observed_activation_readiness: observed_activation_readiness,
       observed_unit_standings: observed_unit_standings,
       observed_retirement: observed_retirement,
+      observed_host_grants: observed_host_grants,
     },
     prior_generation: prior_generation,
   )
@@ -2783,55 +3196,64 @@ fn fleet_converge_plan_artifact(
 // a body row, one fold gets it -- and it would put a second answer beside the subject, the lease and
 // the bundle digest, which are the three things apply admits against.
 //
-// TOTAL, NOT OPTIONAL, and that is main's dissolution preserved rather than re-litigated: the Absent
-// arm answered "there is no plan artifact" when a hash did not match an expected union arm, which
-// every caller reads as nothing to converge rather than as could-not-classify. content_hash_atom
-// returns the structural digest directly, so there is no union to match and no arm to get wrong.
+// Hash classification stays total (content_hash_atom). Absent here is only a refused
+// lease-generation successor (negative prior or exhausted CasGeneration space).
 fn fleet_converge_plan_artifact_of_request(
   request: FleetConvergeRequest,
   prior_generation: Int,
-) -> FleetConvergePlanArtifact {
+) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(request: request)
-  let baseline = observed_baseline_text(request: request)
-  let planned_generation = prior_generation + 1
-  let planned_terminal = fleet_converge_apply_terminal(request: request)
-  let body = join(
-    concat(
-      concat(
-        [
-          "# fleet-converge plan",
-          concat("subject_host:", subject.host as String),
+  let baseline = observed_identity_text(request: request)
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let planned_terminal = fleet_converge_apply_terminal(request: request)
+      let body = join(
+        concat(
           concat(
-            "subject_member_set:",
-            serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+            [
+              "# fleet-converge plan",
+              concat("subject_host:", subject.host as String),
+              concat(
+                "subject_member_set:",
+                serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+              ),
+              concat("plan_generation:", to_string(planned_generation)),
+              "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+              concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
+              concat(fleet_converge_plan_baseline_section, ":"),
+              baseline,
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_baseline_section),
+              concat(fleet_converge_plan_observed_only_section, ":"),
+              join(observed_only_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_observed_only_section),
+              concat(fleet_converge_plan_monotone_section, ":"),
+              join(monotone_premise_rows(request: request), "\n"),
+              fleet_converge_plan_section_end_marker(section: fleet_converge_plan_monotone_section),
+            ],
+            fleet_converge_plan_axis_lines(request: request),
           ),
-          concat("plan_generation:", to_string(planned_generation)),
-          "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
-          concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
-          "observed_baseline:",
-          baseline,
-        ],
-        fleet_converge_plan_axis_lines(request: request),
-      ),
-      fleet_converge_plan_refusal_counter_lines(request: request),
-      [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
-    ),
-    "\n",
-  )
-  let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
-  let lease = fleet_converge_plan_held_lease(
-    subject: subject,
-    prior_generation: prior_generation,
-    owner_fingerprint: owner_fp,
-  )
-  FleetConvergePlanArtifact {
-    subject: subject,
-    prior_generation: prior_generation,
-    plan_lease: lease,
-    apply_terminal: planned_terminal,
-    observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
-    plan_body: body,
-    apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
+          fleet_converge_plan_refusal_counter_lines(request: request),
+          [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: planned_terminal,
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
+      } }
+    }
   }
 }
 
@@ -2847,7 +3269,7 @@ fn fleet_converge_launch_environment_plan_artifact(
   host: NonEmptyStr,
   prior_generation: Int,
   observed_timers: List<TimerRetirementMember>,
-) -> FleetConvergePlanArtifact {
+) -> FleetConvergePlanArtifact? {
   fleet_converge_plan_artifact_of_request(
     request: LaunchEnvironmentConverge { host: host, observed_timers: observed_timers },
     prior_generation: prior_generation,
@@ -2868,11 +3290,13 @@ fn fleet_converge_allocation_store_plan_artifact(
   let subject = fleet_converge_plan_subject(request: request)
   let spec = fabric_allocation_store_substrate_spec()
   let baseline = observed_baseline_text(request: request)
-  let planned_generation = prior_generation + 1
-  match runner_host_deploy_for(host: host as HostIdentity) {
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: _ } => Absent
     RunnerHostDeployRefused { host: _, cause: _ } => Absent
     RunnerHostDeployFound { deploy: deploy } => {
+      let planned_generation = cas_generation_count(g: generation)
       let operations = fabric_allocation_store_effect_operations(
         effect: fabric_allocation_store_ensure_effect(),
         job_user: deploy.job_user,
@@ -2906,25 +3330,20 @@ fn fleet_converge_allocation_store_plan_artifact(
         "\n",
       )
       let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
-      let lease = fleet_converge_plan_held_lease(
+      Present { value: FleetConvergePlanArtifact {
         subject: subject,
         prior_generation: prior_generation,
-        owner_fingerprint: owner_fp,
-      )
-      match content_hash_of_value(value: baseline as NonEmptyStr) {
-        Fnv1a64(structural) => Present { value: FleetConvergePlanArtifact {
+        plan_lease: fleet_converge_plan_held_lease(
           subject: subject,
-          prior_generation: prior_generation,
-          plan_lease: lease,
-          apply_terminal: fleet_converge_apply_terminal(request: request),
-          observed_baseline_hex: structural.digest,
-          plan_body: body,
-          apply_shell: apply_shell,
-        } }
-        Sha256Hash(_) => Absent
-        Sha1Hash(_) => Absent
-        Sha512Hash(_) => Absent
-      }
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: fleet_converge_apply_terminal(request: request),
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: apply_shell,
+      } }
+    }
     }
   }
 }
@@ -2951,7 +3370,7 @@ fn fleet_converge_observed_baseline_matches(
   observed_baseline_hex: Fnv1a64StructuralDigestHex,
   observed: FleetConvergeRequest,
 ) -> Bool {
-  let baseline = observed_baseline_text(request: observed)
+  let baseline = observed_identity_text(request: observed)
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) => structural.digest == observed_baseline_hex
     Sha256Hash(_) => false

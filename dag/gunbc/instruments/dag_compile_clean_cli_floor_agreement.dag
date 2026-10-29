@@ -8,7 +8,8 @@ import gunbc.compile_clean_diagnostic_policy {
   Enforced
 }
 
-data cli_floor_agreement_note: String = "CLI-vs-floor compile-clean policy agreement (issue 11). Both realizations read gunbc.compile_clean_diagnostic_policy.compile_clean_unlisted_import_use_enforcement — the fork is a declared counted frontier (FloorNotYet), not two silent opposites. GREEN: current row is FloorNotYet (non-blocking) AND flipping the row to Enforced makes the predicate true (RED control — proves both consumers would move together on promotion). The host builtin that compared two compile verdicts was deleted: after the emit oracle left, that comparison was a function against itself."
+// The three predicates below carry the CLI-vs-floor agreement and nothing else does (DESIGN §4c,
+// "Source annotations (prose the substrate can see)").
 
 fn witness_policy_row_is_floor_not_yet() -> Bool {
   compile_clean_unlisted_import_use_enforcement == FloorNotYet

@@ -3,7 +3,7 @@ module extdeps.cloud.gcp.iam_admin
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, WifPoolWire, WifProviderWire, WifProviderListWire }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, WifPoolWire, WifProviderWire, WifProviderListWire, GcpOperation, GoogleRpcStatus }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpPermissionProbeWire }
 import std.types { Bool, Int, List, Map, NonEmptyStr, Secret, String }
 import extdeps.ietf.http_semantics { GET, POST }
@@ -283,7 +283,7 @@ service gcp.IamAdmin {
   operation GetServiceAccount {
     requires Network
     input { access_token: Secret, project_id: GcpProjectId, sa_email: ServiceAccountEmail }
-    output { email: ServiceAccountEmail, sa_name: String from "name" }
+    output { email: ServiceAccountEmail, sa_name: String from "name", unique_id: String from "uniqueId" }
     readonly
     transport rest {
       method: GET,
@@ -334,7 +334,7 @@ service gcp.IamAdmin {
       pool_id: NonEmptyStr
       display_name: NonEmptyStr
     }
-    output { operation_name: String from "name" }
+    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
 
     idempotent
     transport rest {
@@ -364,7 +364,7 @@ service gcp.IamAdmin {
       attribute_mapping: Map<String, String>
       attribute_condition: NonEmptyStr
     }
-    output { operation_name: String from "name" }
+    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
 
     idempotent
     transport rest {
@@ -418,6 +418,48 @@ service gcp.IamAdmin {
     }
     response {
       200 => WifProviderListWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  // THE OPERATIONS A CREATE ANSWERS WITH ARE READ HERE, one get per resource kind, each path hole one
+  // SEGMENT (cloud.google.com/iam/docs/reference/rest/v1/projects.locations.workloadIdentityPools.operations/get
+  // and .providers.operations/get). project_id receives the project NUMBER the create's operation name
+  // carries, parsed out of that name (gcp wif_operation_name_parse).
+  operation GetWorkloadIdentityPoolOperation {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr, operation_id: NonEmptyStr }
+    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}/operations/\{operation_id\}"
+    }
+    response {
+      200 => GcpOperation
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetWorkloadIdentityPoolProviderOperation {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr, provider_id: NonEmptyStr, operation_id: NonEmptyStr }
+    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}/providers/\{provider_id\}/operations/\{operation_id\}"
+    }
+    response {
+      200 => GcpOperation
       401 => GcpErrorShape
       403 => GcpErrorShape
       404 => GcpErrorShape

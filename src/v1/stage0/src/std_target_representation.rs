@@ -6,8 +6,7 @@ use self::ExactBindingResolution::*;
 use self::VariantParentIdentity::*;
 use self::VariantParentKey::*;
 use self::VariantValueRealization::*;
-pub use crate::std_decl_ref::declaration_ref_eq;
-pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{declaration_ref_eq, DeclarationRef};
 pub use crate::std_kernel_type_name::KernelTypeName;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
@@ -74,7 +73,7 @@ pub fn resolve_exact_binding<R: Clone>(
             })
         }
         Some(s) => {
-            let hits = exact_binding_candidates(s.clone(), rows.clone());
+            let hits = exact_binding_candidates(s.clone(), rows);
             let candidate_count = (hits.clone().len() as i64);
             if (candidate_count.clone() == 0) {
                 Rc::new(ExactBindingResolution::ExactBindingAbsent)
@@ -287,7 +286,7 @@ pub fn variant_value_from_hits<R: Clone>(
         if (n.clone() == 1) {
             match hits.clone().first().cloned() {
                 Some(v) => Rc::new(VariantValueRealization::VariantRealizesAsTargetValue {
-                    value_spelling: v.value.clone().value_spelling.clone(),
+                    value_spelling: v.value.value_spelling.clone(),
                 }),
                 std::option::Option::None => {
                     Rc::new(VariantValueRealization::VariantTargetValueUnbound {
@@ -353,7 +352,7 @@ pub fn variant_value_realization<R: Clone>(
                 }
             }
             VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
-                match (*resolve_exact_binding(Some(d.clone()), bindings.clone())).clone() {
+                match (*resolve_exact_binding(Some(d.clone()), bindings)).clone() {
                     ExactBindingResolution::ExactBindingAbsent => {
                         Rc::new(VariantValueRealization::VariantRealizesStructurally)
                     }
@@ -381,7 +380,7 @@ pub fn variant_value_realization<R: Clone>(
                                         .cloned()
                                 {
                                     if same_representation(
-                                        v.value.clone().representation.clone(),
+                                        v.value.representation.clone(),
                                         b.representation.clone(),
                                     ) {
                                         __result.push(v);

@@ -1,0 +1,210 @@
+module gunbc.runner.runner_jit_mint_binding
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import std.optional { Absent, Present }
+import extdeps.auth.jws { JwsSigningKeyRef }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, gunbai_ci_declared_installation_id }
+import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_plane }
+import gunbc.fleet.app_control_plane_inspection { gunbai_ci_registration_goal }
+import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
+import gunbc.fleet.fleet_runner_connectivity { github_organization_ref }
+import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
+import gunbc.runner.jit_registration_subject { JitRegistrationSubjectStanding, JitRegistrationSubjectProven, JitRegistrationSubjectRefused }
+import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of, JitSlotExit, JitDeregistration, ensure_jit_runner_deregistered, JitDeregistrationSubject, AuthorizedDispatchRegistration, StoppingServiceUnitRegistration, stopping_service_registration_of }
+import gunbc.runner.runner_jit_perform { JitMintDispatch, dispatch_jit_mint, JitMintDispatchRefused, JitMintDispatchAuthorized, DispatchRefusedRunnerGroupUnrestricted }
+import gunbc.runner.runner_group_restriction_observation {
+  MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved,
+  runner_group_restriction_not_yet_observed, observe_runner_group_restriction,
+}
+import gunbc.github_effect_perform {
+  JitMintPerformance, perform_organization_jit_mint, JitMintReceived, JitCredentialNotDispatched,
+  lifecycle_controller_app, mint_controller_installation_token, ControllerTokenMinted, ControllerTokenNotMinted, read_runner_groups_with,
+}
+
+// THE ONE RULE EVERY ON-HOST MINT SHARES, put at the boundary the cell-bound microVM attempt and the
+// bound host-unit service slot both cross (DESIGN section 6b, root generalization). The two bindings
+// differ in exactly four facts -- WHO is registered (the sealed subject standing), WHICH runner group
+// admits it and the one workflow that group must be restricted to, and WHICH key signs the App JWT --
+// so those four are the binding's fields and everything else is this module: observe the control
+// plane with that key, read the group under one installation token, take the sealed observation of
+// its restriction, plan and dispatch, and perform the generate with the same token.
+// A new on-host registrant is one binding value, not a third copy of the sequence.
+type JitMintBinding sole_constructor {
+  subject: JitRegistrationSubjectStanding
+  runner_group_name: NonEmptyStr
+  selected_workflow: NonEmptyStr
+  signer: JwsSigningKeyRef
+}
+
+// THE PUBLIC BOUNDARY IS THIS CONSTRUCTOR: mint_for_binding, mint_under_observed_group and
+// deregister_binding_registration need a JitMintBinding, and only the two bindings' own builders make one --
+// the microVM attempt's (after its cell admission), the service slot's (which takes the sealed
+// ServiceSlotMintAdmission and ServiceSlotKeyHeld) and the qualification attempt's (a bound attempt slot, inside its
+// pass fold, gunbc.runner.runner_qualification_attempt_pass). A caller outside them cannot reach the dispatch through
+// host_unit_registration_subject, because it cannot hold a binding.
+fn jit_mint_binding(subject: JitRegistrationSubjectStanding, runner_group_name: NonEmptyStr, selected_workflow: NonEmptyStr, signer: JwsSigningKeyRef) -> JitMintBinding admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "attempt_mint_binding"),
+  decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_mint_binding"),
+  decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_pass", decl_name: "qualification_attempt_mint_binding"),
+] {
+  JitMintBinding { subject: subject, runner_group_name: runner_group_name, selected_workflow: selected_workflow, signer: signer }
+}
+
+fn jit_mint_credential_authority() -> GitHubCredentialAuthority {
+  ManagedAppInstallationCredential {
+    app: gunbai_ci_declared,
+    installation: gunbai_ci_declared_installation_id,
+    profile: GitHubCredentialProfileRef { name: "microvm-slot-controller" },
+  }
+}
+
+// observe_github_app_control_plane seals the state: signer custody (the key's signature accepted by
+// GitHub), the App registration's permissions against the goal, the installation's grant. An
+// unreachable control plane is carried inside the state and the mint's credential join refuses on it.
+fn observe_jit_mint_control_plane(signer: JwsSigningKeyRef, reason: NonEmptyStr) -> GitHubAppControlPlaneState
+  uses net: Network
+{
+  observe_github_app_control_plane(
+    app: lifecycle_controller_app,
+    key: signer,
+    installation: gunbai_ci_declared_installation_id,
+    required: gunbai_ci_registration_goal.required_permissions,
+    reason: reason,
+  )
+}
+
+fn binding_dispatch(binding: JitMintBinding, state: GitHubAppControlPlaneState, runner_group: MicrovmRunnerGroupStanding) -> JitMintDispatch admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_mint_binding", decl_name: "mint_under_observed_group"),
+  decl_ref(module_path: "gunbc.runner.runner_jit_mint_binding", decl_name: "mint_for_binding"),
+] {
+  dispatch_jit_mint(
+    subject: binding.subject,
+    authority: jit_mint_credential_authority(),
+    control_plane: state,
+    organization: github_organization_ref(),
+    runner_group: runner_group,
+    attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+  )
+}
+
+// A MINT AND THE REGISTRATION IT MAY HAVE LEFT BEHIND, ONE VALUE. The registration is derived from the
+// same authorized dispatch that was sent, so a mint whose answer was lost still names the runner a
+// deregistration must find absent; a mint refused before any dispatch names none.
+type JitBoundMint {
+  performance: JitMintPerformance
+  registration: JitRegistration?
+}
+
+fn unregistered_mint(performance: JitMintPerformance) -> JitBoundMint {
+  JitBoundMint { performance: performance, registration: none }
+}
+
+// THE GROUP IS READ ONLY WHEN IT IS THE LAST THING STANDING: every gate before it decides with no
+// I/O, and only then is the token minted, the groups read with it, the sealed observer run, and the
+// plan taken again -- the ONLY route to JitMintAuthorized. The same token performs the generate.
+fn mint_under_observed_group(binding: JitMintBinding, state: GitHubAppControlPlaneState) -> JitBoundMint
+  uses net: Network
+{
+  match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: binding.signer) {
+    ControllerTokenNotMinted { performance: p } => unregistered_mint(performance: p)
+    ControllerTokenMinted { token: t } => {
+      let standing = observe_runner_group_restriction(
+        name: binding.runner_group_name,
+        selected_workflow: binding.selected_workflow,
+        listed: read_runner_groups_with(token: t, organization: github_organization_ref().login),
+      )
+      let dispatch = binding_dispatch(binding: binding, state: state, runner_group: standing)
+      JitBoundMint { performance: perform_organization_jit_mint(dispatch: dispatch, token: t), registration: jit_registration_of(dispatch: dispatch) }
+    }
+  }
+}
+
+fn mint_for_binding(binding: JitMintBinding, state: GitHubAppControlPlaneState) -> JitBoundMint
+  uses net: Network
+{
+  match binding_dispatch(
+    binding: binding,
+    state: state,
+    runner_group: runner_group_restriction_not_yet_observed(name: binding.runner_group_name),
+  ) {
+    JitMintDispatchRefused { refusal: r } => match r {
+      DispatchRefusedRunnerGroupUnrestricted { group: _, cause: RunnerGroupRestrictionNotYetObserved } =>
+        mint_under_observed_group(binding: binding, state: state)
+      other => unregistered_mint(performance: JitMintReceived { delivery: JitCredentialNotDispatched { refusal: other } })
+    }
+    JitMintDispatchAuthorized { dispatch: _ } =>
+      mint_under_observed_group(binding: binding, state: state)
+  }
+}
+
+// THE OTHER HALF OF THE SAME BINDING: DELETING WHAT THE MINT MAY HAVE LEFT. A registration is removed
+// under a token the binding's own signer mints, against the credential authority the mint used
+// (ensure_jit_runner_deregistered refuses a token or authority that is not the mint's), so the
+// microVM attempt and the service slot reach one deregistration route. Success is the readback
+// showing the runner absent, never a delete status.
+type JitBindingDeregistration
+  = JitBindingDeregistrationRan { deregistration: JitDeregistration }
+  | JitBindingDeregistrationTokenRefused { performance: JitMintPerformance }
+
+fn deregister_binding_registration(binding: JitMintBinding, state: GitHubAppControlPlaneState, registration: JitRegistration, exit: JitSlotExit) -> JitBindingDeregistration
+  uses net: Network
+{
+  deregister_binding_subject(binding: binding, state: state, subject: AuthorizedDispatchRegistration { registration: registration }, exit: exit)
+}
+
+// ONE TOKEN, ONE AUTHORITY, ONE ENSURE, whatever the subject: the dispatch's own registration or the stopping unit's.
+fn deregister_binding_subject(binding: JitMintBinding, state: GitHubAppControlPlaneState, subject: JitDeregistrationSubject, exit: JitSlotExit) -> JitBindingDeregistration
+  uses net: Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.runner.runner_jit_mint_binding", decl_name: "deregister_binding_registration"),
+    decl_ref(module_path: "gunbc.runner.runner_jit_mint_binding", decl_name: "deregister_binding_stopping_unit"),
+  ]
+{
+  match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: binding.signer) {
+    ControllerTokenNotMinted { performance: p } => JitBindingDeregistrationTokenRefused { performance: p }
+    ControllerTokenMinted { token: t } =>
+      JitBindingDeregistrationRan {
+        deregistration: ensure_jit_runner_deregistered(
+          token: t,
+          authority: jit_mint_credential_authority(),
+          control_plane: state,
+          subject: subject,
+          exit: exit,
+        ),
+      }
+  }
+}
+
+// THE STOPPING UNIT'S SUBJECT IS THE BINDING'S OWN (gunbc.plans.mtcollins1_ci_service_legs F3): the registration
+// subject the mint would register under this binding, so a stop deletes exactly the name its own slot registers and
+// nothing a caller names. A binding whose subject did not prove has no registration to stop.
+type JitBindingStoppingSubject
+  = BindingStoppingSubject { subject: JitDeregistrationSubject }
+  | BindingStoppingSubjectUnproven { cause: NonEmptyStr }
+
+fn binding_stopping_subject(binding: JitMintBinding) -> JitBindingStoppingSubject {
+  match binding.subject {
+    JitRegistrationSubjectRefused { refusal: _ } => BindingStoppingSubjectUnproven { cause: "the binding's registration subject did not prove" as NonEmptyStr }
+    JitRegistrationSubjectProven { subject: s } =>
+      match stopping_service_registration_of(organization: github_organization_ref(), subject: s, authority: jit_mint_credential_authority()) {
+        Absent => BindingStoppingSubjectUnproven { cause: "the credential authority names no App installation" as NonEmptyStr }
+        Present { value: r } => BindingStoppingSubject { subject: StoppingServiceUnitRegistration { stopping: r } }
+      }
+  }
+}
+
+type JitBindingStopDeregistration
+  = JitBindingStopRan { deregistration: JitBindingDeregistration }
+  | JitBindingStopSubjectUnproven { cause: NonEmptyStr }
+
+// THE DEREGISTRATION A STOP PERFORMS, admitted only to the service slot's stop entry.
+fn deregister_binding_stopping_unit(binding: JitMintBinding, state: GitHubAppControlPlaneState, exit: JitSlotExit) -> JitBindingStopDeregistration
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_stop_with")]
+{
+  match binding_stopping_subject(binding: binding) {
+    BindingStoppingSubjectUnproven { cause: c } => JitBindingStopSubjectUnproven { cause: c }
+    BindingStoppingSubject { subject: sub } => JitBindingStopRan { deregistration: deregister_binding_subject(binding: binding, state: state, subject: sub, exit: exit) }
+  }
+}

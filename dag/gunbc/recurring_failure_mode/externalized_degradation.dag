@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.externalized_degradation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data externalized_degradation: RecurringFailureMode = RecurringFailureMode {
   identity: "externalized_degradation" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**externalized degradation** (an actor that accepted an obligation or risk, or caused a cost, silently shifts the resulting burden to another principal while preserving the apparent name, price, or contract.",

@@ -3,6 +3,9 @@ module test.claim.v1_interpreter_primitive_dispatch_authority_acceptance
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 import gunbc.v1.v1_interpreter_dispatch_emit {
+  any_bridge_family_naming_collision,
+  module_slug_after_domain_prefix,
+  module_pascal_after_domain_prefix,
   any_roster_site_has_rust_variant_collision,
   any_roster_site_has_spelling_collision,
   dispatch_emit_site_key,
@@ -18,6 +21,8 @@ import gunbc.v1.v1_interpreter_primitive_surface {
   DeclaredHere,
   EvalCallBridgeFamilySite,
   FreeCall,
+  InterpreterPrimitiveArmId,
+  InterpreterPrimitiveDispatchArm,
   MethodCall,
   ServiceDispatch,
   arm_is_declared_here,
@@ -37,15 +42,15 @@ fn roster_rows_are_authored_in_roster_not_transcribed_from_rust() -> Bool {
 }
 
 fn self_reading_bridge_arm_is_deleted() -> Bool {
-  !v1_interpreter_free_call_arms()
-    |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows")
+  !(v1_interpreter_free_call_arms()
+    |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows"))
 }
 
 fn declared_residual_rows_retain_independent_dispositions() -> Bool {
   let expected = ["eval_method_call", "eval_service_call"]
   let actual = v1_interpreter_declared_arms() |> map(r => r.dispatch_symbol)
-  count(actual |> filter(s => !expected |> any(e => e == s))) == 0
-    && count(expected |> filter(e => !actual |> any(s => s == e))) == 0
+  count(actual |> filter(s => !(expected |> any(e => e == s)))) == 0
+    && count(expected |> filter(e => !(actual |> any(s => s == e)))) == 0
     && (v1_interpreter_declared_arms() |> all(r =>
       match r.enumeration {
         DeclaredHere => arm_is_declared_here(arm: r)
@@ -117,4 +122,32 @@ test fn v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds() 
     && dispatch_emit_succeeds_on_live_roster()
     && rust_variant_collision_synthetic_red_control()
     && spelling_collision_synthetic_red_control()
+}
+
+// A BRIDGE FAMILY OUTSIDE v2 KEEPS EVERY SEGMENT OF ITS NAME (std.host_text, operator ruling H2): the
+// v2 domain segment is dropped only where it is present.
+test fn a_dag_tree_bridge_family_is_named_from_its_whole_path_holds() -> Bool {
+  module_slug_after_domain_prefix(module: qualified_name_from_dotted_string(dotted: "std.host_text")) == "std_host_text"
+    && module_pascal_after_domain_prefix(module: qualified_name_from_dotted_string(dotted: "std.host_text")) == "StdHostText"
+    && module_slug_after_domain_prefix(module: qualified_name_from_dotted_string(dotted: "v2.std.node")) == "std_node"
+}
+
+fn synthetic_bridge_row(identity: String, module: String) -> InterpreterPrimitiveDispatchArm {
+  InterpreterPrimitiveDispatchArm {
+    arm: InterpreterPrimitiveArmId { identity: identity },
+    form: FreeCall,
+    authored_spelling: identity,
+    realization_module: "v1_interpreter",
+    dispatch_symbol: "eval_call",
+    dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: module) },
+    enumeration: AuthoredInRoster,
+  }
+}
+
+// TWO DISTINCT FAMILIES WHOSE DERIVED NAMES COINCIDE REFUSE GENERATION: v2.std.zz and std.zz both
+// derive std_zz, so either lookup could answer for the other. The live roster has none.
+test fn bridge_families_deriving_one_name_refuse_and_the_live_roster_has_none_holds() -> Bool {
+  any_bridge_family_naming_collision(rows: [synthetic_bridge_row(identity: "synthetic.a", module: "v2.std.zz"), synthetic_bridge_row(identity: "synthetic.b", module: "std.zz")])
+    && !any_bridge_family_naming_collision(rows: [synthetic_bridge_row(identity: "synthetic.a", module: "v2.std.zz"), synthetic_bridge_row(identity: "synthetic.b", module: "std.yy")])
+    && !any_bridge_family_naming_collision(rows: v1_interpreter_authored_roster_arms())
 }

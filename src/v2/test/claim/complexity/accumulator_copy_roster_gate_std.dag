@@ -1,7 +1,21 @@
 module v2.test.claim.complexity.accumulator_copy_roster_gate_std
 
-import v2.lens.complexity_accumulator_copy.roster_gate { file_gate }
-import v2.std.text { String }
+import v2.lens.complexity_accumulator_copy.roster_gate {
+  RosterGateDisposition,
+  file_gate_disposition,
+  GateClean,
+  GateSuspectObserved,
+  GateRefusalBudgetExceeded,
+  GateNotEstablished
+}
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { String, Int }
+import std.algebra { length }
+import std.error_primitives { pure_dag_seam_unreachable_int }
+import gunbc.guarantee_stall { BoundedPopulation, UncountedNotEnumerable }
+import gunbc.guarantee_stall.accumulator_copy_untyped_combiner_refusals_stall {
+  accumulator_copy_untyped_combiner_refusals_stall
+}
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -18,14 +32,71 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // List-carrier concat(acc,[x]) folds rewritten to prepend+reverse in markdown.dag, markdown.dag,
 // serialize.dag, realization.dag, materialization_ladder.dag; change.dag keyed_collect_keys +
 // keyed_invert_patch map rewrite. keyed_merge_row_lists left concat(acc,[row]) init:left
-// (order-breaking for prepend+reverse). graph.dag neighbor append unchanged. String-carrier debt (7
-// sites): http_path.dag (2), markup.dag (2), render.dag (1), render_repeat_string_bootstrap.dag
-// (1), width.dag (1). Roster gates only change.dag (ceiling 13) and
+// (order-breaking for prepend+reverse). String-carrier debt (7 sites): http_path.dag (2),
+// markup.dag (2), render.dag (1), render_repeat_string_bootstrap.dag (1), width.dag (1). Roster
+// gates only change.dag (ceiling DERIVED from the stall below -- see THE CEILING) and
 // render_repeat_string_bootstrap.dag (ceiling 0); other cleaned std files are behavioral-witness
 // gated (substrate concat triggers combiner_unregistered_carrier_reaches refusals).
 
 data std_tranche_string_carrier_debt_count: Int = 7
 
-test fn roster_std_change_dag_zero_suspects_within_ratchet() -> Bool {
-  file_gate(path: "dag/std/change.dag", refusal_ceiling: 13)
+// THE CEILING IS THE STALL ROW'S TYPED POPULATION, NOT A HAND-COUNTED NUMBER, AND THE HAND-COUNT
+// IT REPLACED WAS ALREADY DRIFTED. This claim carried `refusal_ceiling: 13` while
+// gunbc.guarantee_stall.accumulator_copy_untyped_combiner_refusals_stall bounds the SAME file's
+// refusals at 16 occurrences (the 13 came from counting distinct (function, callee, reason)
+// identities; the three "(occurrence N)" members are the duplicates the lens counts separately).
+// Executed 2026-10-23 head-built: 14 refusals, so the hand-ceiling refused the BUDGET arm while
+// the typed population admits it (probe run, log /tmp/kd2/probe8.log; manager ruling msg_adddb844
+// item 2: wrong claim, fix forward). A hand-typed ceiling is a second representation of the
+// stall's BoundedPopulation (DESIGN section 5), and this is what the drift costs: a claim red for
+// a number no authority declares. The ceiling now joins that population -- the members prefixed
+// "std.change " -- so editing the stall row moves the ratchet and one authority declares it.
+//
+// THE GATE'S FOUR TYPED ARMS DECIDE ONE BIT IN THE LENS; THIS CLAIM UN-COLLAPSES IT.
+// file_gate returns Bool, so a red run cannot say whether a SUSPECT appeared or the refusals
+// merely exceeded the budget. That collapse is recorded as
+// gunbc.guarantee_stall.accumulator_copy_roster_gate_bool_names_no_suspect_stall. This claim
+// takes the typed `file_gate_disposition` and prints its own arm, so one executed run says which
+// fact fired; the stall row records that the lens itself still answers Bool and what grounds it.
+fn std_change_refusal_ceiling() -> Int {
+  match accumulator_copy_untyped_combiner_refusals_stall.population {
+    // The stall row's declared population is the authority; the join against "std.change "
+    // members is the file this gate covers. A NotYetCounted population is a refusal, not a
+    // silent zero ceiling: no number is declared there, and inventing one is the drift this
+    // rewrite removes.
+    BoundedPopulation { members: ms } => length(xs: filter(
+      xs: ms,
+      predicate: m => starts_with(s: m, prefix: "std.change ")
+    ))
+    UncountedNotEnumerable { reason: _ } => pure_dag_seam_unreachable_int()
+  }
+}
+
+fn std_change_disposition_text(d: RosterGateDisposition) -> String {
+  match d {
+    GateClean => "clean"
+    GateSuspectObserved { suspects: n } => concat("suspects: ", to_string(value: n))
+    GateRefusalBudgetExceeded { refusals: r, ceiling: c } => concat(
+      "refusal-budget-exceeded: refusals=", to_string(value: r), " ceiling=", to_string(value: c)
+    )
+    // The cause is NOT printed because the lens declares no projector from
+    // SourceAnalysisNotEstablishedCause to text -- that absence is the stall row's population,
+    // not this claim's silence.
+    GateNotEstablished { cause: _ } => "not-established (cause not renderable; see gunbc.guarantee_stall.accumulator_copy_roster_gate_bool_names_no_suspect_stall)"
+  }
+}
+
+test fn roster_std_change_dag_zero_suspects_within_ratchet() -> ProcessExit {
+  let d = file_gate_disposition(
+    path: "dag/std/change.dag",
+    refusal_ceiling: std_change_refusal_ceiling()
+  )
+  match d {
+    GateClean => ExitSuccess
+    other => exit_failure(reason: concat(
+      "accumulator-copy roster gate refused dag/std/change.dag -- ",
+      std_change_disposition_text(d: other),
+      " (ceiling derived from gunbc.guarantee_stall.accumulator_copy_untyped_combiner_refusals_stall std.change members)"
+    ))
+  }
 }

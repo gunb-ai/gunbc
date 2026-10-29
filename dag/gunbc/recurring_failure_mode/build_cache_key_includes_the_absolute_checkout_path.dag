@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path
+
+import std.types { NonEmptyStr, String, List, Int }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
+
+data build_cache_key_includes_the_absolute_checkout_path: RecurringFailureMode = RecurringFailureMode {
+  identity: "build_cache_key_includes_the_absolute_checkout_path" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
+
+  receipts: [
+    "a content cache whose key includes an input the identity does not mean never serves the second identity: two compute identities build the SAME commit, but each checks out at its own absolute path (gunbc.compute.work_provider_local ComputeLayout checkout = <root>/compute/work/<identity>/src), and sccache's Rust compilation key carries the absolute source and working-directory paths. The two builds are one computation (std.computation_identity) answered as two cache keys, so every rustc invocation of the second identity misses. Nothing refuses and nothing is wrong in the output: the cost is paid silently, as a full cold Rust build per identity.",
+
+    "SPECIMEN AND CAUSE CONFIRMATION, found 2026-10-16. //gunbc/instruments:compute-run-unit-cold (#14149, run 38858207563) built two identities back to back in one dispatch on one sccache server read through the unit's own ExecStop=: the second identity had hits=25 (Assembler 12, C/C++ 13) and Rust 0/111. The cause was INFERRED, not observed. //gunbc/instruments:compute-run-unit-cold-same-path (run 38863461852) built ONE identity twice at the SAME absolute checkout, removing the checkout and moving the target aside between builds so the second cargo run was cold: build 1 Rust hits 0, misses 111; build 2 Rust hits 111, misses 0 (Cache hits (Rust) 111, rate 100.00%), with Assembler 12 and C/C++ 13 unchanged. That control holds identity equal to path, so it could not separate them. The four-arm run 38867404661 (head 3cc1d2506a) did: A1 0/111, A2 (same identity, same path, same root) 111/111, B (DIFFERENT identity at the SAME checkout path) 0/111, C (same identity at a different path) 0/111. So the checkout path alone is NOT sufficient. Run 38874802505 (head cbcdb90315) added two controls run sequentially with A's target directory forced: D (different identity B at PA, A's target) 111/0 and E (identity A at a different path PC, A's target) 104 hits / 7 misses. So the cargo target directory enters the key for all 111 Rust compilations (D reuses everything with identity and path of A's build both absent from the difference; B and C, which changed the target, got 0), and the checkout path enters it for the remaining 7 (E loses exactly those). Both prefixes must be stripped or held constant for the second identity to reuse the first. THE KEY INPUTS ARE NOW OBSERVED. sccache 0.15.0 hashes every CARGO_-prefixed environment variable (src/compiler/rust.rs generate_hash_key; extdeps.cache.sccache sccache_rust_key_facts), so the unit's CARGO_TARGET_DIR was the input for 104 crates; cargo's own CARGO_MANIFEST_DIR carries the checkout for the workspace crates. Moving the target to cargo --target-dir (the one target authority; run 38882112700, head 4ee0cd774a) took B and C from 0/111 to 95/111, leaving 16 misses named from the unit's own server log: the 7 path-sensitive crates (proc_macro2 and the workspace crates v1_compiler, v1_stage0_extdeps_languages, v1_stage0_runtime, v1_stage0_std_core, v1_stage0_std_surface, v1_stage0_v1_artifact, v1_stage0_v1_infer; CARGO_MANIFEST_DIR under the checkout) and 9 registry crates (im, serde, serde_core, serde_json, serde_spanned, toml, toml_datetime, toml_edit, ureq) whose build scripts put OUT_DIR under the per-identity target; a local toy reproduces the mechanism (a build-script crate hits across target dirs unless it reads env!(\"OUT_DIR\"), when it misses). THE FURTHER FIX WAS PROBED AND IS UNAVAILABLE: BindPaths= of each unit's own checkout and target onto stable in-unit paths, in the user-manager transient unit exactly as production runs it (run 38891843763, head 6dc4800f71, arms F1 and F2), exits 226/NAMESPACE after 4ms with no process run, so per-unit private mounts are not available to user-manager units on the runner. The unit wrote nothing to the host stable paths. The residual 16 are therefore the attainable ceiling NOW (95 of 111 Rust compiles, held as data below).",
+
+    "DISTINGUISHING FACTS: the non-Rust hits (Assembler, C/C++) survive distinct paths because those keys are path-independent, so a nonzero overall hit rate reads as reuse working while the Rust share, the dominant cost, is 0. A total hit count therefore cannot be the observation; the per-language line (Cache hits (Rust)) is. Neighbour, not this class: a shared writable target directory (C4, #14040), which is cross-identity reuse that is UNSAFE; this class is cross-identity reuse that is MISSING.",
+
+    "RUNG FOUND AT: mitigatable. The failure occurs on every second identity and is contained only by the cost being paid, not refused. ATTAINABLE CEILING TODAY: 95 of 111 Rust compiles reused across identities, by making cargo --target-dir the one target authority (so the key stops carrying the unit's CARGO_TARGET_DIR); the 16 residual misses are named by crate and cause in the data below (CARGO_MANIFEST_DIR for the workspace crates, OUT_DIR for nine build-script registry crates). NOT a rung drop: nothing regressed (main reuses 0 of 111). NEXT TRIGGER, a capability: per-unit path virtualization available to user-manager units (a private bind mount, or an equivalent that makes two identities present identical checkout and target paths to rustc without sharing a writable tree), which 226/NAMESPACE in run 38891843763 shows is not available today. A stable SHARED checkout path is rejected because concurrent identities would share a writable tree, and --remap-path-prefix does not reach CARGO_MANIFEST_DIR or OUT_DIR as environment keys.",
+  ],
+
+  evidence: [],
+}
+
+// THE DECLARED RESIDUAL OF THIS CLASS AT THE CURRENT RUNG, held as data beside the row that explains it so
+// the instrument can join on it by crate name (a count would pass a regression from 95 hits to 1).
+// Read from the unit's own sccache server log, run 38882112700 (head 4ee0cd774a), arms B, C and E.
+// The log names 8 path-sensitive crates for E (proc_macro2 and the 7 workspace crates) where the Rust
+// stat counts 7 misses; the difference is not explained and is not asserted here.
+data build_cache_residual_manifest_dir_crates: List<String> = [
+  "proc_macro2", "v1_compiler", "v1_stage0_extdeps_languages", "v1_stage0_runtime",
+  "v1_stage0_std_core", "v1_stage0_std_surface", "v1_stage0_v1_artifact", "v1_stage0_v1_infer",
+]
+
+// Registry crates whose build script's OUT_DIR is read by env!(\"OUT_DIR\") (the compile reads it, so sccache
+// hashes it) and lies under the per-identity target. Reproduced on a toy crate; the per-crate attribution
+// of the nine is by the build-script shape of each, not yet read from its source.
+data build_cache_residual_out_dir_crates: List<String> = [
+  "serde", "serde_core", "serde_json", "im", "toml", "toml_datetime", "toml_edit", "serde_spanned", "ureq",
+]
+
+// THE REUSE FLOOR, the row's own words: 95 of 111 Rust compiles reused across identities is the attainable
+// ceiling today (runs 38882112700 and 38972144260). An arm that builds nothing has an empty miss set that
+// passes the identity join trivially, so each of B, C and E must also reach this many hits.
+data build_cache_residual_reuse_floor: Int = 95

@@ -1,9 +1,8 @@
 module test.claim.live_deploy.owned_directory_route_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath, List }
+import std.types { Bool, String, NonEmptyStr, FilePath, List, Int }
 import gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
-import gunbc.live_deploy.emit { owned_directory_apply_steps }
 import gunbc.live_deploy.member_identity {
   DirectoryRoot, converged_member_eq, converged_effect_plan, derive_member_plan, RootAt, DirectoryRootIdentity, RootConverged,
   directory_root_standing_wire, ObservedMember, MemberObserved, MemberUnobservable, EffectsDerived, EffectsRefused, plan_mutation_count,
@@ -16,14 +15,32 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.executor_privileged_operation { ReadDirectoryIdentity, ListDirectoryEntries }
 import extdeps.access.posix { file_mode_octal }
 import std.optional { Present, Absent }
+import std.algebra { Empty }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, owned_directory_path, owned_directory_mode, owned_directory_owner, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused,
-  owned_directory_observe, owned_directory_parent, owned_directory_basename, ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited,
+  owned_directory_observe, owned_directory_parent, owned_directory_basename, owned_directory_member, ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited,
 }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
+  dashboard_instance_worker_git_directories, dashboard_instance_dispatch_worktree_directory,
+  dashboard_instance_dispatch_attempt_state_directory, dashboard_instance_provider_state_directory,
+  dashboard_git_worker_directory_children, is_dashboard_git_worker_directory_demand,
+  dashboard_git_maintenance_service_unit_name, dashboard_git_maintenance_timer_unit_name,
+}
+import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
+import gunbc.live_deploy.apply_legs {
+  DeployApplyLeg, ApplyPlanReady, ApplyPlanRefused, ApplyLegEnsureDirectory,
+  ApplyLegCommand, ApplyLegInstallFile, ApplyLegDiagnosedCommand,
+  deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan,
+}
+import gunbc.live_deploy.member_identity { plan_mutation_is, RegroupGitWorkerSubtree, AssertRepositorySharedPosture, EffectDerivation }
+import gunbc.live_deploy.member_observe { deployment_git_worker_subtree_members, deployment_repository_shared_posture_members }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
 import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance, login_transaction_store_directory }
+import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_directory, cursor_attempt_runtime_directory, cursor_attempt_runtime_parent }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 
@@ -48,53 +65,12 @@ fn roster_enrols_it_for_readback(spec: DeploymentSpec, path: String) -> Bool {
   any(deployment_member_roster(spec: spec), m => converged_member_eq(a: m, b: DirectoryRoot { path: path as NonEmptyStr }))
 }
 
-fn emitter_renders_its_install_text(spec: DeploymentSpec, path: String) -> Bool {
-  string_contains(
-    s: pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: path), plan: converged_effect_plan(roster: [], target: deploy_witness_release_target(spec: spec)))),
-    pattern: path,
-  )
-}
-
-fn routed(spec: DeploymentSpec, written: String, demanded: String) -> Bool {
-  written == demanded
-    && demands_contain(spec: spec, path: demanded)
-    && roster_enrols_it_for_readback(spec: spec, path: demanded)
-    && emitter_renders_its_install_text(spec: spec, path: demanded)
-}
-
-test fn the_event_carrier_worktree_is_demanded_enrolled_and_rendered_by_the_srv1_transaction() -> Bool {
-  let live = srv1_live_dashboard_instance()
-  routed(
-    spec: deployment_spec_srv1(),
-    written: roadmap_event_carrier_layout_for_instance(instance: live).worktree as String,
-    demanded: owned_directory_path(t: roadmap_event_carrier_directory(instance: live)) as String,
-  )
-}
-
-test fn the_login_transaction_store_is_demanded_enrolled_and_rendered_by_the_srv1_transaction() -> Bool {
-  let live = srv1_live_dashboard_instance()
-  routed(
-    spec: deployment_spec_srv1(),
-    written: login_transaction_store_layout_for_instance(instance: live).root as String,
-    demanded: owned_directory_path(t: login_transaction_store_directory(instance: live)) as String,
-  )
-}
-
 // THE DEMAND IS THE INSTANCE'S: the lab's carrier worktree is not in production's transaction.
 test fn another_instances_demand_is_not_in_the_srv1_transaction() -> Bool {
   !demands_contain(
     spec: deployment_spec_srv1(),
     path: owned_directory_path(t: roadmap_event_carrier_directory(instance: srv1_lab_dashboard_instance())) as String,
   )
-}
-
-// A CONVERGED PLAN INSTALLS NO DIRECTORY: the emission is the decision's, not unconditional.
-test fn a_converged_plan_emits_no_directory_install() -> Bool {
-  let spec = deployment_spec_srv1()
-  pipeline_steps_text(steps: owned_directory_apply_steps(
-    spec: spec,
-    plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec)),
-  )) == ""
 }
 
 // ── P1 CONTROL: A PROTECTED FABRIC TREE IS CONVERGED THROUGH THE DEPLOY PRINCIPAL'S PINNED READS ─────
@@ -145,36 +121,6 @@ fn fabric_member_as_privileged_reads_see_it(t: OwnedDirectoryTarget) -> Observed
   )
 }
 
-test fn a_protected_fabric_tree_is_converged_and_a_second_deployment_installs_nothing() -> Bool {
-  let spec = deployment_spec_srv1()
-  let tree = fabric_tree()
-  let roster = map(tree, t => DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr })
-  let protected_root = any(tree, t => match owned_directory_mode(t: t) {
-    OwnedDirectoryModeResolved { mode } => !mode.other.execute && !mode.group.read
-    OwnedDirectoryModeRefused { reason: _ } => false
-  })
-  let derivation = derive_member_plan(
-    roster: roster,
-    desired: m => Present { value: match m { DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } }  _ => RootAt { root: DirectoryRootIdentity { path: "/" as NonEmptyStr, standing: RootConverged } } } },
-    observed: m => match first(filter(xs: tree, predicate: t => converged_member_eq(a: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }, b: m))) {
-      Present { value: t } => fabric_member_as_privileged_reads_see_it(t: t)
-      Absent => MemberUnobservable { member: m, cause: "not a fabric demand" }
-    },
-    target: deploy_witness_release_target(spec: spec),
-  )
-  count(tree) > 0 && protected_root
-    && all(tree, t => match fabric_member_as_privileged_reads_see_it(t: t) {
-      MemberObserved { identity } => match identity { RootAt { root } => directory_root_standing_wire(s: root.standing) == "converged"  _ => false }
-      _ => false
-    })
-    && match derivation {
-      EffectsRefused { refusals: _ } => false
-      EffectsDerived { plan } =>
-        plan_mutation_count(plan: plan) == 0
-          && all(tree, t => pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: owned_directory_path(t: t) as String), plan: plan)) == "")
-    }
-}
-
 // RED: the child read as the unprivileged job user reads it -- the owner-only parent's listing refused
 // -- is unobservable, so planning refuses rather than installing over it.
 test fn an_unprivileged_read_of_a_protected_child_refuses_the_derivation() -> Bool {
@@ -212,4 +158,186 @@ test fn the_deploy_principal_is_granted_the_pinned_reads_the_plan_observes_throu
     }
     _ => false
   }
+}
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// THE LAB EXISTING-HOST SUBTREE, AND THE PROD/DEDICATED-WORKER SPLIT (WORKER-ROOT-EQUIVALENT-3,
+// typed-effects port of #14246/#14270). The pre-#14660 bash apply rendered these two claims through
+// owned_directory_apply_steps / install_directory_owned_command; #14660 (c11aa231) deleted that
+// substrate and the two claims with it. bright-moth-475's re-point (msg_b23cc40b): the three .git
+// targets (objects/refs/logs) must now be ApplyLegEnsureDirectory legs INSIDE the typed subtree plan
+// naming the declared group, and the other three worker-writable directories stay in the standing
+// deploy_apply_directories_plan -- the SAME partition deploy_apply_directories_plan now enforces by
+// excluding git_worker_subtree_demand_claimed targets. The honest guards (a real derive_member_plan
+// over a supplied briansrls:briansrls observation must PRODUCE the plan, never adopt; an out-of-set
+// directory observed the same way must refuse; a set member under a foreign USER must refuse) are the
+// pure half and are UNCHANGED from the bash version -- only the per-target regroup check, which read
+// the deleted emitter, is re-pointed at the typed legs.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+fn worker_dir_host_mode_text(t: OwnedDirectoryTarget) -> String {
+  match owned_directory_mode(t: t) {
+    OwnedDirectoryModeResolved { mode } => file_mode_octal(mode: mode) as String
+    OwnedDirectoryModeRefused { reason: _ } => ""
+  }
+}
+
+fn worker_dir_as_host_holds_it(t: OwnedDirectoryTarget, host_user: NonEmptyStr, host_group: NonEmptyStr) -> ObservedMember {
+  let path = owned_directory_path(t: t) as String as NonEmptyStr
+  let listing = owned_directory_basename(path: owned_directory_path(t: t)) as String
+  let stat_line = join(["directory|", host_user as String, "|", host_group as String, "|", worker_dir_host_mode_text(t: t)], "")
+  owned_directory_member_of_decision(
+    member: DirectoryRoot { path: path },
+    path: path,
+    target: t,
+    observation: owned_directory_observe(
+      path: owned_directory_path(t: t),
+      list: d => ObserverReadOut { stdout: listing },
+      stat: p => ObserverReadOut { stdout: stat_line },
+    ),
+  )
+}
+
+fn worker_dirs_converged_desired(m: ConvergedMember) -> MemberIdentity? {
+  Present { value: match m { DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } }  _ => RootAt { root: DirectoryRootIdentity { path: "/" as NonEmptyStr, standing: RootConverged } } } }
+}
+
+fn worker_dirs_derivation(dirs: List<OwnedDirectoryTarget>, host_user: NonEmptyStr, host_group: NonEmptyStr) -> EffectDerivation {
+  derive_member_plan(
+    roster: map(dirs, t => DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }),
+    desired: m => worker_dirs_converged_desired(m: m),
+    observed: m => match first(filter(xs: dirs, predicate: t => converged_member_eq(a: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }, b: m))) {
+      Present { value: t } => worker_dir_as_host_holds_it(t: t, host_user: host_user, host_group: host_group)
+      Absent => MemberUnobservable { member: m, cause: "not a demanded directory" }
+    },
+    target: deploy_witness_release_target(spec: deployment_spec_srv1()),
+  )
+}
+
+// THE TYPED PARTITION CHECK. For a target inside the declared worker set, its EnsureDirectory leg must
+// live in the plan its route owns: the three .git children inside the subtree plan, the other three in
+// the standing directories plan -- and it must appear in the OTHER plan not at all (the partition the
+// typed apply enforces by excluding git_worker_subtree_demand_claimed targets from the standing plan).
+// The leg names the TARGET'S DECLARED group (the shared attempt group), never the group found on the
+// host -- which is the difference between a regroup and an adoption. The legs come from the same
+// full-install plan the deploy runs (the subtree group is gated on the plan publishing the tree).
+fn worker_dir_legs_in_the_right_plan(t: OwnedDirectoryTarget, lab_spec: DeploymentSpec, host_group: NonEmptyStr) -> Bool {
+  let plan = deploy_witness_full_install_plan(spec: lab_spec)
+  let subtree_legs = match deploy_apply_git_worker_subtree_plan(spec: lab_spec, plan: plan) {
+    ApplyPlanReady { legs } => legs
+    ApplyPlanRefused { step: _, reason: _ } => []
+  }
+  let standing_legs = match deploy_apply_directories_plan(spec: lab_spec, plan: plan) {
+    ApplyPlanReady { legs } => legs
+    ApplyPlanRefused { step: _, reason: _ } => []
+  }
+  let is_git = is_dashboard_git_worker_directory_demand(t: t)
+  let own_plan = if is_git { subtree_legs } else { standing_legs }
+  let other_plan = if is_git { standing_legs } else { subtree_legs }
+  let in_own = any(own_plan, leg => match leg { ApplyLegEnsureDirectory { target } => owned_directory_member(t: target) == owned_directory_member(t: t)  _ => false })
+  let not_in_other = !any(other_plan, leg => match leg { ApplyLegEnsureDirectory { target } => owned_directory_member(t: target) == owned_directory_member(t: t)  _ => false })
+  let owner = owned_directory_owner(t: t)
+  in_own && not_in_other
+    && (owner.group as String) == (fleet_posix_worker_shared_group_name as String)
+    && (owner.group as String) != (host_group as String)
+}
+
+fn existing_subtree_derives_the_regroup(lab_spec: DeploymentSpec, dirs: List<OwnedDirectoryTarget>, host_user: NonEmptyStr, host_group: NonEmptyStr) -> Bool {
+  match worker_dirs_derivation(dirs: dirs, host_user: host_user, host_group: host_group) {
+    EffectsRefused { refusals: _ } => false
+    EffectsDerived { plan } =>
+      count(dirs) == 6
+        && plan_mutation_count(plan: plan) == count(dirs)
+        && all(dirs, t => worker_dir_legs_in_the_right_plan(t: t, lab_spec: lab_spec, host_group: host_group))
+  }
+}
+
+fn refuses_all(dirs: List<OwnedDirectoryTarget>, host_user: NonEmptyStr, host_group: NonEmptyStr, expected: Int) -> Bool {
+  match worker_dirs_derivation(dirs: dirs, host_user: host_user, host_group: host_group) {
+    EffectsRefused { refusals } => count(refusals) == expected
+    EffectsDerived { plan: _ } => false
+  }
+}
+
+test fn the_existing_lab_subtree_is_planned_by_the_provider_and_nothing_outside_it_is_adopted() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let lab_spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let host = lab.directory_owner
+  let worker_dirs = concat([
+    dashboard_instance_dispatch_worktree_directory(instance: lab),
+    dashboard_instance_dispatch_attempt_state_directory(instance: lab),
+    dashboard_instance_provider_state_directory(instance: lab),
+  ], dashboard_instance_worker_git_directories(instance: lab))
+  let out_of_set = credential_acquisition_slots_directory(instance: lab)
+  let intruder_user = "someone-else" as NonEmptyStr
+  existing_subtree_derives_the_regroup(lab_spec: lab_spec, dirs: worker_dirs, host_user: host.user, host_group: host.group)
+    && refuses_all(dirs: [out_of_set], host_user: host.user, host_group: intruder_user, expected: 1)
+    && refuses_all(dirs: worker_dirs, host_user: intruder_user, host_group: host.group, expected: 6)
+}
+
+// FLATTEN A TYPED PLAN TO THE TEXT the bash fragment used to render: every step name, every argv word,
+// and each install payload -- so a substring check that once ran over pipeline_steps_text now runs over
+// the typed legs' own content. Empty for a refused or empty plan.
+fn deploy_apply_legs_text(legs: List<DeployApplyLeg>) -> String {
+  join(
+    flat_map(legs, leg => match leg {
+      ApplyLegCommand { step: st, command: c } => concat([st], c.arguments)
+      ApplyLegDiagnosedCommand { step: st, command: c, diagnosis: _ } => concat([st], c.arguments)
+      ApplyLegInstallFile { step: st, command: c, payload: p } => concat([st, p], c.arguments)
+      ApplyLegEnsureDirectory { target } => [owned_directory_path(t: target) as String]
+      _ => []
+    }),
+    "\n",
+  )
+}
+
+// THE OTHER SIDE OF THE SAME FACT (bright-moth-475, amendment 3). The git-subtree members and the
+// maintenance unit belong to the DEDICATED-WORKER route and to NOTHING else: a WorkerIsServiceUser host
+// gains not one leg from the typed subtree plan, while the lab's plan carries the whole set -- premise,
+// the three .git installs, the regroup sweep naming the shared attempt group, the posture keys AND the
+// maintenance unit + timer. The claim runs the route's own builders (the roster builders, the full-install
+// plan, and the typed subtree plan) rather than a hand-written list, so a roster gate widened to prod
+// reddens the FIRST leg before any apply is reached. RED CONTROL: hand prod a WorkerDedicatedAccount
+// worker and the prod-empty legs go false through the same builders.
+test fn the_dedicated_worker_move_touches_the_lab_and_leaves_prod_untouched() -> Bool {
+  let prod_spec = deployment_spec_srv1()
+  let lab_spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let lab = srv1_lab_dashboard_instance()
+  let prod_subtrees = deployment_git_worker_subtree_members(spec: prod_spec)
+  let prod_posture = deployment_repository_shared_posture_members(spec: prod_spec)
+  let prod_plan = deploy_witness_full_install_plan(spec: prod_spec)
+  let prod_subtree_text = deploy_apply_legs_text(legs: match deploy_apply_git_worker_subtree_plan(spec: prod_spec, plan: prod_plan) {
+    ApplyPlanReady { legs } => legs
+    ApplyPlanRefused { step: _, reason: _ } => []
+  })
+  let lab_subtrees = deployment_git_worker_subtree_members(spec: lab_spec)
+  let lab_posture = deployment_repository_shared_posture_members(spec: lab_spec)
+  let lab_plan = deploy_witness_full_install_plan(spec: lab_spec)
+  let lab_subtree_text = deploy_apply_legs_text(legs: match deploy_apply_git_worker_subtree_plan(spec: lab_spec, plan: lab_plan) {
+    ApplyPlanReady { legs } => legs
+    ApplyPlanRefused { step: _, reason: _ } => []
+  })
+  // prod gains nothing: no subtree member, no posture member in the roster ...
+  count(prod_subtrees) == 0
+    && count(prod_posture) == 0
+    // ... nor one regroup/assert mutation for the lab's OWN members in prod's plan ...
+    && all(lab_subtrees, m => !plan_mutation_is(plan: prod_plan, member: m, expected: RegroupGitWorkerSubtree))
+    && all(lab_posture, m => !plan_mutation_is(plan: prod_plan, member: m, expected: AssertRepositorySharedPosture))
+    // ... and the typed subtree plan renders NOTHING for prod (premise, installs, sweep, posture, units all gone) ...
+    && prod_subtree_text == ""
+    // the lab carries the whole set: the three declared subtree children and the posture member ...
+    && count(lab_subtrees) == count(dashboard_git_worker_directory_children)
+    && count(lab_posture) == 1
+    // ... each subtree member is planned to REGROUP and the posture member to ASSERT ...
+    && all(lab_subtrees, m => plan_mutation_is(plan: lab_plan, member: m, expected: RegroupGitWorkerSubtree))
+    && all(lab_posture, m => plan_mutation_is(plan: lab_plan, member: m, expected: AssertRepositorySharedPosture))
+    // ... the subtree plan actually carries the sweep naming the shared attempt group ...
+    && string_contains(s: lab_subtree_text, pattern: fleet_posix_worker_shared_group_name as String)
+    // ... and the posture legs carry BOTH deferral keys AND the maintenance unit + timer (the keys and
+    // the unit are one member: a posture that switches off the repo's only repack without installing its
+    // replacement is the degradation the amendment refused, so they must appear together or this leg is red).
+    && string_contains(s: lab_subtree_text, pattern: "core.sharedRepository")
+    && string_contains(s: lab_subtree_text, pattern: "gc.auto")
+    && string_contains(s: lab_subtree_text, pattern: "maintenance.auto")
+    && string_contains(s: lab_subtree_text, pattern: dashboard_git_maintenance_service_unit_name(instance: lab))
+    && string_contains(s: lab_subtree_text, pattern: dashboard_git_maintenance_timer_unit_name(instance: lab))
 }

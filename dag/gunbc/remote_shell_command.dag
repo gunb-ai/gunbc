@@ -1,8 +1,27 @@
 module gunbc.remote_shell_command
 
 import std.types { String, List, NonEmptyStr, Bool, Int }
-import std.algebra { list_map }
-import extdeps.posix.shell_command_language { posix_single_quote }
+import std.algebra { list_map, for_all }
+import extdeps.posix.shell_command_language {
+  posix_single_quote,
+  emit_posix_redirection,
+  PosixRedirection,
+  PosixRedirectStdoutClobber,
+  PosixRedirectStdoutAppend,
+  PosixRedirectStderrClobber,
+  PosixRedirectStderrAppend,
+  PosixRedirectStderrDupStdout,
+  PosixRedirectPathname,
+}
+import extdeps.posix.process {
+  PosixProcessStdio,
+  PosixProcessStdioUnchanged,
+  PosixProcessStdoutAndStderrToOneFile,
+  PosixProcessStdoutAndStderrToSeparateFiles,
+  PosixFileOpenMode,
+  PosixFileTruncate,
+  PosixFileAppend,
+}
 
 // CliSurface -> shell simple-command tree -> shell-word serialization -> one RFC 4254 command
 // string. This is the SECOND handler for the class typed_argv_exec.dag's portable-word allowlist
@@ -10,7 +29,11 @@ import extdeps.posix.shell_command_language { posix_single_quote }
 // word rather than transporting it, this module makes it SAFE to transport instead, by composing it
 // into the single command-STRING field extdeps.ssh.session ssh.Session.Exec already carries (RFC
 // 4254 section 6.5: one string-typed command field, no argv). It does not widen the allowlist and
-// it is not wired into gunbc.typed_argv_exec or ssh.Session.Exec by this module. It IS now wired
+// is not wired into ssh.Session.Exec by this module. gunbc.typed_argv_exec
+// typed_argv_exec_over_fleet_ssh_posix consumes it over the fleet SSH edge: gunbc.fleet.fleet_known_hosts_anchor
+// fleet_posix_quoted_leg mints a RemoteExecCommand here under PosixShellInterpreted only after that target's login
+// shell and OpenSSH releases are MEASURED (PosixRemoteRoute), which is per-target evidence for the interpretation the
+// declared openssh_login_shell_interpretation row asserts for every OpenSSH host. It IS also wired
 // into extdeps.exec.command command_over_transport's SshExec branch (operator directive,
 // 2026-08-19: LAND THE FIRST CONSUMER) -- that import runs extdeps.exec.command ->
 // gunbc.remote_shell_command, the opposite direction, so this module stays unaware of its consumer,
@@ -69,7 +92,8 @@ data openssh_login_shell_interpretation: RemoteExecCommandInterpretation = Posix
 // OpenSSH's sshd(8) executes the exec request's command string through the target user's login
 // shell, which re-parses it -- documented OpenSSH behavior, not an RFC 4254 mandate
 // (extdeps.ssh.session ssh_remote_exec_carries_a_command_string_note). A login shell on every host
-// this corpus deploys to is POSIX-conformant (bash or a POSIX sh).
+// this corpus deploys to is POSIX-conformant (bash or a POSIX sh). This row does not pin noclobber
+// (`set -C`); truncate-to-file therefore renders XCU 2.7.2 `>|`, not `>`.
 
 data openbmc_dropbear_interpretation: RemoteExecCommandInterpretation = PosixShellInterpreted
 
@@ -83,6 +107,7 @@ data openbmc_dropbear_interpretation: RemoteExecCommandInterpretation = PosixShe
 
 type ShellSimpleCommand {
   words: List<NonEmptyStr>
+  redirections: List<PosixRedirection>
 }
 
 type SimpleCommandRefusalCause
@@ -96,7 +121,7 @@ fn simple_command(argv: List<NonEmptyStr>) -> SimpleCommandOutcome {
   if length(xs: argv) == 0 {
     SimpleCommandRefused { cause: SimpleCommandEmptyArgv {} }
   } else {
-    SimpleCommandBuilt { command: ShellSimpleCommand { words: argv } }
+    SimpleCommandBuilt { command: ShellSimpleCommand { words: argv, redirections: [] } }
   }
 }
 
@@ -110,14 +135,17 @@ fn shell_quote_word(word: NonEmptyStr) -> NonEmptyStr {
 }
 
 fn emit_remote_shell(command: ShellSimpleCommand) -> NonEmptyStr {
-  join(list_map(xs: command.words, f: fn(w) { shell_quote_word(word: w) as String }), " ") as NonEmptyStr
+  concat(
+    join(list_map(xs: command.words, f: fn(w) { shell_quote_word(word: w) as String }), " "),
+    join(list_map(xs: command.redirections, f: fn(r) { emit_posix_redirection(redir: r) }), ""),
+  ) as NonEmptyStr
 }
 
-// THE ONE CARRIER FOR AN RFC 4254 COMMAND STRING. Only this module may construct one: the single
-// admitted route is remote_exec_command_string below, which takes a typed argv vector and an
-// observed interpretation and emits the grammar-owned single-quote encoding. A recipient at the
-// transport boundary unwraps via remote_exec_command_rendered to obtain the NonEmptyStr for the
-// physical exec channel — a construction gate, not a validation check.
+// THE ONE CARRIER FOR AN RFC 4254 COMMAND STRING. Only this module may construct one. The admitted
+// mint is remote_exec_command_string_with_stdio; remote_exec_command_string is that mint with
+// PosixProcessStdioUnchanged. A recipient at the transport boundary unwraps via
+// remote_exec_command_rendered to obtain the NonEmptyStr for the physical exec channel — a
+// construction gate, not a validation check.
 type RemoteExecCommand sole_constructor {
   rendered: NonEmptyStr
 }
@@ -143,8 +171,58 @@ fn remote_exec_command_rendered(command: RemoteExecCommand) -> NonEmptyStr { com
 // for a caller to hand to the physical exec channel — a composition of two targets (outer local
 // ssh/sshpass argv, inner serialized shell program), never a concatenation of one into the other.
 
+fn remote_exec_from_simple_command(cmd: ShellSimpleCommand) -> RemoteExecCommandOutcome {
+  RemoteExecCommandBuilt {
+    command: RemoteExecCommand { rendered: emit_remote_shell(command: cmd) }
+  }
+}
+
 fn remote_exec_command_string(
   argv: List<NonEmptyStr>,
+  interpretation: RemoteExecCommandInterpretation
+) -> RemoteExecCommandOutcome {
+  remote_exec_command_string_with_stdio(
+    argv: argv,
+    stdio: PosixProcessStdioUnchanged,
+    interpretation: interpretation,
+  )
+}
+
+fn posix_stdout_redirection(path: PosixRedirectPathname, mode: PosixFileOpenMode) -> PosixRedirection {
+  match mode {
+    PosixFileTruncate => PosixRedirectStdoutClobber { word: path }
+    PosixFileAppend => PosixRedirectStdoutAppend { word: path }
+  }
+}
+
+fn posix_stderr_file_redirection(path: PosixRedirectPathname, mode: PosixFileOpenMode) -> PosixRedirection {
+  match mode {
+    PosixFileTruncate => PosixRedirectStderrClobber { word: path }
+    PosixFileAppend => PosixRedirectStderrAppend { word: path }
+  }
+}
+
+fn posix_stdio_redirections(stdio: PosixProcessStdio) -> List<PosixRedirection> {
+  match stdio {
+    PosixProcessStdioUnchanged => []
+    PosixProcessStdoutAndStderrToOneFile { path: path, mode: mode } =>
+      [posix_stdout_redirection(path: path, mode: mode), PosixRedirectStderrDupStdout]
+    PosixProcessStdoutAndStderrToSeparateFiles {
+      stdout_path: out_p,
+      stderr_path: err_p,
+      stdout_mode: out_m,
+      stderr_mode: err_m,
+    } =>
+      [
+        posix_stdout_redirection(path: out_p, mode: out_m),
+        posix_stderr_file_redirection(path: err_p, mode: err_m),
+      ]
+  }
+}
+
+fn remote_exec_command_string_with_stdio(
+  argv: List<NonEmptyStr>,
+  stdio: PosixProcessStdio,
   interpretation: RemoteExecCommandInterpretation
 ) -> RemoteExecCommandOutcome {
   match interpretation {
@@ -153,9 +231,10 @@ fn remote_exec_command_string(
       match simple_command(argv: argv) {
         SimpleCommandRefused { cause: c } => RemoteExecCommandRefused { cause: SimpleCommandArgvRefused { cause: c } }
         SimpleCommandBuilt { command: cmd } =>
-          RemoteExecCommandBuilt {
-            command: RemoteExecCommand { rendered: emit_remote_shell(command: cmd) }
-          }
+          remote_exec_from_simple_command(cmd: ShellSimpleCommand {
+            words: cmd.words,
+            redirections: posix_stdio_redirections(stdio: stdio),
+          })
       }
   }
 }

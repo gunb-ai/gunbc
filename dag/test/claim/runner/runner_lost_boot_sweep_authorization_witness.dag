@@ -1,0 +1,43 @@
+module test.claim.runner.runner_lost_boot_sweep_authorization_witness
+
+import std.types { Bool, List, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.auth.authorization_pattern_selection {
+  select_authorization_pattern, PatternSelected, FederatedScopedGrant,
+  OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession,
+}
+import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, Conforms }
+import gunbc.auth.access_token_source { selected_access_token_source, AccessTokenSourceSelected, WorkloadIdentityToken, GcloudPrintToken, OperatorSuppliedToken, AccessTokenSourceUnavailable }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SWEEP EFFECT (list plus DELETE of org self-hosted runners, gunbai-ci App, one installation) IS RUN
+// THROUGH THE SELECTION, NOT READ OFF THE CODE. The census row is the real producer of the effect; the
+// claim asserts the ROUTE (the real fold selects FederatedScopedGrant for it, and the census verdict
+// Conforms) and not only the answer. RED: a row realized as another pattern, or an effect the fold
+// selects another pattern for, fails.
+// BOTH ARMS' KEY SITES are rowed and run through the same selection: the deleting arm's and the dry run's.
+test fn the_sweep_effect_selects_a_federated_scoped_grant() -> Bool {
+  ["sweep_under_staged_key", "dry_run_under_staged_key"] |> all(site => match filter(privileged_effect_census, r => r.site.decl_name == site).first() {
+    Absent => false
+    Present { value: row } => (match select_authorization_pattern(e: row.effect) {
+      PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
+      _ => false
+    }) && (match site_verdict(row: row).conformance {
+      Conforms => true
+      _ => false
+    })
+  })
+}
+
+// THE TOKEN SOURCE OF A FEDERATED RUN: WIF_ACCESS_TOKEN present selects WorkloadIdentityToken, and its
+// absence with no supplied token is Unavailable (never a fallback).
+test fn a_federated_run_selects_the_workload_identity_token_source() -> Bool {
+  (match selected_access_token_source(workload_present: true, supplied: none) {
+    AccessTokenSourceSelected { source: WorkloadIdentityToken } => true
+    _ => false
+  }) && (match selected_access_token_source(workload_present: false, supplied: none) {
+    AccessTokenSourceUnavailable { cause: _ } => true
+    _ => false
+  })
+}

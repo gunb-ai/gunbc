@@ -1,5 +1,6 @@
 module v2.test.claim.execution.emit_host_loop_equals_eval
 
+
 import std.types { List, Map }
 import v2.test.claim.complexity_gate.table_fixture_loop_subject_producer {
   table_fixture_loop_arrow_with_body,
@@ -47,8 +48,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Edge, Node, Symbol }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Edge, Node, Symbol }
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -182,7 +182,7 @@ fn emit_loop_eval_step_loop(
   node: Node,
   env: EvaluationEnvironment
 ) -> Outcome<ControlTransfer> {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
     Present { value: body } =>
       bind_outcome(
         o: emit_loop_eval_allocate_literal(node: body, _env: env),

@@ -1,4 +1,5 @@
 module test.claim.site_element_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 import std.types { Bool, Int, List, String }
 import std.list { distinct_by_key }
@@ -87,7 +88,7 @@ import gunbc.site.web_fonts { web_font_faces }
 // they report one that reaches the registry.
 
 fn html(node: Fragment) -> String {
-  serialize_html_source(node: node)
+  render_html(serialize_html_source(node: node))
 }
 
 fn has(s: String, pattern: String) -> Bool {

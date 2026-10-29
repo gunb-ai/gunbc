@@ -47,9 +47,9 @@ fn build(text: String, runtime: UnitRuntimeReading) -> String {
       decode: decode_claim_set_results(text: text, staged_bytes: text_bytes(text: text), observed_bytes: text_bytes(text: text)),
       claims: one_claim(), revision: rev, runtime: runtime, completed_at: "2026-10-15T00:00:00Z",
     ) {
-      ClaimSetReceipted { receipt: r, outputs: o } => match r.payload {
+      ClaimSetReceipted { receipt: r, outputs: o, results: rs } => match r.payload {
         ExecutionReceipt { step_id: _, outputs: po, billable: b, completed_at: _ } =>
-          concat("receipted:", to_string(measure_count(b)))
+          join(["receipted:", to_string(measure_count(b)), ":", to_string(count(rs))], "")
         _ => "wrong-payload"
       }
       ClaimSetUnreceipted { cause: ResultsNotAdmitted { admission: _ } } => "not-admitted"
@@ -75,7 +75,7 @@ test fn the_billable_time_is_the_hosts_measured_runtime_rounded_up() -> Bool {
 }
 
 test fn a_receipt_needs_admitted_results_and_a_measured_runtime() -> Bool {
-  build(text: drive_text(), runtime: UnitRuntimeMeasured { billable: second(count: 7) }) == "receipted:7"
+  build(text: drive_text(), runtime: UnitRuntimeMeasured { billable: second(count: 7) }) == "receipted:7:1"
     && build(text: padding, runtime: UnitRuntimeMeasured { billable: second(count: 7) }) == "not-admitted"
     && build(text: drive_text(), runtime: UnitRuntimeUnread { detail: "fixture" }) == "no-runtime"
 }

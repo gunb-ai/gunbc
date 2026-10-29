@@ -1,0 +1,219 @@
+module v2.test.claim.pipe_application
+
+import std.types { List }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer_application_callee_use }
+import v2.compiler.inferred_tree { InferredTree }
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty, list_at_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Hash, Node, NodeFold, Symbol, content_hash, fold_node }
+import v2.std.qualified_name { declaration_reference_path_optional }
+import v2.std.runtime { RuntimePrimitive, RuntimeValue }
+import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a pipe is the call it abbreviates, with its left operand as the FIRST actual
+// (v2.compiler.body_lowering_fold body_lower_pipe_application). Its head is an ordinary reference that
+// resolve binds by declaration identity through the import, and infer and eval bind its actuals
+// through v2.std.arrow_signature application_binding_plan like any application
+// (gunbc.recurring_failure_mode pipe_into_a_declared_function_resolves_as_a_method).
+//
+// ROUTE: every specimen is source text assembled through assemble_program_from_ingest (lowering and
+// resolve run for real), then infer_and_discharge and eval, over two modules: `pa` declares the heads
+// and `pb` imports them and pipes. `pc` declares a second `h` for the ambiguity arm.
+//
+// RED BEFORE THE REPAIR, measured at 88e8991e557 by this route: resolve bound `f` in `7 |> f(a: true)`
+// to pa.f, and infer refused with application_positional_deficit at `f` -- the pipe lowered as an
+// opaque infix Transform, so its left operand never reached the call. This module run at that tree:
+// (1) through (5) red, the control (0) and the resolve refusals (6) green.
+//
+// MUTATION RECEIPT, executed: putting the left operand after the authored actuals instead of before
+// them reds (1) through (5) and leaves (0) and (6) green, so the claims discriminate the slot the
+// operand takes rather than whether the program compiles.
+
+fn pipe_witness(src: String, path: String, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: cu, file_path: path },
+    compilation_unit: cu,
+    source_root: V2Tree
+  }
+}
+
+fn pipe_assemble(imports: String, body: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: pipe_witness(src: "module pa\n\nfn f(xs: Int, a: Bool) -> Int { xs }\n\nfn h(xs: Int) -> Int { xs }\n", path: "src/v2/pa.dag", cu: ^pipe_application_pa_cu),
+      tail: Cons {
+        head: pipe_witness(src: "module pc\n\nfn h(xs: Int) -> Int { xs }\n", path: "src/v2/pc.dag", cu: ^pipe_application_pc_cu),
+        tail: Cons {
+          head: pipe_witness(src: concat("module pb\n\n", concat(imports, concat("\n\nfn g() -> Int { ", concat(body, " }\n")))), path: "src/v2/pb.dag", cu: ^pipe_application_pb_cu),
+          tail: Empty
+        }
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^pb, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn pipe_program(body: String) -> Outcome<ResolvedTree> {
+  pipe_assemble(imports: "import pa { f, h }", body: body)
+}
+
+fn pipe_is_call_into_pa(n: Node) -> Bool {
+  match infer_application_callee_use(node: n) {
+    Absent => false
+    Present { value: callee } =>
+      match declaration_reference_path_optional(node: callee) {
+        Absent => false
+        Present { value: path } =>
+          (path == Cons { head: ^pa, tail: Cons { head: ^f, tail: Empty } })
+            || (path == Cons { head: ^pa, tail: Cons { head: ^h, tail: Empty } })
+      }
+  }
+}
+
+// The applications whose callee is a declaration of `pa`, outermost first.
+fn pipe_calls_into_pa(root: Node) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) { if pipe_is_call_into_pa(n: n0) { [n0] } else { [] } },
+      step: fn(acc, _e, child) { concat(acc, child) }
+    }
+  )
+}
+
+type PipeVerdict
+  = PipeEvaluated { value: Int }
+  | PipeRefused { reason: Symbol }
+  | PipeUnevaluated
+
+fn pipe_value(v: RuntimeValue) -> PipeVerdict {
+  match v {
+    RuntimePrimitive { value: p } =>
+      match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
+        Accepted { value: n, diagnostics: _ } => PipeEvaluated { value: n }
+        Rejected { diagnostics: _ } => PipeUnevaluated
+      }
+    _ => PipeUnevaluated
+  }
+}
+
+fn pipe_eval_outermost(tree: InferredTree) -> PipeVerdict {
+  match list_at_optional(xs: pipe_calls_into_pa(root: tree.root), index: 0) {
+    Absent => PipeUnevaluated
+    Present { value: call } =>
+      match eval(tree: tree, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call)) {
+        Accepted { value: v, diagnostics: _ } => pipe_value(v: v)
+        Rejected { diagnostics: d } => PipeRefused { reason: diagnostics_fatal_reason(d: d) }
+      }
+  }
+}
+
+fn pipe_verdict_of(o: Outcome<ResolvedTree>) -> PipeVerdict {
+  match o {
+    Rejected { diagnostics: d } => PipeRefused { reason: diagnostics_fatal_reason(d: d) }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer_and_discharge(tree: resolved) {
+        Rejected { diagnostics: d } => PipeRefused { reason: diagnostics_fatal_reason(d: d) }
+        Accepted { value: inferred, diagnostics: _ } => pipe_eval_outermost(tree: inferred)
+      }
+  }
+}
+
+fn pipe_verdict(body: String) -> PipeVerdict {
+  pipe_verdict_of(o: pipe_program(body: body))
+}
+
+fn pipe_evaluates_to(body: String, expected: Int) -> Bool {
+  match pipe_verdict(body: body) {
+    PipeEvaluated { value: v } => v == expected
+    PipeRefused { reason: _ } => false
+    PipeUnevaluated => false
+  }
+}
+
+fn pipe_refuses_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match pipe_verdict_of(o: o) {
+    PipeRefused { reason: r } => r == reason
+    PipeEvaluated { value: _ } => false
+    PipeUnevaluated => false
+  }
+}
+
+fn pipe_outermost_call_hash(body: String) -> Optional<Hash> {
+  match pipe_program(body: body) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match list_at_optional(xs: pipe_calls_into_pa(root: resolved.root), index: 0) {
+        Absent => optional_absent()
+        Present { value: call } => optional_present(value: content_hash(n: call))
+      }
+  }
+}
+
+// (0) POSITIVE CONTROL: the direct call the pipe abbreviates binds and runs on this route. If it
+// fails, every claim below is about the harness and not the pipe.
+test fn the_direct_call_control_evaluates() -> Bool {
+  pipe_evaluates_to(body: "f(xs: 7, a: true)", expected: 7) && pipe_evaluates_to(body: "f(7, true)", expected: 7)
+}
+
+// (1) A PIPE INTO AN IMPORTED DECLARED FUNCTION BINDS AND RUNS, with a named or a positional actual
+// after the piped one.
+test fn a_pipe_into_an_imported_declared_function_evaluates() -> Bool {
+  pipe_evaluates_to(body: "7 |> f(a: true)", expected: 7) && pipe_evaluates_to(body: "7 |> f(true)", expected: 7)
+}
+
+// (2) A BARE HEAD IS THE ONE-ARGUMENT CALL, and pipes chain left to right.
+test fn a_bare_head_and_a_chain_evaluate() -> Bool {
+  pipe_evaluates_to(body: "7 |> h", expected: 7) && pipe_evaluates_to(body: "7 |> f(a: true) |> f(a: false)", expected: 7)
+}
+
+// (3) THE LEFT OPERAND FILLS THE FIRST SLOT. `true |> f(7)` is f(true, 7): a Bool in the Int slot,
+// refused by inhabitance. A lowering that appended the piped operand would bind f(7, true) and accept.
+test fn the_left_operand_fills_the_first_slot() -> Bool {
+  pipe_refuses_with(o: pipe_program(body: "true |> f(7)"), reason: ^application_argument_does_not_inhabit)
+}
+
+// (4) THE PIPE LOWERS TO THE NODE ITS DIRECT CALL LOWERS TO: one encoding, so no consumer can tell
+// them apart.
+test fn a_pipe_and_its_direct_call_lower_to_one_node() -> Bool {
+  match pipe_outermost_call_hash(body: "7 |> f(a: true)") {
+    Absent => false
+    Present { value: piped } =>
+      match pipe_outermost_call_hash(body: "f(7, a: true)") {
+        Absent => false
+        Present { value: direct } => piped == direct
+      }
+  }
+}
+
+// (5) THE BINDING KERNEL'S REFUSALS REACH THE PIPE: an unknown label and a slot the pipe already
+// filled refuse typed, exactly as on a direct call.
+test fn the_binding_refusals_reach_a_piped_application() -> Bool {
+  pipe_refuses_with(o: pipe_program(body: "7 |> f(a: true, b: 3)"), reason: ^application_argument_label_unknown)
+    && pipe_refuses_with(o: pipe_program(body: "7 |> f(xs: 2)"), reason: ^application_argument_slot_bound_twice)
+}
+
+// (6) A HEAD THAT BINDS NO DECLARATION REFUSES AT RESOLVE, and so does a head two imports bind. There
+// is no method-style fallback for either.
+test fn not_found_and_ambiguous_heads_refuse_at_resolve() -> Bool {
+  pipe_refuses_with(o: pipe_program(body: "7 |> g2(2)"), reason: ^resolve_reason_unbound_symbol)
+    && pipe_refuses_with(o: pipe_assemble(imports: "import pa { f, h }\nimport pc { h }", body: "7 |> h"), reason: ^resolve_reason_ambiguous_symbol)
+}

@@ -1,0 +1,188 @@
+{
+  "schema": "gunbc.boot_attempt_receipt.v1",
+  "plan": {
+    "subject": "mtcollins1",
+    "attempt": "mf82-rdimm4-1",
+    "expected_sockets": [
+      0
+    ],
+    "requested": "replace the eight-module population with four standard RDIMMs in socket 0 slots J1, J3, J9 and J11, removing every NV-RDIMM",
+    "fixed_at": "2026-10-17T05:47:33Z",
+    "fixed_by": "operator"
+  },
+  "inspection": {
+    "plan_subject": "mtcollins1",
+    "plan_attempt": "mf82-rdimm4-1",
+    "applied": "operator removed the NV-RDIMMs (no NVDIMM batteries were installed) and fitted four standard RDIMMs in socket 0 slots J1, J3, J9 and J11, after run 39005709187 refused training on a mixed NV-RDIMM/RDIMM population. Operator: the four are all the same rank but not identical, with different speeds. Part numbers not stated; the DRAM firmware table reads them. One CPU, in socket 0; socket 1 has no CPU (operator: socket 1 is broken). Only the socket-0 fans are fitted (operator: four of eight fan positions, on the socket-0 side).",
+    "cpus": [
+      {
+        "socket": 0,
+        "installed": true
+      }
+    ],
+    "dimms": [
+      {
+        "label": "J1",
+        "socket": 0,
+        "populated": true
+      },
+      {
+        "label": "J2",
+        "socket": 0,
+        "populated": false
+      },
+      {
+        "label": "J3",
+        "socket": 0,
+        "populated": true
+      },
+      {
+        "label": "J4",
+        "socket": 0,
+        "populated": false
+      },
+      {
+        "label": "J5",
+        "socket": 0,
+        "populated": false
+      },
+      {
+        "label": "J6",
+        "socket": 0,
+        "populated": false
+      },
+      {
+        "label": "J7",
+        "socket": 0,
+        "populated": false
+      },
+      {
+        "label": "J8",
+        "socket": 0,
+        "populated": false
+      },
+      {
+        "label": "J9",
+        "socket": 0,
+        "populated": true
+      },
+      {
+        "label": "J10",
+        "socket": 0,
+        "populated": false
+      },
+      {
+        "label": "J11",
+        "socket": 0,
+        "populated": true
+      },
+      {
+        "label": "J12",
+        "socket": 0,
+        "populated": false
+      },
+      {
+        "label": "J13",
+        "socket": 0,
+        "populated": false
+      },
+      {
+        "label": "J14",
+        "socket": 0,
+        "populated": false
+      },
+      {
+        "label": "J15",
+        "socket": 0,
+        "populated": false
+      },
+      {
+        "label": "J16",
+        "socket": 0,
+        "populated": false
+      },
+      {
+        "label": "J17",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J18",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J19",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J20",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J21",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J22",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J23",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J24",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J25",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J26",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J27",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J28",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J29",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J30",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J31",
+        "socket": 1,
+        "populated": false
+      },
+      {
+        "label": "J32",
+        "socket": 1,
+        "populated": false
+      }
+    ],
+    "completed_at": "2026-10-17T05:47:33Z",
+    "witnessed_by": "operator"
+  }
+}

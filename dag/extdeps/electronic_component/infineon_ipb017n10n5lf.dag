@@ -1,6 +1,6 @@
 module extdeps.electronic_component.infineon_ipb017n10n5lf
 
-import std.measure { volt, ampere }
+import std.measure { volt, milliampere }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -42,7 +42,7 @@ data ipb017n10n5lf: ElectronicComponentRow = ElectronicComponentRow {
   specification: MosfetSpec { mosfet: MosfetSpecification {
     channel: NChannel,
     drain_source_maximum: volt(count: 100),
-    continuous_drain_current: ampere(count: 256),
+    continuous_drain_current: milliampere(count: 256000),
     terminals: [
       FetTerminal { terminal: NumberedPin { number: 1 }, role: FetGate },
       FetTerminal { terminal: NumberedPin { number: 2 }, role: FetSource },

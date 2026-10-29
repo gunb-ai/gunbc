@@ -1,0 +1,43 @@
+module gunbc.recurring_failure_mode.a_slot_store_is_built_over_a_literal_path_by_any_module
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyImpossible }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data a_slot_store_is_built_over_a_literal_path_by_any_module: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_slot_store_is_built_over_a_literal_path_by_any_module" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyImpossible, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "ambient filesystem authority removed: Filesystem.* stops being callable with requires none -- the capability arrives only as an entry-point argument (std.effect_grant Grant / HandlerBinding) and imports bind names, so a module that was not handed a filesystem has no expression that builds a SlotStore (a separate language-level lane)." } },
+
+  receipts: [
+    "INVALID STATE: a module that declares no store writes attempt_open(store: file_slot_store(root: \"/any/literal\"), ...) -- or any attempt_lifecycle operation, or the CAS library's plain wrappers -- over a path it chose itself, and the compiler accepts it. The per-store sealed records (gunbc.roadmap.roadmap_attempt_worktree_claim_root WorktreeClaimStore) protect only the business functions that take them; the shared layer below them takes a plain SlotStore, and file_slot_store is public and path-taking.",
+
+    "SECOND ROUTE, SAME SEAM: a sole_constructor record's FIELD READS are not module-private, so a module holding a sealed store reads its root (`store.root`, or `claims.slots.root` through gunbc.roadmap.roadmap_attempt_worktree_claim_root WorktreeClaimStore) and is accepted. The seal covers construction only. Executing evidence: test.claim.slot_store_seal_witness a_root_is_readable_through_a_claim_store_today (an expecting-red probe; also measured from gunbc#14972's lawful-mint controls). The restoring capability for this route is field reads of a sealed record confined to its declaring module.",
+
+    "THIRD ROUTE, TO A SEALED CLAIM STORE: gunbc.roadmap.roadmap_dashboard_instance isolated_dashboard_instance is public and takes any root, and gunbc.roadmap.roadmap_attempt_worktree_claim_root worktree_claim_store mints a sealed WorktreeClaimStore from whatever instance it is handed. So a module that builds an instance over a directory it chose reaches the claim domain with a claim store over that directory, accepted. The claim-store seal fixes where in an instance claims live, not which instance. Executing evidence: test.claim.slot_store_seal_witness a_claim_store_over_a_chosen_instance_root_is_accepted_today (expecting-red). The same route reaches the deploy transition (gunb-ai/gunbc#15081): gunbc.deploy_transition_store transition_context mints a sealed TransitionContext -- the inhibition store and the lease root of one transition -- from whatever instance it is handed, so a module that builds an instance over a directory it chose acquires the transition lease and sets the inhibition there, accepted; that seal fixes that one transition's records share one instance, not which instance. Executing evidence: test.claim.transition_inhibition_store_seal_witness a_transition_context_over_a_chosen_instance_root_is_accepted_today (expecting-red). Restoring capability for this route: a sealed or admitted HostDashboardInstance (minted only from an admitted deployment declaration), a named follow-up.",
+
+    "FOURTH ROUTE, SAME SEAM (gunbc#15085, per the 2026-10-25 ruling on the /var/lib/gunbc host-state tree): gunbc.host_state_root isolated_host_state_tree is a public path-taking constructor of the sealed HostStateTree -- the witness bypass for isolated wet frames, the same bypass class as file_slot_store above. A module that is not a witness mints the production tree over a literal and feeds every /var/lib/gunbc store through it. Executing evidence: test.claim.c_host_store_seal_witness a_production_module_minting_over_the_isolated_tree_is_accepted_today (an expecting-red probe; it asserts the acceptance and must flip with the trigger capability below). The seal on HostStateTree covers construction-from-outside the file; the bypass is inside it, by design, and only ambient authority makes it reachable from anywhere.",
+
+    "HARM: a store's location, realization and setup are decided at the call site rather than by one declaration, so two writers can disagree about where a store lives and the directory a deploy creates need not be the one written; nothing structural refuses the second route.",
+
+    "POPULATION: every module that can reach gunbc.durable_cas_file_store file_slot_store (or the plain CAS operations) -- which, with Filesystem.* effects ambient (requires none), is every module in the corpus. (gunbc.filesystem_interface local_filesystem, once a second route, was deleted by gunbc#15047.) Not an enumeration of today's callers: a caller roster was tried on gunbc#14944 and withdrawn by operator ruling as not the architecture.",
+
+    "WHY NO SEAL BELOW THE ENTRY POINT CLOSES IT: sole_constructor seals construction per file, and some file must build a SlotStore from a root for a declaring module to hold one; whatever builds it is callable by any module, because every module may perform Filesystem.* effects. The claim of gunbc#14944 is therefore scoped to consumers and to CONSTRUCTION: a function that takes WorktreeClaimStore cannot be handed a store spelled by literal or cast, nor a bare SlotStore. It is not a claim that a literal path cannot reach a claim consumer -- route 3 below reaches one through the instance.",
+
+    "EXECUTING EVIDENCE: test.claim.slot_store_seal_witness a_plain_store_over_a_literal_path_is_accepted_today is an EXPECTING-RED probe: it asserts the foreign attempt_open over a literal path currently compiles with no blocking diagnostic of its own, and it must flip (be inverted into a RED) in the change that lands the trigger capability.",
+
+    "CEILING: structurally impossible -- with the filesystem capability passed only from entry points, the invalid state has no constructor in a module that was not given one. NEXT-RUNG TRIGGER: the ambient-authority lane named above (design note in progress by the operator's interfaces lane).",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.durable_cas_file_store", decl_name: "file_slot_store", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.slot_store_seal_witness", decl_name: "a_plain_store_over_a_literal_path_is_accepted_today", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.slot_store_seal_witness", decl_name: "a_root_is_readable_through_a_claim_store_today", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.slot_store_seal_witness", decl_name: "a_claim_store_over_a_chosen_instance_root_is_accepted_today", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.transition_inhibition_store_seal_witness", decl_name: "a_transition_context_over_a_chosen_instance_root_is_accepted_today", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.roadmap.roadmap_dashboard_instance", decl_name: "isolated_dashboard_instance", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.host_state_root", decl_name: "isolated_host_state_tree", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.c_host_store_seal_witness", decl_name: "a_production_module_minting_over_the_isolated_tree_is_accepted_today", field: WholeDeclaration },
+  ],
+}

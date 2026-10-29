@@ -19,6 +19,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.numeric.base16 { base16_encode_lower }
 import extdeps.version { VersionIdentity }
+import std.algebra { list_push }
 import extdeps.pin { Pin, ExactPin }
 import extdeps.package { PackageCoordinate, PackageLockNode, PackageLockGraph }
 import extdeps.languages.json.emit {

@@ -3,7 +3,7 @@ module gunbc.host.verified_archive_install
 import std.types { NonEmptyStr, List, FilePath, Bool, Int, list_length }
 import std.algebra { list_append }
 import std.optional { Present, Absent }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
@@ -12,12 +12,19 @@ import extdeps.tools.dpkg_deb { dpkg_deb_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
+import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
 import extdeps.npm { npm_decode_integrity, NpmSingleSha512Integrity }
 import gunbc.package_delivery {
   admit_observed_archive_digest, observe_package_archive_at_path,
   PackageArchiveDigestMatched, PackageArchiveDigestMismatch, PackageArchiveDigestObservationFailed,
 }
 import gunbc.command_runner { run_shell_commands, run_shell_command_capture, process_outcome_admitted, LocalExec }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell }
+import gunbc.host.host_effect_realize {
+  run_argv_over_host_effect_transport,
+  run_argv_transport_succeeded, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused,
+  sha256_observation_of_outcome, sha256_unobserved_cause_text, Sha256Observed, Sha256Unobserved,
+}
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
@@ -40,32 +47,101 @@ type ArchiveDigestPin
 // UNVERIFIABLE IS NOT MISMATCH. A broken mktemp, an unreadable file or a pin wire this decoder does
 // not accept establishes nothing about the archive's bytes; reporting it as a mismatch would send an
 // operator to distrust a download that may be fine, and reporting it as a match would be the
-// fabricated arm.
+// fabricated arm. ArchiveSha256 over LocalShell stays on sha256sum_verify_via_shell for the same
+// LocalExec byte-identity reason as run_archive_commands; other transports hash where the bytes
+// sit.
 type ArchiveDigestVerdict
   = ArchiveDigestMatches
   | ArchiveDigestMismatch
   | ArchiveDigestUnverifiable { reason: String }
 
-fn verify_archive_digest(archive: NonEmptyStr, pin: ArchiveDigestPin) -> ArchiveDigestVerdict {
+data npm_integrity_non_local_shell_reason: String = "ArchiveNpmIntegrity cannot be verified over a non-LocalShell transport: gunbc.package_delivery observe_package_archive_at_path hashes this executor, so a remote pin would be checked against the wrong bytes"
+
+fn archive_sha256_verify_command(archive: NonEmptyStr) -> ArgvCommand {
+  sha256sum_file_command(path: archive as String)
+}
+
+fn run_archive_argv(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
+  run_argv_over_host_effect_transport(command: command, transport: transport)
+}
+
+fn host_effect_commands_exit(commands: List<ArgvCommand>, transport: HostEffectTransport) -> ProcessExit {
+  fold(
+    commands,
+    init: ExitSuccess,
+    f: (acc, c) => match acc {
+      ExitFailure { code: _, reason: _ } => acc
+      ExitSuccess =>
+        match run_archive_argv(command: c, transport: transport) {
+          RunArgvTransportRefused { reason: r } => exit_failure(reason: r)
+          RunArgvTransportObserved { observed: o } =>
+            if o.success { ExitSuccess } else { exit_failure(reason: o.stderr) }
+        }
+    },
+  )
+}
+
+// LocalShell is not the host-effect LocalShell arm. The three in-tree callers must stay
+// byte-identical to the pre-change command_runner LocalExec sequence (exit, refusal, and
+// sequencing). Routing LocalShell through run_argv_over_host_effect_transport would be a
+// different runner on the same host. Stated divergence: LocalExec for LocalShell; the
+// dispatcher for every other HostEffectTransport. sha256sum_verify_via_shell is the same
+// split for ArchiveSha256; npm LocalShell-only is a different reason (wrong-machine hash).
+fn run_archive_commands(commands: List<ArgvCommand>, transport: HostEffectTransport) -> ProcessExit {
+  match transport {
+    LocalShell => run_shell_commands(commands: commands, transport: LocalExec)
+    _ => host_effect_commands_exit(commands: commands, transport: transport)
+  }
+}
+
+fn archive_digest_from_sha256_transport(outcome: RunArgvTransportOutcome, expected: NonEmptyStr) -> ArchiveDigestVerdict {
+  match sha256_observation_of_outcome(outcome: outcome) {
+    Sha256Unobserved { cause: c } => ArchiveDigestUnverifiable { reason: sha256_unobserved_cause_text(cause: c) }
+    Sha256Observed { digest: d } =>
+      if (d.hex as String) == (expected as String) { ArchiveDigestMatches } else { ArchiveDigestMismatch }
+  }
+}
+
+fn verify_archive_sha256_over_transport(
+  archive: NonEmptyStr,
+  expected: NonEmptyStr,
+  transport: HostEffectTransport,
+) -> ArchiveDigestVerdict {
+  archive_digest_from_sha256_transport(
+    outcome: run_archive_argv(command: archive_sha256_verify_command(archive: archive), transport: transport),
+    expected: expected,
+  )
+}
+
+fn verify_archive_digest(archive: NonEmptyStr, pin: ArchiveDigestPin, transport: HostEffectTransport) -> ArchiveDigestVerdict {
   match pin {
     ArchiveSha256 { hex: h } =>
-      match sha256sum_verify_via_shell(path: archive, expected_digest: h) {
-        Sha256Matches => ArchiveDigestMatches
-        Sha256Mismatch => ArchiveDigestMismatch
-        Sha256VerifyInfraFailure { reason: r } => ArchiveDigestUnverifiable { reason: r as String }
+      match transport {
+        LocalShell =>
+          match sha256sum_verify_via_shell(path: archive, expected_digest: h) {
+            Sha256Matches => ArchiveDigestMatches
+            Sha256Mismatch => ArchiveDigestMismatch
+            Sha256VerifyInfraFailure { reason: r } => ArchiveDigestUnverifiable { reason: r as String }
+          }
+        _ =>
+          verify_archive_sha256_over_transport(archive: archive, expected: h, transport: transport)
       }
     ArchiveNpmIntegrity { wire: w } =>
-      match npm_decode_integrity(wire: w as String) {
-        NpmSingleSha512Integrity { digest: expected } =>
-          match admit_observed_archive_digest(
-            expected: expected,
-            observation: observe_package_archive_at_path(locator: archive, path: (archive as String) as FilePath),
-          ) {
-            PackageArchiveDigestMatched { locator: _, digest: _ } => ArchiveDigestMatches
-            PackageArchiveDigestMismatch { locator: _, expected: _, observed: _ } => ArchiveDigestMismatch
-            PackageArchiveDigestObservationFailed { locator: _, cause: c } => ArchiveDigestUnverifiable { reason: c as String }
+      match transport {
+        LocalShell =>
+          match npm_decode_integrity(wire: w as String) {
+            NpmSingleSha512Integrity { digest: expected } =>
+              match admit_observed_archive_digest(
+                expected: expected,
+                observation: observe_package_archive_at_path(locator: archive, path: (archive as String) as FilePath),
+              ) {
+                PackageArchiveDigestMatched { locator: _, digest: _ } => ArchiveDigestMatches
+                PackageArchiveDigestMismatch { locator: _, expected: _, observed: _ } => ArchiveDigestMismatch
+                PackageArchiveDigestObservationFailed { locator: _, cause: c } => ArchiveDigestUnverifiable { reason: c as String }
+              }
+            _ => ArchiveDigestUnverifiable { reason: "the pinned npm integrity wire does not decode to a single sha512 expression, so there is no digest to compare against" }
           }
-        _ => ArchiveDigestUnverifiable { reason: "the pinned npm integrity wire does not decode to a single sha512 expression, so there is no digest to compare against" }
+        _ => ArchiveDigestUnverifiable { reason: npm_integrity_non_local_shell_reason }
       }
   }
 }
@@ -86,15 +162,16 @@ fn verified_archive_install(
   archive: NonEmptyStr,
   pin: ArchiveDigestPin,
   install: List<ArgvCommand>,
+  transport: HostEffectTransport,
 ) -> VerifiedArchiveInstallOutcome {
-  match run_shell_commands(commands: fetch, transport: LocalExec) {
+  match run_archive_commands(commands: fetch, transport: transport) {
     ExitFailure { code: _, reason: r } => ArchiveFetchRefused { archive: archive, reason: r }
     ExitSuccess =>
-      match verify_archive_digest(archive: archive, pin: pin) {
+      match verify_archive_digest(archive: archive, pin: pin, transport: transport) {
         ArchiveDigestMismatch => ArchiveDigestMismatched { archive: archive }
         ArchiveDigestUnverifiable { reason: r } => ArchiveDigestUnverified { archive: archive, reason: r }
         ArchiveDigestMatches =>
-          match run_shell_commands(commands: install, transport: LocalExec) {
+          match run_archive_commands(commands: install, transport: transport) {
             ExitSuccess => ArchiveInstalled
             ExitFailure { code: _, reason: r } => ArchiveInstallRefused { archive: archive, reason: r }
           }
@@ -201,9 +278,9 @@ fn archive_placements_text(ps: List<ArchivePlacement>) -> String {
 }
 
 // A RETAINED ARCHIVE WHOSE BYTES STILL VERIFY IS NOT RE-FETCHED: the same fold runs with no fetch leg.
-fn stage_archive_wet(archives_dir: String, staging: String, a: StagedArchive) -> ArchivePlacement {
+fn stage_archive_wet(archives_dir: String, staging: String, a: StagedArchive, transport: HostEffectTransport) -> ArchivePlacement {
   let path = staged_archive_path(archives_dir: archives_dir, a: a)
-  let retained = match verify_archive_digest(archive: path as NonEmptyStr, pin: a.pin) { ArchiveDigestMatches => true  _ => false }
+  let retained = match verify_archive_digest(archive: path as NonEmptyStr, pin: a.pin, transport: transport) { ArchiveDigestMatches => true  _ => false }
   ArchivePlacement {
     archive: a.file_name,
     outcome: verified_archive_install(
@@ -211,15 +288,16 @@ fn stage_archive_wet(archives_dir: String, staging: String, a: StagedArchive) ->
       archive: path as NonEmptyStr,
       pin: a.pin,
       install: staged_archive_install_commands(archives_dir: archives_dir, tree: staging, a: a),
+      transport: transport,
     ),
   }
 }
 
 // IN ORDER, AND THE FIRST REFUSAL STOPS THE REST.
-fn stage_archives_wet(archives_dir: String, staging: String, archives: List<StagedArchive>) -> List<ArchivePlacement> {
+fn stage_archives_wet(archives_dir: String, staging: String, archives: List<StagedArchive>, transport: HostEffectTransport) -> List<ArchivePlacement> {
   fold(archives, init: [], f: (acc, a) =>
     if fold(acc, init: true, f: (ok, p) => ok && archive_placement_holds(p: p)) {
-      list_append(left: acc, right: [stage_archive_wet(archives_dir: archives_dir, staging: staging, a: a)])
+      list_append(left: acc, right: [stage_archive_wet(archives_dir: archives_dir, staging: staging, a: a, transport: transport)])
     } else {
       acc
     })
@@ -231,8 +309,18 @@ fn archives_all_staged(ps: List<ArchivePlacement>, archives: List<StagedArchive>
 
 // PUBLICATION ONLY EVER FILLS AN ABSENT PATH: `mv -T <stage> <root>` fails if anything occupies
 // <root> by then (a competing converge that published first), and the caller's readback judges it.
-fn publish_staged_tree_wet(staging: String, root: String) -> Bool {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: mv_exact_destination_command(source: staging, destination: root), transport: LocalExec))
+// LocalShell publish is LocalExec capture for the same byte-identity reason as run_archive_commands.
+fn publish_staged_tree_command(staging: String, root: String) -> ArgvCommand {
+  mv_exact_destination_command(source: staging, destination: root)
+}
+
+fn publish_staged_tree_wet(staging: String, root: String, transport: HostEffectTransport) -> Bool {
+  match transport {
+    LocalShell =>
+      process_outcome_admitted(outcome: run_shell_command_capture(command: publish_staged_tree_command(staging: staging, root: root), transport: LocalExec))
+    _ =>
+      run_argv_transport_succeeded(outcome: run_archive_argv(command: publish_staged_tree_command(staging: staging, root: root), transport: transport))
+  }
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [

@@ -20,13 +20,14 @@ import extdeps.github.action_runtime_policy {
 import extdeps.github.action.upload_artifact { upload_artifact_manifest_readings, upload_artifact_v6_0_0 }
 import extdeps.github.action.download_artifact { download_artifact_manifest_readings, download_artifact_v7_0_0 }
 import extdeps.github.action.checkout { checkout_manifest_readings, checkout_v5_1_0 }
-import extdeps.github.action.cache { cache_manifest_readings, cache_v5_1_0 }
+import extdeps.github.action.cache { cache_manifest_readings, cache_v5_1_0, cache_save_v5_1_0, cache_restore_v5_1_0 }
 import extdeps.github.action.github_script { github_script_manifest_readings }
 import extdeps.github.action.google_auth { google_auth_manifest_readings, google_auth_v3_0_0 }
 import extdeps.github.action.setup_rust_toolchain { setup_rust_toolchain_manifest_readings, setup_rust_toolchain_v1_16_0 }
 import extdeps.github.action.rust_cache { rust_cache_manifest_readings }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape, list_push }
 
 // NO PROVIDER-SUBSTITUTED ACTION RUNTIMES.
 //
@@ -75,6 +76,8 @@ data action_manifest_readings: List<ActionManifestReading> = concat(
 data checkout_action: ActionRelease = checkout_v5_1_0
 data setup_rust_action: ActionRelease = setup_rust_toolchain_v1_16_0
 data cache_action: ActionRelease = cache_v5_1_0
+data cache_save_action: ActionRelease = cache_save_v5_1_0
+data cache_restore_action: ActionRelease = cache_restore_v5_1_0
 data google_auth_action: ActionRelease = google_auth_v3_0_0
 data upload_artifact_action: ActionRelease = upload_artifact_v6_0_0
 data download_artifact_action: ActionRelease = download_artifact_v7_0_0
@@ -86,6 +89,8 @@ data repository_action_selections: List<ActionRelease> = [
   checkout_action,
   setup_rust_action,
   cache_action,
+  cache_save_action,
+  cache_restore_action,
   google_auth_action,
   upload_artifact_action,
   download_artifact_action,
@@ -316,6 +321,12 @@ fn workflow_action_uses_refusal_reason(workflow_module: String, refusals: List<W
 // branch name into it gets that branch.
 data checkout_revision_inputs: List<String> = ["expected_revision", "head_sha", "expected_healed_sha"]
 
+// A JOB OUTPUT THAT NAMES A COMMIT, by construction of the job that assigns it: `plan-revision` writes
+// only a revision that gunbc.fleet.fleet_converge_plan_revision admitted from GitHub's record of the
+// plan run, and `build` re-exports either that or the event sha. Both sit behind `|| github.sha`
+// in fleet-converge, so an empty output falls to a commit.
+data checkout_commit_job_outputs: List<String> = ["plan-revision.outputs.revision", "build.outputs.revision"]
+
 fn checkout_names_a_revision_input(name: String) -> Bool {
   fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || n == name })
 }
@@ -327,7 +338,16 @@ fn checkout_context_names_a_commit(context: ExpressionContext, path: List<String
       dotted == "sha" || dotted == "event.pull_request.head.sha"
         || fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || dotted == concat("event.inputs.", n) })
     Inputs => checkout_names_a_revision_input(name: dotted)
-    _ => false
+    Needs => fold(checkout_commit_job_outputs, init: false, f: fn(acc, n) { acc || dotted == n })
+    Env => false
+    Vars => false
+    Job => false
+    Jobs => false
+    Steps => false
+    Runner => false
+    Secrets => false
+    Strategy => false
+    Matrix => false
   }
 }
 
@@ -341,7 +361,11 @@ fn checkout_ref_value_refusals(ref_expression: Expression, falls_through: Bool) 
       else { [concat(serialize_expression(expression: ref_expression), " (a condition with no fallback yields a non-commit value)")] }
     ContextAccess { context: c, path: p } =>
       if checkout_context_names_a_commit(context: c, path: p) { [] } else { [serialize_expression(expression: ref_expression)] }
-    _ => [serialize_expression(expression: ref_expression)]
+    FunctionCall { function: _, args: _ } => [serialize_expression(expression: ref_expression)]
+    StringLiteral { value: _ } => [serialize_expression(expression: ref_expression)]
+    Equals { left: _, right: _ } => [serialize_expression(expression: ref_expression)]
+    NotEquals { left: _, right: _ } => [serialize_expression(expression: ref_expression)]
+    LogicalNot { operand: _ } => [serialize_expression(expression: ref_expression)]
   }
 }
 
@@ -644,10 +668,10 @@ fn realized_release_candidates(owner: String, repo: String, commit: String) -> L
 }
 
 // Every spelling GitHub accepts in a step `uses:` is classified, and only one reaches admission:
-// `owner/repo@<40-hex commit>` that joins to a manifest reading. A local action (`./path`), a Docker
-// image (`docker://`), an action in a repository subdirectory (`owner/repo/path@ref`) and a
-// reusable workflow are each refused as unmodeled until a release shape for them exists. A tag or
-// branch ref is refused as unresolved, because what it names can change after it is read.
+// `owner/repo@<40-hex commit>` or `owner/repo/path@<40-hex commit>` that joins to a manifest reading.
+// A local action (`./path`), a Docker image (`docker://`), a deeper path, and a reusable workflow
+// are each refused as unmodeled until a release shape for them exists. A tag or branch ref is
+// refused as unresolved, because what it names can change after it is read.
 fn admit_realized_action_use(u: RealizedActionUse) -> ActionUseAdmission {
   match u.site {
     JobReusableWorkflowUse =>
@@ -665,14 +689,13 @@ fn admit_realized_action_use(u: RealizedActionUse) -> ActionUseAdmission {
           RefusedUnresolvedProducer { uses_text: u.uses_text, cause: "the ref is not a 40-hex commit, so it is a tag or branch the producer can move" }
         } else {
           let segs = split(s: sp.before_at, delimiter: "/")
-          if (segs |> count) != 2 {
-            RefusedUnmodeledUse { uses_text: u.uses_text, site: StepActionUse, cause: "only an action at a repository root (`owner/repo@commit`) is modeled" }
+          let n = segs |> count
+          if n != 2 && n != 3 {
+            RefusedUnmodeledUse { uses_text: u.uses_text, site: StepActionUse, cause: "only an action at a repository root (`owner/repo@commit`) or one subdirectory (`owner/repo/path@commit`) is modeled" }
           } else {
-            let owner = fold(segs, init: "", f: fn(acc, s) { if acc == "" { s } else { acc } })
-            let repo = fold(segs, init: "", f: fn(_, s) { s })
-            let found = realized_release_candidates(owner: owner, repo: repo, commit: sp.after_at)
+            let found = manifest_readings_for_producer(uses_text: u.uses_text)
             if (found |> count) == 0 {
-              RefusedUnmodeledUse { uses_text: u.uses_text, site: StepActionUse, cause: "no producer manifest reading exists for that repository at that commit" }
+              RefusedUnmodeledUse { uses_text: u.uses_text, site: StepActionUse, cause: "no producer manifest reading exists for that repository path at that commit" }
             } else {
               fold(found, init: RefusedUnmodeledUse { uses_text: u.uses_text, site: StepActionUse, cause: "unreachable" }, f: fn(_, r) {
                 admit_selected_action_use(action_release: r.action_release)

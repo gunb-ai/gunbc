@@ -6,9 +6,8 @@ use self::EmittedWorkspaceBuildOutcome::*;
 use self::EmittedWorkspaceOutcome::*;
 use self::EmittedWorkspaceRedOutcome::*;
 use self::EmittedWorkspaceRefusal::*;
-pub use crate::extdeps_rust_cargo::cargo_target_source_path;
-pub use crate::extdeps_rust_cargo::CargoTarget;
 use crate::extdeps_rust_cargo::CargoTarget::Bin;
+pub use crate::extdeps_rust_cargo::{cargo_target_source_path, CargoTarget};
 use crate::gunbc_crate_partition::DerivedDepPackages::{
     DerivedDepPackagesOk, DerivedDepPackagesUnitHasNoRow,
 };
@@ -30,11 +29,8 @@ use crate::gunbc_crate_partition::Stage0PartitionCrateKind::{
 pub use crate::gunbc_crate_partition::{
     assignment_unit_dep_edges_over, crate_partition_declared_core_target, derived_dep_packages,
     list_unique_sorted_ids, merge_emitted_edges, resolve_partition_over, unit_dep_closure,
-    unit_direct_deps,
-};
-pub use crate::gunbc_crate_partition::{
-    CompilationUnitId, DerivedDepPackages, EmittedEdgeRefusal, EmittedEdgesMerge, ModuleDagEdge,
-    ModuleId, PartitionParameter, PartitionPolicy, ResolvePartitionOutcome,
+    unit_direct_deps, CompilationUnitId, DerivedDepPackages, EmittedEdgeRefusal, EmittedEdgesMerge,
+    ModuleDagEdge, ModuleId, PartitionParameter, PartitionPolicy, ResolvePartitionOutcome,
     ResolvePartitionRefusalCause, Stage0PartitionCrateKind, Stage0PartitionCrateRow, UnitDepEdge,
 };
 use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance::{
@@ -44,16 +40,17 @@ use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance::{
 use crate::gunbc_rust_emitted_edge::EmittedEdgeTarget::{
     EmittedCrateRootTarget, EmittedModuleTarget,
 };
-pub use crate::gunbc_rust_emitted_edge::{rust_module_emit_filename, rust_runtime_prelude_module};
-pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance, EmittedEdgeTarget};
+pub use crate::gunbc_rust_emitted_edge::{
+    rust_module_emit_filename, rust_runtime_prelude_module, EmittedEdge, EmittedEdgeProvenance,
+    EmittedEdgeTarget,
+};
 use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
     GeneratedFacadeCrate, GeneratedFoundationCrate, GeneratedLayeredCoreCrate,
 };
 pub use crate::gunbc_stage0_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
-pub use crate::std_optional::optional_present;
-pub use crate::std_optional::Optional;
+pub use crate::std_optional::{optional_present, Optional};
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -157,8 +154,8 @@ pub fn emitted_workspace_lookup(m: Rc<HashMap<String, String>>, key: String) -> 
 }
 
 pub fn emitted_workspace_without_runtime(graph: Rc<EmittedModuleGraph>) -> Rc<EmittedModuleGraph> {
-    Rc::new(EmittedModuleGraph {
-        modules: Rc::new({
+    {
+        let __rb_0_0 = Rc::new({
             let mut __result = Vec::new();
             for m in graph.modules.clone().iter().cloned() {
                 if (m.clone() != rust_runtime_prelude_module()) {
@@ -166,8 +163,8 @@ pub fn emitted_workspace_without_runtime(graph: Rc<EmittedModuleGraph>) -> Rc<Em
                 }
             }
             __result
-        }),
-        edges: Rc::new({
+        });
+        let __rb_1_0 = Rc::new({
             let mut __result = Vec::new();
             for e in graph.edges.clone().iter().cloned() {
                 if ((e.from.clone() != rust_runtime_prelude_module())
@@ -177,8 +174,22 @@ pub fn emitted_workspace_without_runtime(graph: Rc<EmittedModuleGraph>) -> Rc<Em
                 }
             }
             __result
-        }),
-    })
+        });
+        let mut __rb_h = graph;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.modules = __rb_0_0;
+                __rb_r.edges = __rb_1_0;
+            }
+            None => {
+                __rb_h = Rc::new(EmittedModuleGraph {
+                    modules: __rb_0_0,
+                    edges: __rb_1_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn emitted_workspace_unit_rows(
@@ -197,7 +208,7 @@ pub fn emitted_workspace_unit_rows(
                     crate_dir: emitted_workspace_crate_dir(package.clone()),
                     kind: Stage0PartitionCrateKind::Stage0LayeredCoreCrate,
                     modules: Rc::new({
-                        let mut __sorted: Vec<_> = Rc::new({
+                        let mut __keyed: Vec<_> = Rc::new({
                             let mut __result = Vec::new();
                             for m in Rc::new({
                                 let mut __result = Vec::new();
@@ -220,13 +231,13 @@ pub fn emitted_workspace_unit_rows(
                         })
                         .iter()
                         .cloned()
+                        .map(|__e: String| {
+                            let __k = (|m: String| m.clone())(__e.clone());
+                            (__k, __e)
+                        })
                         .collect();
-                        __sorted.sort_by(|a: &String, b: &String| {
-                            let __ka = (|m: String| m.clone())(a.clone());
-                            let __kb = (|m: String| m.clone())(b.clone());
-                            v1_rt::canonical_key_cmp(&__ka, &__kb)
-                        });
-                        __sorted
+                        __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+                        __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
                     }),
                     reexport_packages: Rc::new(vec![]),
                     carries_non_empty_wrappers: false,
@@ -310,14 +321,18 @@ pub fn emitted_workspace_derived_rows(
                                 v1_rt::concat(
                                     Rc::new(vec![emitted_workspace_runtime_package()]),
                                     Rc::new({
-                                        let mut __sorted: Vec<_> =
-                                            packages.iter().cloned().collect();
-                                        __sorted.sort_by(|a: &String, b: &String| {
-                                            let __ka = (|p: String| p.clone())(a.clone());
-                                            let __kb = (|p: String| p.clone())(b.clone());
-                                            v1_rt::canonical_key_cmp(&__ka, &__kb)
+                                        let mut __keyed: Vec<_> = packages
+                                            .iter()
+                                            .cloned()
+                                            .map(|__e: String| {
+                                                let __k = (|p: String| p.clone())(__e.clone());
+                                                (__k, __e)
+                                            })
+                                            .collect();
+                                        __keyed.sort_by(|__x, __y| {
+                                            v1_rt::canonical_key_cmp(&__x.0, &__y.0)
                                         });
-                                        __sorted
+                                        __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
                                     }),
                                 ),
                             ),
@@ -344,12 +359,9 @@ pub fn emitted_workspace_edge_is_irredundant(
     {
         let others = Rc::new({
             let mut __result = Vec::new();
-            for d in crate::gunbc_crate_partition::unit_direct_deps(
-                unit_edges.clone(),
-                from_unit.clone(),
-            )
-            .iter()
-            .cloned()
+            for d in crate::gunbc_crate_partition::unit_direct_deps(unit_edges.clone(), from_unit)
+                .iter()
+                .cloned()
             {
                 if (d.clone() != to_unit.clone()) {
                     __result.push(d);
@@ -361,7 +373,7 @@ pub fn emitted_workspace_edge_is_irredundant(
             let mut __found = false;
             for u in crate::gunbc_crate_partition::unit_dep_closure(
                 unit_edges.clone(),
-                others.clone(),
+                others,
                 v1_rt::int_add((unit_edges.clone().len() as i64), 1),
             )
             .iter()
@@ -384,7 +396,7 @@ pub fn emitted_workspace_red(
 ) -> Option<Rc<EmittedWorkspaceRedDrop>> {
     edges.iter().cloned().fold(
         std::option::Option::None,
-        |acc: _, edge: Rc<EmittedEdge>| match acc.clone() {
+        |acc: Option<Rc<EmittedWorkspaceRedDrop>>, edge: Rc<EmittedEdge>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => match edge.provenance.clone() {
                 EmittedEdgeProvenance::SemanticSourceReference => {
@@ -530,9 +542,9 @@ pub fn emitted_workspace_plan_from_emission(
     target_crate_count: i64,
 ) -> Rc<EmittedWorkspaceOutcome> {
     emitted_workspace_plan_over_graph(
-        emitted_workspace_emission_graph(emitted_basenames.clone()),
-        edges.clone(),
-        target_crate_count.clone(),
+        emitted_workspace_emission_graph(emitted_basenames),
+        edges,
+        target_crate_count,
     )
 }
 
@@ -588,12 +600,8 @@ pub fn emitted_workspace_build_from_emission(
     crate_name: String,
     bin_name: String,
 ) -> Rc<EmittedWorkspaceBuildOutcome> {
-    match (*emitted_workspace_plan_from_emission(
-        emitted_basenames.clone(),
-        edges.clone(),
-        target_crate_count.clone(),
-    ))
-    .clone()
+    match (*emitted_workspace_plan_from_emission(emitted_basenames, edges, target_crate_count))
+        .clone()
     {
         EmittedWorkspaceOutcome::EmittedWorkspaceRefused { cause: c, .. } => {
             Rc::new(EmittedWorkspaceBuildOutcome::EmittedWorkspaceBuildRefused { cause: c.clone() })
@@ -713,7 +721,7 @@ pub fn emitted_workspace_plan_over_graph(
                         emitted_workspace_unit_rows(
                             closure.modules.clone(),
                             assignment.clone(),
-                            unit_ids.clone(),
+                            unit_ids,
                         ),
                         unit_edges.clone(),
                     ))
@@ -754,11 +762,11 @@ pub fn emitted_workspace_build(
     bin_name: String,
 ) -> Rc<EmittedWorkspaceBuildOutcome> {
     emitted_workspace_build_from_emission(
-        emitted_basenames.clone(),
-        edges.clone(),
+        emitted_basenames,
+        edges,
         crate_partition_declared_core_target(),
-        crate_name.clone(),
-        bin_name.clone(),
+        crate_name,
+        bin_name,
     )
 }
 

@@ -2,8 +2,6 @@ module v2.test.claim.body_lowering.single_arm_match
 
 import std.live_tree { LiveTreeDisposition }
 import v2.compiler.reference_conservation_admission {
-  ExplainedDrop,
-  no_explained_drops,
   conservation_subject_of_text,
   conserved_normalize
 }
@@ -18,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Cause D: a match with exactly one arm was refused because the empty comma-list Repeat
 // tail was navigated as a missing arm. Two-or-more arms already accepted. Zero-arm match
-// remains the retained red.
+// now lowers (Never eliminator); inhabited empty match is refused at infer exhaustiveness.
 //
 // `match t { }` does not reach that red: the brace is taken as a record on the ident
 // scrutinee, so parse refuses before body-lowering. `match (t) { }` is the empty arm
@@ -38,7 +36,7 @@ data src_one_arm_constructor: String = "module m.t\ntype T = B { x: Int } | C\nf
 
 data src_one_arm_shorthand_field: String = "module m.t\ntype T = B { x: Int } | C\nfn f(t: T) -> Int {\n  match t {\n    B { x } => x\n  }\n}\n"
 
-data src_zero_arm_refuses: String = "module m.t\ntype T = A | B\nfn f(t: T) -> Int {\n  match (t) {\n  }\n}\n"
+data src_zero_arm_lowers: String = "module m.t\ntype T = A | B\nfn f(t: T) -> Int {\n  match (t) {\n  }\n}\n"
 
 test fn single_arm_wildcard_match_normalizes_holds() -> Bool {
   normalize_outcome(src: src_single_arm_wildcard) == "ACCEPTED"
@@ -49,7 +47,7 @@ test fn two_arm_match_still_accepts_holds() -> Bool {
 }
 
 test fn three_arm_match_keeps_every_arm_holds() -> Bool {
-  match conserved_normalize(subject: three_arm_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: three_arm_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -63,10 +61,10 @@ test fn one_arm_shorthand_field_pattern_normalizes_holds() -> Bool {
   normalize_outcome(src: src_one_arm_shorthand_field) == "ACCEPTED"
 }
 
-test fn zero_arm_match_still_refuses_holds() -> Bool {
-  match conserved_normalize(subject: zero_arm_subject(), explained: no_explained_drops()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^body_lowering_reason_match_arm_navigation_refused
+test fn zero_arm_match_lowers_holds() -> Bool {
+  match conserved_normalize(subject: zero_arm_subject()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -77,5 +75,5 @@ fn three_arm_subject() -> ReferenceConservationSubject {
 }
 
 fn zero_arm_subject() -> ReferenceConservationSubject {
-  conservation_subject_of_text(path: "single_arm_match_subject", text: src_zero_arm_refuses)
+  conservation_subject_of_text(path: "single_arm_match_subject", text: src_zero_arm_lowers)
 }

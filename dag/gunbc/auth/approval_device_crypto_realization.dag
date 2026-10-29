@@ -2,6 +2,8 @@ module gunbc.auth.approval_device_crypto_realization
 
 import std.types { NonEmptyStr, String, List, HttpStatus }
 import std.logic { Bool }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.native_realization_proof { NativeRealizationProof, native_realization_proof }
 
 // ── WHICH REALIZATION RUNS THE DEVICE VERIFIERS IS PART OF ROUTE ADMISSION ───────────────────
 // extdeps.crypto.signature verify_signature and extdeps.apple.app_attest verify_attestation /
@@ -10,7 +12,7 @@ import std.logic { Bool }
 // names, per request, on the approval broker -- so a route that invoked them with nothing in front
 // would realize that frontier as the evaluator. That frontier is therefore not an annotation beside
 // the routes: every verifier-dependent route in gunbc.auth.approval_device_routes asks
-// device_crypto_admission FIRST and refuses 503 with the typed cause before any decode, store read
+// device_crypto_gate FIRST and refuses 503 with the typed cause before any decode, store read
 // or verifier call when the native handler is not bound (DESIGN section 5: a frontier that is only
 // an annotation is not a wall).
 //
@@ -44,40 +46,132 @@ fn device_crypto_obligation_evidence(o: DeviceCryptoObligation) -> NonEmptyStr {
   }
 }
 
+// The one handler a bound receipt may name: the natively emitted verifier (gunbc.auth.approval_device_crypto_serve). It
+// lives with the receipt type so both the sidecar that mints a receipt and the broker that joins an echo to it read one fact.
+data device_crypto_handler_identity: NonEmptyStr = "gunbc.auth.approval_device_crypto_serve native_serve_handle"
+
 type DeviceCryptoHandlerReceipt {
   handler_identity: NonEmptyStr
   exact_revision: NonEmptyStr
   covered: List<DeviceCryptoObligation>
 }
 
-type DeviceCryptoRealization
-  = NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt }
-  | NativeDeviceCryptoUnavailable { cause: NonEmptyStr }
-
-// THE PRODUCTION BINDING. Unavailable until a natively emitted handler exists with a receipt over the
-// whole population -- the capability ecdsa_verification_realization_frontier names; no PR in flight
-// discharges it. Writing a Bound arm here is the whole cutover and it is admitted only with that
-// handler's identity and exact revision, so the review of that one row is where the claim is made.
-data approval_device_crypto_realization: DeviceCryptoRealization = NativeDeviceCryptoUnavailable {
-  cause: "no natively emitted realization handler of the device verifiers is bound (gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier); the interpreted verifiers are not admitted per request",
+// WHAT THE ROW DECLARES IS AN EXPECTATION, NOT A RECEIPT. A static row cannot name the sha256 of the binary that contains
+// it, so a Bound row carries only the handler it was built to be and the coverage it requires; the revision a proof names
+// comes from the echoed receipt after it has joined the digest the deploy provisioned (device_crypto_echo_join), never
+// from the row.
+type DeviceCryptoRequirement {
+  handler_identity: NonEmptyStr
+  required: List<DeviceCryptoObligation>
 }
 
+type DeviceCryptoRealization
+  = NativeDeviceCryptoBound { requirement: DeviceCryptoRequirement }
+  | NativeDeviceCryptoUnavailable { cause: NonEmptyStr }
+
+// THE PRODUCTION BINDING: the natively emitted verifier sidecar (gunbc.auth.approval_device_crypto_serve), deployed by
+// gunbc.live_deploy beside the broker, over the whole obligation population. Binding the row admits no route by
+// itself: a route proceeds to ask the sidecar, and the answer is trusted only after its echoed receipt joins the
+// provisioned deployed digest. A dead sidecar, an unprovisioned digest or a different binary answers the typed 503.
+data approval_device_crypto_realization: DeviceCryptoRealization = NativeDeviceCryptoBound {
+  requirement: DeviceCryptoRequirement { handler_identity: device_crypto_handler_identity, required: device_crypto_obligations },
+}
+
+// THE ROUTE'S GATE, ASKED BEFORE ANY DECODE, STORE READ OR VERIFIER CALL. It carries the requirement a call will be joined
+// to; it is not an admission and mints no proof.
+type DeviceCryptoGate
+  = DeviceCryptoGateOpen { requirement: DeviceCryptoRequirement }
+  | DeviceCryptoGateRefused { status: HttpStatus, reason: String }
+
+// WHAT A JOINED ECHO ADMITS, minted only from a receipt (device_crypto_receipt_admission) and so only by the sidecar's
+// own startup fold or by the echo join.
 type DeviceCryptoAdmission
   = DeviceCryptoAdmitted { handler_identity: NonEmptyStr, exact_revision: NonEmptyStr }
   | DeviceCryptoRefused { status: HttpStatus, reason: String }
 
-fn device_crypto_missing(receipt: DeviceCryptoHandlerReceipt) -> List<DeviceCryptoObligation> {
-  filter(device_crypto_obligations, o => !any(receipt.covered, c => c == o))
+fn device_crypto_uncovered(required: List<DeviceCryptoObligation>, covered: List<DeviceCryptoObligation>) -> List<DeviceCryptoObligation> {
+  filter(required, o => !any(covered, c => c == o))
 }
 
-fn device_crypto_admission(r: DeviceCryptoRealization) -> DeviceCryptoAdmission {
+fn device_crypto_uncovered_reason(missing: List<DeviceCryptoObligation>) -> String {
+  join(map(missing, o => device_crypto_obligation_evidence(o: o) as String), "; ")
+}
+
+fn device_crypto_gate(r: DeviceCryptoRealization) -> DeviceCryptoGate {
   match r {
-    NativeDeviceCryptoUnavailable { cause: c } => DeviceCryptoRefused { status: 503, reason: "the native device-crypto realization is unavailable: " + (c as String) }
-    NativeDeviceCryptoBound { receipt: rc } =>
-      if count(device_crypto_missing(receipt: rc)) > 0 {
-        DeviceCryptoRefused { status: 503, reason: "the native device-crypto handler receipt does not cover: " + join(map(device_crypto_missing(receipt: rc), o => device_crypto_obligation_evidence(o: o) as String), "; ") }
+    NativeDeviceCryptoUnavailable { cause: c } => DeviceCryptoGateRefused { status: 503, reason: "the native device-crypto realization is unavailable: " + (c as String) }
+    NativeDeviceCryptoBound { requirement: q } =>
+      if count(device_crypto_uncovered(required: device_crypto_obligations, covered: q.required)) > 0 {
+        DeviceCryptoGateRefused { status: 503, reason: "the native device-crypto requirement does not cover: " + device_crypto_uncovered_reason(missing: device_crypto_uncovered(required: device_crypto_obligations, covered: q.required)) }
       } else {
-        DeviceCryptoAdmitted { handler_identity: rc.handler_identity, exact_revision: rc.exact_revision }
+        DeviceCryptoGateOpen { requirement: q }
       }
   }
 }
+
+// A RECEIPT'S ADMISSION: the one place DeviceCryptoAdmitted is built. Its callers are the sidecar's startup fold, which
+// holds the receipt it just minted for itself, and the echo join below; no path builds it from the realization row.
+fn device_crypto_receipt_admission(receipt: DeviceCryptoHandlerReceipt, required: List<DeviceCryptoObligation>) -> DeviceCryptoAdmission
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_device_crypto_receipt", decl_name: "device_crypto_receipt_startup"),
+    decl_ref(module_path: "gunbc.auth.approval_device_crypto_realization", decl_name: "device_crypto_echo_join"),
+    decl_ref(module_path: "test.claim.approval_device_crypto_client_witness", decl_name: "admitted"),
+    decl_ref(module_path: "test.claim.approval_device_crypto_client_witness", decl_name: "unavailable"),
+    decl_ref(module_path: "test.claim.approval_device_crypto_client_witness", decl_name: "witness_a_bound_row_without_a_joined_echo_yields_no_proof"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "fx_sidecar_admission"),
+    decl_ref(module_path: "gunbc.instruments.native_serve_device_crypto_probe", decl_name: "probe_admission"),
+  ]
+{
+  if count(device_crypto_uncovered(required: required, covered: receipt.covered)) > 0 {
+    DeviceCryptoRefused { status: 503, reason: "the native device-crypto handler receipt does not cover: " + device_crypto_uncovered_reason(missing: device_crypto_uncovered(required: required, covered: receipt.covered)) }
+  } else {
+    DeviceCryptoAdmitted { handler_identity: receipt.handler_identity, exact_revision: receipt.exact_revision }
+  }
+}
+
+// THE RUNTIME JOIN OF AN ANSWER'S ECHOED RECEIPT TO WHAT THE DEPLOY PROVISIONED. The receipt a sidecar echoes on each
+// answer (gunbc.auth.approval_device_crypto_wire device_crypto_echoed_answer_json) is compared, per answer, to the
+// expectation: the handler and coverage the row requires and the sha256 live_deploy installed
+// (gunbc.live_deploy.emit). An echo from another binary, another handler, or one that does not cover the requirement is
+// refused, and the client turns a refusal into a typed 503 before any mint. The admission a join yields names the
+// echoed revision, which equals the deployed digest only because the join held.
+type DeviceCryptoExpectation {
+  requirement: DeviceCryptoRequirement
+  deployed_digest: NonEmptyStr
+}
+
+type DeviceCryptoEchoJoin
+  = DeviceCryptoEchoJoined { admission: DeviceCryptoAdmission }
+  | DeviceCryptoEchoRefused { cause: NonEmptyStr }
+
+fn device_crypto_echo_join(expectation: DeviceCryptoExpectation, echo: DeviceCryptoHandlerReceipt) -> DeviceCryptoEchoJoin {
+  if (echo.handler_identity as String) != (expectation.requirement.handler_identity as String) {
+    DeviceCryptoEchoRefused { cause: join(["the sidecar's receipt names handler ", echo.handler_identity as String, ", not the expected ", expectation.requirement.handler_identity as String], "") as NonEmptyStr }
+  } else if (echo.exact_revision as String) != (expectation.deployed_digest as String) {
+    DeviceCryptoEchoRefused { cause: join(["the sidecar's receipt revision sha256:", echo.exact_revision as String, " is not the deployed artifact's sha256:", expectation.deployed_digest as String], "") as NonEmptyStr }
+  } else if count(device_crypto_uncovered(required: expectation.requirement.required, covered: echo.covered)) > 0 {
+    DeviceCryptoEchoRefused { cause: join(["the sidecar's receipt does not cover: ", device_crypto_uncovered_reason(missing: device_crypto_uncovered(required: expectation.requirement.required, covered: echo.covered))], "") as NonEmptyStr }
+  } else {
+    DeviceCryptoEchoJoined { admission: device_crypto_receipt_admission(receipt: echo, required: expectation.requirement.required) }
+  }
+}
+
+// THE STD PROOF, DERIVED ONLY FROM AN ADMISSION. The upstream interface modules mint their sole-constructed evidence
+// from a decoded native answer only when handed std.native_realization_proof NativeRealizationProof for their own fold;
+// this is the one function that yields it, and only from DeviceCryptoAdmitted, so a refused admission yields none.
+fn device_crypto_proof_of(admission: DeviceCryptoAdmission, fold: DeclarationRef) -> NativeRealizationProof?
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_device_crypto_client", decl_name: "proof_for"),
+    decl_ref(module_path: "test.claim.approval_device_crypto_client_witness", decl_name: "witness_the_native_realization_proof_is_derived_only_from_an_admission"),
+  ]
+{
+  match admission {
+    DeviceCryptoAdmitted { handler_identity: h, exact_revision: r } => Present { value: native_realization_proof(fold: fold, handler_identity: h, exact_revision: r) }
+    DeviceCryptoRefused { status: _, reason: _ } => none
+  }
+}
+
+// WHAT THE DEPLOY PROVISIONS (PR 4b adds the route), read as given: gunbc.live_deploy.emit will write the sha256 of the executable it installed
+// to the EnvironmentFile of the broker's unit under this name, so the broker holds the digest of the artifact that was
+// installed and not one it computed or was told by the sidecar. An unbound or empty value expects nothing: the call refuses.
+data approval_device_crypto_deployed_digest_env_name: NonEmptyStr = "GUNBC_DEVICE_CRYPTO_DEPLOYED_DIGEST"

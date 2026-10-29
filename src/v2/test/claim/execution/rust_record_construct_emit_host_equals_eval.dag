@@ -1,5 +1,6 @@
 module v2.test.claim.execution.rust_record_construct_emit_host_equals_eval
 
+
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_host {
@@ -50,7 +51,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node {
+import v2.std.node { positional_child_target_nodes,
   Atom,
   ComputationNode,
   Conj,
@@ -60,8 +61,8 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
-import v2.std.node_query { node_positional_child_targets }
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -99,15 +100,18 @@ fn rust_rec_nine_field_access_body_node() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_token_dot)
+        target: dag_type_atom_node(identity: ^dag_token_dot),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_rec_construct_body_fixture
+        target: dag_rec_construct_body_fixture,
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_rec_v)
+        target: dag_type_atom_node(identity: ^dag_binding_rec_v),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -166,7 +170,7 @@ fn rust_rec_nine_eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 }
 
 fn rust_rec_nine_eval_field_index_from_transform(node: Node) -> Outcome<Int> {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 2) {
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 2) {
     Present { value: field_node } =>
       match field_node.kind {
         TypeNode { connective: Atom { identity: id } } =>

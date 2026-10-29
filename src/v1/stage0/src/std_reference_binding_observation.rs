@@ -15,14 +15,13 @@ use crate::std_occurrence_binding_candidates::OccurrenceCandidateIndexBuild::{
 use crate::std_occurrence_binding_candidates::OccurrenceModulePathIndexRefusal::*;
 pub use crate::std_occurrence_binding_candidates::{
     candidate_occurrence_ids_for_reference, occurrence_candidate_index_build,
-};
-pub use crate::std_occurrence_binding_candidates::{
     AuthoredOrderIndexRefusal, DeclarationExposureIndexRefusal, OccurrenceBindingCandidateInputs,
     OccurrenceCandidateIndexBuild, OccurrenceModulePathIndexRefusal,
 };
-pub use crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding_validated;
-pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
 use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::*;
+pub use crate::std_occurrence_binding_resolve::{
+    resolve_reference_occurrence_binding_validated, OccurrenceReferenceBindingOutcome,
+};
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::*;
 pub use crate::std_occurrence_identity::{
     OccurrenceId, OccurrenceTransport, OccurrenceTransportRefusal, ReferenceOccurrence,
@@ -127,7 +126,7 @@ pub fn structural_binding_resolution_from_candidates(
     inputs: Rc<OccurrenceBindingCandidateInputs>,
     reference: Rc<ReferenceOccurrence>,
 ) -> Rc<StructuralBindingResolution> {
-    match (*crate::std_occurrence_binding_candidates::occurrence_candidate_index_build(transport.clone(), inputs.clone())).clone() {
+    match (*crate::std_occurrence_binding_candidates::occurrence_candidate_index_build(transport, inputs)).clone() {
     OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => Rc::new(StructuralBindingResolution::StructuralBindingResolved {
     binding_outcome: crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding_validated(index.validated.clone(), reference.occurrence.clone(), crate::std_occurrence_binding_candidates::candidate_occurrence_ids_for_reference(index.clone(), reference.clone())),
 }),

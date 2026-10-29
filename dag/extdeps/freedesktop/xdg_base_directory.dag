@@ -1,0 +1,9 @@
+module extdeps.freedesktop.xdg_base_directory
+
+import std.types { NonEmptyStr }
+
+// XDG Base Directory Specification (freedesktop.org), the user-specific configuration base directory.
+// $XDG_CONFIG_HOME names the directory a program reads its configuration from; when unset, programs
+// default to $HOME/.config. The variable is the specification's fact, not any consuming program's, so
+// every consumer that redirects a tool's configuration directory binds this one name.
+data xdg_config_home_env: NonEmptyStr = "XDG_CONFIG_HOME"

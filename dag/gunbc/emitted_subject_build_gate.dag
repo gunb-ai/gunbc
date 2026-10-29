@@ -86,10 +86,12 @@ type EmittedSubjectBuildRow {
 // neither of which an id admits -- so deriving one from the other means authoring a mangling rule
 // whose only consumer is this list. Two rows say the same thing with no rule to maintain, and the
 // pairing stays visible at the one place a subject is added.
+data emitted_subject_v2_native_cli_step_id: String = "emit_build_v2_native_cli"
+
 fn emitted_subject_build_rows() -> List<EmittedSubjectBuildRow> {
   [
     EmittedSubjectBuildRow { label: self_host_label(), step_id: "emit_build_self_host" },
-    EmittedSubjectBuildRow { label: v2_native_cli_label(), step_id: "emit_build_v2_native_cli" },
+    EmittedSubjectBuildRow { label: v2_native_cli_label(), step_id: emitted_subject_v2_native_cli_step_id },
   ]
 }
 

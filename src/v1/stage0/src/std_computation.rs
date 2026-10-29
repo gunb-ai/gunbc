@@ -6,22 +6,21 @@ use self::IterationDimension::*;
 use self::IterationPrimitive::*;
 use self::ShrinkFactor::*;
 use self::SizeBound::*;
-pub use crate::std_algebra::kernel_algebra_profile;
-pub use crate::std_algebra::AlgebraProfile;
 use crate::std_algebra::AlgebraProfile::{
     ApproximateFieldProfile, BooleanAlgebraProfile, FinitePowerSetProfile,
     FinitelySupportedFunctionProfile, FreeMonoidCollectionProfile, FreeMonoidScalarProfile,
     OrderedRingProfile, OrderedSemiringProfile, PartialFunctionProfile,
     PointwisePowerCollectionProfile,
 };
+pub use crate::std_algebra::{kernel_algebra_profile, AlgebraProfile};
 pub use crate::std_optional::Optional;
-pub use crate::std_termination::positive_descent_count;
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 use crate::std_termination::RankingDimension::*;
 pub use crate::std_termination::{
-    DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
+    positive_descent_count, DescentEvidence, PositiveDescentAmount, ProportionalDivisor,
+    RankingDimension,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

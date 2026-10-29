@@ -24,24 +24,23 @@ use crate::gunbc_rust_crate_package_ident::PackageIdentSetOutcome::{
 };
 pub use crate::gunbc_rust_crate_package_ident::{
     package_ident_bound, package_ident_refusal_message, rust_crate_package_idents,
-};
-pub use crate::gunbc_rust_crate_package_ident::{
     PackageIdentBinding, PackageIdentRefusalCause, PackageIdentSetOutcome,
 };
 pub use crate::gunbc_rust_emitted_crate::EmittedCrateDependencyDemand;
-pub use crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows;
+pub use crate::gunbc_stage0_stage0_cargo_manifest::{
+    stage0_package_root, stage0_source_dir_relative_to_package,
+};
 use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
     GeneratedEmitCoreCrate, GeneratedFacadeCrate, GeneratedFoundationCrate,
     GeneratedLayeredCoreCrate,
 };
 pub use crate::gunbc_stage0_stage0_crate_partition_generated::{
-    GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
+    generated_partition_crate_rows, GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
 pub use crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over;
 pub use crate::gunbc_stage0_stage0_partition_package_graph::partition_package_dependency_names_over;
-pub use crate::std_dissolution::unbound_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::v1_compiler_emit_rust::{
     emit_cargo_dep, emit_cargo_dep_no_default_features, emit_cargo_features_section,
     emit_non_empty_wrappers, generated_rust_lint_relaxations,
@@ -114,7 +113,16 @@ pub fn stage0_foundation_header_doc() -> String {
         "//!".to_string(),
         "//! Foundation crate for the derived ~8-crate stage0 partition.".to_string(),
         "//!".to_string(),
-        "//! Module bodies remain generated into `src/v1/stage0/src`. The root".to_string(),
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    "//! Module bodies remain generated into `".to_string(),
+                    stage0_package_root(),
+                ),
+                stage0_source_dir_relative_to_package(),
+            ),
+            "`. The root".to_string(),
+        ),
         "//! `NonEmpty*` wrappers are mirrored here because generated modules address".to_string(),
         "//! them as `crate::NonEmptyVec` and `crate::NonEmptyBTreeSet`.".to_string(),
     ])
@@ -320,7 +328,7 @@ pub fn stage0_lookup_module_owner_package_name(
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<Stage0ModuleOwnerLookup> {
     {
-        let package_name = crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over(module_basename.clone(), rows.clone()).iter().cloned().fold("".to_string(), |acc: String, pkg: String| if (acc.clone() == "".to_string()) {
+        let package_name = crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over(module_basename.clone(), rows).iter().cloned().fold("".to_string(), |acc: String, pkg: String| if (acc.clone() == "".to_string()) {
             pkg.clone()
         } else {
             acc.clone()
@@ -554,7 +562,7 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "1".to_string(),
                 default_features: true,
-                features: Rc::new(vec![]),
+                features: Rc::new(vec!["arbitrary_precision".to_string()]),
             }),
         }),
         Rc::new(CargoDependency {
@@ -702,7 +710,7 @@ pub fn stage0_partition_row_to_spec_outcome(
     match (*stage0_partition_row_dependencies_outcome(
         row.clone(),
         rows.clone(),
-        registry_dependencies.clone(),
+        registry_dependencies,
     ))
     .clone()
     {
@@ -920,13 +928,16 @@ pub fn render_stage0_layered_core_lib(
         let reexports = Rc::new({
             let mut __result = Vec::new();
             for ident in Rc::new({
-                let mut __sorted: Vec<_> = reexport_idents.iter().cloned().collect();
-                __sorted.sort_by(|a: &String, b: &String| {
-                    let __ka = (|ident: String| ident.clone())(a.clone());
-                    let __kb = (|ident: String| ident.clone())(b.clone());
-                    v1_rt::canonical_key_cmp(&__ka, &__kb)
-                });
-                __sorted
+                let mut __keyed: Vec<_> = reexport_idents
+                    .iter()
+                    .cloned()
+                    .map(|__e: String| {
+                        let __k = (|ident: String| ident.clone())(__e.clone());
+                        (__k, __e)
+                    })
+                    .collect();
+                __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+                __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
             })
             .iter()
             .cloned()
@@ -1187,13 +1198,6 @@ pub fn partition_facade_wrapper_reexports_outcome(
     )
 }
 
-pub fn stage0_partition_lookups_valid() -> bool {
-    match (*stage0_crate_boundary_emit_outcome()).clone() {
-        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files: _, .. } => true,
-        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause: _, .. } => false,
-    }
-}
-
 pub fn emit_stage0_crate_lib_outcome(spec: Rc<Stage0CrateSpec>) -> Rc<Stage0CrateLibEmitOutcome> {
     match spec.kind.clone() {
         Stage0CrateKind::FoundationCrate => {
@@ -1240,7 +1244,7 @@ pub fn partition_crate_plan_outcome_over(
         } => stage0_crate_plan_from_admitted_rows(
             bindings.clone(),
             rows.clone(),
-            registry_dependencies.clone(),
+            registry_dependencies,
         ),
     }
 }
@@ -1332,7 +1336,7 @@ pub fn partition_crate_boundary_emit_outcome_over(
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
     registry_dependencies: Rc<Vec<Rc<CargoDependency>>>,
 ) -> Rc<Stage0CrateBoundaryEmitOutcome> {
-    match (*partition_crate_plan_outcome_over(rows.clone(), registry_dependencies.clone())).clone() {
+    match (*partition_crate_plan_outcome_over(rows, registry_dependencies)).clone() {
     Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
     cause: stage0_map_package_dir_refusal_to_boundary(cause.clone()),
 }),

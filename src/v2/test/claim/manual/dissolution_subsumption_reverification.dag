@@ -1,5 +1,6 @@
 module v2.test.claim.manual.dissolution_subsumption_reverification
 
+
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
@@ -55,6 +56,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   Value,
+  NotADeclaration
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -153,19 +155,23 @@ fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
         children: [
           Edge {
             label: Authored { name: ^subsumption_root_fix_edge },
-            target: subsumption_symbol_node(s: row.root_fix.id)
+            target: subsumption_symbol_node(s: row.root_fix.id),
+            declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^subsumption_first_leaf_edge },
-            target: subsumption_template_leaf_node(row: row)
+            target: subsumption_template_leaf_node(row: row),
+            declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^subsumption_second_leaf_edge },
-            target: subsumption_name_dispatch_leaf_node(row: row)
+            target: subsumption_name_dispatch_leaf_node(row: row),
+            declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^subsumption_mechanical_claim_edge },
-            target: subsumption_symbol_node(s: claim.id)
+            target: subsumption_symbol_node(s: claim.id),
+            declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
@@ -181,19 +187,23 @@ fn expected_rust_language_model_emit_receipt_node() -> Node {
     children: [
       Edge {
         label: Authored { name: ^subsumption_root_fix_edge },
-        target: subsumption_symbol_node(s: ^rust_language_model_emit_root_fix)
+        target: subsumption_symbol_node(s: ^rust_language_model_emit_root_fix),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^subsumption_first_leaf_edge },
-        target: subsumption_symbol_node(s: ^emit_rust_template_leaf_fix)
+        target: subsumption_symbol_node(s: ^emit_rust_template_leaf_fix),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^subsumption_second_leaf_edge },
-        target: subsumption_symbol_node(s: ^emit_rust_name_dispatch_leaf_fix)
+        target: subsumption_symbol_node(s: ^emit_rust_name_dispatch_leaf_fix),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^subsumption_mechanical_claim_edge },
-        target: subsumption_symbol_node(s: ^rust_language_model_emit_mechanical_reverification_claim)
+        target: subsumption_symbol_node(s: ^rust_language_model_emit_mechanical_reverification_claim),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

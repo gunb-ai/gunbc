@@ -6,7 +6,7 @@ import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.layout { Doc, DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nest_by }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, Equal, Greater, Less, Ordering, fold_list, fold_list_right, is_empty, length, list_tail, empty_map, list_at_optional, map_insert, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, Equal, Greater, Less, Ordering, fold_list, fold_list_right, is_empty, length, list_tail, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape }
 import v2.std.text { String, string_replace, Char }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, Diagnostics, ExternalContractUnknown, Outcome, Rejected, Unavailable, bind_outcome, diagnostics_merge, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, rejected_with_pending, None, outcome_with_diagnostics }
@@ -15,10 +15,11 @@ import v2.std.compilers.lexing { AnnotationRule, KeywordPattern, LexPattern, Lex
 import v2.std.find_witness { CandidateSet, PreservationPredicate, UniqueOnly, find_witness }
 import v2.std.passing_candidate_fold { ManyPassingCandidates, NoPassingCandidate, OnePassingCandidate, PassingCandidateFold }
 import v2.std.type_binder { cast_target_optional, type_annotation_optional, type_param_names, kinded_type_param_kind_optional }
-import v2.std.node { StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, Occupancy, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node }
+import v2.std.node { node_same_occurrence, BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, MatchArmSlot, MatchScrutineeSlot, child_slot_edge, match_role_slots, match_slot_target, BindBinderSlot, BindBodySlot, BindValueSlot, bind_slot_target, positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node, NotADeclaration }
 import v2.std.witness { StructuralPropertyWitness, map_get_checked }
 import v2.std.anonymous_binder { is_anonymous_param_label }
-import v2.std.node_query { declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, node_positional_child_targets, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
+import v2.std.node_query { child_lookup_step, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
+import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, parameter_reference_path_optional, lexical_reference_label_optional, declaration_reference_path_optional }
 import v2.std.host_transport { EmitHostRuntimeRow, TargetEmitHostRuntimeRow, configured_emit_host_runtime_row_from_target_row }
 import v2.std.integer { integer_decimal_magnitude_node_to_int }
@@ -27,6 +28,8 @@ import v2.std.fold_assembly { node_list_from_node }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, uri_scheme_inhabitants }
 import std.roster_frontier { FrontierRow, PathSubject }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import v2.std.primitive_contract_ref { primitive_contract_declaration_ref, primitive_contract_qualified_name }
 
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
@@ -177,6 +180,19 @@ fn fixed_tokens_of(classes: List<Symbol>) -> List<ConcreteSyntaxToken> {
     empty: Empty,
     cons: fn(acc, tc) { list_snoc_item(xs: acc, item: FixedToken { token_class: tc }) }
   )
+}
+
+// Whether the target realizes primitive calls through typed rows. A target without rows says
+// Unwired, so a primitive call on it refuses typed rather than looking up an empty list.
+type TargetPrimitiveRealizations
+  = PrimitiveRealizationsUnwired
+  | PrimitiveRealizationsWired { rows: List<TargetPrimitiveRealization> }
+
+// The target's realization catalogs a value expression is tokenized against: the operator rows
+// (a Node wire) and the typed primitive rows.
+type TargetRealizationCatalog {
+  operators: Node
+  primitives: TargetPrimitiveRealizations
 }
 
 type ProducedDeclSupport
@@ -556,7 +572,6 @@ fn produced_decl_type_tokens_at(
     TypeNode { connective: Atom { identity: _ } } => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node, type_binding: type_binding)
     TypeNode { connective: Conj } => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node, type_binding: type_binding)
     TypeNode { connective: Disj } => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node, type_binding: type_binding)
-    TypeNode { connective: Occupancy } => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node, type_binding: type_binding)
     TypeNode { connective: Instantiation } => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node, type_binding: type_binding)
     ComputationNode { behavior: _ } => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node, type_binding: type_binding)
   }
@@ -718,7 +733,7 @@ fn produced_decl_ordered_params(arrow: Node, domain: Node) -> Outcome<List<Edge>
 // binder here is a wall the reader already holds; it still refuses typed rather than dropping one.
 fn produced_decl_domain_binder(arrow: Node, domain: Node, label: Symbol) -> Outcome<Edge> {
   match named_child_lookup(root: domain, name: label) {
-    NamedChildFound { target: t } => outcome_accepted(value: Edge { label: Authored { name: label }, target: t })
+    NamedChildFound { target: t } => outcome_accepted(value: Edge { label: Authored { name: label }, target: t, declaration: NotADeclaration })
     NamedChildMissing =>
       outcome_rejected(
         d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
@@ -745,9 +760,9 @@ fn produced_decl_subject_from_name_and_arrow(
   fn_name: Symbol,
   arrow: Node
 ) -> Outcome<ProducedDeclSignatureSubject> {
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
     Present { value: domain } =>
-      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+      match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) {
         Present { value: codomain } =>
           bind_outcome(
             o: produced_decl_ordered_params(arrow: arrow, domain: domain),
@@ -817,7 +832,6 @@ fn produced_decl_subject_from_decl(decl: Node) -> Outcome<ProducedDeclSignatureS
     TypeNode { connective: Atom { identity: _ } } => produced_decl_subject_from_decl_otherwise(decl: decl)
     TypeNode { connective: Disj } => produced_decl_subject_from_decl_otherwise(decl: decl)
     TypeNode { connective: Arrow } => produced_decl_subject_from_decl_otherwise(decl: decl)
-    TypeNode { connective: Occupancy } => produced_decl_subject_from_decl_otherwise(decl: decl)
     TypeNode { connective: Instantiation } => produced_decl_subject_from_decl_otherwise(decl: decl)
     ComputationNode { behavior: _ } => produced_decl_subject_from_decl_otherwise(decl: decl)
   }
@@ -910,6 +924,7 @@ type TargetModel {
   authority_source_text: String
   runtime_row: TargetEmitHostRuntimeRow
   produced_decl_support: ProducedDeclSupport
+  primitive_realizations: TargetPrimitiveRealizations
 }
 
 fn target_model_declared_inhabitants(target: TargetModel) -> Outcome<Node> {
@@ -937,6 +952,7 @@ fn target_model_make_with_emit_transforms(
   runtime_row: TargetEmitHostRuntimeRow
 ) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: bundle,
     lex: lex,
@@ -955,6 +971,12 @@ type ConcreteSyntaxToken
   = FixedToken { token_class: Symbol }
   | BoundToken { token_class: Symbol, binding: Symbol }
 
+// A token spine that keeps the grammar's nesting: an item is one token or a nested block of items with the
+// binding that spells its indent unit. Rendering folds it through target_text_nested.
+type ConcreteSyntaxLayoutItem
+  = LayoutToken { token: ConcreteSyntaxToken }
+  | LayoutNest { unit: Symbol, items: List<ConcreteSyntaxLayoutItem> }
+
 fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
   match token {
     FixedToken { token_class: c } =>
@@ -967,7 +989,8 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
               kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_fixed } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^concrete_syntax_token_field_class },
@@ -975,7 +998,8 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
               kind: TypeNode { connective: Atom { identity: c } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
@@ -990,7 +1014,8 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
               kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_bound } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^concrete_syntax_token_field_class },
@@ -998,7 +1023,8 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
               kind: TypeNode { connective: Atom { identity: c } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^concrete_syntax_token_field_binding },
@@ -1006,7 +1032,8 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
               kind: TypeNode { connective: Atom { identity: b } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
@@ -1077,7 +1104,6 @@ fn target_node_atom_identity(node: Node) -> Outcome<Symbol> {
     TypeNode { connective: Conj } => outcome_rejected(target_concrete_token_kind_invalid_diagnostic(token: node))
     TypeNode { connective: Disj } => outcome_rejected(target_concrete_token_kind_invalid_diagnostic(token: node))
     TypeNode { connective: Arrow } => outcome_rejected(target_concrete_token_kind_invalid_diagnostic(token: node))
-    TypeNode { connective: Occupancy } => outcome_rejected(target_concrete_token_kind_invalid_diagnostic(token: node))
     TypeNode { connective: Instantiation } => outcome_rejected(target_concrete_token_kind_invalid_diagnostic(token: node))
     ComputationNode { behavior: _ } => outcome_rejected(target_concrete_token_kind_invalid_diagnostic(token: node))
   }
@@ -1618,6 +1644,7 @@ type TargetValueExpressionKind
   | TargetValueExprRecordConstruct
   | TargetValueExprFieldAccess
   | TargetValueExprMatch
+  | TargetValueExprListIntroduction
 
 type TargetValueExpression {
   kind: TargetValueExpressionKind
@@ -1784,6 +1811,46 @@ type TargetCallApplyShape {
   close: Symbol
 }
 
+// THE REALIZATION OF A NAMED std.primitives CONTRACT IS A TARGET ROW, KEYED BY THE CONTRACT'S OWN DECLARATION.
+// The text a target emits for a call to string_length, to_string, join... was built in seed Rust
+// (v1_compiler_emit_rust over rt_function_registry), so no v2 target could inhabit it: TargetCallApplyShape spells
+// every call as `callee(args)` and has no column for a different callee spelling, a call form, a per-argument label
+// or a passing mode. The row below is that column. It is keyed by the std.decl_ref DeclarationRef of the contract
+// (std.primitives.<name>_contract, named by v2.std.primitive_contract_ref), never by a path String (DESIGN 3: a
+// string key is a nickname).
+//
+// Argument labels have no producer yet (Rust rows carry none), so there is no label slot; a label returns with the
+// first Swift primitive row that needs it, in the same change as that row.
+
+// How the argument reaches the callee. Rust's string_length takes `&str`, so the String argument is passed by shared
+// reference; the prefix is the target's own token, not a Rust spelling in this module.
+type TargetPrimitiveArgumentPassing
+  = PrimitivePassByValue
+  | PrimitivePassBySharedReference { prefix_token: Symbol }
+
+type TargetPrimitiveArgument {
+  passing: TargetPrimitiveArgumentPassing
+}
+
+// FreeCall is `callee(args)`. MethodCall is `receiver.method(rest)`, the first argument being the receiver. A member
+// path (`receiver.m1.m2`, no application) returns with the first Swift primitive row that needs it, in the same change.
+type TargetPrimitiveCallForm
+  = PrimitiveFreeCall { callee: Symbol }
+  | PrimitiveMethodCall { method: Symbol }
+
+// What the call yields. The seed's rt_function_registry `wraps_result` is this arm: the result is put in the
+// target's shared handle by calling `constructor` on it.
+type TargetPrimitiveResult
+  = PrimitiveResultAsReturned
+  | PrimitiveResultInSharedHandle { constructor: Symbol }
+
+type TargetPrimitiveRealization {
+  primitive: DeclarationRef
+  form: TargetPrimitiveCallForm
+  arguments: List<TargetPrimitiveArgument>
+  result: TargetPrimitiveResult
+}
+
 type TargetEffectCalleeRow {
   effect_kind: Symbol
   callee: Symbol
@@ -1909,6 +1976,16 @@ type TargetIntLiteralShape
   = IntLiteralUnwired
   | IntLiteralDecimal { literal_token: Symbol }
 
+// A LIST LITERAL IS SPELLED BY THE TARGET'S OWN REALIZATION OF std.algebra FreeMonoid, never by a
+// second list vocabulary here: `ListIntroductionDelimited` names the token classes of the target's
+// delimited, separated sequence literal (Rust: `vec![a, b]`, the literal of the Vec that
+// TargetCollectionReprVec already realizes FreeMonoid as). A target that has not declared the class is
+// `ListIntroductionUnwired`, and a list introduction reaching its token fold refuses typed and located
+// at the authored literal -- never dropped, never a guessed spelling.
+type TargetListIntroductionShape
+  = ListIntroductionUnwired
+  | ListIntroductionDelimited { open: Symbol, separator: Symbol, close: Symbol }
+
 type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
@@ -1923,6 +2000,7 @@ type TargetValueExpressionProjection {
   match_form: TargetMatchShape
   bool_literal_form: TargetBoolLiteralShape
   int_literal_form: TargetIntLiteralShape
+  list_introduction_form: TargetListIntroductionShape
   block_evaluation_mode: BlockEvaluationMode
 }
 
@@ -2027,7 +2105,6 @@ fn target_model_canonical_operation_atom_field_from_wire(
                   TypeNode { connective: Conj } => acc
                   TypeNode { connective: Disj } => acc
                   TypeNode { connective: Arrow } => acc
-                  TypeNode { connective: Occupancy } => acc
                   TypeNode { connective: Instantiation } => acc
                   ComputationNode { behavior: _ } => acc
                 }
@@ -2187,7 +2264,8 @@ fn target_model_canonical_operation_roster_edge(
 ) -> Edge {
   Edge {
     label: Authored { name: name },
-    target: target_model_canonical_operation_wire_node(operation: operation)
+    target: target_model_canonical_operation_wire_node(operation: operation),
+    declaration: NotADeclaration
   }
 }
 
@@ -2302,7 +2380,6 @@ fn target_model_canonical_operation_wire_predicate_type(wire: Node) -> Optional<
     TypeNode { connective: Conj } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Occupancy } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -2334,7 +2411,7 @@ fn target_model_canonical_operation_wire_child_member_type(
   match acc {
     Present { value: _ } => acc
     Absent =>
-      if child_edge.target == n {
+      if node_same_occurrence(a: child_edge.target, b: n) {
         target_model_canonical_operation_wire_child_declared_type(wire: wire, edge: child_edge)
       } else {
         acc
@@ -2350,7 +2427,7 @@ fn target_model_canonical_operation_roster_member_type(
   match acc {
     Present { value: _ } => acc
     Absent =>
-      if roster_edge.target == n {
+      if node_same_occurrence(a: roster_edge.target, b: n) {
         optional_present(value: target_model_canonical_operation_type_node())
       } else {
         fold_list(
@@ -2566,7 +2643,6 @@ fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation>
     TypeNode { connective: Conj } => canonical_operation_from_wire_node_otherwise(wire: wire)
     TypeNode { connective: Disj } => canonical_operation_from_wire_node_otherwise(wire: wire)
     TypeNode { connective: Arrow } => canonical_operation_from_wire_node_otherwise(wire: wire)
-    TypeNode { connective: Occupancy } => canonical_operation_from_wire_node_otherwise(wire: wire)
     TypeNode { connective: Instantiation } => canonical_operation_from_wire_node_otherwise(wire: wire)
     ComputationNode { behavior: _ } => canonical_operation_from_wire_node_otherwise(wire: wire)
   }
@@ -2693,8 +2769,6 @@ fn target_operator_shape_wire_schema_valid(wire: Node) -> Outcome<Bool> {
       outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
     TypeNode { connective: Arrow } =>
       outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
-    TypeNode { connective: Occupancy } =>
-      outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
     ComputationNode { behavior: _ } =>
@@ -2719,7 +2793,6 @@ fn target_operator_shape_token_from_wire(wire: Node) -> Outcome<Symbol> {
                   TypeNode { connective: Conj } => acc
                   TypeNode { connective: Disj } => acc
                   TypeNode { connective: Arrow } => acc
-                  TypeNode { connective: Occupancy } => acc
                   TypeNode { connective: Instantiation } => acc
                   ComputationNode { behavior: _ } => acc
                 }
@@ -2771,8 +2844,6 @@ fn target_operator_shape_from_wire_node(wire: Node) -> Outcome<TargetOperatorSha
         TypeNode { connective: Disj } =>
           outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
         TypeNode { connective: Arrow } =>
-          outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
-        TypeNode { connective: Occupancy } =>
           outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
         TypeNode { connective: Instantiation } =>
           outcome_rejected(target_operator_shape_wire_malformed_diagnostic(wire: wire))
@@ -2832,8 +2903,6 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
     TypeNode { connective: Disj } =>
       outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
     TypeNode { connective: Arrow } =>
-      outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
-    TypeNode { connective: Occupancy } =>
       outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
@@ -2912,6 +2981,8 @@ fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
   )
 }
 
+
+
 fn target_value_projection_field_missing_diagnostic(bundle: Node, field: Symbol) -> Diagnostic {
   Diagnostic {
     reason: ^target_value_projection_field_missing,
@@ -2933,7 +3004,6 @@ fn projection_bundle_symbol_field(bundle: Node, field: Symbol) -> Outcome<Symbol
         TypeNode { connective: Conj } => projection_bundle_symbol_field_otherwise(bundle: bundle)
         TypeNode { connective: Disj } => projection_bundle_symbol_field_otherwise(bundle: bundle)
         TypeNode { connective: Arrow } => projection_bundle_symbol_field_otherwise(bundle: bundle)
-        TypeNode { connective: Occupancy } => projection_bundle_symbol_field_otherwise(bundle: bundle)
         TypeNode { connective: Instantiation } => projection_bundle_symbol_field_otherwise(bundle: bundle)
         ComputationNode { behavior: _ } => projection_bundle_symbol_field_otherwise(bundle: bundle)
       }
@@ -3660,7 +3730,6 @@ fn decode_int_literal_shape_bundle(bundle: Node) -> Outcome<TargetIntLiteralShap
     TypeNode { connective: Conj } => decode_int_literal_shape_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Disj } => decode_int_literal_shape_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Arrow } => decode_int_literal_shape_bundle_otherwise(bundle: bundle)
-    TypeNode { connective: Occupancy } => decode_int_literal_shape_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Instantiation } => decode_int_literal_shape_bundle_otherwise(bundle: bundle)
     ComputationNode { behavior: _ } => decode_int_literal_shape_bundle_otherwise(bundle: bundle)
   }
@@ -3700,6 +3769,67 @@ fn int_literal_shape_to_node(shape: TargetIntLiteralShape) -> Node {
   }
 }
 
+fn decode_list_introduction_shape_bundle(bundle: Node) -> Outcome<TargetListIntroductionShape> {
+  match bundle.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^target_value_expr_list_introduction_unwired {
+        outcome_accepted(ListIntroductionUnwired)
+      } else {
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_list_introduction_form_malformed,
+            node: bundle
+          )
+        )
+      }
+    TypeNode { connective: Conj } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
+    TypeNode { connective: Disj } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
+    TypeNode { connective: Arrow } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
+    TypeNode { connective: Instantiation } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
+    ComputationNode { behavior: _ } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
+  }
+}
+
+fn decode_list_introduction_shape_bundle_otherwise(bundle: Node) -> Outcome<TargetListIntroductionShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_open),
+    f: fn(open) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_separator),
+        f: fn(separator) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_close),
+            f: fn(close) {
+              outcome_accepted(ListIntroductionDelimited { open: open, separator: separator, close: close })
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_vep_parent_list_introduction(bundle: Node) -> Outcome<TargetListIntroductionShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_list_introduction),
+    f: decode_list_introduction_shape_bundle
+  )
+}
+
+fn list_introduction_shape_to_node(shape: TargetListIntroductionShape) -> Node {
+  match shape {
+    ListIntroductionUnwired => target_model_type_atom_node(identity: ^target_value_expr_list_introduction_unwired)
+    ListIntroductionDelimited { open: o, separator: p, close: c } =>
+      target_model_type_conj_node(
+        children: [
+          target_model_named_edge(name: ^target_value_expr_field_open, target: target_model_type_atom_node(identity: o)),
+          target_model_named_edge(name: ^target_value_expr_field_separator, target: target_model_type_atom_node(identity: p)),
+          target_model_named_edge(name: ^target_value_expr_field_close, target: target_model_type_atom_node(identity: c))
+        ]
+      )
+  }
+}
+
 fn decode_vep_parent_bool_literal(bundle: Node) -> Outcome<TargetBoolLiteralShape> {
   bind_outcome(
     o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_bool_literal),
@@ -3729,6 +3859,9 @@ fn decode_vep_chain_match(
           bind_outcome(
             o: decode_vep_parent_int_literal(bundle: bundle),
             f: fn(int_literal_form) {
+          bind_outcome(
+            o: decode_vep_parent_list_introduction(bundle: bundle),
+            f: fn(list_introduction_form) {
           decode_vep_chain_block_eval(
             bundle: bundle,
             binding_ref_form: binding_ref_form,
@@ -3743,7 +3876,10 @@ fn decode_vep_chain_match(
             field_access_form: field_access_form,
             match_form: match_form,
             bool_literal_form: bool_literal_form,
-            int_literal_form: int_literal_form
+            int_literal_form: int_literal_form,
+            list_introduction_form: list_introduction_form
+          )
+            }
           )
             }
           )
@@ -3774,7 +3910,8 @@ fn decode_vep_chain_block_eval(
   field_access_form: TargetFieldAccessShape,
   match_form: TargetMatchShape,
   bool_literal_form: TargetBoolLiteralShape,
-  int_literal_form: TargetIntLiteralShape
+  int_literal_form: TargetIntLiteralShape,
+  list_introduction_form: TargetListIntroductionShape
 ) -> Outcome<TargetValueExpressionProjection> {
   bind_outcome(
     o: decode_vep_parent_block_eval(bundle: bundle),
@@ -3794,6 +3931,7 @@ fn decode_vep_chain_block_eval(
           match_form: match_form,
           bool_literal_form: bool_literal_form,
           int_literal_form: int_literal_form,
+          list_introduction_form: list_introduction_form,
           block_evaluation_mode: block_evaluation_mode
         }
       )
@@ -4037,7 +4175,6 @@ fn decode_value_expression_projection_bundle(
     TypeNode { connective: Atom { identity: _ } } => decode_value_expression_projection_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Disj } => decode_value_expression_projection_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Arrow } => decode_value_expression_projection_bundle_otherwise(bundle: bundle)
-    TypeNode { connective: Occupancy } => decode_value_expression_projection_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Instantiation } => decode_value_expression_projection_bundle_otherwise(bundle: bundle)
     ComputationNode { behavior: _ } => decode_value_expression_projection_bundle_otherwise(bundle: bundle)
   }
@@ -4061,7 +4198,6 @@ fn decode_optional_projection_bundle_symbol_field(
         TypeNode { connective: Conj } => decode_optional_projection_bundle_symbol_field_otherwise(bundle: bundle)
         TypeNode { connective: Disj } => decode_optional_projection_bundle_symbol_field_otherwise(bundle: bundle)
         TypeNode { connective: Arrow } => decode_optional_projection_bundle_symbol_field_otherwise(bundle: bundle)
-        TypeNode { connective: Occupancy } => decode_optional_projection_bundle_symbol_field_otherwise(bundle: bundle)
         TypeNode { connective: Instantiation } => decode_optional_projection_bundle_symbol_field_otherwise(bundle: bundle)
         ComputationNode { behavior: _ } => decode_optional_projection_bundle_symbol_field_otherwise(bundle: bundle)
       }
@@ -4255,12 +4391,15 @@ fn decode_type_expression_projection_bundle(
                                       bind_outcome(
                                         o: projection_bundle_child(
                                           bundle: bundle,
-                                          name: ^target_type_expr_field_occupancy
+                                          name: ^target_type_expr_field_optional_instantiation
                                         ),
                                         f: fn(occupancy_bundle) {
                                           bind_outcome(
                                             o: decode_generic_apply_shape_bundle(bundle: occupancy_bundle),
-                                            f: fn(occupancy_form) {
+                                            f: fn(optional_instantiation_form) {
+                                              bind_outcome(
+                                                o: projection_bundle_symbol_field(bundle: bundle, field: ^target_type_expr_field_optional_head),
+                                                f: fn(optional_head) {
                                               bind_outcome(
                                                 o: projection_bundle_child(
                                                   bundle: bundle,
@@ -4281,7 +4420,8 @@ fn decode_type_expression_projection_bundle(
                                                           conj_form: conj_form,
                                                           disj_form: disj_form,
                                                           arrow_form: arrow_form,
-                                                          occupancy_form: occupancy_form,
+                                                          optional_instantiation_form: optional_instantiation_form,
+                                                          optional_head: optional_head,
                                                           instantiation_form: instantiation_form,
                                                           declaration_reference_form: declaration_reference_form
                                                         }
@@ -4290,6 +4430,8 @@ fn decode_type_expression_projection_bundle(
                                                       )
                                                     }
                                                   )
+                                                }
+                                              )
                                                 }
                                               )
                                             }
@@ -4315,7 +4457,6 @@ fn decode_type_expression_projection_bundle(
     TypeNode { connective: Atom { identity: _ } } => decode_type_expression_projection_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Disj } => decode_type_expression_projection_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Arrow } => decode_type_expression_projection_bundle_otherwise(bundle: bundle)
-    TypeNode { connective: Occupancy } => decode_type_expression_projection_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Instantiation } => decode_type_expression_projection_bundle_otherwise(bundle: bundle)
     ComputationNode { behavior: _ } => decode_type_expression_projection_bundle_otherwise(bundle: bundle)
   }
@@ -4447,14 +4588,15 @@ fn concrete_syntax_token_node_targets_into(node: Node, acc: List<Node>) -> Outco
     TypeNode { connective: Atom { identity: _ } } => outcome_rejected(target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node))
     TypeNode { connective: Disj } => outcome_rejected(target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node))
     TypeNode { connective: Arrow } => outcome_rejected(target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node))
-    TypeNode { connective: Occupancy } => outcome_rejected(target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node))
     TypeNode { connective: Instantiation } => outcome_rejected(target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node))
     ComputationNode { behavior: _ } => outcome_rejected(target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node))
   }
 }
 
-// A nested block (v2.std.grammar grammar_nested_block_edge) contributes its tokens in place: nesting
-// is layout, and a token spine carries none.
+// A nested block (v2.std.grammar grammar_nested_block_edge) contributes its tokens in place: this FLAT spine
+// is for a consumer that reads no layout (ingest folds surface syntax BACK to a Node; a scaffold's prefix and
+// suffix are token runs). A consumer that renders text reads concrete_syntax_layout_items_from_node, which
+// keeps the nest and its unit, so the unit is never discarded on the route that prints.
 fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: concrete_syntax_token_node_targets_from_list_node(node: list_node),
@@ -4487,6 +4629,57 @@ fn concrete_syntax_token_list_from_node(list_node: Node) -> Outcome<List<Concret
       )
     }
   )
+}
+
+fn concrete_syntax_layout_items_from_node(list_node: Node) -> Outcome<List<ConcreteSyntaxLayoutItem>> {
+  bind_outcome(
+    o: concrete_syntax_token_node_targets_from_list_node(node: list_node),
+    f: fn(token_nodes) {
+      fold_list(
+        xs: token_nodes,
+        empty: Accepted { value: Empty, diagnostics: None },
+        cons: fn(acc, token_node) {
+          match acc {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: partial, diagnostics: ad } =>
+              match find_named_child(root: token_node, name: ^grammar_nested_block_tokens) {
+                Accepted { value: inner, diagnostics: _ } =>
+                  bind_outcome(
+                    o: find_named_child(root: token_node, name: ^grammar_nested_block_unit),
+                    f: fn(unit_node) {
+                      bind_outcome(
+                        o: concrete_syntax_layout_unit_atom(unit_node: unit_node),
+                        f: fn(unit) {
+                          bind_outcome(
+                            o: concrete_syntax_layout_items_from_node(list_node: inner),
+                            f: fn(items) { outcome_accepted(list_snoc_item(xs: partial, item: LayoutNest { unit: unit, items: items })) }
+                          )
+                        }
+                      )
+                    }
+                  )
+                Rejected { diagnostics: _ } =>
+                  bind_outcome(
+                    o: concrete_syntax_token_from_wire_node(token: token_node),
+                    f: fn(tok) { outcome_accepted(list_snoc_item(xs: partial, item: LayoutToken { token: tok })) }
+                  )
+              }
+          }
+        }
+      )
+    }
+  )
+}
+
+fn concrete_syntax_layout_unit_atom(unit_node: Node) -> Outcome<Symbol> {
+  match unit_node.kind {
+    TypeNode { connective: Atom { identity: unit } } => outcome_accepted(unit)
+    TypeNode { connective: Conj } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+    TypeNode { connective: Disj } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+    TypeNode { connective: Arrow } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+    TypeNode { connective: Instantiation } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+    ComputationNode { behavior: _ } => outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: unit_node))
+  }
 }
 
 fn decode_bodied_arrow_statement_scaffold_bundle(
@@ -4529,7 +4722,6 @@ fn decode_bodied_arrow_statement_scaffold_bundle(
     TypeNode { connective: Atom { identity: _ } } => decode_bodied_arrow_statement_scaffold_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Disj } => decode_bodied_arrow_statement_scaffold_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Arrow } => decode_bodied_arrow_statement_scaffold_bundle_otherwise(bundle: bundle)
-    TypeNode { connective: Occupancy } => decode_bodied_arrow_statement_scaffold_bundle_otherwise(bundle: bundle)
     TypeNode { connective: Instantiation } => decode_bodied_arrow_statement_scaffold_bundle_otherwise(bundle: bundle)
     ComputationNode { behavior: _ } => decode_bodied_arrow_statement_scaffold_bundle_otherwise(bundle: bundle)
   }
@@ -4553,8 +4745,6 @@ fn wire_conj_named_binding_atom(parent: Node) -> Outcome<Symbol> {
         TypeNode { connective: Disj } =>
           outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: parent))
         TypeNode { connective: Arrow } =>
-          outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: parent))
-        TypeNode { connective: Occupancy } =>
           outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: parent))
         TypeNode { connective: Instantiation } =>
           outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: parent))
@@ -4643,7 +4833,6 @@ fn concrete_syntax_token_wire_schema_valid(token: Node) -> Outcome<Bool> {
                   TypeNode { connective: Conj } => concrete_syntax_token_wire_schema_valid_otherwise(token: token)
                   TypeNode { connective: Disj } => concrete_syntax_token_wire_schema_valid_otherwise(token: token)
                   TypeNode { connective: Arrow } => concrete_syntax_token_wire_schema_valid_otherwise(token: token)
-                  TypeNode { connective: Occupancy } => concrete_syntax_token_wire_schema_valid_otherwise(token: token)
                   TypeNode { connective: Instantiation } => concrete_syntax_token_wire_schema_valid_otherwise(token: token)
                   ComputationNode { behavior: _ } => concrete_syntax_token_wire_schema_valid_otherwise(token: token)
                 }
@@ -4656,8 +4845,6 @@ fn concrete_syntax_token_wire_schema_valid(token: Node) -> Outcome<Bool> {
     TypeNode { connective: Disj } =>
       outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
     TypeNode { connective: Arrow } =>
-      outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
-    TypeNode { connective: Occupancy } =>
       outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(concrete_syntax_token_wire_malformed_diagnostic(token: token))
@@ -4711,7 +4898,6 @@ fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxTo
                 TypeNode { connective: Conj } => concrete_syntax_token_from_wire_node_otherwise(token: token)
                 TypeNode { connective: Disj } => concrete_syntax_token_from_wire_node_otherwise(token: token)
                 TypeNode { connective: Arrow } => concrete_syntax_token_from_wire_node_otherwise(token: token)
-                TypeNode { connective: Occupancy } => concrete_syntax_token_from_wire_node_otherwise(token: token)
                 TypeNode { connective: Instantiation } => concrete_syntax_token_from_wire_node_otherwise(token: token)
                 ComputationNode { behavior: _ } => concrete_syntax_token_from_wire_node_otherwise(token: token)
               }
@@ -4788,7 +4974,6 @@ fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomVal
     TypeNode { connective: Conj } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Occupancy } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -4842,7 +5027,6 @@ fn source_atom_string_projection_from_node_bounded(source: Node, fuel: Int) -> O
         }
       TypeNode { connective: Disj } => optional_absent()
       TypeNode { connective: Arrow } => optional_absent()
-      TypeNode { connective: Occupancy } => optional_absent()
       TypeNode { connective: Instantiation } => optional_absent()
       ComputationNode { behavior: _ } => optional_absent()
     }
@@ -4854,7 +5038,7 @@ fn source_atom_string(value: Node) -> SourceAtomValue {
 }
 
 fn target_model_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn source_atom_symbol_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
@@ -4868,7 +5052,6 @@ fn source_atom_symbol_projection_from_node(source: Node) -> Optional<SourceAtomV
     TypeNode { connective: Conj } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Occupancy } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -4896,7 +5079,6 @@ fn source_atom_value_for_value_template(
         TypeNode { connective: Conj } => optional_absent()
         TypeNode { connective: Disj } => optional_absent()
         TypeNode { connective: Arrow } => optional_absent()
-        TypeNode { connective: Occupancy } => optional_absent()
         TypeNode { connective: Instantiation } => optional_absent()
         ComputationNode { behavior: _ } => optional_absent()
       }
@@ -5130,7 +5312,6 @@ fn target_value_expression_int_literal_lexeme_from_wire(wire: Node) -> Outcome<S
                   TypeNode { connective: Conj } => acc
                   TypeNode { connective: Disj } => acc
                   TypeNode { connective: Arrow } => acc
-                  TypeNode { connective: Occupancy } => acc
                   TypeNode { connective: Instantiation } => acc
                   ComputationNode { behavior: _ } => acc
                 }
@@ -5165,6 +5346,127 @@ fn target_value_expression_int_literal_to_concrete_tokens(
         o: target_value_expression_int_literal_lexeme_from_wire(wire: expr.node),
         f: fn(lexeme) {
           outcome_accepted(Cons { head: BoundToken { token_class: t, binding: lexeme }, tail: Empty })
+        }
+      )
+  }
+}
+
+// THE WIRE CARRIES THE LITERAL'S OWN SOURCE OCCURRENCE, as the integer literal's does: a target that
+// has not declared `list_introduction_form` refuses AT the authored list, so the refusal names it.
+// The elements are the wire's positional children, in order; `[]` is the atom alone.
+fn target_value_expression_list_introduction(
+  elements: List<TargetValueExpression>,
+  source: Node
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprListIntroduction,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_list_introduction_atom }
+      },
+      children: fold(
+        elements,
+        init: Empty,
+        f: fn(acc, element) {
+          list_snoc_item(xs: acc, item: Edge { label: Positional, target: element.node, declaration: NotADeclaration })
+        }
+      ),
+      occurrence_id: source.occurrence_id
+    }
+  }
+}
+
+fn target_value_expression_list_introduction_elements_from_wire(wire: Node) -> Outcome<List<TargetValueExpression>> {
+  if !all_edges_positional(children: wire.children) {
+    outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+  } else {
+    fold(
+      positional_child_target_nodes(node: wire),
+      init: Accepted { value: Empty, diagnostics: None },
+      f: fn(acc, element_wire) {
+        match acc {
+          Rejected { diagnostics: r } => acc
+          Accepted { value: elements, diagnostics: d } =>
+            bind_outcome(
+              o: target_value_expression_reify_from_wire(wire: element_wire),
+              f: fn(element) { outcome_accepted(list_snoc_item(xs: elements, item: element)) }
+            )
+        }
+      }
+    )
+  }
+}
+
+// Right fold: each element prepends [separator] ++ its tokens onto the tokens already built to its
+// right, so every token is copied once (list_append is linear in its left operand). The separator
+// before the first element is the one extra token, dropped by the match on the result.
+fn target_value_expression_list_introduction_element_tokens(
+  elements: List<TargetValueExpression>,
+  separator: Symbol,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: fold_list_right(
+      xs: elements,
+      empty: Accepted { value: Empty, diagnostics: None },
+      snoc: fn(acc, element) {
+        match acc {
+          Rejected { diagnostics: r } => acc
+          Accepted { value: rest, diagnostics: d } =>
+            bind_outcome(
+              o: target_value_expression_to_concrete_tokens(expr: element, projection: projection, catalog: catalog),
+              f: fn(element_tokens) {
+                outcome_accepted(
+                  list_append(
+                    left: Cons { head: FixedToken { token_class: separator }, tail: element_tokens },
+                    right: rest
+                  )
+                )
+              }
+            )
+        }
+      }
+    ),
+    f: fn(separated) {
+      match separated {
+        Cons { head: _, tail: element_tokens } => outcome_accepted(element_tokens)
+        Empty => outcome_accepted(Empty)
+      }
+    }
+  )
+}
+
+fn target_value_expression_list_introduction_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match projection.list_introduction_form {
+    ListIntroductionUnwired =>
+      outcome_rejected(
+        target_value_expr_diagnostic(reason: ^target_value_expr_list_introduction_form_unwired, node: expr.node)
+      )
+    ListIntroductionDelimited { open: open, separator: separator, close: close } =>
+      bind_outcome(
+        o: target_value_expression_list_introduction_elements_from_wire(wire: expr.node),
+        f: fn(elements) {
+          bind_outcome(
+            o: target_value_expression_list_introduction_element_tokens(
+              elements: elements,
+              separator: separator,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(element_tokens) {
+              outcome_accepted(
+                list_append(
+                  left: Cons { head: FixedToken { token_class: open }, tail: element_tokens },
+                  right: Cons { head: FixedToken { token_class: close }, tail: Empty }
+                )
+              )
+            }
+          )
         }
       )
   }
@@ -5256,7 +5558,6 @@ fn target_value_expr_binding_ref_wire_schema_valid(wire: Node) -> Outcome<Bool> 
     TypeNode { connective: Conj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Disj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Arrow } => target_value_expr_operand_wire_malformed(wire: wire)
-    TypeNode { connective: Occupancy } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Instantiation } => target_value_expr_operand_wire_malformed(wire: wire)
     ComputationNode { behavior: _ } => target_value_expr_operand_wire_malformed(wire: wire)
   }
@@ -5285,7 +5586,6 @@ fn target_value_expr_binding_ref_binding_from_wire(wire: Node) -> Outcome<Symbol
                   TypeNode { connective: Conj } => acc
                   TypeNode { connective: Disj } => acc
                   TypeNode { connective: Arrow } => acc
-                  TypeNode { connective: Occupancy } => acc
                   TypeNode { connective: Instantiation } => acc
                   ComputationNode { behavior: _ } => acc
                 }
@@ -5357,7 +5657,6 @@ fn target_value_expr_primitive_apply_wire_schema_valid(wire: Node) -> Outcome<Bo
     TypeNode { connective: Conj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Disj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Arrow } => target_value_expr_operand_wire_malformed(wire: wire)
-    TypeNode { connective: Occupancy } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Instantiation } => target_value_expr_operand_wire_malformed(wire: wire)
     ComputationNode { behavior: _ } => target_value_expr_operand_wire_malformed(wire: wire)
   }
@@ -5502,7 +5801,6 @@ fn target_value_expr_effect_apply_wire_schema_valid(wire: Node) -> Outcome<Bool>
     TypeNode { connective: Conj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Disj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Arrow } => target_value_expr_operand_wire_malformed(wire: wire)
-    TypeNode { connective: Occupancy } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Instantiation } => target_value_expr_operand_wire_malformed(wire: wire)
     ComputationNode { behavior: _ } => target_value_expr_operand_wire_malformed(wire: wire)
   }
@@ -5525,7 +5823,6 @@ fn target_value_expr_effect_apply_kind_from_wire(wire: Node) -> Outcome<Symbol> 
                   TypeNode { connective: Conj } => acc
                   TypeNode { connective: Disj } => acc
                   TypeNode { connective: Arrow } => acc
-                  TypeNode { connective: Occupancy } => acc
                   TypeNode { connective: Instantiation } => acc
                   ComputationNode { behavior: _ } => acc
                 }
@@ -5822,39 +6119,8 @@ type TargetValueExprMatchArmSlot {
   body: TargetValueExpression
 }
 
-type TargetValueExprMatchArmEdgeFold {
-  edges: List<Edge>
-  skipped_scrutinee: Bool
-}
-
 fn target_value_expr_positional_child_optional(node: Node, index: Int) -> Optional<Node> {
-  list_at_optional(xs: node_positional_child_targets(node: node), index: index)
-}
-
-fn target_value_expr_match_arm_edges_after_scrutinee(children: List<Edge>) -> List<Edge> {
-  let folded = fold(
-    children,
-    init: TargetValueExprMatchArmEdgeFold { edges: Empty, skipped_scrutinee: false },
-    f: fn(acc, edge) {
-      match edge.label {
-        StructuralLabel { label: _ } => acc
-        Positional =>
-          if !acc.skipped_scrutinee {
-            TargetValueExprMatchArmEdgeFold {
-              edges: acc.edges,
-              skipped_scrutinee: true
-            }
-          } else {
-            TargetValueExprMatchArmEdgeFold {
-              edges: list_snoc_item(xs: acc.edges, item: edge),
-              skipped_scrutinee: true
-            }
-          }
-        Authored { name: _ } => acc
-      }
-    }
-  )
-  folded.edges
+  list_at_optional(xs: positional_child_target_nodes(node: node), index: index)
 }
 
 fn target_value_expr_match_arm_wire(arm: TargetValueExprMatchArmSlot) -> Node {
@@ -5870,7 +6136,7 @@ fn target_value_expr_match_arm_wire(arm: TargetValueExprMatchArmSlot) -> Node {
 
 fn target_value_expr_match_arm_edges(arms: List<TargetValueExprMatchArmSlot>) -> List<Edge> {
   fold(arms, init: Empty, f: fn(acc, arm) {
-    list_snoc_item(xs: acc, item: Edge { label: Positional, target: target_value_expr_match_arm_wire(arm: arm) })
+    list_snoc_item(xs: acc, item: Edge { label: Positional, target: target_value_expr_match_arm_wire(arm: arm), declaration: NotADeclaration })
   })
 }
 
@@ -5914,6 +6180,67 @@ fn target_value_expr_callable_arg_edges(
       }
     }
   )
+}
+
+// A CALL WHOSE CALLEE RESOLVED TO A std.primitives CONTRACT DECLARATION. The identity is the resolved declaration
+// (v2.compiler.resolve binds a primitive head to std.primitives.<name>_contract), carried as the presence of this edge;
+// a callee that resolved anywhere else, a user fn spelled string_length included, never has it and emits as an ordinary
+// call. The spelling alone is never the join (DESIGN 3: a name is not the declaration it was bound to).
+fn target_value_expression_resolved_primitive_call(
+  callee: Symbol,
+  args: List<TargetValueExpression>
+) -> TargetValueExpression {
+  let base = target_value_expression_callable_apply(callee: callee, args: args)
+  TargetValueExpression {
+    kind: base.kind,
+    node: Node {
+      kind: base.node.kind,
+      children: list_append(
+        left: base.node.children,
+        right: [
+          target_model_named_edge(
+            name: ^target_value_expr_field_resolved_primitive,
+            target: target_model_type_atom_node(identity: callee)
+          )
+        ]
+      ),
+      occurrence_id: base.node.occurrence_id
+    }
+  }
+}
+
+// WHETHER THE CALLABLE-APPLY WIRE CARRIES THE RESOLVED-PRIMITIVE MARKER: one found / missing / ambiguous decision from
+// v2.std.node_query child_lookup_step (named_child_lookup itself reads only Conj/Computation roots; this wire is an Atom). A duplicated marker edge is ambiguous and refuses typed (review 82774).
+fn target_value_expr_callable_apply_is_resolved_primitive(wire: Node) -> Outcome<Bool> {
+  match fold(wire.children, init: NamedChildMissing, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      StructuralLabel { label: _ } => acc
+      Authored { name: edge_name } => child_lookup_step(acc: acc, hit: edge_name == ^target_value_expr_field_resolved_primitive, target: e.target)
+    }
+  }) {
+    NamedChildFound { target: _ } => outcome_accepted(value: true)
+    NamedChildMissing => outcome_accepted(value: false)
+    NamedChildAmbiguous => outcome_rejected(Diagnostic {
+      reason: ^target_value_expr_resolved_primitive_marker_ambiguous,
+      at: node_locus(node: wire),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    })
+  }
+}
+
+// WHETHER A RESOLVED CALLEE NODE IS THE std.primitives CONTRACT DECLARATION OF ITS OWN LEAF: its resolved qualified path
+// equals the contract path derived from the leaf. A same-leaf declaration elsewhere resolves to another path.
+fn target_transform_callee_is_resolved_primitive(body: Node, callee: Symbol) -> Bool {
+  match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
+    Absent => false
+    Present { value: child } =>
+      match declaration_reference_path_optional(node: child) {
+        Absent => false
+        Present { value: path } =>
+          path == primitive_contract_qualified_name(head: callee)
+      }
+  }
 }
 
 fn target_value_expression_callable_apply(
@@ -6010,7 +6337,6 @@ fn target_value_expr_closure_tokens_from_wire(wire: Node, field: Symbol) -> Outc
                   TypeNode { connective: Conj } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
                   TypeNode { connective: Disj } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
                   TypeNode { connective: Arrow } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
-                  TypeNode { connective: Occupancy } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
                   TypeNode { connective: Instantiation } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
                   ComputationNode { behavior: _ } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
                 }
@@ -6115,7 +6441,8 @@ fn target_operator_realization_catalog_wire_schema_valid(catalog: Node) -> Outco
             match e.label {
               StructuralLabel { label: _ } => false
               Positional => false
-              Authored { name: n } => n == ^target_operator_realization_row_edge
+              Authored { name: n } =>
+                n == ^target_operator_realization_row_edge
             }
           } else {
             false
@@ -6131,7 +6458,6 @@ fn target_operator_realization_catalog_wire_schema_valid(catalog: Node) -> Outco
     TypeNode { connective: Atom { identity: _ } } => target_operator_realization_catalog_wire_schema_valid_otherwise(catalog: catalog)
     TypeNode { connective: Disj } => target_operator_realization_catalog_wire_schema_valid_otherwise(catalog: catalog)
     TypeNode { connective: Arrow } => target_operator_realization_catalog_wire_schema_valid_otherwise(catalog: catalog)
-    TypeNode { connective: Occupancy } => target_operator_realization_catalog_wire_schema_valid_otherwise(catalog: catalog)
     TypeNode { connective: Instantiation } => target_operator_realization_catalog_wire_schema_valid_otherwise(catalog: catalog)
     ComputationNode { behavior: _ } => target_operator_realization_catalog_wire_schema_valid_otherwise(catalog: catalog)
   }
@@ -6209,7 +6535,6 @@ fn target_operator_realization_catalog_lookup(
         TypeNode { connective: Atom { identity: _ } } => target_operator_realization_catalog_lookup_otherwise(catalog: catalog)
         TypeNode { connective: Disj } => target_operator_realization_catalog_lookup_otherwise(catalog: catalog)
         TypeNode { connective: Arrow } => target_operator_realization_catalog_lookup_otherwise(catalog: catalog)
-        TypeNode { connective: Occupancy } => target_operator_realization_catalog_lookup_otherwise(catalog: catalog)
         TypeNode { connective: Instantiation } => target_operator_realization_catalog_lookup_otherwise(catalog: catalog)
         ComputationNode { behavior: _ } => target_operator_realization_catalog_lookup_otherwise(catalog: catalog)
       }
@@ -6221,6 +6546,72 @@ fn target_operator_realization_catalog_lookup_otherwise(catalog: Node) -> Outcom
   outcome_rejected(
     target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
   )
+}
+
+
+// A PRIMITIVE WITH NO ROW REFUSES, typed and located at the call that names it. The catalog is the target's whole
+// statement of how it spells primitives, so absence is not a bare call (that was the seed-fact escape: the text was
+// built outside the rows and the v2 door passed the name through unrealized).
+fn target_primitive_realization_missing_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_primitive_realization_missing,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_primitive_realization_ambiguous_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_primitive_realization_ambiguous,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_primitive_realizations_unwired_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_primitive_realizations_unwired,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_primitive_realization_lookup_step(
+  acc: PassingCandidateFold<TargetPrimitiveRealization>,
+  row: TargetPrimitiveRealization,
+  primitive: DeclarationRef
+) -> PassingCandidateFold<TargetPrimitiveRealization> {
+  if declaration_ref_eq(a: row.primitive, b: primitive) {
+    match acc {
+      NoPassingCandidate => OnePassingCandidate { candidate: row }
+      OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+      ManyPassingCandidates => ManyPassingCandidates
+    }
+  } else {
+    acc
+  }
+}
+
+// The rows are typed end to end: a target without them says Unwired and a primitive call on it refuses typed, so
+// the only causes here are the three a reader of the target can act on (unwired, missing, ambiguous).
+fn target_primitive_realization_lookup(
+  primitives: TargetPrimitiveRealizations,
+  primitive: DeclarationRef,
+  at: Node
+) -> Outcome<TargetPrimitiveRealization> {
+  match primitives {
+    PrimitiveRealizationsUnwired => outcome_rejected(target_primitive_realizations_unwired_diagnostic(at: at))
+    PrimitiveRealizationsWired { rows: rows } =>
+      match fold(
+        rows,
+        init: NoPassingCandidate,
+        f: fn(acc, row) { target_primitive_realization_lookup_step(acc: acc, row: row, primitive: primitive) }
+      ) {
+        NoPassingCandidate => outcome_rejected(target_primitive_realization_missing_diagnostic(at: at))
+        OnePassingCandidate { candidate: row } => Accepted { value: row, diagnostics: None }
+        ManyPassingCandidates => outcome_rejected(target_primitive_realization_ambiguous_diagnostic(at: at))
+      }
+  }
 }
 
 fn target_value_expr_primitive_apply_operation_from_wire(wire: Node) -> Outcome<CanonicalOperation> {
@@ -6413,7 +6804,7 @@ fn target_operator_shape_emit_primitive_apply_tokens(
 fn target_value_expression_primitive_apply_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_primitive_apply_wire_schema_valid(wire: expr.node),
@@ -6426,7 +6817,7 @@ fn target_value_expression_primitive_apply_to_concrete_tokens(
             f: fn(bindings) {
               bind_outcome(
                 o: target_operator_realization_catalog_lookup(
-                  catalog: catalog,
+                  catalog: catalog.operators,
                   canonical_op: canonical_op
                 ),
                 f: fn(operator_row) {
@@ -6483,7 +6874,6 @@ fn target_value_expression_symbol_identity_from_wire(wire: Node) -> Outcome<Symb
                   TypeNode { connective: Conj } => acc
                   TypeNode { connective: Disj } => acc
                   TypeNode { connective: Arrow } => acc
-                  TypeNode { connective: Occupancy } => acc
                   TypeNode { connective: Instantiation } => acc
                   ComputationNode { behavior: _ } => acc
                 }
@@ -6530,6 +6920,13 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
         outcome_accepted(
           TargetValueExpression {
             kind: TargetValueExprBoolLiteral,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_int_literal_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprIntLiteral,
             node: wire
           }
         )
@@ -6589,6 +6986,13 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
             node: wire
           }
         )
+      } else if atom_id == ^target_value_expression_list_introduction_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprListIntroduction,
+            node: wire
+          }
+        )
       } else if atom_id == ^target_value_expression_closure_atom {
         outcome_accepted(
           TargetValueExpression {
@@ -6609,7 +7013,6 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
     TypeNode { connective: Conj } => target_value_expression_reify_from_wire_otherwise(wire: wire)
     TypeNode { connective: Disj } => target_value_expression_reify_from_wire_otherwise(wire: wire)
     TypeNode { connective: Arrow } => target_value_expression_reify_from_wire_otherwise(wire: wire)
-    TypeNode { connective: Occupancy } => target_value_expression_reify_from_wire_otherwise(wire: wire)
     TypeNode { connective: Instantiation } => target_value_expression_reify_from_wire_otherwise(wire: wire)
     ComputationNode { behavior: _ } => target_value_expression_reify_from_wire_otherwise(wire: wire)
   }
@@ -6660,7 +7063,6 @@ fn target_value_expr_conditional_wire_schema_valid(wire: Node) -> Outcome<Bool> 
     TypeNode { connective: Conj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Disj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Arrow } => target_value_expr_operand_wire_malformed(wire: wire)
-    TypeNode { connective: Occupancy } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Instantiation } => target_value_expr_operand_wire_malformed(wire: wire)
     ComputationNode { behavior: _ } => target_value_expr_operand_wire_malformed(wire: wire)
   }
@@ -6733,7 +7135,6 @@ fn target_value_expr_bind_let_wire_schema_valid(wire: Node) -> Outcome<Bool> {
     TypeNode { connective: Conj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Disj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Arrow } => target_value_expr_operand_wire_malformed(wire: wire)
-    TypeNode { connective: Occupancy } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Instantiation } => target_value_expr_operand_wire_malformed(wire: wire)
     ComputationNode { behavior: _ } => target_value_expr_operand_wire_malformed(wire: wire)
   }
@@ -6882,7 +7283,7 @@ fn bind_let_statement_sequenced_tokens(
 fn target_value_expression_bind_let_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_bind_let_wire_schema_valid(wire: expr.node),
@@ -6987,7 +7388,6 @@ fn target_value_expr_loop_wire_schema_valid(wire: Node) -> Outcome<Bool> {
     TypeNode { connective: Conj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Disj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Arrow } => target_value_expr_operand_wire_malformed(wire: wire)
-    TypeNode { connective: Occupancy } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Instantiation } => target_value_expr_operand_wire_malformed(wire: wire)
     ComputationNode { behavior: _ } => target_value_expr_operand_wire_malformed(wire: wire)
   }
@@ -7027,7 +7427,7 @@ fn statement_sequenced_block_construct_guard(
 fn target_value_expression_loop_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
@@ -7047,7 +7447,7 @@ fn target_value_expression_loop_to_concrete_tokens(
 fn target_value_expression_loop_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_loop_wire_schema_valid(wire: expr.node),
@@ -7087,7 +7487,6 @@ fn target_value_expr_wire_atom_identity(wire: Node) -> Outcome<Symbol> {
     TypeNode { connective: Conj } => target_value_expr_wire_atom_identity_otherwise(wire: wire)
     TypeNode { connective: Disj } => target_value_expr_wire_atom_identity_otherwise(wire: wire)
     TypeNode { connective: Arrow } => target_value_expr_wire_atom_identity_otherwise(wire: wire)
-    TypeNode { connective: Occupancy } => target_value_expr_wire_atom_identity_otherwise(wire: wire)
     TypeNode { connective: Instantiation } => target_value_expr_wire_atom_identity_otherwise(wire: wire)
     ComputationNode { behavior: _ } => target_value_expr_wire_atom_identity_otherwise(wire: wire)
   }
@@ -7123,7 +7522,6 @@ fn target_value_expr_record_construct_wire_schema_valid(wire: Node) -> Outcome<B
     TypeNode { connective: Conj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Disj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Arrow } => target_value_expr_operand_wire_malformed(wire: wire)
-    TypeNode { connective: Occupancy } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Instantiation } => target_value_expr_operand_wire_malformed(wire: wire)
     ComputationNode { behavior: _ } => target_value_expr_operand_wire_malformed(wire: wire)
   }
@@ -7146,7 +7544,6 @@ fn target_value_expr_record_construct_type_from_wire(wire: Node) -> Outcome<Symb
                   TypeNode { connective: Conj } => acc
                   TypeNode { connective: Disj } => acc
                   TypeNode { connective: Arrow } => acc
-                  TypeNode { connective: Occupancy } => acc
                   TypeNode { connective: Instantiation } => acc
                   ComputationNode { behavior: _ } => acc
                 }
@@ -7214,7 +7611,7 @@ fn target_value_expr_record_construct_field_slots_from_wire(
 fn target_value_expr_record_construct_field_tokens(
   slots: List<TargetValueExprFieldInitSlot>,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match fold(
     slots,
@@ -7279,7 +7676,7 @@ fn target_value_expr_record_construct_field_tokens(
 fn target_value_expression_record_construct_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_record_construct_wire_schema_valid(wire: expr.node),
@@ -7454,7 +7851,7 @@ fn import_qualified_name_symbols(qn: QualifiedName) -> List<Symbol> {
 
 fn import_name_symbols_from_block(block: Node) -> Outcome<List<Symbol>> {
   fold(
-    node_positional_child_targets(node: block),
+    positional_child_target_nodes(node: block),
     init: outcome_accepted(value: Empty),
     f: fn(acc, nd) {
       bind_outcome(
@@ -7709,7 +8106,6 @@ fn target_value_expr_field_access_wire_schema_valid(wire: Node) -> Outcome<Bool>
     TypeNode { connective: Conj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Disj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Arrow } => target_value_expr_operand_wire_malformed(wire: wire)
-    TypeNode { connective: Occupancy } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Instantiation } => target_value_expr_operand_wire_malformed(wire: wire)
     ComputationNode { behavior: _ } => target_value_expr_operand_wire_malformed(wire: wire)
   }
@@ -7741,7 +8137,6 @@ fn target_value_expr_field_access_field_from_wire(wire: Node) -> Outcome<Symbol>
                   TypeNode { connective: Conj } => acc
                   TypeNode { connective: Disj } => acc
                   TypeNode { connective: Arrow } => acc
-                  TypeNode { connective: Occupancy } => acc
                   TypeNode { connective: Instantiation } => acc
                   ComputationNode { behavior: _ } => acc
                 }
@@ -7765,7 +8160,7 @@ fn target_value_expr_field_access_field_from_wire(wire: Node) -> Outcome<Symbol>
 fn target_value_expression_field_access_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_field_access_wire_schema_valid(wire: expr.node),
@@ -7846,7 +8241,6 @@ fn target_value_expr_match_arm_wire_schema_valid(arm_wire: Node) -> Outcome<Bool
     TypeNode { connective: Atom { identity: _ } } => target_value_expr_match_arm_wire_schema_valid_otherwise(arm_wire: arm_wire)
     TypeNode { connective: Disj } => target_value_expr_match_arm_wire_schema_valid_otherwise(arm_wire: arm_wire)
     TypeNode { connective: Arrow } => target_value_expr_match_arm_wire_schema_valid_otherwise(arm_wire: arm_wire)
-    TypeNode { connective: Occupancy } => target_value_expr_match_arm_wire_schema_valid_otherwise(arm_wire: arm_wire)
     TypeNode { connective: Instantiation } => target_value_expr_match_arm_wire_schema_valid_otherwise(arm_wire: arm_wire)
     ComputationNode { behavior: _ } => target_value_expr_match_arm_wire_schema_valid_otherwise(arm_wire: arm_wire)
   }
@@ -7916,7 +8310,6 @@ fn target_value_expr_match_wire_schema_valid(wire: Node) -> Outcome<Bool> {
     TypeNode { connective: Conj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Disj } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Arrow } => target_value_expr_operand_wire_malformed(wire: wire)
-    TypeNode { connective: Occupancy } => target_value_expr_operand_wire_malformed(wire: wire)
     TypeNode { connective: Instantiation } => target_value_expr_operand_wire_malformed(wire: wire)
     ComputationNode { behavior: _ } => target_value_expr_operand_wire_malformed(wire: wire)
   }
@@ -8012,7 +8405,7 @@ fn concrete_syntax_tokens_snoc_fixed(
 fn target_value_expr_match_arm_tokens(
   arms: List<TargetValueExprMatchArmSlot>,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match fold(
     arms,
@@ -8082,7 +8475,6 @@ fn target_value_expr_bool_literal_value_from_atom(node: Node) -> Optional<Bool> 
     TypeNode { connective: Conj } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Occupancy } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -8160,6 +8552,7 @@ fn target_value_expr_bool_literal_value_from_expression(
     TargetValueExprRecordConstruct => optional_absent()
     TargetValueExprFieldAccess => optional_absent()
     TargetValueExprMatch => optional_absent()
+    TargetValueExprListIntroduction => optional_absent()
   }
 }
 
@@ -8192,7 +8585,6 @@ fn target_value_expr_is_source_bool_literal_atom(
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -8201,7 +8593,7 @@ fn target_value_expr_is_source_bool_literal_atom(
 fn target_value_expression_match_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
@@ -8221,7 +8613,7 @@ fn target_value_expression_match_to_concrete_tokens(
 fn target_value_expression_match_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_match_wire_schema_valid(wire: expr.node),
@@ -8347,6 +8739,7 @@ fn target_value_expression_bool_literal_to_concrete_tokens(
     TargetValueExprRecordConstruct => target_value_expression_emit_unsupported_kind(expr: expr)
     TargetValueExprFieldAccess => target_value_expression_emit_unsupported_kind(expr: expr)
     TargetValueExprMatch => target_value_expression_emit_unsupported_kind(expr: expr)
+    TargetValueExprListIntroduction => target_value_expression_emit_unsupported_kind(expr: expr)
   }
 }
 
@@ -8424,7 +8817,7 @@ fn conditional_delimited_tokens(
 fn target_value_expression_conditional_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_conditional_wire_schema_valid(wire: expr.node),
@@ -8509,7 +8902,6 @@ fn target_value_expr_callable_apply_callee_from_wire(wire: Node) -> Outcome<Symb
                   TypeNode { connective: Conj } => acc
                   TypeNode { connective: Disj } => acc
                   TypeNode { connective: Arrow } => acc
-                  TypeNode { connective: Occupancy } => acc
                   TypeNode { connective: Instantiation } => acc
                   ComputationNode { behavior: _ } => acc
                 }
@@ -8551,6 +8943,8 @@ fn target_value_expr_callable_apply_args_from_wire(
                 )
               } else if n == ^target_value_expr_field_callee {
                 acc
+              } else if n == ^target_value_expr_field_resolved_primitive {
+                acc
               } else {
                 outcome_rejected(
                   target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
@@ -8573,7 +8967,7 @@ fn target_value_expr_callable_apply_args_from_wire(
 fn target_value_expr_tokenize_intersperse(
   exprs: List<TargetValueExpression>,
   projection: TargetValueExpressionProjection,
-  catalog: Node,
+  catalog: TargetRealizationCatalog,
   separator: Symbol
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   fold(
@@ -8613,10 +9007,200 @@ fn target_value_expr_tokenize_intersperse(
   )
 }
 
+// Argument tokens of one primitive call, with the row's remaining argument shapes consumed in order.
+type TargetPrimitiveArgumentFold {
+  tokens: List<ConcreteSyntaxToken>,
+  pending_arguments: List<TargetPrimitiveArgument>,
+  count: Int
+}
+
+fn target_primitive_argument_prefix_tokens(argument: TargetPrimitiveArgument) -> List<ConcreteSyntaxToken> {
+  match argument.passing {
+    PrimitivePassByValue => Empty
+    PrimitivePassBySharedReference { prefix_token: t } =>
+      Cons { head: FixedToken { token_class: t }, tail: Empty }
+  }
+}
+
+fn target_primitive_arguments_to_tokens(
+  args: List<TargetValueExpression>,
+  row: TargetPrimitiveRealization,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog,
+  separator: Symbol,
+  at: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: fold(
+      args,
+      init: Accepted {
+        value: TargetPrimitiveArgumentFold { tokens: Empty, pending_arguments: row.arguments, count: 0 },
+        diagnostics: None
+      },
+      f: fn(acc, e) {
+        bind_outcome(
+          o: acc,
+          f: fn(state) {
+            match state.pending_arguments {
+              Empty => outcome_rejected(target_primitive_realization_arity_diagnostic(at: at))
+              Cons { head: shape, tail: rest } =>
+                bind_outcome(
+                  o: target_value_expression_to_concrete_tokens(expr: e, projection: projection, catalog: catalog),
+                  f: fn(et) {
+                    outcome_accepted(
+                      TargetPrimitiveArgumentFold {
+                        tokens: list_append(
+                          left: state.tokens,
+                          right: list_append(
+                            left: match state.count {
+                              0 => Empty
+                              _ => Cons { head: FixedToken { token_class: separator }, tail: Empty }
+                            },
+                            right: list_append(left: target_primitive_argument_prefix_tokens(argument: shape), right: et)
+                          )
+                        ),
+                        pending_arguments: rest,
+                        count: state.count + 1
+                      }
+                    )
+                  }
+                )
+            }
+          }
+        )
+      }
+    ),
+    f: fn(state) {
+      match state.pending_arguments {
+        Empty => outcome_accepted(state.tokens)
+        Cons { head: _, tail: _ } => outcome_rejected(target_primitive_realization_arity_diagnostic(at: at))
+      }
+    }
+  )
+}
+
+fn target_primitive_realization_arity_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_primitive_realization_arity_mismatch,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_primitive_call_to_concrete_tokens(
+  row: TargetPrimitiveRealization,
+  args: List<TargetValueExpression>,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog,
+  at: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match row.form {
+    PrimitiveFreeCall { callee: c } =>
+      bind_outcome(
+        o: target_primitive_arguments_to_tokens(
+          args: args, row: row, projection: projection, catalog: catalog,
+          separator: projection.callable_apply_form.separator, at: at
+        ),
+        f: fn(arg_tokens) {
+          outcome_accepted(
+            list_append(
+              left: list_append(
+                left: Cons {
+                  head: BoundToken { token_class: projection.callable_apply_form.callee_ident_token, binding: c },
+                  tail: Cons { head: FixedToken { token_class: projection.callable_apply_form.open }, tail: Empty }
+                },
+                right: arg_tokens
+              ),
+              right: Cons { head: FixedToken { token_class: projection.callable_apply_form.close }, tail: Empty }
+            )
+          )
+        }
+      )
+    PrimitiveMethodCall { method: m } =>
+      match args {
+        Empty => outcome_rejected(target_primitive_realization_arity_diagnostic(at: at))
+        Cons { head: receiver, tail: rest } =>
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(expr: receiver, projection: projection, catalog: catalog),
+            f: fn(rt) {
+              bind_outcome(
+                o: target_primitive_arguments_to_tokens(
+                  args: rest, row: row, projection: projection, catalog: catalog,
+                  separator: projection.callable_apply_form.separator, at: at
+                ),
+                f: fn(arg_tokens) {
+                  outcome_accepted(
+                    list_append(
+                      left: list_append(
+                        left: list_append(
+                          left: list_append(
+                            left: Cons { head: FixedToken { token_class: projection.callable_apply_form.open }, tail: rt },
+                            right: Cons { head: FixedToken { token_class: projection.callable_apply_form.close }, tail: Empty }
+                          ),
+                          right: Cons {
+                            head: FixedToken { token_class: projection.field_access_form.dot },
+                            tail: Cons {
+                              head: BoundToken { token_class: projection.callable_apply_form.callee_ident_token, binding: m },
+                              tail: Cons { head: FixedToken { token_class: projection.callable_apply_form.open }, tail: Empty }
+                            }
+                          }
+                        ),
+                        right: arg_tokens
+                      ),
+                      right: Cons { head: FixedToken { token_class: projection.callable_apply_form.close }, tail: Empty }
+                    )
+                  )
+                }
+              )
+            }
+          )
+      }
+  }
+}
+
+fn target_value_expression_primitive_row_call_to_concrete_tokens(
+  callee: Symbol,
+  args: List<TargetValueExpression>,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog,
+  at: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_primitive_realization_lookup(
+      primitives: catalog.primitives,
+      primitive: primitive_contract_declaration_ref(head: callee),
+      at: at
+    ),
+    f: fn(row) {
+      bind_outcome(
+        o: target_primitive_call_to_concrete_tokens(row: row, args: args, projection: projection, catalog: catalog, at: at),
+        f: fn(call_tokens) {
+          match row.result {
+            PrimitiveResultAsReturned => outcome_accepted(call_tokens)
+            PrimitiveResultInSharedHandle { constructor: k } =>
+              outcome_accepted(
+                list_append(
+                  left: Cons {
+                    head: BoundToken { token_class: projection.callable_apply_form.callee_ident_token, binding: k },
+                    tail: Cons { head: FixedToken { token_class: projection.callable_apply_form.open }, tail: Empty }
+                  },
+                  right: list_append(
+                    left: call_tokens,
+                    right: Cons { head: FixedToken { token_class: projection.callable_apply_form.close }, tail: Empty }
+                  )
+                )
+              )
+          }
+        }
+      )
+    }
+  )
+}
+
 fn target_value_expression_callable_apply_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_callable_apply_callee_from_wire(wire: expr.node),
@@ -8624,6 +9208,14 @@ fn target_value_expression_callable_apply_to_concrete_tokens(
       bind_outcome(
         o: target_value_expr_callable_apply_args_from_wire(wire: expr.node),
         f: fn(args) {
+          bind_outcome(
+            o: target_value_expr_callable_apply_is_resolved_primitive(wire: expr.node),
+            f: fn(is_primitive) {
+          if is_primitive {
+            target_value_expression_primitive_row_call_to_concrete_tokens(
+              callee: callee, args: args, projection: projection, catalog: catalog, at: expr.node
+            )
+          } else {
           bind_outcome(
             o: target_value_expr_tokenize_intersperse(
               exprs: args,
@@ -8659,6 +9251,9 @@ fn target_value_expression_callable_apply_to_concrete_tokens(
               )
             }
           )
+          }
+            }
+          )
         }
       )
     }
@@ -8682,7 +9277,6 @@ fn target_value_expr_closure_params_from_wire(wire: Node) -> Outcome<List<Symbol
                   TypeNode { connective: Conj } => target_value_expr_closure_params_from_wire_otherwise(wire: wire)
                   TypeNode { connective: Disj } => target_value_expr_closure_params_from_wire_otherwise(wire: wire)
                   TypeNode { connective: Arrow } => target_value_expr_closure_params_from_wire_otherwise(wire: wire)
-                  TypeNode { connective: Occupancy } => target_value_expr_closure_params_from_wire_otherwise(wire: wire)
                   TypeNode { connective: Instantiation } => target_value_expr_closure_params_from_wire_otherwise(wire: wire)
                   ComputationNode { behavior: _ } => target_value_expr_closure_params_from_wire_otherwise(wire: wire)
                 }
@@ -8752,7 +9346,7 @@ fn target_value_expr_closure_param_tokens(
 fn target_value_expression_closure_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
@@ -8772,7 +9366,7 @@ fn target_value_expression_closure_to_concrete_tokens(
 fn target_value_expression_closure_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_closure_tokens_from_wire(wire: expr.node, field: ^target_value_expr_field_closure_value_open),
@@ -8795,7 +9389,7 @@ fn target_value_expression_closure_to_concrete_tokens_inner(
 fn target_value_expression_closure_plain_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_closure_params_from_wire(wire: expr.node),
@@ -8865,7 +9459,7 @@ fn target_value_expression_closure_plain_tokens(
 fn target_value_expression_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match expr.kind {
     TargetValueExprBindingRef =>
@@ -8943,6 +9537,12 @@ fn target_value_expression_to_concrete_tokens(
       )
     TargetValueExprMatch =>
       target_value_expression_match_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    TargetValueExprListIntroduction =>
+      target_value_expression_list_introduction_to_concrete_tokens(
         expr: expr,
         projection: projection,
         catalog: catalog
@@ -9310,6 +9910,10 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
         target: int_literal_shape_to_node(shape: projection.int_literal_form)
       ),
       target_model_named_edge(
+        name: ^target_value_expr_field_list_introduction,
+        target: list_introduction_shape_to_node(shape: projection.list_introduction_form)
+      ),
+      target_model_named_edge(
         name: ^target_value_expr_field_block_eval,
         target: block_evaluation_mode_to_node(
           mode: projection.block_evaluation_mode
@@ -9598,7 +10202,6 @@ fn target_constructor_template_from_node(
     TypeNode { connective: Conj } => target_constructor_template_from_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Disj } => target_constructor_template_from_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Arrow } => target_constructor_template_from_node_otherwise(source_carrier: source_carrier)
-    TypeNode { connective: Occupancy } => target_constructor_template_from_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Instantiation } => target_constructor_template_from_node_otherwise(source_carrier: source_carrier)
     ComputationNode { behavior: _ } => target_constructor_template_from_node_otherwise(source_carrier: source_carrier)
   }
@@ -9642,7 +10245,6 @@ fn target_model_bundle_core(host: TargetModel) -> Node {
     TypeNode { connective: Atom { identity: _ } } => host.bundle
     TypeNode { connective: Disj } => host.bundle
     TypeNode { connective: Arrow } => host.bundle
-    TypeNode { connective: Occupancy } => host.bundle
     TypeNode { connective: Instantiation } => host.bundle
     ComputationNode { behavior: _ } => host.bundle
   }
@@ -9893,7 +10495,6 @@ fn target_atom_realization_conj_child(row_node: Node, edge_name: Symbol) -> Node
     TypeNode { connective: Atom { identity: _ } } => row_node
     TypeNode { connective: Disj } => row_node
     TypeNode { connective: Arrow } => row_node
-    TypeNode { connective: Occupancy } => row_node
     TypeNode { connective: Instantiation } => row_node
     ComputationNode { behavior: _ } => row_node
   }
@@ -9963,7 +10564,6 @@ fn target_value_template_from_node(
     TypeNode { connective: Conj } => target_value_template_from_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Disj } => target_value_template_from_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Arrow } => target_value_template_from_node_otherwise(source_carrier: source_carrier)
-    TypeNode { connective: Occupancy } => target_value_template_from_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Instantiation } => target_value_template_from_node_otherwise(source_carrier: source_carrier)
     ComputationNode { behavior: _ } => target_value_template_from_node_otherwise(source_carrier: source_carrier)
   }
@@ -9987,7 +10587,6 @@ fn target_atom_realization_display_name_from_row(
     TypeNode { connective: Conj } => target_atom_realization_display_name_decode_invalid(source_carrier: source_carrier)
     TypeNode { connective: Disj } => target_atom_realization_display_name_decode_invalid(source_carrier: source_carrier)
     TypeNode { connective: Arrow } => target_atom_realization_display_name_decode_invalid(source_carrier: source_carrier)
-    TypeNode { connective: Occupancy } => target_atom_realization_display_name_decode_invalid(source_carrier: source_carrier)
     TypeNode { connective: Instantiation } => target_atom_realization_display_name_decode_invalid(source_carrier: source_carrier)
     ComputationNode { behavior: _ } => target_atom_realization_display_name_decode_invalid(source_carrier: source_carrier)
   }
@@ -10033,7 +10632,6 @@ fn target_atom_realization_lookup_in_catalog_node(
     TypeNode { connective: Atom { identity: _ } } => target_atom_realization_lookup_in_catalog_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Disj } => target_atom_realization_lookup_in_catalog_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Arrow } => target_atom_realization_lookup_in_catalog_node_otherwise(source_carrier: source_carrier)
-    TypeNode { connective: Occupancy } => target_atom_realization_lookup_in_catalog_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Instantiation } => target_atom_realization_lookup_in_catalog_node_otherwise(source_carrier: source_carrier)
     ComputationNode { behavior: _ } => target_atom_realization_lookup_in_catalog_node_otherwise(source_carrier: source_carrier)
   }
@@ -10134,7 +10732,6 @@ fn target_function_boundary_site_from_node(
     TypeNode { connective: Conj } => target_function_boundary_site_from_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Disj } => target_function_boundary_site_from_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Arrow } => target_function_boundary_site_from_node_otherwise(source_carrier: source_carrier)
-    TypeNode { connective: Occupancy } => target_function_boundary_site_from_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Instantiation } => target_function_boundary_site_from_node_otherwise(source_carrier: source_carrier)
     ComputationNode { behavior: _ } => target_function_boundary_site_from_node_otherwise(source_carrier: source_carrier)
   }
@@ -10178,7 +10775,8 @@ fn target_function_signature_realization_catalog_edge(
 ) -> Edge {
   Edge {
     label: Positional,
-    target: target_function_signature_realization_to_node(row: row)
+    target: target_function_signature_realization_to_node(row: row),
+    declaration: NotADeclaration
   }
 }
 
@@ -10337,7 +10935,6 @@ fn target_function_signature_realization_lookup_in_catalog_node(
     TypeNode { connective: Atom { identity: _ } } => target_function_signature_realization_lookup_in_catalog_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Disj } => target_function_signature_realization_lookup_in_catalog_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Arrow } => target_function_signature_realization_lookup_in_catalog_node_otherwise(source_carrier: source_carrier)
-    TypeNode { connective: Occupancy } => target_function_signature_realization_lookup_in_catalog_node_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Instantiation } => target_function_signature_realization_lookup_in_catalog_node_otherwise(source_carrier: source_carrier)
     ComputationNode { behavior: _ } => target_function_signature_realization_lookup_in_catalog_node_otherwise(source_carrier: source_carrier)
   }
@@ -10352,7 +10949,7 @@ fn target_function_signature_realization_lookup_in_catalog_node_otherwise(source
 type TargetTypeExprKind
   = TargetTypeExprAtom
   | TargetTypeExprInstantiation
-  | TargetTypeExprOccupancy
+  | TargetTypeExprOptionalInstantiation
   | TargetTypeExprRecord
   | TargetTypeExprSum
   | TargetTypeExprArrow
@@ -10362,7 +10959,7 @@ type TargetTypeExprArrowWireShape
   | TargetTypeExprArrowLabeledWire
 
 fn target_type_expr_arrow_wire_shape(node: Node) -> Outcome<TargetTypeExprArrowWireShape> {
-  let positional = node_positional_child_targets(node: node)
+  let positional = positional_child_target_nodes(node: node)
   if is_empty(xs: positional) {
     match find_named_child(root: node, name: ^target_type_expr_field_codomain) {
       Accepted { value: _, diagnostics: d } =>
@@ -10439,7 +11036,8 @@ type TargetTypeExpressionProjection {
   conj_form: TargetGenericApply
   disj_form: TargetSumTypeShape
   arrow_form: TargetFunctionTypeShape
-  occupancy_form: TargetGenericApply
+  optional_instantiation_form: TargetGenericApply
+  optional_head: Symbol
   instantiation_form: TargetGenericApply
   declaration_reference_form: DeclarationReferenceForm
 }
@@ -10649,7 +11247,8 @@ fn target_type_expr_surface_edge(surface: Symbol) -> Edge {
       kind: TypeNode { connective: Atom { identity: surface } },
       children: [],
       occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
   }
 }
 
@@ -10660,8 +11259,8 @@ fn target_type_expr_kind_from_atom(id: Symbol) -> Optional<TargetTypeExprKind> {
     if id == discriminant(v: TargetTypeExprInstantiation) {
       optional_present(value: TargetTypeExprInstantiation)
     } else {
-      if id == discriminant(v: TargetTypeExprOccupancy) {
-        optional_present(value: TargetTypeExprOccupancy)
+      if id == discriminant(v: TargetTypeExprOptionalInstantiation) {
+        optional_present(value: TargetTypeExprOptionalInstantiation)
       } else {
         if id == discriminant(v: TargetTypeExprRecord) {
           optional_present(value: TargetTypeExprRecord)
@@ -10709,7 +11308,6 @@ fn target_type_expr_decode_kind_edge(edge: Edge) -> TargetTypeExprKindEdgeDecode
           TypeNode { connective: Conj } => KindEdgeAuthorityMalformed
           TypeNode { connective: Disj } => KindEdgeAuthorityMalformed
           TypeNode { connective: Arrow } => KindEdgeAuthorityMalformed
-          TypeNode { connective: Occupancy } => KindEdgeAuthorityMalformed
           TypeNode { connective: Instantiation } => KindEdgeAuthorityMalformed
           ComputationNode { behavior: _ } => KindEdgeAuthorityMalformed
         }
@@ -10750,7 +11348,6 @@ fn target_type_expr_emitted_kind(node: Node) -> TargetTypeExprKindProbe {
     TypeNode { connective: Atom { identity: _ } } => TypeExprKindNotEmitted
     TypeNode { connective: Disj } => TypeExprKindNotEmitted
     TypeNode { connective: Arrow } => TypeExprKindNotEmitted
-    TypeNode { connective: Occupancy } => TypeExprKindNotEmitted
     TypeNode { connective: Instantiation } => TypeExprKindNotEmitted
     ComputationNode { behavior: _ } => TypeExprKindNotEmitted
   }
@@ -10765,7 +11362,8 @@ fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> Edge {
       },
       children: [],
       occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
   }
 }
 
@@ -10776,7 +11374,7 @@ fn target_type_expr_positional_edges(children: List<Node>) -> List<Edge> {
     cons: fn(acc, child) {
       list_snoc_item(
         xs: acc,
-        item: Edge { label: Positional, target: child }
+        item: Edge { label: Positional, target: child, declaration: NotADeclaration }
       )
     }
   )
@@ -10857,13 +11455,13 @@ fn target_type_expr_instantiation_emitted(
   )
 }
 
-fn target_type_expr_occupancy_emitted(
+fn target_type_expr_optional_instantiation_emitted(
   form: TargetGenericApply,
   head: Node,
   args: List<Node>
 ) -> Node {
   target_type_expr_wrapped_emitted(
-    kind: TargetTypeExprOccupancy,
+    kind: TargetTypeExprOptionalInstantiation,
     surface: form.surface,
     children: list_append(
       left: Cons { head: head, tail: Empty },
@@ -10876,7 +11474,7 @@ fn target_type_expr_field_slot_edges(fields: List<TargetTypeExprFieldSlot>) -> L
   fold(fields, init: Empty, f: fn(acc, field) {
     list_snoc_item(
       xs: acc,
-      item: Edge { label: Authored { name: field.label }, target: field.type_expr }
+      item: Edge { label: Authored { name: field.label }, target: field.type_expr, declaration: NotADeclaration }
     )
   })
 }
@@ -10885,7 +11483,7 @@ fn target_type_expr_arrow_param_slot_edges(params: List<TargetTypeExprArrowParam
   fold(params, init: Empty, f: fn(acc, param) {
     list_snoc_item(
       xs: acc,
-      item: Edge { label: Authored { name: param.label }, target: param.type_expr }
+      item: Edge { label: Authored { name: param.label }, target: param.type_expr, declaration: NotADeclaration }
     )
   })
 }
@@ -10894,7 +11492,7 @@ fn target_type_expr_variant_slot_edges(variants: List<TargetTypeExprVariantSlot>
   fold(variants, init: Empty, f: fn(acc, variant) {
     list_snoc_item(
       xs: acc,
-      item: Edge { label: Authored { name: variant.label }, target: variant.type_expr }
+      item: Edge { label: Authored { name: variant.label }, target: variant.type_expr, declaration: NotADeclaration }
     )
   })
 }
@@ -10945,7 +11543,6 @@ fn target_type_expr_fold_named_metadata_edges(node: Node) -> TargetTypeExprNamed
                   TypeNode { connective: Conj } => NamedMetadataFoldMalformed
                   TypeNode { connective: Disj } => NamedMetadataFoldMalformed
                   TypeNode { connective: Arrow } => NamedMetadataFoldMalformed
-                  TypeNode { connective: Occupancy } => NamedMetadataFoldMalformed
                   TypeNode { connective: Instantiation } => NamedMetadataFoldMalformed
                   ComputationNode { behavior: _ } => NamedMetadataFoldMalformed
                 }
@@ -10961,7 +11558,6 @@ fn target_type_expr_fold_named_metadata_edges(node: Node) -> TargetTypeExprNamed
                     TypeNode { connective: Conj } => NamedMetadataFoldMalformed
                     TypeNode { connective: Disj } => NamedMetadataFoldMalformed
                     TypeNode { connective: Arrow } => NamedMetadataFoldMalformed
-                    TypeNode { connective: Occupancy } => NamedMetadataFoldMalformed
                     TypeNode { connective: Instantiation } => NamedMetadataFoldMalformed
                     ComputationNode { behavior: _ } => NamedMetadataFoldMalformed
                   }
@@ -10992,7 +11588,6 @@ fn target_type_expr_emitted_surface_identity(node: Node) -> Outcome<Symbol> {
         TypeNode { connective: Conj } => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
         TypeNode { connective: Disj } => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
         TypeNode { connective: Arrow } => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
-        TypeNode { connective: Occupancy } => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
         TypeNode { connective: Instantiation } => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
         ComputationNode { behavior: _ } => outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
       }
@@ -11001,7 +11596,7 @@ fn target_type_expr_emitted_surface_identity(node: Node) -> Outcome<Symbol> {
 }
 
 fn target_type_expression_spelling(form: TargetTypeExpression) -> Symbol {
-  match list_at_optional(xs: node_positional_child_targets(node: form.node), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: form.node), index: 0) {
     Present { value: child } =>
       match target_node_atom_identity(node: child) {
         Accepted { value: id, diagnostics: _ } => id
@@ -11022,7 +11617,7 @@ fn target_type_expr_expected_surface_for_kind(
   match kind {
     TargetTypeExprAtom => projection.atom_form.surface
     TargetTypeExprInstantiation => projection.instantiation_form.surface
-    TargetTypeExprOccupancy => projection.occupancy_form.surface
+    TargetTypeExprOptionalInstantiation => projection.optional_instantiation_form.surface
     TargetTypeExprRecord => projection.conj_form.surface
     TargetTypeExprSum => projection.disj_form.surface
     TargetTypeExprArrow => projection.arrow_form.surface
@@ -11033,7 +11628,7 @@ fn target_type_expr_emitted_validate_positional_arity(
   node: Node,
   kind: TargetTypeExprKind
 ) -> Outcome<Bool> {
-  let positional = node_positional_child_targets(node: node)
+  let positional = positional_child_target_nodes(node: node)
   match kind {
     TargetTypeExprAtom =>
       if length(xs: positional) == 1 {
@@ -11047,7 +11642,7 @@ fn target_type_expr_emitted_validate_positional_arity(
       } else {
         outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
       }
-    TargetTypeExprOccupancy =>
+    TargetTypeExprOptionalInstantiation =>
       if length(xs: positional) >= 1 {
         Accepted { value: true, diagnostics: None }
       } else {
@@ -11113,7 +11708,7 @@ fn target_type_expr_emitted_validate_labeled_wire(
   kind: TargetTypeExprKind,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Bool> {
-  if is_empty(xs: node_positional_child_targets(node: node)) {
+  if is_empty(xs: positional_child_target_nodes(node: node)) {
     match target_type_expr_emitted_kind(node: node) {
       TypeExprKindAuthority { value: decoded } =>
         if decoded == kind {
@@ -11197,7 +11792,7 @@ fn target_type_expr_emitted_validate_wire_shape(
         kind: kind,
         projection: projection
       )
-    TargetTypeExprOccupancy =>
+    TargetTypeExprOptionalInstantiation =>
       target_type_expr_emitted_validate_positional_wire(
         node: node,
         kind: kind,
@@ -11232,7 +11827,7 @@ fn target_type_expr_emitted_wire_decode(
 }
 
 fn target_type_expr_emitted_labeled_slot_nodes(node: Node) -> Outcome<List<Node>> {
-  if is_empty(xs: node_positional_child_targets(node: node)) {
+  if is_empty(xs: positional_child_target_nodes(node: node)) {
     Accepted {
       value: target_type_expr_emitted_slot_type_nodes(node: node),
       diagnostics: None
@@ -11243,7 +11838,7 @@ fn target_type_expr_emitted_labeled_slot_nodes(node: Node) -> Outcome<List<Node>
 }
 
 fn target_type_expr_emitted_labeled_slot_edges(node: Node) -> Outcome<List<Edge>> {
-  if is_empty(xs: node_positional_child_targets(node: node)) {
+  if is_empty(xs: positional_child_target_nodes(node: node)) {
     Accepted {
       value: fold(node.children, init: Empty, f: fn(acc, e) {
         match e.label {
@@ -11311,7 +11906,8 @@ fn target_type_expr_arrow_emitted_named(
       right: Cons {
         head: Edge {
           label: Authored { name: ^target_type_expr_field_codomain },
-          target: output
+          target: output,
+          declaration: NotADeclaration
         },
         tail: Empty
       }
@@ -11343,7 +11939,7 @@ fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<Target
       bind_outcome(
         o: target_type_expr_arrow_labeled_codomain(node: node),
         f: fn(_codomain) {
-          if is_empty(xs: node_positional_child_targets(node: node)) {
+          if is_empty(xs: positional_child_target_nodes(node: node)) {
             Accepted {
               value: fold(
                 xs: node_labeled_child_edges(node: node),
@@ -12315,7 +12911,6 @@ fn target_collection_node_atom_identity(node: Node) -> Outcome<Symbol> {
     TypeNode { connective: Conj } => outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
     TypeNode { connective: Disj } => outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
     TypeNode { connective: Arrow } => outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
-    TypeNode { connective: Occupancy } => outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
     TypeNode { connective: Instantiation } => outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
     ComputationNode { behavior: _ } => outcome_rejected(target_collection_shape_malformed_diagnostic(node: node))
   }
@@ -12521,7 +13116,6 @@ fn target_capability_element_kernel_identity(elem: Node) -> Optional<Symbol> {
     TypeNode { connective: Conj } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Occupancy } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -12654,12 +13248,12 @@ fn target_collection_select_choice(
 }
 
 fn target_collection_set_carrier_head(node: Node) -> Optional<Node> {
-  list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
+  list_at_optional(xs: positional_child_target_nodes(node: node), index: 0)
 }
 
 fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
   match node.kind {
-    TypeNode { connective: Occupancy } =>
+    TypeNode { connective: Instantiation } =>
       match target_collection_set_carrier_head(node: node) {
         Present { value: head } =>
           match head.kind {
@@ -12667,7 +13261,6 @@ fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
             TypeNode { connective: Conj } => false
             TypeNode { connective: Disj } => false
             TypeNode { connective: Arrow } => false
-            TypeNode { connective: Occupancy } => false
             TypeNode { connective: Instantiation } => false
             ComputationNode { behavior: _ } => false
           }
@@ -12677,17 +13270,16 @@ fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
 }
 
 fn target_collection_set_element_type_node(set_node: Node) -> Optional<Node> {
-  list_at_optional(xs: node_positional_child_targets(node: set_node), index: 1)
+  list_at_optional(xs: positional_child_target_nodes(node: set_node), index: 1)
 }
 
 fn target_collection_free_monoid_carrier_head(node: Node) -> Optional<Node> {
-  list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
+  list_at_optional(xs: positional_child_target_nodes(node: node), index: 0)
 }
 
 fn target_collection_type_node_is_free_monoid_carrier(node: Node) -> Bool {
@@ -12701,7 +13293,6 @@ fn target_collection_type_node_is_free_monoid_carrier(node: Node) -> Bool {
             TypeNode { connective: Conj } => false
             TypeNode { connective: Disj } => false
             TypeNode { connective: Arrow } => false
-            TypeNode { connective: Occupancy } => false
             TypeNode { connective: Instantiation } => false
             ComputationNode { behavior: _ } => false
           }
@@ -12711,13 +13302,12 @@ fn target_collection_type_node_is_free_monoid_carrier(node: Node) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     ComputationNode { behavior: _ } => false
   }
 }
 
 fn target_collection_free_monoid_element_type_node(free_monoid_node: Node) -> Optional<Node> {
-  let positional = node_positional_child_targets(node: free_monoid_node)
+  let positional = positional_child_target_nodes(node: free_monoid_node)
   if length(xs: positional) == 2 {
     list_at_optional(xs: positional, index: 1)
   } else {
@@ -13060,7 +13650,7 @@ fn target_use_site_ownership_source_key(
     UseSiteOwnershipInstantiationHeadCarrier =>
       match source_carrier.kind {
         TypeNode { connective: Instantiation } =>
-          match list_at_optional(xs: node_positional_child_targets(node: source_carrier), index: 0) {
+          match list_at_optional(xs: positional_child_target_nodes(node: source_carrier), index: 0) {
             Present { value: head } => optional_present(value: head)
             Absent => optional_absent()
           }
@@ -13068,7 +13658,6 @@ fn target_use_site_ownership_source_key(
         TypeNode { connective: Conj } => optional_absent()
         TypeNode { connective: Disj } => optional_absent()
         TypeNode { connective: Arrow } => optional_absent()
-        TypeNode { connective: Occupancy } => optional_absent()
         ComputationNode { behavior: _ } => optional_absent()
       }
   }
@@ -13131,7 +13720,6 @@ fn target_model_node_atom_identity(node: Node, source_carrier: Node) -> Outcome<
     TypeNode { connective: Conj } => target_model_node_atom_identity_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Disj } => target_model_node_atom_identity_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Arrow } => target_model_node_atom_identity_otherwise(source_carrier: source_carrier)
-    TypeNode { connective: Occupancy } => target_model_node_atom_identity_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Instantiation } => target_model_node_atom_identity_otherwise(source_carrier: source_carrier)
     ComputationNode { behavior: _ } => target_model_node_atom_identity_otherwise(source_carrier: source_carrier)
   }
@@ -13385,7 +13973,6 @@ fn target_use_site_ownership_reference_catalog_lookup(
     TypeNode { connective: Atom { identity: _ } } => target_use_site_ownership_reference_catalog_lookup_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Disj } => target_use_site_ownership_reference_catalog_lookup_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Arrow } => target_use_site_ownership_reference_catalog_lookup_otherwise(source_carrier: source_carrier)
-    TypeNode { connective: Occupancy } => target_use_site_ownership_reference_catalog_lookup_otherwise(source_carrier: source_carrier)
     TypeNode { connective: Instantiation } => target_use_site_ownership_reference_catalog_lookup_otherwise(source_carrier: source_carrier)
     ComputationNode { behavior: _ } => target_use_site_ownership_reference_catalog_lookup_otherwise(source_carrier: source_carrier)
   }
@@ -13420,7 +14007,6 @@ fn target_use_site_ownership_lookup_in_catalog_node(
     TypeNode { connective: Conj } => target_use_site_ownership_lookup_in_catalog_node_otherwise(catalog: catalog, source_carrier: source_carrier, use_site: use_site)
     TypeNode { connective: Disj } => target_use_site_ownership_lookup_in_catalog_node_otherwise(catalog: catalog, source_carrier: source_carrier, use_site: use_site)
     TypeNode { connective: Arrow } => target_use_site_ownership_lookup_in_catalog_node_otherwise(catalog: catalog, source_carrier: source_carrier, use_site: use_site)
-    TypeNode { connective: Occupancy } => target_use_site_ownership_lookup_in_catalog_node_otherwise(catalog: catalog, source_carrier: source_carrier, use_site: use_site)
     TypeNode { connective: Instantiation } => target_use_site_ownership_lookup_in_catalog_node_otherwise(catalog: catalog, source_carrier: source_carrier, use_site: use_site)
     ComputationNode { behavior: _ } => target_use_site_ownership_lookup_in_catalog_node_otherwise(catalog: catalog, source_carrier: source_carrier, use_site: use_site)
   }
@@ -13442,7 +14028,8 @@ fn wrap_decision_from_carrier_ownership(
     CarrierOwnershipByReference { realization: row } =>
       match row.reference_layer {
         ReferenceLayerOwned => WrapByValue
-        layer => WrapByReference { layer: layer }
+        ReferenceLayerRc => WrapByReference { layer: ReferenceLayerRc }
+        ReferenceLayerBox => WrapByReference { layer: ReferenceLayerBox }
       }
   }
 }
@@ -13546,7 +14133,8 @@ fn target_use_site_ownership_catalog_positional_edge(
 ) -> Edge {
   Edge {
     label: Positional,
-    target: target_use_site_ownership_realization_to_node(row: row)
+    target: target_use_site_ownership_realization_to_node(row: row),
+    declaration: NotADeclaration
   }
 }
 
@@ -13573,7 +14161,6 @@ fn target_use_site_ownership_catalog_append_derived_rows(
     TypeNode { connective: Atom { identity: _ } } => catalog
     TypeNode { connective: Disj } => catalog
     TypeNode { connective: Arrow } => catalog
-    TypeNode { connective: Occupancy } => catalog
     TypeNode { connective: Instantiation } => catalog
     ComputationNode { behavior: _ } => catalog
   }
@@ -13612,7 +14199,6 @@ fn target_model_bundle_replace_edge_target(
     TypeNode { connective: Atom { identity: _ } } => bundle
     TypeNode { connective: Disj } => bundle
     TypeNode { connective: Arrow } => bundle
-    TypeNode { connective: Occupancy } => bundle
     TypeNode { connective: Instantiation } => bundle
     ComputationNode { behavior: _ } => bundle
   }
@@ -13663,6 +14249,7 @@ fn target_model_with_produced_scaffold(
   scaffold: TargetBodiedArrowStatementScaffold
 ) -> TargetModel {
   TargetModel {
+    primitive_realizations: target.primitive_realizations,
     produced_decl_support: target.produced_decl_support,
     bundle: target_model_bundle_replace_edge_target(
       bundle: target.bundle,
@@ -13716,6 +14303,7 @@ fn target_model_augment_use_site_ownership_catalog(
           Present { value: catalog } =>
             outcome_accepted(
               TargetModel {
+                primitive_realizations: target.primitive_realizations,
                 produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
@@ -13736,7 +14324,6 @@ fn target_model_augment_use_site_ownership_catalog(
       TypeNode { connective: Atom { identity: _ } } => outcome_accepted(target)
       TypeNode { connective: Disj } => outcome_accepted(target)
       TypeNode { connective: Arrow } => outcome_accepted(target)
-      TypeNode { connective: Occupancy } => outcome_accepted(target)
       TypeNode { connective: Instantiation } => outcome_accepted(target)
       ComputationNode { behavior: _ } => outcome_accepted(target)
     }
@@ -13772,6 +14359,7 @@ fn target_model_augment_value_semantics_carriers(
           Present { value: carriers_node } =>
             outcome_accepted(
               TargetModel {
+                primitive_realizations: target.primitive_realizations,
                 produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
@@ -13794,7 +14382,6 @@ fn target_model_augment_value_semantics_carriers(
       TypeNode { connective: Atom { identity: _ } } => outcome_accepted(target)
       TypeNode { connective: Disj } => outcome_accepted(target)
       TypeNode { connective: Arrow } => outcome_accepted(target)
-      TypeNode { connective: Occupancy } => outcome_accepted(target)
       TypeNode { connective: Instantiation } => outcome_accepted(target)
       ComputationNode { behavior: _ } => outcome_accepted(target)
     }
@@ -13842,7 +14429,6 @@ fn target_value_semantics_carriers_from_node(node: Node) -> List<Symbol> {
     TypeNode { connective: Atom { identity: _ } } => Empty
     TypeNode { connective: Disj } => Empty
     TypeNode { connective: Arrow } => Empty
-    TypeNode { connective: Occupancy } => Empty
     TypeNode { connective: Instantiation } => Empty
     ComputationNode { behavior: _ } => Empty
   }
@@ -13914,7 +14500,6 @@ fn target_reference_layer_tokens_from_node(node: Node) -> Outcome<TargetReferenc
     TypeNode { connective: Atom { identity: _ } } => target_reference_layer_tokens_from_node_otherwise(node: node)
     TypeNode { connective: Disj } => target_reference_layer_tokens_from_node_otherwise(node: node)
     TypeNode { connective: Arrow } => target_reference_layer_tokens_from_node_otherwise(node: node)
-    TypeNode { connective: Occupancy } => target_reference_layer_tokens_from_node_otherwise(node: node)
     TypeNode { connective: Instantiation } => target_reference_layer_tokens_from_node_otherwise(node: node)
     ComputationNode { behavior: _ } => target_reference_layer_tokens_from_node_otherwise(node: node)
   }
@@ -14069,7 +14654,7 @@ fn target_reference_layer_probe_from_emitted_type(
       match wire.kind {
         TargetTypeExprInstantiation =>
           match list_at_optional(
-            xs: node_positional_child_targets(node: wire.node),
+            xs: positional_child_target_nodes(node: wire.node),
             index: 0
           ) {
             Present { value: head } =>
@@ -14089,7 +14674,7 @@ fn target_reference_layer_probe_from_emitted_type(
             Absent => ReferenceLayerProbeInvalid
           }
         TargetTypeExprAtom => ReferenceLayerProbeNotWrapped
-        TargetTypeExprOccupancy => ReferenceLayerProbeNotWrapped
+        TargetTypeExprOptionalInstantiation => ReferenceLayerProbeNotWrapped
         TargetTypeExprRecord => ReferenceLayerProbeNotWrapped
         TargetTypeExprSum => ReferenceLayerProbeNotWrapped
         TargetTypeExprArrow => ReferenceLayerProbeNotWrapped
@@ -14295,10 +14880,10 @@ fn type_expr_projection_connective_rows(projection: TargetTypeExpressionProjecti
         )
       ),
       target_model_named_edge(
-        name: ^target_type_expr_field_occupancy,
+        name: ^target_type_expr_field_optional_instantiation,
         target: type_expr_projection_row_shape_envelope(
-          envelope: target_type_expr_generic_apply_shape_node(form: projection.occupancy_form),
-          connective: Occupancy
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.optional_instantiation_form),
+          connective: Instantiation
         )
       ),
       target_model_named_edge(
@@ -14319,7 +14904,13 @@ fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection)
     kind: TypeNode { connective: Conj },
     children: list_append(
       left: rows.children,
-      right: target_type_expr_declaration_reference_form_node(form: projection.declaration_reference_form)
+      right: Cons {
+        head: target_model_named_edge(
+          name: ^target_type_expr_field_optional_head,
+          target: target_type_expr_symbol_atom(id: projection.optional_head)
+        ),
+        tail: target_type_expr_declaration_reference_form_node(form: projection.declaration_reference_form)
+      }
     ),
     occurrence_id: OccurrenceSynthetic
   }
@@ -14356,13 +14947,6 @@ fn type_expr_projection_shape_for_connective(
         type_expr_projection_row_shape_envelope(
           envelope: target_type_expr_arrow_shape_node(form: projection.arrow_form),
           connective: Arrow
-        )
-      )
-    Occupancy =>
-      outcome_accepted(
-        type_expr_projection_row_shape_envelope(
-          envelope: target_type_expr_generic_apply_shape_node(form: projection.occupancy_form),
-          connective: Occupancy
         )
       )
     Instantiation =>
@@ -14446,7 +15030,6 @@ fn type_expr_projection_row_field_for_connective(connective: Connective) -> Symb
     Conj => ^target_type_expr_field_conj
     Disj => ^target_type_expr_field_disj
     Arrow => ^target_type_expr_field_arrow
-    Occupancy => ^target_type_expr_field_occupancy
     Instantiation => ^target_type_expr_field_instantiation
   }
 }
@@ -14506,7 +15089,6 @@ fn target_transform_positional_operand_binding_atom(child: Node) -> Outcome<Symb
     TypeNode { connective: Conj } => target_transform_positional_operand_binding_atom_otherwise(child: child)
     TypeNode { connective: Disj } => target_transform_positional_operand_binding_atom_otherwise(child: child)
     TypeNode { connective: Arrow } => target_transform_positional_operand_binding_atom_otherwise(child: child)
-    TypeNode { connective: Occupancy } => target_transform_positional_operand_binding_atom_otherwise(child: child)
     TypeNode { connective: Instantiation } => target_transform_positional_operand_binding_atom_otherwise(child: child)
     ComputationNode { behavior: _ } => target_transform_positional_operand_binding_atom_otherwise(child: child)
   }
@@ -14526,7 +15108,7 @@ fn target_transform_positional_operand_binding_atom_otherwise(child: Node) -> Ou
 }
 
 fn target_transform_positional_operand_binding(node: Node, index: Int) -> Outcome<Symbol> {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: index) {
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: index) {
     Present { value: child } => target_transform_positional_operand_binding_atom(child: child)
     Absent =>
       outcome_rejected(
@@ -14538,12 +15120,25 @@ fn target_transform_positional_operand_binding(node: Node, index: Int) -> Outcom
   }
 }
 
+fn target_bind_binder_binding(bind: Node) -> Outcome<Symbol> {
+  match bind_slot_target(n: bind, slot: BindBinderSlot) {
+    Present { value: child } => target_transform_positional_operand_binding_atom(child: child)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: bind
+        )
+      )
+  }
+}
+
 fn target_transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
   target_transform_positional_operand_binding(node: node, index: 0)
 }
 
 fn target_transform_operator_child(node: Node) -> Outcome<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
     Present { value: child } => outcome_accepted(value: child)
     Absent =>
       outcome_rejected(
@@ -14576,7 +15171,7 @@ fn target_value_expr_arrow_has_branch_body(arrow: Node) -> Bool {
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
         ComputationNode { behavior: Branch } =>
-          length(xs: node_positional_child_targets(node: body)) == 3
+          length(xs: positional_child_target_nodes(node: body)) == 3
         TypeNode { connective: _ } => false
         ComputationNode { behavior: Value } => false
         ComputationNode { behavior: Transform } => false
@@ -14771,7 +15366,7 @@ fn target_arrow_scope_positional_operand_binding(
   index: Int,
   target: TargetModel
 ) -> Outcome<Symbol> {
-  match list_at_optional(xs: node_positional_child_targets(node: body), index: index) {
+  match list_at_optional(xs: positional_child_target_nodes(node: body), index: index) {
     Present { value: operand } => target_arrow_scope_operand_binding(arrow: arrow, body: body, operand: operand, target: target)
     Absent =>
       outcome_rejected(
@@ -14793,7 +15388,7 @@ fn target_project_cast_primitive_apply_in_arrow_scope(
   target: TargetModel
 ) -> Outcome<TargetValueExpression> {
   let shape_ok = match cast_target_optional(n: body) {
-    Present { value: _ } => (length(xs: node_positional_child_targets(node: body)) == 2) && (count(body.children) == 3)
+    Present { value: _ } => (length(xs: positional_child_target_nodes(node: body)) == 2) && (count(body.children) == 3)
     Absent => false
   }
   if !shape_ok {
@@ -14842,7 +15437,7 @@ fn target_project_binary_primitive_apply_in_arrow_scope(
   target: TargetModel
 ) -> Outcome<TargetValueExpression> {
   if !all_edges_positional(children: body.children)
-    || length(xs: node_positional_child_targets(node: body)) != 3 {
+    || length(xs: positional_child_target_nodes(node: body)) != 3 {
     outcome_rejected(
       target_value_expr_diagnostic(
         reason: ^target_value_expr_reason_transform_shape_invalid,
@@ -14903,7 +15498,6 @@ fn target_project_callable_arg_in_arrow_scope(
     TypeNode { connective: Conj } => target_project_callable_arg_in_arrow_scope_otherwise(arrow: arrow, arg: arg, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
     TypeNode { connective: Disj } => target_project_callable_arg_in_arrow_scope_otherwise(arrow: arrow, arg: arg, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
     TypeNode { connective: Arrow } => target_project_callable_arg_in_arrow_scope_otherwise(arrow: arrow, arg: arg, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
-    TypeNode { connective: Occupancy } => target_project_callable_arg_in_arrow_scope_otherwise(arrow: arrow, arg: arg, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
     TypeNode { connective: Instantiation } => target_project_callable_arg_in_arrow_scope_otherwise(arrow: arrow, arg: arg, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
     ComputationNode { behavior: _ } => target_project_callable_arg_in_arrow_scope_otherwise(arrow: arrow, arg: arg, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
   }
@@ -14944,7 +15538,7 @@ fn target_project_transform_callable_apply_in_arrow_scope(
   bind_outcome(
     o: target_transform_surface_op_atom(node: body),
     f: fn(callee) {
-      match list_tail(xs: node_positional_child_targets(node: body)) {
+      match list_tail(xs: positional_child_target_nodes(node: body)) {
         Absent =>
           outcome_rejected(
             target_value_expr_diagnostic(
@@ -14979,7 +15573,11 @@ fn target_project_transform_callable_apply_in_arrow_scope(
             ),
             f: fn(args) {
               outcome_accepted(
-                target_value_expression_callable_apply(callee: callee, args: args)
+                if target_transform_callee_is_resolved_primitive(body: body, callee: callee) {
+                  target_value_expression_resolved_primitive_call(callee: callee, args: args)
+                } else {
+                  target_value_expression_callable_apply(callee: callee, args: args)
+                }
               )
             }
           )
@@ -14993,17 +15591,13 @@ fn target_value_expr_branch_bool_gate(
   node: Node,
   source_bool_form: TargetBoolLiteralShape
 ) -> Bool {
-  if length(xs: node_positional_child_targets(node: node)) != 3 {
-    false
-  } else {
-    match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-      Present { value: cond } =>
-        target_value_expr_is_source_bool_literal_atom(
-          node: cond,
-          source_bool_form: source_bool_form
-        )
-      Absent => false
-    }
+  match branch_slot_target(n: node, slot: BranchConditionSlot) {
+    Present { value: cond } =>
+      target_value_expr_is_source_bool_literal_atom(
+        node: cond,
+        source_bool_form: source_bool_form
+      )
+    Absent => false
   }
 }
 
@@ -15017,7 +15611,6 @@ fn target_value_expr_is_int_literal_atom(node: Node) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -15046,42 +15639,17 @@ fn target_value_expr_int_literal_magnitude_node_optional(node: Node) -> Optional
   }
 }
 
-fn target_value_expr_int_literal_magnitude_binding(magnitude: Int) -> Optional<Symbol> {
-  if magnitude == 1 {
-    optional_present(value: ^dag_binding_pick_lit_one)
-  } else if magnitude == 2 {
-    optional_present(value: ^dag_binding_pick_lit_two)
-  } else {
-    optional_absent()
-  }
-}
-
-// 🟡 dissolve-on: target_value_expr_int_literal_magnitude_binding maps magnitudes 1/2 to legacy
-// pick-lit bindings for existing emit round-trip witnesses; every other magnitude now renders as
-// `TargetValueExprIntLiteral` through the target's declared `int_literal_form`. The two rows stay
-// because C, TypeScript and dag declare `IntLiteralUnwired` and their round-trip witnesses spell 1
-// and 2 through the rows. DISSOLVES WHEN every target that emits an integer literal declares its
-// `int_literal_form`, at which point these rows and this map are deleted and 1 and 2 take the
-// general path.
-
 fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValueExpression> {
   match target_value_expr_int_literal_magnitude_node_optional(node: node) {
     Present { value: magnitude_node } =>
       match integer_decimal_magnitude_node_to_int(node: magnitude_node) {
         Accepted { value: magnitude, diagnostics: _ } =>
-          match target_value_expr_int_literal_magnitude_binding(magnitude: magnitude) {
-            Present { value: binding } =>
-              outcome_accepted(
-                target_value_expression_binding_ref(binding: binding)
-              )
-            Absent =>
-              outcome_accepted(
-                target_value_expression_int_literal(
-                  lexeme: int_to_decimal_string(value: magnitude),
-                  source: node
-                )
-              )
-          }
+          outcome_accepted(
+            target_value_expression_int_literal(
+              lexeme: int_to_decimal_string(value: magnitude),
+              source: node
+            )
+          )
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     Absent =>
@@ -15094,6 +15662,17 @@ fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValue
   }
 }
 
+// 🟡 REMAINING POPULATION of the pick-table literal bindings (C5-G left it; the int-literal magnitude
+// special case is gone). Source atoms dag_pick_lit_one/two and dag_rec_lit_nine are minted ONLY by
+// fixture constructors (program.dag program_literal_one/two, dag.dag fixtures) and are consumed by
+// the rows held by dag.dag `dag_pick_concrete_tokens`,
+// `dag_language_model_binding_canonical_map`, `dag_binding_spellings`, and by rust_fixtures.dag
+// `rust_pick_concrete_tokens`, `rust_pick_binding_spellings`, `rust_loop_*`, `rust_match_*`,
+// `rust_field_access_binding_spellings`, `rust_variant_construct_binding_spellings`,
+// `rust_literal_emit_binding_spellings`, `rust_bind_literal_golden_tokens`.
+// Ingest and dag_int_literal_fixture_node never mint them. DISSOLVES WHEN those fixtures spell their
+// literals as int_literal atoms and expect int_literal tokens; then these map arms, the rows and
+// this marker are deleted together. Follow-up, not this PR.
 fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol> {
   if id == ^dag_pick_lit_one {
     optional_present(value: ^dag_binding_pick_lit_one)
@@ -15173,7 +15752,6 @@ fn target_value_expr_project_atom_in_arrow_scope(
         TypeNode { connective: Conj } => target_value_expr_transform_shape_invalid(node: node)
         TypeNode { connective: Disj } => target_value_expr_transform_shape_invalid(node: node)
         TypeNode { connective: Arrow } => target_value_expr_transform_shape_invalid(node: node)
-        TypeNode { connective: Occupancy } => target_value_expr_transform_shape_invalid(node: node)
         TypeNode { connective: Instantiation } => target_value_expr_transform_shape_invalid(node: node)
         ComputationNode { behavior: _ } => target_value_expr_transform_shape_invalid(node: node)
       }
@@ -15225,7 +15803,6 @@ fn target_value_expr_project_atom_literal_or(
     TypeNode { connective: Conj } => target_value_expr_transform_shape_invalid(node: node)
     TypeNode { connective: Disj } => target_value_expr_transform_shape_invalid(node: node)
     TypeNode { connective: Arrow } => target_value_expr_transform_shape_invalid(node: node)
-    TypeNode { connective: Occupancy } => target_value_expr_transform_shape_invalid(node: node)
     TypeNode { connective: Instantiation } => target_value_expr_transform_shape_invalid(node: node)
     ComputationNode { behavior: _ } => target_value_expr_transform_shape_invalid(node: node)
   }
@@ -15369,11 +15946,49 @@ fn target_project_record_construct(
   }
 }
 
+// A LIST INTRODUCTION IS RECOGNIZED BY ITS OWN READER, v2.std.list_introduction
+// list_introduction_elements_optional, the one authority the producer (body lowering) and infer
+// share, so this gate cannot disagree with them about which Transform heads a list.
+fn target_project_list_introduction(
+  arrow: Node,
+  body: Node,
+  element_nodes: List<Node>,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+        o: fold(
+          element_nodes,
+          init: Accepted { value: Empty, diagnostics: None },
+          f: fn(acc, element_node) {
+            match acc {
+              Rejected { diagnostics: r } => acc
+              Accepted { value: elements, diagnostics: d } =>
+                bind_outcome(
+                  o: target_value_expr_project_body_subexpression(
+                    arrow: arrow,
+                    node: element_node,
+                    target: target,
+                    source_bool_form: source_bool_form,
+                    handle_transform: handle_transform
+                  ),
+                  f: fn(element) { outcome_accepted(list_snoc_item(xs: elements, item: element)) }
+                )
+            }
+          }
+        ),
+        f: fn(elements) {
+          outcome_accepted(target_value_expression_list_introduction(elements: elements, source: body))
+        }
+      )
+}
+
 fn target_value_expr_field_access_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>
       if !all_edges_positional(children: node.children)
-        || length(xs: node_positional_child_targets(node: node)) != 3 {
+        || length(xs: positional_child_target_nodes(node: node)) != 3 {
         false
       } else {
         match target_value_expr_positional_child_optional(node: node, index: 0) {
@@ -15384,7 +15999,6 @@ fn target_value_expr_field_access_gate(node: Node) -> Bool {
               TypeNode { connective: Conj } => false
               TypeNode { connective: Disj } => false
               TypeNode { connective: Arrow } => false
-              TypeNode { connective: Occupancy } => false
               TypeNode { connective: Instantiation } => false
               ComputationNode { behavior: _ } => false
             }
@@ -15453,7 +16067,6 @@ fn target_project_field_access(
                   TypeNode { connective: Conj } => target_value_expr_transform_shape_invalid(node: body)
                   TypeNode { connective: Disj } => target_value_expr_transform_shape_invalid(node: body)
                   TypeNode { connective: Arrow } => target_value_expr_transform_shape_invalid(node: body)
-                  TypeNode { connective: Occupancy } => target_value_expr_transform_shape_invalid(node: body)
                   TypeNode { connective: Instantiation } => target_value_expr_transform_shape_invalid(node: body)
                   ComputationNode { behavior: _ } => target_value_expr_transform_shape_invalid(node: body)
                 }
@@ -15467,7 +16080,7 @@ fn target_project_field_access(
 fn target_value_expr_match_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Match } =>
-      length(xs: node_positional_child_targets(node: node)) == 3
+      length(xs: positional_child_target_nodes(node: node)) == 3
         && match_arm_children_conform_skip_first(
           children: node.children,
           skipped_scrutinee: false
@@ -15530,13 +16143,13 @@ fn target_value_expr_match_arm_slot_from_arm_edge(
 
 fn target_value_expr_match_project_arms(
   arrow: Node,
-  children: List<Edge>,
+  match_node: Node,
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<List<TargetValueExprMatchArmSlot>> {
   match fold(
-    target_value_expr_match_arm_edges_after_scrutinee(children: children),
+    list_map(xs: match_role_slots(n: match_node, role: MatchArmSlot), f: fn(slot) { child_slot_edge(slot: slot) }),
     init: Accepted { value: Empty, diagnostics: None },
     f: fn(acc, arm_edge) {
       match acc {
@@ -15577,7 +16190,7 @@ fn target_project_match(
       )
     )
   } else {
-    match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+    match match_slot_target(n: body, slot: MatchScrutineeSlot) {
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
@@ -15598,7 +16211,7 @@ fn target_project_match(
             bind_outcome(
               o: target_value_expr_match_project_arms(
                 arrow: arrow,
-                children: body.children,
+                match_node: body,
                 target: target,
                 source_bool_form: source_bool_form,
                 handle_transform: handle_transform
@@ -15636,7 +16249,7 @@ fn target_project_branch_bool_if_else(
           )
         )
       } else {
-        match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+        match branch_slot_target(n: body, slot: BranchConditionSlot) {
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
@@ -15645,7 +16258,7 @@ fn target_project_branch_bool_if_else(
           )
         )
       Present { value: cond } =>
-        match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+        match branch_slot_target(n: body, slot: BranchThenSlot) {
           Absent =>
             outcome_rejected(
               target_value_expr_diagnostic(
@@ -15654,7 +16267,7 @@ fn target_project_branch_bool_if_else(
               )
             )
           Present { value: then_arm } =>
-            match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
+            match branch_slot_target(n: body, slot: BranchElseSlot) {
               Absent =>
                 outcome_rejected(
                   target_value_expr_diagnostic(
@@ -15714,7 +16327,7 @@ fn target_project_branch_bool_if_else(
 fn target_value_expr_bind_let_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Bind } =>
-      length(xs: node_positional_child_targets(node: node)) == 3
+      length(xs: positional_child_target_nodes(node: node)) == 3
     TypeNode { connective: _ } => false
     ComputationNode { behavior: Value } => false
     ComputationNode { behavior: Transform } => false
@@ -15732,7 +16345,7 @@ fn target_value_expr_bind_let_gate(node: Node) -> Bool {
 fn target_value_expr_loop_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Loop } =>
-      (length(xs: node_positional_child_targets(node: node)) >= 1)
+      (length(xs: positional_child_target_nodes(node: node)) >= 1)
       && fold(node.children, init: true, f: fn(acc, e) {
         match loop_edge_role(e: e) {
           LoopIteratedBody => acc
@@ -15791,7 +16404,7 @@ fn target_project_bind_let(
         )
       Absent =>
         bind_outcome(
-          o: target_transform_positional_operand_binding(node: body, index: 0),
+          o: target_bind_binder_binding(bind: body),
           f: fn(key_binding) {
             bind_outcome(
               o: target_project_bind_tail(
@@ -15803,7 +16416,7 @@ fn target_project_bind_let(
                 handle_transform: handle_transform
               ),
               f: fn(projected_tail) {
-                match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+                match bind_slot_target(n: body, slot: BindValueSlot) {
                   Absent =>
                     outcome_rejected(
                       target_value_expr_diagnostic(
@@ -15847,7 +16460,7 @@ fn target_project_bind_tail(
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
-  match list_at_optional(xs: node_positional_child_targets(node: bind), index: 2) {
+  match bind_slot_target(n: bind, slot: BindBodySlot) {
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(
@@ -15915,7 +16528,7 @@ fn target_project_loop(
       )
     )
   } else {
-    match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+    match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
@@ -15959,7 +16572,18 @@ fn target_value_expr_project_body_subexpression(
           handle_transform: handle_transform
         )
       } else {
-        handle_transform(arrow, node, target)
+        match list_introduction_elements_optional(node: node) {
+          Present { value: elements } =>
+            target_project_list_introduction(
+              arrow: arrow,
+              body: node,
+              element_nodes: elements,
+              target: target,
+              source_bool_form: source_bool_form,
+              handle_transform: handle_transform
+            )
+          Absent => handle_transform(arrow, node, target)
+        }
       }
     ComputationNode { behavior: Branch } =>
       target_project_branch_bool_if_else(
@@ -16031,7 +16655,6 @@ fn target_value_expr_project_body_subexpression(
         source_bool_form: source_bool_form
       )
     TypeNode { connective: Disj } => target_value_expr_transform_shape_invalid(node: node)
-    TypeNode { connective: Occupancy } => target_value_expr_transform_shape_invalid(node: node)
     TypeNode { connective: Instantiation } => target_value_expr_transform_shape_invalid(node: node)
     ComputationNode { behavior: Value } => target_value_expr_transform_shape_invalid(node: node)
   }
@@ -16072,7 +16695,7 @@ fn target_project_closure_in_arrow_scope(
 // parameters binds nothing (an empty list, not a refusal), so a nullary function item or `fn() {..}`
 // has an empty scope rather than a malformed one.
 fn arrow_domain_binder_names(arrow: Node) -> List<Symbol> {
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
     Present { value: domain } =>
       match domain.kind {
         TypeNode { connective: Conj } =>
@@ -16080,7 +16703,6 @@ fn arrow_domain_binder_names(arrow: Node) -> List<Symbol> {
         TypeNode { connective: Atom { identity: _ } } => Empty
         TypeNode { connective: Disj } => Empty
         TypeNode { connective: Arrow } => Empty
-        TypeNode { connective: Occupancy } => Empty
         TypeNode { connective: Instantiation } => Empty
         ComputationNode { behavior: _ } => Empty
       }
@@ -16231,7 +16853,6 @@ fn target_project_realized_closure_body(
     TypeNode { connective: Conj } => target_project_realized_closure_subexpression(closure: closure, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
     TypeNode { connective: Disj } => target_project_realized_closure_subexpression(closure: closure, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
     TypeNode { connective: Arrow } => target_project_realized_closure_subexpression(closure: closure, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
-    TypeNode { connective: Occupancy } => target_project_realized_closure_subexpression(closure: closure, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
     TypeNode { connective: Instantiation } => target_project_realized_closure_subexpression(closure: closure, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
     ComputationNode { behavior: _ } => target_project_realized_closure_subexpression(closure: closure, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
   }
@@ -16277,11 +16898,14 @@ fn target_value_expression_tokens_from_target(
       bundle: target.bundle,
       name: ^target_model_edge_operator_realizations
     ),
-    f: fn(catalog) {
+    f: fn(operators) {
       target_value_expression_to_concrete_tokens(
         expr: expr,
         projection: projection,
-        catalog: catalog
+        catalog: TargetRealizationCatalog {
+          operators: operators,
+          primitives: target.primitive_realizations
+        }
       )
     }
   )
@@ -16343,7 +16967,18 @@ fn target_project_arrow_body_by_kind(
             handle_transform: handle_transform
           )
         } else {
-          handle_transform(arrow, body, target)
+          match list_introduction_elements_optional(node: body) {
+            Present { value: elements } =>
+              target_project_list_introduction(
+                arrow: arrow,
+                body: body,
+                element_nodes: elements,
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              )
+            Absent => handle_transform(arrow, body, target)
+          }
         }
       ComputationNode { behavior: Branch } =>
         target_project_branch_bool_if_else(
@@ -16408,7 +17043,6 @@ fn target_project_arrow_body_by_kind(
         )
       TypeNode { connective: Disj } => target_project_arrow_body_by_kind_otherwise(body: body)
       TypeNode { connective: Arrow } => target_project_arrow_body_by_kind_otherwise(body: body)
-      TypeNode { connective: Occupancy } => target_project_arrow_body_by_kind_otherwise(body: body)
       TypeNode { connective: Instantiation } => target_project_arrow_body_by_kind_otherwise(body: body)
       ComputationNode { behavior: Value } => target_project_arrow_body_by_kind_otherwise(body: body)
   }

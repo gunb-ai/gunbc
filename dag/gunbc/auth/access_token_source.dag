@@ -263,8 +263,8 @@ fn read_supplied_access_token() -> SuppliedTokenResolution {
 // This fold is the selection. It reads the environment the run is actually in and names the arm
 // that environment supports, and every entry that wants "whatever credential this run has" calls
 // it instead of re-deriving one. GcloudPrintToken is deliberately NOT reachable from here: it is
-// an INTERACTIVE authentication, correct for an operator ceremony that binds itself by name (see
-// gunbc.spark.secret_access_ensure spark_secret_access_converge), and an automatic fold that could
+// an INTERACTIVE authentication, correct only for an operator ceremony that binds itself by name, and
+// an automatic fold that could
 // fall back to it would make an unattended run block on a human prompt it cannot answer.
 //
 // THE WORKLOAD ARM WINS ON PRESENCE, NOT ON SUCCESS, and that is what keeps this fail-closed (§5).

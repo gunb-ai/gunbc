@@ -34,7 +34,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data setup_rust_toolchain_v1_16_0: ActionRelease = ActionRelease {
-  owner: "actions-rust-lang", repo: "setup-rust-toolchain", tag: "v1.16.0", commit: "2b1f5e9b395427c92ee4e3331786ca3c37afe2d7"
+  owner: "actions-rust-lang", repo: "setup-rust-toolchain", tag: "v1.16.0", commit: "2b1f5e9b395427c92ee4e3331786ca3c37afe2d7", subdirectory: none
 }
 
 // Each declaration below was read from the action.yml blob at the release's commit

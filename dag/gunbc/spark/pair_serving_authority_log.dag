@@ -1,5 +1,6 @@
 module gunbc.spark.pair_serving_authority_log
 
+import std.durable_compare_and_set { cas_generation, cas_generation_count }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
@@ -8,7 +9,7 @@ import std.optional { Present, Absent }
 import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash, content_hash_equal }
 import std.temporal_effect {
   HeldLease, HeldLeaseObservedState, LeaseEpoch, held_lease, held_lease_with_observed,
-  LeaseRunningExpected, LeaseRunningStale, LeaseInaccessible,
+  LeaseRunningExpected, LeaseRunningPastExpiry, LeaseInaccessible,
 }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity, lease_grant_expired_at }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_kv, json_string, json_int, json_array, json_object, serialize_json }
@@ -559,7 +560,7 @@ fn lease_members(prefix: String, l: HeldLease) -> List<JsonKeyValue> {
     kv(prefix: prefix, key: "lease_key", value: l.epoch.lease_key as String),
     kv(prefix: prefix, key: "lease_resource", value: serialize_content_hash(hash: l.epoch.resource_fingerprint) as String),
     kv(prefix: prefix, key: "lease_owner", value: serialize_content_hash(hash: l.epoch.owner_fingerprint) as String),
-    json_kv(key: join([prefix, "lease_generation"], ""), value: json_int(n: l.epoch.generation)),
+    json_kv(key: join([prefix, "lease_generation"], ""), value: json_int(n: cas_generation_count(g: l.epoch.generation))),
   ]
 }
 
@@ -705,7 +706,7 @@ fn grant_members(g: LeaseGrant?) -> List<JsonKeyValue> {
     Present { value: gr } => [
       kv(prefix: "grant_", key: "reference", value: gr.reference as String),
       kv(prefix: "grant_", key: "fence_grant", value: gr.fence.grant as String),
-      json_kv(key: "grant_fence_generation", value: json_int(n: gr.fence.generation)),
+      json_kv(key: "grant_fence_generation", value: json_int(n: cas_generation_count(g: gr.fence.generation))),
       json_kv(key: "grant_granted_at", value: json_int(n: gr.granted_at)),
       json_kv(key: "grant_maximum_duration_seconds", value: json_int(n: gr.maximum_duration_seconds)),
       json_kv(key: "grant_expires_at", value: json_int(n: gr.expires_at)),
@@ -801,7 +802,11 @@ fn lease_decode(doc: JsonValue, prefix: String) -> HeldLease? {
               match member_nat(doc: doc, key: join([prefix, "lease_generation"], "")) {
                 Absent => none
                 Present { value: g } =>
-                  Present { value: held_lease(epoch: LeaseEpoch { lease_key: k, resource_fingerprint: res, owner_fingerprint: own, generation: g }, observed: LeaseInaccessible) }
+                  match cas_generation(n: g as Int) {
+                    Absent => none
+                    Present { value: cg } =>
+                      Present { value: held_lease(epoch: LeaseEpoch { lease_key: k, resource_fingerprint: res, owner_fingerprint: own, generation: cg }, observed: LeaseInaccessible) }
+                  }
               }
           }
       }
@@ -920,7 +925,11 @@ fn grant_decode(doc: JsonValue) -> GrantDecode {
                       match member_nat(doc: doc, key: "grant_expires_at") {
                         Absent => GrantIncoherent
                         Present { value: exp } =>
-                          GrantDecoded { grant: LeaseGrant { reference: r, fence: LeaseFence { grant: (fg as String) as GrantIdentity, generation: gen }, granted_at: at, maximum_duration_seconds: dur, expires_at: exp } }
+                          match cas_generation(n: gen as Int) {
+                            Absent => GrantIncoherent
+                            Present { value: cg } =>
+                              GrantDecoded { grant: LeaseGrant { reference: r, fence: LeaseFence { grant: (fg as String) as GrantIdentity, generation: cg }, granted_at: at, maximum_duration_seconds: dur, expires_at: exp } }
+                          }
                       }
                   }
               }
@@ -1285,7 +1294,7 @@ fn grant_genealogy(gr: LeaseGrant, next: PairServingGroupAuthority, transaction:
       } else if (gr.reference as String) != (l.epoch.lease_key as String) {
         GrantGenealogyDisagrees { join: join(["grant reference ", gr.reference as String, " is not the lease key ", l.epoch.lease_key as String], "") }
       } else if gr.fence.generation != l.epoch.generation {
-        GrantGenealogyDisagrees { join: join(["grant fence generation ", to_string(gr.fence.generation), " is not the lease epoch generation ", to_string(l.epoch.generation)], "") }
+        GrantGenealogyDisagrees { join: join(["grant fence generation ", to_string(cas_generation_count(g: gr.fence.generation)), " is not the lease epoch generation ", to_string(cas_generation_count(g: l.epoch.generation))], "") }
       } else {
         match admitted_by {
           Absent => GrantGenealogyDisagrees { join: "a grant was carried on a transition from a state no transition admitted" }
@@ -1605,14 +1614,14 @@ type CurrentAuthority
 
 // THE LEASE'S OBSERVED STATE IS DERIVED AT THE READ, FROM THE GRANT AND THE INSTANT. The bytes
 // carry what the writer observed when it wrote; what a consumer needs is what holds NOW. A
-// grant whose expiry has passed reads as LeaseRunningStale -- which pair_serving_successor_may_launch
+// grant whose expiry has passed reads as LeaseRunningPastExpiry -- which pair_serving_successor_may_launch
 // maps to Drifted, removing the right to START while pair_serving_may_finish keeps the right to
 // FINISH -- and a leased arm with no recorded grant reads as LeaseInaccessible: its term cannot
 // be established, so nothing may start under it. An arm that carries no lease is unchanged.
 fn lease_observed_at(grant: LeaseGrant?, at: EpochSecs) -> HeldLeaseObservedState {
   match grant {
     Absent => LeaseInaccessible
-    Present { value: g } => if lease_grant_expired_at(grant: g, at: at) { LeaseRunningStale } else { LeaseRunningExpected }
+    Present { value: g } => if lease_grant_expired_at(grant: g, at: at) { LeaseRunningPastExpiry } else { LeaseRunningExpected }
   }
 }
 

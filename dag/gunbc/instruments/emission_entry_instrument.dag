@@ -6,6 +6,7 @@ import extdeps.shell
 import extdeps.gunbc
 import extdeps.git
 import extdeps.git.inspect
+import extdeps.rust.cargo { cargo_default_target_dir }
 import extdeps.rust.cargo_build
 import extdeps.rust.rustc
 import extdeps.rust.rustc { rustc_version_verbose_field }
@@ -685,7 +686,7 @@ fn measure_cargo_half(
           let build = cargo.Build.CheckManifestMessages(
             workdir: out_dir,
             manifest_path: concat(out_dir, "/Cargo.toml"),
-            target_dir: concat(out_dir, "/target"),
+            target_dir: cargo_default_target_dir(build_root: out_dir),
             extra_args: ["--lib", "--target", measured_target]
           )
           match cargo_scan_diagnostics(stdout: build.stdout) {

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.comparison_whose_operands_share_a_producer
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data comparison_whose_operands_share_a_producer: RecurringFailureMode = RecurringFailureMode {
   identity: "comparison_whose_operands_share_a_producer" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a comparison whose two operands have a common producer** (INVALID STATE: a check compares two values and refuses when they disagree, but one operand is DERIVED FROM THE OTHER, or both are derived from one source, inside the scope the check runs in. The comparison is well-formed, the refusal arm is typed and located, the subject is the right subject -- and no input can make the two sides differ, so the check is green by construction and carries no information about the property it names.",

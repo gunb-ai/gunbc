@@ -14,7 +14,6 @@ import gunbc.ci.ci_spec {
   gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
-  gunbc_ci_mtcollins1_probe_credential_statements,
   gunbc_ci_mtcollins1_probe_rendered,
   gunbc_ci_auth_header_format,
 }
@@ -22,24 +21,23 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_command_with_words,
   bash_build_assign, bash_build_with_redir_to_file,
 }
-import std.process { ExitSuccess, ExitFailure }
-import std.measure { observation_round_count, second }
-import extdeps.shell
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRefused }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { OpenBmc }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.host.managed_host { ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_fixture, managed_hosts }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_credential_fetch_status, FetchOk, FetchRefused, FetchStatusUnobserved }
+import gunbc.host.managed_host { ManagedHostFound, managed_host_binding_for, managed_host_fixture, managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_credential_fetch_status_suffix }
 import gunbc.machine_intake.fan_observe {
-  FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged, FanObservePolicy,
-  fan_observe_admission, fan_observe_authority, fan_observe_refusal_text, fan_write_boot_phase_observation,
+  FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged,
+  fan_observe_admission, fan_observe_authority, fan_observe_refusal_text,
 }
 
+// The claims that execute the fan step's emitted bash or touch real files live in
+// test.claim.machine_intake.fan_observe_local_wet, on the local-repo wet lane; every claim here
+// evaluates under Hermetic.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn authority_names(a: FanObserveAdmission, module_path: String, decl_name: String) -> Bool {
@@ -94,8 +92,8 @@ test fn an_openbmc_bound_row_is_read_against_the_phosphor_policy() -> Bool {
       match h.access {
         BmcAccessUnobserved { endpoint: _ } => false
         BmcAccessObserved { observation: o } => {
-          let openbmc = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_as_openbmc(o: o) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-          authority_names(a: fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: openbmc) }), module_path: "extdeps.bmc.phosphor_fan_control", decl_name: "phosphor_fan_zone_policy_contract")
+          let openbmc = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_as_openbmc(o: o) }, secure: h.secure, smpro: h.smpro)
+          authority_names(a: fan_observe_admission(lookup: ManagedHostFound { host: openbmc, control: bmc_control_binding(observed: openbmc.access, secured: openbmc.secure) }), module_path: "extdeps.bmc.phosphor_fan_control", decl_name: "phosphor_fan_zone_policy_contract")
         }
       }
   }
@@ -111,8 +109,8 @@ test fn a_row_whose_family_is_unobserved_refuses_naming_the_missing_observation(
       match h.access {
         BmcAccessUnobserved { endpoint: _ } => false
         BmcAccessObserved { observation: o } => {
-          let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-          match fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: unobserved) }) {
+          let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, secure: h.secure, smpro: h.smpro)
+          match fan_observe_admission(lookup: ManagedHostFound { host: unobserved, control: bmc_control_binding(observed: unobserved.access, secured: unobserved.secure) }) {
             FanObserveRefused { cause: FanHostFamilyUnobserved { endpoint: e } } =>
               (e.host as String) == (o.endpoint.host as String)
                 && string_contains(s: fan_observe_refusal_text(cause: FanHostFamilyUnobserved { endpoint: e }) as String, pattern: "was never observed")
@@ -266,92 +264,6 @@ test fn fan_policy_phase_trap_names_no_unsettled_variable() -> Bool {
     && !string_contains(s: kvm, pattern: "STATUS_FILE")
 }
 
-// CONTROL (review round, blocker 1, executed): run the emitted prelude's EARLY FAILURE for real.
-// The claim renders the typed prelude with the SAME builders the step projection embeds, writes it to
-// a claim-private path, and executes it with WIF_ACCESS_TOKEN deliberately unset: the script installs
-// its EXIT trap and then dies at the bearer-token header write under set -u - the exact window this
-// blocker is about. The four temp files are planted beforehand at the paths the prelude COMPUTES -
-// derived from the same stem and the same mtcollins1_fan_credential_fetch_status_suffix constant its
-// own assignments use (RUNNER_TEMP is pinned to the claim's working directory; a hand-typed path here
-// would test nothing - the first version of this claim planted .fetch-status while the constant says
-// -fetch-status, so its pass would have been luck). A sound trap removes all four and an unsafe one,
-// aborted by the unset variable before rm, leaves them; absence is read back through the same file
-// transport, not inferred from the exit code. Nothing real is at risk: no fetch is reached and every
-// planted byte is this claim's own.
-test fn fan_policy_phase_early_failure_specimen_leaves_no_residue() -> Bool {
-  let stem = "eh810-fan-trap-specimen"
-  let spec_path = concat(stem, ".sh")
-  let credential = concat(stem, "-bmc-credential")
-  let planted_paths = [
-    concat(stem, "-auth-header"),
-    concat(stem, "-sm.json"),
-    credential,
-    concat(credential, mtcollins1_fan_credential_fetch_status_suffix),
-  ]
-  let prelude = gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: true), set_e: false)
-  let written = Filesystem.Write(path: spec_path, content: prelude)
-  let planted = planted_paths |> all(p => Filesystem.Write(path: p, content: "planted-eh810-not-a-secret").success)
-  let run = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", concat(concat(concat("env -u WIF_ACCESS_TOKEN RUNNER_TEMP='.' bash '"), spec_path), "'")])
-  let every_temp_gone = planted_paths |> all(p => !Filesystem.Read(path: p).success)
-  let spec_gone = Filesystem.Delete(path: spec_path)
-  written.success && planted && run.exit_code != 0 && every_temp_gone && spec_gone.success
-}
-
-// CONTROL (review round, blocker 2): the boot's eligibility is decided by the MODELED refusal path,
-// executed end to end, not by the absence of a flag. An admitted host is taken through the REAL
-// admission route (managed_host_binding_for over the roster - no fixture constructor), a refused
-// series (only the cause string is fabricated) is fed to the boot-phase fold, and the outcome must
-// be: ExitSuccess - which is what keeps the boot step scheduled - and a receipt whose exact content
-// is the typed FanObserveBootPhaseRefused line naming that cause. A fold that silently succeeded
-// without a receipt, or wrote one and still failed the step, fails this claim.
-test fn a_modeled_refusal_leaves_the_boot_eligible_by_execution() -> Bool {
-  let receipt_path = "eh810-fan-boot-phase-refusal-receipt.txt"
-  let admittable = filter(managed_hosts(), r => match fan_observe_admission(lookup: managed_host_binding_for(host: r.host as NonEmptyStr)) { FanObserveAdmitted { host: _ } => true  _ => false })
-  match admittable.first() {
-    Present { value: row } =>
-      match fan_observe_admission(lookup: managed_host_binding_for(host: row.host as NonEmptyStr)) {
-        FanObserveAdmitted { host: h } =>
-          match fan_write_boot_phase_observation(
-            host: h,
-            policy: FanObservePolicy { rounds: observation_round_count(3), interval: second(5), transition_window: second(30), receipt_path: receipt_path },
-            series: FanObservationRefused { cause: "eh810-claim-fabricated-cause" as NonEmptyStr },
-          ) {
-            ExitSuccess =>
-              let receipt = Filesystem.Read(path: receipt_path)
-              let cleaned = Filesystem.Delete(path: receipt_path)
-              receipt.success && receipt.content == "FanObserveBootPhaseRefused cause=eh810-claim-fabricated-cause" && cleaned.success
-            ExitFailure { code: _, reason: _ } =>
-              let _ = Filesystem.Delete(path: receipt_path)
-              false
-          }
-        FanObserveRefused { cause: _ } => false
-      }
-    Absent => false
-  }
-}
-
-// CONTROL (review 81090): the three status arms fold by REAL EXECUTION - a file saying ok, a file
-// saying anything else, and no file at all land in FetchOk / FetchRefused / FetchStatusUnobserved.
-// Executed, not described: the fold is what decides whether the boot sees a refusal, so its truth is
-// owed as an observation of the reader, not as agreement with its text. Flat paths beside the claim's
-// own working files: the file transport creates no parent directories, and each path is deleted after
-// the read so a rerun starts from the absent arm.
-test fn fan_policy_phase_fetch_status_folds_three_arms_by_real_execution() -> Bool {
-  let ok_credential = "eh810-fan-fetch-status-claim-credential"
-  let bad_credential = "eh810-fan-fetch-status-claim-other"
-  let absent_credential = "eh810-fan-fetch-status-claim-absent"
-  let ok_path = concat(ok_credential, mtcollins1_fan_credential_fetch_status_suffix)
-  let bad_path = concat(bad_credential, mtcollins1_fan_credential_fetch_status_suffix)
-  let ok_write = Filesystem.Write(path: ok_path, content: "ok")
-  let bad_write = Filesystem.Write(path: bad_path, content: "fetch-failed")
-  let ok_reads_ok = ok_write.success && mtcollins1_fan_credential_fetch_status(credential_path: ok_credential) == FetchOk
-  let bad_reads_refused = bad_write.success && mtcollins1_fan_credential_fetch_status(credential_path: bad_credential) == FetchRefused
-  let absent_reads_unobserved = mtcollins1_fan_credential_fetch_status(credential_path: absent_credential) == FetchStatusUnobserved
-  let ok_clean = Filesystem.Delete(path: ok_path)
-  let bad_clean = Filesystem.Delete(path: bad_path)
-  ok_reads_ok && bad_reads_refused && absent_reads_unobserved && ok_clean.success && bad_clean.success
-}
-
 // CONTROL: the receipt upload still fails the job when the phase wrote NOTHING (review 81077's
 // wrong-place-failure finding is closed at the other end: every modeled path writes a receipt, so a
 // missing file now means the step itself died - and it already failed at the fan step). Under
@@ -374,7 +286,7 @@ test fn fan_policy_phase_receipt_upload_fails_closed_under_always() -> Bool {
 }
 
 // CONTROL: no step after boot can turn a refused observation into a job failure; the phase's
-// refusal is a typed receipt with ExitSuccess, so the receipt upload is the last fan step.
+// refusal is a typed receipt whose tail fails the fan step itself, so the receipt upload is the last fan step.
 test fn fan_policy_phase_has_no_post_boot_gate() -> Bool {
   let ids = map(
     fleet_converge_mtcollins1_boot_steps_around(

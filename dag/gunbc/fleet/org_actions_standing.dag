@@ -1,6 +1,7 @@
 module gunbc.fleet.org_actions_standing
 
-import std.types { NonEmptyStr, String, Bool, Int, List, Never }
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.error_primitives { Never }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.goal_assessment { GoalAssessment, assess_by_deviations }
 

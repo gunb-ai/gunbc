@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.required_floor_strict_prep_sits_on_memory_high
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data required_floor_strict_prep_sits_on_memory_high: RecurringFailureMode = RecurringFailureMode {
   identity: "required_floor_strict_prep_sits_on_memory_high" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: the required floor's Strict-prep of the gate closure already sits on the CI cgroup memory.high watermark (memory_governor DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES) at prepared-subject-warm, on ordinary merge_group runs that do not plan the MegaRAC forged-probe census. HARM: a changed-witness seed that adds even a small extra Strict module (or extra high-event pressure while already throttled) tips the lane into a wall-time cancel. The class is the floor's resident set at the edge, not a unique typed graph of this witness.",

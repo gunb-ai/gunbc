@@ -634,7 +634,7 @@ fn pijul_compatibility_observed_state_identity(
           |> map(channel =>
             pijul_compatibility_channel_identity(channel: channel)
           )
-          |> sort_by(identity => identity as String),
+          |> sort_by(identity => identity.digest),
       ),
       compatibility_identity_text(
         tag: "current-channel",

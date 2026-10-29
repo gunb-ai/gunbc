@@ -1,0 +1,108 @@
+module test.claim.gpu_board_catalog_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure { watt, watt_count }
+import extdeps.gpu.types {
+  GpuBoardCatalogFacts, GpuBoardPowerSpecification, RatedBoardPower, ConfigurableBoardPower, GpuNamedPowerPoint,
+  GpuBoardAdmission, GpuBoardAdmitted, GpuBoardRefused,
+  GpuBoardRefusal, BoardCarriesNoGpu, BoardPowerRangeInverted, BoardPowerDefaultOutsideRange, BoardNamedPointOutsideRange,
+  ZeroPowerSupported, ZeroPowerNotSupported, PcieAddInBoard, SxmModule, admit_gpu_board, gpu_board_power_ceiling
+}
+import extdeps.gpu.nvidia_a16 { nvidia_a16_board_facts, nvidia_a16_board_catalog }
+import extdeps.gpu.nvidia {
+  nvidia_rtx_5090_board_catalog, nvidia_rtx_pro_6000_workstation_board_catalog, nvidia_rtx_pro_6000_max_q_board_catalog,
+  nvidia_rtx_pro_6000_server_board_catalog, nvidia_rtx_pro_5000_48gb_board_catalog, nvidia_rtx_pro_5000_72gb_board_catalog,
+  nvidia_b200_sxm_board_catalog, nvidia_b300_sxm_board_catalog, nvidia_h200_nvl_board_catalog, nvidia_rtx_2000_ada_board_catalog,
+}
+
+// The board row exists only through admit_gpu_board. The A16 as the brief states it is admitted with
+// its figures intact, and each invariant the row carries has a red: the A16's own facts with one
+// figure moved are refused, by the refusal that names that figure.
+
+fn refused_as(a: GpuBoardAdmission, expect: GpuBoardRefusal) -> Bool {
+  match a {
+    GpuBoardAdmitted { row: _ } => false
+    GpuBoardRefused { facts: _, refusal } => match refusal {
+      BoardCarriesNoGpu => match expect { BoardCarriesNoGpu => true  _ => false }
+      BoardPowerRangeInverted => match expect { BoardPowerRangeInverted => true  _ => false }
+      BoardPowerDefaultOutsideRange => match expect { BoardPowerDefaultOutsideRange => true  _ => false }
+      BoardNamedPointOutsideRange { name } => match expect { BoardNamedPointOutsideRange { name: n } => (n as String) == (name as String)  _ => false }
+    }
+  }
+}
+
+fn with_power(f: GpuBoardCatalogFacts, p: GpuBoardPowerSpecification) -> GpuBoardCatalogFacts {
+  GpuBoardCatalogFacts {
+    vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: f.gpu_count, attachment: f.attachment,
+    board_power: Present { value: p }, zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id,
+    figure_citations: f.figure_citations,
+  }
+}
+
+fn configurable(default: Nat, minimum: Nat, maximum: Nat, named_points: List<GpuNamedPowerPoint>) -> GpuBoardPowerSpecification {
+  ConfigurableBoardPower { default: watt(count: default), minimum: watt(count: minimum), maximum: watt(count: maximum), named_points: named_points }
+}
+
+test fn the_a16_is_admitted_with_its_brief_figures() -> Bool {
+  match nvidia_a16_board_catalog {
+    GpuBoardRefused { facts: _, refusal: _ } => false
+    GpuBoardAdmitted { row } =>
+      row.facts.gpu_count == 4
+        && (row.facts.gpu.model as String) == "GA107-890"
+        && (match row.facts.board_power {
+          Present { value: ConfigurableBoardPower { default: d, minimum: lo, maximum: hi, named_points: _ } } =>
+            watt_count(d) == 250 && watt_count(lo) == 195 && watt_count(hi) == 250
+          _ => false
+        })
+        && (match row.facts.attachment {
+          PcieAddInBoard { link: Present { value: l } } => l.lane_count == 16
+          _ => false
+        })
+        && (match row.facts.zero_power { Present { value: ZeroPowerNotSupported } => true  _ => false })
+  }
+}
+
+test fn a_board_that_breaks_an_invariant_has_no_row() -> Bool {
+  let f = nvidia_a16_board_facts
+  refused_as(a: admit_gpu_board(facts: GpuBoardCatalogFacts {
+      vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: 0, attachment: f.attachment, board_power: f.board_power,
+      zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id,
+      figure_citations: f.figure_citations,
+    }), expect: BoardCarriesNoGpu)
+    && refused_as(a: admit_gpu_board(facts: with_power(f: f, p: configurable(default: 250, minimum: 260, maximum: 250, named_points: []))), expect: BoardPowerRangeInverted)
+    && refused_as(a: admit_gpu_board(facts: with_power(f: f, p: configurable(default: 300, minimum: 195, maximum: 250, named_points: []))), expect: BoardPowerDefaultOutsideRange)
+    && refused_as(a: admit_gpu_board(facts: with_power(f: f, p: configurable(default: 250, minimum: 195, maximum: 250, named_points: [GpuNamedPowerPoint { name: "MaxQ", power: watt(count: 100) }]))), expect: BoardNamedPointOutsideRange { name: "MaxQ" })
+    && !refused_as(a: admit_gpu_board(facts: with_power(f: f, p: configurable(default: 250, minimum: 195, maximum: 250, named_points: [GpuNamedPowerPoint { name: "MaxQ", power: watt(count: 195) }]))), expect: BoardNamedPointOutsideRange { name: "MaxQ" })
+}
+
+// A RATING HAS NO RANGE TO BREAK, so a board stated by one figure is admitted at any figure, and its
+// ceiling is that figure; a range's ceiling is its maximum, not its default.
+test fn a_rated_board_is_admitted_and_its_ceiling_is_the_rating() -> Bool {
+  let f = nvidia_a16_board_facts
+  !refused_as(a: admit_gpu_board(facts: with_power(f: f, p: RatedBoardPower { rated: watt(count: 1000) })), expect: BoardPowerRangeInverted)
+    && watt_count(gpu_board_power_ceiling(spec: RatedBoardPower { rated: watt(count: 1000) })) == 1000
+    && watt_count(gpu_board_power_ceiling(spec: configurable(default: 200, minimum: 195, maximum: 250, named_points: []))) == 250
+}
+
+fn admitted(a: GpuBoardAdmission) -> Bool {
+  match a {
+    GpuBoardAdmitted { row: _ } => true
+    GpuBoardRefused { facts: _, refusal: _ } => false
+  }
+}
+
+// EVERY BOARD THE NVIDIA MODULES DECLARE IS ADMITTED. A board row a consumer is handed exists only through
+// admission, so a catalog board that its own facts refuse reaches its consumers only as a refusal. The list
+// is every GpuBoardAdmission extdeps.gpu.nvidia and extdeps.gpu.nvidia_a16 declare today, by name; a new
+// board joins it by hand until the catalog carries a roster of its own boards (step 2's disposition carrier).
+test fn every_catalog_board_is_admitted() -> Bool {
+  all([
+    nvidia_a16_board_catalog, nvidia_rtx_5090_board_catalog, nvidia_rtx_pro_6000_workstation_board_catalog,
+    nvidia_rtx_pro_6000_max_q_board_catalog, nvidia_rtx_pro_6000_server_board_catalog,
+    nvidia_rtx_pro_5000_48gb_board_catalog, nvidia_rtx_pro_5000_72gb_board_catalog,
+    nvidia_b200_sxm_board_catalog, nvidia_b300_sxm_board_catalog, nvidia_h200_nvl_board_catalog,
+    nvidia_rtx_2000_ada_board_catalog,
+  ], a => admitted(a: a))
+}

@@ -132,6 +132,9 @@ import std.materialization_object {
   store_object_name, store_object_format_version, store_lookup_from_address, store_commit_prepare_addressed, store_commit_settle,
   StoreCommitAddressRefused,
 }
+import std.host_text { chars }
+import std.integer { int_to_decimal_string }
+import std.nat { nat_to_decimal_string }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -187,7 +190,7 @@ data materialization_store_marker_magic: String = "gunbc-materialization-store v
 
 fn store_marker_family_row(b: LocalStoreFamilyBudget) -> String {
   let family = b.family as String
-  join([count(unicode_scalar_unfold(s: family)) as String, ":", family, "=", measure_count(m: b.budget) as String, ";"], "")
+  join([int_to_decimal_string(value: count(unicode_scalar_unfold(s: family))), ":", family, "=", nat_to_decimal_string(value: measure_count(m: b.budget)), ";"], "")
 }
 
 fn store_marker_catalog_field(budgets: List<LocalStoreFamilyBudget>) -> String {
@@ -711,17 +714,17 @@ fn local_store_is_store_file_name(name: String) -> Bool {
 }
 
 fn local_store_index_row_line(r: LocalStoreIndexRow) -> String {
-  join([r.name, measure_count(m: r.bytes) as String, r.ordinal as String], " ")
+  join([r.name, nat_to_decimal_string(value: measure_count(m: r.bytes)), int_to_decimal_string(value: r.ordinal)], " ")
 }
 
 fn local_store_doomed_row_line(r: LocalStoreDoomedRow) -> String {
-  join(["doomed", r.name, measure_count(m: r.bytes) as String], " ")
+  join(["doomed", r.name, nat_to_decimal_string(value: measure_count(m: r.bytes))], " ")
 }
 
 fn local_store_index_encode(index: LocalStoreIndex) -> String {
   let rows = index.rows |> sort_by(r => r.name) |> map(r => local_store_index_row_line(r: r))
   let doomed = index.doomed |> sort_by(r => r.name) |> map(r => local_store_doomed_row_line(r: r))
-  join(concat(concat([local_store_index_magic, concat("next ", index.next_ordinal as String)], rows), doomed), "\n")
+  join(concat(concat([local_store_index_magic, concat("next ", int_to_decimal_string(value: index.next_ordinal))], rows), doomed), "\n")
 }
 
 fn local_store_digits_int(s: String) -> Int? {
@@ -913,9 +916,9 @@ fn local_store_settle_slot(root_path: String, key: NonEmptyStr) -> LocalStoreSlo
 fn local_store_settlement_text(s: LocalStoreSlotSettlement) -> String {
   match s {
     LocalStoreSlotSettled => "the slot's window is settled"
-    LocalStoreSlotGenerationsOutstanding { key: k, stale: st } => concat(concat("generations at or below the window could not be reclaimed in ", k as String), concat(": ", count(st) as String))
+    LocalStoreSlotGenerationsOutstanding { key: k, stale: st } => concat(concat("generations at or below the window could not be reclaimed in ", k as String), concat(": ", int_to_decimal_string(value: count(st))))
     LocalStoreSlotUnlisted { key: k, cause: c } => concat(concat("the slot ", k as String), concat(" could not be listed: ", c))
-    LocalStoreSlotWindowTooNarrow { k: k } => concat("the slot window is narrower than its floor: k = ", k as String)
+    LocalStoreSlotWindowTooNarrow { k: k } => concat("the slot window is narrower than its floor: k = ", int_to_decimal_string(value: k))
   }
 }
 
@@ -936,7 +939,7 @@ type LocalStoreIndexRefusal
 
 fn local_store_index_refusal_text(refusal: LocalStoreIndexRefusal) -> String {
   match refusal {
-    LocalStoreIndexWindowTooNarrow { k: k } => concat("the occupancy index window is narrower than its floor: k = ", k as String)
+    LocalStoreIndexWindowTooNarrow { k: k } => concat("the occupancy index window is narrower than its floor: k = ", int_to_decimal_string(value: k))
     LocalStoreIndexSlotUnreadable { cause: c } => concat("the occupancy index could not be read: ", cas_unreadable_slot_detail(cause: c))
     LocalStoreIndexUndecodable { detail: d } => concat("the occupancy index is corrupt: ", d)
     LocalStoreIndexAttemptNotAdmitted { admission: a } => match a {
@@ -950,7 +953,7 @@ fn local_store_index_refusal_text(refusal: LocalStoreIndexRefusal) -> String {
       CasGenerationPublicationRefused { detail: d } => concat("the occupancy index generation could not be published: ", d as String)
       CasGenerationSpaceExhausted { head: _ } => "the occupancy index slot exhausted its generation space"
     }
-    LocalStoreIndexContended { attempts: n } => concat("the occupancy index kept moving under concurrent writers past the attempt bound: ", n as String)
+    LocalStoreIndexContended { attempts: n } => concat("the occupancy index kept moving under concurrent writers past the attempt bound: ", int_to_decimal_string(value: n))
     LocalStoreIndexUnsettled { settlement: st } => concat("the occupancy index cannot advance: ", local_store_settlement_text(s: st))
     LocalStoreIndexHoldStale { observed: _ } => "the occupancy index write was attempted under a hold that is no longer live"
     LocalStoreIndexHoldNamedWindowHeadMoved { named: _ } => "the occupancy index write was attempted after the named window head moved"
@@ -1111,7 +1114,7 @@ fn local_store_hold_refusal_text(refusal: LocalStoreHoldRefusal) -> String {
     LocalStoreHoldSlotUndecodable { detail: d } => concat("the family hold slot is undecodable: ", d as String)
     LocalStoreHoldKeyNotAddressable => "the family hold key is not slot-addressable"
     LocalStoreHoldSelfUnidentified { cause: c } => concat("this process cannot name itself, so it cannot hold a family: ", c as String)
-    LocalStoreHoldWindowTooNarrow { k: k } => concat("the family hold window is narrower than its floor: k = ", k as String)
+    LocalStoreHoldWindowTooNarrow { k: k } => concat("the family hold window is narrower than its floor: k = ", int_to_decimal_string(value: k))
     LocalStoreHoldUnsettled { settlement: st } => concat("the family hold slot cannot advance: ", local_store_settlement_text(s: st))
     LocalStoreHoldStale { observed: _ } => "the hold this write was given is no longer the family's live hold"
     LocalStoreHoldNamedWindowHeadMoved { named: _ } => "the named window head moved; this hold is no longer the family's live hold"

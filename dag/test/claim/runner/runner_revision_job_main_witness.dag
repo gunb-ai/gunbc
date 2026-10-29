@@ -1,0 +1,42 @@
+module test.claim.runner.runner_revision_job_main_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import gunbc.runner.runner_revision_job_main {
+  RevisionJobOutcome, RevisionJobSpecNotAdmitted, RevisionJobSlotNotDeclared, revision_job_run, revision_job_admit_image,
+}
+import gunbc.runner.runner_revision_job_image { RevisionJobImageNotAdmitted, RevisionJobImageVerified }
+import test.claim.runner.runner_revision_job_spec_witness { spec }
+
+// THE JOB'S PRE-VM WALLS, BY EXECUTION OF THE ENTRY ITSELF: a malformed spec is refused before anything
+// else, and a well-formed one on a slot the declared list does not hold is refused before staging or
+// any grant. The declared list is empty until an operator-approved change adds a slot, so today every
+// job stops here -- which is the control that no job can start on an undeclared slot.
+
+fn run(text: String, slot: String) -> String {
+  match revision_job_run(spec_text: text, slot_instance: slot, release_dir: "/nonexistent", image_dir: "/nonexistent", image_sha256: "",
+    cache_dir: "/nonexistent", work_dir: "/nonexistent", store_root: "/nonexistent", invocation_id: "witness", vcpus: hardware_thread_count(count: 2), now: "2026-10-15T00:00:00Z") {
+    RevisionJobSpecNotAdmitted { refusal: _ } => "spec-not-admitted"
+    RevisionJobSlotNotDeclared { instance: i } => concat("slot-not-declared:", i)
+    _ => "other"
+  }
+}
+
+test fn the_job_refuses_a_malformed_spec_and_an_undeclared_slot_before_any_effect() -> Bool {
+  run(text: "not json", slot: "srv1-14") == "spec-not-admitted"
+    && run(text: spec(claims: "[\"//gunbc/instruments:self-host\"]", extra: ""), slot: "srv1-15") == "slot-not-declared:srv1-15"
+    && run(text: spec(claims: "[\"//gunbc/instruments:self-host\"]", extra: ""), slot: "srv1-13") == "slot-not-declared:srv1-13"
+}
+
+// THE IMAGE WALL'S PURE ARM: no pinned identity admits nothing (the entry checks the slot first and the
+// declared list is empty, so the run above never reaches it). The uninstalled-image arm runs an argv
+// and lives in runner_revision_job_image_wet_witness.
+fn admitted(image_sha256: String) -> String {
+  match revision_job_admit_image(image_dir: "/nonexistent", image_sha256: image_sha256) {
+    RevisionJobImageNotAdmitted { reason: r } => r
+    RevisionJobImageVerified { image: _ } => "verified"
+  }
+}
+
+test fn no_pinned_image_identity_is_refused_before_any_image_is_read() -> Bool {
+  admitted(image_sha256: "") == "no image identity is pinned for this job"
+}

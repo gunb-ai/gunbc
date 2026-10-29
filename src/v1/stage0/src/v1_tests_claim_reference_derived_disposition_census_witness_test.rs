@@ -9,16 +9,12 @@ use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::gunbc_namespace_cut_reference_derived_candidate::{ReferenceDerivedCandidateDisposition, ReferenceDerivedCandidateRow};
 pub use crate::std_types::{SourceSpan};
-pub use crate::v1_compiler_compile::{SourceFile};
-pub use crate::v1_compiler_compile::{compile_to_resolved};
-pub use crate::v1_compiler_emit_rust::{ReferenceDerivedCensus};
-pub use crate::v1_compiler_emit_rust::{reference_derived_row_diagnostics, reference_derived_candidate_disposition, reference_derived_disposition_name, reference_derived_census, emit_rust_reference_derived_rows, emit_rust_reference_derived_census, build_module_index};
-pub use crate::v1_compiler_infer_emit_info::{TypeSummary, TypeSummaryIndex, TypeRepr};
-pub use crate::v1_compiler_infer_emit_info::{empty_emit_graph_info, empty_type_summary_index, type_summary_index_insert};
+pub use crate::v1_compiler_compile::{SourceFile, compile_to_resolved};
+pub use crate::v1_compiler_emit_rust::{reference_derived_row_diagnostics, ReferenceDerivedCensus, reference_derived_candidate_disposition, reference_derived_disposition_name, reference_derived_census, emit_rust_reference_derived_rows, emit_rust_reference_derived_census, build_module_index};
+pub use crate::v1_compiler_infer_emit_info::{TypeSummary, TypeSummaryIndex, empty_emit_graph_info, empty_type_summary_index, type_summary_index_insert, TypeRepr};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind};
-pub use crate::v1_std_core::{ErrorNode};
+pub use crate::v1_std_core::{ErrorNode, no_span, diagnostic_to_message, is_error_diagnostic};
 pub use crate::v1_std_core::{FieldSummary, LeafOwner, NewlineIndex};
-pub use crate::v1_std_core::{no_span, diagnostic_to_message, is_error_diagnostic};
 use crate::gunbc_namespace_cut_reference_derived_candidate::ReferenceDerivedCandidateDisposition::{CandidateSurvived, CandidateOwnModule, CandidateRegistryAbsent, CandidateExportProofFailed, CandidateVariantDelegatedToParent, CandidateVariantParentUnresolved};
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr};
 use crate::v1_compiler_infer_items::ItemKind::{FnItem};
@@ -50,7 +46,7 @@ pub fn fixture_registry(name: String, module_name: String) -> Rc<HashMap<String,
     v1_rt::rc_map_insert(
         v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
         name.clone(),
-        fixture_item_info(name.clone(), module_name.clone()),
+        fixture_item_info(name.clone(), module_name),
     )
 }
 
@@ -74,8 +70,8 @@ pub fn fixture_disposition(
             "PeerName".to_string(),
             "fixture.consumer".to_string(),
             crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-            registry.clone(),
-            export_sets.clone(),
+            registry,
+            export_sets,
             Rc::new(vec![]),
             v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             crate::v1_compiler_emit_rust::build_module_index(
@@ -177,7 +173,7 @@ pub fn census_counts_each_arm_separately() -> bool {
                 ),
             }),
         ]);
-        let census = crate::v1_compiler_emit_rust::reference_derived_census(rows.clone());
+        let census = crate::v1_compiler_emit_rust::reference_derived_census(rows);
         ((((((((census.candidates.clone() == 6) && (census.survived.clone() == 1))
             && (census.own_module.clone() == 1))
             && (census.variant_delegated_to_parent.clone() == 1))
@@ -411,7 +407,7 @@ pub fn only_export_proof_failed_produces_a_diagnostic() -> bool {
             }),
         ]);
         ((crate::v1_compiler_emit_rust::reference_derived_row_diagnostics(
-            rows.clone(),
+            rows,
             crate::v1_std_core::no_span(),
         )
         .len() as i64)
@@ -433,7 +429,7 @@ pub fn the_export_unproven_diagnostic_is_advisory() -> bool {
         {
             let mut __all = true;
             for e in crate::v1_compiler_emit_rust::reference_derived_row_diagnostics(
-                rows.clone(),
+                rows,
                 crate::v1_std_core::no_span(),
             )
             .iter()
@@ -466,7 +462,7 @@ pub fn registry_absent_produces_no_diagnostic() -> bool {
             disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
         })]);
         ((crate::v1_compiler_emit_rust::reference_derived_row_diagnostics(
-            rows.clone(),
+            rows,
             crate::v1_std_core::no_span(),
         )
         .len() as i64)
@@ -488,7 +484,7 @@ pub fn the_export_unproven_message_names_its_own_remedy() -> bool {
         {
             let mut __all = true;
             for e in crate::v1_compiler_emit_rust::reference_derived_row_diagnostics(
-                rows.clone(),
+                rows,
                 crate::v1_std_core::no_span(),
             )
             .iter()

@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.durable_compare_and_set {
   ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
+  cas_generation_count,
 }
 import gunbc.durable_cas_file_store {
   DefaultAccessCreateOnly, admit_cas_attempt_for_derived_payload, file_compare_and_set, observe_cas_slot_state,
@@ -136,13 +137,13 @@ type PlacementGrantEvidence sole_constructor {
   host: String
   unit: String
   grant_identity: String
-  fence_generation: Nat
+  fence_generation: Int
 }
 
 // THE SESSION'S RELEASE, from a release record the same reader bound to the grant and fence above.
 type CleanupEvidence sole_constructor {
   grant_identity: String
-  fence_generation: Nat
+  fence_generation: Int
   outcome: String
   reason: String
 }
@@ -431,7 +432,7 @@ fn dogfood_placement_grant_reading(p: SessionPlacementObservation) -> PlacementG
     SessionPlacementUnnameable { detail } => PlacementGrantGap { gap: StageRefused { reason: detail } }
     SessionPlacementObserved { slot: _, grant, returned: _ } =>
       match grant {
-        SessionGrantRecorded { record } => PlacementGrantEstablished { evidence: PlacementGrantEvidence { host: record.host, unit: record.unit, grant_identity: record.grant_identity, fence_generation: record.fence_generation } }
+        SessionGrantRecorded { record } => PlacementGrantEstablished { evidence: PlacementGrantEvidence { host: record.host, unit: record.unit, grant_identity: record.grant_identity, fence_generation: cas_generation_count(g: record.fence_generation) } }
         SessionGrantNotRecorded { path } => PlacementGrantGap { gap: StageOwed { owed_by: join(["the session slot is held but no placement record is written at ", path], "") } }
         SessionGrantUnreadable { path: _, detail } => PlacementGrantGap { gap: StageRefused { reason: detail } }
         SessionGrantForeign { path: _, detail } => PlacementGrantGap { gap: StageRefused { reason: detail } }
@@ -455,8 +456,8 @@ fn dogfood_cleanup_reading(p: SessionPlacementObservation) -> CleanupReading {
         SessionGrantForeign { path: _, detail } => CleanupGap { gap: StageRefused { reason: detail } }
         SessionGrantRecorded { record } =>
           match returned {
-            SessionReleased { reason, detail: _ } => CleanupEstablished { evidence: CleanupEvidence { grant_identity: record.grant_identity, fence_generation: record.fence_generation, outcome: "released", reason: reason } }
-            SessionReleaseNothingHeld { reason, detail: _ } => CleanupEstablished { evidence: CleanupEvidence { grant_identity: record.grant_identity, fence_generation: record.fence_generation, outcome: "nothing-to-release", reason: reason } }
+            SessionReleased { reason, detail: _ } => CleanupEstablished { evidence: CleanupEvidence { grant_identity: record.grant_identity, fence_generation: cas_generation_count(g: record.fence_generation), outcome: "released", reason: reason } }
+            SessionReleaseNothingHeld { reason, detail: _ } => CleanupEstablished { evidence: CleanupEvidence { grant_identity: record.grant_identity, fence_generation: cas_generation_count(g: record.fence_generation), outcome: "nothing-to-release", reason: reason } }
             SessionReleaseNotRecorded { path: _ } => CleanupGap { gap: StageOwed { owed_by: "the session's hold has not been released yet" } }
             SessionReleaseRefused { reason: _, detail } => CleanupGap { gap: StageRefused { reason: detail } }
             SessionReleaseUnreadable { path: _, detail } => CleanupGap { gap: StageRefused { reason: detail } }
@@ -673,7 +674,7 @@ type DogfoodStartReceipt sole_constructor {
   pr_number: Int
   pr_url: String
   grant_identity: String
-  fence_generation: Nat
+  fence_generation: Int
   cleanup_outcome: String
   request_claim: String
   request_binding_wire: String
@@ -897,7 +898,7 @@ fn dogfood_start_receipt_decode(payload: String) -> DogfoodStartReceiptDecode {
             pr_number: match json_field_int(obj: v, key: "pr_number") { FieldRead { value: n } => n  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 },
             pr_url: dogfood_decode_field(v: v, key: "pr_url"),
             grant_identity: dogfood_decode_field(v: v, key: "grant_identity"),
-            fence_generation: match json_field_nat(obj: v, key: "fence_generation") { FieldRead { value: n } => n  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 },
+            fence_generation: match json_field_nat(obj: v, key: "fence_generation") { FieldRead { value: n } => n as Int  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 },
             cleanup_outcome: dogfood_decode_field(v: v, key: "cleanup_outcome"),
             request_claim: match attempt_request_binding_decode(text: dogfood_decode_field(v: v, key: "request_binding_wire")) {
               RequestBindingDecoded { binding } => match binding { RequestClaimBound { claim } => claim as String  RequestAutonomous => "" }

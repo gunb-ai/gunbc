@@ -6,8 +6,7 @@ use self::HoleSite::*;
 use self::HoleTypeReading::*;
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::std_types::{Bool, List, Map};
-pub use crate::v1_compiler_compile::compile_to_resolved;
-pub use crate::v1_compiler_compile::SourceFile;
+pub use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
 pub use crate::v1_compiler_infer::type_node_label;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_tokenize::tokenize;
@@ -22,9 +21,9 @@ use crate::v1_std_core::ExprData::{
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::TokenShape::{ShStrBegin, ShStrEnd, ShStrMid};
 pub use crate::v1_std_core::{
-    authored_name_at, byte_to_line_col, param_node_name_at, source_text_at,
+    authored_name_at, byte_to_line_col, param_node_name_at, source_text_at, ExprData, InferredNode,
+    NewlineIndex, Node, Token, TokenShape,
 };
-pub use crate::v1_std_core::{ExprData, InferredNode, NewlineIndex, Node, Token, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -177,7 +176,7 @@ pub fn ihc_hole_starts(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<i64>> {
                 Rc::new(IhcHoleStartScan {
                     after_opener: ihc_token_opens_hole(t.clone()),
                     starts: if acc.after_opener.clone() {
-                        v1_rt::rc_list_push(acc.starts.clone(), t.span.clone().start.clone())
+                        v1_rt::rc_list_push(acc.starts.clone(), t.span.start.clone())
                     } else {
                         acc.starts.clone()
                     },
@@ -296,7 +295,7 @@ pub fn ihc_expr_data_label(e: Rc<Node>) -> String {
 pub fn ihc_reading(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HoleTypeReading> {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            let label = crate::v1_compiler_infer::type_node_label(rt.clone(), si.clone());
+            let label = crate::v1_compiler_infer::type_node_label(rt.clone(), si);
             if (label.clone() == "String".to_string()) {
                 Rc::new(HoleTypeReading::HoleTypedString)
             } else {
@@ -376,19 +375,17 @@ pub fn ihc_named_or_span(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>)
 }
 
 pub fn ihc_span_text(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    match v1_rt::map_get(&si, e.span.clone().file.clone()) {
+    match v1_rt::map_get(&si, e.span.file.clone()) {
         Some(index) => crate::v1_std_core::source_text_at(index.clone(), e.span.clone()),
         std::option::Option::None => "".to_string(),
     }
 }
 
 pub fn ihc_line(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> i64 {
-    match v1_rt::map_get(&si, e.span.clone().file.clone()) {
-        Some(index) => {
-            crate::v1_std_core::byte_to_line_col(index.clone(), e.span.clone().start.clone())
-                .line
-                .clone()
-        }
+    match v1_rt::map_get(&si, e.span.file.clone()) {
+        Some(index) => crate::v1_std_core::byte_to_line_col(index.clone(), e.span.start.clone())
+            .line
+            .clone(),
         std::option::Option::None => 0,
     }
 }
@@ -469,7 +466,7 @@ pub fn ihc_template_observation(
     {
         let holes = ihc_template_holes(ctx.clone(), template.clone());
         Rc::new(ObservedTemplate {
-            file: template.span.clone().file.clone(),
+            file: template.span.file.clone(),
             holes: Rc::new({
                 let mut __result = Vec::new();
                 for hh in holes.iter().cloned() {
@@ -483,8 +480,8 @@ pub fn ihc_template_observation(
 
 pub fn ihc_leftmost_start(n: Rc<Node>) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let own = if (n.span.clone().end.clone() > n.span.clone().start.clone()) {
-            n.span.clone().start.clone()
+        let own = if (n.span.end.clone() > n.span.start.clone()) {
+            n.span.start.clone()
         } else {
             v1_rt::int_neg(1)
         };
@@ -509,7 +506,7 @@ pub fn ihc_leftmost_start(n: Rc<Node>) -> i64 {
 
 pub fn ihc_hole_row(ctx: Rc<HoleWalkContext>, h: Rc<Node>, fused: bool) -> Rc<HoleRow> {
     Rc::new(HoleRow {
-        file: h.span.clone().file.clone(),
+        file: h.span.file.clone(),
         start: ihc_leftmost_start(h.clone()),
         line: ihc_line(h.clone(), ctx.si.clone()),
         decl: ctx.file_decl.clone(),
@@ -869,13 +866,16 @@ pub fn ihc_tally_lines(prefix: String, tally: Rc<HashMap<String, i64>>) -> Rc<Ve
     Rc::new({
         let mut __result = Vec::new();
         for k in Rc::new({
-            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&tally)).iter().cloned().collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka = (|k: String| k.clone())(a.clone());
-                let __kb = (|k: String| k.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            let mut __keyed: Vec<_> = Rc::new(v1_rt::map_keys(&tally))
+                .iter()
+                .cloned()
+                .map(|__e: String| {
+                    let __k = (|k: String| k.clone())(__e.clone());
+                    (__k, __e)
+                })
+                .collect();
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         })
         .iter()
         .cloned()
@@ -1076,7 +1076,7 @@ pub fn ihc_summary_lines(c: Rc<IhcCensus>) -> Rc<Vec<String>> {
             }
             __result
         });
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(Rc::new(vec!["oracle v1 (v1.compiler.infer, each hole's own type before the template is typed String; PR2b's v2 infer must agree on every row or name each disagreement)".to_string(), v1_rt::concat("subjects ".to_string(), ((c.lexical.clone().len() as i64)).to_string()), v1_rt::concat("holes ".to_string(), ((c.rows.clone().len() as i64)).to_string()), v1_rt::concat("body_holes ".to_string(), ((body.clone().len() as i64)).to_string()), v1_rt::concat("transport_holes ".to_string(), ((transport.clone().len() as i64)).to_string()), v1_rt::concat("v1_fused_adjacent_holes ".to_string(), ((Rc::new({ let mut __result = Vec::new(); for r in c.rows.clone().iter().cloned() { if r.fused.clone() { __result.push(r); } } __result }).len() as i64)).to_string())]), ihc_tally_lines("body_type".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(ihc_type_category(r.reading.clone())); } __result })))), v1_rt::concat(ihc_tally_lines("body_shape_by_type".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(ihc_shape_label(r.shape.clone()), " ".to_string()), ihc_type_category(r.reading.clone()))); } __result }))), ihc_tally_lines("body_other_type".to_string(), ihc_tally(other_labels.clone())))), v1_rt::concat(v1_rt::concat(ihc_tally_lines("v1_coercion".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(ihc_v1_coercion(r.clone())); } __result }))), ihc_tally_lines("transport_reading".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in transport.iter().cloned() { __result.push(ihc_transport_reading(r.clone())); } __result })))), ihc_completeness_lines(c.clone())))
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(Rc::new(vec!["oracle v1 (v1.compiler.infer, each hole's own type before the template is typed String; PR2b's v2 infer must agree on every row or name each disagreement)".to_string(), v1_rt::concat("subjects ".to_string(), ((c.lexical.clone().len() as i64)).to_string()), v1_rt::concat("holes ".to_string(), ((c.rows.clone().len() as i64)).to_string()), v1_rt::concat("body_holes ".to_string(), ((body.clone().len() as i64)).to_string()), v1_rt::concat("transport_holes ".to_string(), ((transport.clone().len() as i64)).to_string()), v1_rt::concat("v1_fused_adjacent_holes ".to_string(), ((Rc::new({ let mut __result = Vec::new(); for r in c.rows.clone().iter().cloned() { if r.fused.clone() { __result.push(r); } } __result }).len() as i64)).to_string())]), ihc_tally_lines("body_type".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(ihc_type_category(r.reading.clone())); } __result })))), v1_rt::concat(ihc_tally_lines("body_shape_by_type".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(ihc_shape_label(r.shape.clone()), " ".to_string()), ihc_type_category(r.reading.clone()))); } __result }))), ihc_tally_lines("body_other_type".to_string(), ihc_tally(other_labels)))), v1_rt::concat(v1_rt::concat(ihc_tally_lines("v1_coercion".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(ihc_v1_coercion(r.clone())); } __result }))), ihc_tally_lines("transport_reading".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in transport.iter().cloned() { __result.push(ihc_transport_reading(r.clone())); } __result })))), ihc_completeness_lines(c.clone())))
     }
 }
 
@@ -1092,14 +1092,14 @@ pub fn ihc_census_from_sources(
                 g.clone(),
                 result.source_indices.clone(),
                 sources.clone(),
-                subjects.clone(),
+                subjects,
             )),
         }
     }
 }
 
 pub fn ihc_corpus_standing(c: Rc<IhcCensus>) -> String {
-    if ((ihc_completeness_lines(c.clone()).len() as i64) == 0) {
+    if ((ihc_completeness_lines(c).len() as i64) == 0) {
         "CORPUS complete".to_string()
     } else {
         "CORPUS incomplete".to_string()
@@ -1110,7 +1110,7 @@ pub fn interpolation_hole_census_from_sources(
     sources: Rc<Vec<Rc<SourceFile>>>,
     subjects: Rc<Vec<String>>,
 ) -> String {
-    match ihc_census_from_sources(sources.clone(), subjects.clone()) {
+    match ihc_census_from_sources(sources, subjects) {
         std::option::Option::None => "REFUSED\tcompile_to_resolved produced no graph".to_string(),
         Some(c) => v1_rt::concat(
             v1_rt::concat(
@@ -1257,7 +1257,7 @@ pub fn ihc_identity_join_not_count_holds() -> bool {
 pub fn interpolation_hole_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
     {
         let subjects = interpolation_hole_census_subjects(sources.clone());
-        match ihc_census_from_sources(sources.clone(), subjects.clone()) {
+        match ihc_census_from_sources(sources.clone(), subjects) {
             std::option::Option::None => {
                 "REFUSED\tcompile_to_resolved produced no graph".to_string()
             }

@@ -6,18 +6,24 @@ use self::OverflowReturnValueRule::*;
 use self::QualifiedOctetsResult::*;
 use self::Signedness::*;
 use self::UInt8Result::*;
-pub use crate::std_algebra::{AbelianGroup, GroupCompletion};
+use crate::std_algebra::Ordering::{Equal, Greater, Less};
+pub use crate::std_algebra::{
+    collection_concat_shape, GroupCompletion, OrderedRing, Ordering, TotalOrder,
+};
+use crate::std_error_primitives::DivError::DivideByZero;
+use crate::std_error_primitives::Result::{Err, Ok};
+pub use crate::std_error_primitives::{DivError, Result};
 pub use crate::std_induction::int_pow_bounded;
-pub use crate::std_machine_constraints::PointerWidth;
-pub use crate::std_machine_constraints::{Compose, MachineWidth};
+pub use crate::std_machine_constraints::{Compose, MachineWidth, PointerWidth};
 pub use crate::std_measure::{bit_width, bit_width_count, bits_per_byte};
 use crate::std_nat::DecimalDigit::{D0, D1, D2, D3, D4, D5, D6, D7, D8, D9};
 use crate::std_nat::DecimalDigitSuccessor::{DecimalDigitCarry, DecimalDigitNext};
-pub use crate::std_nat::{decimal_digit_glyph, decimal_digit_successor, decimal_digit_value};
-pub use crate::std_nat::{DecimalDigit, DecimalDigitSuccessor, Nat};
+pub use crate::std_nat::{
+    decimal_digit_glyph, decimal_digit_successor, decimal_digit_value, DecimalDigit,
+    DecimalDigitSuccessor, Nat,
+};
 pub use crate::std_optional::Optional;
-pub use crate::std_types::gt_zero;
-pub use crate::std_types::List;
+pub use crate::std_types::{gt_zero, Bool, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -106,7 +112,7 @@ pub enum UInt8Result {
     UInt8OutOfRange { observed: i64 },
 }
 
-pub fn uint8_of_int(value: Int) -> Rc<UInt8Result> {
+pub fn uint8_of_int(value: i64) -> Rc<UInt8Result> {
     match crate::std_induction::int_pow_bounded(2, uint8_channel_bit_width_int()) {
         std::option::Option::None => Rc::new(UInt8Result::UInt8OutOfRange {
             observed: value.clone(),
@@ -159,24 +165,26 @@ pub fn uint8_octets_of_ints(values: Rc<Vec<i64>>) -> Rc<QualifiedOctetsResult> {
     }
 }
 
-pub fn first_uint8_out_of_range(mut __tco_loop_remaining: Rc<Vec<i64>>) -> Option<Int> {
-    loop {
-        #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining;
-        match remaining.clone().first().cloned() {
-            std::option::Option::None => {
-                break std::option::Option::None;
+pub fn first_uint8_out_of_range(mut __tco_loop_remaining: Rc<Vec<i64>>) -> Option<i64> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut remaining = __tco_loop_remaining;
+            match remaining.clone().first().cloned() {
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+                Some(head) => match (*uint8_of_int(head.clone())).clone() {
+                    UInt8Result::UInt8OutOfRange { observed: o, .. } => {
+                        break Some(o.clone());
+                    }
+                    UInt8Result::UInt8Ready { value: _, .. } => {
+                        let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                        __tco_loop_remaining = __tco_0;
+                        continue;
+                    }
+                },
             }
-            Some(head) => match (*uint8_of_int(head.clone())).clone() {
-                UInt8Result::UInt8OutOfRange { observed: o, .. } => {
-                    break Some(o.clone());
-                }
-                UInt8Result::UInt8Ready { value: _, .. } => {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
-                    __tco_loop_remaining = __tco_0;
-                    continue;
-                }
-            },
         }
     }
 }
@@ -225,20 +233,22 @@ pub type NonNegativeInt = i64;
 
 pub type PositiveInt = i64;
 
-pub fn uint8_channel_bit_width_int() -> Int {
-    crate::std_measure::bit_width_count(crate::std_measure::bit_width(
-        crate::std_measure::bits_per_byte(),
-    ))
+pub fn uint8_channel_bit_width_int() -> i64 {
+    {
+        crate::std_measure::bit_width_count(crate::std_measure::bit_width(
+            crate::std_measure::bits_per_byte(),
+        ))
+    }
 }
 
-pub fn uint8_channel_inclusive_max_value_derived() -> Option<Int> {
+pub fn uint8_channel_inclusive_max_value_derived() -> Option<i64> {
     match crate::std_induction::int_pow_bounded(2, uint8_channel_bit_width_int()) {
         Some(two_pow) => Some(v1_rt::int_sub(two_pow.clone(), 1)),
         std::option::Option::None => std::option::Option::None,
     }
 }
 
-pub fn decimal_digit_of_units(value: Int) -> DecimalDigit {
+pub fn decimal_digit_of_units(value: i64) -> DecimalDigit {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (value.clone() >= 10) {
             decimal_digit_of_units(v1_rt::int_sub(value.clone(), 10))
@@ -264,13 +274,13 @@ pub fn decimal_digit_of_units(value: Int) -> DecimalDigit {
 }
 
 pub fn decimal_digit_advance(d: DecimalDigit) -> DecimalDigit {
-    match (*crate::std_nat::decimal_digit_successor(d.clone())).clone() {
+    match (*crate::std_nat::decimal_digit_successor(d)).clone() {
         DecimalDigitSuccessor::DecimalDigitNext { digit: next, .. } => next.clone(),
         DecimalDigitSuccessor::DecimalDigitCarry => DecimalDigit::D0,
     }
 }
 
-pub fn int_to_decimal_string(value: Int) -> String {
+pub fn int_to_decimal_string(value: i64) -> String {
     if (value.clone() < 0) {
         v1_rt::concat("-".to_string(), int_digits_to_decimal_string(value.clone()))
     } else {
@@ -278,7 +288,7 @@ pub fn int_to_decimal_string(value: Int) -> String {
     }
 }
 
-pub fn int_digits_to_decimal_string(value: Int) -> String {
+pub fn int_digits_to_decimal_string(value: i64) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let rest = v1_rt::int_div(value.clone(), 10);
         let digit = crate::std_nat::decimal_digit_glyph(decimal_digit_of_units(v1_rt::int_sub(
@@ -291,6 +301,121 @@ pub fn int_digits_to_decimal_string(value: Int) -> String {
             v1_rt::concat(int_digits_to_decimal_string(rest.clone()), digit.clone())
         }
     })
+}
+
+pub fn int_add(a: i64, b: i64) -> i64 {
+    v1_rt::int_add(a.clone(), b.clone())
+}
+
+pub fn int_negate(a: i64) -> i64 {
+    v1_rt::int_sub(0, a.clone())
+}
+
+pub fn int_sub(a: i64, b: i64) -> i64 {
+    v1_rt::int_sub(a.clone(), b.clone())
+}
+
+pub fn int_mul(a: i64, b: i64) -> i64 {
+    v1_rt::int_mul(a.clone(), b.clone())
+}
+
+pub fn int_div_result(a: i64, b: i64) -> Rc<Result<i64, DivError>> {
+    if (b.clone() == 0) {
+        Rc::new(Result::Err {
+            value: DivError::DivideByZero,
+        })
+    } else {
+        Rc::new(Result::Ok {
+            value: v1_rt::int_div(a.clone(), b.clone()),
+        })
+    }
+}
+
+pub fn int_compare(a: i64, b: i64) -> Ordering {
+    if (a.clone() < b.clone()) {
+        Ordering::Less
+    } else {
+        if (a.clone() == b.clone()) {
+            Ordering::Equal
+        } else {
+            Ordering::Greater
+        }
+    }
+}
+
+pub fn int_eq(a: i64, b: i64) -> bool {
+    match int_compare(a, b) {
+        Ordering::Less => false,
+        Ordering::Equal => true,
+        Ordering::Greater => false,
+    }
+}
+
+pub fn int_ne(a: i64, b: i64) -> bool {
+    match int_compare(a, b) {
+        Ordering::Less => true,
+        Ordering::Equal => false,
+        Ordering::Greater => true,
+    }
+}
+
+pub fn int_ordered_ring() -> Rc<OrderedRing<i64>> {
+    thread_local! {
+            static CACHED: Rc<OrderedRing<i64>> = {
+                Rc::new(OrderedRing {
+        add: Rc::new(int_add),
+        sub: Rc::new(int_sub),
+        zero: 0,
+        negate: Rc::new(int_negate),
+        mul: Rc::new(int_mul),
+        div: Rc::new(int_div_result),
+        one: 1,
+        order: Rc::new(TotalOrder {
+        compare: Rc::new(int_compare),
+        _phantom: std::marker::PhantomData,
+    }),
+        eq: Rc::new(int_eq),
+        ne: Rc::new(int_ne),
+        _phantom: std::marker::PhantomData,
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<OrderedRing<i64>>| c.clone())
+}
+
+pub fn int_of_group_completion(g: Rc<GroupCompletion<i64>>) -> i64 {
+    if (g.pos.clone() >= g.neg.clone()) {
+        {
+            v1_rt::int_sub(g.pos.clone(), g.neg.clone())
+        }
+    } else {
+        v1_rt::int_sub(
+            -1,
+            v1_rt::int_sub(v1_rt::int_sub(g.neg.clone(), g.pos.clone()), 1),
+        )
+    }
+}
+
+pub fn group_completion_of_int(i: i64) -> Rc<GroupCompletion<i64>> {
+    if (i.clone() >= 0) {
+        {
+            let n = i.clone();
+            Rc::new(GroupCompletion {
+                pos: n.clone(),
+                neg: 0,
+                _phantom: std::marker::PhantomData,
+            })
+        }
+    } else {
+        {
+            let p = v1_rt::int_sub(-1, i.clone());
+            Rc::new(GroupCompletion {
+                pos: 0,
+                neg: v1_rt::int_add(p.clone(), 1),
+                _phantom: std::marker::PhantomData,
+            })
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

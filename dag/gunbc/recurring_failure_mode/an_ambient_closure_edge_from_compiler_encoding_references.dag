@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.an_ambient_closure_edge_from_compiler_encoding_references
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
+
+data an_ambient_closure_edge_from_compiler_encoding_references: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_ambient_closure_edge_from_compiler_encoding_references" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
+
+  receipts: [
+    "an ambient closure edge from compiler-encoding references: the reference-site collector counts a node the compiler itself minted as a mention the author wrote, so module acquisition requests a declaration no authored text names. Every Arrow carries its parameter labels as a FreeMonoid introduction under ^arrow_signature_order_edge, so every fn or data member requested std.algebra.FreeMonoid, and through it std.optional, std.error_primitives and std.float. A module that wrote no list had a closure of five members; its closure was never its authored demand.",
+
+    "MEASURED 2026-10-21 by executing the native emit over a scratch fn-only module (fn f(x: Int) -> Int { x }): members [self, std.algebra, std.optional, std.error_primitives, std.float] before, [self] after. The same edge made the emit of every fn-only closure inherit the std.float opaque refusal.",
+
+    "THE DISCRIMINATOR IS THE EDGE, NOT THE OCCURRENCE. Two earlier keyings were executed and rejected: skipping every node whose occurrence is OccurrenceSynthetic made an authored list literal (let ys = [x, x]) refuse resolve_reason_generated_reference_declaration_absent, because v2.std.list_introduction marks the list head as a declaration reference that resolve answers by declaring path -- an authored literal is real demand for std.algebra. Skipping a synthetic spine unless under an authored-occurrence marker did not remove the edge, because signature_order_edge lowers its list with the fn declaration text's own (authored) occurrence. The edge itself is the carrier: v2.compiler.lexical_scope arrow_slot gives ArrowSignatureOrderEdge the ArrowCarriedSlot, which resolve carries through unchanged and never walks, so its list head is never resolved and no resolved reference loses its module.",
+
+    "ATTAINABLE CEILING: structurally guaranteed for the order edge (the collector keys on the core marker, and a claim fails with the key reverted). RESIDUE NOT MEASURED: other lower_list_introduction producers (namespace_graft_reconstruct_declaration_forest, the match-arms block) may still leave compiler-minted list heads that read as mentions; each needs its own execution before it is skipped, and the occurrence cannot tell them from authored text. Next trigger: a fn or match whose emitted closure holds a module no authored token names.",
+
+    "RECOGNITION RULE: a closure member no authored text names. The cheap discriminator is emit --entry over a scratch module of one fn with no list, no type argument and no import, and reading members.",
+  ],
+
+  evidence: [],
+}

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.route_scoped_qualification_read_as_one_members_verdict
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data route_scoped_qualification_read_as_one_members_verdict: RecurringFailureMode = RecurringFailureMode {
   identity: "route_scoped_qualification_read_as_one_members_verdict" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a verdict carrier whose subject is a WHOLE ROUTE is consumed as the verdict of ONE SUBJECT SELECTED WITHIN that route (INVALID STATE: a consumer reads an aggregate qualification bit -- one that conjoins route-integrity clauses having nothing to do with any particular member -- and maps it onto a per-member termination, so the member is reported as observed when it was never individually adjudicated. The route and the member are both real and both reached, and the carrier is accurate about its own subject; what is wrong is the SCOPE of the question it is taken to answer.)",

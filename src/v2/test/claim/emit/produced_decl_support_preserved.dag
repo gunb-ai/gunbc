@@ -2,8 +2,11 @@ module v2.test.claim.emit.produced_decl_support_preserved
 
 import std.types { List }
 import v2.test.claim.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
-import v2.extdeps.languages.rust { rust_target_model }
-import v2.std.compilers.target_model {
+import v2.extdeps.languages.rust { rust_target_model, rust_value_expression_projection }
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
+  target_value_expression_binding_ref,
+  target_value_expression_resolved_primitive_call,
+  target_value_expression_tokens_from_target,
   FixedToken,
   OwnershipAtFunctionReturn,
   ProducedDeclRenderRows,
@@ -16,6 +19,7 @@ import v2.std.compilers.target_model {
   ReferenceLayerOwned,
   TargetBodiedArrowStatementScaffold,
   TargetModel,
+  TargetValueExpression,
   TargetUseSiteOwnershipRealization,
   UseSiteOwnershipExactCarrier,
   target_model_augment_use_site_ownership_catalog,
@@ -67,6 +71,7 @@ fn pdp_wired_support() -> ProducedDeclSupport {
 
 fn pdp_target_with(support: ProducedDeclSupport) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: support,
     bundle: rust_target_model().bundle,
     lex: rust_target_model().lex,
@@ -161,4 +166,39 @@ fn produced_decl_support_type_as_itself(type_node: Node) -> Outcome<Symbol> {
     TypeNode { connective: Atom { identity: id } } => Accepted { value: id, diagnostics: None }
     _ => Accepted { value: ^produced_decl_support_non_atom_type, diagnostics: None }
   }
+}
+
+// Review 82790, root-generalized: EVERY TargetModel field a rebuild function does not itself change must
+// survive it. primitive_realizations is carried by the real rust_target_model() (WIRED) through BOTH
+// production augmenters, then a resolved string_length call is realized from the augmented target with
+// target_value_expression_tokens_from_target -- the fold the production route reads the rows through. A
+// reset to Unwired refuses target_primitive_realizations_unwired and this goes red.
+fn pdp_string_length_call() -> TargetValueExpression {
+  target_value_expression_resolved_primitive_call(
+    callee: ^string_length,
+    args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
+  )
+}
+
+fn pdp_primitive_realizes_from(target: TargetModel) -> Bool {
+  match target_value_expression_tokens_from_target(
+    expr: pdp_string_length_call(),
+    target: target,
+    projection: rust_value_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn primitive_realizations_survive_both_augmenters() -> Bool {
+  pdp_primitive_realizes_from(target: rust_target_model())
+    && match target_model_augment_value_semantics_carriers(target: rust_target_model(), extra_atoms: [^pdp_extra_atom]) {
+      Accepted { value: t, diagnostics: _ } => pdp_primitive_realizes_from(target: t)
+      Rejected { diagnostics: _ } => false
+    }
+    && match target_model_augment_use_site_ownership_catalog(target: rust_target_model(), derived_rows: [pdp_ownership_row()]) {
+      Accepted { value: t, diagnostics: _ } => pdp_primitive_realizes_from(target: t)
+      Rejected { diagnostics: _ } => false
+    }
 }

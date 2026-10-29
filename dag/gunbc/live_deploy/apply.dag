@@ -1,5 +1,6 @@
 module gunbc.live_deploy.apply
 
+import gunbc.fleet.fleet_converge_plan_revision { observe_actions_run_binding_at_checkout }
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import gunbc.runner.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
 
@@ -117,7 +118,10 @@ import gunbc.live_deploy.tailnet_door_cutover_host {
 }
 import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
-import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
+import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, device_crypto_readback_expectation, SidecarReplied, SidecarReplyFailed }
+import gunbc.auth.approval_device_crypto_realization { DeviceCryptoExpectation, DeviceCryptoGate, DeviceCryptoGateOpen, DeviceCryptoGateRefused, device_crypto_gate, approval_device_crypto_realization }
+import gunbc.live_deploy.member_identity { MemberObserved, ExecutableIdentity }
+import gunbc.live_deploy.member_observe { observe_executable, OnTheHostItself, deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.auth.approval_broker_cutover {
   CutoverAdmission, StageAdmitted, StageRefused,
@@ -139,10 +143,10 @@ import gunbc.live_deploy.service_ready {
 }
 import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
 import gunbc.live_deploy.emit {
-  microvm_controller_vmm_receipt_path,
+  microvm_controller_vmm_receipt_path, device_crypto_sidecar_binary_path,
 }
 import gunbc.live_deploy.release_locus {
-  approval_broker_tree_receipt_path_for,
+  release_locus_tree_receipt_path,
   RevisionBoundAtEmission,
   ReleaseRevisionBinding,
 }
@@ -166,7 +170,7 @@ import gunbc.command_runner { run_shell_commands }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.actions_run_binding {
-  ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
+  ActionsRunBinding, ActionsRunBound, ActionsRunUnbound,
   admit_optional_expected_revision, RunRevisionAdmitted, RunRevisionRefused,
 }
 import gunbc.fleet.fleet_converge_receipt {
@@ -981,6 +985,23 @@ fn approval_broker_liveness_poll(
   }
 }
 
+fn device_crypto_sidecar_readback_exit(spec: DeploymentSpec, candidate: CandidateRelease) -> ProcessExit {
+  let installed = device_crypto_sidecar_binary_path(spec: spec, revision: RevisionBoundAtEmission { revision: candidate.revision })
+  match observe_executable(arm: OnTheHostItself, path: installed) {
+    MemberObserved { identity: ExecutableIdentity { digest: d } } =>
+      match device_crypto_readback_expectation(gate: device_crypto_gate(r: approval_device_crypto_realization), deployed_digest: d.hex) {
+        Absent => exit_failure(reason: "device-crypto sidecar readback: the broker's own realization is not bound, so it would answer 503 on every device route")
+        Present { value: expectation } =>
+          match device_crypto_sidecar_readback(expectation: expectation) {
+            SidecarReplied { answer: _, admission: _ } => ExitSuccess
+            SidecarReplyFailed { cause: c } =>
+              exit_failure(reason: join(["device-crypto sidecar readback: the running sidecar does not join the installed binary: ", c as String], ""))
+          }
+      }
+    other => exit_failure(reason: join(["device-crypto sidecar readback: the installed sidecar binary ", installed, " could not be observed"], ""))
+  }
+}
+
 fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: CandidateRelease) -> ProcessExit {
   let port = spec.approval_broker.listen.port
   let read = approval_broker_liveness_poll(
@@ -991,7 +1012,7 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
       detail: "the broker liveness endpoint was never reached within the poll bound after the unit was restarted" as NonEmptyStr
     },
   )
-  let receipt_path = approval_broker_tree_receipt_path_for(
+  let receipt_path = release_locus_tree_receipt_path(
     root: spec.approval_broker.repo_root as String,
     revision: RevisionBoundAtEmission { revision: candidate.revision },
   )
@@ -1007,10 +1028,10 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
     tree_receipt: tree_receipt,
     expected_release: candidate.revision as String as NonEmptyStr,
   ) {
-    StageAdmitted { stage: _ } => ExitSuccess
+    StageAdmitted { stage: _ } => device_crypto_sidecar_readback_exit(spec: spec, candidate: candidate)
     StageRefused { stage: _, cause: c } =>
       exit_failure(reason: join([
-        "approval broker dark install: the unit was written but stage 2 (prove-release) refuses: ",
+        "approval broker install: the unit was written but the release readback (prove-release) refuses: ",
         cutover_refusal_reason(c: c) as String,
       ], ""))
   }
@@ -1085,7 +1106,7 @@ fn microvm_controller_install_wet_with_access(spec: DeploymentSpec, access: Depl
 
 fn microvm_controller_install_readback_exit(candidate: CandidateRelease) -> ProcessExit {
   let revision = RevisionBoundAtEmission { revision: candidate.revision }
-  let tree = Filesystem.Read(path: approval_broker_tree_receipt_path_for(root: microvm_controller_root, revision: revision))
+  let tree = Filesystem.Read(path: release_locus_tree_receipt_path(root: microvm_controller_root, revision: revision))
   match observe_broker_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
     TreeReceiptUnreadable { detail: d } =>
       exit_failure(reason: join(["microvm_controller_install: the locus tree receipt could not be read, so the copy did not complete: ", d as String], ""))
@@ -1097,9 +1118,9 @@ fn microvm_controller_install_readback_exit(candidate: CandidateRelease) -> Proc
       } else {
         match microvm_controller_vmm_readback_exit(revision: revision) {
           ExitSuccess => if workspace_executor_installed_adapter_matches(
-            release_dir: approval_broker_release_dir(root: microvm_controller_root, revision: revision),
+            release_dir: release_locus_dir(root: microvm_controller_root, revision: revision),
             slot: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot())) {
-            match workspace_installed_image(release_dir: approval_broker_release_dir(root: microvm_controller_root, revision: revision), identity: workspace_demo_image_identity()) {
+            match workspace_installed_image(release_dir: release_locus_dir(root: microvm_controller_root, revision: revision), identity: workspace_demo_image_identity()) {
               WorkspaceImageVerified { image: _ } => ExitSuccess
               WorkspaceImageRefused { reason } => exit_failure(reason: concat("microvm_controller_install: ", reason))
             }
@@ -1502,7 +1523,7 @@ fn live_deploy_transaction_admitted(deployment: DesiredDeployment, access: Deplo
 }
 
 fn live_deploy_transaction_admitted_wet_with_access(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
-  match observe_actions_run_binding() {
+  match observe_actions_run_binding_at_checkout() {
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["live_deploy transaction: RunUnbound — ", v, " ", d, "; the transaction entry runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>

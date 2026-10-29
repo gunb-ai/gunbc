@@ -1,0 +1,218 @@
+module test.claim.never_eliminator_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_count_at_key,
+  census_total_count,
+}
+import std.types { Bool, Int, String, List }
+import std.algebra { string_contains }
+import std.decl_ref { DeclarationRef, decl_ref }
+import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count_live }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_traits }
+import extdeps.languages.rust.emit { rust_trait_derive_attr_from_traits }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// RED/control pair for Never / absurd inhabitance (DESIGN 4b). Never has no producer. absurd
+// needs a Never argument; an Int at that position must refuse. Empty match is exhaustive iff the
+// scrutinee is an uninhabited sum (this Never declaration by identity, or a coproduct with zero
+// arms), not an opaque. dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+fn never_eliminator_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "NonExhaustiveMatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn never_eliminator_no_arms_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "NonExhaustiveMatch")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "InternalError")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+data absurd_int_source: String = "module neverprobe.red_int\n\nimport std.types { Int }\nimport std.error_primitives { absurd }\n\nfn f() -> Int {\n  absurd(0)\n}\n"
+
+test fn absurd_applied_to_int_must_refuse() -> Bool {
+  never_eliminator_blocking_count(source: absurd_int_source) >= 1
+}
+
+data absurd_never_param_source: String = "module neverprobe.pos\n\nimport std.types { Int }\nimport std.error_primitives { Never, absurd }\n\nfn f(n: Never) -> Int {\n  absurd(n)\n}\n"
+
+test fn absurd_on_never_is_admitted() -> Bool {
+  never_eliminator_blocking_count(source: absurd_never_param_source) == 0
+}
+
+data empty_match_inhabited_source: String = "module neverprobe.inh\n\ntype T = A | B\n\nfn f(t: T) -> Int {\n  match (t) {\n  }\n}\n"
+
+test fn empty_match_on_inhabited_coproduct_must_refuse() -> Bool {
+  never_eliminator_no_arms_blocking_count(source: empty_match_inhabited_source) >= 1
+}
+
+data empty_match_never_source: String = "module neverprobe.nv\n\nimport std.types { Int }\nimport std.error_primitives { Never }\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
+
+test fn empty_match_on_never_is_admitted() -> Bool {
+  never_eliminator_no_arms_blocking_count(source: empty_match_never_source) == 0
+}
+
+// THE EMITTED IMAGE of an admitted empty uninhabited match is rustc's empty-enum exhaustiveness
+// form `match <scrutinee> {}` on the empty enum. Seed emit_typed_match concatenates match +
+// scrutinee + braces with zero arms, and the scrutinee is emitted as `n.clone()`. The pin is the
+// real emitted form with ZERO arms between the braces; it must not become unreachable!/panic!/todo!. dissolve-on: none -- permanent
+// regression control per DESIGN 4b(4).
+test fn empty_uninhabited_match_emits_match_on_empty_enum() -> Bool {
+  compile_dag_rust_emit_check(
+    empty_match_never_source,
+    "src/neverprobe_nv.rs",
+    ["match n.clone() {\n\n}"],
+    ["unreachable!(", "todo!(", "panic!("]
+  )
+}
+
+data empty_match_opaque_host_source: String = "module neverprobe.opaque\n\ntype Handle\n\nfn f(h: Handle) -> Int {\n  match (h) {\n  }\n}\n"
+
+test fn empty_match_on_opaque_host_type_must_refuse() -> Bool {
+  never_eliminator_no_arms_blocking_count(source: empty_match_opaque_host_source) >= 1
+}
+
+data empty_match_local_never_name_source: String = "module neverprobe.local_never\n\ntype Never\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
+
+// RED: identity, not spelling. A local `type Never` is not the indexed
+// std.error_primitives.Never DeclarationRef. Operator 2026-10-15: missing
+// index is also not uninhabited (empty match refuses). This source is that
+// case at the spelling grain: the name Never does not admit `match (n) {}`.
+test fn empty_match_on_local_never_name_must_refuse() -> Bool {
+  never_eliminator_no_arms_blocking_count(source: empty_match_local_never_name_source) >= 1
+}
+
+data empty_match_local_never_with_index_source: String = "module neverprobe.loc_idx\n\nimport std.types { Int }\nimport std.error_primitives { absurd }\n\ntype Never\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
+
+// RED (review 81214): the std.error_primitives index row IS present in this pool (the module is
+// imported), and a local `type Never` shares the spelling. Identity, not the interned name, decides:
+// the empty match on the local type must refuse. Measured with the interned-name arm of
+// candidate_joins_never_identity still present, this source refused identically, so the arm was dead;
+// the RED asserts the seed's own reason for an empty match whose scrutinee is not the Never
+// declaration (ConstructorsOpen: an opaque `type`), not any blocking diagnostic.
+test fn empty_match_on_local_never_name_with_index_present_must_refuse() -> Bool {
+  match compile_dag_diagnostic_census(empty_match_local_never_with_index_source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "InternalError", subject_name: "match expression has no arms", blocking: true) == 1
+        && census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "NonExhaustiveMatch"))) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+data empty_match_never_without_index_source: String = "module neverprobe.no_index\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
+
+// RED: Never is unbound here, so there is no indexed identity. Empty match
+// must refuse; absence of the index is not treated as uninhabited.
+test fn empty_match_without_never_in_index_must_refuse() -> Bool {
+  never_eliminator_no_arms_blocking_count(source: empty_match_never_without_index_source) >= 1
+}
+
+data deleted_never_producer_unbound_source: String = "module neverprobe.unb\n\nimport std.error_primitives { never }\n\nfn f() -> Int {\n  never()\n}\n"
+
+fn never_eliminator_any_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn deleted_never_producer_is_unbound() -> Bool {
+  never_eliminator_any_blocking_count(source: deleted_never_producer_unbound_source) >= 1
+}
+
+data never_emit_source: String = "module neverprobe.emit_never\n\nimport std.error_primitives { Never }\n\nfn f(n: Never) -> Never {\n  n\n}\n"
+
+test fn emitted_never_is_empty_enum() -> Bool {
+  compile_dag_rust_emit_check(
+    never_emit_source,
+    "src/std_error_primitives.rs",
+    ["enum Never {}"],
+    ["pub struct Never(", "type Never = !"]
+  )
+}
+
+// Never is emitted as `enum Never {}` with phantom_opaque_carrier_derive_traits(). That roster
+// must not include Default (or any derive that needs a variant); rustc would refuse the empty
+// enum. compile_dag_rust_emit_check is a text oracle; the roster spelling is the build-facing
+// control that would go red if Default joined the list used on this enum.
+test fn emitted_never_empty_enum_derive_roster_needs_no_variant() -> Bool {
+  let attr = rust_trait_derive_attr_from_traits(traits: phantom_opaque_carrier_derive_traits())
+  !string_contains(s: attr, pattern: "Default")
+    && compile_dag_rust_emit_check(
+      never_emit_source,
+      "src/std_error_primitives.rs",
+      ["enum Never {}", attr],
+      ["Default"]
+    )
+}
+
+// The seed does not enforce the arrow-body-only rule for an empty match (gunbc.rung_drop
+// seed_empty_match_arrow_body_only_not_enforced); the claim that stood here passed through an
+// unrelated String/Int mismatch and was deleted rather than kept as a false green.
+
+data empty_uninhabited_match_two_returns_source: String = "module neverprobe.two_ret\n\nimport std.types { Int, String }\nimport std.error_primitives { Never }\n\nfn f(n: Never) -> Int { match (n) { } }\n\nfn g(n: Never) -> String { match (n) { } }\n"
+
+test fn empty_uninhabited_match_two_declared_returns_admit() -> Bool {
+  never_eliminator_any_blocking_count(source: empty_uninhabited_match_two_returns_source) == 0
+}
+
+data handle_emit_source: String = "module neverprobe.emit_handle\n\ntype Handle\n\nfn id(h: Handle) -> Handle {\n  h\n}\n"
+
+test fn emitted_opaque_handle_is_not_an_empty_enum() -> Bool {
+  compile_dag_rust_emit_check(
+    handle_emit_source,
+    "src/neverprobe_emit_handle.rs",
+    ["struct Handle"],
+    ["enum Handle {}"]
+  )
+}
+
+// TYPED RESOLVE OF EVERY MODULE THAT IMPORTS THE TYPE Never. generated_artifact_producer_coverage
+// resolves each gate producer's DeclarationRef, not those importers. Witness modules that import
+// Never (test.claim.fleet.app_control_plane_inspection_witness,
+// test.claim.fleet.org_actions_standing_witness) sit outside decl_facts by policy
+// (OutsideDeclIndexTestWitnessModule); their production subjects are in this list.
+data never_importer_census_pool_roots: List<String> = ["dag", "src/v2"]
+
+fn never_type_importer_refs() -> List<DeclarationRef> {
+  [
+    decl_ref(module_path: "std.error_primitives", decl_name: "Never"),
+    decl_ref(module_path: "v2.extdeps.languages.rust", decl_name: "RustNever"),
+    decl_ref(module_path: "gunbc.fleet.app_control_plane_inspection", decl_name: "app_control_plane_receipt_path"),
+    decl_ref(module_path: "gunbc.fleet.org_actions_inspection", decl_name: "org_admin_token_env_name"),
+    decl_ref(module_path: "gunbc.fleet.org_actions_standing", decl_name: "RepoRunnerAccess"),
+    decl_ref(module_path: "gunbc.repo.repo_ruleset", decl_name: "gunbc_passing_ci_ruleset_id"),
+    decl_ref(module_path: "gunbc.machine_intake.host_resource_observation", decl_name: "ResourceUnread"),
+    decl_ref(module_path: "gunbc.spark.fabric_switch_assessment", decl_name: "Crs812LaneReading"),
+    decl_ref(module_path: "product.cable_plant_assessment", decl_name: "CableLegReading"),
+    decl_ref(module_path: "product.fan_tach_health", decl_name: "FanRotationAbsence")
+  ]
+}
+
+test fn never_type_importer_modules_still_resolve() -> Bool {
+  let refs = never_type_importer_refs()
+  count(refs) == 10
+    && cited_declaration_ref_refusal_count_live(refs: refs, pool_roots: never_importer_census_pool_roots) == 0
+}
+
+test fn never_type_importer_census_refuses_a_missing_declaration() -> Bool {
+  cited_declaration_ref_refusal_count_live(
+    refs: [decl_ref(module_path: "std.error_primitives", decl_name: "NoSuchNeverImporter_RED")],
+    pool_roots: never_importer_census_pool_roots
+  ) == 1
+}

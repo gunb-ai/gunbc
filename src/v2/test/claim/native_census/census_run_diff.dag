@@ -548,7 +548,8 @@ test fn census_obligation_rows_from_resolve_refusal() -> Bool {
   let outcome = NativeInferCensusResolveRefused {
     first: planted_chain(reason: ^resolve_unbound),
     rest: [],
-    observation: ObservationComplete
+    observation: ObservationComplete,
+    partial: []
   }
   match census_obligation_rows_from_infer(module: "a", outcome: outcome, file_refusal: Absent) {
     Cons { head: fe, tail: Cons { head: res, tail: Cons { head: inf, tail: Empty } } } =>

@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.an_own_run_mode_is_serialized_in_a_shared_host_mutation_group
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data an_own_run_mode_is_serialized_in_a_shared_host_mutation_group: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_own_run_mode_is_serialized_in_a_shared_host_mutation_group" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "steps carry a declared effect scope and the domain is derived from it." } },
+
+  receipts: [
+    "INVALID STATE: a fleet-converge mode whose effects are confined to its own run (runner workspace, own artifacts) is mapped to ExecutorDomain, so it queues in the executor host's mutation group behind work that really mutates the host.",
+    "HARM: the mode waits on whatever holds the group, however long, and a later dispatch into the same group cancels it as a superseded pending (the class pending_run_cancelled_by_a_later_dispatch_with_no_signal): the result silently never happens.",
+    "DISTINGUISHING FACTS: the mode's steps write only under the runner's workspace target/ and upload to the run's own artifact; nothing outside the run is written. The mapping was copied from a sibling mode (WorkspaceImageBuild) when the next mode was added, so the first misclassification was reproduced rather than decided.",
+    "RUNG FOUND AT: mitigatable. fleet_converge_mode_mutation_domain is an exhaustive match, which forces a decision per mode but not a correct one.",
+    "CEILING: structurally guaranteed, a wall after grounding. The steps of a mode are a finite, modeled list in the same module, so whether a mode mutates its executor is decidable; what is missing is an authority, a declared effect scope per step (confined to the run, the executor host, or a named subject), from which fleet_converge_mode_mutation_domain is DERIVED rather than written per mode. Then no per-mode arm can misclassify.",
+    "NEXT-RUNG TRIGGER (can climb now, unbuilt, no count condition): steps carry a declared effect scope and the domain is derived from it. HostMemoryObserve, WorkspaceImageBuild and RevisionJobImageBuild already inhabit the own-run kind. Until then the mechanical witness (a mode's group differs from FleetApply's on the same host and from its own at another run id) holds the class at mechanically preventable.",
+    "INSTANCE (2026-10-18): run 39161055342 (revision_job_image_build, srv1) had a green build job and a fleet-converge job pending from 20:03Z behind run 39088900826 (a prod dashboard_deploy waiting on srv1-production environment approval since 02:12Z, ~19 h), with run 39167092396 (gcp_iam_converge srv1) heading for the same group.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_mutation_domain", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "FleetMutationDomain", field: WholeDeclaration },
+  ],
+}

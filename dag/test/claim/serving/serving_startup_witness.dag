@@ -9,10 +9,9 @@ import extdeps.tools.gnu_coreutils { rm_force_command, cp_command, mv_exact_dest
 import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised, NinferModelsUnreadable, ninfer_serve_launch_argv }
 import gunbc.harness.operator_pod_launch { operator_pod_listen_port }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
-import gunbc.serving.rented_ninfer_source {
-  rented_engine_source, rented_ninfer_81c8ce09_sm120_engine_artifact, rented_weights_source, rented_qwen3_8_27b_nvfp4_weights_placement,
-  ninfer_serve_81c8ce09_sm120_release,
-}
+import gunbc.serving.rented_ninfer_source { rented_engine_source, rented_ninfer_81c8ce09_sm120_engine_artifact }
+import product.fabric.serving_recipe { serving_recipe_qwen3_8_27b_nvfp4_ninfer }
+import gunbc.serving.serving_provision_derivation { ServingProvisionDerived, serving_provision_derive }
 import gunbc.serving.serving_artifact_placement {
   ServingStoreRoots, ServingProtectedPaths, ServingCopyVerified, ServingCopyAbsent, ServingCopyDiffers, ServingCopyUnreadable, ServingFetchFailed, ServingFetchSucceeded,
   ServingFetchRefusedMintEntryUnbuilt, serving_fetch_leg, serving_digest_path, serving_artifact_sequence, serving_artifact_commands, ServingArtifactRefusedCopyDiffers, ServingArtifactRefusedCopyUnreadable, serving_link_switch, ServingLinkSwitchRefusedUnreadable, ServingLinkUnreadable, serving_sequence_endangers,
@@ -24,12 +23,15 @@ import gunbc.serving.serving_launch {
   ServingPlacementCommands, ServingStartupProgram, ServingServeKeyUnbound, ServingLaunchRefusedUnmetCauses, serving_startup_program, serving_startup_program_text,
 }
 import gunbc.serving.serving_artifact_placement { ServingLinkAbsent }
+import gunbc.serving.serving_launch { ServingDetachRendered, ServingDetachRefusedRender, serving_detach_leg, serving_launch_leg, serving_detach_text }
+import gunbc.remote_shell_command { RemoteExecInterpretationUnknown, RemoteExecCommandBuilt, RemoteExecCommandRefused, remote_exec_command_rendered, remote_exec_command_string, PosixShellInterpreted }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data w_roots: ServingStoreRoots = ServingStoreRoots {
   root: "/root/serve/store" as NonEmptyStr,
   model_link: "/root/serve/model/model.ninfer" as NonEmptyStr,
+  serve_log: "/root/serve/serve.log" as NonEmptyStr,
 }
 
 data w_digest: Sha256Digest = Sha256Digest { hex: "74d2c57145e6ff11d1d2faa79594477f9bc903a611af1fb20218189fbbb77d82" }
@@ -74,33 +76,44 @@ test fn removing_a_verified_digest_path_or_its_parent_is_refused() -> Bool {
 
 // THE FETCH LEG REFUSES TYPED ON THE UNBUILT MINT.
 test fn the_fetch_leg_refuses_on_the_unbuilt_mint_for_both_artifacts() -> Bool {
-  let engine = serving_fetch_leg(source: rented_engine_source(artifact: rented_ninfer_81c8ce09_sm120_engine_artifact))
-  let weights = serving_fetch_leg(source: rented_weights_source(placement: rented_qwen3_8_27b_nvfp4_weights_placement))
-  (match engine { ServingFetchRefusedMintEntryUnbuilt { secret_id: s } => (s as String) == "cloudflare-r2-models-read-token"  _ => false })
-    && (match weights { ServingFetchRefusedMintEntryUnbuilt { secret_id: s } => (s as String) == "cloudflare-r2-models-read-token"  _ => false })
+  match serving_provision_derive(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+    ServingProvisionDerived { inputs: i } => {
+      let engine = serving_fetch_leg(source: rented_engine_source(artifact: rented_ninfer_81c8ce09_sm120_engine_artifact))
+      let weights = serving_fetch_leg(source: i.source)
+      (match engine { ServingFetchRefusedMintEntryUnbuilt { secret_id: s } => (s as String) == "cloudflare-r2-models-read-token"  _ => false })
+        && (match weights { ServingFetchRefusedMintEntryUnbuilt { secret_id: s } => (s as String) == "cloudflare-r2-models-read-token"  _ => false })
+    }
+    _ => false
+  }
 }
 
 // ENGINE VERIFICATION REFUSES WHEN THE INSTALLED BINARY'S DIGEST DIFFERS FROM THE PIN.
 test fn engine_verification_passes_on_the_pinned_files() -> Bool {
-  let r = ninfer_serve_81c8ce09_sm120_release
-  match serving_engine_verdict(
-    engine: r,
-    binary: ServingInstalledFileRead { bytes: r.binary.bytes, sha256: r.binary.sha256 },
-    rev_file: ServingInstalledFileRead { bytes: r.rev_file.bytes, sha256: r.rev_file.sha256 },
-  ) {
-    ServingEngineVerified => true
+  match serving_provision_derive(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+    ServingProvisionDerived { inputs: i } =>
+      match serving_engine_verdict(
+        engine: i.engine,
+        binary: ServingInstalledFileRead { bytes: i.engine.binary.bytes, sha256: i.engine.binary.sha256 },
+        rev_file: ServingInstalledFileRead { bytes: i.engine.rev_file.bytes, sha256: i.engine.rev_file.sha256 },
+      ) {
+        ServingEngineVerified => true
+        _ => false
+      }
     _ => false
   }
 }
 
 test fn engine_verification_refuses_a_binary_whose_digest_differs() -> Bool {
-  let r = ninfer_serve_81c8ce09_sm120_release
-  match serving_engine_verdict(
-    engine: r,
-    binary: ServingInstalledFileRead { bytes: r.binary.bytes, sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" } },
-    rev_file: ServingInstalledFileRead { bytes: r.rev_file.bytes, sha256: r.rev_file.sha256 },
-  ) {
-    ServingEngineFileDigestDiffers { relative_path: _, pinned: _, observed: _ } => true
+  match serving_provision_derive(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+    ServingProvisionDerived { inputs: i } =>
+      match serving_engine_verdict(
+        engine: i.engine,
+        binary: ServingInstalledFileRead { bytes: i.engine.binary.bytes, sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" } },
+        rev_file: ServingInstalledFileRead { bytes: i.engine.rev_file.bytes, sha256: i.engine.rev_file.sha256 },
+      ) {
+        ServingEngineFileDigestDiffers { relative_path: _, pinned: _, observed: _ } => true
+        _ => false
+      }
     _ => false
   }
 }
@@ -153,15 +166,15 @@ test fn the_full_sequence_refuses_at_the_launch_leg_with_no_earlier_leg_skipped(
     && list_length(items: placement_commands_of(p: p)) == 2
 }
 
-// THE RECEIPT TEXT on the real producer: it names both unmet causes and carries the link switch it emitted.
-test fn the_receipt_text_names_both_unmet_causes_and_the_link_switch() -> Bool {
+// THE RECEIPT TEXT on the real producer: it names the unmet key grant and the rendered detach and carries the link switch it emitted.
+test fn the_receipt_text_names_the_key_grant_the_detach_and_the_link_switch() -> Bool {
   let p = serving_startup_program(
     roots: w_roots, digest: w_digest, link: ServingLinkAbsent,
     launch: operator_pod_ninfer_launch, launch_argv: ninfer_serve_launch_argv(launch: operator_pod_ninfer_launch, model_path: "/root/serve/model/model.ninfer" as NonEmptyStr, listen_port: operator_pod_listen_port), reading: ServingServeNotListening,
     key: ServingServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr },
   )
   let t = serving_startup_program_text(program: p)
-  string_contains(s: t, pattern: "serve key grant unbound") && string_contains(s: t, pattern: "no modeled stdout-to-file route") && string_contains(s: t, pattern: "model.ninfer")
+  string_contains(s: t, pattern: "serve key grant unbound") && string_contains(s: t, pattern: "detach: 'setsid' '--fork'") && string_contains(s: t, pattern: ">|'/root/serve/serve.log' 2>&1") && string_contains(s: t, pattern: "model.ninfer")
 }
 
 fn placement_commands_of(p: ServingStartupProgram) -> List<ArgvCommand> {
@@ -211,4 +224,51 @@ test fn a_dot_dot_spelling_of_a_digest_path_is_refused() -> Bool {
   serving_sequence_endangers(commands: [rm_force_command(path: "/root/serve/store/partial/../sha256/d")], protected: w_protected)
     && serving_sequence_endangers(commands: [mv_exact_destination_command(source: "/root/serve/store/partial/d.1", destination: "/root/serve/store/partial/../sha256/d")], protected: w_protected)
     && serving_sequence_endangers(commands: [rm_force_command(path: "/root/serve/store//sha256/d")], protected: w_protected)
+}
+
+// THE DETACH LEG RENDERS THE EXACT REMOTE COMMAND: the setsid words, then the stdout-and-stderr redirect to the
+// serve log derived from the store roots (golden: stdout_stderr_to_file_redirect_witness).
+test fn the_detach_leg_renders_setsid_fork_with_the_serve_log_redirect() -> Bool {
+  match serving_detach_leg(roots: w_roots, launch_argv: ["true"]) {
+    ServingDetachRendered { remote_command: c } => (c as String) == "'setsid' '--fork' 'true' >|'/root/serve/serve.log' 2>&1"
+    _ => false
+  }
+}
+
+// A REFUSED RENDER NAMES ITS CAUSE in the text (DESIGN 5: every degradation is typed and located), not only that it refused.
+test fn a_refused_detach_render_text_names_its_cause() -> Bool {
+  string_contains(s: serving_detach_text(detach: ServingDetachRefusedRender { cause: RemoteExecInterpretationUnknown }), pattern: "RemoteExecCommandInterpretation is Unknown")
+}
+
+// THE RED: the same words without the stdio route render no redirect, so dropping the stdio from the leg
+// turns the claim above red (the detached engine would keep the ssh channel as stdout).
+test fn the_unredirected_render_differs_from_the_detach_leg() -> Bool {
+  let bare = match remote_exec_command_string(argv: ["setsid", "--fork", "true"], interpretation: PosixShellInterpreted) {
+    RemoteExecCommandBuilt { command: c } => remote_exec_command_rendered(command: c) as String
+    RemoteExecCommandRefused { cause: _ } => "REFUSED"
+  }
+  !string_contains(s: bare, pattern: ">|") && (match serving_detach_leg(roots: w_roots, launch_argv: ["true"]) {
+    ServingDetachRendered { remote_command: c } => string_contains(s: c as String, pattern: ">|") && (c as String) != bare
+    _ => false
+  })
+}
+
+// THE LOG PATH COMES FROM THE ROOTS, NOT THE LEG: a different roots value moves the redirect.
+test fn the_serve_log_path_is_derived_from_the_store_roots() -> Bool {
+  let other = ServingStoreRoots { root: w_roots.root, model_link: w_roots.model_link, serve_log: "/var/log/other.log" as NonEmptyStr }
+  match serving_detach_leg(roots: other, launch_argv: ["true"]) {
+    ServingDetachRendered { remote_command: c } => string_contains(s: c as String, pattern: ">|'/var/log/other.log' 2>&1") && !string_contains(s: c as String, pattern: "/root/serve/serve.log")
+    _ => false
+  }
+}
+
+// THE KEY REFUSAL STILL FIRES: an absent engine with an unbound key grant refuses on the key, carrying the
+// rendered detach.
+test fn the_key_refusal_still_fires_with_the_detach_rendered() -> Bool {
+  let argv = ninfer_serve_launch_argv(launch: operator_pod_ninfer_launch, model_path: "/root/serve/model/model.ninfer" as NonEmptyStr, listen_port: operator_pod_listen_port)
+  match serving_launch_leg(roots: w_roots, launch: operator_pod_ninfer_launch, launch_argv: argv, reading: ServingServeNotListening, key: ServingServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr }) {
+    ServingLaunchRefusedUnmetCauses { key_grant: g, detach: ServingDetachRendered { remote_command: c } } =>
+      (g as String) == "serve-api-key" && string_contains(s: c as String, pattern: ">|'/root/serve/serve.log' 2>&1")
+    _ => false
+  }
 }

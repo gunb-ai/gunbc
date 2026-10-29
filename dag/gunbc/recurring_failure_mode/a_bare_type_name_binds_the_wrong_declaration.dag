@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_bare_type_name_binds_the_wrong_declaration
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_bare_type_name_binds_the_wrong_declaration: RecurringFailureMode = RecurringFailureMode {
   identity: "a_bare_type_name_binds_the_wrong_declaration" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a bare type name binds the wrong declaration: two modules declare the same TYPE NAME with materially different meanings -- DESIGN section 3's meaning fork, the dual of nicknaming -- and a parameter or field typed with that bare name binds the other module's declaration. Nothing refuses. A value constructed with one variant is then READ as a different variant, so a total, exhaustive match returns an arm the value does not inhabit, and every consumer downstream reasons from a verdict that is the opposite of the truth.",
@@ -26,6 +28,8 @@ data a_bare_type_name_binds_the_wrong_declaration: RecurringFailureMode = Recurr
     "SECOND SPECIMEN, found 2026-09-24 by proud-dove-705 on #12101: artifact_path(FleetConvergeYamlArtifact) answered NoSuchVariable at RUN time in any closure that also reached gunbc.auth.heal_publisher_provision. The fork is gunbc.generated_artifact GeneratedArtifact (a coproduct roster of committed files) beside v2.std.artifact GeneratedArtifact (a refined record) -- the same noun std.observation already records as three unrelated carriers. Neither module is read ambiguously: the arm FleetConvergeYamlArtifact names exactly one owner. The earliest unjustified boundary was v1.compiler.infer lookup_variant_parent_enum: the arm's locals binding ALREADY CARRIES the owner coproduct node (constructor_binding_authority -- 'no name re-lookup'), and the function discarded it to look the owner up again by its bare spelling, which the closure-wide ident map answered with the record. No Disj, so no VariantValueBinding was stamped, and v1_interpreter eval_var fell through to NoSuchVariable for a reference the typechecker had accepted. The repair reads the parent name off the carried owner (local_coproduct_owner_from_locals, the helper infer_record_lit already uses for the same reason) and keeps the spelling lookup only where locals carry no coproduct owner. Discriminating claim: test.claim.variant_owner_homonym_witness, red on the prior seed with no-such-variable on both rows, green after. This climbs the VALUE-position unit-arm route only; the type-position capability named in the trigger below is untouched.",
 
     "RECOGNITION RULE, AND THE REASON IT IS HARD: the symptom is a total match returning an impossible arm, which reads as a compiler defect and sends the reader looking at the substrate rather than at the namespace. Three hypotheses were falsified before the right one: that the fork caused it (dismissed on the WRONG PREMISE that bare-name resolution is import-scoped -- gunbc.auth.github_apps does not import std.observation, and the collision bit anyway), a third declaration elsewhere, and a shadowed fixture. The cheap discriminator is the one-value-two-readings probe above; the cheap PREVENTION is to read the floor's bare-name-ambiguity report for the names a failing module uses.",
+
+    "SPECIMEN, 2026-10-20 (gunbc#14585, smart-boar-59): the bare name crossed declaration KINDS. std.generated_provider declared a record type GeneratedProviderUnavailable (fields demand and cause) and v1.std.core gained a CompilerDiagnostic VARIANT GeneratedProviderUnavailable (fields declaration, cause and span) in the same change. The seed emitter bound the record's bare name inside std.generated_provider observed_unavailable's return type `List<GeneratedProviderUnavailable>` to the variant and emitted `Rc<Vec<Rc<()>>>`; rustc refused at three sites (E0308), so this specimen was loud only because the emitted type was uninhabitable Rust. The .dag typechecked clean on the seed and its step claims passed under the interpreter. Remedy taken: two concepts, two names (the record is UnavailableProviderDemand). The class's next rung is unchanged: a type position resolves to a declaration of TYPE kind by identity, and a variant constructor is never a candidate for a type name."
   ],
 
   evidence: [],

@@ -1,0 +1,44 @@
+module extdeps.vllm.local_inference_lab_build
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+
+// THE LOCAL-INFERENCE-LAB vLLM BUILD AS A DECLARED RELEASE ROW, beside the other vLLM facts in this folder
+// and the way gunbc.serving.rented_ninfer_source NinferEngineRelease is for ninfer. A serving recipe
+// references this declaration; no hub enumerates engines. Its source revision, image and flags are
+// UNREAD: this row exists so the recipe has an identity to reference, and says what would ground it.
+// THE IMAGE IDENTITY, beside the release name, because a vLLM release a host installs IS an image:
+// repository, tag, and the sha256 digest the running container was inspected at. `digest_sha256` is
+// what a provision leg verifies against (`docker inspect --format {{.Image}}`), the same role
+// FlexServingImage.digest_sha256 plays for flex rentals.
+type VllmServingImage sole_constructor {
+  repository: NonEmptyStr
+  tag: NonEmptyStr
+  digest_sha256: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data local_inference_lab_vllm_image: VllmServingImage = VllmServingImage {
+  repository: "ghcr.io/local-inference-lab/vllm" as NonEmptyStr,
+  tag: "karmic-kraken-beta-spark-20261007-d071fb3dde0ba979" as NonEmptyStr,
+  // Read from `docker inspect lil-flash-next` on srv1, 2026-10-25: the digest the RUNNING container
+  // resolves to. The tag is mutable; this digest is the identity.
+  digest_sha256: "af14f1a90e141ad7a1b4951f0fd37d695101ebd5887fcddb499f2f427eff5319" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "Read ghcr.io/local-inference-lab/vllm's published manifest for this tag and the build's provenance (source rev d071fb3dde0ba979 is IN the tag name, unread); this repository read only the local container's inspected digest, 2026-10-25." as NonEmptyStr,
+  },
+}
+
+type VllmEngineRelease {
+  release_name: NonEmptyStr
+  image: VllmServingImage
+  standing: CitedFigureStanding
+}
+
+data local_inference_lab_vllm_release: VllmEngineRelease = VllmEngineRelease {
+  release_name: "local-inference-lab-vllm" as NonEmptyStr,
+  image: local_inference_lab_vllm_image,
+  standing: TranscribedUncited {
+    read_obligation: "Read the local-inference-lab vLLM build's source revision, the flags it was launched with for Qwen3.8-Flash-Next and its minimum NVIDIA driver from the build's own repository; the operator named the build, this repository has read none of it." as NonEmptyStr,
+  },
+}

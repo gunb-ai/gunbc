@@ -233,3 +233,24 @@ fn hsl_to_rgb_scaled(hue: Int, sat_pct: Int, light_pct: Int) -> RgbScaled {
     RgbScaled { r: c + m, g: m, b: x + m }
   }
 }
+
+// The inverse of srgb8_to_scaled_for_max: a permyriad-scaled channel back to an 8-bit count,
+// rounding half up (the same rounding hsl_projection percent uses), so an HSL definition converts to
+// the Srgb8 identity that gunbc.design.palette catalogues.
+fn srgb8_from_scaled_for_max(c: RgbScaled, maxv: Int) -> Srgb8 {
+  let denom = basis_point_unity_count()
+  Srgb8 {
+    r: (c.r * maxv + permyriad_half_for_round_half_up()) / denom,
+    g: (c.g * maxv + permyriad_half_for_round_half_up()) / denom,
+    b: (c.b * maxv + permyriad_half_for_round_half_up()) / denom,
+  }
+}
+
+// hsl(hue, sat%, light%) -> Srgb8 (CSS Color 4 section 'HSL Colors'). Absent only if the channel
+// width is underivable, the same refusal srgb8_to_scaled carries.
+fn hsl_to_srgb8(hue: Int, sat_pct: Int, light_pct: Int) -> Srgb8? {
+  match uint8_channel_inclusive_max_value_derived() {
+    Present { value: maxv } => Present { value: srgb8_from_scaled_for_max(c: hsl_to_rgb_scaled(hue: hue, sat_pct: sat_pct, light_pct: light_pct), maxv: maxv) }
+    Absent => none
+  }
+}

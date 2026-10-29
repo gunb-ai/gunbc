@@ -1,5 +1,6 @@
 module v2.test.claim.manual.branch_if_then_else_emit
 
+
 import v2.test.claim.complexity_gate.table_fixture_branch_subject_producer {
   table_fixture_pick_if_arrow_with_body,
   table_fixture_pick_if_arrow_with_body_swapped_arms
@@ -36,11 +37,8 @@ import v2.std.diagnostic {
   Rejected,
   bind_outcome
 }
-import v2.std.node { Node }
-import v2.std.node_query {
-  find_arrow_body_child,
-  node_positional_child_targets
-}
+import v2.std.node { positional_child_target_nodes, Node }
+import v2.std.node_query { find_arrow_body_child }
 import v2.std.compilers.target_model { TargetModel, target_value_expr_branch_bool_gate }
 import v2.std.witness { Holds, Witness }
 import v2.std.verification {

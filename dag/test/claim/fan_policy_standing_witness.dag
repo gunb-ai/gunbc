@@ -1,7 +1,7 @@
 module test.claim.fan_policy_standing_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { RevolutionsPerMinute, celsius_count, fan_count, fan_count_value, percent, percent_count, published_level_count_value, rpm, rpm_count, sdr_undecoded_line_count, sdr_undecoded_line_count_value, second, second_count }
+import std.measure { RevolutionsPerMinute, celsius_count, fan_count, fan_count_value, percent, percent_count, published_level_count_value, rpm, rpm_count, second, second_count }
 import extdeps.units.iec_61672 { dba_difference_tenths, tenths_dba }
 import extdeps.fans.dynatron { dynatron_df126025bu_pwmh_catalog }
 import extdeps.bmc.endpoint { AmiMegaRac, Ipmi, OpenBmc }
@@ -40,7 +40,7 @@ import extdeps.bmc.ipmi_sdr {
   sdr_decoded_lines,
   sdr_fan_reading,
   sdr_temperature_reading,
-  sdr_unstructured_count,
+  sdr_unstructured_texts,
 }
 import product.placement_supply { SiteIdentity }
 import product.host_identity { HostIdentity }
@@ -232,7 +232,7 @@ test fn witness_sdr_non_record_line_is_unstructured_and_counted() -> Bool {
   match sdr_decode_line(text: "Unable to establish IPMI v2 / RMCP+ session") {
     SdrLineDecoded { line: _ } => false
     SdrLineUnstructured { text: t } => t != ""
-  } && sdr_undecoded_line_count_value(c: sdr_unstructured_count(results: sdr_decode_lines(stdout: "garbage\nFAN1 | 41h | ok | 7.1 | 8600 RPM\n"))) == 1
+  } && sdr_unstructured_texts(results: sdr_decode_lines(stdout: "garbage\nFAN1 | 41h | ok | 7.1 | 8600 RPM\n")) == ["garbage"]
 }
 
 // THE THREE FAN READING ARMS ARE THREE DIFFERENT FACTS. RPM is not duty, "No Reading" is the sensor
@@ -305,7 +305,7 @@ test fn witness_unparseable_reading_is_a_decoder_gap_not_a_silent_sensor() -> Bo
 // the count is what carries it.
 test fn witness_blank_reading_field_is_unstructured_not_a_substituted_word() -> Bool {
   let results = sdr_decode_lines(stdout: "FAN0_Failure     | 4Ah | ok  |  7.1 | \nFAN1_0_Speed     | 41h | ok  |  7.1 | 5802 RPM\n")
-  sdr_undecoded_line_count_value(c: sdr_unstructured_count(results: results)) == 1
+  sdr_unstructured_texts(results: results) == ["FAN0_Failure     | 4Ah | ok  |  7.1 | "]
     && sdr_decoded_lines(results: results).length() == 1
 }
 
@@ -388,8 +388,9 @@ fn witness_round_thermal(publication: SdrTemperaturePublication) -> FanObservati
     observed_at: "2026-09-19T00:00:00Z" as NonEmptyStr,
     round_index: 0,
     chassis: ChassisPowerRead { power_on: true },
-    thermal: ThermalRead { publication: publication, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
-    fans: FanSensorsRead { lines: [], undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    chassis_raw: "",
+    thermal: ThermalRead { publication: publication, undecoded_texts: [], unrecognised_readings: [] },
+    fans: FanSensorsRead { lines: [], undecoded_lines: [], failure_rows: [] },
   }
 }
 
@@ -398,10 +399,12 @@ fn witness_round_read(index: Int, power_on: Bool, thermal: Bool, thermal_readabl
     observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
     round_index: index,
     chassis: ChassisPowerRead { power_on: power_on },
-    thermal: if thermal_readable { ThermalRead { publication: if thermal { TemperaturePublished } else { TemperatureSensorsSilent }, undecoded_line_count: sdr_undecoded_line_count(count: 0) } } else { ThermalUnreadable },
+    chassis_raw: "",
+    thermal: if thermal_readable { ThermalRead { publication: if thermal { TemperaturePublished } else { TemperatureSensorsSilent }, undecoded_texts: [], unrecognised_readings: [] } } else { ThermalUnreadable },
     fans: FanSensorsRead {
       lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
-      undecoded_line_count: sdr_undecoded_line_count(count: 0),
+      undecoded_lines: [],
+      failure_rows: [],
     },
   }
 }
@@ -445,8 +448,9 @@ fn witness_unreadable_chassis_round() -> FanObservationRound {
     observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
     round_index: 0,
     chassis: ChassisUnreadable,
-    thermal: ThermalRead { publication: TemperatureSensorsSilent, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
-    fans: FanSensorsRead { lines: [], undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    chassis_raw: "",
+    thermal: ThermalRead { publication: TemperatureSensorsSilent, undecoded_texts: [], unrecognised_readings: [] },
+    fans: FanSensorsRead { lines: [], undecoded_lines: [], failure_rows: [] },
   }
 }
 
@@ -935,7 +939,7 @@ test fn witness_duty_ceiling_separates_curve_from_excursion() -> Bool {
 // reds here.
 test fn witness_unread_fan_list_is_not_a_fanless_chassis() -> Bool {
   let unread = witness_round_fans(fans: FanSensorsUnreadable)
-  let empty_read = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_line_count: sdr_undecoded_line_count(count: 0) })
+  let empty_read = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_lines: [], failure_rows: [] })
   round_fan_lines(round: unread).length() == 0
     && round_fan_lines(round: empty_read).length() == 0
     && string_contains(render_series(rounds: [unread]), "fans=UNREAD")
@@ -943,12 +947,25 @@ test fn witness_unread_fan_list_is_not_a_fanless_chassis() -> Bool {
     && !string_contains(render_series(rounds: [empty_read]), "UNREAD")
 }
 
+// AN UNSTRUCTURED FAN LINE'S TEXT REACHES THE RECEIPT, not only its count. The two rounds differ only
+// in the text of one unstructured line; a revision that renders the count alone makes them identical
+// and reds the second conjunct, and one that drops the line from the render reds the first.
+test fn witness_unstructured_fan_line_text_is_rendered() -> Bool {
+  let one = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_lines: ["FAN0_Failure | 17h | ok | 29.0 | State Deasserted"], failure_rows: [] })
+  let other = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_lines: ["FAN0_Failure | 17h | ok | 29.0 | State Asserted"], failure_rows: [] })
+  string_contains(render_series(rounds: [one]), "fan_undecoded_line=[FAN0_Failure | 17h | ok | 29.0 | State Deasserted]")
+    && string_contains(render_series(rounds: [one]), "undecoded=1")
+    && !string_contains(render_series(rounds: [one]), "State Asserted")
+    && string_contains(render_series(rounds: [other]), "State Asserted")
+}
+
 fn witness_round_fans(fans: FanSensorObservation) -> FanObservationRound {
   FanObservationRound {
     observed_at: "2026-09-19T00:00:00Z" as NonEmptyStr,
     round_index: 0,
     chassis: ChassisPowerRead { power_on: true },
-    thermal: ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    chassis_raw: "",
+    thermal: ThermalRead { publication: TemperaturePublished, undecoded_texts: [], unrecognised_readings: [] },
     fans: fans,
   }
 }

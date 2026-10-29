@@ -1,0 +1,113 @@
+module product.electrical.measured_netlist
+
+import std.logic { Bool }
+import std.types { String, List }
+import product.electrical.connectivity { ElectricalTerminalRef }
+import product.electrical.continuity {
+  ReachabilityGraph,
+  terminal_in,
+  add_terminal,
+  on_asset,
+  terminal_text,
+}
+import product.electrical.bench_session {
+  ResistanceObservation,
+  is_at_baseline,
+  resistance_display_text,
+  range_text,
+  polarity_text,
+}
+
+// THE BOARD AS MEASURED: NODES AND THE READINGS BETWEEN THEM. A buzzer that beeps, or a resistance read
+// at the shorted-probe baseline, says two points are one measured node -- low-impedance reachable under
+// the test conditions, not proven one copper net (product.electrical.continuity). The beeps' classes are
+// continuity's own reachability classes, built once per board; a baseline reading folds into them as a
+// beep does. Every other resistance reading is a LINK between two nodes carrying its own display, never
+// a merge: a kilohm reading between two points is not a component of that value, because an in-circuit
+// reading runs through every parallel path, and two points reading equal to a third are not thereby one
+// node. Arithmetic over links (one reading minus another) is a lead for a direct reading, never a
+// derived component. A link whose two ends are already one node contradicts a reading and is kept as a
+// contradiction, not dropped.
+
+type MeasuredNode {
+  members: List<ElectricalTerminalRef>
+}
+
+type MeasuredLink
+  = LinkBetweenNodes { reading: ResistanceObservation, from: MeasuredNode, to: MeasuredNode }
+  | LinkWithinOneNode { reading: ResistanceObservation, node: MeasuredNode }
+
+type MeasuredNetlist {
+  nodes: List<MeasuredNode>
+  links: List<MeasuredLink>
+}
+
+fn touches_reading(n: MeasuredNode, o: ResistanceObservation) -> Bool {
+  terminal_in(ts: n.members, t: o.first) || terminal_in(ts: n.members, t: o.second)
+}
+
+// One baseline reading folded into the nodes so far: the nodes it touches and its two points become
+// one node; the nodes it does not touch are kept.
+fn merge_baseline(nodes: List<MeasuredNode>, o: ResistanceObservation) -> List<MeasuredNode> {
+  let touching = filter(nodes, n => touches_reading(n: n, o: o))
+  let apart = filter(nodes, n => !touches_reading(n: n, o: o))
+  concat(apart, [MeasuredNode { members: fold(concat(flat_map(touching, n => n.members), [o.first, o.second]), init: [], f: (acc, t) => add_terminal(ts: acc, t: t)) }])
+}
+
+// The node a point belongs to: its merged node, or the point alone when nothing joined it.
+fn node_of(nodes: List<MeasuredNode>, t: ElectricalTerminalRef) -> MeasuredNode {
+  match (filter(nodes, n => terminal_in(ts: n.members, t: t))).first() {
+    Absent => MeasuredNode { members: [t] }
+    Present { value: n } => n
+  }
+}
+
+fn link_of(nodes: List<MeasuredNode>, o: ResistanceObservation) -> MeasuredLink {
+  let from = node_of(nodes: nodes, t: o.first)
+  if terminal_in(ts: from.members, t: o.second) {
+    LinkWithinOneNode { reading: o, node: from }
+  } else {
+    LinkBetweenNodes { reading: o, from: from, to: node_of(nodes: nodes, t: o.second) }
+  }
+}
+
+// The board's netlist from its reachability graph and its resistance readings on the same asset.
+fn measured_netlist(graph: ReachabilityGraph, resistances: List<ResistanceObservation>) -> MeasuredNetlist {
+  let on_board = filter(resistances, o => on_asset(asset: graph.asset, a: o.asset))
+  let nodes = fold(filter(on_board, o => is_at_baseline(o: o)), init: map(graph.classes, c => MeasuredNode { members: c.members }), f: (acc, o) => merge_baseline(nodes: acc, o: o))
+  MeasuredNetlist {
+    nodes: nodes,
+    links: map(filter(on_board, o => !is_at_baseline(o: o)), o => link_of(nodes: nodes, o: o)),
+  }
+}
+
+fn node_text(n: MeasuredNode) -> String {
+  join(["{", join(map(n.members, t => terminal_text(t: t)), ", "), "}"], "")
+}
+
+fn span_text(o: ResistanceObservation) -> String {
+  join([terminal_text(t: o.first), " -- ", resistance_display_text(d: o.display), range_text(r: o.range), polarity_text(o: o), " -- ", terminal_text(t: o.second)], "")
+}
+
+fn link_text(l: MeasuredLink) -> String {
+  match l {
+    LinkBetweenNodes { reading, from: _, to: _ } => span_text(o: reading)
+    LinkWithinOneNode { reading, node: _ } => join(["CONTRADICTED: ", span_text(o: reading), ", between two points already one node"], "")
+  }
+}
+
+// The nodes of more than one point, then every link; a point no reading joined is named by its links.
+fn netlist_text(net: MeasuredNetlist) -> String {
+  let joined = filter(net.nodes, n => count(n.members) > 1)
+  join([
+    "measured netlist (a node is points joined by a beep or at the shorted-probe baseline; a link is an in-circuit reading, not a part's value): nodes ",
+    match joined.first() {
+      Absent => "none joined"
+      Present { value: _ } => join(map(joined, n => node_text(n: n)), "; ")
+    },
+    match net.links.first() {
+      Absent => "; no links"
+      Present { value: _ } => join(["; links ", join(map(net.links, l => link_text(l: l)), "; ")], "")
+    },
+  ], "")
+}

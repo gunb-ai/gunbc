@@ -1,0 +1,48 @@
+module test.claim.roadmap.sandbox_touch_reading_witness
+
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import test.claim.roadmap.sandbox_touch_reading {
+  SandboxTouchRan, SandboxTouchUnrunnable, SandboxTouchNeverRan, SandboxTouchWroteReading,
+  SandboxTouchRefusedReading, SandboxTouchInconclusive, sandbox_touch_reading_of,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Supplied exit statuses at the one boundary the direct write probes read. Status 218 is what srv1's
+// systemd 255 user manager returns for the worker shape (EXIT_CAPABILITIES): the OLD reading
+// (exit_code != 0) called it a refused write; it must read never-ran. The refused control is touch's
+// own failure (1) with the path absent; the same status with the path present is not a refusal.
+test fn an_exec_setup_status_never_reads_as_a_refused_write() -> Bool {
+  match sandbox_touch_reading_of(touch: SandboxTouchRan { exit_code: 218 }, path_present: false) {
+    SandboxTouchNeverRan => true
+    _ => false
+  }
+}
+
+test fn a_touch_that_ran_and_failed_with_the_path_absent_reads_as_refused() -> Bool {
+  match sandbox_touch_reading_of(touch: SandboxTouchRan { exit_code: 1 }, path_present: false) {
+    SandboxTouchRefusedReading => true
+    _ => false
+  }
+}
+
+test fn a_failed_touch_whose_path_exists_and_a_success_and_a_transport_refusal_are_not_refusals() -> Bool {
+  match sandbox_touch_reading_of(touch: SandboxTouchRan { exit_code: 1 }, path_present: true) {
+    SandboxTouchInconclusive => match sandbox_touch_reading_of(touch: SandboxTouchRan { exit_code: 0 }, path_present: true) {
+      SandboxTouchWroteReading => match sandbox_touch_reading_of(touch: SandboxTouchUnrunnable, path_present: false) {
+        SandboxTouchNeverRan => true
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn a_zero_status_with_the_path_absent_from_the_host_is_not_a_write() -> Bool {
+  match sandbox_touch_reading_of(touch: SandboxTouchRan { exit_code: 0 }, path_present: false) {
+    SandboxTouchInconclusive => true
+    _ => false
+  }
+}

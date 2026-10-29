@@ -1,9 +1,11 @@
 module std.coercion
 
 import std.optional { Present, Absent }
-import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.host_text { chars, text_of_chars }
 
 type TypeCheckpoint {
   dag_name: String
@@ -232,11 +234,8 @@ type CastRule {
 // declared twice in one corpus -- std.nat.Nat (grounded onto Int, carrier i64) and v2.std.nat.Nat
 // (a Peano Zero | Succ coproduct) -- and only the first is a refinement of Int. A consumer that
 // holds a resolved declaration keys on to_declaration; to_type remains the spelling an explicit
-// `as` target is authored with. This module declares NO imports on purpose: it is in the v2
-// self-compile closure, which does not reach std.algebra, and importing any one name switches
-// a file's bare channel off
-// (the unimported-bare-provider gate). DeclarationRef, decl_ref and declaration_ref_eq resolve
-// through that same bare channel to their single declarer, std.decl_ref.
+// `as` target is authored with. These std.decl_ref names are named explicitly rather than left to
+// the file's bare channel, because declaring any import switches that channel off.
 type RefinementCastRule {
   from_type: String
   to_type: String
@@ -493,14 +492,15 @@ fn judge_conversion_plan(
 }
 
 // CONSUMER, A DECLARED FRONTIER (DESIGN section 3c). The judgment's consumer is the KERNEL-CROSSING
-// WALL in v1.compiler.infer: a call to the kernel scalar reader or writer (chars / chars_to_string)
-// is admitted only inside a function whose declaration a conversion_plan_rows row names as its route,
-// judged here against the two text readings at that kernel call; everywhere else it refuses with
-// TextCrossingHasNoImplicitRoute naming the route to call. calm-boar-904 ruled that wall the LAST
-// step of the text-boundary lane, so it lands with no backlog: its trigger is that every kernel
-// chars / chars_to_string caller outside the two route functions has been switched to a route call
-// or rostered with a typed reason. Until then the route functions are admitted by their signatures
-// alone and nothing on the acceptance path runs this judgment.
+// WALL in v1.compiler.infer: a text crossing through the scalar reader or writer (std.host_text chars
+// / text_of_chars, and the kernel chars_to_string text_of_chars alone wraps) is admitted only inside a
+// function whose declaration a conversion_plan_rows row names as its route, judged here against the
+// two text readings at that call; everywhere else it refuses with TextCrossingHasNoImplicitRoute
+// naming the route to call. calm-boar-904 ruled that wall the LAST step of the text-boundary lane, so
+// it lands with no backlog: its trigger is that every chars / chars_to_string caller outside the two
+// route functions and std.host_text has been switched to a route call or rostered with a typed reason.
+// Until then the route functions are admitted by their signatures alone and nothing on the acceptance
+// path runs this judgment.
 //
 // THE CROSSING SITE'S HALF, AS THE CHECKER WILL ASK IT. The checker already classifies each side of a
 // boundary by declaration identity (v1.compiler.infer text_representation_by_identity, the same
@@ -548,17 +548,48 @@ fn judge_text_conversion_plan(
   }
 }
 
+// THE PLAN FOR A CROSSING THE COMPILER INSERTS, selected by the crossing's two endpoints -- never by a
+// spelling, and never by scanning phases for a producer. A host-text value meeting a code-point-sequence
+// formal names no route of its own, so the route is whichever plan runs between exactly those two
+// carriers; one such plan is then judged by its own route through judge_conversion_plan, the same
+// judgment an authored route call receives. None, or several, refuse at the crossing: the roster, not
+// the crossing, would have to choose, and an absent or ambiguous plan is never resolved by picking one.
+type CrossingPlanSelection
+  = CrossingPlanJudged { judgment: ConversionPlanJudgment }
+  | CrossingPlanNone
+  | CrossingPlanSeveral { routes: List<DeclarationRef> }
+
+fn select_text_crossing_plan(rows: List<ConversionPlan>, source: TextRepresentation, target: TextRepresentation) -> CrossingPlanSelection {
+  match text_plan_endpoint(rep: source) {
+    TextPlanEndpointUnkeyed => CrossingPlanJudged { judgment: ConversionPlanEndpointNotText { source: source, target: target } }
+    TextPlanEndpointKeyed { endpoint: se } =>
+      match text_plan_endpoint(rep: target) {
+        TextPlanEndpointUnkeyed => CrossingPlanJudged { judgment: ConversionPlanEndpointNotText { source: source, target: target } }
+        TextPlanEndpointKeyed { endpoint: te } =>
+          let between = rows |> filter(r => conversion_endpoint_eq(a: conversion_plan_source(plan: r), b: se) && conversion_endpoint_eq(a: conversion_plan_target(plan: r), b: te))
+          if (between |> count) > 1 {
+            CrossingPlanSeveral { routes: between |> map(r => r.route) }
+          } else {
+            match between |> first {
+              Absent => CrossingPlanNone
+              Present { value: plan } =>
+                CrossingPlanJudged { judgment: judge_conversion_plan(rows: rows, route: plan.route, source: se, target: te) }
+            }
+          }
+      }
+  }
+}
+
 // THE TWO DECLARED ROUTE FUNCTIONS the conversion_plan_rows name. Each body is the realization of its
-// row's one phase and nothing else: the unfold reads host text's Unicode scalars (the kernel scalar
-// decomposition v1.compiler.infer unfold_scalar_sequence_image also uses for literals), and the fold
-// writes them back as host text through the kernel's linear slice writer. A .dag fold over
-// from_code_point and concat would re-express the inverse with a copied accumulator, quadratic in the
-// text length, so the kernel writer stays the realization (DESIGN section 6, bare minimum cost).
-// These are the ONLY sanctioned callers of those two kernel operations for a text crossing.
+// row's one phase and nothing else: the unfold reads host text's Unicode scalars through
+// std.host_text chars (the kernel scalar decomposition v1.compiler.infer unfold_scalar_sequence_image
+// also uses for literals), and the fold writes them back as host text through std.host_text
+// text_of_chars, chars' declared inverse. Both crossings are declared in std.host_text, so the kernel
+// slice writer has one text-crossing caller (text_of_chars), not one per route.
 fn unicode_scalar_unfold(s: String) -> FreeMonoid<Char> {
   chars(s)
 }
 
 fn unicode_scalar_fold(xs: FreeMonoid<Char>) -> String {
-  chars_to_string(chars: xs, start: 0, end: xs |> count)
+  text_of_chars(scalars: xs)
 }

@@ -9,7 +9,7 @@ import std.target_representation {
   MigratedToExactBinding, ProvenUniqueKernelBinding, StillBareNameDebt
 }
 import extdeps.languages.rust.representation {
-  RustRepresentation, RustStdString, RustI64, RustBool, RustUnit, RustVecU8, RustSerdeJsonValue,
+  RustRepresentation, RustStdString, RustI64, RustF64, RustBool, RustUnit, RustVecU8, RustSerdeJsonValue,
   rust_bool_true_value, rust_bool_false_value
 }
 
@@ -58,8 +58,10 @@ fn rust_source_binding(module_path: String, decl_name: String, representation: R
 data rust_source_type_binding_rows: List<SourceTypeTargetBinding<RustRepresentation>> = [
   rust_source_binding(module_path: "v2.std.node", decl_name: "Symbol", representation: RustStdString),
   rust_source_binding(module_path: "v2.std.node", decl_name: "String", representation: RustStdString),
+  rust_source_binding(module_path: "std.host_text", decl_name: "HostText", representation: RustStdString),
   rust_source_binding(module_path: "std.types", decl_name: "Secret", representation: RustStdString),
   rust_source_binding(module_path: "std.integer", decl_name: "Int", representation: RustI64),
+  rust_source_binding(module_path: "std.float", decl_name: "Float", representation: RustF64),
   rust_source_binding(module_path: "std.types", decl_name: "Bool", representation: RustBool),
   rust_source_binding(module_path: "std.types", decl_name: "Unit", representation: RustUnit),
   rust_source_binding(module_path: "v2.std.cardinality", decl_name: "Unit", representation: RustUnit),
@@ -114,16 +116,17 @@ fn rust_bound_declaration_refs() -> List<DeclarationRef> {
 //
 // WHAT "KERNEL MINT" MEANS HERE, checkably: a reference the compiler creates with no declaration
 // behind it, reaching v1.compiler.coercion lookup_checkpoint with decl_file == "" -- a literal's type
-// (v1.compiler.types: LitStr, LitSymbol -> string_type; LitInt -> int_type; LitBool -> bool_type), a
+// (v1.compiler.infer_types: LitStr -> string_type, LitSymbol -> symbol_type; LitInt -> int_type; LitBool -> bool_type), a
 // synthesized unit, a builtin's signature. Those callers hold a spelling and nothing else, so the bare
 // row is their only authority and it survives for exactly them. A NAME'S DECLARATIONS never ride that
 // arm once threaded: they carry a DeclarationRef and answer from the exact rows above.
 //
 // Symbol is Migrated and DELETED rather than kept for a kernel mint, although a Symbol literal is
-// kernel-minted: v1.compiler.types types `^x` as string_type, and v1.compiler.emit's LitSymbol arm
-// already reads its suffix from the String row when no Symbol row exists (its authored fallback), so
-// the literal mint never needed a Symbol row -- it needed the kernel String row, which is what its
-// type says. Nothing else reached the Symbol row with an empty decl_file: the seed's generated
+// kernel-minted: v1.compiler.infer_types types `^x` as symbol_type, and v1.compiler.emit's LitSymbol arm
+// already reads its suffix from the String row when no Symbol row exists (its authored fallback).
+// The checker types the mint as Symbol; emit still realizes the lexeme through the kernel String
+// row. That is host representation, not a second checker type. Nothing else reached the Symbol row
+// with an empty decl_file: the seed's generated
 // modules carry no v2.std.node Symbol reference (measured at authorship: the only seed files spelling
 // a Symbol type are the hand-retained v2 pilot oracles, which the emitter does not produce).
 fn checkpoint_row_migration_rows() -> List<CheckpointRowMigration> {
@@ -148,7 +151,7 @@ fn checkpoint_row_migration_rows() -> List<CheckpointRowMigration> {
     CheckpointRowMigration {
       dag_name: "Float" as NonEmptyStr,
       disposition: ProvenUniqueKernelBinding {
-        proof: "No .dag declaration of the spelling Float remains: the Float de-fork (operator ruling relayed 2026-09-28) deleted std.float (Float = Float64 = Real64) and v2.std.float (Float = Binary64) together, and moved the IEEE 754-2019 binary64 facts to extdeps.standards.ieee_754_2019. What reaches this row is the kernel float_type mint and a bare Float in a module importing std.types Float, which is the same kernel name. What kernel Float MEANS is std.kernel_type_denotation (binary64), target-independent; this row states only how Rust spells it. That realization is checked against the denotation by extdeps.languages.rust.primitives rust_float_binding_verdict, and `f64` is a primitive token no use-line can shadow." as NonEmptyStr
+        proof: "std.float Float has an exact row (RustF64) and is the only declaration of Float: the Float de-fork (gunbc#12547, operator ruling relayed 2026-09-28) deleted the two forked declarations (std.float Float = Float64 = Real64, v2.std.float Float = Binary64), and the H5 home ruling (2026-10-18) re-declared ONE language-facing std.float Float whose meaning stays the cited row. What else reaches this row is the kernel float_type mint and a bare Float in a module importing std.types Float, which is the same kernel name until the Float import wave respells it. What kernel Float MEANS is std.kernel_type_denotation (binary64), target-independent; this row states only how Rust spells it. That realization is checked against the denotation by extdeps.languages.rust.primitives rust_float_binding_verdict, and `f64` is a primitive token no use-line can shadow." as NonEmptyStr
       }
     },
     CheckpointRowMigration {
@@ -247,3 +250,4 @@ fn symbol_capture_declarers() -> List<SymbolCaptureDeclarer> {
 data rust_host_option_carrier_declarations: List<DeclarationRef> = [
   decl_ref(module_path: "v2.std.diagnostic", decl_name: "Diagnostics")
 ]
+

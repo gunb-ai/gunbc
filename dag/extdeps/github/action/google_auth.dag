@@ -30,11 +30,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data google_auth_v2_1_13: ActionRelease = ActionRelease {
-  owner: "google-github-actions", repo: "auth", tag: "v2.1.13", commit: "c200f3691d83b41bf9bbd8638997a462592937ed"
+  owner: "google-github-actions", repo: "auth", tag: "v2.1.13", commit: "c200f3691d83b41bf9bbd8638997a462592937ed", subdirectory: none
 }
 
 data google_auth_v3_0_0: ActionRelease = ActionRelease {
-  owner: "google-github-actions", repo: "auth", tag: "v3.0.0", commit: "7c6bc770dae815cd3e89ee6cdf493a5fab2cc093"
+  owner: "google-github-actions", repo: "auth", tag: "v3.0.0", commit: "7c6bc770dae815cd3e89ee6cdf493a5fab2cc093", subdirectory: none
 }
 
 // Each declaration below was read from the action.yml blob at the release's commit

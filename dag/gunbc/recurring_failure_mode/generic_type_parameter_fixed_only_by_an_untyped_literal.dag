@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.generic_type_parameter_fixed_only_by_an_untyped_literal
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data generic_type_parameter_fixed_only_by_an_untyped_literal: RecurringFailureMode = RecurringFailureMode {
   identity: "generic_type_parameter_fixed_only_by_an_untyped_literal" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a generic's type parameter is constrained by nothing but an untyped literal, so the declaration typechecks and the evaluator cannot resolve what it must return** (INVALID STATE: a function declares `fn f<T>(items: List<T>) -> T?` and its body folds with `none` as the initial accumulator.",

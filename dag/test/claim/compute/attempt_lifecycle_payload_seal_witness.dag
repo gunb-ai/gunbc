@@ -1,57 +1,74 @@
 module test.claim.compute.attempt_lifecycle_payload_seal_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, CensusVerdict, census_exit}
+import std.process { ProcessExit }
 
-data probe_hdr: String = "module probe_begin_launch_arg\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.compute.attempt_lifecycle { AttemptRecord, AttemptTransition, attempt_begin_launch }\n"
+data probe_hdr: String = "module probe_begin_launch_arg\nimport gunbc.durable_cas_file_store { SlotStore }\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.compute.attempt_lifecycle { AttemptRecord, AttemptTransition, attempt_begin_launch }\n"
 
-data payload_resupply_source: String = probe_hdr + "fn resupply(root: NonEmptyStr, rec: AttemptRecord, g: CasGeneration) -> AttemptTransition {\n  attempt_begin_launch(root: root, record: rec, expected: g)\n}\n"
+data payload_resupply_source: String = probe_hdr + "fn resupply(store: SlotStore, rec: AttemptRecord, g: CasGeneration) -> AttemptTransition {\n  attempt_begin_launch(store: store, record: rec, expected: g)\n}\n"
 
-data lawful_begin_launch_source: String = probe_hdr + "fn resupply(root: NonEmptyStr, rec: AttemptRecord, g: CasGeneration) -> AttemptTransition {\n  attempt_begin_launch(root: root, reference: rec.reference as NonEmptyStr, expected: g)\n}\n"
+data lawful_begin_launch_source: String = probe_hdr + "fn resupply(store: SlotStore, rec: AttemptRecord, g: CasGeneration) -> AttemptTransition {\n  attempt_begin_launch(store: store, reference: rec.reference as NonEmptyStr, expected: g)\n}\n"
 
-data commit_probe_imports: String = "module probe_commit_bytes_caller\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasExpectation, ExpectSlotAbsent }\nimport gunbc.compute.attempt_lifecycle { AttemptState, AttemptReserved, AttemptTransition, attempt_commit_bytes, attempt_open, AttemptRecord }\n"
+data commit_probe_imports: String = "module probe_commit_bytes_caller\nimport gunbc.durable_cas_file_store { SlotStore }\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasExpectation, ExpectSlotAbsent }\nimport gunbc.compute.attempt_lifecycle { AttemptState, AttemptReserved, AttemptTransition, attempt_commit_bytes, attempt_open, AttemptRecord }\n"
 
-data unadmitted_commit_source: String = commit_probe_imports + "fn forge(root: NonEmptyStr, reference: NonEmptyStr, payload: NonEmptyStr) -> AttemptTransition {\n  attempt_commit_bytes(root: root, reference: reference, state: AttemptReserved, payload: payload, expected: ExpectSlotAbsent)\n}\n"
+data unadmitted_commit_source: String = commit_probe_imports + "fn forge(store: SlotStore, reference: NonEmptyStr, payload: NonEmptyStr) -> AttemptTransition {\n  attempt_commit_bytes(store: store, reference: reference, state: AttemptReserved, payload: payload, expected: ExpectSlotAbsent)\n}\n"
 
-data lawful_open_source: String = commit_probe_imports + "fn forge(root: NonEmptyStr, rec: AttemptRecord) -> AttemptTransition {\n  attempt_open(root: root, record: rec)\n}\n"
+data lawful_open_source: String = commit_probe_imports + "fn forge(store: SlotStore, rec: AttemptRecord) -> AttemptTransition {\n  attempt_open(store: store, record: rec)\n}\n"
 
-data foreign_codec_imports: String = "module probe_foreign_payload_codec\nimport std.types { NonEmptyStr, String, EpochSecs }\nimport std.optional { Present }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.compute.attempt_lifecycle { AttemptState, AttemptReserved, AttemptTransition, AttemptPayloadCodec, attempt_open_payload }\nimport gunbc.dispatch_credential_acquisition { CredentialAcquisitionRecord, credential_record_json, credential_record_decode }\n"
+data foreign_codec_imports: String = "module probe_foreign_payload_codec\nimport gunbc.durable_cas_file_store { SlotStore }\nimport std.types { NonEmptyStr, String, EpochSecs }\nimport std.optional { Present }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.compute.attempt_lifecycle { AttemptState, AttemptReserved, AttemptTransition, AttemptPayloadCodec, attempt_open_payload }\nimport gunbc.dispatch_credential_acquisition { CredentialAcquisitionRecord, credential_record_json, credential_record_decode }\n"
 
-data foreign_codec_rewrites_snapshot_source: String = foreign_codec_imports + "fn forged_with_state(r: CredentialAcquisitionRecord, s: AttemptState) -> CredentialAcquisitionRecord {\n  CredentialAcquisitionRecord { identity: r.identity, node_id: r.node_id, reference: r.reference, executor_word: r.executor_word, snapshot_path: \"/forged\", belt_unit: r.belt_unit, control_group: r.control_group, opened_at: r.opened_at, launch_deadline: r.launch_deadline, state: s }\n}\nfn reference_of(r: CredentialAcquisitionRecord) -> String { r.reference }\nfn state_of(r: CredentialAcquisitionRecord) -> AttemptState { r.state }\nfn opened_at(r: CredentialAcquisitionRecord) -> EpochSecs { r.opened_at }\nfn launch_deadline(r: CredentialAcquisitionRecord) -> EpochSecs { r.launch_deadline }\nfn hostile(root: NonEmptyStr, rec: CredentialAcquisitionRecord) -> AttemptTransition {\n  attempt_open_payload(root: root, record: rec, codec: AttemptPayloadCodec { encode: credential_record_json, decode: credential_record_decode, reference_of: reference_of, state_of: state_of, with_state: forged_with_state, opened_at: opened_at, launch_deadline: launch_deadline })\n}\n"
+data foreign_codec_rewrites_snapshot_source: String = foreign_codec_imports + "fn forged_with_state(r: CredentialAcquisitionRecord, s: AttemptState) -> CredentialAcquisitionRecord {\n  CredentialAcquisitionRecord { identity: r.identity, node_id: r.node_id, reference: r.reference, executor_word: r.executor_word, snapshot_path: \"/forged\", belt_unit: r.belt_unit, control_group: r.control_group, opened_at: r.opened_at, launch_deadline: r.launch_deadline, cursor_runtime_root: r.cursor_runtime_root, state: s }\n}\nfn reference_of(r: CredentialAcquisitionRecord) -> String { r.reference }\nfn state_of(r: CredentialAcquisitionRecord) -> AttemptState { r.state }\nfn opened_at(r: CredentialAcquisitionRecord) -> EpochSecs { r.opened_at }\nfn launch_deadline(r: CredentialAcquisitionRecord) -> EpochSecs { r.launch_deadline }\nfn hostile(store: SlotStore, rec: CredentialAcquisitionRecord) -> AttemptTransition {\n  attempt_open_payload(store: store, record: rec, codec: AttemptPayloadCodec { encode: credential_record_json, decode: credential_record_decode, reference_of: reference_of, state_of: state_of, with_state: forged_with_state, opened_at: opened_at, launch_deadline: launch_deadline })\n}\n"
 
-data lawful_credential_open_source: String = "module probe_lawful_credential_open\nimport std.types { NonEmptyStr }\nimport gunbc.compute.attempt_lifecycle { AttemptTransition }\nimport gunbc.dispatch_credential_acquisition { CredentialAcquisitionRecord, credential_open }\nfn lawful(root: NonEmptyStr, rec: CredentialAcquisitionRecord) -> AttemptTransition {\n  credential_open(root: root, record: rec)\n}\n"
+data lawful_credential_open_source: String = "module probe_lawful_credential_open\nimport std.types { NonEmptyStr }\nimport gunbc.compute.attempt_lifecycle { AttemptTransition }\nimport gunbc.dispatch_credential_acquisition { CredentialAcquisitionRecord, CredentialAcquisitionStore, credential_open }\nfn lawful(credentials: CredentialAcquisitionStore, rec: CredentialAcquisitionRecord) -> AttemptTransition {\n  credential_open(credentials: credentials, record: rec)\n}\n"
 
-fn blocking_delta(hostile: String, safe: String) -> Int {
-  let h = total_blocking_count_for(source: hostile)
-  let s = total_blocking_count_for(source: safe)
-  if h >= 0 && s >= 0 {
-    h - s
-  } else {
-    0 - 1000
-  }
+// THE PAIR VERDICT, not a difference of Ints. The old helper collapsed two censuses into `h - s`, guarded
+// only by the sentinel checks `h >= 0 && s >= 0`: a census that never ran carried `-1` through those
+// guards as a number, and the pair's refusal surfaced as `0 - 1000` -- indistinguishable from a real
+// delta of -1000 that some future hostile source might genuinely produce. The typed pair refuses with
+// EACH census's own cause when either never ran, and only judges a delta when BOTH did.
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
 }
 
-test fn handing_a_payload_to_begin_launch_is_refused_at_compile() -> Bool {
-  blocking_delta(hostile: payload_resupply_source, safe: lawful_begin_launch_source) >= 1
-    && blocking_subject_count_for(source: payload_resupply_source, wanted_class: "CallArgumentNameUnknown", wanted_subject: "record") >= 1
+test fn handing_a_payload_to_begin_launch_is_refused_at_compile() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: payload_resupply_source, safe: lawful_begin_launch_source, holds: fn(n) { n >= 1 }),
+    census_verdict(census: blocking_subject_census(source: payload_resupply_source, wanted_class: "CallArgumentNameUnknown", wanted_subject: "record"), holds: fn(n) { n >= 1 }),
+  ])
 }
 
-test fn a_begin_launch_that_names_only_the_slot_is_not_refused() -> Bool {
-  blocking_subject_count_for(source: lawful_begin_launch_source, wanted_class: "CallArgumentNameUnknown", wanted_subject: "record") == 0
+test fn a_begin_launch_that_names_only_the_slot_is_not_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: lawful_begin_launch_source, wanted_class: "CallArgumentNameUnknown", wanted_subject: "record"), holds: fn(n) { n == 0 }))
 }
 
-test fn a_module_outside_attempt_lifecycle_cannot_call_attempt_commit_bytes() -> Bool {
-  blocking_subject_count_for(source: unadmitted_commit_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_commit_bytes") >= 1
+test fn a_module_outside_attempt_lifecycle_cannot_call_attempt_commit_bytes() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: unadmitted_commit_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_commit_bytes"), holds: fn(n) { n >= 1 }))
 }
 
-test fn an_admitted_open_is_not_refused_as_an_unadmitted_commit() -> Bool {
-  blocking_subject_count_for(source: lawful_open_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_commit_bytes") == 0
+test fn an_admitted_open_is_not_refused_as_an_unadmitted_commit() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: lawful_open_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_commit_bytes"), holds: fn(n) { n == 0 }))
 }
 
-test fn a_foreign_codec_cannot_open_a_credential_payload() -> Bool {
-  blocking_subject_count_for(source: foreign_codec_rewrites_snapshot_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_open_payload") >= 1
+test fn a_foreign_codec_cannot_open_a_credential_payload() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: foreign_codec_rewrites_snapshot_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_open_payload"), holds: fn(n) { n >= 1 }))
 }
 
-test fn a_credential_open_wrapper_is_not_an_unadmitted_payload_call() -> Bool {
-  blocking_subject_count_for(source: lawful_credential_open_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_open_payload") == 0
+test fn a_credential_open_wrapper_is_not_an_unadmitted_payload_call() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: lawful_credential_open_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_open_payload"), holds: fn(n) { n == 0 }))
+}
+
+// THE LAWFUL CONTROLS COMPILE CLEAN, not only free of the one class each RED keys on (review 85261): a
+// control whose body failed to resolve would still answer zero for that class. Each control's blocking
+// census is judged against its own header alone, so the shared closure cancels and any blocking row the
+// body adds is a defect in the control. Measured (one remote dispatch): both controls and both headers
+// count 0 blocking rows, and a body calling an undefined function counts 2, so this check refuses a
+// control that does not resolve. Removing the headers' store imports did NOT raise a row: a bare name
+// resolves corpus-wide here, so the imports are declared for the reader and the census does not depend
+// on them.
+test fn the_lawful_controls_add_no_blocking_diagnostic() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: lawful_begin_launch_source, safe: probe_hdr, holds: fn(n) { n <= 0 }),
+    blocking_delta(hostile: lawful_open_source, safe: commit_probe_imports, holds: fn(n) { n <= 0 }),
+  ])
 }

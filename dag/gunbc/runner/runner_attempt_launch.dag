@@ -411,11 +411,14 @@ fn plan_attempt_launch_cell_granted(
 type AttemptLaunchPayload
   = GitHubLaunchPayload { runner_name: JitRunnerName, registration_id: Int, device: BootstrapDeviceStaging }
   | WorkspaceLaunchPayload { bootstrap_identity: NonEmptyStr, device: BootstrapDeviceStaging }
+  // A revision job: its read-only spec device (the environment file the guest unit loads).
+  | ClaimSetLaunchPayload { grant: NonEmptyStr, device: BootstrapDeviceStaging }
 
 fn launch_payload_device(payload: AttemptLaunchPayload) -> BootstrapDeviceStaging {
   match payload {
     GitHubLaunchPayload { runner_name: _, registration_id: _, device: d } => d
     WorkspaceLaunchPayload { bootstrap_identity: _, device: d } => d
+    ClaimSetLaunchPayload { grant: _, device: d } => d
   }
 }
 
@@ -437,6 +440,7 @@ type AttemptLaunchPlan
       stage_jail_root: ArgvCommand
       stage_kernel: ArgvCommand
       stage_rootfs: ArgvCommand
+      input_drives: List<StagedInputDrive>
       workspace_path: String
       workspace_create: ArgvCommand
       workspace_format: ArgvCommand
@@ -597,6 +601,7 @@ fn plan_authorized_steps(
       source: rootfs_source,
       destination: join([jail_root, jail_rootfs_path as String], ""),
     ),
+    input_drives: [],
     workspace_path: workspace_host,
     workspace_create: busybox_dd_sparse_image_command(
       busybox_bin: host_busybox_bin,
@@ -651,6 +656,7 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
       stage_jail_root: _,
       stage_kernel: _,
       stage_rootfs: _,
+      input_drives: _,
       workspace_path: _,
       workspace_create: _,
       workspace_format: _,
@@ -847,13 +853,30 @@ type JailMaterialStep
   = JailRootStep
   | JailKernelStep
   | JailRootfsStep
+  | JailInputDriveStep { jail_path: String }
 
 fn jail_material_step_label(step: JailMaterialStep) -> String {
   match step {
     JailRootStep => "jail root"
     JailKernelStep => "kernel"
     JailRootfsStep => "rootfs"
+    JailInputDriveStep { jail_path: p } => concat("input drive ", p)
   }
+}
+
+// AN INPUT DRIVE THE PLAN STAGES INTO THE JAIL BESIDE THE KERNEL AND ROOTFS: a read-only input a
+// workload consumes (a revision job's tree, vendor set and results drive). Its staging command and
+// its readback join the jail material, so the jailer is not admitted over a drive that failed to
+// stage or is absent at its jail path. Plans whose workload has none carry an empty list.
+type StagedInputDrive {
+  stage: ArgvCommand
+  jail_path: String
+}
+
+type InputDriveStaging {
+  jail_path: String
+  exit: Int
+  present: PathExistenceReading
 }
 
 type JailMaterialStaging {
@@ -862,6 +885,7 @@ type JailMaterialStaging {
   rootfs_exit: Int
   kernel: PathExistenceReading
   rootfs: PathExistenceReading
+  inputs: List<InputDriveStaging>
 }
 
 type JailMaterialStanding
@@ -877,9 +901,19 @@ fn jail_material_standing(obs: JailMaterialStaging) -> JailMaterialStanding {
     JailMaterialStepFailed { step: JailKernelStep, exit: obs.kernel_exit }
   } else if obs.rootfs_exit != 0 {
     JailMaterialStepFailed { step: JailRootfsStep, exit: obs.rootfs_exit }
-  } else {
-    jail_material_readbacks(kernel: obs.kernel, rootfs: obs.rootfs)
-  }
+  } else { match filter(obs.inputs, i => i.exit != 0).first() {
+    Present { value: failed } => JailMaterialStepFailed { step: JailInputDriveStep { jail_path: failed.jail_path }, exit: failed.exit }
+    Absent => match jail_material_readbacks(kernel: obs.kernel, rootfs: obs.rootfs) {
+      JailMaterialReady => fold(obs.inputs, init: JailMaterialReady, f: (acc, i) => match acc {
+        JailMaterialReady => match jail_material_present(step: JailInputDriveStep { jail_path: i.jail_path }, reading: i.present) {
+          Present { value: refusal } => refusal
+          Absent => JailMaterialReady
+        }
+        refused => refused
+      })
+      refused => refused
+    }
+  } }
 }
 
 fn jail_material_readbacks(kernel: PathExistenceReading, rootfs: PathExistenceReading) -> JailMaterialStanding {
@@ -983,6 +1017,7 @@ fn attempt_staging_verdict(
       stage_jail_root: _,
       stage_kernel: _,
       stage_rootfs: _,
+      input_drives: _,
       workspace_path: planned,
       workspace_create: _,
       workspace_format: _,

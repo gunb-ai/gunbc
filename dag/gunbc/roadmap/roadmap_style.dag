@@ -21,6 +21,7 @@ import gunbc.design.scale {
   font_sans, font_mono,
   radius_surface, radius_999, border_1, border_2, height_control, width_status,
 }
+import extdeps.languages.css.media_queries { MediaPrefersColorScheme, css_media_rule_wire }
 import gunbc.design.theme {
   Theme, day_theme, night_theme, theme_root_css, theme_scoped_blocks, role_decl,
   CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
@@ -597,11 +598,12 @@ fn issue_tracker_root_css() -> String {
     css_block(
       selector: join([":root[data-theme=\"", night_theme.name, "\"]"], ""),
       decls: issue_token_decls(night: true)),
-    join([
-      "@media (prefers-color-scheme: ", night_theme.scheme, ") { ",
-      css_block(selector: ":root:not([data-theme])", decls: issue_token_decls(night: true)),
-      " }",
-    ], ""),
+    // The same theme grammar as gunbc.design.theme.theme_scoped_blocks, through the upstream
+    // media wire rather than a hand-joined copy of its text: this was the THIRD place that
+    // spelled "@media (prefers-color-scheme: …)" by hand from an untyped field.
+    css_media_rule_wire(
+      condition: MediaPrefersColorScheme { preference: night_theme.scheme },
+      body: css_block(selector: ":root:not([data-theme])", decls: issue_token_decls(night: true))),
   ], "\n")
 }
 

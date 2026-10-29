@@ -1,14 +1,16 @@
 module test.claim.roadmap.session_placement_witness
 
-import std.types { Bool, String, List, NonEmptyStr, EpochSecs }
+import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
+import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs }
 import std.measure { kibibyte, kibibyte_count }
-import std.durable_compare_and_set { CasGeneration, cas_generation_first }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first, cas_generation_count }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.compute.work_class_grant { WorkClassAgentSession, GrantAtCeiling, ClassUnmeasured }
-import gunbc.compute.work_provider_local { compute_layout_in, compute_unit_properties }
+import gunbc.compute.work_provider_local { compute_layout_in, compute_unit_properties, NoPathVirtualization }
 import std.materialization_store_grant { WitnessScratchRoot }
 import gunbc.compute.attempt_lifecycle {
   DirectInvocation,
@@ -25,23 +27,18 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused }
 
-import gunbc.roadmap.roadmap_session_placement {
-  SessionPlacementGrant, SessionPlacementStores, session_process_bounds, session_unit_wire, session_attempt_record,
-  session_placement_record_of, session_placement_record_json, session_placement_record_write,
-  session_placement_record_basename, session_placement_release_basename, session_placement_note_basename,
-  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable,
-  SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
-  SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
-  session_placement_observation_of, session_placement_observe_at,
-  attempt_worker_unit_observe_for_instance,
-  SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide,
-  SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at,
-  SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused,
-}
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, attempt_worker_unit_observe_for_instance, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
 import extdeps.languages.json.emit { serialize_json }
+
+fn witness_cas_generation(n: Int) -> CasGeneration {
+  match cas_generation(n: n) {
+    Present { value: g } => g
+    Absent => cas_generation_first()
+  }
+}
 
 // G5 WITNESSES (side-chat ruling on #13074 at b4d4a42). Three groups:
 //   - the reader's BINDING: a record or release that belongs to another attempt or fence is refused;
@@ -79,15 +76,6 @@ fn unit_b() -> String {
   }
 }
 
-fn stores_at(dir: String) -> SessionPlacementStores {
-  SessionPlacementStores {
-    slots_root: dir as NonEmptyStr,
-    records_dir: dir,
-    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir, "/ledger"], "") as NonEmptyStr) },
-    partition: "session-memory-srv2" as NonEmptyStr as PartitionId,
-  }
-}
-
 fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> SessionPlacementGrant {
   SessionPlacementGrant {
     node_id: node_id,
@@ -101,7 +89,7 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
         Present { value: u } => u
         Absent => "unnameable" as NonEmptyStr
       },
-      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: 7 },
+      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: witness_cas_generation(n: 7) },
       granted_at: 1000,
       maximum_duration_seconds: 14400,
       expires_at: 15400,
@@ -166,7 +154,7 @@ test fn a_bound_placement_reads_back_its_slot_grant_and_release() -> Bool {
   match observe_a(slot: held(rec: slot_a(opened: 1000)), record: planted(name: rec_name(), content: record_bytes(node_id: node_a, attempt_key: key_a)), released: planted(name: rel_name(), content: release_for(node_id: node_a, attempt_key: key_a, grant_identity: "evt-7", fence: "7"))) {
     SessionPlacementObserved { slot: _, grant, returned } =>
       (match grant {
-        SessionGrantRecorded { record } => record.grant_identity == "evt-7" && record.fence_generation == 7 && kibibyte_count(k: record.amount) == 8388608 && contains(record.unit_properties, "CPUQuota=800%")
+        SessionGrantRecorded { record } => record.grant_identity == "evt-7" && cas_generation_count(g: record.fence_generation) == 7 && kibibyte_count(k: record.amount) == 8388608 && contains(record.unit_properties, "CPUQuota=800%")
         SessionGrantNotRecorded { path: _ } => false
         SessionGrantUnreadable { path: _, detail: _ } => false
         SessionGrantForeign { path: _, detail: _ } => false
@@ -256,7 +244,7 @@ test fn settlement_releases_only_a_closed_window_or_an_ended_unit() -> Bool {
 test fn the_worker_unit_is_capped_at_its_grant_by_the_compute_fold() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
   let props = property_words(props: dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1024), process_bounds: session_process_bounds, exit_hook: "mkdir -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr))
-  let compute = property_words(props: compute_unit_properties(layout: compute_layout_in(instance: inst, store_root: WitnessScratchRoot { root: "/tmp/gunbc_witness_store" }, identity_hex: "abc"), granted: kibibyte(count: 1024)))
+  let compute = property_words(props: compute_unit_properties(layout: compute_layout_in(instance: inst, store_root: WitnessScratchRoot { root: "/tmp/gunbc_witness_store" }, identity_hex: "abc"), granted: kibibyte(count: 1024), path_virtualization: NoPathVirtualization))
   contains(props, "MemoryMax=1048576")
     && contains(props, "CPUQuota=800%")
     && contains(props, "TasksMax=4096")

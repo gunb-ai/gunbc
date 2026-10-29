@@ -1,0 +1,100 @@
+module v2.test.claim.never_seam_native
+
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String }
+import std.types { List }
+
+data nsn_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^never_seam_native_artifact,
+  file_path: "src/v2/pilot/never_seam_native_pilot.dag"
+}
+
+data nsn_std_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^never_seam_native_std_artifact,
+  file_path: "src/v2/pilot/never_seam_native_std_pilot.dag"
+}
+
+fn nsn_assemble(src: String, subject: List<Symbol>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n", fidelity: Lossless },
+        artifact: nsn_std_artifact,
+        compilation_unit: ^never_seam_native_cu,
+        source_root: V2Tree
+      },
+      tail: Cons {
+        head: DagSourceReadWitness {
+          source: Medium { carried: src, fidelity: Lossless },
+          artifact: nsn_artifact,
+          compilation_unit: ^never_seam_native_cu,
+          source_root: V2Tree
+        },
+        tail: Empty
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: subject }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn nsn_reason(src: String, subject: List<Symbol>) -> String {
+  match nsn_assemble(src: src, subject: subject) {
+    Rejected { diagnostics: d } => concat("assemble:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+        Rejected { diagnostics: d } => concat("infer:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+      }
+  }
+}
+
+fn nsn_home() -> List<Symbol> {
+  Cons { head: ^std, tail: Cons { head: ^error_primitives, tail: Empty } }
+}
+
+fn nsn_p() -> List<Symbol> {
+  Cons { head: ^p, tail: Empty }
+}
+
+// THE ONE DIVERGENT SEAM ON THE NATIVE ROUTE. std.error_primitives types pure_dag_seam_unreachable Never (its
+// one inhabitant is divergence) and eliminates it once per result type through absurd. The specimens are
+// that seam and its projections, assembled and inferred through the production route; the reds are a
+// Never-typed body that is a VALUE rather than the seam, and absurd applied to a non-Never argument.
+
+fn nsn_reason_with_float(src: String) -> String {
+  nsn_reason(src: src, subject: nsn_home())
+}
+
+test fn the_seam_and_its_projections_infer_holds() -> Bool {
+  nsn_reason_with_float(src: "module std.error_primitives\n\ntype Float\n\ntype Never\n\nfn absurd<T>(n: Never) -> T {\n  match (n) {\n  }\n}\n\nfn pure_dag_seam_unreachable() -> Never {\n  pure_dag_seam_unreachable()\n}\n\nfn pure_dag_seam_unreachable_int() -> Int {\n  absurd(pure_dag_seam_unreachable())\n}\n\nfn pure_dag_seam_unreachable_string() -> String {\n  absurd(pure_dag_seam_unreachable())\n}\n") == "ACCEPTED"
+}
+
+test fn a_never_typed_value_is_refused_holds() -> Bool {
+  nsn_reason_with_float(src: "module std.error_primitives\n\ntype Float\n\ntype Never\n\nfn absurd<T>(n: Never) -> T {\n  match (n) {\n  }\n}\n\nfn not_a_seam() -> Never {\n  1\n}\n") != "ACCEPTED"
+}
+
+test fn absurd_of_a_non_never_argument_is_refused_holds() -> Bool {
+  nsn_reason_with_float(src: "module std.error_primitives\n\ntype Float\n\ntype Never\n\nfn absurd<T>(n: Never) -> T {\n  match (n) {\n  }\n}\n\nfn bad() -> Int {\n  absurd(1)\n}\n") != "ACCEPTED"
+}
+
+fn never_seam_native_receipt() -> String {
+  concat(concat(concat(
+    concat("seam_and_projections=", nsn_reason_with_float(src: "module std.error_primitives\n\ntype Float\n\ntype Never\n\nfn absurd<T>(n: Never) -> T {\n  match (n) {\n  }\n}\n\nfn pure_dag_seam_unreachable() -> Never {\n  pure_dag_seam_unreachable()\n}\n\nfn pure_dag_seam_unreachable_int() -> Int {\n  absurd(pure_dag_seam_unreachable())\n}\n\nfn pure_dag_seam_unreachable_string() -> String {\n  absurd(pure_dag_seam_unreachable())\n}\n")),
+    concat("\nnever_value=", nsn_reason_with_float(src: "module std.error_primitives\n\ntype Float\n\ntype Never\n\nfn absurd<T>(n: Never) -> T {\n  match (n) {\n  }\n}\n\nfn not_a_seam() -> Never {\n  1\n}\n"))),
+    concat("\nabsurd_of_int=", nsn_reason_with_float(src: "module std.error_primitives\n\ntype Float\n\ntype Never\n\nfn absurd<T>(n: Never) -> T {\n  match (n) {\n  }\n}\n\nfn bad() -> Int {\n  absurd(1)\n}\n"))),
+    concat("\nfloat_projection=", nsn_reason_with_float(src: "module std.error_primitives\n\ntype Float\n\ntype Never\n\nfn absurd<T>(n: Never) -> T {\n  match (n) {\n  }\n}\n\nfn pure_dag_seam_unreachable() -> Never {\n  pure_dag_seam_unreachable()\n}\n\nfn pure_dag_seam_unreachable_float() -> Float {\n  absurd(pure_dag_seam_unreachable())\n}\n")))
+}

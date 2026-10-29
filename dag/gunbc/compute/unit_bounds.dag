@@ -9,7 +9,7 @@ import std.algebra { trim, string_contains }
 import std.optional { Present, Absent }
 import std.nat { Nat, nat_min }
 import std.measure { ByteSize, Kibibyte, kibibyte_to_byte_size, byte_size, byte_size_count, Millicore, millicore_count }
-import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemoryHigh, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
+import extdeps.systemd { SystemdUnitProperty, InaccessiblePathsProperty, MemoryMax, MemoryHigh, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
@@ -78,8 +78,37 @@ fn user_work_run_properties(rest: List<SystemdRunProperty>) -> List<SystemdRunPr
   concat(user_work_slice_binding_properties(), rest)
 }
 
+// THE ROOT-EQUIVALENT DAEMON SOCKETS, DENIED TO EVERY UNIT THAT RUNS WORKER- OR CANDIDATE-CONTROLLED
+// CODE. A process holding the docker or lxd group asks a root daemon for a privileged container with
+// / mounted; NoNewPrivileges and an empty CapabilityBoundingSet do not stop asking (WORKER-ROOT-
+// EQUIVALENT-1). '-' ignores a missing path (systemd.exec(5)).
+//
+// THIS IS A DENY-LIST AND A DECLARED RUNG DROP, NOT THE FIX: it fails open for the next root-equivalent
+// socket or group, and InaccessiblePaths= is a mount-namespace property, so the user manager that
+// drops ProtectSystem on srv1 (gunbc.recurring_failure_mode.
+// sandbox_properties_declared_but_not_enforced_by_the_realization) drops it too; it binds only on the
+// system-manager launcher path (gunbc.roadmap.attempt_system_unit_launch). Dissolution: the worker
+// runs as an account holding no root-equivalent group (gunbc.rung_drop.
+// worker_root_equivalent_socket_denylist), at which point this list is deleted and the claims stay.
+data worker_root_equivalent_socket_paths: List<String> = [
+  "-/var/run/docker.sock",
+  "-/run/docker.sock",
+  "-/run/containerd/containerd.sock",
+  "-/run/podman/podman.sock",
+  "-/var/lib/lxd/unix.socket",
+  "-/var/lib/lxd/unix.socket.user",
+  "-/var/snap/lxd/common/lxd/unix.socket",
+  "-/var/snap/lxd/common/lxd/unix.socket.user",
+]
+
+fn worker_root_equivalent_socket_denial_properties() -> List<SystemdRunProperty> {
+  [NamedUnitSetting { property: InaccessiblePathsProperty, value: join(worker_root_equivalent_socket_paths, separator: " ") as NonEmptyStr }]
+}
+
 fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, process_bounds: UnitProcessBounds?) -> List<SystemdRunProperty> {
   concat(
+    worker_root_equivalent_socket_denial_properties(),
+    concat(
     [
       NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted))) as NonEmptyStr },
       NamedUnitSetting { property: compute_kill_mode_property, value: compute_kill_mode_value() },
@@ -92,6 +121,7 @@ fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, p
         NamedUnitSetting { property: TasksMax, value: to_string(value: b.tasks_max) as NonEmptyStr },
       ]
     },
+    ),
   )
 }
 
@@ -240,6 +270,7 @@ type UserWorkScopeStanding
   | BoundedContainerUncapped
   | BoundedContainerUnreadable
   | ExternallyBoundedExecutor { run_id: NonEmptyStr }
+  | OperatorHostWithoutCgroups
 
 type UserWorkScopeStandingEffect
   = WrapIntoUserWorkSlice
@@ -406,6 +437,22 @@ fn namespaced_root_without_systemd(cgroup: UserWorkScopeCgroupRead, systemd_mana
   }
 }
 
+// A HOST WITHOUT A CGROUP FACILITY (macOS) can neither observe nor install a memory bound. It is
+// classified before the cgroup read: an operator's terminal run outside CI is admitted as
+// OperatorHostWithoutCgroups (gunbc.design_ruling macos_operator_terminal_runs_without_a_memory_bound;
+// the loss is gunbc.rung_drop.macos_operator_terminal_run_unbounded); any other run there is
+// CgroupUnreadable and refuses. A host with cgroups answers Absent and the cgroup classification runs.
+type UserWorkHostFacility = HostWithCgroups | HostWithoutCgroups { stdin_terminal: Bool }
+
+fn user_work_host_facility_standing(host: UserWorkHostFacility, github_actions: Bool) -> UserWorkScopeStanding? {
+  match host {
+    HostWithCgroups => none
+    HostWithoutCgroups { stdin_terminal } =>
+      if stdin_terminal && !github_actions { Present { value: OperatorHostWithoutCgroups } }
+      else { Present { value: CgroupUnreadable } }
+  }
+}
+
 fn user_work_scope_standing_with_root_memory(
   unit_test: Bool,
   github_actions: Bool,
@@ -502,6 +549,7 @@ fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
     BoundedContainerUncapped => "BoundedContainerUncapped"
     BoundedContainerUnreadable => "BoundedContainerUnreadable"
     ExternallyBoundedExecutor { run_id } => join(["ExternallyBoundedExecutor:", run_id as String], "")
+    OperatorHostWithoutCgroups => "OperatorHostWithoutCgroups:no memory bound on this host"
   }
 }
 
@@ -529,6 +577,7 @@ fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeSta
     BoundedContainerUnreadable => RefuseUserWorkScope { standing: BoundedContainerUnreadable }
     ExternallyBoundedExecutor { run_id } =>
       SkipUserWorkScope { standing: ExternallyBoundedExecutor { run_id: run_id } }
+    OperatorHostWithoutCgroups => SkipUserWorkScope { standing: OperatorHostWithoutCgroups }
   }
 }
 

@@ -14,7 +14,7 @@ import gunbc.runner.runner_slot_desired { CpuQuotaResolved, SlotCpuQuotaUnbounde
 import gunbc.runner.runner_microvm_host_ready { MicrovmHostBound, MicrovmHostBindingRefused }
 import gunbc.runner.runner_microvm_slot_controller { bind_slot_host, resolve_network_subject, NetworkSubjectResolved, NetworkSubjectRefused, refusal_text }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root, microvm_controller_gunbc_binary, microvm_slot_unit_instance_name }
-import gunbc.live_deploy.release_locus { approval_broker_release_dir, approval_broker_tree_receipt_path_for, RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_tree_receipt_path, RevisionBoundAtEmission }
 import gunbc.auth.approval_broker_cutover { observe_broker_tree_receipt, TreeReceiptObserved, TreeReceiptMalformed, TreeReceiptUnreadable }
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance, WorkspaceCommissioningRecordAbsent, WorkspaceCommissioningRecordRead, WorkspaceCommissioningCommitted, WorkspaceCommissioningPrepared, WorkspaceCommissioningRecordUnreadable }
@@ -85,7 +85,7 @@ fn workspace_commissioning_candidate_slot(slot: RunnerSlotIdentity, revision: Co
     HostKernelCapabilitySatisfied => workspace_commissioning_capable_candidate_slot(slot: slot, revision: revision)
     HostKernelDependencyRefused { reason } => WorkspaceCommissioningFleetRefused { reason: reason }
     HostKernelDependencyPlanned { plan } => {
-      let tree = Filesystem.Read(path: approval_broker_tree_receipt_path_for(root: microvm_controller_root,
+      let tree = Filesystem.Read(path: release_locus_tree_receipt_path(root: microvm_controller_root,
         revision: RevisionBoundAtEmission { revision: revision }))
       match observe_broker_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
         TreeReceiptObserved { revision: actual, installed_digest: _ } => if actual == revision {
@@ -99,12 +99,12 @@ fn workspace_commissioning_candidate_slot(slot: RunnerSlotIdentity, revision: Co
 }
 
 fn workspace_commissioning_capable_candidate_slot(slot: RunnerSlotIdentity, revision: CommitSha) -> WorkspaceCommissioningFleetObservation {
-  let installed = approval_broker_release_dir(root: microvm_controller_root, revision: RevisionBoundAtEmission { revision: revision })
+  let installed = release_locus_dir(root: microvm_controller_root, revision: RevisionBoundAtEmission { revision: revision })
   match bind_slot_host(slot: slot) {
     MicrovmHostBound { spec: _, host: _ } => match resolve_network_subject(slot: slot) {
       NetworkSubjectResolved { subject } => match workspace_observe_initial_sanitation(subject: subject) {
         WorkspaceInitialSanitationReadback { observation } => {
-          let tree = Filesystem.Read(path: approval_broker_tree_receipt_path_for(root: microvm_controller_root,
+          let tree = Filesystem.Read(path: release_locus_tree_receipt_path(root: microvm_controller_root,
             revision: RevisionBoundAtEmission { revision: revision }))
           match observe_broker_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
             TreeReceiptObserved { revision: actual, installed_digest } => if (actual as String) != (revision as String) {
@@ -146,7 +146,7 @@ fn workspace_commissioning_capable_candidate_slot(slot: RunnerSlotIdentity, revi
 fn workspace_commissioning_basis_observe(provenance: WorkspaceCommissioningProvenance) -> WorkspaceCommissioningFleetObservation {
   let slot = provenance.slot
   let key = runner_slot_instance_name(slot: slot)
-  let installed = approval_broker_release_dir(root: microvm_controller_root,
+  let installed = release_locus_dir(root: microvm_controller_root,
     revision: RevisionBoundAtEmission { revision: provenance.source_revision as CommitSha }) as NonEmptyStr
   match bind_slot_host(slot: slot) {
     MicrovmHostBound { spec, host: _ } => match workspace_commissioning_runtime_refusal(provenance: provenance,
@@ -234,7 +234,10 @@ fn workspace_commissioning_basis_observe(provenance: WorkspaceCommissioningProve
 // Only the adapter that just captured the exact installed privileged observer may decode its
 // response into a basis. This is not a fixture/text constructor exposed to planner consumers.
 fn workspace_commissioning_basis_from_privileged(text: String, host: NonEmptyStr, revision: CommitSha) -> WorkspaceCommissioningFleetObservation
-  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_dispatch_transport", decl_name: "workspace_dispatch_observe")]
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_commissioning_dispatch_transport", decl_name: "workspace_dispatch_observe"),
+    decl_ref(module_path: "test.claim.workspace_commissioning_plan_credential_witness", decl_name: "witness_privileged_basis"),
+  ]
 {
   if starts_with(s: text, prefix: host_kernel_dependency_row_prefix) {
     let slots = filter(workspace_execution_slot_identities(), slot => slot.host == host)
@@ -252,7 +255,7 @@ fn workspace_commissioning_basis_from_privileged(text: String, host: NonEmptyStr
     Present { value: credential } => match workspace_commissioning_directive_from_text(text: credential) {
       WorkspaceCommissioningDirectiveReady { provenance } => match workspace_executor_plan_prestate(plan_body: text) {
         Present { value: prestate } => {
-          let installed = approval_broker_release_dir(root: microvm_controller_root, revision: RevisionBoundAtEmission { revision: revision }) as NonEmptyStr
+          let installed = release_locus_dir(root: microvm_controller_root, revision: RevisionBoundAtEmission { revision: revision }) as NonEmptyStr
           let basis = WorkspaceCommissioningFleetBasis { provenance: provenance, release_dir: installed, prestate: prestate as NonEmptyStr,
             already_committed: text.ends_with(suffix: "commissioning-already-committed:true") }
           if provenance.slot.host != host || (provenance.source_revision as String) != (revision as String)

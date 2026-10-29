@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.predicate_vacuously_true_on_an_empty_domain
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data predicate_vacuously_true_on_an_empty_domain: RecurringFailureMode = RecurringFailureMode {
   identity: "predicate_vacuously_true_on_an_empty_domain" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a predicate vacuously true on an empty domain** (a universally-quantified check -- `all`, `every`, `iter().all(..)`, a for-loop that only ever narrows a flag, a SQL NOT EXISTS -- is satisfied by the IDENTITY ELEMENT when its domain is empty, so the check answers TRUE about a population it never examined.",

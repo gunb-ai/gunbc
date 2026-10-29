@@ -1,7 +1,7 @@
 module gunbc.machine_intake.host_capture_envelope
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.nat { Nat, nat_to_decimal_string }
 import std.measure {
   ByteSize,
   Gibibyte,
@@ -15,10 +15,12 @@ import std.measure {
   mebibyte_count,
   mebibyte_to_byte_size,
 }
-import std.optional { Present }
+import std.optional { Present, Absent }
+import extdeps.uuid { Uuid, uuid_of }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
+import std.integer { int_to_decimal_string }
 
 // ONE GRAMMAR, READ IN BOTH DIRECTIONS (DESIGN §4). The census program that runs on the host EMITS
 // this envelope and the boot run's verdict PARSES it. Before this module the two sides were spelled
@@ -177,10 +179,10 @@ data host_capture_workload_preflight_refused: String = "workload-preflight=refus
 fn host_capture_workload_command(workload: HostCaptureWorkloadShape) -> NonEmptyStr {
   let dir = host_capture_workload_chunk_dir
   let paths = host_capture_workload_chunk_paths(workload: workload)
-  let want = host_capture_workload_chunk_count(workload: workload) as String
-  let bs = concat(mebibyte_count(m: host_capture_workload_dd_block) as String, "M")
-  let dd_count = host_capture_workload_dd_count(workload: workload) as String
-  let need = byte_size_count(b: host_capture_workload_total_bytes(workload: workload)) as String
+  let want = int_to_decimal_string(value: host_capture_workload_chunk_count(workload: workload))
+  let bs = concat(nat_to_decimal_string(value: mebibyte_count(m: host_capture_workload_dd_block)), "M")
+  let dd_count = nat_to_decimal_string(value: host_capture_workload_dd_count(workload: workload))
+  let need = nat_to_decimal_string(value: byte_size_count(b: host_capture_workload_total_bytes(workload: workload)))
   concat(
     "need=", need, "; echo ", host_capture_workload_bytes_token, "$need; ",
     "mkdir -p ", dir, " || exit 1; ",
@@ -303,7 +305,7 @@ fn host_capture_program(
 
 type HostCaptureRunIdentity
   = HistoricalAttemptOrdinal { ordinal: NonEmptyStr }
-  | KernelBootId { boot_id: NonEmptyStr }
+  | KernelBootId { boot_id: Uuid }
 
 fn host_capture_run_identity_value(run: HostCaptureRunIdentity) -> String {
   match run {
@@ -318,7 +320,10 @@ fn host_capture_run_identity_of(field: String) -> HostCaptureRunIdentity? {
     if rest.length() == 0 { none } else { Present { value: HistoricalAttemptOrdinal { ordinal: rest as NonEmptyStr } } }
   } else if starts_with(s: field, prefix: host_capture_run_token) {
     let rest = substring(s: field, start: host_capture_run_token.length(), end: field.length())
-    if rest.length() == 0 { none } else { Present { value: KernelBootId { boot_id: rest as NonEmptyStr } } }
+    match uuid_of(text: rest) {
+      Absent => none
+      Present { value: u } => Present { value: KernelBootId { boot_id: u } }
+    }
   } else {
     none
   }
@@ -330,37 +335,55 @@ type HostCaptureMarker {
   kind: HostCaptureEnvelopeMarker
 }
 
+// A line is NOT A MARKER, a MARKER, or a RECOGNIZED-BUT-MALFORMED marker: it carries the envelope tag, a
+// machine and a begin/end word but a run field no identity form reads (a boot id that is no Uuid). The third
+// is not ordinary text: appending it to the open capture would let a later END of the first run bind the
+// sections that follow it, so the scan treats a malformed begin inside an open envelope as a restart.
+type HostCaptureMarkerRead
+  = NotAMarker
+  | MalformedMarker { machine: NonEmptyStr, kind: HostCaptureEnvelopeMarker }
+  | ReadMarker { marker: HostCaptureMarker }
+
 // A marker line is `=====GUNBC-HOST-CAPTURE <machine> <run-field> <begin|end> <instant>=====`. Every
 // field is required: a line missing the run field is not a marker, because a marker with no run
 // identity is precisely what would let two runs be joined.
-fn host_capture_marker_of(line: String) -> HostCaptureMarker? {
+fn host_capture_marker_of(line: String) -> HostCaptureMarkerRead {
   if string_contains(s: line, pattern: concat(host_capture_envelope_rule, host_capture_envelope_tag as String, " ")) == false {
-    none
+    NotAMarker
   } else {
     match get(xs: split(s: line, delimiter: concat(host_capture_envelope_tag as String, " ")), index: 1) {
-      Absent => none
+      Absent => NotAMarker
       Present { value: after_tag } => {
         let fields = split(s: after_tag, delimiter: " ")
         match get(xs: fields, index: 0) {
-          Absent => none
+          Absent => NotAMarker
           Present { value: machine } =>
             match get(xs: fields, index: 1) {
-              Absent => none
+              Absent => NotAMarker
               Present { value: run_field } =>
                 match get(xs: fields, index: 2) {
-                  Absent => none
+                  Absent => NotAMarker
                   Present { value: word } =>
                     match host_capture_run_identity_of(field: run_field) {
-                      Absent => none
+                      Absent =>
+                        if machine.length() == 0 {
+                          NotAMarker
+                        } else if word == host_capture_marker_word(marker: HostCaptureBegin) {
+                          MalformedMarker { machine: machine as NonEmptyStr, kind: HostCaptureBegin }
+                        } else if word == host_capture_marker_word(marker: HostCaptureEnd) {
+                          MalformedMarker { machine: machine as NonEmptyStr, kind: HostCaptureEnd }
+                        } else {
+                          NotAMarker
+                        }
                       Present { value: run } =>
                         if machine.length() == 0 {
-                          none
+                          NotAMarker
                         } else if word == host_capture_marker_word(marker: HostCaptureBegin) {
-                          Present { value: HostCaptureMarker { machine: machine as NonEmptyStr, run: run, kind: HostCaptureBegin } }
+                          ReadMarker { marker: HostCaptureMarker { machine: machine as NonEmptyStr, run: run, kind: HostCaptureBegin } }
                         } else if word == host_capture_marker_word(marker: HostCaptureEnd) {
-                          Present { value: HostCaptureMarker { machine: machine as NonEmptyStr, run: run, kind: HostCaptureEnd } }
+                          ReadMarker { marker: HostCaptureMarker { machine: machine as NonEmptyStr, run: run, kind: HostCaptureEnd } }
                         } else {
-                          none
+                          NotAMarker
                         }
                     }
                 }
@@ -427,7 +450,7 @@ type HostCaptureScan {
   closed: Bool
   restarted: Bool
   machine: NonEmptyStr
-  run: HostCaptureRunIdentity
+  run: HostCaptureRunIdentity?
   body: List<String>
 }
 
@@ -444,19 +467,25 @@ fn host_capture_scan_line(acc: HostCaptureScan, line: String, machine: NonEmptyS
     acc
   } else {
     match host_capture_marker_of(line: line) {
-      Absent => if acc.begun { HostCaptureScan { begun: true, closed: false, restarted: false, machine: acc.machine, run: acc.run, body: append(acc.body, items: [line]) } } else { acc }
-      Present { value: m } =>
+      NotAMarker => if acc.begun { HostCaptureScan { begun: true, closed: false, restarted: false, machine: acc.machine, run: acc.run, body: append(acc.body, items: [line]) } } else { acc }
+      MalformedMarker { machine: mm, kind: k } =>
+        match k {
+          HostCaptureBegin =>
+            if (mm as String) != (machine as String) || acc.begun == false { acc } else { HostCaptureScan { begun: true, closed: false, restarted: true, machine: acc.machine, run: acc.run, body: acc.body } }
+          HostCaptureEnd => acc
+        }
+      ReadMarker { marker: m } =>
         match m.kind {
           HostCaptureBegin =>
             if (m.machine as String) != (machine as String) {
               acc
             } else if acc.begun == false {
-              HostCaptureScan { begun: true, closed: false, restarted: false, machine: m.machine, run: m.run, body: [] }
+              HostCaptureScan { begun: true, closed: false, restarted: false, machine: m.machine, run: Present { value: m.run }, body: [] }
             } else {
               HostCaptureScan { begun: true, closed: false, restarted: true, machine: acc.machine, run: acc.run, body: acc.body }
             }
           HostCaptureEnd =>
-            if acc.begun && host_capture_marker_matches(a: m, machine: acc.machine, run: acc.run) {
+            if acc.begun && (match acc.run { Present { value: r } => host_capture_marker_matches(a: m, machine: acc.machine, run: r), Absent => false }) {
               HostCaptureScan { begun: true, closed: true, restarted: false, machine: acc.machine, run: acc.run, body: acc.body }
             } else {
               acc
@@ -567,16 +596,19 @@ fn host_capture_bind_transcript(capture: String, machine: NonEmptyStr) -> HostCa
 fn host_capture_bind_text(capture: HostCaptureText, machine: NonEmptyStr) -> HostCaptureBinding {
   let scan = fold(
     host_capture_lines(capture: capture),
-    init: HostCaptureScan { begun: false, closed: false, restarted: false, machine: machine, run: KernelBootId { boot_id: "unbound" }, body: [] },
+    init: HostCaptureScan { begun: false, closed: false, restarted: false, machine: machine, run: none, body: [] },
     f: (acc, line) => host_capture_scan_line(acc: acc, line: line, machine: machine),
   )
+  match scan.run {
+    Absent => HostCaptureNotBegun
+    Present { value: scan_run } =>
   if scan.begun == false {
     HostCaptureNotBegun
   } else if scan.restarted {
     HostCaptureUnbound {
       reason: concat(
         "a second begin marker for ", machine as String, " opened while the envelope for run ",
-        host_capture_run_identity_value(run: scan.run), " was still open; which run the sections belong to is not a fact",
+        host_capture_run_identity_value(run: scan_run), " was still open; which run the sections belong to is not a fact",
       )
     }
   } else {
@@ -592,12 +624,13 @@ fn host_capture_bind_text(capture: HostCaptureText, machine: NonEmptyStr) -> Hos
     } else {
       let envelope = BoundHostCaptureEnvelope {
         machine: scan.machine,
-        run: scan.run,
+        run: scan_run,
         sections: host_capture_close_open_section(acc: sections),
       }
       if scan.closed { HostCaptureBound { envelope: envelope } } else { HostCaptureOpen { envelope: envelope } }
     }
   }
+}
 }
 
 // ── typed section readings, for a verdict that must say WHICH observation refused ─────────────

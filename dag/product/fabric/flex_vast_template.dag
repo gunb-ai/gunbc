@@ -1,0 +1,133 @@
+module product.fabric.flex_vast_template
+
+import std.types { String, NonEmptyStr, Bool, Int, List, Port, list_length }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import std.measure { ByteSize, Bandwidth, gibibyte_count, gibibyte_ceiling }
+import extdeps.cloud.vast_ai { VastAiTemplateRow }
+import product.fabric.flex_vast_shadow { flex_serving_recipe, flex_flash_next_vast_filters }
+import product.fabric.flex_serving_image { flex_lil_serving_image }
+
+// THE FLEX VAST TEMPLATE AS A DECLARED FACT, secret-free by construction. A template is the host's
+// image, disk, runtype and the PORT its server listens on; the spec has no field that can hold any other
+// env, so a credential env is unwritable here. The per-rental server password is not a template fact: it
+// is drawn per create (product.fabric.flex_vast_loop mint_flex_pool_password) and sent in the create
+// request's env, which Vast merges over the template's by key (docs.vast.ai create-instance).
+type FlexTemplateSpec {
+  name: NonEmptyStr
+  image: NonEmptyStr
+  tag: NonEmptyStr
+  runtype: NonEmptyStr
+  disk: ByteSize
+  port: Port
+  shm: ByteSize
+  onstart: String
+  ssh_direct: Bool
+  jup_direct: Bool
+  use_jupyter_lab: Bool
+  min_cuda_max_good: Nat
+  min_cpu_ram: ByteSize
+  min_gpu_ram: ByteSize
+  min_inet_down: Bandwidth
+  verified_only: Bool
+}
+
+// The env string Vast stores, in its Docker-flag format: the published port, the container's shared
+// memory and IPC, and PORT. Nothing else.
+fn flex_template_env(spec: FlexTemplateSpec) -> String {
+  join(["-p ", to_string(spec.port as Int), ":", to_string(spec.port as Int), " --shm-size ", to_string(gibibyte_count(g: gibibyte_ceiling(b: spec.shm)) as Int), "g --ipc host -e PORT=", to_string(spec.port as Int)], "")
+}
+
+// The env NAMES a flex template must never carry: the four credential names of the retired template. Names only; the
+// values never enter this repository. R2 is dropped entirely (no replacement); POOL_API_KEY is
+// per-rental. Used on a READBACK, so a template that carries one is refused whoever created it.
+data flex_template_forbidden_env_names: List<String> = [
+  "R2_ENDPOINT",
+  "R2_ACCESS_KEY_ID",
+  "R2_SECRET_ACCESS_KEY",
+  "POOL_API_KEY",
+]
+
+fn flex_template_env_forbidden_name(env: String) -> String? {
+  first_where(flex_template_forbidden_env_names, name => env.contains(name))
+}
+
+// The retired template. It is never edited, deleted or adopted by the ensure: a row with this hash is
+// refused as the target even when its name matches, and its hash must still read back after a run.
+data flex_template_retired_hash: NonEmptyStr = "c6793d31e3204da102145c4c331e42ae" as NonEmptyStr
+
+type FlexTemplateDecision
+  = FlexTemplateNoop { hash: String }
+  | FlexTemplateApply
+  | FlexTemplateRefuse { cause: String }
+
+// Noop/Apply/Refuse over the observed rows (all named by `name`), caller-supplied; this fold neither
+// lists nor creates. A matching row is Noop only if its image and env equal the spec's; a name match
+// that differs is Refuse, never an in-place edit, because a template's hash changes with its content
+// and others depend on hashes.
+fn flex_template_decide(spec: FlexTemplateSpec, named: List<VastAiTemplateRow>) -> FlexTemplateDecision {
+  if list_length(named) > 1 {
+    FlexTemplateRefuse { cause: "more than one template carries the declared name" }
+  } else {
+    match first_where(named, r => true) {
+      Absent => FlexTemplateApply
+      Present { value: row } => flex_template_judge_row(spec: spec, row: row)
+    }
+  }
+}
+
+fn flex_template_judge_row(spec: FlexTemplateSpec, row: VastAiTemplateRow) -> FlexTemplateDecision {
+  match row.hash_id {
+    Absent => FlexTemplateRefuse { cause: "the template row has no hash_id" }
+    Present { value: h } =>
+      if h == (flex_template_retired_hash as String) {
+        FlexTemplateRefuse { cause: "the declared name resolves to the retired template, which is never adopted" }
+      } else {
+        match row.env {
+          Absent => FlexTemplateRefuse { cause: "the template row's env was not read" }
+          Present { value: env } =>
+            match flex_template_env_forbidden_name(env: env) {
+              Present { value: n } => FlexTemplateRefuse { cause: concat("the template carries a forbidden env name ", n) }
+              Absent =>
+                if (row.image == (spec.image as String)) && (env == flex_template_env(spec: spec)) {
+                  FlexTemplateNoop { hash: h }
+                } else {
+                  FlexTemplateRefuse { cause: "a template of the declared name exists with different content" }
+                }
+            }
+        }
+      }
+  }
+}
+
+
+// The disk and the host-filter thresholds are NOT restated here: they derive from the recipe
+// (flex_serving_recipe.disk) and the one filter row (flex_flash_next_vast_filters), so the offer screen
+// and the ensured template cannot drift apart.
+// THE NEW TEMPLATE: the retired template's non-secret fields, read live from srv1 on 2026-10-18
+// (operator-account read), minus the four credential envs. R2 is dropped with no replacement (the model
+// comes from Hugging Face, so R2 was unused). The image digest is carried in the tag field. The serving
+// port is 18000: 8000 is the image's Caddy portal, so the recipe's published_tcp_port (8000) is not this
+// realization's port (raised with L1, which owns the recipe).
+// THE SUPPLIER-AGNOSTIC HALF (image repository and digest, port, shm, onstart) is read from
+// product.fabric.flex_serving_image flex_lil_serving_image, which the EC2 launch template reads too; Vast
+// stores the digest in its tag field, so the image field here is the repository plus "@sha256".
+data flex_vast_template_spec: FlexTemplateSpec = FlexTemplateSpec {
+  name: "flex lil v3 (no credential env)" as NonEmptyStr,
+  image: join([flex_lil_serving_image.repository as String, "@sha256"], "") as NonEmptyStr,
+  tag: flex_lil_serving_image.digest_sha256,
+  runtype: "ssh" as NonEmptyStr,
+  disk: flex_serving_recipe.disk,
+  port: flex_lil_serving_image.port,
+  shm: flex_lil_serving_image.shm,
+  onstart: flex_lil_serving_image.onstart,
+  ssh_direct: true,
+  jup_direct: true,
+  use_jupyter_lab: false,
+  min_cuda_max_good: flex_flash_next_vast_filters.cuda_max_good_min,
+  min_cpu_ram: flex_flash_next_vast_filters.cpu_ram_min,
+  min_gpu_ram: flex_flash_next_vast_filters.gpu_ram_min,
+  min_inet_down: flex_flash_next_vast_filters.inet_down_min,
+  verified_only: flex_flash_next_vast_filters.verified,
+}

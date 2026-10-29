@@ -30,7 +30,14 @@ import std.durable_compare_and_set {
   CasGenerationPublicationRefused,
   CasGenerationSpaceExhausted,
 }
+import std.durable_transfer {
+  LocalCommitStanding,
+  LocallyCommitted,
+  LocalCommitFailed,
+  LocalCommitNotAttempted,
+}
 import gunbc.fleet_observation.collector_ownership { CollectorSessionId }
+import std.integer { int_to_decimal_string }
 
 // BOUNDED DURABLE CAPTURE: the bytes, their identity, and what it takes to say they are kept.
 // Ownership is gunbc.fleet_observation.collector_ownership; the published fact is
@@ -285,16 +292,6 @@ type DurableCommitProof sole_constructor {
   committed_content: ContentHash
 }
 
-type LocalCommitStanding
-  = LocallyCommitted { proof: DurableCommitProof }
-  | LocalCommitFailed { cause: CapturePersistenceRefusal }
-  | LocalCommitNotAttempted
-
-type DownstreamAcceptanceStanding
-  = DownstreamAccepted { accepted_content: ContentHash }
-  | DownstreamRejected { cause: CapturePersistenceRefusal }
-  | DownstreamNotOffered
-
 // FILE EXISTENCE IS NOT A PERSISTENCE PROOF, and this fold is where that law is enforced rather
 // than asserted. The ONLY route to LocallyCommitted is a CasCommitted outcome from the corpus's
 // durable compare-and-set authority: a path, a directory listing, or a successful write() return
@@ -303,7 +300,7 @@ type DownstreamAcceptanceStanding
 // Every CAS refusal maps to a DISTINCT persistence refusal rather than one flat failure, because a
 // missing referenced object is re-derivable, a malformed head is repaired by hand, and a refused
 // read is retried -- three remedies a caller cannot choose between from prose.
-fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding {
+fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> {
   match outcome {
     CasCommitted { committed: committed } =>
       LocallyCommitted { proof: DurableCommitProof { committed_content: committed.content } }
@@ -327,7 +324,7 @@ fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding {
             CasUnreadableObservationBoundExceeded { bound: bound } =>
               LocalCommitFailed {
                 cause: ChunkCommitRefused {
-                  detail: join(["slot observation exceeded its probe bound of ", bound as String, " generations"], "") as NonEmptyStr
+                  detail: join(["slot observation exceeded its probe bound of ", int_to_decimal_string(value: bound), " generations"], "") as NonEmptyStr
                 }
               }
           }
@@ -354,9 +351,9 @@ type CommitBinding
   = CommitAttestsThisChunk
   | CommitAttestsOtherPayload { attested: ContentHash, chunk_payload: ContentHash }
   | CommitBindingIncomparable { attested: ContentHash, chunk_payload: ContentHash }
-  | CommitNoReceipt { standing: LocalCommitStanding }
+  | CommitNoReceipt { standing: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> }
 
-fn commit_attests_chunk(standing: LocalCommitStanding, chunk: CaptureChunk) -> CommitBinding {
+fn commit_attests_chunk(standing: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>, chunk: CaptureChunk) -> CommitBinding {
   match standing {
     LocallyCommitted { proof: proof } =>
       match compare_content_hash(left: proof.committed_content, right: chunk.payload_digest) {
@@ -454,7 +451,7 @@ type CommittedChunk sole_constructor {
   committed_content: ContentHash
 }
 
-fn committed_chunk(chunk: CaptureChunk, standing: LocalCommitStanding) -> CommittedChunk? {
+fn committed_chunk(chunk: CaptureChunk, standing: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>) -> CommittedChunk? {
   match commit_attests_chunk(standing: standing, chunk: chunk) {
     CommitAttestsThisChunk =>
       match standing {

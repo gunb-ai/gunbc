@@ -1,0 +1,147 @@
+module product.fabric.flex_vast_template_control
+
+import std.integer { int_to_decimal_string }
+import std.types { String, NonEmptyStr, Bool, Int, List, Secret, list_length }
+import std.optional { Present, Absent }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import product.fabric.flex_vast_loop { flex_vast_disk_gigabytes }
+import extdeps.cloud.vast_ai
+import extdeps.cloud.vast_ai { vast_ai_wire_mb, vast_ai_wire_mbps, VastAiTemplateRow, VastAiTemplateList, VastAiTemplateCreateResult }
+import gunbc.fleet.flex_pass_run { flex_vast_key, FlexVastKeyReady, FlexVastKeyRefused }
+import product.fabric.flex_vast_template {
+  FlexTemplateSpec, flex_vast_template_spec, flex_template_env, flex_template_retired_hash,
+  FlexTemplateDecision, FlexTemplateNoop, FlexTemplateApply, FlexTemplateRefuse,
+  flex_template_decide, flex_template_env_forbidden_name,
+}
+
+// THE ENSURE FOR THE SECRET-FREE FLEX TEMPLATE, run by the fleet-converge flex_template_ensure mode, the
+// Vast key read from Secret Manager (gunbc.flex_vast_credential flex_vast_api_key_secret_ref): observe by name, decide Noop/Apply/Refuse
+// (product.fabric.flex_vast_template flex_template_decide), create on Apply, then read back by name
+// and refuse unless the readback is the declared content with no credential env name. The retired
+// template is only READ (by its hash) and its presence recorded; nothing here can edit or delete it.
+// The receipt carries ids, names and hashes only.
+
+data flex_vast_template_receipt_path: String = "target/flex-vast-template-receipt.txt"
+
+fn flex_template_name_filter(name: NonEmptyStr) -> String {
+  join(["\{\"name\":\{\"eq\":\"", name as String, "\"}}"], "")
+}
+
+fn flex_template_hash_filter(hash: NonEmptyStr) -> String {
+  join(["\{\"hash_id\":\{\"eq\":\"", hash as String, "\"}}"], "")
+}
+
+type FlexTemplateListing
+  = FlexTemplateListed { rows: List<VastAiTemplateRow> }
+  | FlexTemplateListRefused { cause: String }
+
+fn flex_template_list(api_key: Secret, filter: String) -> FlexTemplateListing uses net: Network {
+  match vast_ai.Templates.Search(api_key: api_key, select_filters: filter, select_cols: "[\"*\"]") {
+    RestAnswered { answer: a } => FlexTemplateListed { rows: a.templates }
+    RestRefused { refusal: RestStatusRefused { status: status, body: _ } } =>
+      FlexTemplateListRefused { cause: concat("the template list answered status ", status as String) }
+    RestRefused { refusal: RestTransportRefused { cause: _ } } =>
+      FlexTemplateListRefused { cause: "the template list was not reached" }
+    RestRefused { refusal: RestBodyUndecodable { status: _, cause: _ } } =>
+      FlexTemplateListRefused { cause: "the template list answer did not decode" }
+  }
+}
+
+fn flex_template_create(api_key: Secret, spec: FlexTemplateSpec) -> String uses net: Network {
+  match vast_ai.Templates.Create(
+    api_key: api_key,
+    name: spec.name,
+    image: spec.image,
+    tag: spec.tag,
+    env: flex_template_env(spec: spec),
+    runtype: spec.runtype as String,
+    recommended_disk_space: flex_vast_disk_gigabytes(disk: spec.disk),
+    private: true,
+    onstart: spec.onstart,
+    ssh_direct: spec.ssh_direct,
+    jup_direct: spec.jup_direct,
+    use_jupyter_lab: spec.use_jupyter_lab,
+    min_cuda_max_good: spec.min_cuda_max_good as Int,
+    min_cpu_ram_mb: vast_ai_wire_mb(b: spec.min_cpu_ram),
+    min_gpu_ram_mb: vast_ai_wire_mb(b: spec.min_gpu_ram),
+    min_inet_down_mbps: vast_ai_wire_mbps(b: spec.min_inet_down),
+    verified_only: spec.verified_only,
+  ) {
+    RestAnswered { answer: _ } => "created"
+    RestRefused { refusal: _ } => "the create was refused or its outcome is unknown; the readback decides"
+  }
+}
+
+// THE TYPED VERDICT OF A RUN: ensured only when the readback by name decides Noop (the template exists
+// with exactly the declared content and no credential env) AND the retired hash still reads back as
+// exactly one row. The exit and the receipt text are both derived from it; no text is searched.
+type FlexTemplateOutcome = FlexTemplateEnsured { hash: String } | FlexTemplateNotEnsured { reason: String }
+
+fn flex_template_outcome(spec: FlexTemplateSpec, after: FlexTemplateListing, retired: FlexTemplateListing) -> FlexTemplateOutcome {
+  match after {
+    FlexTemplateListRefused { cause: c } => FlexTemplateNotEnsured { reason: concat("READBACK FAILED: ", c) }
+    FlexTemplateListed { rows: rs } =>
+      match flex_template_decide(spec: spec, named: rs) {
+        FlexTemplateApply => FlexTemplateNotEnsured { reason: "READBACK FAILED: the template is not listed after the ensure" }
+        FlexTemplateRefuse { cause: c } => FlexTemplateNotEnsured { reason: concat("READBACK REFUSED: ", c) }
+        FlexTemplateNoop { hash: h } =>
+          match retired {
+            FlexTemplateListRefused { cause: c } => FlexTemplateNotEnsured { reason: concat("retired: UNREAD ", c) }
+            FlexTemplateListed { rows: rr } =>
+              if list_length(rr) == 1 {
+                FlexTemplateEnsured { hash: h }
+              } else {
+                FlexTemplateNotEnsured { reason: concat("retired: rows=", int_to_decimal_string(value: list_length(rr))) }
+              }
+          }
+      }
+  }
+}
+
+fn flex_template_outcome_line(outcome: FlexTemplateOutcome) -> String {
+  match outcome {
+    FlexTemplateEnsured { hash: h } => concat("OK hash=", h)
+    FlexTemplateNotEnsured { reason: r } => r
+  }
+}
+
+fn flex_template_run(api_key: Secret) -> ProcessExit uses net: Network {
+  let spec = flex_vast_template_spec
+  let first = flex_template_list(api_key: api_key, filter: flex_template_name_filter(name: spec.name))
+  match first {
+    FlexTemplateListRefused { cause: c } => exit_failure(reason: c)
+    FlexTemplateListed { rows: rows } => {
+      let decision = flex_template_decide(spec: spec, named: rows)
+      let acted = match decision {
+        FlexTemplateRefuse { cause: c } => c
+        FlexTemplateNoop { hash: _ } => "noop"
+        FlexTemplateApply => flex_template_create(api_key: api_key, spec: spec)
+      }
+      let after = flex_template_list(api_key: api_key, filter: flex_template_name_filter(name: spec.name))
+      let retired = flex_template_list(api_key: api_key, filter: flex_template_hash_filter(hash: flex_template_retired_hash))
+      let outcome = flex_template_outcome(spec: spec, after: after, retired: retired)
+      let text = join([spec.name as String, "act=", acted, flex_template_outcome_line(outcome: outcome)], "\n")
+      let written = Filesystem.Write(path: flex_vast_template_receipt_path, content: text)
+      if !written.success {
+        exit_failure(reason: concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error))
+      } else {
+        match outcome {
+          FlexTemplateEnsured { hash: _ } => ExitSuccess
+          FlexTemplateNotEnsured { reason: _ } => exit_failure(reason: text)
+        }
+      }
+    }
+  }
+}
+
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/product/fabric/flex_vast_template_control.dag --function ensure`
+// The key is the custody read under the run's fleet identity (gunbc.fleet.flex_pass_run flex_vast_key).
+fn ensure() -> ProcessExit uses net: Network {
+  match flex_vast_key() {
+    FlexVastKeyRefused { cause: cause } => exit_failure(reason: cause as String)
+    FlexVastKeyReady { key: key, resolved_version: _ } => flex_template_run(api_key: key)
+  }
+}

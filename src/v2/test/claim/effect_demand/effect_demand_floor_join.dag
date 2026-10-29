@@ -127,12 +127,12 @@ test fn floor_join_witness_standing_is_the_floors_own_rule() -> Bool {
 }
 
 test fn floor_join_witness_cost_debt_arm_is_reached_from_the_policy_roster() -> Bool {
-  let nodes = Cons { head: probe_node(module: "test.claim.belt_tick_receipt_home_witness", path: "fx/belt_test.dag"), tail: probe_nodes }
+  let nodes = Cons { head: probe_node(module: "test.claim.fleet.fleet_converge_plan_witness", path: "fx/belt_test.dag"), tail: probe_nodes }
   let edges = Cons { head: probe_edge(path: "fx/belt_test.dag", target: "v2.std.probe_seam"), tail: probe_edges }
-  let rows = [probe_row(entry: "fx/belt_test.dag", function: "the_belt_member_bootstraps_its_own_receipts_directory")]
+  let rows = [probe_row(entry: "fx/belt_test.dag", function: "lease_guard_sudoes_only_granted_binaries")]
   probe_disposition_of(
     join: effect_demand_floor_join(discovered: rows, nodes: nodes, edges: edges, seam_modules: probe_seam_modules, owned_data_records_supplied: 0),
-    identity: "test.claim.belt_tick_receipt_home_witness.the_belt_member_bootstraps_its_own_receipts_directory",
+    identity: "test.claim.fleet.fleet_converge_plan_witness.lease_guard_sudoes_only_granted_binaries",
     expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, PlannedAsReachConsumer => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => true, DeclinedNoCiWetLane { pattern } => false, DeclinedChangedWitnessOutsideDiscovery { module_path } => false } }
   )
 }

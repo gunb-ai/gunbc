@@ -1,0 +1,218 @@
+module gunbc.review_sheet_federation
+
+import std.types { String, NonEmptyStr, List, Map }
+import std.optional { Present }
+import std.human_intervention { HumanIntervention, HumanInterventionIdentity, FleetOnce, BreakGlassOnly, NoDischargeSiteModeled }
+import gunbc.actions_run_binding { ActionsVariableRead, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_read }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
+import gunbc.auth.oidc_claim_pins {
+  OidcClaimPin, oidc_equals, oidc_equals_any, claim_pins_attribute_condition,
+  fleet_converge_workflow_ref_at_main, workflow_dispatch_event_name,
+}
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolDelegation }
+import gunbc.repository { gunbc_repository_numeric_identity }
+import gunbc.repo.repo_identity { gunbc_default_branch_name }
+import gunbc.gcp.gcp_estate_observation {
+  EstateIamBindingCell, EstateProject, EstateEnabledService, EstateServiceAccount, EstateWifPool, EstateWifProvider,
+  review_sheet_writer_sa_email, review_sheet_converge_sa_email, review_sheet_writer_delegation_cell, gunbai_sheets_project_id,
+}
+import extdeps.google.sheets { sheets_spreadsheets_oauth_scope, sheets_token_env }
+import extdeps.google.drive { drive_full_oauth_scope }
+
+// ── THE REVIEW SHEETS CONVERGE WITH NO HUMAN IN THE LOOP, AS A FEDERATED FLEET-CONVERGE MODE ──────
+// The converge used to read a token a human minted for review-sheet-writer and exported by hand.
+// gunbc.auth.privileged_effect_census derives FederatedScopedGrant for a recurring automated effect,
+// so the run gets its own identity instead: GitHub OIDC -> this dedicated pool -> the workload account
+// review-sheet-converge (in the fleet project, where iam-converge already converges pools, accounts
+// and impersonation) -> a token for review-sheet-writer, minted by delegation.
+//
+// WHY TWO ACCOUNTS AND NOT A POOL TRUSTED BY THE WRITER DIRECTLY. The writer lives in gunbai-sheets
+// (gunbc.gcp.gcp_estate_observation sheets_calling_home refuses the secrets project as the Sheets API
+// surface), and every role iam-converge and iam-bootstrap hold is a PROJECT custom role of the fleet
+// project, which cannot be bound on a resource in another project. So no approval-gated route can
+// write the writer's policy, and the one cell it needs -- the workload account's tokenCreator on the
+// writer -- is a FleetOnce operator write (review_sheet_writer_token_creator_intervention), reached
+// once and read back by every run that mints. Giving iam-converge standing reach into gunbai-sheets
+// would buy repair of that one cell for a standing privilege; the operator chose the cell
+// (stern-ram-763, 2026-10-25: "Y + push").
+//
+// WHICH JOBS MAY BECOME IT. The pins are the privileged fleet-converge list (repository and owner by
+// numeric identity, the fleet-converge workflow file AT MAIN, ref == main) plus this job's environment,
+// with ONE widening: the event may be a dispatch, the daily schedule, or a push to main touching the
+// sheet sources. All three run reviewed main's workflow file at main; a pull request, a session-branch
+// dispatch or a push anywhere else presents another ref or workflow_ref and is refused by IAM itself.
+data review_sheet_converge_environment: NonEmptyStr = "review-sheet-converge"
+
+data review_sheet_converge_wif_pool_id: NonEmptyStr = "github-review-sheet-converge"
+
+data review_sheet_converge_wif_provider_id: NonEmptyStr = "github-review-sheet-oidc"
+
+data review_sheet_converge_service_account_id: NonEmptyStr = "review-sheet-converge"
+
+data review_sheet_converge_service_account: ServiceAccountEmail = review_sheet_converge_sa_email
+
+data schedule_event_name: String = "schedule"
+
+data push_event_name: String = "push"
+
+data review_sheet_converge_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository_id": "assertion.repository_id",
+  "attribute.workflow_ref": "assertion.workflow_ref"
+}
+
+fn review_sheet_converge_claim_pins() -> List<OidcClaimPin> {
+  [
+    oidc_equals(claim: "repository_id", value: to_string(gunbc_repository_numeric_identity.repository_id)),
+    oidc_equals(claim: "repository_owner_id", value: to_string(gunbc_repository_numeric_identity.owner_id)),
+    oidc_equals(claim: "workflow_ref", value: fleet_converge_workflow_ref_at_main()),
+    oidc_equals(claim: "ref", value: concat("refs/heads/", gunbc_default_branch_name)),
+    oidc_equals_any(claim: "event_name", value: workflow_dispatch_event_name, alternatives: [schedule_event_name, push_event_name]),
+    oidc_equals(claim: "environment", value: review_sheet_converge_environment as String),
+  ]
+}
+
+fn review_sheet_converge_attribute_condition() -> String {
+  claim_pins_attribute_condition(pins: review_sheet_converge_claim_pins())
+}
+
+fn review_sheet_converge_principal_set() -> String {
+  join(["principalSet://iam.googleapis.com/", wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: review_sheet_converge_wif_pool_id as String), "/*"], "")
+}
+
+fn review_sheet_converge_provider_resource() -> String {
+  wif_provider_resource(project_number: fleet_secrets_project_number, provider: WifProvider {
+    name: review_sheet_converge_wif_provider_id, pool: review_sheet_converge_wif_pool_id,
+    issuer_uri: github_wif_issuer_uri,
+    attribute_mapping: Present { value: review_sheet_converge_attribute_mapping },
+    attribute_condition: Present { value: review_sheet_converge_attribute_condition() },
+  })
+}
+
+// Desired state consumed by the shared approval-gated IAM estate plan (one bootstrap-delta tap creates
+// the pool and account, one gcp-iam-converge tap creates the provider and the pool's token-creator
+// cell on review-sheet-converge -- StandingPoolDelegation, because the account is the first delegate of
+// the chain, not the identity the run acts as). It holds no secret: the writer token is minted, never
+// stored.
+fn review_sheet_converge_dedicated_federation() -> DedicatedFederation {
+  DedicatedFederation {
+    label: "review sheet converge (writer token by delegation)",
+    pool_id: review_sheet_converge_wif_pool_id,
+    pool_display_name: "Review sheet converge (main)",
+    provider_id: review_sheet_converge_wif_provider_id,
+    attribute_mapping: review_sheet_converge_attribute_mapping,
+    attribute_condition: review_sheet_converge_attribute_condition(),
+    impersonation: StandingPoolDelegation { principal_set: review_sheet_converge_principal_set() },
+    service_account: review_sheet_converge_service_account,
+    service_account_id: review_sheet_converge_service_account_id,
+    service_account_display_name: "Review sheet converge (WIF-only, delegates to the sheet writer, no keys)",
+    service_account_member: federated_service_account_member(email: review_sheet_converge_service_account),
+    secret_grants: [],
+  }
+}
+
+// ── THE ONE CROSS-PROJECT CELL ─────────────────────────────────────────────────────────────────
+// roles/iam.serviceAccountTokenCreator for the workload account, on the writer's own policy and
+// nowhere else. Its readback is the mint: a run whose delegation is refused stops before any sheet is
+// touched (gunbc.review_sheet_converge_cli converge_drive_half_cli, through observe_writer_token), and the refusal names this command.
+// The declared cell is gunbc.gcp.gcp_estate_observation review_sheet_writer_delegation_cell; the
+// command is a projection of it, so the instruction an operator runs cannot name another role,
+// member or account than the one the estate declares.
+type DelegationCellFields
+  = DelegationCellDeclared { account: ServiceAccountEmail, role: String, member: String }
+  | DelegationCellNotABinding
+
+fn review_sheet_writer_delegation_fields() -> DelegationCellFields {
+  match review_sheet_writer_delegation_cell {
+    EstateIamBindingCell { account: a, role: r, member: m } =>
+      match m {
+        Present { value: v } => DelegationCellDeclared { account: a, role: r, member: v }
+        Absent => DelegationCellNotABinding
+      }
+    EstateProject { project_id: _, project_number: _ } => DelegationCellNotABinding
+    EstateEnabledService { project_id: _, service_id: _ } => DelegationCellNotABinding
+    EstateServiceAccount { email: _ } => DelegationCellNotABinding
+    EstateWifPool { project_number: _, pool_id: _ } => DelegationCellNotABinding
+    EstateWifProvider { project_number: _, pool_id: _, provider_id: _ } => DelegationCellNotABinding
+  }
+}
+
+fn review_sheet_writer_token_creator_command() -> String {
+  match review_sheet_writer_delegation_fields() {
+    DelegationCellDeclared { account: a, role: r, member: m } =>
+      join([
+        "gcloud iam service-accounts add-iam-policy-binding ", a as String,
+        " --project=", gunbai_sheets_project_id as String, " --member=", m, " --role=", r, " --condition=None",
+      ], "")
+    DelegationCellNotABinding =>
+      "REFUSED: gunbc.gcp.gcp_estate_observation review_sheet_writer_delegation_cell is not a binding cell with a member, so no command can be derived from it"
+  }
+}
+
+fn review_sheet_writer_token_creator_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: "review-sheet-writer-token-creator" as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: review_sheet_writer_sa_email as String,
+    instruction: join([
+      "As an owner of gunbai-sheets, grant the review-sheet converge workload the right to mint the writer's token: ",
+      review_sheet_writer_token_creator_command(),
+      ". Only this one cell: no project-level role, and nothing else on the writer's policy. No approval-gated route can write it, because iam-converge's roles are custom roles of the fleet project and cannot be bound in gunbai-sheets.",
+    ], ""),
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+// The scopes the minted writer token carries: exactly the two APIs the converge calls.
+data review_sheet_writer_token_scopes: List<String> = [
+  sheets_spreadsheets_oauth_scope as String,
+  drive_full_oauth_scope as String,
+]
+
+// ── THE RUN'S WRITER TOKEN, OR THE REFUSAL THAT STOPS IT BEFORE ANY SHEET IS TOUCHED ──────────────
+// The Drive and Sheets transports read the writer token in-process from the variable their
+// auth_source names (extdeps.google.sheets sheets_token_env); the job's delegation step is the only
+// producer, and its output reaches the converge step's environment and nothing else -- never argv,
+// never a log line. A delegation IAM refused leaves the variable empty (the step continues on error
+// so that THIS refusal, not the action's, is the run's verdict), and an empty variable must never
+// reach a transport: every call would refuse separately, and a run reporting a dozen 401s has told the
+// operator less than one line naming the missing cell.
+type WriterTokenStanding
+  = WriterTokenMinted
+  | WriterTokenRefused { cause: NonEmptyStr }
+
+fn writer_token_standing(read: ActionsVariableRead) -> WriterTokenStanding {
+  match read {
+    ActionsVariablePresent { value: _ } => WriterTokenMinted
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      WriterTokenRefused {
+        cause: join([
+          "WriterDelegationRefused: ", v, " is ", d,
+          ", so the delegation step minted no review-sheet-writer token and nothing was written. The grant is missing or revoked: either the workload federation (gunbc.review_sheet_federation review_sheet_converge_dedicated_federation, converged by the gcp_iam_converge mode) or its one cross-project cell, which the operator writes once with: ",
+          review_sheet_writer_token_creator_command(),
+        ], "") as NonEmptyStr,
+      }
+  }
+}
+
+fn observe_writer_token() -> WriterTokenStanding {
+  writer_token_standing(read: actions_variable_read(name: sheets_token_env))
+}
+
+// THE HAND-MINTED TOKEN IS BREAK-GLASS, NOT A ROUTE. The variable is still the transport's input, so a
+// human who exports one can still run the entry; that is admitted only as this declared intervention,
+// for an outage of the federated route, and never as the way the sheets converge.
+fn review_sheet_hand_minted_token_break_glass() -> HumanIntervention {
+  HumanIntervention {
+    identity: "review-sheet-hand-minted-writer-token" as HumanInterventionIdentity,
+    frequency: BreakGlassOnly,
+    subject: review_sheet_writer_sa_email as String,
+    instruction: join([
+      "Only while the federated review_sheet_converge mode cannot run: export ", sheets_token_env,
+      " from a token minted for ", review_sheet_writer_sa_email as String,
+      " with the spreadsheets and drive scopes, in the environment only (never an argv word, never a file under the repository), run the converge entry, then unset it and restore the federated route.",
+    ], ""),
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}

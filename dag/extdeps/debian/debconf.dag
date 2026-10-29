@@ -1,0 +1,517 @@
+module extdeps.debian.debconf
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { Cons, Empty, list_append }
+import std.optional { Present, Absent, Optional }
+import extdeps.external_authority { CitedToAuthority, CitedFigureStanding, ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// DEBCONF SELECTION RECORDS — the shape of one answered debconf question, as the tool that installs it reads it.
+//
+// WHY THIS SHELF EXISTS (review 83132, DESIGN §3 'External upstream decomposition'). This record used to live
+// inside gunbc.provisioning.ubuntu_autoinstall_seed as four bare NonEmptyStrs, reconstructed by TOKENIZING a
+// string the same module had authored. Four named parts behind a String is §2's anemic leaf, and re-parsing text
+// you wrote yourself is §5's validation where §5 asks for construction. The record is debconf's — its field count,
+// its field order, its separator rule and its set of legal types are set by an independently versioned upstream
+// script — so it gets a shelf, and the consumer carries records and asks them questions.
+//
+// THE WIRE SPELLING IS DERIVED, NEVER STORED. One line is `<owner> <label> <type> <content>`, fields separated by
+// whitespace, the content running to the end of the line. Nothing in this module stores that line beside its
+// fields: debconf_selection_line computes it, so the line and the record cannot disagree. The preseed text the
+// installer consumes is an OUTPUT of this model, produced at the last moment by the consumer that ships it.
+//
+// WHAT THE CONSUMER MUST NOT DO IS STATED HERE BECAUSE THE CONSUMER IS THE ONLY READER. Do not hand this record
+// back to a parser. Upstream parses text because it is handed text by an operator's file; a consumer that authored
+// records and then tokenized its own rendering would reintroduce the exact class of defect this shelf was cut to
+// remove. Upstream's reader has three behaviours a record cannot have, each at a named line of the script cited
+// above: a line ending in a backslash is JOINED to the next line (127-130), so a record's rendered line is not
+// necessarily one record by the time it is read; a missing fourth field is stored as an EMPTY content (133-135),
+// which selects nothing yet still occupies the record slot; and any line whose first non-space character is '#'
+// is SKIPPED outright (131), so a comment naming a question is not an answer no matter how exactly it spells it.
+// Each is a divergence waiting to happen if the rendered text is ever made the source of truth again — and the
+// third is the defect this repository actually shipped once, in a comment, not in upstream.
+// THE MEASURED DEBCONF VERSION, declared EXACTLY ONCE. Noble's arm64 pool publishes debconf 1.5.86ubuntu1
+// (ports.ubuntu.com noble main, Packages index: Version 1.5.86ubuntu1, SHA256 of the .deb
+// bb390da466a7461bfc87aa3e6b7cd145dae84af3e26bf437f2c0c218ba226294); the `debconf-set-selections` script inside
+// that archive is 156 lines and the three record-grammar facts transcribed below are at lines 77, 78, 131 and 132
+// of it. This is the ONLY place the version string is written: the citation locator is derived from it below, so
+// the citation and the transcription cannot drift apart on a version bump (review: merry-fox-82; review 83752 —
+// the version used to be spelled twice, once here and once inside the locator, and the release/pool/codename were
+// packed into a prose row whose only consumer grepped itself). A future Ubuntu release moves THIS row and re-checks
+// those four lines; the pool and codename are commentary about where the archive came from, so they live here as
+// prose and nowhere as a second String leaf that could disagree with the version.
+data debconf_package_version: NonEmptyStr = "1.5.86ubuntu1"
+
+// THE CITATION'S SOURCE PATH, built from the declared version rather than retyping it. `sources.debian.org` serves
+// the unpacked source for exactly one version per path segment, so pinning the citation to a version is the point
+// of the locator — and deriving it from `debconf_package_version` is what keeps the citation's version equal to the
+// transcription's by construction, not by a test hoping to notice a mismatch.
+fn debconf_source_locator(version: NonEmptyStr) -> NonEmptyStr {
+  concat(
+    concat("sources.debian.org/api/src/debconf/", version),
+    "/tools/debconf-set-selections",
+  ) as NonEmptyStr
+}
+
+// The scheme stays a literal `Https` atom here (not folded into the derivation) because the mandatory-tag wall reads
+// the accepted-value atom out of THIS declaration's own subtree; moving it into `debconf_source_locator` would hide
+// it behind a computation node and the wall would refuse the module.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: debconf_source_locator(version: debconf_package_version)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1. The type field, as a closed set rather than a string.
+// ---------------------------------------------------------------------------
+
+// THE TYPE FIELD IS TWO CLOSED SETS, NOT ONE UNION WITH A PREDICATE OVER IT (reviews 83132, 83188). Upstream
+// keeps the legal words in TWO lists and routes them to two different functions:
+// `my @knowntypes = qw(select boolean string multiselect note password text title);` goes to load_answer, and
+// `my @knownflags = qw(seen);` goes to set_flag (lines 77-78, dispatched at 136-144). A line whose type is in
+// neither list is DROPPED with a warning (ok_format, 86-88: `warning "Unknown type $type, skipping line $.")`, so
+// an answer whose type is outside these nine words (eight answer kinds, one flag — the two closed unions below)
+// is not a strict-but-valid answer: upstream refuses to install
+// it, the installer never asks the question, and on a headless board the package asks it at a console nobody is
+// standing at. Modelling the field as a String would let that state be written and only a scan could notice.
+//
+// WHY TWO UNIONS RATHER THAN ONE UNION PLUS AN ANSWER-OR-NOT BOOL. A Bool over a coproduct collapses the distinction
+// at every call site: each caller decides what true means, and a new arm is a compile-clean edit because the Bool
+// lists the arms by hand (the first cut of this shelf had eight `true` rows and one `false` row). Splitting the
+// sets means the CREDIT DECISION IS MEMBERSHIP: the answer-crediting path asks for a DebconfAnswerKind and a flag
+// literally has no value of that type, so no call site can credit one. A future debconf ANSWER type is an arm of
+// DebconfAnswerKind and becomes creditable automatically, which is right; a future debconf FLAG is an arm of
+// DebconfFlag and stays non-creditable automatically, which is also right. Neither is a row somebody can forget
+// to update, which is what a hand-listed Bool cannot promise.
+//
+// THE WIRE SPELLING OF EVERY ARM IS DERIVED, never stored beside it: a stored word is a second copy, and the drift
+// review caught in the sibling libxcrypt shelf — an alphabet list disagreeing with the rule printed next to it — is
+// what two copies of a word do. The nine words therefore exist in exactly one place (the two spelling functions
+// below); the witness asserts them against its own transcription of upstream's two qw() lists, which is where a
+// transcription belongs: as the expected value of the check that notices drift, not as production data.
+type DebconfAnswerKind
+  = AnswerSelect
+  | AnswerBoolean
+  | AnswerString
+  | AnswerMultiselect
+  | AnswerNote
+  | AnswerPassword
+  | AnswerText
+  | AnswerTitle
+
+// THE FLAGS UPSTREAM RECOGNISE, as their own set because @knownflags is its own list and set_flag is its own
+// branch. It has one member today; a second is an arm here plus a row in debconf_flag_spelling, and joining this
+// set is what keeps a line legal without making it an answer. Written `= | SeenFlag` because a lone bare arm needs
+// the leading bar to be an ARM at all — `= SeenFlag` would read as an alias for an undefined name, which is the
+// repo's own convention (see product/build_fulfillment.dag's BasisAllocationPolicy).
+type DebconfFlag
+  = | SeenFlag
+
+// THE TYPE FIELD AS WRITTEN ON THE WIRE: one field, whose contents decide whether the line answers a question or
+// marks one. Both arms carry a payload so neither arm is a bare name sitting beside a braced one, and the
+// distinction the audit needs is the arm itself.
+type DebconfSelectionKind
+  = Answered { kind: DebconfAnswerKind }
+  | Flagged { flag: DebconfFlag }
+
+// THE EIGHT ANSWER WORDS, in the order @knowntypes lists them.
+fn debconf_answer_kind_spelling(kind: DebconfAnswerKind) -> NonEmptyStr {
+  match kind {
+    AnswerSelect => "select"
+    AnswerBoolean => "boolean"
+    AnswerString => "string"
+    AnswerMultiselect => "multiselect"
+    AnswerNote => "note"
+    AnswerPassword => "password"
+    AnswerText => "text"
+    AnswerTitle => "title"
+  }
+}
+
+// THE FLAG WORD. Kept separate from the answer words because upstream keeps the two lists separate; a flag that
+// arrives at the answer speller cannot resolve, so the two vocabularies cannot quietly merge.
+fn debconf_flag_spelling(flag: DebconfFlag) -> NonEmptyStr {
+  match flag {
+    SeenFlag => "seen"
+  }
+}
+
+// THE ONE WIRE WORD FOR ANY LEGAL TYPE FIELD, derived by delegating to the two set-specific spellers. This is the
+// only function a consumer needs, and it holds no words of its own, so there is nowhere for a word to go stale.
+fn debconf_selection_kind_spelling(kind: DebconfSelectionKind) -> NonEmptyStr {
+  match kind {
+    Answered { kind: answer } => debconf_answer_kind_spelling(kind: answer)
+    Flagged { flag: flag } => debconf_flag_spelling(flag: flag)
+  }
+}
+
+// THE CREDITING PROJECTION: THE ANSWER KIND A RECORD CARRIES, IF IT CARRIES ONE. This is not a classifier — it
+// does not answer "is this an answer", it hands over the answer kind when there is one and nothing when there is
+// not, so the caller's crediting path is typed on DebconfAnswerKind and a flag can never reach it. The Flagged arm
+// returning Absent is not a policy toggle either: a flag has no DebconfAnswerKind to hand over, which is the whole
+// reason the sets were split. See the comment on DebconfSelectionKind for why this replaced a Bool.
+fn debconf_selection_answer(record: DebconfSelectionRecord) -> Optional<DebconfAnswerKind> {
+  match debconf_selection_kind(record: record) {
+    Answered { kind: answer } => Present { value: answer }
+    Flagged { flag: _ } => Absent
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2. The record itself.
+// ---------------------------------------------------------------------------
+
+// ONE ANSWERED QUESTION, SEALED. The four parts are debconf's fields; the seal is ours, and it exists because the
+// wire spelling must be INVERTIBLE. A record whose owner contained a space would render as a line with one field
+// too many; a record whose value was empty would render as the three-field line upstream reads as an empty answer
+// (lines 133-135 store '' there) and so selects nothing. Both are writable states that make the record and the
+// thing the installer consumes disagree, and neither can be named once debconf_selection_record is the only way to
+// hold one. The constructor's signature is what makes that unnameable, not a check later.
+//
+// WHY `kind` IS THE UNION AND NOT A STRING, stated again at the record because it is the field the seal cannot
+// guard by itself: the type is what decides whether a line is an answer at all, and a String there is the same
+// defect as a String owner.
+type DebconfSelectionRecord sole_constructor {
+  owner: NonEmptyStr
+  label: NonEmptyStr
+  kind: DebconfSelectionKind
+  value: NonEmptyStr
+}
+
+// WHY A REFUSAL CARRIES ITS CAUSE (review 83255). The mint refuses four DIFFERENT defects and they have
+// different remedies: an owner carrying a boundary is a mis-typed package name, a label carrying a boundary is a
+// mis-typed question name, a value carrying a newline is two records smuggled into one, and a value made only of
+// separators is an answer that was never given. A bare absence would make the caller re-derive which of the four
+// it got — by re-running these same checks on the fields it already holds, which is the second-copy-of-a-rule
+// defect this shelf exists to prevent. So the refusal is one closed union, one arm per refused fact, and each arm
+// carries the offending field back so the diagnostic is located rather than merely categorised. An EMPTY key
+// field or an empty value gets no arm because it is unnameable at the signature — both fields are NonEmptyStr,
+// the refinement refuses it before this function is entered, and a cause arm for it would be a dead row no
+// witness can turn RED. FUTURE REQUIREMENT: a fifth refused fact adds an arm here AND the arm's check in the
+// mint's chain; the witness row that sweeps these arms fails if either falls behind.
+type DebconfSelectionRefusalCause
+  = OwnerCarriesAFieldBoundary { owner: NonEmptyStr }
+  | LabelCarriesAFieldBoundary { label: NonEmptyStr }
+  | ValueEndsTheLine { value: NonEmptyStr }
+  | ValueSelectsNothing { value: NonEmptyStr }
+  // A TRAILING BACKSLASH IS THE OTHER WAY ONE RECORD BECOMES TWO. Upstream's own parser joins a line ending in
+  // the continuation character to the NEXT line before matching, so a value ending in it makes the shipped text
+  // mean more than the single record the list shows — the sibling of the embedded newline, refused here with its
+  // own cause because the reader must be able to tell "fix your value" from "fix your value AND the line below
+  // it", which one collapsed Bool could not (review: merry-fox-82, HOLD section 6). The refusal checks the value
+  // ONLY, never the key fields: upstream's reader joins a continuation at end of the WHOLE line, so a backslash
+  // mid-value is content (.*) happily takes it, and a trailing one is the only shape that changes meaning.
+  | ValueCarriesTheContinuationCharacter { value: NonEmptyStr }
+
+// THE MINT'S RESULT: a sealed record, or the typed reason this one could not be sealed. Two arms, exhaustive, no
+// Optional — the presence and the cause of its absence are decided by the same examination and must travel
+// together, which is why Optional<DebconfSelectionRecord> was the wrong carrier: it kept the cause and the
+// record in two different worlds.
+type DebconfSelectionMint
+  = MintedSelection { record: DebconfSelectionRecord }
+  | RefusedAtTheMint { cause: DebconfSelectionRefusalCause }
+
+// THE ONLY MINT. Refuses a key field carrying whitespace or a newline, and a value that is whitespace-only or
+// carries a newline — the ways a record could be authored that would not survive the trip to the installer.
+//
+// KEY FIELDS MAY NOT CONTAIN WHITESPACE, and the reason is upstream's reader rather than tidiness: the regex that
+// splits a line is `/^\s*(\S+)\s+(\S+)\s+(\S+)(?:\s(.*))?/` (line 132), so each of the first three fields is a
+// MAXIMAL RUN OF NON-WHITESPACE. A key field carrying a space does not parse as that field; it silently shifts
+// every field after it, which is how an owner with a space in it turns a tzdata answer into an owner nobody owns.
+// THE VALUE MAY CONTAIN WHITESPACE: the regex's last group is `(.*)` and takes the whole tail, which is what makes
+// `select No configuration` and `select English (US)` legal answers, and both appear in fixtures.
+//
+// THE VALUE IS REQUIRED, STRICTER THAN UPSTREAM, AND THAT IS OUR POLICY NOT ITS SPELLING. Upstream accepts the
+// three-field line and stores an empty content; an empty answer to `tzdata/Areas` selects no area, so the package
+// prompts anyway, and a seed that credits it has certified a question that will still be asked. A requirement to
+// match upstream's leniency exactly adds one arm here admitting an empty value for a kind whose empty value is
+// meaningful, and must name which question that unblocks; there is no such kind in this programme today.
+fn debconf_selection_record(
+  owner: NonEmptyStr,
+  label: NonEmptyStr,
+  kind: DebconfSelectionKind,
+  value: NonEmptyStr,
+) -> DebconfSelectionMint {
+  match key_field_is_well_formed(text: owner as String) {
+    False => RefusedAtTheMint { cause: OwnerCarriesAFieldBoundary { owner: owner } }
+    True =>
+      match key_field_is_well_formed(text: label as String) {
+        False => RefusedAtTheMint { cause: LabelCarriesAFieldBoundary { label: label } }
+        True =>
+          // THE THREE VALUE FACTS ARE EXAMINED APART, not through one collapsed Bool, because the refusal names
+          // which one failed: a newline splits the record (a second record smuggled into one), a trailing
+          // backslash joins it to the line BELOW (a second record smuggled from outside), and a run of
+          // separators answers nothing — a caller given only "no" could tell them apart only by re-running
+          // these checks itself.
+          match value_ends_the_line(text: value as String) {
+            True => RefusedAtTheMint { cause: ValueEndsTheLine { value: value } }
+            False =>
+              match ends_with(s: value as String, suffix: "\\") {
+                True => RefusedAtTheMint { cause: ValueCarriesTheContinuationCharacter { value: value } }
+                False =>
+                  match value_has_a_character_outside_the_separator_authority(text: value as String) {
+                    False => RefusedAtTheMint { cause: ValueSelectsNothing { value: value } }
+                    True => MintedSelection { record: DebconfSelectionRecord {
+                      owner: owner,
+                      label: label,
+                      kind: kind,
+                      value: value,
+                    } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE TWO WAYS A LINE IS AUTHORED, one per set. Both go through the same well-formedness gate; what differs is
+// which arm of the type field they can produce, and that difference is not a parameter anybody passes. Answering
+// takes a DebconfAnswerKind and marking takes a DebconfFlag, so "this line answers the question" is settled by
+// which function the caller had to call, and the general constructor above exists so the shelf can render and
+// re-read a line it received as text — a consumer building a seed has no reason to reach for it, and cannot
+// accidentally build a flag and hand it to the crediting path, because that path asks for a DebconfAnswerKind.
+fn debconf_answer_record(
+  owner: NonEmptyStr,
+  label: NonEmptyStr,
+  kind: DebconfAnswerKind,
+  value: NonEmptyStr,
+) -> DebconfSelectionMint {
+  debconf_selection_record(
+    owner: owner,
+    label: label,
+    kind: Answered { kind: kind },
+    value: value,
+  )
+}
+
+// A FLAG LINE. Legal on the wire, inert as an answer: upstream sends it to set_flag for a question that has to
+// exist already. The value is carried because upstream reads one (`set_flag($owner, $label, $type, $content)`,
+// line 139) — refusing it here would make a real preseed unrepresentable, and the flag is harmless precisely
+// because nothing can credit it.
+fn debconf_flag_record(
+  owner: NonEmptyStr,
+  label: NonEmptyStr,
+  flag: DebconfFlag,
+  value: NonEmptyStr,
+) -> DebconfSelectionMint {
+  debconf_selection_record(
+    owner: owner,
+    label: label,
+    kind: Flagged { flag: flag },
+    value: value,
+  )
+}
+
+// A VALUE THAT ENDS THE LINE IS NOT ONE RECORD. Upstream reads the file line by line and matches the content as
+// (.*) to end of line, so an embedded newline does not survive as content — it SPLITS the record, and the tail is
+// read as a separate record whose owner is whatever text follows. That is an answer smuggled in as a
+// continuation, and it is invisible in the record list, where there is exactly one record. A SPACE, by contrast,
+// is legal content ("English (US)" is a real answer), which is why this refuses exactly the newline; the
+// sibling fact — a value that selects nothing — is the walker below, and the mint examines the two apart so the
+// refusal can name which one failed.
+fn value_ends_the_line(text: String) -> Bool {
+  text.contains(needle: "\n")
+}
+
+// A VALUE THAT SELECTS NOTHING IS NOT AN ANSWER. Upstream stores an empty content happily (lines 133-135) and
+// the package then prompts for the answer anyway, which for a headless board is the hang this whole module
+// exists to prevent. So the mint is STRICTER than upstream on purpose, and the difference is stated here rather
+// than hidden: the refinement already refuses the empty string at the type, and what this check adds is the
+// whitespace-only value — " " is a non-empty String that selects no choice, so it would be credited as closing
+// a question it leaves open. NO SPECIAL CASE FOR A LONE SPACE IS WRITTEN ABOVE IT: this walker refuses any
+// string made entirely of separators, and a lone space is exactly that string; a branch written for the special
+// case would be a second copy of a rule the walker already holds, and a mutation of the walker would still have
+// to defeat it — which is how two checks for one fact quietly become one check nobody tests. A future
+// requirement to carry upstream's empty content verbatim (a preseed that deliberately clears a value) is an
+// honest reason to add a second constructor named for that intent, not a reason to relax this one.
+
+// EVERY CHARACTER A SEPARATOR MEANS NOTHING WAS CHOSEN. Substring-and-length walking again, because this
+// language has no character indexing; the claim is small and deliberately so — it refuses the strings made
+// entirely of Perl's \s class (the six ASCII separators declared below), which are exactly the ones a human
+// types into a preseed editor and nothing notices.
+// THE SEPARATOR AUTHORITY, PERL'S \s CLASS, DECLARED ONCE (review: merry-fox-82; review 83816 — the mint used to
+// hand-list space, tab and newline in two separate walkers, but upstream debconf-set-selections splits its fields
+// with a Perl regex whose \s matches SIX ASCII characters: space, tab, \n (0a), \v (0b), \f (0c), \r (0d) — \v and
+// \f joined the class in Perl 5.18, and Noble ships perl 5.38). An owner containing \r (text pasted from a CRLF
+// file, exactly what a sysadmin editing a seed by hand produces) was minted as a well-formed field upstream would
+// have split; a value of "\r" was credited as an answer through the `ValueSelectsNothing` walker, which only knew
+// three of the six. Both walkers now consult THIS row, so the two cannot drift apart and a future seventh member
+// (Perl's Unicode \s arms, if the reader ever decodes) is a one-row edit here that both checks receive for free
+// (§2: one authority, no hand-listed copies). THE ASCII SET ONLY, DELIBERATELY: whether NEL (85) or NBSP (a0)
+// match \s depends on whether the reader decoded the file as UTF-8, which upstream does not promise in the cited
+// script — that boundary is stated here rather than silently assumed either way.
+data debconf_perl_whitespace: List<String> = [" ", "\t", "\n", "\u{b}", "\u{c}", "\r"]
+
+// `one` equals one of the declared separators. The comparison is against the authority members, never against a
+// literal typed at the call site, which is what keeps the mint and any future check on the same set.
+fn char_is_a_declared_separator(one: String, separators: List<String>) -> Bool {
+  match separators {
+    Empty => false
+    Cons { head: sep, tail: rest } =>
+      match one == sep {
+        True => true
+        False => char_is_a_declared_separator(one: one, separators: rest)
+      }
+  }
+}
+
+// THE SIX-WALKER. A list made only of authority separators reaches `false` and is refused as selecting nothing; a
+// single character outside the six returns `true`. The base case's polarity is the entire claim (a value that
+// selects nothing is not an answer), so it is a mutation row, not a comment.
+fn value_has_a_character_outside_the_separator_authority(text: String) -> Bool {
+  match text.length() {
+    0 => false
+    _ =>
+      match text.substring(start: 0, end: 1) {
+        one =>
+          match char_is_a_declared_separator(one: one, separators: debconf_perl_whitespace) {
+            True => value_has_a_character_outside_the_separator_authority(
+              text: text.substring(start: 1, end: text.length()),
+            )
+            False => true
+          }
+      }
+  }
+}
+
+// ANY OF THE SIX APPEARS ANYWHERE — \S+ means a field contains no whitespace character, so the field scan is the
+// same authority consulted the other way: a field is well-formed exactly when none of the six occurs in it.
+fn a_declared_separator_appears(text: String, separators: List<String>) -> Bool {
+  match separators {
+    Empty => false
+    Cons { head: sep, tail: rest } =>
+      match text.contains(needle: sep) {
+        True => true
+        False => a_declared_separator_appears(text: text, separators: rest)
+      }
+  }
+}
+
+fn key_field_is_well_formed(text: String) -> Bool {
+  !a_declared_separator_appears(text: text, separators: debconf_perl_whitespace)
+}
+
+// THE ACCESSORS, so a consumer reads fields instead of reaching into the record's shape.
+fn debconf_selection_owner(record: DebconfSelectionRecord) -> NonEmptyStr {
+  match record {
+    DebconfSelectionRecord { owner: name, label: _, kind: _, value: _ } => name
+  }
+}
+
+fn debconf_selection_label(record: DebconfSelectionRecord) -> NonEmptyStr {
+  match record {
+    DebconfSelectionRecord { owner: _, label: name, kind: _, value: _ } => name
+  }
+}
+
+fn debconf_selection_kind(record: DebconfSelectionRecord) -> DebconfSelectionKind {
+  match record {
+    DebconfSelectionRecord { owner: _, label: _, kind: shape, value: _ } => shape
+  }
+}
+
+fn debconf_selection_value(record: DebconfSelectionRecord) -> NonEmptyStr {
+  match record {
+    DebconfSelectionRecord { owner: _, label: _, kind: _, value: content } => content
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3. The wire spelling, derived.
+// ---------------------------------------------------------------------------
+
+// THE ONE LINE THIS RECORD BECOMES when it is finally handed to an installer: `<owner> <label> <type> <content>`,
+// with exactly one space between each pair (line 132's separator class admits more than one, and one is the
+// canonical form debconf's own examples use). DERIVED, so that the record is the truth and the text is an output:
+// a consumer that shipped a hand-written line beside a record would have two answers, and only one of them is
+// installed.
+fn debconf_selection_line(record: DebconfSelectionRecord) -> NonEmptyStr {
+  // owner SP label SP type SP value — four parts, three separators, no more and no fewer. Written as one
+  // expression over the four part-functions so there is exactly one place the separators are decided.
+  concat(
+    concat(concat(concat(debconf_selection_owner_part(record: record), " "), debconf_selection_label_part(record: record)), " "),
+    concat(debconf_selection_type_part(record: record), concat(" ", debconf_selection_value_part(record: record))),
+  ) as NonEmptyStr
+}
+
+fn debconf_selection_owner_part(record: DebconfSelectionRecord) -> NonEmptyStr {
+  debconf_selection_owner(record: record)
+}
+
+fn debconf_selection_label_part(record: DebconfSelectionRecord) -> NonEmptyStr {
+  debconf_selection_label(record: record)
+}
+
+fn debconf_selection_type_part(record: DebconfSelectionRecord) -> NonEmptyStr {
+  debconf_selection_kind_spelling(kind: debconf_selection_kind(record: record))
+}
+
+fn debconf_selection_value_part(record: DebconfSelectionRecord) -> NonEmptyStr {
+  debconf_selection_value(record: record)
+}
+
+// THE WHOLE PRESEED FILE, one record per line. Kept here so the ONLY place that knows debconf's line syntax is
+// this shelf; the consumer asks for the file and never assembles lines itself. An empty list renders an empty
+// file, which is what a package with nothing to answer needs — the absence type is not needed at this level
+// because "no lines" and "no file" install identically.
+fn debconf_selection_file(records: List<DebconfSelectionRecord>) -> String {
+  file_from_lines(lines: lines_from_records(records: records))
+}
+
+// THE FILE IS THE RECORDS, IN ORDER, ONE LINE EACH. Built by structural recursion on the record list — the
+// order of the file IS the order of the list, and a fold that reversed it would silently swap which answer a
+// dependency sees first, which is precisely the kind of thing an accumulator cannot show you.
+fn lines_from_records(records: List<DebconfSelectionRecord>) -> List<String> {
+  match records {
+    Empty => []
+    Cons { head: record, tail: rest } =>
+      list_append(
+        left: [debconf_selection_line(record: record) as String],
+        right: lines_from_records(records: rest),
+      )
+  }
+}
+
+fn file_from_lines(lines: List<String>) -> String {
+  match lines {
+    Empty => ""
+    Cons { head: first, tail: rest } => joined_after(first: first, rest: rest)
+  }
+}
+
+// ONE NEWLINE BETWEEN LINES AND NONE AFTER THE LAST. The separator lives in the tail arm only, so the trailing
+// newline a naive fold appends is not merely avoided by convention, it is unwritable: the Empty arm contributes
+// nothing. That matters to a reader that splits on the newline instead of matching — a terminated file has an
+// extra empty record in it, and upstream's reader's own skip rule (/^\s*$/ on line 131) is the only thing that
+// makes that harmless, which is an argument about THEIR parser, not about ours.
+fn joined_after(first: String, rest: List<String>) -> String {
+  match rest {
+    Empty => first
+    Cons { head: next, tail: tail } => concat(concat(first, "\n"), joined_after(first: next, rest: tail)) as String
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4. The obligation, read out of the standing.
+// ---------------------------------------------------------------------------
+
+// THE STANDING, in the idiom of the sibling shelf: CitedToAuthority, because the nine words and the separator rule
+// are transcriptions from a named release, and the release is named above so a reader can re-check them. No
+// accessor here reads it — the shared extdeps.external_authority reader already decides, exhaustively over all
+// three arms, whether a figure carries an unread obligation, and restating that decision on this shelf would be a
+// second copy of a rule the model already carries. The witness asks the shared reader about this standing, which
+// is the executing route.
+data debconf_selection_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+// THE AUTHORITY, READ OUT OF THE STANDING BY THE CONSUMER THAT CHECKS IT. Exposed as an accessor rather than
+// leaving the data open, so the only way a consumer reaches the citation is through the standing it is attached
+// to: a row that points somewhere else has to go through the standing too, and the witness that compares the
+// citation's version against the transcription's catches it.
+fn debconf_selection_authority() -> ExternalAuthority {
+  extdeps_external_authority_anchor
+}
+

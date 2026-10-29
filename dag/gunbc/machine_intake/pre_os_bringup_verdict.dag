@@ -26,6 +26,7 @@ import gunbc.machine_intake.pre_os_observation_capabilities {
   PerSlotLocalizationExposed,
   PreOsObservationCapabilities,
 }
+import std.host_text { chars }
 
 // WHAT A PRE-OS BRING-UP ATTEMPT ESTABLISHED ABOUT THE HOST, from independent observations only.
 // Two laws are structural here rather than checked:
@@ -176,7 +177,7 @@ fn line_carries_marker(line: String, marker: NonEmptyStr) -> Bool {
         Absent => false
         Present { value: suffix } => {
           let code = trim(suffix)
-          code.length() == 8 && all(chars(s: code), cp => any(base16_digit_rows, digit => code_point(digit.lower) == cp || code_point(digit.upper) == cp))
+          code.length() == 8 && all(chars(text: code), cp => any(base16_digit_rows, digit => code_point(digit.lower) == cp || code_point(digit.upper) == cp))
         }
       }
   }

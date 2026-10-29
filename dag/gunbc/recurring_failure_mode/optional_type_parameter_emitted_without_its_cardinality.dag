@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.optional_type_parameter_emitted_without_its_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data optional_type_parameter_emitted_without_its_cardinality: RecurringFailureMode = RecurringFailureMode {
   identity: "optional_type_parameter_emitted_without_its_cardinality" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "**an optional type parameter is emitted without its cardinality** (INVALID STATE: a generic declaration writes `K?` on one of its own type parameters -- `type Plain<K, V> { get: K? }`, `type PartialFunction<K, V> { lookup: fn(K) -> V? }` -- and the Rust emitter spells the parameter by its bare name, dropping the Optional: `pub get: K`. The four arms of v1.compiler.emit_rust that spell a type parameter (the declared-generic leaf in render_rust_decl_type and in render_rust_alias_rhs_type, the TypeVariable arms of render_rust_type and render_rust_applied_type_arg) returned to_pascal(name) and never consulted return_cardinality, which every other leaf routes through rust_carrier_optional_wrap.",

@@ -134,6 +134,13 @@ fn systemctl_daemon_reload_argv() -> List<String> {
   ["systemctl", "daemon-reload"]
 }
 
+// `reload UNIT`: systemctl(1) asks the unit to reload its service-specific configuration (for sshd, the
+// SIGHUP that makes it re-read sshd_config) -- not the unit file, which is daemon-reload, and not a
+// restart, which would end the process. A unit that is not active refuses the reload.
+fn systemctl_reload_unit_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "reload", unit as String]
+}
+
 // THE USER MANAGER IS A DIFFERENT MANAGER, AND DAEMON-RELOAD IS PER MANAGER. `systemctl daemon-reload`
 // reloads ONLY the system manager. Units under /etc/systemd/user/ are loaded by user@UID.service;
 // --user transients look up Slice= there (gunbc.live_deploy.spec gunbc_user_work_slice_unit_path).
@@ -143,12 +150,7 @@ fn systemctl_daemon_reload_argv() -> List<String> {
 // --user transient the slice exists to bound). The machine word is one argv element so the `@`
 // cannot re-parse as a separate token.
 fn systemctl_user_daemon_reload_argv(uid: Int) -> List<String> {
-  [
-    "systemctl",
-    "--user",
-    concat("--machine=", concat(to_string(uid), "@")),
-    "daemon-reload",
-  ]
+  ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), "daemon-reload"]
 }
 
 // ENABLE AND START ARE TWO VERBS AND TWO ROWS, AND THE SPELLINGS ARE HOISTED BECAUSE A THIRD
@@ -167,6 +169,15 @@ fn systemctl_user_daemon_reload_argv(uid: Int) -> List<String> {
 data systemctl_enable_verb: NonEmptyStr = "enable" as NonEmptyStr
 
 data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
+
+// IS-ACTIVE AND IS-ENABLED ARE READS, NOT TRANSITIONS, and they are hoisted to rows for the same reason
+// the transitions are: a second module now asks the same question, and a verb authored twice in two
+// spellings is how a check starts answering a slightly different question than the one it claims to.
+// Both are compared against printed words rather than exit codes -- see
+// systemctl_user_is_enabled_for_uid_argv for the measurement that makes the exit code useless here.
+data systemctl_is_active_verb: NonEmptyStr = "is-active" as NonEmptyStr
+
+data systemctl_is_enabled_verb: NonEmptyStr = "is-enabled" as NonEmptyStr
 
 // RELOAD IS A THIRD TRANSITION, NOT A GENTLER RESTART, and the distinction is the reason it is
 // here rather than spelled as `restart` at a call site. reload runs the unit's own ExecReload and
@@ -197,6 +208,13 @@ fn systemctl_start_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_start_verb as String, unit as String]
 }
 
+// `reset-failed` drops a failed unit's failed state, including a path unit that hit its trigger limit,
+// so a following `start` can re-arm it. The modeled operation is the transport row below; this is its
+// argv authority for the belt-exit stall release (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_rearm_at).
+fn systemctl_reset_failed_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "reset-failed", unit as String]
+}
+
 fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_restart_verb as String, unit as String]
 }
@@ -224,8 +242,10 @@ data systemctl_mask_verb: NonEmptyStr = "mask" as NonEmptyStr
 
 data systemctl_unmask_verb: NonEmptyStr = "unmask" as NonEmptyStr
 
+data systemctl_now_flag: NonEmptyStr = "--now" as NonEmptyStr
+
 fn systemctl_mask_now_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", systemctl_mask_verb as String, "--now", unit as String]
+  ["systemctl", systemctl_mask_verb as String, systemctl_now_flag as String, unit as String]
 }
 
 // MASK WITHOUT --now IS THE INHIBIT ALONE: the unit can no longer be started or restarted, and a
@@ -336,7 +356,7 @@ fn systemctl_list_all_service_units_argv() -> List<String> {
 // would then not come back after a reboot -- so a convergence claim that reads only is-active is
 // answering a question it was not asked.
 fn systemctl_user_is_enabled_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", "--user", "is-enabled", unit as String]
+  ["systemctl", "--user", systemctl_is_enabled_verb as String, unit as String]
 }
 
 // TWO SIBLING BUILDERS WERE DELETED HERE RATHER THAN KEPT FOR SYMMETRY, and counting their references
@@ -362,11 +382,11 @@ fn systemctl_user_is_enabled_argv(unit: NonEmptyStr) -> List<String> {
 // the two facts stop being separately observable in the actuation the way they are separately
 // observable on the host.
 fn systemctl_user_enable_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", "--user", "enable", unit as String]
+  ["systemctl", "--user", systemctl_enable_verb as String, unit as String]
 }
 
 fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", "--user", "start", unit as String]
+  ["systemctl", "--user", systemctl_start_verb as String, unit as String]
 }
 
 // RESTART IS A THIRD OPERATION, NOT ENABLE-AND-START SPELLED TOGETHER. It acts on a unit that is
@@ -377,7 +397,62 @@ fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
 // is destructive to in-flight work on every converge, and it has no independently matchable identity
 // for a fence to guard.
 fn systemctl_user_restart_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", "--user", "restart", unit as String]
+  ["systemctl", "--user", systemctl_restart_verb as String, unit as String]
+}
+
+// THE USER-MANAGER CONNECTOR, ONCE. `--user` alone addresses the manager of the CALLING user, so an
+// elevated-as-root converge running bare `systemctl --user start` talks to ROOT's manager and reports
+// success about a unit that was never touched -- the failure is silent because systemctl has no idea it
+// was meant to be someone else. `--machine=UID@` is systemctl(1)'s local-user connector to that UID's
+// manager, and it is preferred over restarting user@UID.service, which would kill every transient that
+// manager owns. The whole word is ONE argv element (`--machine=999@`), so the `@` cannot re-parse as a
+// separate token and a uid cannot smuggle a flag: to_string of an Int has no spelling that contains a
+// space or a dash-prefix.
+//
+// THIS IS THE ONE SPELLING. The builders below and systemctl_user_daemon_reload_argv all read it, and a
+// second concat of "--machine=" at any call site is the drift this row exists to prevent -- with the
+// connector wrong, every verb in the family silently targets the wrong manager.
+fn systemctl_user_machine_connector(uid: Int) -> String {
+  concat("--machine=", concat(to_string(uid), "@"))
+}
+
+// THE ROOT-AS-ELEVATED FAMILY, which is why these exist beside the builders above rather than replacing
+// them. The builders above are correct for a step that runs AS the job user (the spark serving lane,
+// where the process really is that uid). They are wrong for a converge that ssh's in as an operator and
+// elevates to root, because then `--user` means root's manager. This family takes the uid explicitly so
+// the target manager is a VALUE the caller must supply, not an accident of who is running systemctl.
+// Same verbs, same rows, same separation of enable from start -- see the note above on why `enable --now`
+// is not derivable here either.
+fn systemctl_user_daemon_reload_for_uid_argv(uid: Int) -> List<String> {
+  ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), "daemon-reload"]
+}
+
+fn systemctl_user_enable_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String> {
+  ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), systemctl_enable_verb as String, unit as String]
+}
+
+fn systemctl_user_start_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String> {
+  ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), systemctl_start_verb as String, unit as String]
+}
+
+fn systemctl_user_restart_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String> {
+  ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), systemctl_restart_verb as String, unit as String]
+}
+
+fn systemctl_user_is_active_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String> {
+  ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), systemctl_is_active_verb as String, unit as String]
+}
+
+// is-enabled is the pair to is_active, and BOTH are needed for a unit the converge installs. is-active
+// says nothing about whether the unit survives a reboot, and is-enabled says nothing about whether
+// anything is running now; a converge that checks only one has answered a question it was not asked.
+// MEASURED, AND THE MEASUREMENT IS THE POINT: `is-enabled` on a unit that is loaded but has no install
+// symlink prints "static" and EXITS 0 on srv1. So the exit code cannot be the check -- a daemon that was
+// started by hand, or by a step that skipped the enable, reads as enabled. The caller must compare the
+// printed WORD against the expected state, which is why this returns argv for a readback and not a
+// success predicate.
+fn systemctl_user_is_enabled_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String> {
+  ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), systemctl_is_enabled_verb as String, unit as String]
 }
 
 // STOP AND DISABLE ARE THE RETIREMENT PAIR, AND THEY ARE SEPARATE FOR THE REASON ENABLE AND START
@@ -586,6 +661,24 @@ service systemd.Systemctl {
     }
     mock_response {
       0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.StopUserUnit"
+    }
+  }
+
+  operation ResetFailedUserUnit {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      outcome: ShellOutcome
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "--user", "reset-failed", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user reset-failed failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.ResetFailedUserUnit"
     }
   }
 
@@ -980,4 +1073,45 @@ fn systemctl_start_command(unit: NonEmptyStr) -> ArgvCommand {
       items: [unit as String],
     ),
   )
+}
+
+// WHICH SYSTEMCTL CALLS RELOAD THE MANAGER, DECLARED ON THE COMMAND'S OWN CONSTRUCTOR. systemctl(1):
+// `mask`, `unmask`, `enable` and `disable` reload the manager's configuration implicitly after changing
+// the unit files unless `--no-reload` is given, so a drain's mask is itself a daemon-reload and loads
+// every unit-file change pending on disk at that moment. The reload is also what makes a mask INHIBIT
+// (the manager does not see the symlink until it reloads), so `--no-reload` would not establish the
+// inhibition the drain exists for. A SystemctlStep pairs the argv with the effect its constructor
+// declares once; the argv is only ever rendered from it, never parsed back.
+type SystemctlManagerEffect
+  = ManagerReloadedImplicitly
+  | ManagerReloadedExplicitly
+  | ManagerNotReloaded
+
+type SystemctlStep {
+  argv: List<String>
+  effect: SystemctlManagerEffect
+}
+
+fn systemctl_mask_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_mask_argv(unit: unit), effect: ManagerReloadedImplicitly }
+}
+
+fn systemctl_unmask_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_unmask_argv(unit: unit), effect: ManagerReloadedImplicitly }
+}
+
+fn systemctl_enable_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_enable_argv(unit: unit), effect: ManagerReloadedImplicitly }
+}
+
+fn systemctl_start_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_start_argv(unit: unit), effect: ManagerNotReloaded }
+}
+
+fn systemctl_stop_step(unit: NonEmptyStr) -> SystemctlStep {
+  SystemctlStep { argv: systemctl_stop_argv(unit: unit), effect: ManagerNotReloaded }
+}
+
+fn systemctl_daemon_reload_step() -> SystemctlStep {
+  SystemctlStep { argv: systemctl_daemon_reload_argv(), effect: ManagerReloadedExplicitly }
 }

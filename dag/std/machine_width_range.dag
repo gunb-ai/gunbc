@@ -1,0 +1,44 @@
+module std.machine_width_range
+
+import std.types { Int, Bool }
+import std.integer { Signedness, Signed, Unsigned }
+import std.power_of_two { bitwise_pow2 }
+import std.measure { BitWidth, bit_width_count }
+
+// HOME: a module of its own beside std.machine_constraints, not a declaration inside it, because
+// std.machine_constraints is in the stage0 seed closure and this reads std.measure and std.power_of_two,
+// which that closure has no crate for (heal: Stage0EmittedEdgesNotCovered). The meaning is still ONE
+// declaration; only its module differs.
+// WHICH INTEGERS A MACHINE WIDTH ADMITS, AS THE WIDTH'S OWN MEANING AND NOT A CONSUMER'S TABLE.
+// `unsigned` bits N is [0, 2^N - 1]; signed bits N is [-2^(N-1), 2^(N-1) - 1]. A literal at a
+// position typed Compose<A, MachineWidth<N>> is admitted only when this holds (v2.compiler.infer
+// infer_int_literal_value_at); it is the checked reading of the width rule -- a width is a
+// refinement on Int, narrowing into it is a checked, named route, and same-signedness widening is
+// the implicit-safe coercion of gunbc.design_ruling coercion_is_the_implicit_safe_subset, so nothing
+// is silently truncated -- applied at the literal boundary.
+//
+// THE HOST BOUND: a source literal is a host Int (signed 64), so every host value fits width >= 64
+// when signed, and every non-negative one fits width >= 64 when unsigned; the table-driven range
+// below is therefore only consulted where 2^N or 2^(N-1) is itself a host Int, which std.power_of_two covers totally.
+//
+// WIDTH ZERO, STATED ONCE: the unsigned range [0, 2^0 - 1] is {0}; the signed range [-2^(N-1), 2^(N-1) - 1]
+// at N = 0 is empty (2^-1 is not an integer), so a signed zero width admits nothing. Whether a zero width
+// is a VALID machine width is a separate question, left to the declaration that names MachineWidth<0>
+// (std.machine_word's WordWidth has no zero member); this function answers only membership.
+fn machine_width_admits(signedness: Signedness, bits: BitWidth, value: Int) -> Bool {
+  let n = bit_width_count(b: bits)
+  let signed = match signedness {
+    Signed => true
+    Unsigned => false
+  }
+  if n < 1 {
+    !signed && n == 0 && value == 0
+  } else if n >= 64 || (!signed && n >= 63) {
+    signed || value >= 0
+  } else if signed {
+    let half = bitwise_pow2(n: n - 1)
+    value >= 0 - half && value < half
+  } else {
+    value >= 0 && value < bitwise_pow2(n: n)
+  }
+}

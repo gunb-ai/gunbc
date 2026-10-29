@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.consumed_admission_externalized_to_the_next_roster_touch
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data consumed_admission_externalized_to_the_next_roster_touch: RecurringFailureMode = RecurringFailureMode {
   identity: "consumed_admission_externalized_to_the_next_roster_touch" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a permission carried in the tree is required at its owner's gate and consumed the moment the owner lands, so every owner lands a dead row and the next change to touch the roster pays for its deletion** (DESIGN section 5, externalization: the cost is caused by one change and paid by another principal who must read a stranger's change to know the deletion is safe).",

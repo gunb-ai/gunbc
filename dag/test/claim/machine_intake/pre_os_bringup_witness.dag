@@ -5,7 +5,7 @@ import std.measure { byte_size }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.process { ExitFailure, ExitSuccess, ProcessExit }
 import std.scoped_authorization { AttemptIdentity }
-import std.temporal_effect { LeaseAbsent, LeaseEpoch, LeaseRunningExpected, LeaseRunningStale, held_lease }
+import std.temporal_effect { LeaseAbsent, LeaseEpoch, LeaseRunningExpected, LeaseRunningPastExpiry, held_lease }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.ipmi_sel {
   FirmwareHang,
@@ -192,7 +192,7 @@ test fn a_stale_console_lease_refuses_even_with_every_proof_present() -> Bool {
     attempt: mtcollins1_ac_cycle_attempt,
     profile: mtcollins1_pre_os_capabilities,
     sink: EvidenceSinkPresent { directory: "sink" },
-    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningStale),
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningPastExpiry),
     collectors: proven_collectors(),
   ) {
     NotReady { gap: ConsoleLeaseNotHeld { verdict: _ } } => true

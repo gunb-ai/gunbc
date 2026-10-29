@@ -5,8 +5,9 @@ import extdeps.github.actions { SelfHosted, RunsOnExpression }
 import gunbc.witness.compiler_gate_workflow {
   compiler_gate_no_merge_path_job_is_hosted, compiler_gate_runner_is_hosted,
   compiler_gate_merge_path_runs_on_the_fleet, compiler_gate_merge_path_job_ids,
-  compiler_gate_required_job_id
+  compiler_gate_required_job_id, compiler_gate_checkout_ref
 }
+import extdeps.github.expressions { ContextAccess, Github }
 
 // THE CLAIMS OVER THE `floor` AND `generated` JOBS LEFT WITH THOSE JOBS (operator ruling 2026-10-09,
 // the v1 withdrawal; gunbc.rung_drop v1_required_lanes_withdrawn): the receipt adjudicator bound after
@@ -52,4 +53,18 @@ test fn the_live_merge_path_runs_on_the_fleet_and_is_the_required_job() -> Bool 
   compiler_gate_merge_path_runs_on_the_fleet()
     && any(path, id => id == compiler_gate_required_job_id)
     && all(path, id => id == compiler_gate_required_job_id)
+}
+
+// THE REQUIRED JOB JUDGES THE COMPOSED TREE, NOT THE PULL REQUEST HEAD. main has no merge queue, so a
+// head checkout means nothing ever builds head merged with the base, and two individually green pull
+// requests broke main (#14539, #14675). github.sha is refs/pull/N/merge on pull_request and the
+// triggering commit elsewhere. The first claim is the discriminating RED: the old head ref is a
+// different value, so restoring it fails the second. Residue stated in compiler_gate_fleet_checkout_step:
+// the merge ref is fixed when the event fires, so this is a mitigation, not the queue's guarantee.
+test fn the_required_job_checks_out_the_merge_ref() -> Bool {
+  compiler_gate_checkout_ref == ContextAccess { context: Github, path: ["sha"] }
+}
+
+test fn w_RED_the_pull_request_head_ref_is_not_the_checkout_ref() -> Bool {
+  (compiler_gate_checkout_ref == ContextAccess { context: Github, path: ["event", "pull_request", "head", "sha"] }) == false
 }

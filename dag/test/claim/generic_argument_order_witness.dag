@@ -1,0 +1,66 @@
+module test.claim.generic_argument_order_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, total_blocking_census, census_exit}
+import std.process { ProcessExit }
+
+// WHAT A GENERIC CALL MUST ACCEPT, AND WHAT IT MUST REFUSE, ACROSS ARGUMENT ORDER.
+// Five rows about a generic call whose lambda argument comes before or after the argument
+// that binds its parameter: a left-bound lambda, a right-bound lambda, a left-bound chain
+// nested three deep, and an inner generic call that the outer call settles only through a
+// later argument, refused when inconsistent and accepted when consistent. Every row reads
+// only the blocking-diagnostic census of a compiled specimen, so nothing here depends on how
+// many rounds of argument typing a compiler runs or what decides them.
+// The inner-generic refusal is paired with a twin of the same shape typed consistently,
+// which must refuse nothing; without it, a compiler that refuses every lambda-bearing generic
+// call would pass the refusal. The direct lambda-return refusal over a fixed parameter is
+// owned by test.claim.lambda_return_solves_generic_witness and is not restated here.
+// The nested left-bound chain is here because it is the accepted case with the most
+// argument-typing work per line: nested generic calls whose inner generics each come from
+// the lambda's own return. Any diagnostic a compiler would emit twice, or emit for only one
+// nesting level, is visible here as a non-zero census on a program that type-checks.
+
+data left_bound_lambda_source: String = "module test.claim.gar_left_bound\nimport std.types { Int }\nfn gar_bind<T, R>(o: T, f: fn(T) -> R) -> R { f(o) }\nfn probe() -> Int { gar_bind(o: 1, f: fn(v) { v }) }\n"
+
+data right_bound_lambda_source: String = "module test.claim.gar_right_bound\nimport std.types { Int }\nfn gar_app<T, R>(f: fn(T) -> R, x: T) -> R { f(x) }\nfn probe() -> Int { gar_app(f: fn(v) { v }, x: 1) }\n"
+
+data nested_left_bound_chain_source: String = "module test.claim.gar_nested_left\nimport std.types { Int }\nfn gar_bind<T, R>(o: T, f: fn(T) -> R) -> R { f(o) }\nfn probe() -> Int {\n  gar_bind(o: 1, f: fn(a) {\n    gar_bind(o: a, f: fn(b) {\n      gar_bind(o: b, f: fn(c) { c })\n    })\n  })\n}\n"
+
+// AN INNER GENERIC THE OUTER CALL SETTLES ONLY LATER. gar_ap binds R from its THIRD
+// argument (r: true), so at the moment the lambda argument is first read, R is still unset
+// and the body's inner gar_id(x: v) is typed against a context that the settlement later
+// changes. This is the row that distinguishes a compiler that re-reads the body against the
+// settled context from one that keeps its first reading: with the stale reading retained, the
+// body's inner call still says Int where the outer call has settled R := Bool, and the
+// declared Bool below would go unrefused. It is NOT compatible typing -- Int vs Bool -- so the
+// census must report exactly one blocking TypeMismatch.
+data inner_generic_settled_by_later_argument_source: String = "module test.claim.gar_inner_later\nimport std.types { Bool, Int }\nfn gar_id<U>(x: U) -> U { x }\nfn gar_ap<T, R>(f: fn(T) -> R, x: T, r: R) -> R { r }\nfn probe() -> Bool { gar_ap(f: fn(v) { gar_id(x: v) }, x: 1, r: true) }\n"
+
+// THE SAME SHAPE, TYPED CONSISTENTLY. Only x changes (true, so U := Bool throughout). This
+// is what stops the claim above from being greened by an over-eager refusal: a compiler
+// that simply reports a TypeMismatch on every lambda argument would pass the case above and
+// FAIL this one. Zero blocking diagnostics is the only acceptable answer here.
+data inner_generic_compatible_control_source: String = "module test.claim.gar_inner_later_ok\nimport std.types { Bool, Int }\nfn gar_id<U>(x: U) -> U { x }\nfn gar_ap<T, R>(f: fn(T) -> R, x: T, r: R) -> R { r }\nfn probe() -> Bool { gar_ap(f: fn(v) { gar_id(x: v) }, x: true, r: true) }\n"
+
+test fn a_lambda_after_the_argument_that_binds_its_parameter_is_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: left_bound_lambda_source), holds: fn(n) { n == 0 }))
+}
+
+test fn a_lambda_before_the_argument_that_binds_its_parameter_is_accepted_under_the_final_context() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: right_bound_lambda_source), holds: fn(n) { n == 0 }))
+}
+
+test fn a_nested_left_bound_bind_chain_is_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: nested_left_bound_chain_source), holds: fn(n) { n == 0 }))
+}
+
+test fn an_inner_generic_settled_only_by_a_later_argument_refuses() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: inner_generic_settled_by_later_argument_source, wanted_class: "TypeMismatch"), holds: fn(n) { n == 1 }),
+    census_verdict(census: total_blocking_census(source: inner_generic_settled_by_later_argument_source), holds: fn(n) { n == 1 }),
+  ])
+}
+
+test fn an_inner_generic_settled_by_a_later_argument_stays_accepted_when_consistent() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: inner_generic_compatible_control_source), holds: fn(n) { n == 0 }))
+}

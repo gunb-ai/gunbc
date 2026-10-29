@@ -1,0 +1,538 @@
+module test.claim.compute.output_capture_absence_wet_witness
+
+// WET EXECUTING-ROUTE WITNESS FOR THE BUILD-OUTPUT CAPTURE (Charter 2; manager ruling of
+// 2026-10-19: the inhabittance rows must EXECUTE production's route -- "a grep is not a consumer",
+// DESIGN 5).
+//
+// WHAT THIS FILE ADDS OVER THE HERMETIC ONE.
+// test.claim.compute.output_capture_absence_witness supplies readings as data and pins the route
+// with the compiler-reflected call walk. That shows production's route CAN reach the capture step;
+// it cannot show the route RAN, nor that the refusal it returns carries what the real git printed.
+// This file EXECUTES production's own
+//   compute_return_outputs(instance, layout, declared)
+// -- no wrapper, no re-fold, no supplied pair, no new transport mock arm -- against a real
+// temporary checkout and the real /usr/bin/git, on the runner's own host. The effects are the ones
+// the self-host runs: compute_exec -> gunbc.WitnessBin.Run for `git hash-object` and for the
+// staging install. Wet is what `gunbc run --claim-run` gets without --dry-run: `run_verb` in
+// src/v1/stage0/src/main.rs selects ExecutionMode::Hermetic when --dry-run is given and
+// ExecutionMode::Wet when it is not, and the comment beside that choice reads "--dry-run means
+// Hermetic, which REFUSES host operations rather than mocking them silently, and absence means
+// Wet". No mock arm is added to the transport to make these rows hermetic:
+// gunbc.hermetic_mock_fidelity `fabricated_fact_next_trigger` requires an arm to answer as a
+// function of the operation's declared inputs, `eval_mock_response` binds no inputs today, and the
+// unconditional alternative is the arm class that module filed as a defect and had deleted on
+// 2026-08-23 (`mock_arm_is_fabricating`, `hermetic_mock_fidelity_rows`).
+//
+// establishes them: production's own route, run against a real git.
+//  (1) PRESENT. One declared output exists on disk. The route must return it with a blob that
+//      EQUALS git hash-object's OWN stdout. Nothing is typed from memory: the expectation is
+//      captured in the same run by the same /usr/bin/git twice over -- `hash-object <path>` in the
+//      same workdir on the same absolute path, and `hash-object --no-filters --stdin` over the same
+//      bytes -- and all three live readings plus capture_bytes_oid must agree with the blob
+//      production returned.
+//  (2) ABSENT. One declared output was never written. The route must refuse, and the detail must
+//      carry git's REAL exit code and stderr AS CAPTURED IN THIS RUN: the expected exit and stderr
+//      come from running that same `git hash-object <that absolute path>` in that same workdir
+//      through the independent compute_exec route, outside the capture step. If git changes its
+//      exit or its message, this row follows git rather than a string I wrote.
+//
+// CONTAINMENT -- a claim every row must return, not a promise in a comment (review 82796: an
+// earlier revision compared the WHOLE /tmp listing before and after, which made an unrelated
+// process's /tmp traffic able to fail the run).
+// Everything this file creates lives under ONE shell.Mktemp.DirWithTemplate root, reached through the
+// INSTANCE's own roots, so what stays contained is production's path derivation rather than mine:
+// instance_root (hence compute_root, hence layout.checkout / work_dir / target_dir) and the
+// materialization store are both under the root, and the store is WitnessScratchRoot, so
+// layout.staging_dir is <root>/store-staging instead of the fleet's frame scratch.
+// The guard therefore says three things, and none of them is a host-wide directory diff (an earlier
+// revision compared the whole /tmp listing before and after; review 82796 rightly refused it, because
+// another session's /tmp traffic could then fail this row):
+//   * production_paths_stay_inside_root -- every path compute_layout derives (checkout, work_dir,
+//     target_dir, and the capture's staging_dir) sits under THIS case's temp root, and the staging
+//     tree does not sit under materialization_store_frame_root_prefix, which is the fleet's frame
+//     scratch at /tmp/gunbc_compute_*. Production owns that derivation, and the root is reached only
+//     through the instance's own roots, so this IS the statement that every write stays inside.
+//   * root_lists_own_writes -- a recursive find under the root NAMES the file this case wrote. The
+//     positive half, so containment cannot pass by listing nothing.
+//   * the tree is removed and the host then answers not_found for the root.
+// WRITE ROOTS, ENUMERATED (every write a case performs, none outside the Mktemp root R):
+//   R itself (shell.Mktemp.DirWithTemplate) and its removal; R/checkout (repo_root bootstrap);
+//   the layout trees R/compute/work/<id>/{src,target,out/captured} (compute_ensure_dir and the
+//   Filesystem.Write of the declared output); R/store-staging (compute_ensure_dir, then the
+//   capture's `install -m 0755`). `git hash-object` is run without -w and HashObjectStdinNoWrite
+//   writes nothing. The frame scratch /tmp/gunbc_compute_<frame> enters only through a
+//   FrameJobWorkspace store root, which this fixture never supplies: the instance's roots
+//   (instance_root, store root) are the only inputs production derives its paths from, and both
+//   are children of R. Its sorted population is still listed BEFORE and AFTER and carried in the
+//   case record as REPORTED evidence, not as a verdict input. A refused listing is named as a
+//   refusal, never read as empty.
+//
+// ENROLLMENT, all three rows (the incomplete triple is the failure chunk_21's header documents):
+//   1. v2.workflow.local_repo_wet_terminal local_repo_wet_schedule -- one WetScheduledClaim per
+//      identity below. This is the ROUTE; without it nothing executes these rows.
+//   2. gunbc.ci.ci_layer_roots witness_exclusion_frontier -- pattern
+//      "output_capture_absence_wet_witness.dag", classification LocalRepoWetLane, so hermetic
+//      discovery does not claim a file whose effects it cannot serve.
+//   3. v2.workflow.floor_route_gap (floor_route_gap_expectation_chunk_45) -- one expectation per
+//      identity, operation DirWithTemplate, ground NoMockResponse: what the hermetic route refuses
+//      on, read from THESE identities by the hermetic claim run itself
+//      (`gunbc run --claim-run --dry-run --function <row>` reports HostEffectRefused {
+//      operation: "DirWithTemplate", ground: NoMockResponse }), which is the operation the case root
+//      is created through. Not copied from a sibling: copying is what chunk_21's header records as
+//      producing floor_route_gap_expectation_mismatch.
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { string_contains, trim }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git
+import extdeps.git.plumbing
+import gunbc.compute.work_request { DeclaredOutput, CheckoutRoot }
+import gunbc.compute.compute_attempt_slots_root { compute_seat_path, ComputeFlatSeat }
+import gunbc.compute.work_provider_local {
+  ComputeExec,
+  ComputeExecFailed,
+  ComputeExecOk,
+  ComputeLayout,
+  OutputsMismatch,
+  OutputsReturned,
+  compute_exec,
+  compute_ensure_dir,
+  compute_layout,
+  compute_program,
+  compute_return_outputs,
+  compute_staged_path,
+}
+import gunbc.roadmap.roadmap_execution_contract {
+  AttemptStateDirectoryCapability,
+  GitWorkspaceCapability,
+}
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
+import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  IsolatedJobToolchainHomes,
+  DashboardExistingProviderState,
+  DashboardExistingRepo,
+  DashboardLocalProvision,
+  DashboardObserveOnly,
+  DashboardToolchain,
+  DispatchStateInstanceOwned,
+  WorkerIsServiceUser,
+  admitted_single_session_binding,
+  codex_roadmap_account_evidence,
+  dashboard_execution_environment_for_toolchain,
+  dashboard_instance_child,
+  dashboard_named_tmux_server,
+  dispatch_worker_memory_ceiling,
+  fleet_admitted_revision_source,
+  fleet_compute_hermetic_dashboard_id,
+  fleet_compute_hermetic_deployment,
+  fleet_compute_hermetic_directory_owner,
+  fleet_compute_hermetic_toolchain,
+}
+import std.materialization_store_grant {
+  MaterializationStoreRoot,
+  WitnessScratchRoot,
+  materialization_store_frame_root_prefix,
+}
+
+// THE ONE FACT THIS FILE TYPES: the bytes of the present declared output. Used three times --
+// written into the checkout, hashed independently by git to name the expected blob, and hashed by
+// production's own route.
+data capture_bytes: String = "gunbc capture wet witness fixed bytes 0123456789\n"
+
+// WHAT GIT ITSELF PRINTS FOR THOSE BYTES (measured on the runner: `git hash-object --no-filters
+// --stdin` over capture_bytes). Pinned so a silent change in WHAT the capture hashes -- hashing the
+// staged file instead of the source, or a different filter -- surfaces as a disagreement between
+// live readings, not as a number I could rewrite to match the bug.
+data capture_bytes_oid: String = "cc815613cfd8c8f3870be038765d840d7c656d02"
+
+// The declared output paths, relative to the checkout root.
+data capture_rel: String = "out/captured/plan.json"
+data capture_rel_absent: String = "out/captured/absent.json"
+
+// The basename the recursive listing under the root looks for, so containment is proved by a
+// recursive find over absolute paths rather than by a single directory's bare-name listing.
+data capture_file_name: String = "plan.json"
+
+// THE TEMP ROOT'S OWN NAME. mktemp's plain Dir yields /tmp/tmp.XXXXXX, which fails
+// is_gunbc_tmp_scratch_store_root ("/tmp/gunbc_*"), and a WitnessScratchRoot outside that namespace
+// admits NOTHING (materialization_store_envelope returns an empty envelope) -- so the capture's own
+// staging write would be refused for a naming reason rather than a behaviour one. The template puts
+// the root in the scratch namespace while staying clear of the fleet's /tmp/gunbc_compute_ prefix.
+data witness_root_template: String = "/tmp/gunbc_capture_wet_XXXXXX"
+
+// THE WITNESS'S OWN HOST: the production constructor shape (cf.
+// fleet_compute_hermetic_dashboard_instance_at) with exactly three departures, all toward
+// containment -- repo_root/origin are the temp checkout, and BOTH roots production derives capture
+// paths from (instance_root, and the materialization store, which is WitnessScratchRoot here) sit
+// under one temp root.
+fn witness_instance(temp_root: String) -> HostDashboardInstance {
+  let homes = IsolatedJobToolchainHomes {
+    cargo_home: dashboard_instance_child(root: temp_root as FilePath, child: "homes/cargo"),
+    rustup_home: dashboard_instance_child(root: temp_root as FilePath, child: "homes/rustup"),
+  }
+  let toolchain: DashboardToolchain = fleet_compute_hermetic_toolchain(homes: homes)
+  HostDashboardInstance {
+    deployment: fleet_compute_hermetic_deployment,
+    instance_id: fleet_compute_hermetic_dashboard_id,
+    host_identity: "wet-capture-witness" as NonEmptyStr,
+    provision_parent_root: temp_root as FilePath,
+    instance_root: temp_root as FilePath,
+    local_origin_root: dashboard_instance_child(root: temp_root as FilePath, child: "origin"),
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    repo_root: dashboard_instance_child(root: temp_root as FilePath, child: "checkout"),
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    publication_base_branch: "main" as NonEmptyStr,
+    dispatch_state_scope: DispatchStateInstanceOwned {
+      worktree_child: "attempts" as NonEmptyStr,
+      attempt_state_child: "attempt-state" as NonEmptyStr,
+    },
+    execution_environment: dashboard_execution_environment_for_toolchain(
+      toolchain: toolchain,
+      serve_binary: dashboard_instance_child(root: temp_root as FilePath, child: "bin/gunbc"),
+    ),
+    provider_state: DashboardExistingProviderState {
+      root: dashboard_instance_child(root: temp_root as FilePath, child: "codex"),
+      executable: none,
+      binding: admitted_single_session_binding(
+        selection: CodexDefaultAccount,
+        evidence: codex_roadmap_account_evidence,
+      ),
+    },
+    serve_binary: dashboard_instance_child(root: temp_root as FilePath, child: "bin/gunbc"),
+    serve_function: "roadmap_serve_handle" as NonEmptyStr,
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    listen_port: 18099,
+    tmux_server: dashboard_named_tmux_server(instance_id: fleet_compute_hermetic_dashboard_id),
+    actuation: DashboardObserveOnly,
+    provision_transport: DashboardLocalProvision,
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    admitted_revision: fleet_admitted_revision_source,
+    toolchain: toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    directory_owner: fleet_compute_hermetic_directory_owner,
+    worker: WorkerIsServiceUser,
+    materialization_store_root: Present {
+      value: WitnessScratchRoot {
+        root: dashboard_instance_child(root: temp_root as FilePath, child: "store") as String,
+      },
+    },
+  }
+}
+
+// THE FLEET'S OWN FRAME SCRATCH, listed BEFORE AND AFTER and carried in the case record (the
+// manager's ruling asks for that listing). It is EVIDENCE, not a verdict input: whether an unrelated
+// process touched /tmp cannot decide whether THIS run stayed inside its temp dir -- that is decided
+// by production_paths_stay_inside_root, which speaks directly about the paths production derived.
+// A refusal to list is NAMED as a refusal, never read as an empty population.
+fn fleet_scratch_listing() -> String {
+  let listed = shell.Find.FilesByNameSorted(
+    root: "/tmp" as FilePath,
+    name_glob: join([materialization_store_frame_root_prefix, "*"], "") as NonEmptyStr,
+  )
+  let ok = listed.success
+  let listed_body = trim(s: listed.stdout)
+  let refused = join(["<frame-scratch listing refused: ", trim(s: listed.stderr), ">"], "")
+  if ok { listed_body } else { refused }
+}
+
+// THE CONTAINMENT CLAIM ITSELF. compute_layout derives checkout/work_dir/target_dir/staging_dir from
+// the instance, so asserting each sits under this case's mktemp root IS the statement "every write
+// this route performs stays inside the temp dir" -- said about production's own derived paths rather
+// than inferred from a directory diff. The second half is the departure WitnessScratchRoot buys: the
+// staging tree the capture installs into must NOT be the fleet's frame scratch, so it may not sit
+// under the frame-scratch prefix even though both live under /tmp.
+fn production_paths_stay_inside_root(layout: ComputeLayout, instance: HostDashboardInstance, root: String) -> Bool {
+  let under = join([root, "/"], "")
+  layout.root.starts_with(prefix: under)
+    && layout.work_dir.starts_with(prefix: under)
+    && layout.checkout.starts_with(prefix: under)
+    && layout.out_dir.starts_with(prefix: under)
+    && layout.leases_dir.starts_with(prefix: under)
+    && layout.lease_path.starts_with(prefix: under)
+    && layout.staging_dir.starts_with(prefix: under)
+    && layout.target_dir.starts_with(prefix: under)
+    && layout.log_path.starts_with(prefix: under)
+    && layout.consumption_path.starts_with(prefix: under)
+    && (compute_seat_path(instance: instance, seat: ComputeFlatSeat) as String).starts_with(prefix: under)
+    && !layout.staging_dir.starts_with(prefix: materialization_store_frame_root_prefix)
+}
+
+// EVERY PATH UNDER THE ROOT, recursively, as absolute paths -- shell.Find.Files runs
+// `find <root> -name <glob>`, so its stdout carries full paths, which Filesystem.List's bare
+// directory names could not. A refusal is NAMED as a refusal rather than read as an empty tree.
+fn root_listing(root: String) -> String {
+  let found = shell.Find.FilesByNameSorted(root: root as FilePath, name_glob: capture_file_name as NonEmptyStr)
+  let ok = found.success
+  let listed_body = found.stdout
+  let refused = join(["<root listing refused:", trim(s: found.stderr), ">"], "")
+  if ok { listed_body } else { refused }
+}
+
+fn root_is_gone(root: String) -> Bool {
+  let gone = Filesystem.List(path: root)
+  !gone.success && gone.error_kind == "not_found"
+}
+
+// WHAT ONE WET CASE PRODUCES. Every field is a live reading or a live effect check, so a row's
+// verdict cannot be satisfied by anything I prepared.
+type WetCaptureCase {
+  // production's verdict rendered: "<declared>=<blob>" for a return, the detail text for a refusal.
+  verdict_text: String
+  // Present case: the staged file exists in the layout's staging tree (the install ran).
+  // Refusing cases: that tree is empty (no install ran at all).
+  staging_as_expected: Bool
+  // production's own derived layout paths all sit under the case root, staging is NOT under the
+  // fleet's frame-scratch prefix, the tree was removed, and the host answers not_found for it.
+  contained: Bool
+  // The fleet's frame-scratch listing before and after the run -- reported evidence, so the body can
+  // show the scratch was never entered; not a verdict input (see fleet_scratch_listing).
+  scratch_before: String
+  scratch_after: String
+  // The root listing named the file this case wrote -- the positive half of containment, kept
+  // separate so a vacuously empty listing cannot pass.
+  root_lists_own_writes: Bool
+  // git's OWN exit code as a string for `hash-object <the absent absolute path>` in the same
+  // workdir, taken outside the capture step. "<ok>" when git unexpectedly succeeds.
+  truth_exit: String
+  // git's OWN stderr for that same command; "" when git unexpectedly succeeds.
+  truth_stderr: String
+  // git's OWN oid for the present bytes, read two ways: `hash-object <path>` in the same workdir,
+  // and `hash-object --no-filters --stdin` over the bytes.
+  live_path_oid: String
+  live_stdin_oid: String
+  // Why a non-verdict happened, when it did -- so a row fails on a named cause, never silently.
+  setup_failure: String
+}
+
+fn setup_failed(cause: String) -> WetCaptureCase {
+  WetCaptureCase {
+    verdict_text: "setup failed",
+    staging_as_expected: false,
+    contained: false,
+    scratch_before: "",
+    scratch_after: "",
+    root_lists_own_writes: false,
+    truth_exit: "",
+    truth_stderr: "",
+    live_path_oid: "",
+    live_stdin_oid: "",
+    setup_failure: cause,
+  }
+}
+
+
+// THE CASE, EXECUTED. write_output=true puts the declared output on disk inside the production
+// checkout path; false leaves it unwritten. second_output_present adds a SECOND, present declared
+// output AFTER the absent one, so only a stop at the first refusal can keep its install from
+// running.
+// THE ONE BOOTSTRAP CALL, and it exists for exactly one reason that is a fact about production's
+// helper rather than a convenience: compute_ensure_dir launches `install -d` with `workdir` set to
+// the instance's REPO ROOT, so it cannot create the repo root itself -- measured on the runner, the
+// call succeeds with an existing workdir and fails with repo_root before anything has made it. In
+// the fleet, the repo root is created by the provisioner before any compute work runs; a wet case
+// that builds its own host has to make that one directory. Everything BELOW it -- the layout's
+// checkout, target and staging trees -- then goes through production's own compute_ensure_dir,
+// unchanged. Same program, same capability lookup, same mode, same argument builder as that helper;
+// only the launched-from directory differs, and only for this call. A refusal returns false.
+fn compute_ensure_dir_from(instance: HostDashboardInstance, root: String, path: String) -> Bool {
+  let install = compute_program(instance: instance, cap: AttemptStateDirectoryCapability)
+  let dir_mode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
+  match compute_exec(
+    program: install,
+    workdir: root,
+    args: coreutils_install_directories_arguments(mode: dir_mode, paths: [path]),
+  ) {
+    ComputeExecOk { stdout: _, stderr: _ } => true
+    ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
+  }
+}
+
+fn wet_capture_case(write_output: Bool, second_output_present: Bool) -> WetCaptureCase {
+  let root = shell.Mktemp.DirWithTemplate(template: witness_root_template).path as String
+  let instance = witness_instance(temp_root: root)
+  let scratch_before = fleet_scratch_listing()
+  let layout_opt = compute_layout(instance: instance, identity_hex: "wetcapturewitnessidentity0000000000")
+  let checkout = match layout_opt {
+    Absent => join([root, "/no-layout"], "")
+    Present { value: layout } => layout.checkout
+  }
+  let dirs_ready = match layout_opt {
+    Absent => false
+    Present { value: layout } =>
+      compute_ensure_dir_from(instance: instance, root: root, path: instance.repo_root as String)
+        && compute_ensure_dir(instance: instance, path: layout.checkout)
+        && compute_ensure_dir(instance: instance, path: layout.target_dir)
+        && compute_ensure_dir(instance: instance, path: layout.staging_dir)
+        && compute_ensure_dir(instance: instance, path: join([layout.checkout, "/out/captured"], ""))
+  }
+  // THE LAYOUT'S OWN DIRECTORIES, created by production's own helper over the same paths
+  // compute_spawn_and_collect creates (checkout, target_dir, staging_dir), after ONE bootstrap call
+  // that only makes the instance's repo root -- which the fleet's provisioner creates before any
+  // compute work, and which compute_ensure_dir cannot make for itself because it launches `install
+  // -d` from there (see compute_ensure_dir_from; both facts were measured on the runner, not
+  // assumed). Every result is checked and a refusal names itself below. Nothing here fabricates a
+  // directory the route would not have made: the helper, the capability, the mode and the argument
+  // builder are production's.
+  //
+  // The last path above is the directory a BUILD makes for its own artifact: the route never
+  // creates an output's directory (compute_spawn_and_collect ensures the layout's own trees, the
+  // build writes its declared outputs, and the capture only READS them afterwards), so a built
+  // work-unit has that parent directory and the layout helpers do not create it. It is made here by
+  // production's own compute_ensure_dir, which works unmodified now that repo_root exists.
+  //
+  // One named failure, not a silent false. The checkout DIRECTORY exists by here (dirs_ready came
+  // from compute_ensure_dir over the layout's own paths), so when a declared output is absent,
+  // git's refusal is about the missing FILE -- which is what the absent claim is about -- and not
+  // an artifact of a missing directory.
+  if !dirs_ready {
+    setup_failed(cause: "install -d refused for the layout's own paths")
+  } else {
+    let present_path = join([checkout, "/", capture_rel], "")
+    let absent_path = join([checkout, "/", capture_rel_absent], "")
+    let written = Filesystem.Write(path: present_path, content: capture_bytes).success
+    // THE INDEPENDENT READINGS, from the same /usr/bin/git the instance's capability table names, on
+    // the SAME absolute paths in the SAME workdir -- taken outside the capture step, so what each
+    // row compares against is git's own output in this run.
+    let git_program = compute_program(instance: instance, cap: GitWorkspaceCapability)
+    let truth = compute_exec(program: git_program, workdir: checkout, args: ["hash-object", absent_path])
+    let path_reading = compute_exec(program: git_program, workdir: checkout, args: ["hash-object", present_path])
+    let stdin_reading = git.Plumbing.HashObjectStdinNoWrite(content: capture_bytes)
+    let truth_exit = match truth {
+      ComputeExecFailed { exit_code, stdout: _, stderr: _ } => to_string(exit_code)
+      ComputeExecOk { stdout: _, stderr: _ } => "<ok>"
+    }
+    let truth_stderr = match truth {
+      ComputeExecFailed { exit_code: _, stdout: _, stderr } => trim(s: stderr)
+      ComputeExecOk { stdout: _, stderr: _ } => ""
+    }
+    let live_path_oid = match path_reading {
+      ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => "<path hash refused>"
+      ComputeExecOk { stdout, stderr: _ } => trim(s: stdout)
+    }
+    let live_stdin_oid = trim(s: stdin_reading.oid)
+    let declared =
+      if write_output {
+        [DeclaredOutput { root: CheckoutRoot, path: capture_rel }]
+      } else {
+        // ORDER IS THE POINT: the absent one first, the present one second.
+        [
+          DeclaredOutput { root: CheckoutRoot, path: capture_rel_absent },
+          DeclaredOutput { root: CheckoutRoot, path: capture_rel },
+        ]
+      }
+    // >>> THE ROUTE ITSELF, production's, executed wet.
+    let verdict = match layout_opt {
+      Absent => OutputsMismatch { detail: "layout refused" }
+      Present { value: layout } =>
+        compute_return_outputs(instance: instance, layout: layout, declared: declared)
+    }
+    // The staging tree: the present case expects the staged file (the install ran); the refusing
+    // case expects it EMPTY, including for the second output, which really is on disk.
+    let staging_as_expected = match layout_opt {
+      Absent => false
+      Present { value: layout } =>
+        if write_output {
+          Filesystem.Read(path: compute_staged_path(layout: layout, declared: capture_rel)).success
+        } else {
+          let listed = Filesystem.List(path: layout.staging_dir)
+          listed.success && trim(s: listed.entries) == ""
+        }
+    }
+    let tree = root_listing(root: root)
+    // The positive half: the recursive listing under the root sees the file this case wrote, at a
+    // path under the root. Without it, containment could be satisfied by a blind or empty listing.
+    let root_lists_own_writes =
+      !string_contains(s: tree, pattern: "<root listing refused")
+        && string_contains(s: tree, pattern: root)
+        && string_contains(s: tree, pattern: capture_file_name)
+    let scratch_after = fleet_scratch_listing()
+    let removed = shell.Remove.RecursiveForce(path: root as FilePath).success
+    let paths_contained = match layout_opt {
+      Absent => false
+      Present { value: layout } => production_paths_stay_inside_root(layout: layout, instance: instance, root: root)
+    }
+    let contained = paths_contained && removed && root_is_gone(root: root)
+    let verdict_text = match verdict {
+      OutputsMismatch { detail: d } => d
+      OutputsReturned { outputs: outs } =>
+        match outs |> first {
+          Present { value: o } => join([o.declared, "=", o.blob], "|")
+          Absent => "<empty return>"
+        }
+    }
+    if !written {
+      setup_failed(cause: "the declared output could not be written into the checkout")
+    } else {
+      WetCaptureCase {
+        verdict_text: verdict_text,
+        staging_as_expected: staging_as_expected,
+        contained: contained,
+        root_lists_own_writes: root_lists_own_writes,
+        scratch_before: scratch_before,
+        scratch_after: scratch_after,
+        truth_exit: truth_exit,
+        truth_stderr: truth_stderr,
+        live_path_oid: live_path_oid,
+        live_stdin_oid: live_stdin_oid,
+        setup_failure: "",
+      }
+    }
+  }
+}
+
+
+// (1) THE PRESENT CLAIM, EXECUTED WET. Production's own route returns the declared output and its
+// blob equals git hash-object's OWN stdout -- four live readings of the same bytes agreeing: the
+// route's blob, `hash-object <path>` in the same workdir, `hash-object --stdin` over the bytes, and
+// the byte-pinned oid. The staged file exists, so the install really ran. Containment is part of
+// what the row returns.
+test fn the_wet_route_returns_the_blob_git_hash_object_itself_printed() -> Bool {
+  let c = wet_capture_case(write_output: true, second_output_present: false)
+  c.setup_failure == ""
+    && c.contained
+    && c.root_lists_own_writes
+    && c.staging_as_expected
+    && c.live_stdin_oid == capture_bytes_oid
+    && c.live_path_oid == capture_bytes_oid
+    && c.verdict_text == join([capture_rel, "=", capture_bytes_oid], "|")
+}
+
+// (2) THE ABSENT CLAIM, EXECUTED WET. Production's own route over a declared output that was never
+// written refuses, and the refusal carries git's REAL exit code and stderr as captured in this run
+// -- the same command, the same workdir, the same absolute path, taken outside the capture step.
+// The row also demands git itself refused (non-empty stderr, non-zero exit), so the comparison
+// cannot be vacuous: if git ever reads a file nobody wrote, the row fails rather than passing on an
+// empty expectation.
+test fn the_wet_route_refuses_an_absent_output_with_gits_own_exit_and_stderr() -> Bool {
+  let c = wet_capture_case(write_output: false, second_output_present: true)
+  c.setup_failure == ""
+    && c.contained
+    && c.root_lists_own_writes
+    && c.staging_as_expected
+    && c.truth_stderr != ""
+    && c.truth_exit != "0"
+    && c.truth_exit != "<ok>"
+    && string_contains(s: c.verdict_text, pattern: "could not be hashed")
+    && string_contains(s: c.verdict_text, pattern: "git hash-object exited")
+    && string_contains(s: c.verdict_text, pattern: capture_rel_absent)
+    && string_contains(s: c.verdict_text, pattern: c.truth_exit)
+    && string_contains(s: c.verdict_text, pattern: c.truth_stderr)
+}
+
+// (3) THE EFFECT STOP, EXECUTED WET. With the FIRST of two declared outputs absent and the SECOND
+// really on disk, production's route refuses at the first and runs no further effect: the staging
+// tree stays empty -- the second output's install never happened -- and the refusal names the
+// absent output and never the blob of the present one.
+test fn the_wet_route_stops_at_the_first_absent_output_and_stages_nothing_after_it() -> Bool {
+  let c = wet_capture_case(write_output: false, second_output_present: true)
+  c.setup_failure == ""
+    && c.contained
+    && c.root_lists_own_writes
+    && c.staging_as_expected
+    && string_contains(s: c.verdict_text, pattern: capture_rel_absent)
+    && !string_contains(s: c.verdict_text, pattern: capture_bytes_oid)
+}

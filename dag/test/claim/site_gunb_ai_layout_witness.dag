@@ -1,0 +1,558 @@
+module test.claim.site_gunb_ai_layout_witness
+
+import std.types { Bool, Int, List, String }
+import std.algebra { string_contains, collection_concat_shape, collection_map_shape, collection_join_shape, list_push }
+import std.optional { Optional, Absent, Present }
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+import gunbc.design.material { CssDecl, BuildRule, StaticRule, MediaRule, AmbientRule, ResponseRule, decl, serialize_rules, css_block }
+import extdeps.languages.css.properties { GridTemplateColumns }
+import extdeps.languages.css.selectors { ClassSelector, selector_subject_wire, root_selector }
+import gunbc.site.gunb_ai_layout {
+  BallotRequest, BallotHtml, BallotRefused, tracks_fixed, tracks_single,
+  ballot_render, layout_rules, layout_css, ballot_css, layout_scale_tokens,
+  FixedColumns,
+  grid_flow, grid_fixed_3, grid_autofill, grid_over_policy_columns, column_count_max,
+  breakpoints_adopt_live, breakpoints_stack_only, ResponsePoint, breakpoint_points,
+  response_rule, stack_point, compact_point,
+  scheme_dark_only, scheme_light_alt, day_bindings_complete, day_bindings_rows, day_bindings,
+}
+import gunbc.site.gunb_ai_layout_review { ballot_entries, ballot_write_entries, BallotRun, BallotWritten, BallotRefusedRun }
+import gunbc.site.gunb_ai_tokens { token_root_decls, token_swatches }
+import std.list { duplicated_by_key, first_where }
+import test.fixture.text_scan { index_of }
+import extdeps.languages.css.media_queries { MediaMaxWidth, css_media_rule_wire, prefers_light }
+import extdeps.languages.css.values { CssLength, Px }
+import gunbc.design.palette { swatch_paint, swatches_of }
+import gunbc.design.gunb_ai_hues { gunb_ai_hues }
+
+// Renders-and-checks the LAYOUT layer (DESIGN §5: a witness goes red when the layer
+// breaks). Consumer: claim-run —
+//   gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_layout_witness.dag --claim-run
+// Every claim is a property of a RENDERED ballot page or of the rules the pages are
+// generated from, never of a type. Where a claim exists because a weaker one let a
+// defect through, the RED control is named in place.
+
+// 1. Every ballot entry renders, and renders ITSELF: the artifact carries the entry's
+//    own slug and label. A refusal is a typed BallotRefused, so a broken entry cannot
+//    report success (fail-closed on the emit channel, checked through the type).
+test fn witness_ballot_all_entries_render_themselves() -> Bool {
+  all(ballot_entries, e => match ballot_render(req: e) {
+    BallotHtml { html: h, slug: s } =>
+      s == e.slug
+        && string_contains(s: h, pattern: "<!DOCTYPE html>")
+        && string_contains(s: h, pattern: join([">", e.label], ""))
+        && string_contains(s: h, pattern: join([">", e.slug], ""))
+    BallotRefused { reason: r } => false
+  })
+}
+
+// 2. The negative control that makes claim 1 non-decorative: an inadmissible choice
+//    REFUSES, and the refusal names the entry it refused.
+test fn witness_inadmissible_grid_refuses_by_slug() -> Bool {
+  match ballot_render(req: BallotRequest {
+    slug: "red-control-grid",
+    axis: "control",
+    label: "control",
+    note: "control",
+    grid: grid_over_policy_columns,
+    breakpoints: breakpoints_adopt_live,
+    scheme: scheme_dark_only,
+  }) {
+    BallotRefused { reason: r } => string_contains(s: r, pattern: "red-control-grid")
+    BallotHtml { html: h, slug: s } => false
+  }
+}
+
+// 3. Every declaration value the rules emit carries only references that resolve
+//    against the token layer — over every combination the ballot can ask for. Values
+//    are walked per-value (bounded), never over a whole document.
+test fn witness_layout_values_resolve() -> Bool {
+  all(layout_rules(grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_light_alt), r =>
+    all(rule_decl_values(rule: r), v => value_is_bound(v: v)))
+    && all(layout_rules(grid: grid_fixed_3, breakpoints: breakpoints_stack_only, scheme: scheme_dark_only), r =>
+      all(rule_decl_values(rule: r), v => value_is_bound(v: v)))
+    && all(layout_rules(grid: grid_autofill, breakpoints: breakpoints_adopt_live, scheme: scheme_light_alt), r =>
+      all(rule_decl_values(rule: r), v => value_is_bound(v: v)))
+}
+
+fn rule_decl_values(rule: BuildRule) -> List<String> {
+  match rule {
+    StaticRule { selector: _, decls: ds } => map(ds, d => d.value)
+    MediaRule { condition: _, selector: _, decls: ds } => map(ds, d => d.value)
+    ResponseRule {
+      subject: _, shape: _, trigger: _, transition_props: _, timing: _,
+      base_decls: bs, response_decls: rs,
+    } => concat(map(bs, d => d.value), map(rs, d => d.value))
+    AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => []
+  }
+}
+
+fn value_is_bound(v: String) -> Bool {
+  string_length(s: v) <= var_scan_bound()
+    && (!string_contains(s: v, pattern: "var(--")
+      || all(var_reference_names(s: v, at: 0, limit: string_length(s: v), found: []),
+        name => declared_anywhere(name: name)))
+}
+
+fn var_scan_bound() -> Int {
+  256
+}
+
+// A layout reference names either a role (declared by the tokens layer's :root) or a
+// scale token this layer reads. Both sides are ASKED, never copied: token_root_decls is
+// the same call the page builds :root from, and layout_scale_tokens is the layer's own
+// pool — checked in both directions by witness_token_pool_is_honest below.
+fn name_is_listed(name: String, names: List<String>) -> Bool {
+  fold(names, init: false, f: (acc, n) => acc || n == name)
+}
+
+fn declared_anywhere(name: String) -> Bool {
+  declared_root(name: name) || declared_pool(name: name)
+}
+
+fn declared_root(name: String) -> Bool {
+  fold(token_root_decls(), init: false, f: (acc, d) => acc || custom_name(d: d) == join(["--", name], ""))
+}
+
+fn custom_name(d: CssDecl) -> String {
+  match d.prop {
+    CustomProperty { name: n } => join(["--", n], "")
+    _ => "NOT-A-CUSTOM-PROPERTY-MUST-NOT-MATCH"
+  }
+}
+
+fn declared_pool(name: String) -> Bool {
+  fold(layout_scale_tokens(), init: false, f: (acc, t) => acc || t.name == name)
+}
+
+fn var_reference_names(s: String, at: Int, limit: Int, found: List<String>) -> List<String> {
+  if at + 6 > limit {
+    found
+  } else if substring(s: s, start: at, end: at + 6) == "var(--" {
+    let name = var_name_at(s: s, at: at + 6, limit: limit, chars: [])
+    var_reference_names(s: s, at: at + 6, limit: limit, found: found |> list_push(name))
+  } else {
+    var_reference_names(s: s, at: at + 1, limit: limit, found: found)
+  }
+}
+
+fn var_name_at(s: String, at: Int, limit: Int, chars: List<String>) -> String {
+  if at >= limit {
+    join(chars, "")
+  } else {
+    let c = char_at(s: s, pos: at)
+    if c == ")" {
+      join(chars, "")
+    } else {
+      var_name_at(s: s, at: at + 1, limit: limit, chars: chars |> list_push(c))
+    }
+  }
+}
+
+// 4. The token pool is honest in BOTH directions (§5: an identity join, not a list
+//    nobody audits): every var() reference the rules emit resolves against the pool or
+//    the role bindings, AND every pool row is actually read by some rule. A row listed
+//    but unused reddens the second half — that is what stops the pool from becoming a
+//    hand-maintained wish list beside the rules.
+test fn witness_token_pool_is_honest() -> Bool {
+  all(used_reference_names(), name => declared_anywhere(name: name))
+    && all(layout_scale_tokens(), t => row_is_read(name: t.name))
+}
+
+fn used_reference_names() -> List<String> {
+  flat_map(all_rule_arms(), r => var_reference_names_in(vs: rule_decl_values(rule: r), found: []))
+}
+
+// Names collected by fold over values, each value walked by cursor: no list indexing
+// (which yields Optional here) and no recursion over the whole artifact.
+fn var_reference_names_in(vs: List<String>, found: List<String>) -> List<String> {
+  fold(vs, init: found, f: (acc, v) =>
+    if string_contains(s: v, pattern: "var(--") {
+      fold(var_reference_names(s: v, at: 0, limit: string_length(s: v), found: []),
+        init: acc, f: (inner, n) => inner |> list_push(n))
+    } else {
+      acc
+    })
+}
+
+fn all_rule_arms() -> List<BuildRule> {
+  concat(
+    concat(
+      layout_rules(grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only),
+      layout_rules(grid: grid_fixed_3, breakpoints: breakpoints_stack_only, scheme: scheme_light_alt)),
+    layout_rules(grid: grid_autofill, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only))
+}
+
+// A pool row must be READ by some rule, in one of the two ways this layer consumes a
+// scale token: as a var(--name) reference in a declaration value, or as the length of
+// a media condition (breakpoint rows are consumed that way — extdeps forbids var()
+// inside @media, so their number is inlined from the row via the upstream length wire).
+// Checking only the first way would have reddened both breakpoint rows for a reason
+// that is not a defect.
+fn row_is_read(name: String) -> Bool {
+  let needle = join(["var(--", name, ")"], "")
+  fold(all_rule_arms(), init: false, f: (acc, r) => acc || arm_reads(r: r, needle: needle))
+}
+
+// The exact text the layer owes for one response point: the condition and the
+// single-column body, each assembled by the same upstream wires the page is serialized
+// through (material assembles a MediaRule exactly this way). Never typed by hand.
+fn block_for(point: ResponsePoint) -> String {
+  serialize_rules(rules: [response_rule(point: point)])
+}
+
+// The point's EFFECT alone: its selector and declarations, with the condition stripped.
+// Two points under different widths that do the identical thing are the same work twice,
+// and comparing whole blocks would hide that (the condition text differs).
+fn effect_for(point: ResponsePoint) -> String {
+  serialize_rules(rules: [StaticRule { selector: point.subject, decls: point.decls }])
+}
+
+// A response point NO axis declares, used only as a witness-side probe. It is a test
+// input, never rendered: its block must be ABSENT from every page, which is what makes
+// the positive checks above non-decorative (a page that emitted an unconditional or
+// invented media block is caught even when the expected blocks happen to be present).
+// A response point NO axis declares, used only as a witness-side probe. It is a test
+// input, never rendered: its block must be ABSENT from every page, so an invented or
+// unconditional media block is caught even when the expected blocks happen to be present.
+data probe_point: ResponsePoint = ResponsePoint {
+  condition: MediaMaxWidth { max: CssLength { n: 4199, unit: Px } },
+  subject: ClassSelector { name: "cards" },
+  decls: [decl(prop: GridTemplateColumns, value: tracks_single())]
+}
+
+fn all_rules_css() -> String {
+  join(map(all_rule_arms(), r => arm_text(rule: r)), "\n")
+}
+
+fn arm_text(rule: BuildRule) -> String {
+  serialize_rules(rules: [rule])
+}
+
+fn arm_reads(r: BuildRule, needle: String) -> Bool {
+  fold(rule_decl_values(rule: r), init: false, f: (acc, v) => acc || string_contains(s: v, pattern: needle))
+}
+
+// 5. The BREAKPOINT AXIS drives the response, and only the axis does. Every point the
+//    axis declares must appear in the rendered page as its exact media block — text
+//    produced by the layer's own response_rule through material's serializer, the same
+//    route the page takes, so no length, selector or property name is typed in this
+//    witness. And a point no axis declares must appear in NO page.
+//    RED CONTROLS (four, each run on the runner; pattern asserted before writing, the
+//    run's FAIL line read back):
+//    1. drop compact_point from the AdoptLiveBreakpoints arm — reddens THIS claim and ALSO
+//       witness_ballot_options_are_distinguishable, which is the right blast radius rather
+//       than a leaky test: with the point gone, AdoptLiveBreakpoints renders the same
+//       stylesheet as StackOnly, so the ballot is a fake choice again;
+//    2. make response_rule ignore its argument's decls (emit tracks instead of the
+//       point's own declarations) — reddens THIS claim only;
+//    3. change compact_point's condition to 400px — reddens THIS claim only;
+//    4. restore the first draft's defect, where compact_point repeated stack_point's
+//       declarations — reddens witness_response_points_act_and_differ only.
+//    A control that only DELETES a field is not a control: it fails to typecheck, so no
+//    claim runs and nothing is proven. An earlier attempt at control 2 did exactly that,
+//    produced no FAIL line, and is not claimed here.
+test fn witness_breakpoints_come_from_the_axis() -> Bool {
+  let live = layout_css(grid: grid_fixed_3, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only)
+  let tier = layout_css(grid: grid_fixed_3, breakpoints: breakpoints_stack_only, scheme: scheme_dark_only)
+  all(breakpoint_points(choice: breakpoints_adopt_live), pt =>
+    string_contains(s: live, pattern: block_for(point: pt)))
+    && all(breakpoint_points(choice: breakpoints_stack_only), pt =>
+      string_contains(s: tier, pattern: block_for(point: pt)))
+    && string_contains(s: live, pattern: block_for(point: compact_point))
+    && !string_contains(s: tier, pattern: block_for(point: compact_point))
+    && !string_contains(s: live, pattern: block_for(point: probe_point))
+    && !string_contains(s: tier, pattern: block_for(point: probe_point))
+}
+
+// 5b. A response point must CHANGE something, and no two points in one axis may be the
+//     same work twice. The first draft of this axis emitted the single-column rule at both
+//     700 and 480; every viewport under 480 is also under 700, so the second rule could
+//     never fire anything the first had not — duplicated work (§2), and on a ballot a
+//     fabricated choice (§5: "no plausible output is fabricated"). The comparison is over
+//     the EFFECT (selector + declarations, condition stripped) rather than the whole block:
+//     identical declarations under different widths are exactly the defect, and a block
+//     comparison would have passed it. Distinctness is a dedup over derived text, not a
+//     count copied from the tree.
+test fn witness_response_points_act_and_differ() -> Bool {
+  let live = breakpoint_points(choice: breakpoints_adopt_live)
+  all(live, pt => pt.decls.length() > 0)
+    && duplicated_by_key(xs: map(live, pt => effect_for(point: pt)), key: e => e).length() == 0
+}
+
+// 5c. THE BALLOT IS A REAL CHOICE. Within one axis, no two options may render the same
+//     STYLE — the page's own stylesheet, not its labels. This is the property that would
+//     have caught the fabricated 480 tier: the two breakpoint options differed only in
+//     their caption, because the compact tier changed nothing. Note the key deliberately
+//     excludes the slug, label and note: keying on the whole page (which prints its own
+//     caption) would make every pair distinct by construction and the claim vacuous. Two
+//     refusals in one axis collide too — an option that cannot render is not a choice.
+test fn witness_ballot_options_are_distinguishable() -> Bool {
+  all(ballot_entries, a => all(ballot_entries, b =>
+    !(family_of(axis: a.axis) == family_of(axis: b.axis)
+      && a.slug != b.slug
+      && rendered_style(req: a) == rendered_style(req: b))))
+}
+
+// The page's stylesheet, produced by the same route the writer publishes through.
+fn rendered_style(req: BallotRequest) -> String {
+  match ballot_render(req: req) {
+    BallotHtml { html: _, slug: _ } => ballot_css(req: req)
+    BallotRefused { reason: _ } => "REFUSED"
+  }
+}
+
+// "breakpoints (A)" and "breakpoints (B)" are one family; the option letter is not part of
+// the family, so the two are compared. Derived by cutting at the first " (" — no copied
+// family list to maintain when a fourth axis is added.
+fn family_of(axis: String) -> String {
+  match index_of(haystack: axis, needle: " (", at: 0, limit: string_length(s: axis)) {
+    Present { value: at } => substring(s: axis, start: 0, end: at)
+    Absent => axis
+  }
+}
+
+// 5d. NOTHING IS WRITTEN ON REFUSAL — proven, not promised. The writer's header claimed a
+//     refused run writes nothing, while an earlier draft wrote each entry inside the render
+//     fold: a refusal at entry k left entries 0..k-1 published as a partial ballot. A comment
+//     that was true of intent and false of behaviour, and exactly what §5 refuses ("a
+//     plausible output is fabricated" includes a review site that looks complete).
+//     The claim MAKES the refusal happen — a ballot whose last entry asks for a column count
+//     outside 1..column_count_max, which the layout layer refuses — in a directory the claim
+//     created, after a CLEAN run into the same directory. The clean arm is not decoration: it
+//     proves the writer writes when it should, so the claim cannot pass because the writer
+//     never wrote at all, and it proves the listing is real rather than an answer about a
+//     directory that never existed.
+//     RED CONTROL: move the Filesystem.Write call back into render_all (write while
+//     rendering, as the first draft did) — w-ok-first then lands on disk before w-bad-last is
+//     refused, this claim goes red, and the clean arm stays green.
+test fn witness_refusal_leaves_nothing_on_disk() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let outcome = refusal_scenario(dir: dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && outcome && cleaned.success
+}
+
+fn refusal_scenario(dir: String) -> Bool {
+  let clean = ballot_write_entries(dir: dir, entries: [
+    BallotRequest { slug: "w-clean-entry", axis: "grid (A)", label: "clean", note: "clean",
+      grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only }
+  ])
+  let refused = ballot_write_entries(dir: dir, entries: [
+    BallotRequest { slug: "w-ok-first", axis: "grid (A)", label: "ok", note: "ok",
+      grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only },
+    BallotRequest { slug: "w-bad-last", axis: "grid (Z)", label: "bad", note: "bad",
+      grid: grid_over_policy_columns,
+      breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only },
+  ])
+  let listed = Filesystem.List(path: dir)
+  match clean {
+    BallotWritten { paths } => paths.length() == 1
+      && listed.success
+      && string_contains(s: listed.entries, pattern: "w-clean-entry")
+      && !string_contains(s: listed.entries, pattern: "w-ok-first")
+      && !string_contains(s: listed.entries, pattern: "w-bad-last")
+    BallotRefusedRun { reason: _ } => false
+  }
+    && match refused {
+      BallotRefusedRun { reason: r } =>
+        // The refusal names which entry was refused, not just that one was.
+        string_contains(s: r, pattern: "w-bad-last")
+      BallotWritten { paths } => false
+    }
+}
+
+// The two .cards blocks, assembled from the pieces material assembles them from: the
+// grid rule carries display/gap/tracks, the media response carries tracks only. Both
+// spellings are asserted so a change to either surface is noticed.
+fn cards_block_with(tracks: String) -> String {
+  join([".cards { display: grid; gap: var(--gap-md); grid-template-columns: ", tracks, " }"], "")
+}
+
+// 6. The axes are independent, which is the ballot's contract: changing only the grid
+//    changes the card track, and changing the scheme leaves that track byte-identical.
+//    If an axis bled into another (a preset instead of three choices) the operator's
+//    pick on one axis would silently move the others.
+test fn witness_axes_are_independent() -> Bool {
+  let flow = layout_css(grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only)
+  let three = layout_css(grid: grid_fixed_3, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only)
+  let three_light = layout_css(grid: grid_fixed_3, breakpoints: breakpoints_adopt_live, scheme: scheme_light_alt)
+  flow != three
+    && string_contains(s: flow, pattern: cards_block_with(tracks: tracks_single()))
+    && string_contains(s: three, pattern: join(["grid-template-columns: ", tracks_fixed(count: 3)], ""))
+    && cards_track(css: three) == cards_track(css: three_light)
+}
+
+fn cards_track(css: String) -> String {
+  match from_to(haystack: css, open: ".cards { ", close: "; }") {
+    Present { value: b } => b
+    Absent => "CARDS-BLOCK-MISSING-MUST-FAIL"
+  }
+}
+
+// 7. The light variant binds every night role BY THE SAME NAME and reuses the hue set.
+//    Custom properties rebind by name within a scope, so a *_day-suffixed name would
+//    render nothing (an earlier draft of this layer did exactly that, and every
+//    presence-only check stayed green). The join is over the tokens layer's own rows,
+//    and every day paint must be a swatch that already exists in gunb_ai_hues — pick A
+//    holds: the light theme introduces no new colour.
+test fn witness_light_variant_rebinds_and_reuses_hues() -> Bool {
+  let light = layout_css(grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_light_alt)
+  let dark = layout_css(grid: grid_flow, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only)
+  // The expected block is BUILT from the upstream wires, never hand-typed here: MQ5
+  // §12.5's condition through css_media_rule_wire, the :root subject through
+  // selector_subject_wire, both over the day declarations. A hand-typed
+  // "@media (prefers-color-scheme: light) { :root { … } }" in this file would pass even
+  // if the model emitted something else, and would be a second source for the very text
+  // the layer is supposed to generate.
+  let media_open = css_media_rule_wire(
+    condition: prefers_light,
+    body: css_block(selector: selector_subject_wire(s: root_selector), decls: day_bindings()))
+  day_bindings_complete()
+    // The OS-following block is present in the light artifact, and the dark artifact
+    // contains NO prefers-color-scheme text at all: dark is the unconditional :root, so
+    // an emitted dark block would mean the axis bled into the other choice.
+    && string_contains(s: light, pattern: media_open)
+    && !string_contains(s: dark, pattern: "prefers-color-scheme")
+    // The gap stays closed: the class scope that stood in for this is gone, on both
+    // sides. (This is the clause the scaffold comment promised would change with the
+    // arm; the ballot writer's page is checked for the same absence below.)
+    && !string_contains(s: light, pattern: "gunb-day")
+    && !string_contains(s: dark, pattern: "gunb-day")
+    // Every night role is rebound BY THE SAME NAME to its day swatch. No "{ " prefix is
+    // assumed here: serialize_decls joins with "; ", so only the first declaration
+    // follows the selector — an earlier draft of this claim assumed otherwise and was
+    // red for a reason that was not a defect. The name discipline is carried by the
+    // negative clause below, not by string position.
+    && all(day_bindings_rows, b =>
+      string_contains(s: light, pattern: join(["--", b.night.role, ": ", swatch_paint(sw: b.day)], ""))
+      // Pick A holds: the light theme introduces no colour — every day value is a
+      // swatch that already exists in gunbc.design.gunb_ai_hues.
+      && hue_holds_paint(paint: swatch_paint(sw: b.day)))
+    // The failure this claim exists for: an earlier draft emitted --gunb-text-DAY
+    // names, which nothing read (custom properties rebind BY NAME in a scope), so the
+    // light option rendered dark while every presence-only check stayed green.
+    && !string_contains(s: light, pattern: "-day: ")
+}
+
+// 8b. The layout layer's own declarations are exactly the rows it mints — none of them
+//     is a row another layer already declares (a second home for one fact, and a
+//     duplicate custom property in the artifact), and none is missing. Ownership is
+//     checked against token_root_decls()'s actual names, not a copied list.
+test fn witness_layer_owns_only_its_own_declarations() -> Bool {
+  all(layout_owned_tokens(), t => !declared_root(name: t.name))
+    && all(layout_scale_tokens(), t =>
+      name_is_listed(name: t.name, names: map(layout_owned_tokens(), o => o.name))
+        || declared_root(name: t.name))
+}
+
+// 8. Every var() the ballot page reads is DECLARED on that same page, and every layout
+//    ScaleToken is declared there. This is the property the earlier draft of the ballot
+//    violated: it emitted layout rules that read var(--gunb-canvas) and var(--card-min)
+//    without the token layer's :root block, so every custom property was undefined and
+//    the page rendered unthemed (white background, black text) while every
+//    presence-only check stayed green — pixel probe of the rendered PNG is what found
+//    it. An artifact must satisfy its own contract, not have its references excused by
+//    a sibling module. RED CONTROL: drop token_root_decls() from ballot_css and
+//    var(--gunb-canvas) has no "--gunb-canvas: " in the artifact -> this claim is red.
+test fn witness_ballot_references_resolve() -> Bool {
+  all(ballot_entries, e => match ballot_render(req: e) {
+    BallotHtml { html: h, slug: _ } =>
+      // Every reference this layer writes is declared in the same artifact. The
+      // implication is per name, so the claim goes red on one undefined read.
+      all(role_reference_names(), n => reference_is_declared(html: h, name: n))
+        && all(scale_reference_names(), n => reference_is_declared(html: h, name: n))
+        // And every magnitude this layer claims to read is actually declared there.
+        && all(layout_scale_tokens(), t =>
+          string_contains(s: h, pattern: join(["--", t.name, ": "], "")))
+        // The defect this claim exists for: an unthemed page. A page whose :root block
+        // was dropped reads var(--gunb-canvas) with no declaration, and the browser
+        // falls back to its own defaults — white canvas, black text.
+        && string_contains(s: h, pattern: ":root { ")
+        // The closed scheme gap, checked on the PUBLISHED page and on the stylesheet
+        // separately. No class scope survives anywhere on the page (the captions no
+        // longer mention it either, so this is a clean negative), and the media block
+        // appears in the STYLESHEET of the light page only — asserted on the stylesheet
+        // rather than the page because the dark option's own caption discusses
+        // prefers-color-scheme, and a caption is not a stylesheet.
+        && !string_contains(s: h, pattern: "gunb-day")
+        && (e.scheme == scheme_light_alt)
+          == string_contains(s: rendered_style(req: e), pattern: "prefers-color-scheme")
+    BallotRefused { reason: _ } => false
+  })
+}
+
+// 8c. CASCADE ORDER, which is the only thing that makes the light override win. The
+//     media block and the unconditional :root have the SAME specificity (both :root), so
+//     the override wins solely by coming later in the sheet. Reorder the two in
+//     ballot_css and this goes red — the browser would then keep dark forever and every
+//     presence-only check, including the one above, would stay green.
+//
+//     The comparison is against the FIRST occurrence of the root subject plus " { " in the
+//     sheet, built from selector_subject_wire rather than typed. If the media block were
+//     emitted first, that first occurrence would be the one INSIDE it, its index would be
+//     greater than the media block's own index, and this claim is red — no silent arm. If the
+//     unconditional block were dropped entirely, the same thing happens and the
+//     reference-resolution claim above is red too.
+//
+//     Both needles are complete, real texts (the media block carries its day declarations), so
+//     a needle that merely resembled the output could not match by luck.
+test fn witness_light_override_follows_the_unconditional_root() -> Bool {
+  match first_where(ballot_entries, e => e.scheme == scheme_light_alt) {
+    Absent => false
+    Present { value: e } => match ballot_render(req: e) {
+      BallotHtml { html: _, slug: _ } => {
+        let css = rendered_style(req: e)
+        let media_block = css_media_rule_wire(
+          condition: prefers_light,
+          body: css_block(selector: selector_subject_wire(s: root_selector), decls: day_bindings()))
+        let root_open = join([selector_subject_wire(s: root_selector), " { "], "")
+        let media_at = index_of(haystack: css, needle: media_block, at: 0, limit: string_length(s: css))
+        let root_at = index_of(haystack: css, needle: root_open, at: 0, limit: string_length(s: css))
+        match media_at {
+          Absent => false
+          Present { value: m } => match root_at {
+            Absent => false
+            Present { value: r } => r < m
+          }
+        }
+      }
+      BallotRefused { reason: _ } => false
+    }
+  }
+}
+
+fn role_reference_names() -> List<String> {
+  map(token_swatches, t => t.role)
+}
+
+fn scale_reference_names() -> List<String> {
+  map(layout_scale_tokens(), t => t.name)
+}
+
+fn reference_is_declared(html: String, name: String) -> Bool {
+  !string_contains(s: html, pattern: join(["var(--", name, ")"], ""))
+    || string_contains(s: html, pattern: join(["--", name, ": "], ""))
+}
+
+fn hue_holds_paint(paint: String) -> Bool {
+  fold(swatches_of(s: gunb_ai_hues), init: false, f: (acc, sw) => acc || swatch_paint(sw: sw) == paint)
+}
+
+// Bounded substring extraction: the same cursor shape used above, over the artifact
+// region we care about. Returns Absent rather than a plausible default (§5).
+fn from_to(haystack: String, open: String, close: String) -> Optional<String> {
+  let o = index_of(haystack: haystack, needle: open, at: 0, limit: string_length(s: haystack))
+  match o {
+    Absent => Absent
+    Present { value: start } => {
+      let content_start = start + string_length(s: open)
+      let c = index_of(haystack: haystack, needle: close, at: content_start, limit: string_length(s: haystack))
+      match c {
+        Absent => Absent
+        Present { value: end } => Present { value: substring(s: haystack, start: content_start, end: end) }
+      }
+    }
+  }
+}

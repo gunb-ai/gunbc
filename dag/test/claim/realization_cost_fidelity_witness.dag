@@ -34,6 +34,7 @@ import std.induction {
 import std.realization_cost_fidelity {
   ModeledCostPreserved,
   ModeledCostNotStructured,
+  ModeledCostCarrierUnselected,
   CostGrowthNotOrderable,
   RealizationCostBodyDependent,
   FidelityInputRefused,
@@ -42,6 +43,7 @@ import std.realization_cost_fidelity {
   RealizationCostFidelityReport,
   PrimitiveDuplicatedInSubjects,
   count_cost_facts_contradicted,
+  count_cost_carrier_unselected,
   cost_fidelity_counts,
   RealizationCostUnknown,
   RealizationDivergesByOperand,
@@ -56,12 +58,15 @@ import std.realization_cost_fidelity {
   realization_cost_fidelity_rows,
 }
 import std.primitive_identity {
+  CarrierCostReading,
+  CarrierSensitiveCost,
   CoarseCostOnly,
   CostParamNotRecoverableFromSignature,
   EmitRust,
   InterpreterHost,
   PrimitiveCostFact,
   PrimitiveCostStructureUnavailable,
+  PrimitiveModeledCost,
   StructuredCost,
 }
 import std.primitive_projection { PrimitiveIdentity }
@@ -132,6 +137,7 @@ test fn concat_model_over_prices_the_left_operand() -> Bool {
     RealizationCostUnknown => false
     RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
+    ModeledCostCarrierUnselected => false
   }
 }
 
@@ -169,6 +175,7 @@ test fn slower_realization_is_reported() -> Bool {
     RealizationCostUnknown => false
     RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
+    ModeledCostCarrierUnselected => false
   }
 }
 
@@ -183,6 +190,7 @@ test fn identical_costs_are_preserved() -> Bool {
     RealizationCostUnknown => false
     RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
+    ModeledCostCarrierUnselected => false
   }
 }
 
@@ -209,6 +217,7 @@ test fn per_operand_tradeoff_is_its_own_verdict() -> Bool {
     RealizationCostUnknown => false
     RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
+    ModeledCostCarrierUnselected => false
   }
 }
 
@@ -225,6 +234,7 @@ test fn log_squared_and_linear_do_not_collide() -> Bool {
     RealizationCostUnknown => false
     RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
+    ModeledCostCarrierUnselected => false
   }
 }
 
@@ -290,6 +300,7 @@ test fn a_per_element_body_difference_is_undecided_not_preserved() -> Bool {
     RealizationCostUnknown => false
     RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
+    ModeledCostCarrierUnselected => false
   }
 }
 
@@ -311,6 +322,7 @@ test fn an_opposing_body_and_growth_delta_is_body_dependent() -> Bool {
     RealizationCostUnknown => false
     RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
+    ModeledCostCarrierUnselected => false
   }
 }
 
@@ -328,6 +340,7 @@ test fn an_opposing_body_does_not_make_a_realization_faster() -> Bool {
     RealizationCostUnknown => false
     RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
+    ModeledCostCarrierUnselected => false
   }
 }
 
@@ -350,6 +363,7 @@ test fn an_agreeing_body_and_growth_delta_stays_decided() -> Bool {
     RealizationCostUnknown => false
     RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
+    ModeledCostCarrierUnselected => false
   }
 }
 
@@ -374,6 +388,7 @@ test fn a_body_in_a_losing_term_is_not_dropped() -> Bool {
     RealizationCostUnknown => false
     RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
+    ModeledCostCarrierUnselected => false
   }
 }
 
@@ -468,6 +483,7 @@ test fn a_fractional_exponent_is_not_ordered_as_cheaper_than_linear() -> Bool {
     RealizationCostUnknown => false
     RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
+    ModeledCostCarrierUnselected => false
   }
 }
 
@@ -485,6 +501,7 @@ test fn an_unbounded_cost_is_not_preserved_against_a_constant() -> Bool {
     RealizationCostUnknown => false
     RealizationCostFactsContradict { count: _ } => false
     ModeledCostNotStructured => false
+    ModeledCostCarrierUnselected => false
   }
 }
 
@@ -599,6 +616,73 @@ test fn two_facts_for_one_key_contradict_in_either_order() -> Bool {
     && count_cost_fidelity_unmeasured(rows: reversed) == 0
 }
 
+// THE SAME LAW, OVER THE TWO ARMS THAT CANNOT COMPARE. A carrier-sensitive model and a coarse one
+// both answer without comparing, and both used to answer without LOOKING, so two facts for one key
+// were reported as carrier-unselected or unmigrated and the contradiction vanished. The facts are the
+// same two in both orders, as above; the singleton and absent controls below keep the carrier answer
+// from being satisfied by a join that now contradicts everything.
+data probe_carrier_cost: PrimitiveModeledCost = CarrierSensitiveCost {
+  ephemeral: CarrierCostReading { worst_case: cost_linear(param: "n"), amortized: none },
+  persistent: CarrierCostReading { worst_case: cost_log(param: "n"), amortized: none },
+}
+
+fn carrier_report(facts: List<RealizationCostFact>) -> RealizationCostFidelityReport {
+  realization_cost_fidelity_rows(
+    modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: probe_carrier_cost }],
+    target: InterpreterHost,
+    facts: facts,
+  )
+}
+
+fn carrier_fact(cost: CostBound) -> RealizationCostFact {
+  RealizationCostFact { primitive: probe_primitive_a, target: InterpreterHost, cost: cost }
+}
+
+test fn two_facts_for_a_carrier_sensitive_key_contradict_in_either_order() -> Bool {
+  let forward = rows_of(report: carrier_report(facts: [carrier_fact(cost: cost_linear(param: "n")), carrier_fact(cost: quadratic(param: "n"))]))
+  let reversed = rows_of(report: carrier_report(facts: [carrier_fact(cost: quadratic(param: "n")), carrier_fact(cost: cost_linear(param: "n"))]))
+  count_cost_facts_contradicted(rows: forward) == 1
+    && count_cost_facts_contradicted(rows: reversed) == 1
+    && count_cost_carrier_unselected(rows: forward) == 0
+    && count_cost_carrier_unselected(rows: reversed) == 0
+}
+
+test fn one_fact_for_a_carrier_sensitive_key_stays_carrier_unselected() -> Bool {
+  let rows = rows_of(report: carrier_report(facts: [carrier_fact(cost: cost_log(param: "n"))]))
+  count_cost_carrier_unselected(rows: rows) == 1 && count_cost_facts_contradicted(rows: rows) == 0
+}
+
+test fn no_fact_for_a_carrier_sensitive_key_stays_carrier_unselected() -> Bool {
+  let rows = rows_of(report: carrier_report(facts: []))
+  count_cost_carrier_unselected(rows: rows) == 1 && count_cost_facts_contradicted(rows: rows) == 0
+}
+
+test fn two_facts_for_a_coarse_key_contradict_in_either_order() -> Bool {
+  let forward = rows_of(report: realization_cost_fidelity_rows(
+    modeled: [probe_coarse(p: probe_primitive_a)],
+    target: InterpreterHost,
+    facts: [carrier_fact(cost: cost_linear(param: "n")), carrier_fact(cost: quadratic(param: "n"))],
+  ))
+  let reversed = rows_of(report: realization_cost_fidelity_rows(
+    modeled: [probe_coarse(p: probe_primitive_a)],
+    target: InterpreterHost,
+    facts: [carrier_fact(cost: quadratic(param: "n")), carrier_fact(cost: cost_linear(param: "n"))],
+  ))
+  count_cost_facts_contradicted(rows: forward) == 1
+    && count_cost_facts_contradicted(rows: reversed) == 1
+    && count_cost_model_unmigrated(rows: forward) == 0
+    && count_cost_model_unmigrated(rows: reversed) == 0
+}
+
+test fn one_fact_for_a_coarse_key_stays_unmigrated() -> Bool {
+  let rows = rows_of(report: realization_cost_fidelity_rows(
+    modeled: [probe_coarse(p: probe_primitive_a)],
+    target: InterpreterHost,
+    facts: [carrier_fact(cost: cost_linear(param: "n"))],
+  ))
+  count_cost_model_unmigrated(rows: rows) == 1 && count_cost_facts_contradicted(rows: rows) == 0
+}
+
 // A CONTRADICTED KEY IS NOT AN UNMEASURED ONE. Both are "no usable realized cost", and collapsing
 // them would file a repair against the wrong lane: unmeasured means nobody looked, contradicted
 // means two people looked and disagreed.
@@ -689,6 +773,6 @@ test fn the_reported_populations_exhaust_the_rows() -> Bool {
     ],
   ))
   let c = cost_fidelity_counts(rows: rows)
-  c.preserved + c.findings + c.body_dependent + c.not_orderable + c.contradicted + c.unmeasured + c.unmigrated
+  c.preserved + c.findings + c.body_dependent + c.not_orderable + c.contradicted + c.unmeasured + c.unmigrated + c.carrier_unselected
     == count(rows)
 }

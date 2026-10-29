@@ -1,17 +1,21 @@
 module extdeps.languages.html
 
 import std.algebra { trim }
+import std.algebra { Cons, Empty, FreeSemigroup }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
+import std.types { NonEmptyStr }
 import std.markup {
-  Fragment, Element, FragmentText, RawNode, Attribute, attr,
-  MarkupBracket, MarkupMedium, EscapeHtml,
+  Fragment, Element, FragmentText, RawNode, Attribute, attr, MarkupDocument,
+  MarkupBracket, MarkupMedium, CommentGrammar, DocumentGrammar, DeclaresDocument, EscapeHtml,
   VoidTagRendering, OmitClose,
   serialize_fragment_with, tag_in_set,
   unescape_text, unescape_attribute, unescape_url,
   attr_is_url_attr,
+  HazardFree, HazardFound,
+  serialize_document_with, MarkupSerializeResult, Serialized, Rejected,
 }
 import extdeps.uri_validation {
   validate_href, SafeHref, RejectedHref,
@@ -24,6 +28,58 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "html.spec.whatwg.org/"
   }
 }
+
+// Comment and document-type SPELLINGS of this language. They live here, not in whichever module emits a
+// comment, because they are facts about HTML (§4: "a new target language is rows in extdeps/languages/,
+// never an edit to the fold"), and they are governed by an upstream with its own version, which is where
+// extdeps exists for (§3, external upstream decomposition).
+//
+// One home, read rather than restated: std.languages' html_format and markdown_format now READ these rows
+// instead of typing their own "<!-- " / " -->", so the characters exist once. They stay String? there
+// because "this language has no block comment" is a real state of a generator's comment syntax, and the
+// narrowing to Present is safe here because these rows are NonEmptyStr -- no fallback was chosen, because
+// there is no absent case to fall back to. The two kinds of fact are still different: std.languages
+// describes a language to a code GENERATOR (what to emit when commenting generated output); these rows are
+// the tokenizer's own grammar, which a MARKUP SERIALIZER consults and the hazard walk checks -- including
+// the terminator, which CommentSyntax does not carry and cannot, because "what stops a comment" is not a
+// delimiting pair.
+//
+data html_comment_open_sequence: NonEmptyStr = "<!-- " as NonEmptyStr
+data html_comment_close_sequence: NonEmptyStr = " -->" as NonEmptyStr
+// THE SEQUENCES THE TOKENIZER ENDS A COMMENT AT. Neither has a leading space; the delimiter we EMIT does,
+// for readability. They are deliberately separate rows: a body must not contain a terminator, and what we
+// write is the close delimiter. Collapsing them would let a body ending in "--" close the comment while a
+// guard looking only for " -->" found nothing.
+//
+// THERE ARE TWO, NOT ONE (HTML §13.1.1, §13.2.5.52). The "comment end state" is reached from "--" and
+// needs no space, giving "-->". And from that state a "!" moves to the "comment end bang state", where a
+// ">" ALSO closes the comment -- giving "--!>". A grammar carrying only "-->" reports a body like
+// "x--!><script>…" as safe; the serializer emits "<!-- x--!><script>… -->" and a conforming parser ends
+// the comment at "--!>" and reads the script as markup (reviews 82474 and 82482 on #14351, found
+// independently and confirmed against the state machine). So the row is a NON-EMPTY SET: FreeSemigroup has
+// no empty inhabitant, and the guard consults every member.
+//
+// Feeds BOTH the guard and CommentGrammar.terminators, so the emitter and the checker read the same
+// grammar and cannot disagree about what ends a comment.
+data html_comment_terminators: FreeSemigroup<NonEmptyStr> = FreeSemigroup {
+  head: "-->" as NonEmptyStr,
+  tail: Cons { head: "--!>" as NonEmptyStr, tail: Empty },
+}
+// "<!DOCTYPE " with the trailing space the tokenizer requires between keyword and name.
+data html_doctype_open_sequence: NonEmptyStr = "<!DOCTYPE " as NonEmptyStr
+// The document type every HTML page in this repo declares. "html" is the only name a conforming
+// parser understands; anything else puts the document in quirks mode. std.markup's
+// doctype_name_hazard is what refuses a name that is not one bare token, and it is called by
+// serialize_document_with -- the only place a doctype is ever spelled -- so a page cannot be
+// written with a malformed declaration.
+data html_doctype_name: NonEmptyStr = "html" as NonEmptyStr
+
+// The character that ends the token after "<!DOCTYPE" (HTML Living Standard §13.1.1, the "before the
+// name" state: a space moves the tokenizer out of the keyword and into the name). A doctype name holding
+// it would end the declaration early and push the document's first text into the declaration. The two
+// angle brackets that also end it are NOT restated here -- the walk reads those off MarkupBracket, the
+// same pair the serializer writes, so there is nothing here for them to drift from.
+data html_doctype_name_end_whitespace: NonEmptyStr = " " as NonEmptyStr
 
 data canonical_html_spellings: MarkupBracket = MarkupBracket {
   tag_open: "<",
@@ -279,14 +335,34 @@ fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
     void_tags: html5_void_tags,
     void_rendering: OmitClose,
     raw_text_tags: html5_raw_text_tags,
+    // ONE value carries the whole comment grammar, and the serializer's delimiters and the checker's
+    // terminator come from the same rows in this module -- so a language that spells its terminator
+    // differently is a different medium, never a medium with two constants that disagree.
+    comment_grammar: CommentGrammar {
+      open: html_comment_open_sequence,
+      close: html_comment_close_sequence,
+      terminators: html_comment_terminators,
+    },
+    document_grammar: DeclaresDocument {
+      open: html_doctype_open_sequence,
+      name_end_whitespace: html_doctype_name_end_whitespace,
+    },
   }
 }
 
-fn serialize_html_source_with(node: Fragment, sp: MarkupBracket) -> String {
-  serialize_fragment_with(frag: node, medium: html_medium_with(sp: sp))
+// THERE IS NO UNGUARDED NAME ANY MORE. Both of these used to return String by calling the serializer
+// directly, which is how a comment could be written without its check (review 82279 on #14351): the check
+// lived in a walk these functions never called. The serializer now refuses, so these return the typed
+// result and every caller has to say what a refusal means where it stands -- §5's "no plausible output is
+// fabricated", answered at the call site that knows what it is serving.
+fn serialize_html_source_with(node: Fragment, sp: MarkupBracket) -> HtmlEmitResult {
+  match serialize_fragment_with(frag: node, medium: html_medium_with(sp: sp)) {
+    Serialized { html: out } => EmitOk { html: out }
+    Rejected { reason: why } => EmitRejected { reason: why }
+  }
 }
 
-fn serialize_html_source(node: Fragment) -> String {
+fn serialize_html_source(node: Fragment) -> HtmlEmitResult {
   serialize_html_source_with(node: node, sp: canonical_html_spellings)
 }
 
@@ -311,50 +387,76 @@ type HtmlEmitResult
   = EmitOk { html: String }
   | EmitRejected { reason: String }
 
-fn raw_text_children_text(children: List<Fragment>) -> String {
-  fold(children, init: "", f: (acc, c) => match c {
-    FragmentText { content: t } => concat(acc, t)
-    RawNode { content: t } => concat(acc, t)
-    Element { tag: _, attributes: _, children: _ } => acc
-  })
-}
+// ── HAZARDS: THERE ARE NO HAZARD FUNCTIONS HERE ANY MORE ─────────────────────────────────────────
+// This module used to own seven of them (raw_text_hazard, raw_text_children_hazard,
+// raw_text_children_text, comment_hazard, comment_children_hazard, comment_hazard_in, doctype_hazard),
+// each returning String with "" meaning clean. Review 82181 on #14351 found the cost of that shape
+// twice over. First, duplication: the JSX guarded route had NO counterpart, so a JSX comment holding
+// "*/" closed early and the remainder was parsed as TSX, and a Document inside a JSX expression emitted
+// "<!DOCTYPE html>" where no parser reads it — both returned JsxOk. A hazard written per language
+// guards the languages someone remembered to write it for (§6b: "a repeated pattern is rejected until
+// the author answers why it should not be generalized"). Second, the sentinel: `if hazard == ""` is a
+// string test standing in for a type test, so a check that ever returned "" passed.
+//
+// Both are answered from one place, and not as free functions any more: the checks live INSIDE the
+// emitter's arms. serialize_fragment_with consults the MEDIUM's CommentGrammar (its close and its
+// terminator) on the arm that writes a comment, and the raw-text arm reads the bracket
+// fields it is about to write with; serialize_document_with owns doctype_name_hazard. Review 82279 on
+// #14351 is why: written as a walk beside the emitter, a check was a call a route could omit -- and
+// serialize_jsx_fragment, serialize_jsx_component and the SVG document route had all omitted it. So
+// HTML, JSX, Markdown and SVG are covered by filling in the medium's own rows, which is also why
+// html_medium_with carries them and why the emitter's close delimiter and the check's terminator are
+// one row, not two constants that can drift.
+// What is left in this module is the SPELLINGS those rows feed and the guarded routes that add the URL pass.
+// The closed sum (HazardFree | HazardFound) replaces the empty-string convention.
+//
+// The order is preserved and still deliberate: the URL pass runs FIRST, because a comment body may
+// legitimately contain a URL-looking string ("<!-- see https://x -->") and find_first_rejected_url
+// already skips comments; anything the URL pass rejects is refused before its text is examined.
 
-fn raw_text_hazard(node: Fragment) -> String {
-  match node {
-    FragmentText { content: _ } => ""
-    RawNode { content: _ } => ""
-    Element { tag: t, attributes: _, children: kids } =>
-      if tag_in_set(tag: t, tags: html5_raw_text_tags) {
-        if string_contains(s: raw_text_children_text(children: kids), pattern: concat("</", t)) {
-          join(["raw-text element <", t, "> content contains its own close sequence '</", t, "' — refusing to serialize (corruption otherwise); restructure the content"], "")
-        } else {
-          raw_text_children_hazard(children: kids)
-        }
-      } else {
-        raw_text_children_hazard(children: kids)
-      }
-  }
-}
-
-fn raw_text_children_hazard(children: List<Fragment>) -> String {
-  fold(children, init: "", f: (acc, c) => if acc == "" { raw_text_hazard(node: c) } else { acc })
-}
-
+// THE GUARDED FRAGMENT ROUTE: the URL pass, then the serializer -- which is itself the comment and
+// raw-text guard. It used to run a separate walk for those two, which meant the guarantee depended on this
+// route being the one a caller chose; now the check is in the arm that writes the bytes, so it holds for
+// every route including these two.
 fn try_serialize_html_source(node: Fragment) -> HtmlEmitResult {
   match find_first_rejected_url(node: node) {
     Present { value: r } =>
       EmitRejected { reason: r.url }
-    Absent => {
-      let hazard = raw_text_hazard(node: node)
-      if hazard == "" {
-        EmitOk { html: serialize_html_source(node: node) }
-      } else {
-        EmitRejected { reason: hazard }
-      }
-    }
+    Absent => serialize_html_source(node: node)
   }
 }
 
+// A WHOLE PAGE, doctype included. Before this, the two sites that serve a page concatenated
+// "<!DOCTYPE html>\n" onto the serialized string, so the doctype line sat OUTSIDE every guard and its
+// spelling was one more hand-typed copy of "<!DOCTYPE" (§6b). It now rides the model to the one function
+// allowed to write a document, and passes the same three guards as a fragment -- the URL pass over the
+// root, the doctype-name check, and the comment/raw-text walk. The URL pass does not look at the doctype
+// NAME: find_first_rejected_url flags attributes that carry URLs, and a doctype name is not one (a
+// name holding "<", ">" or a space is refused by doctype_name_hazard before anything is written).
+fn try_serialize_html_document(doc: MarkupDocument) -> HtmlEmitResult {
+  try_serialize_html_document_with(doc: doc, medium: html_markup_medium())
+}
+
+// THE DOCUMENT ROUTE, PARAMETERISED BY THE MEDIUM. The entry point above is this with HTML's own medium.
+// The parameter exists so a claim can run the route against a medium that spells things DIFFERENTLY: a
+// claim that only ever uses HTML's medium cannot tell whether the guard READ the medium or merely happened
+// to agree with it, which is the distinction reviews 82268 (twice) and 82209 were about. The URL pass keeps
+// this in the language module rather than in std.markup because extdeps.uri_validation imports std.markup,
+// so the reverse edge would close a cycle.
+fn try_serialize_html_document_with(doc: MarkupDocument, medium: MarkupMedium) -> HtmlEmitResult {
+  match find_first_rejected_url(node: doc.root) {
+    Present { value: r } =>
+      EmitRejected { reason: r.url }
+    Absent =>
+      // One match, not a walk then a serialize: serialize_document_with owns the doctype-name check and
+      // the fragment serializer owns the comment and raw-text checks, so a refusal arrives as a Rejected
+      // from whichever of them found it.
+      match serialize_document_with(doc: doc, medium: medium) {
+        Serialized { html: out } => EmitOk { html: out }
+        Rejected { reason: why } => EmitRejected { reason: why }
+      }
+  }
+}
 fn html_markup_medium() -> MarkupMedium {
   html_medium_with(sp: canonical_html_spellings)
 }

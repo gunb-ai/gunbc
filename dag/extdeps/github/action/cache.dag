@@ -1,6 +1,7 @@
 module extdeps.github.action.cache
 
-import std.types { List }
+import std.types { List, NonEmptyStr }
+import std.optional { Present }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -30,7 +31,15 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data cache_v5_1_0: ActionRelease = ActionRelease {
-  owner: "actions", repo: "cache", tag: "v5.1.0", commit: "caa296126883cff596d87d8935842f9db880ef25"
+  owner: "actions", repo: "cache", tag: "v5.1.0", commit: "caa296126883cff596d87d8935842f9db880ef25", subdirectory: none
+}
+
+data cache_save_v5_1_0: ActionRelease = ActionRelease {
+  owner: "actions", repo: "cache", tag: "v5.1.0", commit: "caa296126883cff596d87d8935842f9db880ef25", subdirectory: Present { value: "save" as NonEmptyStr }
+}
+
+data cache_restore_v5_1_0: ActionRelease = ActionRelease {
+  owner: "actions", repo: "cache", tag: "v5.1.0", commit: "caa296126883cff596d87d8935842f9db880ef25", subdirectory: Present { value: "restore" as NonEmptyStr }
 }
 
 // Each declaration below was read from the action.yml blob at the release's commit
@@ -38,6 +47,14 @@ data cache_v5_1_0: ActionRelease = ActionRelease {
 data cache_manifest_readings: List<ActionManifestReading> = [
   ActionManifestReading {
     action_release: cache_v5_1_0,
+    declared: JavaScriptAction { node_major: 24 },
+  },
+  ActionManifestReading {
+    action_release: cache_save_v5_1_0,
+    declared: JavaScriptAction { node_major: 24 },
+  },
+  ActionManifestReading {
+    action_release: cache_restore_v5_1_0,
     declared: JavaScriptAction { node_major: 24 },
   },
 ]

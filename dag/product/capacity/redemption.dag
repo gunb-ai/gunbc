@@ -9,7 +9,9 @@ import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
   ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted, EventDecode,
 }
-import product.capacity.lease { QuiescenceFact, Quiescent, QuiescenceUnobserved }
+import std.durable_exclusive_hold {
+  DurableHoldHolderLiveness, HolderObservedDead, HolderObservedLive, HolderLivenessUnobservable,
+}
 
 // ── USING A GRANT IS A TRANSITION, NOT A READ ────────────────────────────────────────────────
 //
@@ -279,14 +281,15 @@ type RedemptionRecovery
   | RecoveryEndThenRelease { request: NonEmptyStr }
   | RecoveryUndecidable { detail: String }
 
-fn redemption_recovery(state: RedemptionState, quiescence: QuiescenceFact) -> RedemptionRecovery {
+fn redemption_recovery(state: RedemptionState, holder: DurableHoldHolderLiveness) -> RedemptionRecovery {
   match state {
     Unredeemed => RecoveryNoUseToRecover
     UseEnded { request: q, outcome: _ } => RecoveryReleaseOwed { request: q }
     InFlight { request: q, holder: h, redeemed_at: at, by: _ } =>
-      match quiescence {
-        QuiescenceUnobserved => RecoveryHoldCharged { request: q, holder: h, since: at }
-        Quiescent { observed_at: _ } => RecoveryEndThenRelease { request: q }
+      match holder {
+        HolderLivenessUnobservable { cause: _ } => RecoveryHoldCharged { request: q, holder: h, since: at }
+        HolderObservedLive { evidence: _ } => RecoveryHoldCharged { request: q, holder: h, since: at }
+        HolderObservedDead { evidence: _ } => RecoveryEndThenRelease { request: q }
       }
     RedemptionCorrupt { at_event: e, detail: d } => RecoveryUndecidable { detail: join(["contradictory at ", e as String, ": ", d], "") }
     RedemptionUnread { detail: d } => RecoveryUndecidable { detail: d }

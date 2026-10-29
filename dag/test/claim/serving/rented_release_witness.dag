@@ -1,0 +1,295 @@
+module test.claim.serving.rented_release_witness
+
+import std.integer { int_to_decimal_string }
+import std.types { String, Bool, NonEmptyStr, Int }
+import std.optional { Present, Absent }
+import std.measure { MoneyRate, money_amount_micro }
+import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.apply_mode { ApplyMode, Plan, Apply }
+import extdeps.currency.currency { Usd }
+import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths }
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationAcquired, rented_allocation_wire, rented_engine_served_name }
+import gunbc.serving.rented_release { RentedObservedInstance,
+  RentedDrainNotListening, RentedDrainUnreadable, RentedAnchorAbsent, RentedAnchorPresent, RentedLegOutcomeNotReached, RentedStoreNoPartials, RentedStorePartials,
+  RentedHostAnswered, RentedHostSilent, RentedHostReading, RentedVantageReached, RentedVantageNotReached, RentedVantageUnread,
+  RentedLegOutcomeNotPerformedHostSilent, RentedDrainListening,
+  RentedInstanceObserved, RentedInstanceAbsent, RentedInstanceReading, RentedDestroyDecision, RentedReleaseReadings,
+  RentedLegNothingToUndo, RentedLegRefused, RentedLegOutcomeNothingToUndo,
+  RentedDestroyPlanned, RentedDestroyAuthorized, RentedDestroyRefusedIdMismatch, RentedDestroyRefusedLabel,
+  RentedReleaseHeld, RentedLegDrain, RentedLegOutcomeToUndo, RentedReleaseDestroyRefused, RentedReleaseGone, RentedReleasePlanned, RentedReleasePending,
+  rented_destroy_decision, rented_clean_decision, rented_release_receipt, rented_bound_instance_id,
+}
+import test.claim.serving.rented_allocation_witness { a_allocation, a_tunnel }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data w_label: NonEmptyStr = "gunbc-flex"
+
+data w_roots: ServingStoreRoots = ServingStoreRoots {
+  root: "/root/serve/store" as NonEmptyStr,
+  model_link: "/root/serve/model/model.ninfer" as NonEmptyStr,
+  serve_log: "/root/serve/serve.log" as NonEmptyStr,
+}
+
+data w_protected: ServingProtectedPaths = ServingProtectedPaths {
+  paths: ["/root/serve/store/sha256/74d2c57145e6ff11d1d2faa79594477f9bc903a611af1fb20218189fbbb77d82"],
+  model_link: "/root/serve/model/model.ninfer",
+  model_link_next: "/root/serve/model/model.ninfer.next",
+}
+
+// A supplier-agnostic instance reading, the shape every supplier maps into (the Vast mapping is
+// witnessed in test.claim.fabric.flex_vast_loop_witness through product.fabric.flex_vast_loop flex_vast_rented_instance).
+fn w_instance(id: Int, label: String?) -> RentedObservedInstance {
+  RentedObservedInstance {
+    id: int_to_decimal_string(value: id) as NonEmptyStr,
+    owner_label: label,
+    status: Present { value: "running" },
+  }
+}
+
+fn w_imported() -> RentedServingAllocation { a_allocation(route: a_tunnel(target_port: 8000)) }
+
+fn w_acquired() -> RentedServingAllocation {
+  let i = w_imported()
+  RentedServingAllocation {
+    identity: i.identity,
+    origin: RentedAllocationAcquired {
+      owner: "gunbc-flex" as NonEmptyStr,
+      asked_at: 1792008000000,
+      asked_rate: MoneyRate { amount: money_amount_micro(count: 450000), currency: Usd },
+    },
+    contract: i.contract, card: i.card, end: i.end, engine: i.engine,
+    artifact: i.artifact, host: i.host, route: i.route,
+  }
+}
+
+fn w_readings(before: RentedInstanceReading, after: RentedInstanceReading) -> RentedReleaseReadings {
+  RentedReleaseReadings {
+    host: RentedHostAnswered { drain: RentedDrainNotListening, store: RentedStoreNoPartials },
+    authorizations: [], anchor: RentedAnchorAbsent, before: before, after: after,
+  }
+}
+
+fn w_decide(a: RentedServingAllocation, i: RentedObservedInstance, mode: ApplyMode) -> RentedDestroyDecision {
+  rented_destroy_decision(allocation: a, reading: RentedInstanceObserved { instance: i }, required_label: w_label, mode: mode)
+}
+
+// THE RED for the id guard: the read instance is another id (ctrl's), so nothing is destroyed, even Apply.
+test fn an_id_mismatch_refuses_even_in_apply() -> Bool {
+  match w_decide(a: w_imported(), i: w_instance(id: 2002, label: Present { value: "gunbc-flex" }), mode: Apply) {
+    RentedDestroyRefusedIdMismatch { bound: b, read: r } => (b as String) == "1001" && (r as String) == "2002"
+    _ => false
+  }
+}
+
+test fn the_bound_id_is_authorized_in_apply() -> Bool {
+  match w_decide(a: w_imported(), i: w_instance(id: 1001, label: none), mode: Apply) {
+    RentedDestroyAuthorized { request: q } => (q.instance_id as String) == "1001"
+    _ => false
+  }
+}
+
+test fn acquired_without_the_label_refuses() -> Bool {
+  match w_decide(a: w_acquired(), i: w_instance(id: 1001, label: none), mode: Apply) {
+    RentedDestroyRefusedLabel { required: _, read: _ } => true
+    _ => false
+  }
+}
+
+test fn acquired_with_the_label_is_admitted() -> Bool {
+  match w_decide(a: w_acquired(), i: w_instance(id: 1001, label: Present { value: "gunbc-flex" }), mode: Apply) {
+    RentedDestroyAuthorized { request: _ } => true
+    _ => false
+  }
+}
+
+test fn imported_without_the_label_is_admitted() -> Bool {
+  match w_decide(a: w_imported(), i: w_instance(id: 1001, label: none), mode: Apply) {
+    RentedDestroyAuthorized { request: _ } => true
+    _ => false
+  }
+}
+
+test fn plan_produces_the_request_and_authorizes_nothing() -> Bool {
+  match w_decide(a: w_imported(), i: w_instance(id: 1001, label: none), mode: Plan) {
+    RentedDestroyPlanned { request: q } => (q.instance_id as String) == "1001"
+    _ => false
+  }
+}
+
+// A 200 is not evidence: an authorized destroy whose later read still lists the instance is pending.
+test fn a_destroy_still_listed_afterwards_is_pending() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  match rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: w_readings(before: listed, after: listed)).outcome {
+    RentedReleasePending { request: _, status: _ } => true
+    _ => false
+  }
+}
+
+test fn a_destroy_followed_by_an_absent_read_is_gone() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  match rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: w_readings(before: listed, after: RentedInstanceAbsent)).outcome {
+    RentedReleaseGone => true
+    _ => false
+  }
+}
+
+test fn a_plan_release_reports_planned_not_gone() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  match rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Plan, readings: w_readings(before: listed, after: listed)).outcome {
+    RentedReleasePlanned { request: _ } => true
+    _ => false
+  }
+}
+
+// Never started: nothing listening, no anchor, no partials are typed no-ops, and the release proceeds.
+test fn a_never_started_allocation_releases_with_typed_no_ops() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: w_readings(before: listed, after: RentedInstanceAbsent))
+  match r.drain {
+    RentedLegOutcomeNothingToUndo =>
+      match r.anchor {
+        RentedLegOutcomeNothingToUndo =>
+          match r.clean {
+            RentedLegOutcomeNothingToUndo => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Clean names only partials under the allocation's partial directory and never a protected path.
+test fn clean_refuses_a_path_outside_the_partial_directory() -> Bool {
+  match rented_clean_decision(roots: w_roots, protected: w_protected, reading: RentedStorePartials { entries: ["/root/serve/model/model.ninfer"] }) {
+    RentedLegRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn clean_refuses_a_verified_object() -> Bool {
+  match rented_clean_decision(roots: w_roots, protected: w_protected, reading: RentedStorePartials { entries: ["/root/serve/store/sha256/74d2c57145e6ff11d1d2faa79594477f9bc903a611af1fb20218189fbbb77d82"] }) {
+    RentedLegRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn clean_removes_a_stale_partial() -> Bool {
+  match rented_clean_decision(roots: w_roots, protected: w_protected, reading: RentedStorePartials { entries: ["/root/serve/store/partial/abc.1"] }) {
+    RentedLegNothingToUndo => false
+    RentedLegRefused { reason: _ } => false
+    _ => true
+  }
+}
+
+// INHABITANCE (DESIGN 3 pairing): the supplied instance rows above are hypotheses. This claim runs the real
+// allocation carrier (the rented_allocation witness producer) through the real release entry and asserts the
+// ROUTE: the receipt names the carrier's own wire id, and the id the guard binds is the carrier's identity
+// contract, which is the Vast instance id the Destroy operation addresses.
+test fn the_receipt_is_bound_to_the_real_carriers_identity_and_instance_id() -> Bool {
+  let a = w_imported()
+  let r = rented_release_receipt(allocation: a, roots: w_roots, protected: w_protected, required_label: w_label, mode: Plan, readings: w_readings(before: RentedInstanceAbsent, after: RentedInstanceAbsent))
+  (r.allocation as String) == (rented_allocation_wire(id: a.identity) as String)
+    && (rented_bound_instance_id(allocation: a) as String) == (a.identity.contract as String)
+}
+
+// A refused leg stops the line: the later legs are NotReached, never planned past it.
+test fn a_refused_drain_leaves_the_later_legs_not_reached() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  let readings = RentedReleaseReadings {
+    host: RentedHostAnswered { drain: RentedDrainUnreadable { cause: "ssh timed out" as NonEmptyStr }, store: RentedStorePartials { entries: ["/root/serve/store/partial/abc.1"] } },
+    authorizations: [],
+    anchor: RentedAnchorPresent { path: "target/fleet-ssh-attempt-1-known-hosts-x" as NonEmptyStr },
+    before: listed, after: listed,
+  }
+  let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: readings)
+  match r.outcome {
+    RentedReleaseHeld { leg: RentedLegDrain, reason: _ } =>
+      match r.anchor {
+        RentedLegOutcomeNotReached =>
+          match r.clean {
+            RentedLegOutcomeNotReached => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_silent_readings(host: RentedHostReading, listed: RentedInstanceReading) -> RentedReleaseReadings {
+  RentedReleaseReadings {
+    host: host, authorizations: [],
+    anchor: RentedAnchorPresent { path: "target/fleet-ssh-attempt-1-known-hosts-x" as NonEmptyStr },
+    before: listed, after: RentedInstanceAbsent,
+  }
+}
+
+// A never-started card: ssh never answered and the vantage control reached, so silence is read as the host
+// being down. Drain and clean are NOT PERFORMED (never nothing-to-undo), the lab-side anchor still runs, and
+// the id-guarded destroy proceeds to gone.
+test fn a_silent_host_with_a_reached_control_reaches_destroy_with_not_performed_legs() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: w_silent_readings(host: RentedHostSilent { control: RentedVantageReached }, listed: listed))
+  match r.drain {
+    RentedLegOutcomeNotPerformedHostSilent =>
+      match r.clean {
+        RentedLegOutcomeNotPerformedHostSilent =>
+          match r.anchor {
+            RentedLegOutcomeToUndo { actions: _ } =>
+              match r.outcome {
+                RentedReleaseGone => true
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// The id guard still holds for a silent host: another instance's id is never destroyed.
+test fn a_silent_host_does_not_bypass_the_id_guard() -> Bool {
+  let other = RentedInstanceObserved { instance: w_instance(id: 2002, label: none) }
+  let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: w_silent_readings(host: RentedHostSilent { control: RentedVantageReached }, listed: other))
+  match r.outcome {
+    RentedReleaseDestroyRefused { decision: _ } => true
+    _ => false
+  }
+}
+
+// Ambiguous reachability refuses: silence with a control that did not reach, or was unread, may be our own network.
+test fn a_silent_host_with_an_unreached_control_refuses() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: w_silent_readings(host: RentedHostSilent { control: RentedVantageNotReached }, listed: listed))
+  match r.outcome {
+    RentedReleaseHeld { leg: RentedLegDrain, reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_silent_host_with_an_unread_control_refuses() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: w_silent_readings(host: RentedHostSilent { control: RentedVantageUnread { cause: "dns failed" as NonEmptyStr } }, listed: listed))
+  match r.outcome {
+    RentedReleaseHeld { leg: RentedLegDrain, reason: _ } => true
+    _ => false
+  }
+}
+
+// A reachable host still drains: a listener serving this allocation's model id yields a drain action.
+test fn a_reachable_host_still_drains() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  let a = w_imported()
+  let readings = RentedReleaseReadings {
+    host: RentedHostAnswered { drain: RentedDrainListening { process_group: 4242, healthy: true, models: NinferModelsAdvertised { ids: [rented_engine_served_name(engine: a.engine) as String] } }, store: RentedStoreNoPartials },
+    authorizations: [], anchor: RentedAnchorAbsent, before: listed, after: RentedInstanceAbsent,
+  }
+  match rented_release_receipt(allocation: a, roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: readings).drain {
+    RentedLegOutcomeToUndo { actions: _ } => true
+    _ => false
+  }
+}

@@ -12,8 +12,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // (gunbc.rung_drop text_boundary_identity_wall, XL-0T ruling B). Kernel String is host text and a
 // FreeMonoid<Char> is a code-point sequence; the one declared route between them is the Unicode
 // scalar sequence of the text (gunbc.structural_realization_bindings literal_homomorphism_rows
-// UnicodeScalarSequenceUnfold for a literal; the scalar-string `chars` method for a value at a call
-// argument). r_ rows hand one representation's value to the other's position where no route exists
+// UnicodeScalarSequenceUnfold for a literal; for a value at a call argument, a generated call to the
+// conversion plan's declared route, std.coercion unicode_scalar_unfold). r_ rows hand one representation's value to the other's position where no route exists
 // -- a code-point sequence into host text in either spelling of the destination, and a host value
 // at a declared return or data initializer -- and each must be a blocking refusal however the
 // destination is spelled and whichever module resolved it. u_ rows assert the unfold's ROUTE in
@@ -78,14 +78,27 @@ test fn r_kernel_value_at_text_data_initializer_refuses() -> Bool {
 
 // THE UNFOLD AT A CALL ARGUMENT, asserted on the ROUTE and not only the verdict: a non-literal host
 // value at a code-point-sequence formal is admitted BECAUSE the typed tree carries the Unicode
-// scalar unfold (the scalar-string `chars` method), which the emitted Rust shows; the must_not_contain
-// is the bare pass-through that rustc refused as E0308.
+// scalar unfold as a generated call to its DECLARED route (std.coercion unicode_scalar_unfold, bound by
+// declaration and never by the spelling `chars`), which the emitted Rust shows. The must_not_contain
+// rows are the bare pass-through that rustc refused as E0308, and the spelling-built method route this
+// replaced: restoring that route reds every u_ row.
 test fn u_kernel_value_at_qualified_text_parameter_unfolds() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.text_unfold_qualified_probe\nimport v2.std.text { string_is_empty }\nfn take(t: v2.std.text.String) -> Int { 0 }\nfn host_into(s: String) -> Int { take(t: s) }\n",
     "src/test_claim_text_unfold_qualified_probe.rs",
-    [".chars().map(|c| c as i64)"],
-    ["take(s)", "take(s.clone())"]
+    ["std_coercion::unicode_scalar_unfold("],
+    ["take(s)", "take(s.clone())", ".chars().map(|c| c as i64)"]
+  )
+}
+
+// A SAME-SPELLED `chars` CANNOT CAPTURE THE GENERATED CROSSING: the probe declares its own `chars`, and the
+// unfold still reaches the declared route by identity.
+test fn u_kernel_value_unfolds_by_identity_beside_a_local_chars() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_unfold_decoy_probe\nimport v2.std.text { string_is_empty }\nfn chars(text: String) -> Int { 0 }\nfn take(t: v2.std.text.String) -> Int { 0 }\nfn host_into(s: String) -> Int { take(t: s) }\n",
+    "src/test_claim_text_unfold_decoy_probe.rs",
+    ["std_coercion::unicode_scalar_unfold("],
+    ["take(s)", "take(s.clone())", ".chars().map(|c| c as i64)", "take(chars("]
   )
 }
 
@@ -94,8 +107,8 @@ test fn u_kernel_value_at_alias_of_text_parameter_unfolds() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.text_unfold_alias_probe\nimport v2.std.text { string_is_empty }\ntype LocalText = v2.std.text.String\nfn take(t: LocalText) -> Int { 0 }\nfn host_into(s: String) -> Int { take(t: s) }\n",
     "src/test_claim_text_unfold_alias_probe.rs",
-    [".chars().map(|c| c as i64)"],
-    ["take(s)", "take(s.clone())"]
+    ["std_coercion::unicode_scalar_unfold("],
+    ["take(s)", "take(s.clone())", ".chars().map(|c| c as i64)"]
   )
 }
 
@@ -106,8 +119,8 @@ test fn u_kernel_value_at_foreign_bare_structural_parameter_unfolds() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.text_unfold_caller_probe\nimport v2.std.text { string_is_empty }\nfn host_empty(s: String) -> Bool { string_is_empty(s: s) }\n",
     "src/test_claim_text_unfold_caller_probe.rs",
-    [".chars().map(|c| c as i64)"],
-    ["string_is_empty(s)", "string_is_empty(s.clone())"]
+    ["std_coercion::unicode_scalar_unfold("],
+    ["string_is_empty(s)", "string_is_empty(s.clone())", ".chars().map(|c| c as i64)"]
   )
 }
 
@@ -194,8 +207,8 @@ test fn u_refined_host_value_at_qualified_text_parameter_unfolds() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.text_unfold_refined_probe\nimport std.types { NonEmptyStr }\nimport v2.std.text { string_is_empty }\nfn take(t: v2.std.text.String) -> Int { 0 }\nfn host_into(s: NonEmptyStr) -> Int { take(t: s) }\n",
     "src/test_claim_text_unfold_refined_probe.rs",
-    [".chars().map(|c| c as i64)"],
-    ["take(s)", "take(s.clone())"]
+    ["std_coercion::unicode_scalar_unfold("],
+    ["take(s)", "take(s.clone())", ".chars().map(|c| c as i64)"]
   )
 }
 

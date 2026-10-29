@@ -1,0 +1,141 @@
+module test.claim.approve_ios_vectors_escape_witness
+
+// L6-ii: the escape test's CHARACTERS and its EXPECTED BYTES both come out of the fixture.
+//
+// Before this, testEmitterEscapesLikeSerializeJson spelled its own input ("a\u{1F}b/\"c\") and hand-typed
+// its expected "\u00XX" bytes. A test that supplies both sides proves only that two copies of a literal
+// agree: it survived every change to the actual escape table, and the emitter's escaping was never the
+// thing under test. Now the fixture carries the specimens (data escape_specimens) and builds each row's
+// expectations by CALLING the serializer (escape_vector_json runs serialize_json over the specimen), so
+// the Swift asserts the runtime emitter against bytes the .dag serializer itself produced. The carrier
+// spells no specimen and no expectation.
+//
+// These claims are green at this head and each has a shape that reddens if the behavior regresses: the
+// carrier-side lenses read the escape builder's own text, and the emitted-Swift lens reads the file the
+// carrier produces. The literal shapes searched for are the ones the OLD code contained — a hand-typed
+// specimen appears as WireJson.string(" and a hand-typed expectation as an \u00 escape — so restoring the
+// old test body reddens the claims rather than satisfying them. (Both directions were checked: with the
+// old body spliced back in, the emitted-Swift claim goes from pass to fail and the specimen-driving claim
+// from fail to pass.)
+//
+// Run each evidence_* at the head under review. A Bool false under `gunbc run --function` exits 2, which
+// means "did not return a ProcessExit" and is NOT a verdict, so every evidence_* returns one.
+
+import std.types { Bool, String, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.filesystem.filesystem_io
+import gunbc.output_policy { ExpectSuccess }
+import gunbc.auth.approval_device_redemption_fixtures { escape_specimens }
+import gunbc.approve_ios_swift_protocol_vector_tests { expected_approve_ios_protocol_vector_tests_swift }
+import v2.extdeps.languages.swift.rows { SwiftRowEmitted, SwiftRowEmissionRefused }
+
+data carrier_module_path: String = "dag/gunbc/approve_ios_swift_protocol_vector_tests.dag"
+data fixture_module_path: String = "dag/gunbc/auth/approval_device_redemption_fixtures.dag"
+
+// ---------------------------------------------------------------- helpers (not claims)
+
+fn emission_text() -> String {
+  match expected_approve_ios_protocol_vector_tests_swift() {
+    SwiftRowEmitted { source: s } => s
+    SwiftRowEmissionRefused { reason: _ } => ""
+  }
+}
+
+fn module_source(path: String) -> String {
+  let read = Filesystem.Read(path: path, expect: ExpectSuccess)
+  if read.success { read.content } else { "" }
+}
+
+// ---------------------------------------------------------------- claims (all green at this head)
+
+// POSITIVE: the fixture carries specimens, so the emitted loop is not iterating nothing and passing.
+// This is the guard the emission boundary also enforces (a refusal, not a green vacuous file), asserted
+// here from the claim side.
+test fn fixture_carries_escape_specimens_helper() -> Bool {
+  count(escape_specimens) > 0
+}
+
+// POSITIVE, the authority side: the fixture derives a row's expectations by running the serializer over
+// the specimen, so the bytes are the serializer's and not a second spelling of them. Both fields must be
+// built this way, and the specimen itself must be the value serialized. Each field is matched as its WHOLE
+// `json_kv` member, not as a fragment: the first version of this claim asked only whether the fixture
+// contained `serialize_json(v: json_object(members: [` somewhere, and a control that replaced the escape
+// row's object_json expectation with a hand-typed string still passed it — the fragment was satisfied by
+// an unrelated row's serializer call elsewhere in the file. Anchoring on the full member means the claim
+// is about THIS row's expectation, and the control reddens it.
+test fn fixture_builds_expectations_from_the_serializer_helper() -> Bool {
+  let fx = module_source(path: fixture_module_path)
+  fx != ""
+    && fx.contains("json_kv(key: \"string_json\", value: json_string(s: serialize_json(v: json_string(s: input))))")
+    && fx.contains("value: json_string(s: serialize_json(v: json_object(members: [")
+    && fx.contains("json_kv(key: \"k\", value: json_array(elements: [json_string(s: input)]))")
+}
+
+// POSITIVE, the carrier side: the emitted escape test iterates the fixture's rows and compares the
+// runtime emitter's output against the row's own two expectation fields. It is the rows that carry the
+// expectations, so the carrier cannot hold a literal and still satisfy this.
+test fn carrier_asserts_against_the_rows_helper() -> Bool {
+  let src = module_source(path: carrier_module_path)
+  src != ""
+    && src.contains("sw_for(n: \"v\", e: sw_id(n: \"vectors\")")
+    && src.contains("sw_path(b: \"v\", m: \"input\")")
+    && src.contains("sw_path(b: \"v\", m: \"string_json\")")
+    && src.contains("sw_path(b: \"v\", m: \"object_json\")")
+}
+
+// POSITIVE, the lens over the file the carrier produces: no specimen and no expectation is spelled in
+// the emitted Swift. WireJson.string(" is the shape a hand-typed input takes, and \u00 is the shape a
+// hand-typed expected escape took; the driven form is WireJson.string(v.input), which must be there.
+test fn emitted_bytes_carry_no_hand_typed_escape_helper() -> Bool {
+  let text = emission_text()
+  text != ""
+    && !text.contains("WireJson.string(\"")
+    && !text.contains("\\u00")
+    && text.contains("WireJson.string(v.input)")
+    && text.contains("v.string_json")
+    && text.contains("v.object_json")
+}
+
+// POSITIVE: the emitted file declares the escape section and reads exactly that section. Both shapes are
+// checked at their whole spelling (`var escape: [Escape]?` is the Codable field, `try load().escape,` is
+// the read) because a loose `load().escape` substring survives renaming the field to `escapes` — which is
+// the regression this claim has to catch: the loop would then read a section the fixture does not emit,
+// XCTUnwrap would fail on every Mac, and nothing in the merge path runs the tests.
+test fn emitted_bytes_read_the_escape_section_helper() -> Bool {
+  let text = emission_text()
+  text != ""
+    && text.contains("var escape: [Escape]?")
+    && text.contains("try load().escape,")
+}
+
+// ---------------------------------------------------------------- evidence wrappers (ProcessExit)
+
+fn evidence_fixture_carries_escape_specimens() -> ProcessExit {
+  if fixture_carries_escape_specimens_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "the fixture carries no escape specimens; the emitted loop would be vacuous" }
+  }
+}
+
+fn evidence_fixture_builds_expectations_from_the_serializer() -> ProcessExit {
+  if fixture_builds_expectations_from_the_serializer_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "the fixture no longer derives an escape expectation by calling serialize_json" }
+  }
+}
+
+fn evidence_carrier_asserts_against_the_rows() -> ProcessExit {
+  if carrier_asserts_against_the_rows_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "the escape test does not compare the emitter against the fixture row's own fields" }
+  }
+}
+
+fn evidence_emitted_bytes_carry_no_hand_typed_escape() -> ProcessExit {
+  if emitted_bytes_carry_no_hand_typed_escape_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "the emitted escape test spells a specimen or an expected escape" }
+  }
+}
+
+fn evidence_emitted_bytes_read_the_escape_section() -> ProcessExit {
+  if emitted_bytes_read_the_escape_section_helper() { ExitSuccess } else {
+    ExitFailure { code: 1, reason: "the emitted file does not read the fixture's escape section" }
+  }
+}

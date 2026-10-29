@@ -1,0 +1,38 @@
+module gunbc.native_census_verb
+
+import std.types { String, List }
+import std.optional { Optional, Present, Absent }
+import std.algebra { fold_list }
+
+// THE CENSUS VERBS ARE ROWS, NOT VARIANTS, AND THIS IS THE ONE AUTHORITY FOR THE .dag SIDE: the binding's
+// producer (gunbc.target_binding NativeCensusVerbProducer), the emitted driver's parse, its refusal text
+// and its dispatch (v2.compiler.source_root_eval native_census_verb_output) all read this closed type, so
+// on those paths a verb spelled elsewhere is a type error. RUNG, HONESTLY: the seed host
+// (src/v1/stage0 target_invocation_host instrument_registry) is a declared hand-mirror that spells each
+// verb's argv word again as a free string, joined to nothing, so on that path a drifted spelling surfaces
+// only at runtime as the emitted binary's unknown-mode refusal (mitigation, not structural). Its trigger
+// is the capability gunbc.native_census_verb_seed_growth names: the producer dispatch emitted rather than
+// hand-mirrored, which derives the host's word from native_census_verb_word.
+// A new census is a variant here, an arm in the dispatch (exhaustive, so a missing one refuses) and an
+// instrument_targets row naming it.
+type NativeCensusVerbWord
+  = CensusVerbDemand
+  | CensusVerbDeclRef
+  | CensusVerbEffectPair
+
+// The ONE spelling of each verb: the word on the emitted binary's command line.
+fn native_census_verb_word(v: NativeCensusVerbWord) -> String {
+  match v {
+    CensusVerbDemand => "demand-census"
+    CensusVerbDeclRef => "decl-ref-census"
+    CensusVerbEffectPair => "effect-pair-census"
+  }
+}
+
+data native_census_verbs: List<NativeCensusVerbWord> = [CensusVerbDemand, CensusVerbDeclRef, CensusVerbEffectPair]
+
+fn native_census_verb_of_word(word: String) -> Optional<NativeCensusVerbWord> {
+  fold_list(xs: native_census_verbs, empty: Absent, cons: fn(found, v) {
+    if native_census_verb_word(v: v) == word { Present { value: v } } else { found }
+  })
+}

@@ -1,0 +1,266 @@
+module gunbc.runner.runner_revision_job_stage
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup, trim }
+import std.measure { ByteSize, byte_size_count }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.tar { tar_extract_command, tar_create_reproducible_command }
+import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
+import extdeps.git {
+  git_init_quiet_command, git_fetch_shallow_revision_command, git_rev_parse_tree_command,
+  git_archive_tar_command, git_show_file_command,
+}
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_sha1_object_id }
+import extdeps.rust.cargo_build { cargo_vendor_command, cargo_version_command }
+import extdeps.bazel.label { Label, render_label }
+import extdeps.tools.coreutils_truncate
+import gunbc.runner.runner_microvm { newline_padded_to_whole_sectors }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.fabric.fabric_witness_run {
+  VerifiedGitCommitTree, GitCommitTreeVerified, GitCommitTreeMismatch, verify_git_commit_tree,
+}
+
+// THE HOST HALF OF A REVISION JOB'S INPUTS: EXACT, VERIFIED, DIGESTED, STAGED READ-ONLY.
+//
+// The guest has no network (gunbc.runner.runner_revision_job_guest), so everything it runs on is
+// produced here, on the host, before the VM exists -- and the host is where network is allowed
+// (bright-moth-475, 2026-10-15). Each input is checked against what the job was admitted for and
+// named by a digest the receipt carries:
+//   - THE TREE: the exact commit fetched into a host cache repository, its tree id read back from the
+//     object store and verified against the admitted tree (verify_git_commit_tree; a moving ref has
+//     no spelling here because the fetch names the commit), then `git archive` of that commit. The
+//     guest re-proves the same tree id from the archive before it executes anything.
+//   - THE TOOLCHAIN: the tree's rust-toolchain.toml, read from the verified commit, must name the
+//     channel the guest image carries; a tree asking for another toolchain refuses here, and nothing
+//     is downloaded.
+//   - THE CRATES: the vendor set the tree's Cargo.lock pins, keyed by (lockfile digest, cargo
+//     identity), because the vendor layout and its .cargo-checksum.json files are written by cargo;
+//     the guest's `cargo --locked --offline` verifies each crate against those checksums on use.
+//   - THE SPEC: the environment file the guest unit loads: commit, tree, claims in order, results
+//     device and its size.
+//   - THE RESULTS DRIVE: created empty (create-only, so a stale drive refuses rather than keeping
+//     old bytes) and sized to exactly its declared bytes, which read as zero.
+// Every step is a typed argv command; the first that fails stops staging with a typed, located
+// refusal naming the step.
+
+// DECLARED FRONTIER (DESIGN 3c): consumed by the revision-job entry (gunbc.runner.runner_revision_job_main,
+// S4b-3b), which runs one job from spec to published receipt. TRIGGER: S4b-3b's stand-in inhabitance
+// claim, the light discriminating claim set run end to end over these staged inputs.
+
+type RevisionJobInputDigests {
+  commit: NonEmptyStr
+  tree: NonEmptyStr
+  lockfile: ContentHash
+  cargo_identity: NonEmptyStr
+  vendor_set: NonEmptyStr
+}
+
+type RevisionJobStaged {
+  revision: VerifiedGitCommitTree
+  tree_archive: String
+  vendor_archive: String
+  spec: String
+  spec_text: String
+  results_drive: String
+  results_bytes: ByteSize
+  digests: RevisionJobInputDigests
+}
+
+type RevisionJobStageRefusal
+  = StageStepFailed { step: NonEmptyStr, detail: String }
+  | StageTreeMismatch { commit: NonEmptyStr, admitted_tree: NonEmptyStr, observed_tree: String }
+  | StageToolchainMismatch { tree_toolchain: String, image_toolchain: NonEmptyStr }
+  | StageToolchainUnread { detail: String }
+  | StageVendorDigestUnread { detail: String }
+  | StageResultsDriveRefused { path: String, detail: String }
+
+type RevisionJobStage
+  = RevisionJobStageReady { staged: RevisionJobStaged }
+  | RevisionJobStageRefused { refusal: RevisionJobStageRefusal }
+
+fn stage_output(step: NonEmptyStr, command: ArgvCommand) -> RevisionJobStageStep {
+  match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessOutputPresent { text: t } => StageStepOk { output: trim(s: t) }
+    ProcessOutputAbsent => StageStepOk { output: "" }
+    ProcessRefused { exit_code: c, stderr: e } => StageStepRefused { refusal: StageStepFailed { step: step, detail: join(["exit ", to_string(c), ": ", trim(s: e)], "") } }
+  }
+}
+
+type RevisionJobStageStep
+  = StageStepOk { output: String }
+  | StageStepRefused { refusal: RevisionJobStageRefusal }
+
+// The channel line of a rust-toolchain.toml: `channel = "<value>"`. Only that key is read; a file
+// without it names no toolchain and refuses.
+fn rust_toolchain_channel(toml: String) -> String? {
+  fold(toml.split(delimiter: "\n"), init: none, f: (acc, line) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => {
+      let t = trim(s: line)
+      if !t.starts_with("channel") { none } else {
+        let parts: List<String> = t.split(delimiter: "\"")
+        if count(parts) != 3 { none } else { match skip(parts, 1).first() { Present { value: c } => if c == "" { none } else { Present { value: c } }  Absent => none } }
+      }
+    }
+  })
+}
+
+fn revision_job_spec_text(revision: VerifiedGitCommitTree, claims: FreeSemigroup<Label>, results_device: String, results_bytes: ByteSize) -> String {
+  join([
+    "GUNBC_CLAIM_SET_COMMIT=", git_object_id_wire_hex(oid: revision.commit) as String, "\n",
+    "GUNBC_CLAIM_SET_TREE=", git_object_id_wire_hex(oid: revision.tree) as String, "\n",
+    "GUNBC_CLAIM_SET_CLAIMS=", join([render_label(l: claims.head)] + map(claims.tail, l => render_label(l: l)), " "), "\n",
+    "GUNBC_CLAIM_SET_RESULTS_DEVICE=", results_device, "\n",
+    "GUNBC_CLAIM_SET_RESULTS_BYTES=", to_string(byte_size_count(b: results_bytes)), "\n",
+  ], "")
+}
+
+// THE SPEC DEVICE'S BYTES, ONCE: the environment file padded with newlines to whole block sectors
+// (Firecracker attaches whole sectors). Staging writes exactly these bytes and returns them, and the
+// launch plan stages the spec drive from them -- one producer, so the staged spec and the booted one
+// cannot differ.
+fn revision_job_spec_device_content(spec_text: String) -> String {
+  newline_padded_to_whole_sectors(body: spec_text)
+}
+
+fn vendor_cache_key(lockfile: ContentHash, cargo_identity: NonEmptyStr) -> NonEmptyStr {
+  serialize_content_hash(hash: content_hash_of_value(value: join(["vendor:", serialize_content_hash(hash: lockfile) as String, ":", cargo_identity as String], "") as NonEmptyStr))
+}
+
+fn stage_revision_job(
+  cache_repo: String,
+  vendor_cache: String,
+  staging_dir: String,
+  repository_url: String,
+  commit: GitObjectId,
+  admitted_tree: GitObjectId,
+  image_toolchain: NonEmptyStr,
+  claims: FreeSemigroup<Label>,
+  results_device: String,
+  results_bytes: ByteSize,
+) -> RevisionJobStage {
+  let commit_hex = git_object_id_wire_hex(oid: commit)
+  let admitted_tree_hex = git_object_id_wire_hex(oid: admitted_tree)
+  match stage_output(step: "mkdir", command: mkdir_parents_command(path: staging_dir)) {
+  StageStepRefused { refusal: r } => RevisionJobStageRefused { refusal: r }
+  StageStepOk { output: _ } => match stage_output(step: "mkdir-cache", command: mkdir_parents_command(path: cache_repo)) {
+  StageStepRefused { refusal: r } => RevisionJobStageRefused { refusal: r }
+  StageStepOk { output: _ } => match stage_output(step: "git-init-cache", command: git_init_quiet_command(repository_dir: cache_repo)) {
+  StageStepRefused { refusal: r } => RevisionJobStageRefused { refusal: r }
+  StageStepOk { output: _ } => match stage_output(step: "git-fetch-exact-commit", command: git_fetch_shallow_revision_command(repository_dir: cache_repo, remote: repository_url, revision: commit_hex as String)) {
+  StageStepRefused { refusal: r } => RevisionJobStageRefused { refusal: r }
+  StageStepOk { output: _ } => match stage_output(step: "git-rev-parse-tree", command: git_rev_parse_tree_command(repository_dir: cache_repo, revision: commit_hex as String)) {
+  StageStepRefused { refusal: r } => RevisionJobStageRefused { refusal: r }
+  StageStepOk { output: observed } => match git_sha1_object_id(hex: observed) {
+  Absent => RevisionJobStageRefused { refusal: StageTreeMismatch { commit: commit_hex, admitted_tree: admitted_tree_hex, observed_tree: observed } }
+  Present { value: observed_tree } => match verify_git_commit_tree(commit: commit, declared_tree: admitted_tree, observed_commit_tree: observed_tree) {
+  GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } =>
+    RevisionJobStageRefused { refusal: StageTreeMismatch { commit: commit_hex, admitted_tree: admitted_tree_hex, observed_tree: observed } }
+  GitCommitTreeVerified { subject: revision } =>
+    stage_verified_revision(cache_repo: cache_repo, vendor_cache: vendor_cache, staging_dir: staging_dir, revision: revision,
+      image_toolchain: image_toolchain, claims: claims, results_device: results_device, results_bytes: results_bytes)
+  } } } } } } }
+}
+
+fn stage_verified_revision(
+  cache_repo: String,
+  vendor_cache: String,
+  staging_dir: String,
+  revision: VerifiedGitCommitTree,
+  image_toolchain: NonEmptyStr,
+  claims: FreeSemigroup<Label>,
+  results_device: String,
+  results_bytes: ByteSize,
+) -> RevisionJobStage {
+  let commit_hex = git_object_id_wire_hex(oid: revision.commit) as String
+  let tree_archive = concat(staging_dir, "/tree.tar")
+  let source = concat(staging_dir, "/source")
+  match stage_output(step: "git-show-rust-toolchain", command: git_show_file_command(repository_dir: cache_repo, revision: commit_hex, path: "rust-toolchain.toml")) {
+  StageStepRefused { refusal: r } => RevisionJobStageRefused { refusal: StageToolchainUnread { detail: match r { StageStepFailed { step: _, detail: d } => d  _ => "rust-toolchain.toml unread" } } }
+  StageStepOk { output: toml } => match rust_toolchain_channel(toml: toml) {
+  Absent => RevisionJobStageRefused { refusal: StageToolchainUnread { detail: "rust-toolchain.toml names no channel" } }
+  Present { value: channel } => if channel != (image_toolchain as String) {
+    RevisionJobStageRefused { refusal: StageToolchainMismatch { tree_toolchain: channel, image_toolchain: image_toolchain } }
+  } else { match stage_output(step: "git-show-cargo-lock", command: git_show_file_command(repository_dir: cache_repo, revision: commit_hex, path: "Cargo.lock")) {
+  StageStepRefused { refusal: r } => RevisionJobStageRefused { refusal: r }
+  StageStepOk { output: lock } => if trim(s: lock) == "" { RevisionJobStageRefused { refusal: StageStepFailed { step: "git-show-cargo-lock", detail: "Cargo.lock is empty" } } } else {
+  let lockfile = content_hash_of_value(value: lock as NonEmptyStr)
+  match stage_output(step: "cargo-version", command: cargo_version_command()) {
+  StageStepRefused { refusal: r } => RevisionJobStageRefused { refusal: r }
+  StageStepOk { output: cargo_identity } => if cargo_identity == "" { RevisionJobStageRefused { refusal: StageStepFailed { step: "cargo-version", detail: "cargo printed no identity" } } } else {
+  let key = vendor_cache_key(lockfile: lockfile, cargo_identity: cargo_identity as NonEmptyStr) as String
+  let vendor_dir = join([vendor_cache, "/", key, "/vendor"], "")
+  let vendor_archive = join([vendor_cache, "/", key, "/vendor.tar"], "")
+  match stage_steps(steps: [
+    StageNamedStep { step: "git-archive-tree", command: git_archive_tar_command(repository_dir: cache_repo, revision: commit_hex, output: tree_archive) },
+    StageNamedStep { step: "mkdir-source", command: mkdir_parents_command(path: source) },
+    StageNamedStep { step: "extract-source-for-vendor", command: tar_extract_command(archive: tree_archive, into_directory: source, strip_components: 0) },
+    StageNamedStep { step: "mkdir-vendor", command: mkdir_parents_command(path: vendor_dir) },
+    StageNamedStep { step: "cargo-vendor", command: cargo_vendor_command(manifest_path: concat(source, "/Cargo.toml"), output_dir: vendor_dir, cargo_home: concat(staging_dir, "/cargo-home")) },
+    StageNamedStep { step: "tar-vendor", command: tar_create_reproducible_command(archive: vendor_archive, from_directory: vendor_dir) },
+  ]) {
+  Present { value: r } => RevisionJobStageRefused { refusal: r }
+  Absent => match stage_output(step: "sha256-vendor", command: sha256sum_file_command(path: vendor_archive)) {
+  StageStepRefused { refusal: r } => RevisionJobStageRefused { refusal: r }
+  StageStepOk { output: line } => match sha256sum_line_digest(line: line) {
+  Absent => RevisionJobStageRefused { refusal: StageVendorDigestUnread { detail: line } }
+  Present { value: d } => stage_spec_and_results(staging_dir: staging_dir, revision: revision, claims: claims,
+    results_device: results_device, results_bytes: results_bytes, tree_archive: tree_archive, vendor_archive: vendor_archive,
+    digests: RevisionJobInputDigests {
+      commit: commit_hex as NonEmptyStr,
+      tree: git_object_id_wire_hex(oid: revision.tree),
+      lockfile: lockfile,
+      cargo_identity: cargo_identity as NonEmptyStr,
+      vendor_set: d.hex as NonEmptyStr,
+    })
+  } } } } } } } } } }
+}
+
+type StageNamedStep {
+  step: NonEmptyStr
+  command: ArgvCommand
+}
+
+fn stage_steps(steps: List<StageNamedStep>) -> RevisionJobStageRefusal? {
+  fold(steps, init: none, f: (acc, s) => match acc {
+    Present { value: r } => Present { value: r }
+    Absent => match stage_output(step: s.step, command: s.command) {
+      StageStepRefused { refusal: r } => Present { value: r }
+      StageStepOk { output: _ } => none
+    }
+  })
+}
+
+fn stage_spec_and_results(
+  staging_dir: String,
+  revision: VerifiedGitCommitTree,
+  claims: FreeSemigroup<Label>,
+  results_device: String,
+  results_bytes: ByteSize,
+  tree_archive: String,
+  vendor_archive: String,
+  digests: RevisionJobInputDigests,
+) -> RevisionJobStage {
+  let spec = concat(staging_dir, "/spec.env")
+  let results = concat(staging_dir, "/results.bin")
+  let spec_text = revision_job_spec_device_content(spec_text: revision_job_spec_text(revision: revision, claims: claims, results_device: results_device, results_bytes: results_bytes))
+  let wrote_spec = Filesystem.WriteCreateNew(path: spec, content: spec_text)
+  if !wrote_spec.success { RevisionJobStageRefused { refusal: StageStepFailed { step: "write-spec", detail: wrote_spec.error } } }
+  else {
+    let created = Filesystem.WriteCreateNew(path: results, content: "")
+    if !created.success { RevisionJobStageRefused { refusal: StageResultsDriveRefused { path: results, detail: created.error } } }
+    else if !coreutils.Truncate.ToSize(size_bytes: to_string(byte_size_count(b: results_bytes)) as NonEmptyStr, path: results as NonEmptyStr).success {
+      RevisionJobStageRefused { refusal: StageResultsDriveRefused { path: results, detail: "truncate could not size the results drive" } }
+    } else {
+      RevisionJobStageReady { staged: RevisionJobStaged {
+        revision: revision, tree_archive: tree_archive, vendor_archive: vendor_archive, spec: spec, spec_text: spec_text, results_drive: results,
+        results_bytes: results_bytes, digests: digests,
+      } }
+    }
+  }
+}

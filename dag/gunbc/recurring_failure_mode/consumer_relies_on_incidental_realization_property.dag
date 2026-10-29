@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.consumer_relies_on_incidental_realization_pr
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data consumer_relies_on_incidental_realization_property: RecurringFailureMode = RecurringFailureMode {
   identity: "consumer_relies_on_incidental_realization_property" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a consumer relies on a property of its provider's current implementation that the provider's contract does not promise. DISTINGUISHING FACT, the class that recurs: OwnerOnly's O_EXCL is incidental to MODE, not its contract. Complete exclusive publication is WriteCreateNew, published via extdeps.filesystem.rust_realization (complete content then hard_link). A consumer that treats OwnerOnly as exclusive complete publication is leaning on a disclaimed property; the next instance need not be a CAS writer. HARM: a contract-preserving provider change can invalidate the consumer, and even the current implementation may establish only part of the property the consumer assumes. Agreement on happy-path output conceals the missing guarantee; reviewing the implementation alone cannot repair the dependency contract.",

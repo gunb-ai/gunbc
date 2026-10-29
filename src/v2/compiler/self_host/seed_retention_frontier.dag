@@ -1,9 +1,20 @@
 module v2.compiler.self_host.seed_retention_frontier
 
-import std.types { List }
+import std.types { List, Map, FilePathParts }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.algebra { length, list_map }
+import std.dissolution { DissolutionCondition, dissolution_is_bound, unbound_dissolution }
+import std.algebra { length, list_map, collection_join_shape }
+import std.optional { Absent, Present }
+import std.integer { int_to_decimal_string }
+import gunbc.rust_emitted_edge { rust_module_emit_filename }
+import extdeps.rust.cargo { CargoTarget, Lib, Bin, cargo_target_source_path }
+import gunbc.stage0.stage0_emitted_population_manifest {
+  emitted_population_paths_from_manifest,
+  emitted_population_manifest_basename,
+  self_host_frontier_verdict_passed_word,
+  self_host_frontier_verdict_not_passed_word
+}
+import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_stage0_files }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
@@ -161,7 +172,24 @@ fn retained_build_script(path: String) -> SeedRetentionFrontierRow {
   }
 }
 
-data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
+// Top-level src/ files that required_regen_host already subtracts through
+// HAND_MAINTAINED_STAGE0_FILES before the committed-not-emitted join. They are rows so the
+// frontier fold classifies every observed file, but they are NOT join exemptions: projecting them
+// into seed_retention_frontier_top_level_src_basenames would widen that refusal to files whose
+// disappearance from the emitter it must still catch (required_regen_host
+// live_frontier_projection_is_not_the_crate_layout_filename_union).
+data seed_retention_frontier_hand_maintained_hosts: List<SeedRetentionFrontierRow> = [
+  retained_reason_undeclared(path: "src/emitted_closure_compile_host.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/evaluation_budget_consequence_generated.rs", cause: WetActuatorGeneratedSource),
+  retained_reason_undeclared(path: "src/generated_artifact_boundary_host.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/gunbc_file_transport_generated.rs", cause: WetActuatorGeneratedSource),
+  retained_reason_undeclared(path: "src/native_route_seed_boundary_generated.rs", cause: WetActuatorGeneratedSource),
+  retained_reason_undeclared(path: "src/partition_crate_boundary_host.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/release_locus_seed_constants_generated.rs", cause: WetActuatorGeneratedSource),
+  retained_reason_undeclared(path: "src/target_invocation_host.rs", cause: SeedRetainedIntrinsicSource)
+]
+
+data seed_retention_frontier_join_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_elsewhere(path: "src/v1_interpreter.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.plans.interpreter_kernel_d", decl_name: "interpreter_kernel_d_plan"),
   retained_reason_undeclared(path: "src/bounded_shell_host_drain.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/cli_run.rs", cause: SeedRetainedIntrinsicSource),
@@ -185,8 +213,12 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_elsewhere(path: "src/bootstrap_seed_retention_frontier_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "wet_actuator_generated_files_note"),
   retained_reason_elsewhere(path: "src/v1_interpreter_dispatch_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "v1_interpreter_dispatch_generated_family_note"),
   retained_reason_elsewhere(path: "src/main.rs", cause: EmitterProducedDivergentSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "emitter_produced_divergent_registrations"),
-  retained_support_dir_member(path: "src/cli_run/floor_discovery_snapshot.rs"),
-  retained_support_dir_member(path: "src/cli_run/materialization_provider_consumer.rs"),
+  retained_reason_elsewhere(
+    path: "src/cli_run/native_lane_runner.rs",
+    cause: SupportDirectoryMemberSource,
+    module_path: "gunbc.parse_compiler_identity_seed_growth",
+    decl_name: "parse_compiler_identity_seed_growth_justification"
+  ),
   retained_support_dir_member(path: "src/cli_run/roadmap_acceptance_history_carrier.rs"),
   retained_support_dir_member(path: "src/cli_run/test_module_hygiene_bridge.rs"),
   SeedRetentionFrontierRow {
@@ -221,8 +253,73 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_test_harness(path: "tests/namespace_occurrence_serde.rs"),
   retained_test_harness(path: "tests/scoped_run_observation.rs"),
   retained_test_harness(path: "tests/tokenize_escape_receipt.rs"),
+  retained_host_binary(path: "src/bin/carrier_realization_census.rs"),
+  retained_host_binary(path: "src/bin/generic_identity_census.rs"),
+  retained_host_binary(path: "src/bin/joint_claim_join.rs"),
+  retained_host_binary(path: "src/bin/type_occurrence_binding_census.rs"),
+  retained_support_dir_member(path: "src/cli_run/census_heads.rs"),
+  retained_support_dir_member(path: "src/cli_run/cgroup_memory.rs"),
+  retained_support_dir_member(path: "src/cli_run/checker_dependency.rs"),
+  retained_support_dir_member(path: "src/cli_run/claim_call_site_demand.rs"),
+  retained_support_dir_member(path: "src/cli_run/claim_execution.rs"),
+  retained_support_dir_member(path: "src/cli_run/class_b_census.rs"),
+  retained_support_dir_member(path: "src/cli_run/compile_clean.rs"),
+  retained_support_dir_member(path: "src/cli_run/complexity_gates.rs"),
+  retained_support_dir_member(path: "src/cli_run/declared_refs.rs"),
+  retained_support_dir_member(path: "src/cli_run/demand_acquire.rs"),
+  retained_reason_elsewhere(
+    path: "src/cli_run/provider_acquire.rs",
+    cause: SupportDirectoryMemberSource,
+    module_path: "gunbc.generated_provider_acquire_seed_growth",
+    decl_name: "generated_provider_acquire_seed_growth_justification"
+  ),
+  retained_support_dir_member(path: "src/cli_run/derived_row_roster.rs"),
+  retained_support_dir_member(path: "src/cli_run/doc_graph.rs"),
+  retained_support_dir_member(path: "src/cli_run/emit_host.rs"),
+  retained_support_dir_member(path: "src/cli_run/emitted_crate_workspace_host.rs"),
+  retained_support_dir_member(path: "src/cli_run/entry_resolve.rs"),
+  retained_support_dir_member(path: "src/cli_run/external_authority.rs"),
+  retained_support_dir_member(path: "src/cli_run/fallback_arm_census.rs"),
+  retained_support_dir_member(path: "src/cli_run/inert_carrier.rs"),
+  retained_support_dir_member(path: "src/cli_run/languages_census.rs"),
+  retained_support_dir_member(path: "src/cli_run/live_read_decode.rs"),
+  retained_support_dir_member(path: "src/cli_run/native_product_cache.rs"),
+  retained_support_dir_member(path: "src/cli_run/non_fold_residue.rs"),
+  retained_support_dir_member(path: "src/cli_run/p1_cohort.rs"),
+  retained_support_dir_member(path: "src/cli_run/pool_acquire.rs"),
+  retained_support_dir_member(path: "src/cli_run/pre_entry_phase.rs"),
+  retained_support_dir_member(path: "src/cli_run/reach_base_standings.rs"),
+  retained_support_dir_member(path: "src/cli_run/required_ci_measurement.rs"),
+  retained_support_dir_member(path: "src/cli_run/required_floor_runner.rs"),
+  retained_support_dir_member(path: "src/cli_run/required_lane_resolution_census.rs"),
+  retained_support_dir_member(path: "src/cli_run/rostered_row_join.rs"),
+  retained_support_dir_member(path: "src/cli_run/scope_rank_view.rs"),
+  retained_support_dir_member(path: "src/cli_run/serve_budget_refusal.rs"),
+  retained_support_dir_member(path: "src/cli_run/source_layout_lookup.rs"),
+  retained_support_dir_member(path: "src/cli_run/test_marker.rs"),
+  retained_support_dir_member(path: "src/cli_run/test_migration.rs"),
+  retained_support_dir_member(path: "src/cli_run/witness_gates.rs"),
+  retained_test_harness(path: "tests/base_closure_member_absent_at_live_path.rs"),
+  retained_test_harness(path: "tests/census_cost_step0_measurement.rs"),
+  retained_test_harness(path: "tests/census_identity_call_type.rs"),
+  retained_test_harness(path: "tests/dag_parse_sweep_refusal_location.rs"),
+  retained_test_harness(path: "tests/declaration_index_integrity.rs"),
+  retained_test_harness(path: "tests/floor_non_verdict_admission_seed_path.rs"),
+  retained_test_harness(path: "tests/named_filter_emitted_rust.rs"),
+  retained_test_harness(path: "tests/nominal_isomorphic_record_admission.rs"),
+  retained_test_harness(path: "tests/nullary_fn_value_emitted_rust.rs"),
+  retained_test_harness(path: "tests/ownership_branch_read.rs"),
+  retained_test_harness(path: "tests/parse_environment_decode_roundtrip.rs"),
+  retained_test_harness(path: "tests/qualified_callee_pipe_position.rs"),
+  retained_test_harness(path: "tests/revision_closure_is_the_revisions_own.rs"),
+  retained_test_harness(path: "tests/shipped_cli_generated_dispatch.rs"),
+  retained_test_harness(path: "tests/tco_cursor_list_walk.rs"),
+  retained_test_harness(path: "tests/tco_rc_grouped_match_emitted_rust.rs"),
+  retained_test_harness(path: "tests/type_equals_applied_head_identity.rs"),
   retained_build_script(path: "build.rs")
 ]
+
+data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = concat(seed_retention_frontier_join_roster, seed_retention_frontier_hand_maintained_hosts)
 
 type SeedRetentionCensusRow
   = RetainedRostered { crate_relative_path: String }
@@ -283,7 +380,7 @@ fn top_level_src_basename(path: String) -> String {
 fn seed_retention_frontier_top_level_src_basenames() -> List<String> {
   filter(
     xs: list_map(
-      xs: seed_retention_frontier_crate_relative_paths(),
+      xs: roster_paths(roster: seed_retention_frontier_join_roster),
       f: fn(path) { top_level_src_basename(path: path) }
     ),
     predicate: fn(basename) { basename != "" }
@@ -461,4 +558,458 @@ fn cited_reason_authorities() -> List<DeclarationRef> {
       }
     }
   )
+}
+
+// THE DERIVED SELF-HOST FRONTIER (DESIGN section 7). A file is self-emitted or seed-retained, and
+// which one is READ from two facts the producers already hold, never authored: the population
+// compile_stage0() emitted (one row per file, with the module it came from) and whether the
+// self-host step's controls PASSED over the import closure that contains that module. CargoGreen
+// alone is not enough: an emitted file whose module no executed control reached is
+// EmittedUnexecuted, which is the specification-without-execution state DESIGN section 5 names.
+// Precedence is emitted first, then retention row, then refusal, so a file is never counted twice;
+// a retention row on an emitted path is the census's RosteredPathIsCompared refusal: the emitted
+// manifest is the compared population, and self_host_frontier_holds refuses on any collision.
+// The one exception is a DECLARED divergent emission: a path registered in
+// v2.compiler.self_host.stage0_crate_layout emitter_produced_divergent_registrations is emitted, but
+// its committed bytes are not the emission. It is SeedRetained through its retention row and leaves
+// the compared population. If it has no row it is Unclassified, so a registration never stands in
+// for a row and a row never stands in for a registration.
+//
+// SelfEmitted carries only what the host observed: the executed-closure entry that matched the
+// file's module, under a ControlsPassed verdict. It does not carry a ProducerEmissionReceipt.
+// That receipt asserts a producer, qualifications, a build result and a realized emitter closure,
+// and the host passes in none of them, so minting one here would be a fabricated receipt
+// (DESIGN section 5). The host's build is implied only by its controls having run against the
+// built binary, and that is exactly the ControlsPassed fact already recorded.
+
+type EmittedPopulationRow {
+  crate_relative_path: String
+  source_module: String
+}
+
+type FrontierControlsVerdict
+  = ControlsPassed
+  | ControlsNotPassed
+
+type SelfEmittedObservation {
+  executed_closure_module: String
+}
+
+type FrontierStanding
+  = SelfEmitted { crate_relative_path: String, source_module: String, observation: SelfEmittedObservation }
+  | EmittedUnexecuted { crate_relative_path: String, source_module: String }
+  | SeedRetained { row: SeedRetentionFrontierRow }
+  | GeneratedCensusArtifact { crate_relative_path: String }
+  | Unclassified { crate_relative_path: String }
+
+type SelfHostFrontier {
+  standings: List<FrontierStanding>
+  stale_rows: List<SeedRetentionCensusRow>
+  compared_collisions: List<SeedRetentionCensusRow>
+  duplicate_paths: List<String>
+}
+
+// ONE KEYED INDEX PER INPUT, built once and read per observed path, so classifying a crate is linear
+// in observed + emitted + roster rather than their product. A path repeated within one input is a
+// defect the index may not narrow away (DESIGN section 5): it is collected as a located duplicate,
+// the frontier then REFUSES (self_host_frontier_holds), and the index keeps the first row only so
+// the remaining paths still classify and the refusal names every duplicate at once.
+type FrontierIndexScan<V> {
+  by_path: Map<String, V>
+  duplicate_paths: List<String>
+}
+
+fn frontier_index_scan<V>(rows: List<V>, path_of: fn(V) -> String) -> FrontierIndexScan<V> {
+  fold(rows, init: FrontierIndexScan { by_path: empty_map(), duplicate_paths: [] }, f: fn(acc, row) {
+    match map_get(acc.by_path, path_of(row)) {
+      Present { value: _ } => FrontierIndexScan { by_path: acc.by_path, duplicate_paths: concat(acc.duplicate_paths, [path_of(row)]) }
+      Absent => FrontierIndexScan { by_path: map_insert(acc.by_path, path_of(row), row), duplicate_paths: acc.duplicate_paths }
+    }
+  })
+}
+
+fn frontier_emitted_standing(
+  row: EmittedPopulationRow,
+  executed_closure_modules: List<String>,
+  controls: FrontierControlsVerdict
+) -> FrontierStanding {
+  match controls {
+    ControlsNotPassed => EmittedUnexecuted { crate_relative_path: row.crate_relative_path, source_module: row.source_module }
+    ControlsPassed =>
+      match filter(xs: executed_closure_modules, predicate: fn(m) { m == row.source_module }) {
+        Cons { head: matched, tail: _ } => SelfEmitted {
+          crate_relative_path: row.crate_relative_path,
+          source_module: row.source_module,
+          observation: SelfEmittedObservation { executed_closure_module: matched }
+        }
+        Empty => EmittedUnexecuted { crate_relative_path: row.crate_relative_path, source_module: row.source_module }
+      }
+  }
+}
+
+fn frontier_path_standing(
+  emitted_by_path: Map<String, EmittedPopulationRow>,
+  roster_by_path: Map<String, SeedRetentionFrontierRow>,
+  executed_closure_modules: List<String>,
+  controls: FrontierControlsVerdict,
+  declared_divergent_paths: List<String>,
+  path: String
+) -> FrontierStanding {
+  match map_get(emitted_by_path, path) {
+    Present { value: row } => if path_in(path: path, paths: declared_divergent_paths) {
+      match map_get(roster_by_path, path) {
+        Present { value: retained } => SeedRetained { row: retained }
+        Absent => Unclassified { crate_relative_path: path }
+      }
+    } else if path == frontier_census_manifest_path() {
+      GeneratedCensusArtifact { crate_relative_path: path }
+    } else if frontier_path_is_crate_entry(path: path) {
+      EmittedUnexecuted { crate_relative_path: row.crate_relative_path, source_module: row.source_module }
+    } else {
+      frontier_emitted_standing(
+        row: row,
+        executed_closure_modules: executed_closure_modules,
+        controls: controls
+      )
+    }
+    Absent => match map_get(roster_by_path, path) {
+      Present { value: row } => SeedRetained { row: row }
+      Absent => Unclassified { crate_relative_path: path }
+    }
+  }
+}
+
+fn self_host_frontier(
+  roster: List<SeedRetentionFrontierRow>,
+  observed_crate_rust_paths: List<String>,
+  emitted: List<EmittedPopulationRow>,
+  executed_closure_modules: List<String>,
+  controls: FrontierControlsVerdict,
+  declared_divergent_paths: List<String>
+) -> SelfHostFrontier {
+  let census = seed_retention_census(
+    roster: roster,
+    observed_crate_rust_paths: observed_crate_rust_paths,
+    compared_crate_rust_paths: filter(
+      xs: list_map(xs: emitted, f: fn(row) { row.crate_relative_path }),
+      predicate: fn(p) { !path_in(path: p, paths: declared_divergent_paths) }
+    )
+  )
+  let emitted_scan = frontier_index_scan(rows: emitted, path_of: fn(row) { row.crate_relative_path })
+  let roster_scan = frontier_index_scan(rows: roster, path_of: fn(row) { row.crate_relative_path })
+  SelfHostFrontier {
+    standings: list_map(
+      xs: observed_crate_rust_paths,
+      f: fn(path) {
+        frontier_path_standing(
+          emitted_by_path: emitted_scan.by_path,
+          roster_by_path: roster_scan.by_path,
+          executed_closure_modules: executed_closure_modules,
+          controls: controls,
+          declared_divergent_paths: declared_divergent_paths,
+          path: path
+        )
+      }
+    ),
+    stale_rows: census.stale_rows,
+    compared_collisions: census.compared_collisions,
+    duplicate_paths: concat(emitted_scan.duplicate_paths, roster_scan.duplicate_paths)
+  }
+}
+
+type FrontierCounts {
+  self_emitted: Int
+  emitted_unexecuted: Int
+  seed_retained: Int
+  unclassified: Int
+  generated_census_artifacts: Int
+}
+
+fn frontier_counts(frontier: SelfHostFrontier) -> FrontierCounts {
+  fold(
+    frontier.standings,
+    init: FrontierCounts { self_emitted: 0, emitted_unexecuted: 0, seed_retained: 0, unclassified: 0, generated_census_artifacts: 0 },
+    f: fn(acc, standing) {
+      match standing {
+        SelfEmitted { crate_relative_path: _, source_module: _, observation: _ } => FrontierCounts { self_emitted: acc.self_emitted + 1, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified, generated_census_artifacts: acc.generated_census_artifacts }
+        EmittedUnexecuted { crate_relative_path: _, source_module: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted + 1, seed_retained: acc.seed_retained, unclassified: acc.unclassified, generated_census_artifacts: acc.generated_census_artifacts }
+        SeedRetained { row: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained + 1, unclassified: acc.unclassified, generated_census_artifacts: acc.generated_census_artifacts }
+        Unclassified { crate_relative_path: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified + 1, generated_census_artifacts: acc.generated_census_artifacts }
+        GeneratedCensusArtifact { crate_relative_path: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified, generated_census_artifacts: acc.generated_census_artifacts + 1 }
+      }
+    }
+  )
+}
+
+// A refusal is exactly Unclassified or a stale row. ReasonNotYetDeclared and unbound dissolutions
+// are COUNTED below standard, never refusals (DESIGN section 4b(2)).
+fn self_host_frontier_holds(frontier: SelfHostFrontier) -> Bool {
+  (frontier_counts(frontier: frontier).unclassified == 0)
+    && (length(xs: frontier.stale_rows) == 0)
+    && (length(xs: frontier.compared_collisions) == 0)
+    && (length(xs: frontier.duplicate_paths) == 0)
+}
+
+fn frontier_retained_count_where(frontier: SelfHostFrontier, predicate: fn(SeedRetentionFrontierRow) -> Bool) -> Int {
+  fold(
+    frontier.standings,
+    init: 0,
+    f: fn(acc, standing) {
+      match standing {
+        SeedRetained { row: row } => if predicate(row) { acc + 1 } else { acc }
+        SelfEmitted { crate_relative_path: _, source_module: _, observation: _ } => acc
+        EmittedUnexecuted { crate_relative_path: _, source_module: _ } => acc
+        Unclassified { crate_relative_path: _ } => acc
+        GeneratedCensusArtifact { crate_relative_path: _ } => acc
+      }
+    }
+  )
+}
+
+fn frontier_undeclared_reason_count(frontier: SelfHostFrontier) -> Int {
+  frontier_retained_count_where(frontier: frontier, predicate: fn(row) { row_reason_is_undeclared(row: row) })
+}
+
+fn row_dissolution_is_unbound(row: SeedRetentionFrontierRow) -> Bool {
+  match row.reason {
+    ReasonDeclaredHere { detail: _, dissolution: d } => !dissolution_is_bound(condition: d)
+    ReasonDeclaredElsewhere { authority: _ } => false
+    ReasonNotYetDeclared => false
+  }
+}
+
+fn frontier_unbound_dissolution_count(frontier: SelfHostFrontier) -> Int {
+  frontier_retained_count_where(frontier: frontier, predicate: fn(row) { row_dissolution_is_unbound(row: row) })
+}
+
+// THE VERB'S WHOLE ANSWER IS THIS FOLD (v2.compiler.source_root_eval native_self_host_frontier_output
+// prints it). The host reads three files and hands their TEXT here; every decision -- the join, the
+// standing, the count, the exit -- is below, so the shim cannot hold a second opinion of the verdict.
+//
+// THE THREE INPUTS AND WHO PRODUCES EACH (DESIGN section 3c, a fold with no producer is dangling):
+//   manifest -- src/emitted_population.rs, written by v1.compiler.emit_rust emit_emitted_population_manifest
+//     for compile_stage0(), read by the ONE inverse parser gunbc.stage0.stage0_emitted_population_manifest
+//     emitted_population_paths_from_manifest;
+//   verdict -- written by the self-host step (cli_run native_lane_runner run_self_host) AFTER its
+//     controls ran: line one is `controls-passed` or `controls-not-passed`, every later line the
+//     emit basename of one module of the emission the built driver was judged over;
+//   observed -- one crate-relative .rs path per line, the stage0 crate's files as the host found them.
+//
+// THE JOIN KEY IS THE EMIT BASENAME, because the module's emit filename (gunbc.rust_emitted_edge
+// rust_module_emit_filename) is the identity the emitter itself writes and the manifest carries: a
+// manifest path `src/<basename>.rs` and a verdict line `<basename>` are the same module by the
+// emitter's own naming rule, not by a second mapping this module authored.
+//
+// A MALFORMED INPUT IS NO OBSERVATION (exit 2), never a quiet empty: an unknown verdict word, an empty
+// manifest, or no observed paths would each otherwise fold to a plausible all-Unclassified or
+// all-retained report.
+type SelfHostFrontierReport {
+  lines: List<String>
+  exit: Int
+}
+
+
+fn frontier_nonempty_lines(text: String) -> List<String> {
+  filter(xs: split(s: text, delimiter: "\n"), predicate: fn(line) { string_length(s: line) > 0 })
+}
+
+// A manifest path is emission-shaped iff it is `src/<stem>.rs` and the stem is a fixed point of the
+// emitter's own naming rule (rust_module_emit_filename), so a nested path, a dotted stem or the
+// crate's own main.rs can never be quietly keyed to a basename no verdict line can equal.
+//
+// The crate's own entry files are emitted too but are not module outputs: their paths come from
+// extdeps.rust.cargo cargo_target_source_path (the library root and the package's binary), and they
+// are never in the executed closure (the host excludes those stems), so they stand EmittedUnexecuted.
+fn frontier_file_path(parts: FilePathParts) -> String {
+  parts.segments |> join(separator: "/")
+}
+
+fn frontier_crate_entry_paths() -> List<String> {
+  list_map(
+    xs: [
+      cargo_target_source_path(target: Lib, package_name: "p"),
+      cargo_target_source_path(target: Bin { name: "p" }, package_name: "p")
+    ],
+    f: fn(parts) { frontier_file_path(parts: parts) }
+  )
+}
+
+// The manifest is a build artifact of this census (v1.compiler.emit_rust emit_emitted_population_manifest
+// writes it into every emission), not a compiler module: counting it SelfEmitted would read one
+// self-emitted file where the truth is none. It is its own counted standing, never dropped.
+fn frontier_census_manifest_path() -> String {
+  concat("src/", emitted_population_manifest_basename)
+}
+
+fn frontier_path_is_crate_entry(path: String) -> Bool {
+  length(xs: filter(xs: frontier_crate_entry_paths(), predicate: fn(entry) { entry == path })) > 0
+}
+
+fn frontier_path_is_emit_shaped(path: String) -> Bool {
+  if length(xs: filter(xs: frontier_crate_entry_paths(), predicate: fn(entry) { entry == path })) > 0 {
+    true
+  } else {
+    frontier_module_path_is_emit_shaped(path: path)
+  }
+}
+
+fn frontier_module_path_is_emit_shaped(path: String) -> Bool {
+  let len = string_length(s: path)
+  if (len > 7) && (substring(s: path, start: 0, end: 4) == "src/") && (substring(s: path, start: len - 3, end: len) == ".rs") {
+    let stem = substring(s: path, start: 4, end: len - 3)
+    !string_contains(s: stem, pattern: "/") && (rust_module_emit_filename(module_name: stem) == stem)
+  } else {
+    false
+  }
+}
+
+fn frontier_emit_basename(path: String) -> String {
+  substring(s: path, start: 4, end: string_length(s: path) - 3)
+}
+
+fn frontier_emitted_rows(paths: List<String>) -> List<EmittedPopulationRow> {
+  list_map(
+    xs: paths,
+    f: fn(path) { EmittedPopulationRow { crate_relative_path: path, source_module: frontier_emit_basename(path: path) } }
+  )
+}
+
+fn frontier_no_observation(detail: String) -> SelfHostFrontierReport {
+  SelfHostFrontierReport { lines: [concat("[self-host-frontier] no observation: ", detail)], exit: 2 }
+}
+
+fn frontier_summary_line(frontier: SelfHostFrontier) -> String {
+  let counts = frontier_counts(frontier: frontier)
+  concat(
+    "[self-host-frontier] self_emitted=", int_to_decimal_string(value: counts.self_emitted),
+    " emitted_unexecuted=", int_to_decimal_string(value: counts.emitted_unexecuted),
+    " seed_retained=", int_to_decimal_string(value: counts.seed_retained),
+    " unclassified=", int_to_decimal_string(value: counts.unclassified),
+    " stale_rows=", int_to_decimal_string(value: length(xs: frontier.stale_rows)),
+    " compared_collisions=", int_to_decimal_string(value: length(xs: frontier.compared_collisions)),
+    " reason_not_yet_declared=", int_to_decimal_string(value: frontier_undeclared_reason_count(frontier: frontier)),
+    " unbound_dissolution=", int_to_decimal_string(value: frontier_unbound_dissolution_count(frontier: frontier)),
+    " generated_census_artifacts=", int_to_decimal_string(value: counts.generated_census_artifacts)
+  )
+}
+
+// THE PER-FILE READING, one line per observed path in observed (sorted) order, so two runs diff to
+// the files that moved. Format, space-separated, no field contains a space:
+//   [self-host-frontier] file <crate_relative_path> standing=<standing> source_module=<module|-> cause=<cause|-> reason=<reason|->
+// standing: self-emitted | emitted-unexecuted | seed-retained | generated-census-artifact | unclassified
+// cause and reason are set only for seed-retained rows (reason: declared-here | declared-elsewhere |
+// not-yet-declared). An unclassified path additionally prints its REFUSED line.
+fn frontier_cause_word(cause: SeedRetentionCause) -> String {
+  match cause {
+    SeedRetainedIntrinsicSource => "seed-retained-intrinsic"
+    WetActuatorGeneratedSource => "wet-actuator-generated"
+    EmitterProducedDivergentSource => "emitter-produced-divergent"
+    SupportDirectoryMemberSource => "support-directory-member"
+    HostBinaryEntryPointSource => "host-binary-entry-point"
+    CrateTestHarnessSource => "crate-test-harness"
+    CargoBuildScriptSource => "cargo-build-script"
+  }
+}
+
+fn frontier_reason_word(reason: SeedRetentionReason) -> String {
+  match reason {
+    ReasonDeclaredHere { detail: _, dissolution: _ } => "declared-here"
+    ReasonDeclaredElsewhere { authority: _ } => "declared-elsewhere"
+    ReasonNotYetDeclared => "not-yet-declared"
+  }
+}
+
+fn frontier_file_line(path: String, standing: String, source_module: String, cause: String, reason: String) -> String {
+  concat(
+    "[self-host-frontier] file ", path,
+    " standing=", standing,
+    " source_module=", source_module,
+    " cause=", cause,
+    " reason=", reason
+  )
+}
+
+fn frontier_standing_file_line(standing: FrontierStanding) -> String {
+  match standing {
+    SelfEmitted { crate_relative_path: path, source_module: module, observation: _ } => frontier_file_line(path: path, standing: "self-emitted", source_module: module, cause: "-", reason: "-")
+    EmittedUnexecuted { crate_relative_path: path, source_module: module } => frontier_file_line(path: path, standing: "emitted-unexecuted", source_module: module, cause: "-", reason: "-")
+    SeedRetained { row: row } => frontier_file_line(path: row.crate_relative_path, standing: "seed-retained", source_module: "-", cause: frontier_cause_word(cause: row.cause), reason: frontier_reason_word(reason: row.reason))
+    GeneratedCensusArtifact { crate_relative_path: path } => frontier_file_line(path: path, standing: "generated-census-artifact", source_module: "-", cause: "-", reason: "-")
+    Unclassified { crate_relative_path: path } => frontier_file_line(path: path, standing: "unclassified", source_module: "-", cause: "-", reason: "-")
+  }
+}
+
+fn frontier_standing_lines(frontier: SelfHostFrontier) -> List<String> {
+  concat(
+    fold(
+      frontier.standings,
+      init: [],
+      f: fn(acc, standing) {
+        match standing {
+          Unclassified { crate_relative_path: path } => concat(acc, [frontier_standing_file_line(standing: standing), concat("[self-host-frontier] REFUSED unclassified: ", path)])
+          SelfEmitted { crate_relative_path: _, source_module: _, observation: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
+          EmittedUnexecuted { crate_relative_path: _, source_module: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
+          SeedRetained { row: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
+          GeneratedCensusArtifact { crate_relative_path: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
+        }
+      }
+    ),
+    concat(
+      list_map(xs: frontier.duplicate_paths, f: fn(path) { concat("[self-host-frontier] REFUSED duplicate path in an input: ", path) }),
+      list_map(
+      xs: concat(frontier.stale_rows, frontier.compared_collisions),
+      f: fn(row) {
+        match row {
+          RosterRowWithoutObservedPath { crate_relative_path: path } => concat("[self-host-frontier] REFUSED roster row without observed path: ", path)
+          RosteredPathIsCompared { crate_relative_path: path } => concat("[self-host-frontier] REFUSED roster row for a compared path: ", path)
+          RetainedRostered { crate_relative_path: path } => concat("[self-host-frontier] REFUSED stale row: ", path)
+          RetainedUnrostered { crate_relative_path: path } => concat("[self-host-frontier] REFUSED stale row: ", path)
+        }
+      }
+    ))
+  )
+}
+
+// The live roster and the live divergence registry are bound here and nowhere else; the parameterized fold is what the controlled
+// fixture witnesses probe (a probe over the live roster would copy the current tree).
+fn self_host_frontier_report(manifest_text: String, verdict_text: String, observed_text: String) -> SelfHostFrontierReport {
+  self_host_frontier_report_over(
+    roster: seed_retention_frontier_roster,
+    declared_divergent_paths: list_map(xs: emitter_produced_divergent_stage0_files(), f: fn(b) { concat("src/", b) }),
+    manifest_text: manifest_text,
+    verdict_text: verdict_text,
+    observed_text: observed_text
+  )
+}
+
+fn self_host_frontier_report_over(roster: List<SeedRetentionFrontierRow>, declared_divergent_paths: List<String>, manifest_text: String, verdict_text: String, observed_text: String) -> SelfHostFrontierReport {
+  let verdict_lines = frontier_nonempty_lines(text: verdict_text)
+  let observed = frontier_nonempty_lines(text: observed_text)
+  let manifest_paths = emitted_population_paths_from_manifest(content: manifest_text)
+  match verdict_lines {
+    Empty => frontier_no_observation(detail: "the controls verdict file is empty")
+    Cons { head: word, tail: closure } =>
+      if length(xs: manifest_paths) == 0 {
+        frontier_no_observation(detail: "the emitted-population manifest carried no declared paths")
+      } else if length(xs: observed) == 0 {
+        frontier_no_observation(detail: "no observed stage0 .rs paths were given")
+      } else if length(xs: filter(xs: manifest_paths, predicate: fn(p) { !frontier_path_is_emit_shaped(path: p) })) > 0 {
+        frontier_no_observation(detail: concat("a manifest path is not emission-shaped src/<stem>.rs: ", match filter(xs: manifest_paths, predicate: fn(p) { !frontier_path_is_emit_shaped(path: p) }) { Cons { head: h, tail: _ } => h Empty => "" }))
+      } else if (word != self_host_frontier_verdict_passed_word) && (word != self_host_frontier_verdict_not_passed_word) {
+        frontier_no_observation(detail: concat("unknown controls verdict word ", word))
+      } else {
+        let frontier = self_host_frontier(
+          roster: roster,
+          observed_crate_rust_paths: observed,
+          emitted: frontier_emitted_rows(paths: manifest_paths),
+          executed_closure_modules: closure,
+          controls: if word == self_host_frontier_verdict_passed_word { ControlsPassed } else { ControlsNotPassed },
+          declared_divergent_paths: declared_divergent_paths
+        )
+        SelfHostFrontierReport {
+          lines: concat([frontier_summary_line(frontier: frontier)], frontier_standing_lines(frontier: frontier)),
+          exit: if self_host_frontier_holds(frontier: frontier) { 0 } else { 1 }
+        }
+      }
+  }
 }

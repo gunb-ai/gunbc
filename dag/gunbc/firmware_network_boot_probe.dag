@@ -1,0 +1,513 @@
+module gunbc.firmware_network_boot_probe
+
+import std.types { Bool, EpochMs, List, NonEmptyStr }
+import std.algebra { Cons, Empty }
+import std.optional { Present, Absent }
+import extdeps.bmc.endpoint { BmcFirmwareFamily, AmiMegaRac, OpenBmc }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissolution, DeclarationAppears, dissolution_status }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// OBSERVATION VOCABULARY IMPORTS. The shared Secure Boot carrier and read refusal live in
+// gunbc.secure_boot_observation; the rest of the vocabulary belongs to gunbc.firmware_network_boot_standing
+// (S0). This module emits them and defines none of it; nothing outside these two imports names where
+// they live.
+import gunbc.secure_boot_observation { FirmwareReadRefusal, SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
+import gunbc.firmware_network_boot_standing {
+  FirmwareBootObservation, BootOrderEntry, BootOption, firmware_boot_observation,
+  BootOrderObservation, BootOptionsObservation, NicsObservation, BiosVersionObservation,
+  BootOrderObserved, BootOrderUnobserved, BootOrderRefused,
+  BootOptionsObserved, BootOptionsUnobserved, BootOptionsRefused,
+  NicsObserved, NicsUnobserved, NicsRefused,
+  BiosVersionObserved, BiosVersionUnobserved, BiosVersionRefused,
+}
+
+// ONE INSTRUMENT, MANY ROWS. A family-configuration is a FirmwareBootFamilyRow in firmware_boot_family_rows;
+// probe() takes a row as data and never asks which unit or which host it is looking at. Adding another
+// row is ONE new row (plus the existing-transport reader that produces its replies) and
+// changes neither probe(), nor the observation vocabulary in S0, nor any gate: the witness proves
+// that by probing a row constructed locally in the test.
+
+// THE FAMILY KEY IS FIRMWARE STACK x RELEASE LINE x REACH, NEVER A HOST. Two MegaRAC units on
+// different releases are different rows because their Redfish/IPMI surfaces differ by release
+// (extdeps.bmc.capability looks capabilities up by observed release, not by unit); the same
+// release behind a dedicated management port and behind the host's shared NIC are different rows
+// because the second is silent whenever the host NIC is down. A unit's identity is carried in
+// ProbeSubject as an opaque label that no fn here matches on.
+//
+// THE STACK IS KEYED ON extdeps.bmc.endpoint's BmcFirmwareFamily, not respelled here: a row naming
+// a firmware family that endpoint does not declare fails at load. A stack with no declared
+// family (Supermicro's Redfish-only BMC) is RedfishOnlyStack until extdeps.bmc gains a module
+// for it; that module's arrival replaces this arm with a FirmwareFamilyStack row, no gate edit.
+type BmcStack
+  = FirmwareFamilyStack { family: BmcFirmwareFamily }
+  | RedfishOnlyStack
+
+type BmcReach
+  = DedicatedManagementPort
+  | SharedHostNic
+
+type FamilyKey {
+  stack: BmcStack
+  release_line: NonEmptyStr?
+  reach: BmcReach
+}
+
+// THE READ ROUTES ARE A CLOSED SET OF READ-ONLY WINDOWS ONTO EXISTING extdeps.bmc TRANSPORTS. No
+// arm here writes: there is no boot-override, boot-order-change or power route in this type, so a
+// row cannot select one and probe() cannot be handed one. A route that mutates would be a new
+// instrument with its own admission, not an arm added to this union.
+type ReadRoute
+  = RedfishGetRoute
+  | OpenBmcRedfishGetRoute
+  | MegaRacRestGetRoute
+
+// READ-ONLY IS THE ABSENCE OF A WRITE ARM: ReadRoute has only GET-shaped routes, so no row can carry
+// a mutating capability. A mutating family would be a new type with its own admission, never an
+// arm here, because every match over ReadRoute would then decide per call site whether to refuse.
+
+type ObservationAxis
+  = BootOrderAxis
+  | BootOptionsAxis
+  | NicsAxis
+  | SecureBootAxis
+  | BiosVersionAxis
+
+// HOW AN UNANSWERED AXIS DEGRADES IS PER ROW AND PER AXIS: the row says which axes its transport
+// can answer and, for the others, why not. An axis the row neither claims nor disclaims is also
+// Unobserved (with its own reason), never a default.
+type AxisCoverage
+  = TransportAnswers { axis: ObservationAxis }
+  | TransportCannotAnswer { axis: ObservationAxis, why: NonEmptyStr }
+
+type FirmwareBootFamilyRow {
+  family: FamilyKey
+  authority: CitedFigureStanding
+  route: ReadRoute
+  coverage: List<AxisCoverage>
+}
+
+fn firmware_boot_family_row(
+  family: FamilyKey,
+  authority: CitedFigureStanding,
+  route: ReadRoute,
+  coverage: List<AxisCoverage>
+) -> FirmwareBootFamilyRow {
+  FirmwareBootFamilyRow { family: family, authority: authority, route: route, coverage: coverage }
+}
+
+// WRITE-SHAPED REQUESTS EXIST ONLY TO BE REFUSED. They are the vocabulary an operator or a caller
+// would use to ask for what this instrument must never do; route_for has no arm that yields a
+// route for them on ANY row, so Supermicro's refusal is not a Supermicro check.
+type ProbeRequest
+  = ReadAxisRequest { axis: ObservationAxis }
+  | SetBootOverrideRequest
+  | ChangeBootOrderRequest
+  | PowerActionRequest
+
+type RouteVerdict
+  = Routed { route: ReadRoute }
+  | RequestRefused { why: NonEmptyStr }
+
+fn route_for(row: FirmwareBootFamilyRow, request: ProbeRequest) -> RouteVerdict {
+  match request {
+    // The read window is tied to the row's own coverage: an axis the row cannot answer has no
+    // route, and its reason is the row's, so probe() never invents or drops one.
+    ReadAxisRequest { axis: a } =>
+      match row_coverage_of(row: row, axis: a) {
+        NoCoverage => RequestRefused { why: "the family row neither claims nor disclaims this axis" }
+        ConflictingCoverage => RequestRefused { why: "the family row both claims and disclaims this axis, or lists it twice; refusing to pick one" }
+        OneCoverage { coverage: TransportCannotAnswer { axis: _, why: w } } => RequestRefused { why: w }
+        OneCoverage { coverage: TransportAnswers { axis: _ } } => Routed { route: row.route }
+      }
+    SetBootOverrideRequest => RequestRefused { why: "a boot-override write has no read route; this instrument only reads" }
+    ChangeBootOrderRequest => RequestRefused { why: "a boot-order change has no read route; this instrument only reads" }
+    PowerActionRequest => RequestRefused { why: "a power action has no read route; this instrument only reads" }
+  }
+}
+
+// ONE ACCOUNT, STATED ONCE: AxisReply values are SUPPLIED TRANSPORT-SHAPED HYPOTHESES. No existing
+// extdeps.bmc reader produces them from a bound read yet (the supplied-observation decoder exists; the producer-bound reader in the frontier below is Pending), so nothing this module
+// returns is receipt-backed until the declared reader produces SuppliedProbeInput from a real read. probe() writes no wire
+// protocol. A reply names its own axis, so there is no axis tag to disagree with the payload.
+type AxisReply
+  = ReplyBootOrder { devices: List<BootOrderEntry> }
+  | ReplyBootOptions { options: List<BootOption> }
+  | ReplyNics { nics: List<NonEmptyStr> }
+  | ReplySecureBootEnabled
+  | ReplySecureBootDisabled
+  | ReplyBiosVersion { version: NonEmptyStr }
+  | ReplyRefusedByBmc { axis: ObservationAxis, refusal: FirmwareReadRefusal }
+  | ReplyBeyondDecoder { axis: ObservationAxis, why: NonEmptyStr }
+
+// TWO FACTS, TWO ARMS (review 83313). ReplyRefusedByBmc is the BMC's own refusal or a body that is
+// not what the schema says. ReplyBeyondDecoder is a VALID answer this decoder cannot read (for
+// instance a paged collection it does not follow); it resolves to Unobserved with our reason, so a
+// limit of the observing layer is never recorded as a property of the BMC.
+
+// UNREACHABLE IS A FACT ABOUT THE BMC, NOT AN EMPTY ANSWER. BmcResponded { replies: [] } means the
+// BMC answered and had nothing for the axes asked; BmcSilent means nothing answered at all (a
+// powered-off BMC such as a unit left off, or a shared NIC with the host down). Collapsing them
+// was the earlier fleet defect, so they are different arms of the input and of the output.
+type ContactAttempt
+  = NoRouteToBmc
+  | ConnectTimedOut
+  | ConnectionRefusedByBmc
+
+// A silent contact has an attempt and no response, so only the attempt receipt is nameable for
+// it; a response receipt wraps the attempt it answers. Splitting the two keeps a response
+// identity from being invented for a BMC that said nothing.
+type ReadAttemptReceipt {
+  observed_at: EpochMs
+  attempt_identity: NonEmptyStr
+  route: ReadRoute
+}
+
+type ReadResponseReceipt {
+  attempt: ReadAttemptReceipt
+  response_identity: NonEmptyStr
+}
+
+type BmcContact
+  = BmcResponded { receipt: ReadResponseReceipt, replies: List<AxisReply> }
+  | BmcSilent { receipt: ReadAttemptReceipt, attempt: ContactAttempt }
+
+type ReadReceiptStanding
+  = AttemptWithoutResponse { attempt: ReadAttemptReceipt }
+  | AttemptAnswered { response: ReadResponseReceipt }
+
+fn contact_route(contact: BmcContact) -> ReadRoute {
+  match contact {
+    BmcResponded { receipt: rr, replies: _ } => rr.attempt.route
+    BmcSilent { receipt: ar, attempt: _ } => ar.route
+  }
+}
+
+fn contact_standing(contact: BmcContact) -> ReadReceiptStanding {
+  match contact {
+    BmcResponded { receipt: rr, replies: _ } => AttemptAnswered { response: rr }
+    BmcSilent { receipt: ar, attempt: _ } => AttemptWithoutResponse { attempt: ar }
+  }
+}
+
+// The unit under probe is DATA carried through to the result; nothing branches on it.
+type ProbeSubject {
+  unit_label: NonEmptyStr
+}
+
+// SUPPLIED INPUT, NOT SEALED EVIDENCE. Row, subject and contact (which carries its receipt)
+// travel together so a caller hands probe() one value, but nothing here proves they belong
+// together: the constructor is open and the receipt is a claim. The pairing obligation is
+// therefore NOT discharged by this module; it is owed by the reader named in the frontier below.
+// Sealing it later cannot be done by admit_callers on this open record; it needs a separate
+// sealed carrier, or sole_constructor plus a restricted mint plus probes. Until then every
+// result is named for what it is, a decode of supplied hypotheses, and no arm is called observed.
+// The receipt names the route the read used, so a read made over one route cannot be decoded under
+// a row that selects another.
+type SuppliedProbeInput {
+  subject: ProbeSubject
+  row: FirmwareBootFamilyRow
+  contact: BmcContact
+}
+
+fn supplied_probe_input(subject: ProbeSubject, row: FirmwareBootFamilyRow, contact: BmcContact) -> SuppliedProbeInput {
+  SuppliedProbeInput { subject: subject, row: row, contact: contact }
+}
+
+// The provenance every outcome preserves, silence included, so S0's caller never re-associates
+// authority and time by hand.
+type ReadProvenance {
+  family: FamilyKey
+  route: ReadRoute
+  authority: CitedFigureStanding
+  receipt: ReadReceiptStanding
+}
+
+// NAMED FOR ITS STANDING: every arm is derived from supplied input. An arm called observed would
+// need the reader's mint, which does not exist; adding it is one constructor here.
+type FirmwareBootProbeOutcome
+  = SuppliedSilence { subject: ProbeSubject, provenance: ReadProvenance, attempt: ContactAttempt }
+  | SuppliedRouteMismatch { subject: ProbeSubject, row_route: ReadRoute, receipt_route: ReadRoute }
+  | DecodedFromSuppliedReplies { subject: ProbeSubject, provenance: ReadProvenance, observation: FirmwareBootObservation }
+
+fn reply_axis(reply: AxisReply) -> ObservationAxis {
+  match reply {
+    ReplyBootOrder { devices: _ } => BootOrderAxis
+    ReplyBootOptions { options: _ } => BootOptionsAxis
+    ReplyNics { nics: _ } => NicsAxis
+    ReplySecureBootEnabled => SecureBootAxis
+    ReplySecureBootDisabled => SecureBootAxis
+    ReplyBiosVersion { version: _ } => BiosVersionAxis
+    ReplyRefusedByBmc { axis: a, refusal: _ } => a
+    ReplyBeyondDecoder { axis: a, why: _ } => a
+  }
+}
+
+fn coverage_axis(coverage: AxisCoverage) -> ObservationAxis {
+  match coverage {
+    TransportAnswers { axis: a } => a
+    TransportCannotAnswer { axis: a, why: _ } => a
+  }
+}
+
+// ONE RESOLUTION FOR ALL FIVE AXES, so the degrade rule exists once.
+// THE DEGRADE RULE LIVES IN resolve_axis ONLY: unanswerable by the row, nothing returned, and a
+// BMC refusal each become one of two axis-agnostic outcomes. The five S0 observation unions are
+// distinct types that this module cannot make generic, so each read_* below only wraps the two
+// shared outcomes in its own constructors and decodes its own payload; it restates no rule.
+type AxisResolution
+  = AxisNotObserved { reason: NonEmptyStr }
+  | AxisRefused { refusal: FirmwareReadRefusal }
+  | AxisPayload { reply: AxisReply }
+
+// A SECOND MATCH IS A CONFLICT, NOT A TIE-BREAK. "First one wins" would let a row listing an axis
+// twice, or a BMC answering one axis twice, silently keep one fact and drop the other; the fold
+// therefore carries a closed three-state match, and a second hit lands in the conflict arm for the
+// caller to refuse. A future requirement to merge duplicate evidence would add a constructor here.
+type CoverageMatch
+  = NoCoverage
+  | OneCoverage { coverage: AxisCoverage }
+  | ConflictingCoverage
+
+type ReplyMatch
+  = NoReply
+  | OneReply { reply: AxisReply }
+  | ConflictingReplies
+
+fn row_coverage_of(row: FirmwareBootFamilyRow, axis: ObservationAxis) -> CoverageMatch {
+  fold(
+    row.coverage,
+    init: NoCoverage,
+    f: (acc, c) =>
+      if coverage_axis(coverage: c) == axis {
+        match acc {
+          NoCoverage => OneCoverage { coverage: c }
+          OneCoverage { coverage: _ } => ConflictingCoverage
+          ConflictingCoverage => ConflictingCoverage
+        }
+      } else {
+        acc
+      }
+  )
+}
+
+fn reply_for_axis(replies: List<AxisReply>, axis: ObservationAxis) -> ReplyMatch {
+  fold(
+    replies,
+    init: NoReply,
+    f: (acc, r) =>
+      if reply_axis(reply: r) == axis {
+        match acc {
+          NoReply => OneReply { reply: r }
+          OneReply { reply: _ } => ConflictingReplies
+          ConflictingReplies => ConflictingReplies
+        }
+      } else {
+        acc
+      }
+  )
+}
+
+fn resolve_axis(row: FirmwareBootFamilyRow, replies: List<AxisReply>, axis: ObservationAxis) -> AxisResolution {
+  match route_for(row: row, request: ReadAxisRequest { axis: axis }) {
+    RequestRefused { why: w } => AxisNotObserved { reason: w }
+    Routed { route: _ } =>
+      match reply_for_axis(replies: replies, axis: axis) {
+        NoReply => AxisNotObserved { reason: no_reply_reason() }
+        ConflictingReplies => AxisNotObserved { reason: conflicting_replies_reason() }
+        OneReply { reply: ReplyRefusedByBmc { axis: _, refusal: f } } => AxisRefused { refusal: f }
+        OneReply { reply: ReplyBeyondDecoder { axis: _, why: w } } => AxisNotObserved { reason: w }
+        OneReply { reply: r } => AxisPayload { reply: r }
+      }
+  }
+}
+
+fn no_reply_reason() -> NonEmptyStr {
+  "the BMC responded but returned nothing for this axis"
+}
+
+fn conflicting_replies_reason() -> NonEmptyStr {
+  "the BMC returned more than one reply for this axis; refusing to pick one"
+}
+
+fn mismatched_reply_reason() -> NonEmptyStr {
+  "a reply for a different axis was routed here; refusing to reinterpret it"
+}
+
+fn read_boot_order(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> BootOrderObservation {
+  match resolve_axis(row: row, replies: replies, axis: BootOrderAxis) {
+    AxisNotObserved { reason: r } => BootOrderUnobserved { reason: r }
+    AxisRefused { refusal: f } => BootOrderRefused { refusal: f }
+    AxisPayload { reply: ReplyBootOrder { devices: d } } => BootOrderObserved { devices: d }
+    AxisPayload { reply: _ } => BootOrderUnobserved { reason: mismatched_reply_reason() }
+  }
+}
+
+fn read_boot_options(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> BootOptionsObservation {
+  match resolve_axis(row: row, replies: replies, axis: BootOptionsAxis) {
+    AxisNotObserved { reason: r } => BootOptionsUnobserved { reason: r }
+    AxisRefused { refusal: f } => BootOptionsRefused { refusal: f }
+    AxisPayload { reply: ReplyBootOptions { options: o } } => BootOptionsObserved { options: o }
+    AxisPayload { reply: _ } => BootOptionsUnobserved { reason: mismatched_reply_reason() }
+  }
+}
+
+fn read_nics(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> NicsObservation {
+  match resolve_axis(row: row, replies: replies, axis: NicsAxis) {
+    AxisNotObserved { reason: r } => NicsUnobserved { reason: r }
+    AxisRefused { refusal: f } => NicsRefused { refusal: f }
+    // An empty list can be a badly asked read, so it is never an observed population (S0 contract).
+    AxisPayload { reply: ReplyNics { nics: n } } =>
+      match n {
+        Empty => NicsUnobserved { reason: "the BMC returned an empty NIC list, which may be a badly asked read" }
+        Cons { head: _, tail: _ } => NicsObserved { nics: n }
+      }
+    AxisPayload { reply: _ } => NicsUnobserved { reason: mismatched_reply_reason() }
+  }
+}
+
+fn read_secure_boot(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> SecureBootObservation {
+  match resolve_axis(row: row, replies: replies, axis: SecureBootAxis) {
+    AxisNotObserved { reason: r } => SecureBootUnobserved { reason: r }
+    AxisRefused { refusal: f } => SecureBootRefused { refusal: f }
+    AxisPayload { reply: ReplySecureBootEnabled } => SecureBootEnabled
+    AxisPayload { reply: ReplySecureBootDisabled } => SecureBootDisabled
+    AxisPayload { reply: _ } => SecureBootUnobserved { reason: mismatched_reply_reason() }
+  }
+}
+
+fn read_bios_version(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> BiosVersionObservation {
+  match resolve_axis(row: row, replies: replies, axis: BiosVersionAxis) {
+    AxisNotObserved { reason: r } => BiosVersionUnobserved { reason: r }
+    AxisRefused { refusal: f } => BiosVersionRefused { refusal: f }
+    AxisPayload { reply: ReplyBiosVersion { version: v } } => BiosVersionObserved { version: v }
+    AxisPayload { reply: _ } => BiosVersionUnobserved { reason: mismatched_reply_reason() }
+  }
+}
+
+// THE ONE ENTRY. A route disagreement between row and receipt decodes nothing.
+fn probe(input: SuppliedProbeInput) -> FirmwareBootProbeOutcome {
+  if contact_route(contact: input.contact) != input.row.route {
+    SuppliedRouteMismatch { subject: input.subject, row_route: input.row.route, receipt_route: contact_route(contact: input.contact) }
+  } else {
+    let provenance = ReadProvenance {
+      family: input.row.family,
+      route: input.row.route,
+      authority: input.row.authority,
+      receipt: contact_standing(contact: input.contact),
+    }
+    match input.contact {
+      BmcSilent { receipt: _, attempt: a } => SuppliedSilence { subject: input.subject, provenance: provenance, attempt: a }
+      BmcResponded { receipt: _, replies: rs } => DecodedFromSuppliedReplies {
+        subject: input.subject,
+        provenance: provenance,
+        observation: FirmwareBootObservation {
+          boot_order: read_boot_order(row: input.row, replies: rs),
+          boot_options: read_boot_options(row: input.row, replies: rs),
+          nics: read_nics(row: input.row, replies: rs),
+          secure_boot: read_secure_boot(row: input.row, replies: rs),
+          bios_version: read_bios_version(row: input.row, replies: rs),
+        },
+      }
+    }
+  }
+}
+
+// ---- THE TABLE: five family-configuration rows. Authority is TranscribedUncited because no row has had
+// its Redfish/IPMI surface read against the firmware's own reference yet (DESIGN 4d); each names
+// the read that closes it.
+
+fn all_axes_answered() -> List<AxisCoverage> {
+  [
+    TransportAnswers { axis: BootOrderAxis },
+    TransportAnswers { axis: BootOptionsAxis },
+    TransportAnswers { axis: NicsAxis },
+    TransportAnswers { axis: SecureBootAxis },
+    TransportAnswers { axis: BiosVersionAxis },
+  ]
+}
+
+fn secure_boot_not_exposed() -> AxisCoverage {
+  TransportCannotAnswer { axis: SecureBootAxis, why: "the family's boot-parameter surface carries no Secure Boot state" }
+}
+
+fn megarac_coverage() -> List<AxisCoverage> {
+  [
+    TransportAnswers { axis: BootOrderAxis },
+    TransportAnswers { axis: BootOptionsAxis },
+    TransportAnswers { axis: NicsAxis },
+    secure_boot_not_exposed(),
+    TransportAnswers { axis: BiosVersionAxis },
+  ]
+}
+
+fn firmware_boot_family_rows() -> List<FirmwareBootFamilyRow> {
+  [
+    firmware_boot_family_row(
+      family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: none, reach: DedicatedManagementPort },
+      authority: TranscribedUncited { read_obligation: "Read the AMI MegaRAC SP-X Redfish and IPMI references for the boot-parameter and BIOS inventory surface; extdeps.bmc.megarac holds the transport." },
+      route: MegaRacRestGetRoute,
+      coverage: megarac_coverage()
+    ),
+    firmware_boot_family_row(
+      family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: Present { value: "2.11.104000" }, reach: DedicatedManagementPort },
+      authority: TranscribedUncited { read_obligation: "Read the MegaRAC 2.11.104000 release notes for which Redfish Systems properties it serves; extdeps.bmc.megarac holds the transport." },
+      route: MegaRacRestGetRoute,
+      coverage: megarac_coverage()
+    ),
+    firmware_boot_family_row(
+      family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: Present { value: "3.22" }, reach: DedicatedManagementPort },
+      authority: TranscribedUncited { read_obligation: "Read bmcweb's Redfish Systems schema for the OpenBMC 3.22 build (extdeps.bmc.openbmc); cite the release that serves Boot and SecureBoot." },
+      route: OpenBmcRedfishGetRoute,
+      coverage: all_axes_answered()
+    ),
+    firmware_boot_family_row(
+      family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: none, reach: SharedHostNic },
+      authority: TranscribedUncited { read_obligation: "Read the board's manual for how the shared-NIC management port behaves while the host NIC is down; the Redfish surface is extdeps.bmc.openbmc's." },
+      route: OpenBmcRedfishGetRoute,
+      coverage: all_axes_answered()
+    ),
+    firmware_boot_family_row(
+      family: FamilyKey { stack: RedfishOnlyStack, release_line: none, reach: DedicatedManagementPort },
+      authority: TranscribedUncited { read_obligation: "Read Supermicro's Redfish reference guide for the Systems/Boot and SecureBoot GETs; only GETs are modeled (extdeps.bmc.redfish)." },
+      route: RedfishGetRoute,
+      coverage: all_axes_answered()
+    ),
+  ]
+}
+
+// ---- THE FRONTIER THIS MODULE OWES: A REAL READER FOR AxisReply.
+//
+// probe() consumes AxisReply. A decoder from supplied REST observations exists (gunbc.firmware_network_boot_readers
+// decode_redfish_boot_reads), but the producer-bound reader observe_redfish_boot_axes is pending, so
+// AxisReplyInhabitedByReader is unestablished and every run of this module is fixtures-in / fixtures-out. The decoder belongs in its own module, not here:
+// extdeps.bmc.{megarac,openbmc,redfish} own their command surfaces, and a decoder written in the
+// probe's file would be a second owner of that surface that cannot be reviewed as transport work.
+// Until it exists the frontier is Pending and the inhabitation claim is Uninhabited, both as values
+// rather than prose, so a reader cannot mistake "tested on fixtures" for "emits what a BMC says".
+data firmware_boot_axis_reader_frontier: DissolutionCondition = BoundDissolution {
+  trigger: DeclarationAppears { ref: firmware_boot_axis_reader_ref() },
+}
+
+// THE NAME IS A COMMITMENT, NOT A DISCOVERY: no branch declares the reader yet, so this ref names the
+// declaration the reader module must introduce (gunbc.firmware_network_boot_readers, fn
+// observe_redfish_boot_axes: the declaration that consumes ACTUAL bound transport observations, one subject, endpoint, row, route and receipt, and mints the SuppliedProbeInput; the supplied-body decoder decode_redfish_boot_reads exists and is not it). The witness pins the literal; renaming the
+// future reader means editing this one fn and that pin, and until then the status stays Pending
+// on purpose rather than reporting a discharge nobody earned.
+fn firmware_boot_axis_reader_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "observe_redfish_boot_axes")
+}
+
+fn firmware_boot_axis_reader_frontier_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {
+  dissolution_status(condition: firmware_boot_axis_reader_frontier, present_decls: present_decls)
+}
+
+type AxisReplyInhabitation
+  = AxisReplyUninhabited { owed_by: DeclarationRef, over: NonEmptyStr, falsified_by: NonEmptyStr }
+  | AxisReplyInhabitedByReader { observed: NonEmptyStr }
+
+data firmware_boot_axis_reply_inhabitation: AxisReplyInhabitation = AxisReplyUninhabited {
+  owed_by: firmware_boot_axis_reader_ref(),
+  over: "AxisReply: one reply per answered axis decoded from an extdeps.bmc reply, BootOrder entries keep their references with no guessed kind, BootOptions carries enabled and kind standing when it is read separately, every BMC refusal stays a typed FirmwareReadRefusal",
+  falsified_by: "a reader that maps an empty or malformed BMC body to an Observed empty list, guesses a boot-entry kind from a label, or turns a refusal into no reply",
+}

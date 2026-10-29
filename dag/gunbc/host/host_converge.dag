@@ -1,6 +1,7 @@
 module gunbc.host.host_converge
 
 import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.algebra { FreeSemigroup, fold_list, non_empty_append, non_empty_singleton }
 import std.optional { Absent, Present }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, HardwareThreadCount, percent_count, Second, second, second_count }
@@ -20,6 +21,7 @@ import gunbc.ci.ci_runner_placement {
   RunnerHostDeployment,
   RunnerCpuBoundary, CapacityQuota, NoCpuCeiling,
   runner_deployment_plan,
+  runner_image_baked_deployment_plan,
   runner_host_deployment_for,
   host_deployment_refusal_text,
   workload_class_cpu_weight,
@@ -340,7 +342,9 @@ fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity)
 }
 
 type ConvergePolicy
-  = ConvergePolicyDerived { hosts: List<HostConverge> }
+  // `hosts` are converged in place; `image_baked` are the knobs of hosts that boot a RAM image, owed to the
+  // image build input and never applied by a converge (gunbc.fleet.fleet_host_backing ConvergeRealization).
+  = ConvergePolicyDerived { hosts: List<HostConverge>, image_baked: List<HostConverge> }
   | ConvergePolicyUnsound { reason: String }
 
 fn runner_instance_glob(host: HostIdentity) -> String {
@@ -895,7 +899,7 @@ type SliceControlCaps {
 // other hand drop-in would be a second authority.
 type SliceControl
   = SliceControlNotOwed
-  | SliceControlDerived { caps: List<SliceControlCaps> }
+  | SliceControlDerived { caps: FreeSemigroup<SliceControlCaps> }
   | SliceControlRefused { cause: String }
 
 fn join_slice_control(left: SliceControl, right: SliceControl) -> SliceControl {
@@ -906,7 +910,7 @@ fn join_slice_control(left: SliceControl, right: SliceControl) -> SliceControl {
       match right {
         SliceControlRefused { cause: c } => SliceControlRefused { cause: c }
         SliceControlNotOwed => SliceControlDerived { caps: a }
-        SliceControlDerived { caps: b } => SliceControlDerived { caps: concat(a, b) }
+        SliceControlDerived { caps: b } => SliceControlDerived { caps: non_empty_append(left: a, right: b) }
       }
   }
 }
@@ -930,13 +934,13 @@ fn session_slice_control_for(host: HostIdentity) -> SliceControl {
               }
             Present { value: high } =>
               SliceControlDerived {
-                caps: [
-                  SliceControlCaps {
+                caps: non_empty_singleton(
+                  item: SliceControlCaps {
                     unit: gunbc_oomd_sessions_slice,
                     memory_max: max,
                     memory_high: high,
-                  },
-                ]
+                  }
+                )
               }
           }
       }
@@ -949,13 +953,13 @@ fn approval_broker_slice_control_for(host: HostIdentity) -> SliceControl {
     ApprovalBrokerRuntimeCapsRefused { cause } => SliceControlRefused { cause: cause }
     ApprovalBrokerRuntimeCapsDerived { knobs: _ } =>
       SliceControlDerived {
-        caps: [
-          SliceControlCaps {
+        caps: non_empty_singleton(
+          item: SliceControlCaps {
             unit: gunbc_approval_broker_slice_unit_name,
             memory_max: approval_broker_slice_memory_max,
             memory_high: approval_broker_slice_memory_high,
-          },
-        ]
+          }
+        )
       }
   }
 }
@@ -979,9 +983,16 @@ type SliceControlUnit
   = SessionsSliceControl { caps: SliceControlCaps, cpu_quota: HardwareThreadCount }
   | UncappedSliceControl { caps: SliceControlCaps }
 
+// THE ROSTER IS A FREE SEMIGROUP, NOT A LIST: nonemptiness is CONSTRUCTED, not validated
+// (DESIGN §5 "correctness by construction, not validation"; §3b Cardinality/absence, which names
+// std.algebra::FreeSemigroup as the canonical non-empty carrier under ruling
+// nonemptiness_is_constructed_or_proved). A Derived plan that carried zero units was the whole
+// fail-open: downstream, units: [] became an empty script, and an empty script applies cleanly and
+// reports nothing -- the quietest possible way to not converge a host. `head: T` is the wall: this
+// arm cannot be built empty, so no consumer needs an emptiness guard and no guard can be dropped.
 type SliceControlPlan
   = SliceControlPlanNotOwed
-  | SliceControlPlanDerived { units: List<SliceControlUnit> }
+  | SliceControlPlanDerived { units: FreeSemigroup<SliceControlUnit> }
   | SliceControlPlanRefused { cause: String }
 
 type SessionsSliceCpuQuota
@@ -1009,28 +1020,41 @@ fn slice_control_unit_of(caps: SliceControlCaps, cpu: SessionsSliceCpuQuota) -> 
   if (caps.unit as String) == (gunbc_oomd_sessions_slice as String) {
     match cpu {
       SessionsSliceCpuQuotaRefused { cause: c } => SliceControlPlanRefused { cause: c }
-      SessionsSliceCpuQuotaDerived { threads: t } => SliceControlPlanDerived { units: [SessionsSliceControl { caps: caps, cpu_quota: t }] }
+      SessionsSliceCpuQuotaDerived { threads: t } =>
+        SliceControlPlanDerived { units: non_empty_singleton(item: SessionsSliceControl { caps: caps, cpu_quota: t }) }
     }
   } else {
-    SliceControlPlanDerived { units: [UncappedSliceControl { caps: caps }] }
+    SliceControlPlanDerived { units: non_empty_singleton(item: UncappedSliceControl { caps: caps }) }
   }
 }
 
+// THE FOLD STARTS FROM THE HEAD, NOT FROM AN EMPTY ROSTER. `init: SliceControlPlanDerived { units: [] }`
+// was the hole in another dress: it made the empty plan the fold's identity, so a caps list that
+// folded zero times -- or a fold that was skipped -- reported a well-formed plan with nothing in it.
+// fold_list over cs.tail seeds the accumulator from cs.head, so every reachable accumulator is a
+// plan whose roster already has a member.
 fn slice_control_plan_of(control: SliceControl, cpu: SessionsSliceCpuQuota) -> SliceControlPlan {
   match control {
     SliceControlNotOwed => SliceControlPlanNotOwed
     SliceControlRefused { cause: c } => SliceControlPlanRefused { cause: c }
     SliceControlDerived { caps: cs } =>
-      fold(cs, init: SliceControlPlanDerived { units: [] }, f: (acc, c) => match acc {
-        SliceControlPlanRefused { cause: _ } => acc
-        SliceControlPlanNotOwed => acc
-        SliceControlPlanDerived { units: us } =>
-          match slice_control_unit_of(caps: c, cpu: cpu) {
-            SliceControlPlanRefused { cause: why } => SliceControlPlanRefused { cause: why }
+      fold_list(
+        xs: cs.tail,
+        empty: slice_control_unit_of(caps: cs.head, cpu: cpu),
+        cons: fn(acc, c) {
+          match acc {
+            SliceControlPlanRefused { cause: _ } => acc
             SliceControlPlanNotOwed => acc
-            SliceControlPlanDerived { units: more } => SliceControlPlanDerived { units: concat(us, more) }
+            SliceControlPlanDerived { units: us } =>
+              match slice_control_unit_of(caps: c, cpu: cpu) {
+                SliceControlPlanRefused { cause: why } => SliceControlPlanRefused { cause: why }
+                SliceControlPlanNotOwed => acc
+                SliceControlPlanDerived { units: more } =>
+                  SliceControlPlanDerived { units: non_empty_append(left: us, right: more) }
+              }
           }
-      })
+        }
+      )
   }
 }
 
@@ -1067,8 +1091,19 @@ type FleetConvergeAcc
   = FleetConvergeHosts { hosts: List<HostConverge> }
   | FleetConvergeUnsound { reason: String }
 
-fn fleet_converge_policy_from(plan: RunnerDeploymentPlan) -> ConvergePolicy {
-  match fold(plan.hosts, init: FleetConvergeHosts { hosts: [] }, f: (acc, st) => match acc {
+fn fleet_converge_policy_from(plan: RunnerDeploymentPlan, image_baked: RunnerDeploymentPlan) -> ConvergePolicy {
+  match converge_hosts_of_plan(plan: plan) {
+    FleetConvergeUnsound { reason } => ConvergePolicyUnsound { reason: reason }
+    FleetConvergeHosts { hosts: applied } =>
+      match converge_hosts_of_plan(plan: image_baked) {
+        FleetConvergeUnsound { reason } => ConvergePolicyUnsound { reason: reason }
+        FleetConvergeHosts { hosts: baked } => ConvergePolicyDerived { hosts: applied, image_baked: baked }
+      }
+  }
+}
+
+fn converge_hosts_of_plan(plan: RunnerDeploymentPlan) -> FleetConvergeAcc {
+  fold(plan.hosts, init: FleetConvergeHosts { hosts: [] }, f: (acc, st) => match acc {
     FleetConvergeUnsound { reason } => FleetConvergeUnsound { reason: reason }
     FleetConvergeHosts { hosts } =>
       match st {
@@ -1094,12 +1129,9 @@ fn fleet_converge_policy_from(plan: RunnerDeploymentPlan) -> ConvergePolicy {
               }
           }
       }
-  }) {
-    FleetConvergeUnsound { reason } => ConvergePolicyUnsound { reason: reason }
-    FleetConvergeHosts { hosts } => ConvergePolicyDerived { hosts: hosts }
-  }
+  })
 }
 
 fn fleet_converge_policy() -> ConvergePolicy {
-  fleet_converge_policy_from(plan: runner_deployment_plan())
+  fleet_converge_policy_from(plan: runner_deployment_plan(), image_baked: runner_image_baked_deployment_plan())
 }

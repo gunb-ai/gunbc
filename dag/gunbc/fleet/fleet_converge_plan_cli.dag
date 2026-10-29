@@ -1,6 +1,7 @@
 module gunbc.fleet.fleet_converge_plan_cli
 
-import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
+import gunbc.fleet.fleet_converge_plan_revision { observe_actions_run_binding_at_checkout }
+import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
 
 import gunbc.fleet.fleet_converge_scope { WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, FleetConvergeScope, FullHost, FabricExecutionCellsOnly, FabricAllocationStoreOnly, LiveDeploy, LaunchEnvironment }
@@ -16,6 +17,18 @@ import gunbc.workspace_commissioning_directive { workspace_commissioning_directi
 import gunbc.workspace_commissioning_input_store { WorkspaceCommissioningInputBytes, workspace_commissioning_input_text }
 import gunbc.fleet.fleet_converge_terminal { FullyApplied, PartiallyApplied }
 import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.sudo.nopasswd_execute_probe_check_op
+import gunbc.fleet.fleet_host_grant_coverage {
+  HostGrantObservation,
+  HostGrantDecisionRead,
+  HostGrantPrincipalObserved,
+  HostGrantPrincipalUnobserved,
+  InstalledSudoersText,
+  InstalledSudoersUnreadable,
+}
+import extdeps.sudo.nopasswd_decision { SudoDecisionQuery, SudoVersionRead, sudo_decision_command, sudo_decision_from_run, sudo_decision_binary_absent, sudo_version_from_run }
+import extdeps.sudo.elevation { sudo_version_command }
+import gunbc.runner.runner_host_grants { runner_host_sudoers_install_path }
 import std.types { CommitSha }
 
 
@@ -34,6 +47,7 @@ import extdeps.languages.json.emit { serialize_json }
 import extdeps.shell
 import extdeps.tools.chmod { chmod_path_resolved_program }
 import std.types { String, List, Bool, NonEmptyStr, Int }
+import std.durable_compare_and_set { cas_generation_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.algebra { trim }
 import std.content_hash { serialize_content_hash }
@@ -60,7 +74,7 @@ import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program
 import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.languages.bash.invocation { bash_program_command }
-import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
+import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command_capture, run_shell_commands, process_outcome_admitted }
 import gunbc.host.host_axis_caps { CapMember, caps_managed_dropin_paths }
 import gunbc.runner.runner_unit { runner_unit_dropin_dir }
 import gunbc.runner.runner_slot_retirement {
@@ -148,6 +162,7 @@ import gunbc.fleet.fleet_converge_plan_manifest {
   fleet_converge_apply_payload_refusal_text,
 }
 import gunbc.fleet.fleet_converge_plan {
+  fleet_converge_host_grant_queries,
   TimerRetirementMember,
   fleet_converge_allocation_store_plan_artifact,
   fleet_converge_plan_body_path,
@@ -161,6 +176,10 @@ import gunbc.fleet.fleet_converge_plan {
   fleet_converge_plan_content_hash,
   fleet_converge_observed_baseline_matches,
   fleet_converge_member_set_fingerprint_matches,
+  fleet_converge_member_set_drift_text,
+  fleet_converge_retirement_drift_text,
+  RetirementDriftAdmitted,
+  RetirementDriftRefused,
   fleet_converge_plan_subject_scope_path,
   fleet_converge_apply_artifact_admits,
   ApplyAdmitted,
@@ -434,6 +453,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                   let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
                   let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
                   let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
+                  let observed_host_grants = observe_host_grants_wet(host: host)
                   FleetConvergeRequestObserved {
                     request: FullHostConverge {
                       host: host,
@@ -444,6 +464,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
                       observed_unit_standings: observed_unit_standings,
                       observed_retirement: observed_retirement,
+                      observed_host_grants: observed_host_grants,
                     },
                   }
                 }
@@ -452,6 +473,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                   let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
                   let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
                   let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
+                  let observed_host_grants = observe_host_grants_wet(host: host)
                   FleetConvergeRequestObserved {
                     request: FullHostConverge {
                       host: host,
@@ -462,6 +484,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
                       observed_unit_standings: observed_unit_standings,
                       observed_retirement: observed_retirement,
+                      observed_host_grants: observed_host_grants,
                     },
                   }
                 }
@@ -546,6 +569,54 @@ fn observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
   }
 }
 
+// THE HOST-GRANT HALF OF THE OBSERVATION TRANSACTION. Each rule is asked of sudo itself
+// (`sudo -n -ll -u RUNAS ARGV`, extdeps.sudo.nopasswd_decision), which lists and never runs the
+// command, as the account running this CLI, whose name is recorded beside the decisions. An
+// unreadable principal, a missing binary, a sudo that did not spawn or any status other than the
+// documented 0/1 is typed Unobserved, never covered. The installed drop-in is read separately: it is
+// normally root:root 0440, so an unreadable file is its own typed outcome.
+// THE ONE WET EXEC here (sudo's real exit codes and text) is the unpaired gap; the witnesses
+// run the pure mapping over recorded outputs.
+fn observe_host_grant_decision_wet(query: SudoDecisionQuery, version: SudoVersionRead) -> HostGrantDecisionRead
+{
+  let program = match query.argv.first() {
+    Present { value: w } => w as String
+    Absent => ""
+  }
+  let present = match run_shell_command_capture(command: test_regular_file_command(path: program), transport: LocalExec) {
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+  HostGrantDecisionRead {
+    query: query,
+    decision: if present {
+      sudo_decision_from_run(query: query, version: version, outcome: run_shell_command_observe_outcome(command: sudo_decision_command(query: query), transport: LocalExec))
+    } else {
+      sudo_decision_binary_absent(query: query)
+    },
+  }
+}
+
+fn observe_host_grants_wet(host: NonEmptyStr) -> HostGrantObservation
+{
+  let installed = Filesystem.Read(path: runner_host_sudoers_install_path)
+  let version = sudo_version_from_run(outcome: run_shell_command_observe_outcome(command: sudo_version_command(), transport: LocalExec))
+  HostGrantObservation {
+    principal: match observe_effective_user_wet() {
+      Present { value: login } => HostGrantPrincipalObserved { login: login }
+      Absent => HostGrantPrincipalUnobserved { cause: "the effective user could not be read (whoami)" as NonEmptyStr }
+    },
+    sudo_version: version,
+    decisions: map(fleet_converge_host_grant_queries(host: host), q => observe_host_grant_decision_wet(query: q, version: version)),
+    installed: if installed.success {
+      InstalledSudoersText { text: installed.content }
+    } else {
+      InstalledSudoersUnreadable { cause: join(["read of ", runner_host_sudoers_install_path as String, " failed"], "") as NonEmptyStr }
+    },
+  }
+}
+
 fn observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
 {
   match runner_host_deploy_for(host: host as HostIdentity) {
@@ -596,7 +667,7 @@ fn write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact) -
           let w_hash = Filesystem.Write(path: fleet_converge_plan_content_hash_path, content: content_hash)
           let w_apply = Filesystem.Write(path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell)
           let w_host = Filesystem.Write(path: fleet_converge_plan_subject_host_path, content: artifact.subject.host as String)
-          let w_gen = Filesystem.Write(path: fleet_converge_plan_generation_path, content: to_string(artifact.prior_generation + 1))
+          let w_gen = Filesystem.Write(path: fleet_converge_plan_generation_path, content: to_string(cas_generation_count(g: artifact.plan_lease.epoch.generation)))
           let w_prior = Filesystem.Write(path: fleet_converge_plan_prior_generation_path, content: to_string(artifact.prior_generation))
           let w_member_fp = Filesystem.Write(path: fleet_converge_plan_member_set_fp_path, content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String)
           let w_scope = Filesystem.Write(path: fleet_converge_plan_subject_scope_path, content: fleet_converge_scope_wire(scope: artifact.subject.scope))
@@ -646,7 +717,7 @@ fn fleet_converge_allocation_store_plan_wet() -> ProcessExit
                 prior_generation: prior_generation,
                 observed_allocation_store: observed,
               ) {
-                Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: host is not modeled or baseline hash refused")
+                Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: host is not modeled or lease generation successor refused")
                 Present { value: artifact } => write_fleet_converge_plan_artifact_wet(artifact: artifact)
               }
           }
@@ -867,25 +938,28 @@ fn fleet_converge_plan_scoped_bound_wet(
     GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
     GenerationAdmitted { generation: prior_generation } => {
   let observed = if (scope == WorkspaceSlotCommissioningOnly) {
-    match workspace_dispatch_observe(host: subject_host, revision: run.run_revision as CommitSha) {
+    match workspace_dispatch_observe(host: subject_host, revision: run.execution_revision as CommitSha) {
       WorkspaceCommissioningFleetObserved { basis } => FleetConvergeRequestObserved { request: WorkspaceSlotCommissioningConverge { basis: basis } }
       WorkspaceCommissioningFleetDependencyObserved { plan } => FleetConvergeRequestObserved { request: WorkspaceCommissioningDependencyConverge { plan: plan } }
       WorkspaceCommissioningFleetRefused { reason } => FleetConvergeRequestUnobserved { reason: concat("commissioning privileged observation refused: ", reason) }
     }
   } else if (scope == WorkspaceAllocationOnly) {
     observe_workspace_allocation_plan_request_wet(host: subject_host,
-      release_dir: approval_broker_release_dir(root: microvm_controller_root,
-        revision: RevisionBoundAtEmission { revision: run.run_revision as CommitSha }) as NonEmptyStr)
+      release_dir: release_locus_dir(root: microvm_controller_root,
+        revision: RevisionBoundAtEmission { revision: run.execution_revision as CommitSha }) as NonEmptyStr)
   } else { observe_fleet_converge_request_wet(scope_wire: fleet_converge_scope_wire(scope: scope), host: subject_host) }
   match observed {
     FleetConvergeRequestUnobserved { reason: why } =>
       exit_failure(reason: concat("fleet_converge_plan: RequestUnobserved — ", why))
     FleetConvergeRequestObserved { request: request } =>
   {
-    let artifact = fleet_converge_plan_artifact_of_request(
+    match fleet_converge_plan_artifact_of_request(
       request: request,
       prior_generation: prior_generation,
-    )
+    ) {
+      Absent =>
+        exit_failure(reason: "fleet_converge_plan: lease generation successor refused")
+      Present { value: artifact } =>
       match fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,
@@ -893,7 +967,7 @@ fn fleet_converge_plan_scoped_bound_wet(
         Absent =>
           exit_failure(reason: "fleet_converge_plan: plan bundle hash is not Fnv1a64Structural — plan refused")
         Present { value: content_hash } => {
-          let planned_generation = prior_generation + 1
+          let planned_generation = cas_generation_count(g: artifact.plan_lease.epoch.generation)
           let mkdir = run_shell_commands(
             commands: [mkdir_parents_command(path: fleet_converge_plan_artifact_dir)],
             transport: LocalExec,
@@ -981,6 +1055,7 @@ fn fleet_converge_plan_scoped_bound_wet(
           }
         }
       }
+      }
     }
   }
   }
@@ -996,7 +1071,7 @@ fn fleet_converge_plan_scoped_bound_wet(
 // final join can pair them without re-deriving anything.
 fn fleet_converge_apply_wet() -> ProcessExit
 {
-  match observe_actions_run_binding() {
+  match observe_actions_run_binding_at_checkout() {
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["fleet_converge_apply: RunUnbound — ", v, " ", d, "; the apply mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>
@@ -1116,7 +1191,7 @@ fn fleet_converge_apply_ordinary_bound_wet(
                     ),
                   )
                 ApplyMemberSetMismatch =>
-                  exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
+                  exit_failure(reason: concat("fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan\n", fleet_converge_member_set_drift_text(plan_body: read_plan.content, observed: observed_request)))
                 ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
                   exit_failure(reason: join(["fleet_converge_apply: AllocationStorePrestateMismatch namespace_path=", n as String, " store_path=", p as String, " observed=", o, "; rerun plan and review"], ""))
                 ApplyAwaitingCapability { capability: c } =>
@@ -1127,7 +1202,12 @@ fn fleet_converge_apply_ordinary_bound_wet(
                 observed: observed_request,
               ) {
                 exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
-              } else if !fleet_converge_plan_bundle_matches(
+              } else {
+              match fleet_converge_retirement_drift_text(plan_body: read_plan.content, observed: observed_request) {
+              RetirementDriftRefused { first: drift_first, rest: drift_rest } =>
+                exit_failure(reason: concat("fleet_converge_apply: RetirementStandingDrift — a retirement premise changed since plan\n", join(concat([drift_first], drift_rest), "\n")))
+              RetirementDriftAdmitted =>
+              if !fleet_converge_plan_bundle_matches(
                 plan_body: read_plan.content,
                 apply_shell: read_apply.content,
                 claimed_hex: read_hash.content,
@@ -1204,6 +1284,8 @@ fn fleet_converge_apply_ordinary_bound_wet(
               }
               }
               }
+              }
+              }
             }
           }
           }
@@ -1269,6 +1351,7 @@ fn observe_operator_local_run_binding() -> OperatorLocalRunBinding
             workflow_ref: fleet_converge_operator_local_workflow_ref,
             run_id: join(["local-", now as String], ""),
             run_revision: head.sha as String,
+            execution_revision: head.sha as String,
           },
         }
     }
@@ -1352,7 +1435,7 @@ fn fleet_converge_operator_cli_entry(
       if mode == fleet_converge_operator_mode_deploy {
         match observe_operator_local_run_binding() {
           OperatorLocalRunBound { binding: b } =>
-            join(["deploy-converged host=", trim(s: host), " candidate=", b.run_revision, " branch=", trim(s: candidate_branch), "\n"], "")
+            join(["deploy-converged host=", trim(s: host), " candidate=", b.execution_revision, " branch=", trim(s: candidate_branch), "\n"], "")
           OperatorLocalRunUnbound { reason: why } => join(["deploy-converged host=", trim(s: host), " candidate=unread: ", why, "\n"], "")
         }
       } else {
@@ -1447,7 +1530,7 @@ fn fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> Pro
               run: run,
               plan_run_id: plan_run_id,
               plan_receipt: plan_receipt,
-              expected_revision_admitted: run.run_revision,
+              expected_revision_admitted: run.execution_revision,
             )
         }
       }
@@ -1474,8 +1557,8 @@ fn observe_runner_slot_registration_wet(present: Bool, path: String) -> RunnerSl
     } else {
       match actions_runner_registration_decode(raw: read.content) {
         ActionsRunnerRegistrationUnreadable { reason } => SlotRegistrationUnreadable { reason: reason }
-        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral } => SlotRegisteredEphemeral
-        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent } => SlotRegisteredPersistent
+        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral, agent_name: _ } => SlotRegisteredEphemeral
+        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent, agent_name: _ } => SlotRegisteredPersistent
       }
     }
   }

@@ -1,6 +1,7 @@
 module gunbc.machine_intake.host_resource_observation
 
-import std.types { Bool, Int, List, Never, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.error_primitives { Never }
 import std.nat { Nat }
 import std.algebra { trim, non_empty_to_list }
 import std.checked_arithmetic { checked_int_to_nat }

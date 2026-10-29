@@ -819,6 +819,54 @@ pub(crate) fn process_termination_value(
     }
 }
 
+/// Build `v2.std.host_run` `EmitHostTransportResult`, the one shape both emit-host transports
+/// return. `phase` is an `EmitHostTransportPhase` variant name; termination is already a
+/// `ProcessTermination`; the octets are `std.types` `Bytes` (a list of 0..255 ints, the value
+/// `bytes_octets` reads); the log lines are a `BuildLog`.
+fn emit_host_transport_result_value(
+    phase: &str,
+    termination: Value,
+    stdout: &[u8],
+    stderr: &[u8],
+    build_log: Vec<Value>,
+    ctx: &InterpContext,
+) -> Value {
+    let octets = |bytes: &[u8]| {
+        list_value(
+            bytes
+                .iter()
+                .map(|b| Value::Int(*b as i64))
+                .collect::<Vec<Value>>(),
+        )
+    };
+    Value::Record {
+        type_name: ctx.sym("EmitHostTransportResult"),
+        // fields_get is a binary search by Symbol id, so a multi-field record
+        // MUST be sorted at construction; declaration order is interning-order-
+        // dependent and broke .success lookups when #6904 shifted interning.
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("phase"),
+                Value::Variant {
+                    type_name: ctx.sym("EmitHostTransportPhase"),
+                    variant_name: ctx.sym(phase),
+                    fields: Rc::new(Vec::new()),
+                },
+            ),
+            (ctx.sym("termination"), termination),
+            (ctx.sym("stdout_bytes"), octets(stdout)),
+            (ctx.sym("stderr_bytes"), octets(stderr)),
+            (
+                ctx.sym("build_log"),
+                Value::Record {
+                    type_name: ctx.sym("BuildLog"),
+                    fields: Rc::new(vec![(ctx.sym("lines"), list_value(build_log))]),
+                },
+            ),
+        ])),
+    }
+}
+
 /// Human-facing rendering of a termination for a build log line. Kept beside the
 /// projection above so the two spellings of one observation cannot drift.
 pub(crate) fn process_termination_label(status: &std::process::ExitStatus) -> String {
@@ -1540,9 +1588,9 @@ pub enum InterpError {
     /// publishing it, a missing `mock_response` by authoring one, a filesystem REMOVAL by a wet
     /// route (removal has no mock arm). One sentence for all three is the state-space
     /// conflation DESIGN's recurring-failure list names.
-    HermeticHostEffectRefused {
+    HostEffectRefused {
         operation: String,
-        ground: HermeticEffectGround,
+        ground: EffectRefusalGround,
     },
     /// A HOST FILESYSTEM EFFECT FAILED: the realization asked the host to create or write a path
     /// and the host refused. Its own variant, never a `TypeError`: nothing about the program's
@@ -1572,10 +1620,10 @@ impl InterpError {
     }
 }
 
-/// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION. Closed, and each arm names a
-/// different remedy — see `InterpError::HermeticHostEffectRefused`.
+/// WHY A RUN COULD NOT REALIZE ONE OPERATION. Closed, and each arm names a
+/// different remedy — see `InterpError::HostEffectRefused`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HermeticEffectGround {
+pub enum EffectRefusalGround {
     /// The service is corpus-governed and no published mock case names this operation.
     /// `published_cases` carries the cases that DO exist for the service, so the refusal
     /// states its own remedy rather than sending the reader to look for it.
@@ -1586,6 +1634,10 @@ pub enum HermeticEffectGround {
     /// A filesystem REMOVAL. Distinct from the two above because there is no mock arm to
     /// author: the operation's whole content is the effect, so only a wet route can run it.
     FilesystemRemoval,
+    /// A witness frame whose modeled realization is admitted only under Hermetic execution,
+    /// reached by a run that dispatches real effects. The one ground refused UNDER a non-hermetic
+    /// mode, so its remedy is the opposite of the three above: run it hermetically.
+    FrameNotRealizableUnderMode,
 }
 
 impl fmt::Display for InterpError {
@@ -1750,22 +1802,28 @@ impl fmt::Display for InterpError {
                 name,
                 probed.join(", ")
             ),
-            InterpError::HermeticHostEffectRefused { operation, ground } => match ground {
-                HermeticEffectGround::UnpublishedMockCase { published_cases } => write!(
+            InterpError::HostEffectRefused { operation, ground } => match ground {
+                EffectRefusalGround::UnpublishedMockCase { published_cases } => write!(
                     f,
                     "hermetic mode: operation {operation} is not a published mock case for its \
                      corpus-governed service \u{2014} refusing to realize (published cases: \
                      {published_cases:?})"
                 ),
-                HermeticEffectGround::NoMockResponse => write!(
+                EffectRefusalGround::NoMockResponse => write!(
                     f,
                     "hermetic mode: no mock_response for operation {operation} \u{2014} refusing \
                      to fabricate Unit"
                 ),
-                HermeticEffectGround::FilesystemRemoval => write!(
+                EffectRefusalGround::FilesystemRemoval => write!(
                     f,
                     "hermetic mode: {operation} refuses filesystem removal (no mock arm; the \
                      operation's whole content is the effect, so only a wet route can run it)"
+                ),
+                EffectRefusalGround::FrameNotRealizableUnderMode => write!(
+                    f,
+                    "wet run cannot realize {operation}: a modeled operation realization is \
+                     admitted only under Hermetic execution, and this run dispatches real \
+                     effects (route gap, not a verdict)"
                 ),
             },
             InterpError::HostToolRelativePathAmbiguous { name } => write!(
@@ -9836,10 +9894,14 @@ fn admit_modeled_realization(
         false,
     )?;
     if !matches!(admitted, Value::Bool(true)) {
-        return Err(modeled_refused(
-            "(frame)",
-            "a modeled operation realization is admitted only under Hermetic execution; this run dispatches real effects",
-        ));
+        // A ROUTE GAP, NOT A VERDICT: the run was never given a route that can realize this
+        // frame, so the claim did not reach its subject. Returned as the typed route-gap error and
+        // not as `modeled_refused`, which the frame builtin turns into a `WitnessRefused` value a
+        // claim can map to false.
+        return Err(InterpError::HostEffectRefused {
+            operation: "(frame)".to_string(),
+            ground: EffectRefusalGround::FrameNotRealizableUnderMode,
+        });
     }
     let envelope = record_field(ctx, frame, "envelope")
         .ok_or_else(|| modeled_refused("(frame)", "the frame carries no envelope"))?;
@@ -9940,7 +10002,7 @@ fn op_declared_readonly(op_node: &Rc<Node>, ctx: &InterpContext) -> bool {
     })
 }
 
-/// The BoundOperationInvocation (`v2.std.operation_argv`) of one dispatched operation: its resolved
+/// The BoundOperationInvocation (`std.operation_argv`) of one dispatched operation: its resolved
 /// identity -- declaring file, service, operation -- and each declared input by name.
 fn bound_operation_invocation_value(
     service_name: &str,
@@ -10468,6 +10530,7 @@ fn try_witness_evaluation_dispatch(
             let absent_state = || variant_value(ctx, "Optional", "Absent", vec![]);
             let admitted = match admit_modeled_realization(&frame, env, ctx) {
                 Ok(slot) => slot,
+                Err(error @ InterpError::HostEffectRefused { .. }) => return Some(Err(error)),
                 Err(error) => {
                     return Some(Ok(variant_value(
                         ctx,
@@ -10493,6 +10556,11 @@ fn try_witness_evaluation_dispatch(
                     .with(|slots| slots.borrow_mut().last_mut().and_then(|s| s.take()));
                 (evaluated, slot)
             };
+            // A route gap raised inside the subject is no observation either, so it leaves the
+            // frame as the error and never as a `WitnessRefused` verdict value.
+            if let Err(error @ InterpError::HostEffectRefused { .. }) = evaluated {
+                return Some(Err(error));
+            }
             let (route, state, interrupted, clock) = match slot {
                 Some(slot) => (
                     list_value(slot.route),
@@ -10880,10 +10948,6 @@ fn match_pattern(
                         }
                         _ => None,
                     },
-                    // GroupCompletion{pos,neg} destructuring against a native Value::Int is
-                    // deliberately unhandled (no corpus site exercises it, #5-scoped deferral) — an
-                    // unmatched pattern name falls through to `_ => None` below, refusing rather
-                    // than fabricating a (pos, neg) pair.
                     Value::Null
                         if name_last == "Violates"
                             && parent_enum_is(parent_enum.as_ref(), "Witness") =>
@@ -10994,6 +11058,23 @@ macro_rules! v1_bridge_family_arms {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
             }
+            // std.host_text chars (operator ruling H4): a HostRealizedSeam reached by DECLARATION, the
+            // module literal below, never by the bare spelling -- `is_v4_bridge_family` admits the arm
+            // only when the item registry says the called `chars` IS std.host_text's. Unicode scalar
+            // values in source order: a Rust `char` is exactly one scalar value.
+            family STD_HOST_TEXT_BRIDGE_FNS "std.host_text"
+                lookup_eval_call_bridge_std_host_text eval_call_bridge__std_host_text_arm {
+                arm "v4_bridge.host_text_chars" { "chars" } =>
+                    eval_host_text_chars(&$args),
+            }
+            // std.machine_word machine_word_native_operate: a HostRealizedSeam reached by DECLARATION
+            // (same admission as std.host_text above). The operator rows are v1_rt's, the same table the
+            // emitted Rust runtime carries, so the seed and the emitted binary cannot disagree on a row.
+            family STD_MACHINE_WORD_BRIDGE_FNS "std.machine_word"
+                lookup_eval_call_bridge_std_machine_word eval_call_bridge__std_machine_word_arm {
+                arm "v4_bridge.machine_word_native_operate" { "machine_word_native_operate" } =>
+                    eval_machine_word_native_operate(&$args),
+            }
             family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
                 lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
                 arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
@@ -11031,6 +11112,32 @@ macro_rules! v1_bridge_dispatch {
             }
         )*
     };
+}
+
+/// std.host_text chars: the host text's Unicode scalar values, in source order, as the
+/// `List<Char>` it is declared to return (a `Char` is an `Int` scalar on this carrier).
+fn eval_host_text_chars(args: &[(Option<String>, Value)]) -> InterpResult<Value> {
+    let text = expect_str_free_monoid(args.first().map(|(_, v)| v), "chars")?;
+    let items: Vec<Value> = text.chars().map(|c| Value::Int(c as i64)).collect();
+    Ok(list_value(items))
+}
+
+/// std.machine_word machine_word_native_operate: one operator row applied to residues; an operand or
+/// amount outside its range refuses (the runtime's panic is a typed InterpError here).
+fn eval_machine_word_native_operate(args: &[(Option<String>, Value)]) -> InterpResult<Value> {
+    let op = expect_str_free_monoid(
+        args.first().map(|(_, v)| v),
+        "machine_word_native_operate op",
+    )?;
+    let bits = expect_int(
+        args.get(1).map(|(_, v)| v),
+        "machine_word_native_operate bits",
+    )?;
+    let a = expect_int(args.get(2).map(|(_, v)| v), "machine_word_native_operate a")?;
+    let b = expect_int(args.get(3).map(|(_, v)| v), "machine_word_native_operate b")?;
+    v1_rt::machine_word_native_operate_checked(&op, bits, a, b)
+        .map(Value::Int)
+        .map_err(|msg| InterpError::TypeError { msg })
 }
 
 /// One guard for every bridge family.
@@ -13293,14 +13400,9 @@ fn eval_record_lit(
             fields: Rc::new(fields),
         })
     } else {
-        if type_name == "GroupCompletion" {
-            if let (Some(Value::Int(pos)), Some(Value::Int(neg))) = (
-                fields_get(&fields, ctx.sym("pos")),
-                fields_get(&fields, ctx.sym("neg")),
-            ) {
-                return Ok(Value::Int(pos - neg));
-            }
-        }
+        // No record is collapsed into an integer by its spelling. A GroupCompletion<Nat> is a pair --
+        // std.integer int_of_group_completion is the declared mapping onto the integers -- and the
+        // emitted Rust keeps it a record, so the interpreter must too.
         Ok(Value::Record {
             type_name: ctx.sym(&type_name),
             fields: Rc::new(fields),
@@ -13391,8 +13493,8 @@ mod cast_scope_index_tests {
     #[ignore = "real repository scope; run explicitly on a remote worker"]
     fn real_scope_cast_index_matches_the_retired_scan() {
         use crate::cli_run::{
-            claim_scope_for, evaluation_frame, prepare_repository_closure, process_shared_index,
-            witness_exclusion_substrings,
+            claim_scope_for, evaluation_frame, prepare_repository_closure,
+            process_shared_index_or_refuse, witness_exclusion_substrings,
         };
         // Locate the runtime checkout: remote builds can remap CARGO_MANIFEST_DIR to a
         // relative compilation path, which is not a usable execution-time source root.
@@ -13413,7 +13515,7 @@ mod cast_scope_index_tests {
         std::env::set_current_dir(root).expect("enter repository root");
         let roots = ["dag", "src/v2"].map(|path| root.join(path).to_string_lossy().into_owned());
         let entry = "test.claim.compiler_frontend_program_status_witness".to_string();
-        let index = process_shared_index(&roots);
+        let index = process_shared_index_or_refuse(&roots);
         let (prepared, _) = prepare_repository_closure(
             &roots,
             &witness_exclusion_substrings(),
@@ -13812,9 +13914,6 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             Value::Float(n) => Ok(str_value(n.to_string())),
             Value::Bool(b) => Ok(str_value(b.to_string())),
             Value::Str(ref s) => Ok(Value::Str(s.clone())),
-            // Corpus wire/debug casts for structured values — not the blanket Display
-            // fallback that silently stringified List/Map (§5 fabricated plausible output).
-            Value::Variant { .. } | Value::Record { .. } => Ok(str_value(format!("{}", val))),
             v => Err(refused(&v, "String")),
         },
         t => Err(refused(&val, t)),
@@ -14639,7 +14738,7 @@ fn hermetic_checkout_input_disposition_under(
     // path to exist, so it failed identically for three dispositions with different remedies —
     // a file the commit says is NOT THERE, a path RESOLVING OUTSIDE the root, and one
     // UNRESOLVABLE otherwise. One error string for three states is the conflation
-    // `HermeticEffectGround` was split to prevent, twenty lines above the enum recording it.
+    // `EffectRefusalGround` was split to prevent, twenty lines above the enum recording it.
     //
     // The commit determines absence as it determines contents: "no such file" is read OFF THE
     // INPUT, not host state, so it belongs on the same wet arm as a successful read, not in the
@@ -14837,9 +14936,9 @@ fn eval_service_call(
                 })
                 .collect();
             cases.sort();
-            return Err(InterpError::HermeticHostEffectRefused {
+            return Err(InterpError::HostEffectRefused {
                 operation: key.clone(),
-                ground: HermeticEffectGround::UnpublishedMockCase {
+                ground: EffectRefusalGround::UnpublishedMockCase {
                     published_cases: cases.into_iter().cloned().collect(),
                 },
             });
@@ -15391,7 +15490,7 @@ fn value_to_host_string(val: &Value) -> String {
 }
 
 /// Why a generic argv materialization refused. Mirrors `ArgvRefusalCause` in
-/// `src/v2/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
+/// `dag/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
 /// enum is its seed realization. Every arm refuses; none widens, defaults, or sanitizes
 /// (DESIGN §5).
 #[derive(Debug, Clone)]
@@ -16104,7 +16203,38 @@ fn compile_diagnostic_census_row_value(
     subject_name: String,
     blocking: bool,
     count: i64,
+    rendered_pair: Option<crate::cli_run::RenderedPair>,
 ) -> Value {
+    // The model's Optional<RenderedPair>: `None` here is the optional's OWN absence (a class the
+    // extractor's total match says carries no pair) projected to the model's Absent — never a
+    // stand-in for "the pair was equal", which is Uniform { expected, got } with expected == got.
+    let rendered_pair_value = match rendered_pair {
+        None => optional_absent(ctx),
+        Some(crate::cli_run::RenderedPair::Uniform { expected, got }) => optional_present(
+            Value::Variant {
+                type_name: ctx.sym("RenderedPair"),
+                variant_name: ctx.sym("Uniform"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("expected"), str_value(expected)),
+                    (ctx.sym("got"), str_value(got)),
+                ])),
+            },
+            ctx,
+        ),
+        Some(crate::cli_run::RenderedPair::Varied {
+            distinct_pair_count,
+        }) => optional_present(
+            Value::Variant {
+                type_name: ctx.sym("RenderedPair"),
+                variant_name: ctx.sym("Varied"),
+                fields: Rc::new(sorted_fields(vec![(
+                    ctx.sym("distinct_pair_count"),
+                    Value::Int(distinct_pair_count),
+                )])),
+            },
+            ctx,
+        ),
+    };
     Value::Record {
         type_name: ctx.sym("CompileDiagnosticCensusRow"),
         fields: Rc::new(sorted_fields(vec![
@@ -16112,10 +16242,10 @@ fn compile_diagnostic_census_row_value(
             (ctx.sym("subject_name"), str_value(subject_name)),
             (ctx.sym("blocking"), Value::Bool(blocking)),
             (ctx.sym("count"), Value::Int(count)),
+            (ctx.sym("rendered_pair"), rendered_pair_value),
         ])),
     }
 }
-
 fn reference_derived_candidate_disposition_value(
     disposition: &crate::v1_compiler_emit_rust::ReferenceDerivedCandidateDisposition,
     ctx: &InterpContext,
@@ -16195,6 +16325,7 @@ fn compile_diagnostic_census_value(
                                 r.subject_name,
                                 r.blocking,
                                 r.count,
+                                r.rendered_pair,
                             )
                         })
                         .collect::<Vec<_>>(),
@@ -16252,6 +16383,7 @@ fn claim_scope_fixture_value(
                             row.subject_name.clone(),
                             row.blocking,
                             row.count,
+                            row.rendered_pair.clone(),
                         )
                     })
                     .collect::<Vec<_>>(),
@@ -16297,6 +16429,7 @@ fn multi_module_compile_fixture_value(
                         r.subject_name,
                         r.blocking,
                         r.count,
+                        r.rendered_pair,
                     )
                 })
                 .collect::<Vec<_>>(),
@@ -17115,65 +17248,6 @@ fn gate_receipt_value(receipt: crate::cli_run::GateReceipt, ctx: &InterpContext)
             variant_name: ctx.sym("GateNotRun"),
             fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
         },
-    }
-}
-
-fn unlisted_import_binding_source_value(
-    source: crate::cli_run::UnlistedImportBindingSource,
-    ctx: &InterpContext,
-) -> Value {
-    let variant = match source {
-        crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
-        crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
-        crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
-        crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
-    };
-    Value::Variant {
-        type_name: ctx.sym("UnlistedImportBindingSource"),
-        variant_name: ctx.sym(variant),
-        fields: Rc::new(vec![]),
-    }
-}
-
-fn declared_import_closure_binding_value(
-    observation: crate::cli_run::DeclaredImportClosureBindingObservation,
-    ctx: &InterpContext,
-) -> Value {
-    match observation {
-        crate::cli_run::DeclaredImportClosureBindingObservation::Observed(observed) => {
-            let binding_source = match observed.binding_source {
-                Some(source) => {
-                    optional_present(unlisted_import_binding_source_value(source, ctx), ctx)
-                }
-                None => optional_absent(ctx),
-            };
-            Value::Variant {
-                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
-                variant_name: ctx.sym("BindingObserved"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("binding_source"), binding_source),
-                    (
-                        ctx.sym("definer_module"),
-                        str_value(observed.definer_module.unwrap_or_default()),
-                    ),
-                    (
-                        ctx.sym("symbol_resolves"),
-                        Value::Bool(observed.symbol_resolves),
-                    ),
-                    (
-                        ctx.sym("blocking_hard_diagnostic_count"),
-                        Value::Int(observed.blocking_hard_diagnostic_count),
-                    ),
-                ])),
-            }
-        }
-        crate::cli_run::DeclaredImportClosureBindingObservation::NotRunnable(cause) => {
-            Value::Variant {
-                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
-                variant_name: ctx.sym("BindingNotRunnable"),
-                fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
-            }
-        }
     }
 }
 
@@ -21258,6 +21332,9 @@ pub enum RestResponseDecodeCause {
     /// Both the wire key and the authored name of one renamed field are present; which one
     /// populates the field would be decided by iteration order.
     AmbiguousWireSpelling { authored: String, wire: String },
+    /// A field declared `std.decimal` `ExactDecimal` was answered by a JSON value that is not a
+    /// finite decimal number whose digits fit the record's Int units.
+    NotAnExactDecimal { json_text: String },
 }
 
 impl fmt::Display for RestResponseDecodeRefusal {
@@ -21301,6 +21378,11 @@ impl fmt::Display for RestResponseDecodeRefusal {
             RestResponseDecodeCause::UnknownSpelling { spelling } => {
                 write!(f, "\"{}\" names no arm under the declared wire contract", spelling)
             }
+            RestResponseDecodeCause::NotAnExactDecimal { json_text } => write!(
+                f,
+                "declared ExactDecimal, answered `{}`, which is not a finite decimal whose digits fit Int units",
+                json_text
+            ),
         }
     }
 }
@@ -21518,6 +21600,49 @@ fn decode_json_by_declared_type(
             }
             _ => Ok(json_to_value(json)),
         };
+    }
+    // A field declared `std.decimal` `ExactDecimal { units, fraction_digits }` is carried on the wire
+    // as a JSON number (extdeps.cloud.vast_ai money fields). serde_json's arbitrary_precision keeps the
+    // number's wire text, so it is decoded from the wire's own digits and scale; a number that is not a
+    // finite decimal whose digits fit Int units refuses. Without this arm the number fell through to `json_to_value` and
+    // the declared ExactDecimal arrived as a Float (gunbc.recurring_failure_mode
+    // rest_response_declared_exact_decimal_decoded_as_float).
+    // `T?` on the wire is T or null; null returned above, so a present value decodes as the declared T
+    // (a present value is carried raw, as `json_to_value` carries it). Without this the declared type
+    // under the optional layer was never consulted.
+    if name.rsplit('.').next() == Some("Optional") {
+        if let Some(inner) = ty.children.first() {
+            return decode_json_by_declared_type(json, inner, path, ctx);
+        }
+    }
+    if name.rsplit('.').next() == Some("ExactDecimal") {
+        if let serde_json::Value::Number(n) = json {
+            let text = n.to_string();
+            return match exact_decimal_from_json_number_text(&text) {
+                Some((units, fraction_digits)) => {
+                    let mut fields: HamtMap<CanonKey, Value> = HamtMap::new();
+                    if let Some(ck) = CanonKey::new(str_value("units")) {
+                        fields.insert(ck, Value::Int(units));
+                    }
+                    if let Some(ck) = CanonKey::new(str_value("fraction_digits")) {
+                        fields.insert(ck, Value::Int(fraction_digits));
+                    }
+                    Ok(map_value(fields))
+                }
+                None => Err(RestResponseDecodeRefusal {
+                    field_path: path.to_string(),
+                    coproduct: name.clone(),
+                    cause: RestResponseDecodeCause::NotAnExactDecimal { json_text: text },
+                }),
+            };
+        }
+        return Err(RestResponseDecodeRefusal {
+            field_path: path.to_string(),
+            coproduct: name.clone(),
+            cause: RestResponseDecodeCause::NotAnExactDecimal {
+                json_text: json.to_string(),
+            },
+        });
     }
     if ty.connective == Connective::Disj {
         let nullary =
@@ -21762,6 +21887,69 @@ pub(crate) fn json_container_depth(json: &serde_json::Value) -> usize {
     deepest
 }
 
+/// The largest decimal exponent an i64-unit decimal can carry: i64::MAX has 19 digits, 18 of them free.
+const EXACT_DECIMAL_MAX_DECIMAL_EXPONENT: u64 = 18;
+
+/// The largest scale (fraction digits) a decoded ExactDecimal may carry: 18 free significant digits whose
+/// leading digit lies at most 18 places past the point.
+const EXACT_DECIMAL_MAX_SCALE: i64 = 2 * EXACT_DECIMAL_MAX_DECIMAL_EXPONENT as i64;
+
+/// The exact `(units, fraction_digits)` of a JSON number's decimal text: `-?D+(.D+)?([eE][+-]?D+)?`.
+/// `units` is the signed mantissa digits and `fraction_digits` the count of digits after the point less
+/// the exponent; a negative scale is folded into `units`. `None` when the text is not that grammar or
+/// the digits do not fit i64, so the caller refuses rather than rounding.
+fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
+    let (negative, rest) = match text.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, text),
+    };
+    let (mantissa, exponent) = match rest.find(['e', 'E']) {
+        Some(i) => (&rest[..i], rest[i + 1..].parse::<i64>().ok()?),
+        None => (rest, 0),
+    };
+    // The exponent is bounded BEFORE any scaling: an i64 holds at most 18 full decimal digits, so an
+    // exponent beyond that either overflows the units or names a scale no Int-unit decimal carries. Without
+    // the bound a zero mantissa (`0e9223372036854775807`) never overflows and the scaling loop below does
+    // not return, and `1e-999999999` would be accepted with a billion fraction digits (review 82479).
+    // The scale is capped separately, because the exponent bound does not limit it: `parse::<i64>` accepts
+    // leading zeros, so `0.` followed by ten thousand zeros and a `1` has exponent 0 and scale 10001
+    // (review 82586). The cap is EXACT_DECIMAL_MAX_SCALE (36): at most 18 free significant digits whose
+    // leading digit lies at most 18 places past the point. An earlier cap at 19 refused a live price with 17
+    // significant digits at 20 fraction digits (`0.00026041666666666666`, fleet-converge run 39222150650)
+    // and with it the whole offer page.
+    if exponent.unsigned_abs() > EXACT_DECIMAL_MAX_DECIMAL_EXPONENT {
+        return None;
+    }
+    let (int_part, frac_part) = match mantissa.find('.') {
+        Some(i) => (&mantissa[..i], &mantissa[i + 1..]),
+        None => (mantissa, ""),
+    };
+    if int_part.is_empty()
+        || !int_part.bytes().all(|b| b.is_ascii_digit())
+        || !frac_part.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let digits = format!("{}{}", int_part, frac_part);
+    let mut units: i64 = digits.parse::<i64>().ok()?;
+    let mut fraction_digits: i64 = (frac_part.len() as i64).checked_sub(exponent)?;
+    if fraction_digits > EXACT_DECIMAL_MAX_SCALE {
+        return None;
+    }
+    while fraction_digits < 0 {
+        units = units.checked_mul(10)?;
+        fraction_digits += 1;
+    }
+    Some((
+        if negative {
+            units.checked_neg()?
+        } else {
+            units
+        },
+        fraction_digits,
+    ))
+}
+
 fn json_to_value(json: &serde_json::Value) -> Value {
     value_depth_guarded(|| match json {
         serde_json::Value::Null => Value::Null,
@@ -21864,9 +22052,9 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
         }
     }
     let op_name = authored_name_at(ctx.si(), op_node.clone());
-    Err(InterpError::HermeticHostEffectRefused {
+    Err(InterpError::HostEffectRefused {
         operation: op_name.to_string(),
-        ground: HermeticEffectGround::NoMockResponse,
+        ground: EffectRefusalGround::NoMockResponse,
     })
 }
 
@@ -22436,9 +22624,9 @@ fn eval_emit_host_native_cache_evict_builtin(
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     if ctx.execution_mode.is_hermetic() {
-        return Err(InterpError::HermeticHostEffectRefused {
+        return Err(InterpError::HostEffectRefused {
             operation: "emit_host_native_cache_evict".to_string(),
-            ground: HermeticEffectGround::FilesystemRemoval,
+            ground: EffectRefusalGround::FilesystemRemoval,
         });
     }
     let workspace_dir =
@@ -23095,7 +23283,6 @@ fn emit_host_run_transport_cached_in_workspace(
 ) -> InterpResult<Value> {
     let ready_marker = workspace.join(".native_ready");
     let cold_compile_receipt = workspace.join(".native_cold_compile_nanos");
-    let artifact_lookup_started = std::time::Instant::now();
     // Cold control (falsifier cadence): widen-only — ignoring the ready marker can
     // only force a FULL cold rebuild, never skip work (the compile-clean cold-control
     // pattern). Not an escape hatch: no value of the env makes the run do less.
@@ -23120,7 +23307,6 @@ fn emit_host_run_transport_cached_in_workspace(
     let compile_skipped = !cold_control
         && ready_marker.exists()
         && (!require_transition_timing || recorded_cold_compile_nanos.is_some());
-    let artifact_lookup_nanos = artifact_lookup_started.elapsed().as_nanos();
     eprintln!(
         "[native-cache] key={} compile_skipped={} cold_control={}",
         workspace
@@ -23130,59 +23316,6 @@ fn emit_host_run_transport_cached_in_workspace(
         compile_skipped,
         cold_control
     );
-
-    let transport_result = |phase: &str,
-                            termination: Value,
-                            stdout: &[u8],
-                            stderr: &[u8],
-                            build_log: Vec<Value>,
-                            compile_skipped: bool,
-                            cold_compile_nanos: u128,
-                            native_execution_nanos: u128|
-     -> Value {
-        Value::Record {
-            type_name: ctx.sym("EmitHostTransportResult"),
-            // fields_get is a binary search by Symbol id, so a multi-field record
-            // MUST be sorted at construction; declaration order is interning-order-
-            // dependent and broke .success lookups when #6904 shifted interning.
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("phase"), str_value(phase.to_string())),
-                (ctx.sym("termination"), termination),
-                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
-                (
-                    ctx.sym("artifact_lookup_nanos"),
-                    Value::Int(artifact_lookup_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("cold_compile_nanos"),
-                    Value::Int(cold_compile_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("native_execution_nanos"),
-                    Value::Int(native_execution_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("stdout_octets"),
-                    list_value(
-                        stdout
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("stderr_octets"),
-                    list_value(
-                        stderr
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (ctx.sym("build_log"), list_value(build_log)),
-            ])),
-        }
-    };
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
@@ -23210,23 +23343,19 @@ fn emit_host_run_transport_cached_in_workspace(
             )));
             if !out.status.success() {
                 build_log.push(str_value(String::from_utf8_lossy(&out.stderr).to_string()));
-                return Ok(transport_result(
-                    "build",
+                return Ok(emit_host_transport_result_value(
+                    "EmitHostBuildStepFailed",
                     process_termination_value(&out.status, ctx),
                     &out.stdout,
                     &out.stderr,
                     build_log,
-                    false,
-                    compile_started.elapsed().as_nanos(),
-                    0,
+                    ctx,
                 ));
             }
         }
 
         let cold_compile_nanos = compile_started.elapsed().as_nanos();
-        let native_started = std::time::Instant::now();
         let out = run_command(run_argv)?;
-        let native_execution_nanos = native_started.elapsed().as_nanos();
         build_log.push(str_value(format!(
             "{} -> {}",
             run_argv.join(" "),
@@ -23248,36 +23377,30 @@ fn emit_host_run_transport_cached_in_workspace(
                 )
             })?;
         }
-        return Ok(transport_result(
-            "run",
+        return Ok(emit_host_transport_result_value(
+            "EmitHostRanCold",
             process_termination_value(&out.status, ctx),
             &out.stdout,
             &out.stderr,
             build_log,
-            false,
-            cold_compile_nanos,
-            native_execution_nanos,
+            ctx,
         ));
     }
 
-    let native_started = std::time::Instant::now();
     let out = run_command(run_argv)?;
-    let native_execution_nanos = native_started.elapsed().as_nanos();
     let mut build_log: Vec<Value> = Vec::new();
     build_log.push(str_value(format!(
         "{} -> {}",
         run_argv.join(" "),
         process_termination_label(&out.status)
     )));
-    Ok(transport_result(
-        "run_cached",
+    Ok(emit_host_transport_result_value(
+        "EmitHostRanWarm",
         process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
-        true,
-        recorded_cold_compile_nanos.unwrap_or(0),
-        native_execution_nanos,
+        ctx,
     ))
 }
 
@@ -23322,45 +23445,6 @@ fn emit_host_run_transport_in_workspace(
             .map_err(|e| host_tool_spawn_failure("emit_host_run_transport", &argv[0], &program, &e))
     };
 
-    let transport_result = |phase: &str,
-                            termination: Value,
-                            stdout: &[u8],
-                            stderr: &[u8],
-                            build_log: Vec<Value>,
-                            compile_skipped: bool|
-     -> Value {
-        Value::Record {
-            type_name: ctx.sym("EmitHostTransportResult"),
-            // fields_get is a binary search by Symbol id, so a multi-field record
-            // MUST be sorted at construction; declaration order is interning-order-
-            // dependent and broke .success lookups when #6904 shifted interning.
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("phase"), str_value(phase.to_string())),
-                (ctx.sym("termination"), termination),
-                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
-                (
-                    ctx.sym("stdout_octets"),
-                    list_value(
-                        stdout
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("stderr_octets"),
-                    list_value(
-                        stderr
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (ctx.sym("build_log"), list_value(build_log)),
-            ])),
-        }
-    };
-
     let mut build_log: Vec<Value> = Vec::new();
     for argv in build_argvs {
         let out = run_command(argv)?;
@@ -23371,13 +23455,13 @@ fn emit_host_run_transport_in_workspace(
         )));
         if !out.status.success() {
             build_log.push(str_value(String::from_utf8_lossy(&out.stderr).to_string()));
-            return Ok(transport_result(
-                "build",
+            return Ok(emit_host_transport_result_value(
+                "EmitHostBuildStepFailed",
                 process_termination_value(&out.status, ctx),
                 &out.stdout,
                 &out.stderr,
                 build_log,
-                false,
+                ctx,
             ));
         }
     }
@@ -23388,13 +23472,13 @@ fn emit_host_run_transport_in_workspace(
         run_argv.join(" "),
         process_termination_label(&out.status)
     )));
-    Ok(transport_result(
-        "run",
+    Ok(emit_host_transport_result_value(
+        "EmitHostRanCold",
         process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
-        false,
+        ctx,
     ))
 }
 
@@ -23748,8 +23832,8 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
             },
 
-            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (std.primitives
-            // sha256_hex_of_text_contract).
+            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (the host realization
+            // of the declared seam std.content_hash sha256_hex_of_text).
             arm "free_call.sha256_hex_of_text" { "sha256_hex_of_text" } => {
                 Ok(Some(str_value(sha256_hex_of_text_digest(
                     expect_value_str($positional.first().copied(), "sha256_hex_of_text text")?.as_str(),
@@ -24107,6 +24191,40 @@ macro_rules! v1_builtin_arms {
                 }),
             },
 
+            // ObserveAllocationAtSubject availability: the seed interpreter runs under the default
+            // allocator and selected no counting provider, so the answer is the typed `false`, not a
+            // refusal and not a count (std.realization_measurement allocation_reading).
+            arm "free_call.observed_allocation_available" { "observed_allocation_available" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Ok(Some(Value::Bool(false))),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_available takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveAllocationAtSubject has no interpreter realization: the seed interpreter runs
+            // under the default allocator, so there is no counter to read. It REFUSES; zero is not a
+            // reading (std.realization_measurement AllocationCounter).
+            arm "free_call.observed_allocation_operations" { "observed_allocation_operations" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Err(InterpError::TypeError {
+                    msg: "observed_allocation_operations: unobservable in the interpreter (no counting allocator); only a native entry that uses AllocationCounter observes it".to_string(),
+                }),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_operations takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveAllocationAtSubject has no interpreter realization: the seed interpreter runs
+            // under the default allocator, so there is no counter to read. It REFUSES; zero is not a
+            // reading (std.realization_measurement AllocationCounter).
+            arm "free_call.observed_allocation_bytes" { "observed_allocation_bytes" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Err(InterpError::TypeError {
+                    msg: "observed_allocation_bytes: unobservable in the interpreter (no counting allocator); only a native entry that uses AllocationCounter observes it".to_string(),
+                }),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_bytes takes exactly one boundary label".to_string(),
+                }),
+            },
+
             arm "free_call.hash_combine" { "hash_combine" } => match $positional.as_slice() {
                 [Value::Str(a), Value::Str(b)] if $positional.len() == 2 => {
                     if !v1_rt::is_hash_digest(a) || !v1_rt::is_hash_digest(b) {
@@ -24386,26 +24504,15 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.decl_facts_at" { "decl_facts_at" } => {
                 let pool_roots = expect_str_list($positional.first().copied(), "decl_facts_at")?;
-                let qualified_name = expect_value_str($positional.get(1).copied(), "decl_facts_at")?;
+                let qualified_names =
+                    expect_str_list($positional.get(1).copied(), "decl_facts_at")?;
+                let type_names = expect_str_list($positional.get(2).copied(), "decl_facts_at")?;
                 Ok(Some(crate::coproduct_reflection::eval_decl_facts_at(
                     $ctx,
                     &pool_roots,
-                    qualified_name.as_str(),
+                    &qualified_names,
+                    &type_names,
                 )?))
-            },
-
-            arm "free_call.type_declarer_qualified_names" { "type_declarer_qualified_names" } => {
-                let pool_roots =
-                    expect_str_list($positional.first().copied(), "type_declarer_qualified_names")?;
-                let bare_name =
-                    expect_value_str($positional.get(1).copied(), "type_declarer_qualified_names")?;
-                Ok(Some(
-                    crate::coproduct_reflection::eval_type_declarer_qualified_names(
-                        $ctx,
-                        &pool_roots,
-                        bare_name.as_str(),
-                    )?,
-                ))
             },
 
             arm "free_call.module_declaration_facts_at" { "module_declaration_facts_at" } => {
@@ -24566,6 +24673,15 @@ macro_rules! v1_builtin_arms {
                                 $ctx.sym("argv_input_refs"),
                                 list_value(
                                     row.argv_input_refs
+                                        .into_iter()
+                                        .map(str_value)
+                                        .collect::<Vec<_>>(),
+                                ),
+                            ),
+                            (
+                                $ctx.sym("executable_input_refs"),
+                                list_value(
+                                    row.executable_input_refs
                                         .into_iter()
                                         .map(str_value)
                                         .collect::<Vec<_>>(),
@@ -25001,22 +25117,6 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            arm "free_call.observe_declared_import_closure_symbol_binding" { "observe_declared_import_closure_symbol_binding" } => {
-                let pool_roots = expect_str_list($positional.first().copied(), $name)?;
-                let entry_path = expect_str($positional.get(1).copied(), $name)?;
-                let consumer_module = expect_str($positional.get(2).copied(), $name)?;
-                let symbol = expect_str($positional.get(3).copied(), $name)?;
-                Ok(Some(declared_import_closure_binding_value(
-                    crate::cli_run::observe_declared_import_closure_symbol_binding(
-                        &pool_roots,
-                        &entry_path,
-                        &consumer_module,
-                        &symbol,
-                    ),
-                    $ctx,
-                )))
-            },
-
             arm "free_call.witness_layer_roots_compile_clean_check" { "witness_layer_roots_compile_clean_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_check(),
             ))),
@@ -25065,6 +25165,9 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::inert_carrier_declared_count_live(),
             ))),
 
+            arm "free_call.witness_deferral_freeze_population_census" { "witness_deferral_freeze_population_census" } => Ok(Some(str_value(
+                crate::cli_run::witness_deferral_freeze_population_census(),
+            ))),
             arm "free_call.commit_witness_claim_roster_unresolvable_count" { "commit_witness_claim_roster_unresolvable_count" } => Ok(Some(Value::Int(
                 crate::cli_run::commit_witness_claim_roster_unresolvable_count(),
             ))),
@@ -26659,7 +26762,7 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
 }
 
 // SHA-256 of the text's UTF-8 bytes, lowercase hex: the host realization of the builtin
-// sha256_hex_of_text (std.primitives sha256_hex_of_text_contract), the same RustCrypto sha2 the HMAC
+// sha256_hex_of_text (declared at std.content_hash sha256_hex_of_text), the same RustCrypto sha2 the HMAC
 // seam below uses. The pure fold extdeps.crypto.sha2 sha256_hex shares its known answers.
 fn sha256_hex_of_text_digest(text: &str) -> String {
     use sha2::{Digest, Sha256};

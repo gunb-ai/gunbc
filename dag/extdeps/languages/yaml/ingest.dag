@@ -11,6 +11,7 @@ import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping
 }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -73,7 +74,7 @@ data yaml_refused_text: String = "\u{0}\u{1}\u{2}\u{3}\u{4}\u{5}\u{6}\u{7}\u{8}\
 // (gunbc.recurring_failure_mode char_brand_admits_any_int).
 type YamlRefusedCharacter { cp: Int, spelled: String }
 
-data yaml_refused_rows: List<YamlRefusedCharacter> = map(enumerate(chars(s: yaml_refused_text)), pair => YamlRefusedCharacter { cp: pair.second, spelled: substring(s: yaml_refused_text, start: pair.first, end: pair.first + 1) })
+data yaml_refused_rows: List<YamlRefusedCharacter> = map(enumerate(chars(text: yaml_refused_text)), pair => YamlRefusedCharacter { cp: pair.second, spelled: substring(s: yaml_refused_text, start: pair.first, end: pair.first + 1) })
 
 fn yaml_first_refused(text: String) -> YamlRefusedCharacter? {
   fold(yaml_refused_rows, init: none, f: (acc, r) => match acc {
@@ -861,7 +862,7 @@ fn yaml_map_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
   let entries = flat_map(reads, r => match r { YamlEntryAccepted { entry: e } => [e]  YamlEntryRefused { line: _, reason: _ } => [] })
   if (entries |> count) != (chunks |> count) {
     yaml_first_entry_refusal(chunks: chunks, reads: reads, index: 0, line: base)
-  } else if yaml_key_sequence_is_clean(keys: join(map(entries, e => e.key), yaml_key_separator), count: entries |> count) {
+  } else if yaml_key_sequence_is_clean(keys: join(map(entries, e => e.key), yaml_key_separator), expected_count: entries |> count) {
     YamlBlockParsed { value: YamlMapping { entries: entries } }
   } else {
     yaml_map_block_keys(chunks: chunks, entries: entries, base: base)
@@ -874,12 +875,12 @@ fn yaml_map_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
 data yaml_key_separator: String = "\u{3}"
 
 // True exactly when the spelled keys split back into `count` keys and no key repeats.
-fn yaml_key_sequence_is_clean(keys: String, count: Int) -> Bool {
+fn yaml_key_sequence_is_clean(keys: String, expected_count: Int) -> Bool {
   let ks = split(s: keys, delimiter: yaml_key_separator)
-  if (ks |> count) != count {
+  if (ks |> count) != expected_count {
     false
   } else {
-    (map_keys(fold(ks, init: empty_map(), f: (m, k) => map_insert(m, k, true))) |> count) == count
+    (map_keys(fold(ks, init: empty_map(), f: (m, k) => map_insert(m, k, true))) |> count) == expected_count
   }
 }
 

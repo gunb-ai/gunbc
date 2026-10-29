@@ -25,6 +25,14 @@ data secure_enclave_signing_suite: SignatureSuite = EcdsaP256Sha256
 data secure_enclave_public_key_encoding: PublicKeyEncoding = Sec1Uncompressed
 data secure_enclave_signature_encoding: SignatureEncoding = P1363FixedWidth
 
+// THE BLOB IS A TYPE OF ITS OWN, AND IT IS NOT A STRING THE APP MAY WRITE. dataRepresentation is the
+// ONLY thing a consumer may keep about an enclave key (same cited page as the anchor above): the app
+// stores it, hands it back, and the enclave alone can use it. That makes it a carrier the durable
+// enrolment state must persist, so it gets a name here rather than being re-declared as a bare
+// NonEmptyStr by whoever needs it — a bare string would let a caller persist bytes no enclave ever
+// produced. It is base64 on the wire and opaque in the model; nothing in this tree decodes it.
+type SecureEnclaveWrappedKeyBlob = NonEmptyStr where brand("SecureEnclaveWrappedKeyBlob")
+
 // THE SIGNED INPUT IS HASHED BY CRYPTOKIT, NOT BY THE CALLER. PrivateKey.signature(for: Data) hashes
 // the data with SHA-256 and signs the digest, which is the verify side's expectation under
 // EcdsaP256Sha256. Signing a pre-computed digest through signature(for: digest) and verifying the

@@ -1,21 +1,22 @@
 module test.claim.compute_unit_stop_observation_witness
 
 import std.types { Bool, String }
-import gunbc.compile_census_probe { blocking_class_count_for }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit}
+import std.process { ProcessExit }
 
 // NEGATIVE CONTROL: compute_run_unit takes a CLOSED ComputeUnitStopObservation, never a property list,
 // so a caller cannot append MemoryMax/WorkingDirectory/Slice/KillMode against the grant that
 // compute_unit_properties ties to the unit. The forged source passes a raw SystemdRunProperty
 // (MemoryMax) at the observation operand and must be refused as a TypeMismatch (the closure of compute_run_unit carries unrelated census rows, so the assertion is on the class, not the total); the accepted source passes the
 // closed arm and must compile, proving the census ran and the refusal is the operand.
-data forged_raw_property_source: String = "module probe_forged_raw_unit_property\nimport gunbc.compute.work_provider_local { compute_run_unit, ComputeUnitRunReading, ComputeLayout }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.systemd { MemoryMax }\nimport extdeps.systemd.systemd_run { SystemdRunProperty }\nimport std.types { String, FilePath }\nimport std.measure { kibibyte }\nfn forged(instance: HostDashboardInstance, layout: ComputeLayout, dir: FilePath) -> ComputeUnitRunReading {\n  compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, stop_observation: SystemdRunProperty { property: MemoryMax, value: \"infinity\" })\n}\n"
+data forged_raw_property_source: String = "module probe_forged_raw_unit_property\nimport gunbc.compute.work_provider_local { compute_run_unit, ComputeUnitRunReading, ComputeLayout, NoPathVirtualization }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.systemd { MemoryMax }\nimport extdeps.systemd.systemd_run { SystemdRunProperty }\nimport std.types { String, FilePath }\nimport std.measure { kibibyte }\nfn forged(instance: HostDashboardInstance, layout: ComputeLayout, dir: FilePath) -> ComputeUnitRunReading {\n  compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, stop_observation: SystemdRunProperty { property: MemoryMax, value: \"infinity\" }, path_virtualization: NoPathVirtualization)\n}\n"
 
-data accepted_closed_observation_source: String = "module probe_accepted_closed_observation\nimport gunbc.compute.work_provider_local { compute_run_unit, ComputeUnitRunReading, ComputeLayout, SccacheStatsAtStop }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport std.types { String, FilePath }\nimport std.measure { kibibyte }\nfn accepted(instance: HostDashboardInstance, layout: ComputeLayout, dir: FilePath) -> ComputeUnitRunReading {\n  compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, stop_observation: SccacheStatsAtStop)\n}\n"
+data accepted_closed_observation_source: String = "module probe_accepted_closed_observation\nimport gunbc.compute.work_provider_local { compute_run_unit, ComputeUnitRunReading, ComputeLayout, SccacheStatsAtStop, NoPathVirtualization }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport std.types { String, FilePath }\nimport std.measure { kibibyte }\nfn accepted(instance: HostDashboardInstance, layout: ComputeLayout, dir: FilePath) -> ComputeUnitRunReading {\n  compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, stop_observation: SccacheStatsAtStop, path_virtualization: NoPathVirtualization)\n}\n"
 
-test fn a_compute_unit_cannot_take_a_raw_property_at_stop() -> Bool {
-  blocking_class_count_for(source: forged_raw_property_source, wanted_class: "TypeMismatch") > 0
+test fn a_compute_unit_cannot_take_a_raw_property_at_stop() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: forged_raw_property_source, wanted_class: "TypeMismatch"), holds: fn(n) { n > 0 }))
 }
 
-test fn a_compute_unit_takes_the_closed_stop_observation() -> Bool {
-  blocking_class_count_for(source: accepted_closed_observation_source, wanted_class: "TypeMismatch") == 0
+test fn a_compute_unit_takes_the_closed_stop_observation() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: accepted_closed_observation_source, wanted_class: "TypeMismatch"), holds: fn(n) { n == 0 }))
 }

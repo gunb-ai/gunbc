@@ -1,0 +1,182 @@
+module product.electrical.source_draw
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { Volt, Milliampere, milliampere, milliampere_count, volt_count }
+import product.placement_supply { PhysicalAssetIdentity }
+import product.electrical.connectivity { ElectricalTerminalRef }
+import product.electrical.continuity {
+  BenchConditions,
+  PowerState,
+  Unpowered,
+  Energized,
+  EvidenceRef,
+  ProbeRecord,
+  probe_record_inferred,
+}
+
+// WHAT A CURRENT-LIMITED BENCH SOURCE OBSERVED WHILE FEEDING A BOARD, KEPT AS AN OBSERVATION. A source
+// display reads the current the source delivers. Read at the same setting with the load disconnected,
+// it reads the display's own zero, so a board is shown to draw only by a loaded reading above that open
+// reading. A source that held its setting over a stated span, below its limit and without its
+// protection tripping or its constant-current mode engaging, BOUNDS what the board drew over that span;
+// it says nothing about which circuit drew it, and nothing about how the draw varied inside the span
+// unless the steps were read one by one (product.electrical.continuity keeps multimeter readings; this
+// module keeps what a powered source read).
+
+type SourceProtection
+  = OverCurrentShutoffArmed
+  | ConstantCurrentLimitOnly
+
+type SourceSetting {
+  voltage: Volt
+  current_limit: Milliampere
+  protection: SourceProtection
+}
+
+// What the source did over the span the operator raised it through, up to its setting.
+type SourceBehaviour
+  = HeldBelowLimit
+  | EnteredConstantCurrent
+  | ProtectionTripped { at: Volt }
+
+// feed and return_terminal are where the source's positive and negative leads sat; leads says whether
+// each point was recorded or inferred. stepping_peak is the highest brief reading seen while stepping
+// the voltage, its cause unread.
+type SourceDrawObservation {
+  asset: PhysicalAssetIdentity
+  feed: ElectricalTerminalRef
+  return_terminal: ElectricalTerminalRef
+  leads: ProbeRecord
+  conditions: BenchConditions
+  setting: SourceSetting
+  open_reading: Milliampere
+  loaded_reading: Milliampere
+  stepping_peak: Milliampere?
+  behaviour: SourceBehaviour
+  evidence: List<EvidenceRef>
+}
+
+type DrawGap
+  = SourceNotEnergized
+  | LoadNotDistinguished
+
+type DrawContradiction
+  = LimitReached
+  | TrippedAt { at: Volt }
+
+type SourceDrawStanding
+  = DrawBounded { observation: SourceDrawObservation, above_open: Milliampere, headroom: Milliampere }
+  | DrawBoundContradicted { observation: SourceDrawObservation, cause: DrawContradiction }
+  | DrawUnestablished { observation: SourceDrawObservation, gaps: List<DrawGap> }
+
+fn energized_gaps(c: BenchConditions) -> List<DrawGap> {
+  match c.power {
+    Energized => []
+    Unpowered => [SourceNotEnergized]
+  }
+}
+
+fn load_gaps(o: SourceDrawObservation) -> List<DrawGap> {
+  if milliampere_count(i: o.loaded_reading) > milliampere_count(i: o.open_reading) { [] } else { [LoadNotDistinguished] }
+}
+
+fn reaches(reading: Nat, limit: Nat) -> Bool {
+  reading >= limit
+}
+
+fn held_standing(o: SourceDrawObservation) -> SourceDrawStanding {
+  let loaded = milliampere_count(i: o.loaded_reading)
+  let limit = milliampere_count(i: o.setting.current_limit)
+  if reaches(reading: loaded, limit: limit) {
+    DrawBoundContradicted { observation: o, cause: LimitReached }
+  } else {
+    let gaps = concat(energized_gaps(c: o.conditions), load_gaps(o: o))
+    match gaps.first() {
+      Present { value: _ } => DrawUnestablished { observation: o, gaps: gaps }
+      Absent => DrawBounded { observation: o, above_open: milliampere(count: loaded - milliampere_count(i: o.open_reading)), headroom: milliampere(count: limit - loaded) }
+    }
+  }
+}
+
+// A trip or constant current contradicts the bound whatever else was read; below the limit the draw is
+// bounded only when the source was energized and the loaded reading stands above the open one.
+fn source_draw_standing(o: SourceDrawObservation) -> SourceDrawStanding {
+  match o.behaviour {
+    ProtectionTripped { at } => DrawBoundContradicted { observation: o, cause: TrippedAt { at: at } }
+    EnteredConstantCurrent => DrawBoundContradicted { observation: o, cause: LimitReached }
+    HeldBelowLimit => held_standing(o: o)
+  }
+}
+
+fn is_draw_bounded(s: SourceDrawStanding) -> Bool {
+  match s {
+    DrawBounded { observation: _, above_open: _, headroom: _ } => true
+    DrawBoundContradicted { observation: _, cause: _ } => false
+    DrawUnestablished { observation: _, gaps: _ } => false
+  }
+}
+
+fn is_draw_contradicted(s: SourceDrawStanding) -> Bool {
+  match s {
+    DrawBoundContradicted { observation: _, cause: _ } => true
+    DrawBounded { observation: _, above_open: _, headroom: _ } => false
+    DrawUnestablished { observation: _, gaps: _ } => false
+  }
+}
+
+fn ma_text(i: Milliampere) -> String {
+  join([to_string(milliampere_count(i: i)), " mA"], "")
+}
+
+fn protection_text(p: SourceProtection) -> String {
+  match p {
+    OverCurrentShutoffArmed => "over-current shutoff armed"
+    ConstantCurrentLimitOnly => "constant-current limit only"
+  }
+}
+
+fn setting_only_text(s: SourceSetting) -> String {
+  join([to_string(volt_count(v: s.voltage)), " V through a ", ma_text(i: s.current_limit), " limit with ", protection_text(p: s.protection)], "")
+}
+
+fn setting_text(o: SourceDrawObservation) -> String {
+  setting_only_text(s: o.setting)
+}
+
+fn peak_text(o: SourceDrawObservation) -> String {
+  match o.stepping_peak {
+    Absent => ""
+    Present { value: p } => join(["; brief readings up to ", ma_text(i: p), " while stepping, cause unread"], "")
+  }
+}
+
+fn leads_text(o: SourceDrawObservation) -> String {
+  if probe_record_inferred(r: o.leads) { ", on lead points inferred from the operator's words" } else { "" }
+}
+
+fn gap_text(g: DrawGap) -> String {
+  match g {
+    SourceNotEnergized => "the source is not recorded as energized"
+    LoadNotDistinguished => "the loaded reading does not stand above the open reading, so no draw is distinguished from the display's zero"
+  }
+}
+
+fn source_draw_text(s: SourceDrawStanding) -> String {
+  match s {
+    DrawBounded { observation: o, above_open, headroom } => join([
+      "fed at ", setting_text(o: o), ", it drew ", ma_text(i: o.loaded_reading), " (", ma_text(i: o.open_reading), " with the load disconnected, so ", ma_text(i: above_open),
+      " is the board's), held below the limit by ", ma_text(i: headroom), " with no trip over the ramp to the setting", peak_text(o: o), leads_text(o: o),
+    ], "")
+    DrawBoundContradicted { observation: o, cause } => join([
+      "fed at ", setting_text(o: o), ", the draw reached the limit (",
+      match cause {
+        LimitReached => "constant current or a reading at the limit"
+        TrippedAt { at } => join(["protection tripped at ", to_string(volt_count(v: at)), " V"], "")
+      },
+      ")",
+    ], "")
+    DrawUnestablished { observation: o, gaps } => join(["fed at ", setting_text(o: o), ", no draw established: ", join(map(gaps, g => gap_text(g: g)), "; ")], "")
+  }
+}

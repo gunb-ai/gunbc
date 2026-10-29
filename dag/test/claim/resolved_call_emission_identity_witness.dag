@@ -48,12 +48,14 @@ test fn w_primitive_bound_empty_map_stays_runtime_bound() -> Bool {
 
 // THE DISCRIMINATING RED, in its first live name. `contains` is both a v1_rt bridge name and an
 // imported std.algebra declaration; before the repair the leaf spelling won and this emitted
-// the unrelated two-String primitive.
+// the unrelated two-String primitive. The declaration's emitted path is crate::std_algebra since
+// gunbc#13860 retired v2.std.algebra into std.algebra; the positive expectation named the retired
+// module and so failed on a correct emission until it was repointed.
 test fn w_imported_generic_contains_keeps_declared_identity() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.declared_contains_probe\nimport std.types { Int, Bool }\nimport std.occurrence_identity { OccurrenceId }\nimport std.algebra { FreeMonoid, contains }\nfn int_eq(left: Int, right: Int) -> Bool { left == right }\nfn probe(xs: FreeMonoid<Int>) -> Bool { contains(xs: xs, item: 1, eq: int_eq) }\n",
     "src/test_claim_declared_contains_probe.rs",
-    ["crate::v2_std_algebra::contains("],
+    ["crate::std_algebra::contains("],
     ["v1_rt::contains("]
   )
 }
@@ -62,12 +64,13 @@ test fn w_imported_generic_contains_keeps_declared_identity() -> Bool {
 // READ. `map_get` HAS a projection roster row, so a repair that treated any roster row as
 // "lower to the bridge" would go red here: the row is DivergentProjection -- the declaration
 // returns Outcome<Optional<V>> and the primitive returns Optional<V> -- and the declaration is
-// what the author called.
+// what the author called. It is emitted from v2.std.witness since gunbc#13872 moved map_get_checked
+// there out of the retired v2.std.collection.
 test fn w_divergent_map_get_checked_keeps_declared_outcome_identity() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.declared_map_get_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.witness { map_get_checked }\nimport v2.std.diagnostic { Outcome }\nimport std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { map_get_checked(m: m, key: \"key\") }\n",
     "src/test_claim_declared_map_get_probe.rs",
-    ["crate::v2_std_collection::map_get_checked("],
+    ["crate::v2_std_witness::map_get_checked("],
     ["v1_rt::map_get("]
   )
 }
@@ -128,5 +131,51 @@ test fn w_algebra_string_contains_delegate_reaches_the_bridge() -> Bool {
     "src/test_claim_algebra_string_contains_probe.rs",
     ["v1_rt::string_contains("],
     []
+  )
+}
+
+// std.host_text chars (operator ruling H4) reaches its Rust realization BY DECLARATION: the imported
+// HostRealizedSeam is emitted as the v1_rt::chars bridge, selected by its projection row.
+test fn w_host_text_chars_reaches_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.host_text_chars_probe\nimport std.types { Char, List }\nimport std.host_text { chars }\nfn probe() -> List<Char> { chars(text: \"a\") }\n",
+    "src/test_claim_host_text_chars_probe.rs",
+    ["v1_rt::chars("],
+    []
+  )
+}
+
+// A same-named ordinary fn keeps its authored body: realization is keyed by std.host_text's
+// declaration, never by the spelling `chars`.
+test fn w_homonym_chars_keeps_authored_body() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.homonym_chars_probe\nimport std.integer { Int }\nfn chars(text: Int) -> Int { 424242 }\nfn probe() -> Int { chars(text: 1) }\n",
+    "src/test_claim_homonym_chars_probe.rs",
+    ["424242"],
+    ["v1_rt::chars("]
+  )
+}
+
+
+// std.algebra list_push (the #14751 declaration) reaches its Rust realization BY DECLARATION: the
+// imported HostRealizedSeam is emitted as the v1_rt::rc_list_push bridge, selected by its projection
+// row, and is NOT emitted as a self-recursive call to itself.
+test fn w_algebra_list_push_reaches_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.algebra_list_push_probe\nimport std.types { Int, List }\nimport std.algebra { list_push }\nfn probe() -> List<Int> { list_push(xs: [1], item: 2) }\n",
+    "src/test_claim_algebra_list_push_probe.rs",
+    ["v1_rt::rc_list_push("],
+    []
+  )
+}
+
+// A same-named ordinary fn keeps its authored body: the bridge is keyed by std.algebra's declaration
+// through its projection row, never by the spelling `list_push`.
+test fn w_homonym_list_push_keeps_authored_body() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.homonym_list_push_probe\nimport std.integer { Int }\nfn list_push(xs: Int, item: Int) -> Int { 424243 }\nfn probe() -> Int { list_push(xs: 1, item: 2) }\n",
+    "src/test_claim_homonym_list_push_probe.rs",
+    ["424243"],
+    ["v1_rt::rc_list_push("]
   )
 }

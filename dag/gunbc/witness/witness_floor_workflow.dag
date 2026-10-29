@@ -15,7 +15,7 @@ import gunbc.roadmap.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
 }
 import gunbc.ci.ci_release_bins { ci_floor_invoked_bins }
-import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_build_partition_crates_command, repo_self_clippy_command }
+import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_build_partition_crates_command, repo_self_clippy_command, repo_self_build_env_preamble }
 import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
@@ -801,7 +801,17 @@ fn witness_floor_build_step(step_name: String, build_script: String) -> Step {
   RunStep {
     name: Present { value: step_name },
     id: Present { value: "build_witness_fold" },
-    run: concat(wrap_command_with_floor_attempt_receipt(command: build_script), "\n"),
+    // THE PREAMBLE GOES FIRST, OUTSIDE THE FLOOR WRAPPER, AND BOTH HALVES OF THAT PLACEMENT ARE
+    // LOAD-BEARING. It precedes the wrapper because it is not part of the measured attempt: the
+    // receipt the wrapper records is the build's exit, and a build that never started because its
+    // environment refused to be spelled is not a floor attempt to attribute -- under `bash -e` (the
+    // default shell for a `run:` block with no shell: key) the preamble's refusal aborts the step
+    // before the wrapper ever runs. It is emitted per step rather than set at job level because the
+    // anchors are only knowable inside a working directory, which is a step property. A step that
+    // builds a seed binary WITHOUT this line gets a runner-relative sha256, which is the failure
+    // mode the falsifier catches; the census of seed-binary build steps and their producers is
+    // recorded in gunbc.recurring_failure_mode.seed_sha256_is_runner_relative.
+    run: join([repo_self_build_env_preamble(), wrap_command_with_floor_attempt_receipt(command: build_script), ""], "\n"),
     shell: none,
     env: none,
     working_directory: none,
@@ -1141,6 +1151,13 @@ fn witness_toolchain_filesystem_end_probe_step() -> Step {
 // recorder prevents either fact from weakening the other: a missing stat cannot trip this wall,
 // and a missing home cannot be rendered as a merely observational `unset` and allowed onward.
 fn witness_toolchain_homes_isolated_guard_step() -> Step {
+  witness_toolchain_homes_isolated_guard_step_under(condition: Present { value: "!cancelled()" })
+}
+
+// THE SAME WALL UNDER THE CALLER'S CONDITION. The fleet lanes run it under !cancelled() so it still refuses after an
+// earlier step failed; a qualification floor admits no conditioned step (gunbc.runner.runner_qualification_dispatch
+// qualification_floor_admission) and there a failed earlier step already fails the job, so it takes none.
+fn witness_toolchain_homes_isolated_guard_step_under(condition: String?) -> Step {
   RunStep {
     name: Present { value: "Require isolated toolchain homes" },
     id: none,
@@ -1148,7 +1165,7 @@ fn witness_toolchain_homes_isolated_guard_step() -> Step {
     shell: none,
     env: none,
     working_directory: none,
-    if_condition: Present { value: "!cancelled()" },
+    if_condition: condition,
     continue_on_error: none,
     timeout_minutes: none
   }

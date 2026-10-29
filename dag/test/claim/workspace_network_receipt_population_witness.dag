@@ -1,19 +1,32 @@
 module test.claim.workspace_network_receipt_population_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, List }
+import std.nat { nat_range_inclusive }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, srv1_microvm_shakedown_slot }
-import gunbc.runner.runner_microvm_network_receipt_store { parse_host_network_receipt, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, srv1_microvm_shakedown_slot, srv1_revision_job_slot }
+import gunbc.runner.runner_microvm_network_receipt_store { parse_host_network_receipt, parse_host_network_receipt_over, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
 import gunbc.runner.runner_microvm_network { parse_converged_slot_network, ConvergedSlotNetworkMalformed,
-  slot_network_sanitation_subject, SanitationSubjectAdmitted }
+  slot_network_sanitation_subject, SanitationSubjectAdmitted, SanitationSubjectRefused, SlotNotInConvergedPopulation }
 import test.fixture.srv1_network_receipt { observed_srv1_network_receipt }
 
 // Actual publisher bytes discriminate the previous consumer's narrower fabric-cell roster.
 // Parsing the host receipt does not authorize another slot for fabric execution.
+// THE POPULATION THE FIXTURE WAS OBSERVED UNDER: srv1 at width 11 -- fleet slots 01..10 plus the
+// shakedown slot. Named as such and SUPPLIED at the reader's boundary. DISSOLVES when the host step
+// after the srv1-14 PR converges gunbc-tap14 and a fresh receipt replaces observed_srv1_network_receipt:
+// the supplied arm goes and the production route below reads the new bytes.
+fn network_receipt_fixture_population() -> List<RunnerSlotIdentity> {
+  concat(
+    map(nat_range_inclusive(lo: 1, hi: 10), i => RunnerSlotIdentity { host: operator_host_srv1, slot_index: i }),
+    [srv1_microvm_shakedown_slot()]
+  )
+}
+
 test fn published_host_network_population_reaches_the_workspace_consumer() -> Bool {
   (match parse_converged_slot_network(text: observed_srv1_network_receipt,
     candidates: fabric_execution_slot_identities()) { ConvergedSlotNetworkMalformed { cause: _ } => true other => false })
-    && (match parse_host_network_receipt(text: observed_srv1_network_receipt, host: operator_host_srv1) {
+    && (match parse_host_network_receipt_over(text: observed_srv1_network_receipt, host: operator_host_srv1, population: network_receipt_fixture_population()) {
       NetworkReceiptPresent { receipt } => receipt.slots.count() == 10
         && (match slot_network_sanitation_subject(slot: srv1_microvm_shakedown_slot(), receipt: receipt) {
           SanitationSubjectAdmitted { subject: _ } => true other => false
@@ -24,7 +37,7 @@ test fn published_host_network_population_reaches_the_workspace_consumer() -> Bo
 
 test fn host_network_reader_refuses_another_receipt_host() -> Bool {
   let text = join(split(s: observed_srv1_network_receipt, delimiter: "host=srv1"), "host=srv2")
-  match parse_host_network_receipt(text: text, host: operator_host_srv1) {
+  match parse_host_network_receipt_over(text: text, host: operator_host_srv1, population: network_receipt_fixture_population()) {
     StoredNetworkReceiptUnreadable { reason } => reason == "network receipt names another host"
     other => false
   }
@@ -36,4 +49,21 @@ test fn host_network_reader_refuses_an_unenrolled_network_slot() -> Bool {
     StoredNetworkReceiptUnreadable { reason: _ } => true
     other => false
   }
+}
+
+// THE PRODUCTION ROUTE: the real committed population (now carrying srv1-14) read against the
+// pre-srv1-14 receipt is refused, and the revision-job slot has no network subject in it -- a host that
+// has not converged the new slot's tap is not read as converged.
+test fn the_real_population_refuses_a_receipt_observed_before_the_revision_job_slot() -> Bool {
+  (match parse_host_network_receipt(text: observed_srv1_network_receipt, host: operator_host_srv1) {
+    StoredNetworkReceiptUnreadable { reason: _ } => true
+    other => false
+  })
+    && (match parse_host_network_receipt_over(text: observed_srv1_network_receipt, host: operator_host_srv1, population: network_receipt_fixture_population()) {
+      NetworkReceiptPresent { receipt } => match slot_network_sanitation_subject(slot: srv1_revision_job_slot(), receipt: receipt) {
+        SanitationSubjectRefused { refusal: SlotNotInConvergedPopulation } => true
+        other => false
+      }
+      other => false
+    })
 }

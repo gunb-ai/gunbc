@@ -1,6 +1,7 @@
 module std.import_statement
 
 import std.types { FilePath, Int, List, NonEmptyStr, SourceSpan, String }
+import std.algebra { collection_join_shape, list_push }
 
 // THE TYPED SOURCE REWRITE THAT REMOVES A COMPLETE IMPORT STATEMENT.
 //

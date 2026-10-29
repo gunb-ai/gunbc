@@ -1,0 +1,402 @@
+module gunbc.serving.gpu_bench_warm_standing
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.optional { Present, Absent }
+import std.nat { Nat, nat_to_decimal_string }
+import std.measure { TokenCount, token_count, measure_add, measure_le }
+import std.algebra { Cons, Empty }
+import std.list { list_member }
+import extdeps.gpu_bench.request_v2 {
+  GpuBenchRequestV2, GpuBenchPhase, GpuBenchPhasePrime, GpuBenchPhaseWarm, GpuBenchPhaseShort,
+  GpuBenchRequestStatus, GpuBenchRequestOk, GpuBenchRequestError,
+}
+import extdeps.gpu_bench.kit_log {
+  gpu_bench_capacity_ok_tokens,
+  CapacityOkRead, CapacityOkAbsent, CapacityOkMalformed,
+}
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ObservedByReceipt }
+import extdeps.ninfer.replayed_tokens_total {
+  ninfer_replayed_tokens_total, ninfer_replayed_tokens_total_standing,
+  NinferReplayedTokensRead, NinferReplayedTokensAbsent, NinferReplayedTokensMalformed,
+}
+
+// WARM-PERFORMANCE ELIGIBILITY FROM A GPU-BENCH V2 RECEIPT, not a rate. A tokens-per-second field
+// beside a working set the measured KV pool cannot hold is not engine evidence
+// (gunbc.recurring_failure_mode.benchmark_warm_capacity_violation_read_as_engine_performance).
+// CONSUMER: P4 home-serving Pareto; only WarmValid is a funded axis. Measured KV is a supplied
+// reading of the launch (CAPACITY_OK from the kit log), never an estimated footprint.
+//
+// THREE STAGES, AND ONLY THE LAST ONE MINTS THE EVIDENCE. The receipt is a list of request rows, and
+// nothing about a list makes it a warm run, so the judgment is split where its premises split:
+//
+//   List<GpuBenchRequestV2>                    -> GpuBenchWarmRunAdmission   (is this one warm run?)
+//   GpuBenchWarmRunAdmission + CAPACITY_OK     -> WarmCapacityCheck          (does its working set fit?)
+//   WarmCapacityCheck + replay evidence        -> GpuBenchWarmStanding       (is it engine evidence?)
+//
+// The split is not tidiness. While the capacity step returned GpuBenchWarmStanding directly, WarmValid
+// was constructible by any caller that stopped there -- and a caller that wants "the capacity check" is
+// exactly the caller that stops there -- while P4 was already told to treat WarmValid as a funded axis.
+// THE FINAL EVIDENCE TYPE BEING USABLE AS AN INTERMEDIATE WAS THE DEFECT, and it is fixed by taking that
+// type out of the earlier signatures, because this language has no private constructor to lean on. The
+// only operations that return GpuBenchWarmStanding are now gpu_bench_warm_standing_after_replay and
+// gpu_bench_warm_standing_with_ninfer_log, and both require the replay evidence at their boundary: you
+// cannot ask for the verdict without being asked for the counter that earns it.
+//
+// WHY THE ONE-CALL ENTRY POINT RE-ADMITS THE ROWS RATHER THAN TAKING AN ADMISSION. A variant here cannot
+// be made private, so a determined caller can write WarmRunAdmitted { ... } by hand. Doing so buys it
+// nothing: the entry points re-admit the rows themselves, so a forged admission is not a ticket that
+// skips a fold. The admission verdict exists to be CLAIMED AND CITED -- by the witnesses here, and by
+// the P4 binder that has to record which run it is funding -- never handed back to the fold that derives
+// it.
+
+// THE FINAL VERDICT, constructible only from stage 3.
+type GpuBenchWarmStanding
+  = WarmValid { working_set_tokens: TokenCount, measured_kv_tokens: TokenCount }
+  | WarmOverCapacity { working_set_tokens: TokenCount, measured_kv_tokens: TokenCount }
+  | WarmRejected { cause: NonEmptyStr }
+  | WarmCapacityUnread { cause: NonEmptyStr }
+
+// ── STAGE 1 ──────────────────────────────────────────────────────────────────────────────────────
+// Does this bag of rows describe one warm run at all? Each refusal below is a way a receipt can look
+// like a warm run while proving nothing: a prime with no warm attempt behind it, two runs or two
+// launches glued into one receipt, or a warm request against a session that was never primed and
+// retained -- a cold request that got to go first and was timed as if it were warm.
+type GpuBenchWarmRunAdmission
+  = WarmRunAdmitted { working_set_tokens: TokenCount }
+  | WarmRunRefused { cause: NonEmptyStr }
+
+// THE RETAINED PRIME COHORT THE ROWS ADVERTISE. The kit stamps the same retained figure on every row
+// of a launch, so the rows either agree or the receipt was assembled from more than one launch. Absent
+// is not zero, and it is not reachable either: the parser refuses an empty stream. The arm keeps the
+// judgment total; no caller lands on it.
+type WarmRetainedCohort
+  = WarmRetained { retained: Nat }
+  | WarmRetainedInconsistent { retained: Nat }
+  | WarmRetainedAbsent { cause: NonEmptyStr }
+
+// The rows carry run and round because the kit bound each request to the run and the round that
+// produced it, so disagreement on the RUN is a receipt that was never one run. ROUND IS NOT CHECKED,
+// AND THAT IS DELIBERATE: a warm run primes its cohort at round 0 and then replays it over rounds 1..N,
+// so the committed receipt legitimately spans 61 rounds (8 prime rows at round 0, 260 warm rows at
+// rounds 1-60). Demanding one round would refuse a real warm run. The phase field carries the
+// sequencing, which is why "was there a warm attempt at all" is the question that has to be asked.
+fn gpu_bench_mixed_run(records: List<GpuBenchRequestV2>) -> Bool {
+  let first = match records {
+    Empty => Absent
+    Cons { head: r, tail: _ } => Present { value: r.run }
+  }
+  match first {
+    Absent => false
+    Present { value: run } => any(records, r => r.run != run)
+  }
+}
+
+fn gpu_bench_any_prime_or_warm_failed(records: List<GpuBenchRequestV2>) -> Bool {
+  any(records, r => match r.status {
+    GpuBenchRequestOk => false
+    GpuBenchRequestError { detail: _ } => match r.phase {
+      GpuBenchPhasePrime => true
+      GpuBenchPhaseWarm => true
+      GpuBenchPhaseShort => false
+    }
+  })
+}
+
+fn gpu_bench_any_prime_prompt_unread(records: List<GpuBenchRequestV2>) -> Bool {
+  any(records, r => match r.phase {
+    GpuBenchPhasePrime => match r.prompt_tokens {
+      Absent => true
+      Present { value: _ } => false
+    }
+    GpuBenchPhaseWarm => false
+    GpuBenchPhaseShort => false
+  })
+}
+
+fn gpu_bench_any_warm_attempt(records: List<GpuBenchRequestV2>) -> Bool {
+  any(records, r => match r.phase {
+    GpuBenchPhaseWarm => true
+    GpuBenchPhasePrime => false
+    GpuBenchPhaseShort => false
+  })
+}
+
+fn gpu_bench_prime_count(records: List<GpuBenchRequestV2>) -> Nat {
+  fold(records, init: 0, f: fn(acc, r) {
+    match r.phase {
+      GpuBenchPhasePrime => acc + 1
+      GpuBenchPhaseWarm => acc
+      GpuBenchPhaseShort => acc
+    }
+  })
+}
+
+// The working set is the RETAINED PREFIXES a warm run re-reads, so it is the sum of the prime prompts.
+// Completion tokens are a separate quantity: they are what the warm response generates, not what it
+// restores. This arithmetic was reviewed and kept deliberately (see the P1 ruling on #13774).
+fn gpu_bench_prime_working_set_tokens(records: List<GpuBenchRequestV2>) -> TokenCount {
+  fold(records, init: token_count(count: 0), f: fn(acc, r) {
+    match r.phase {
+      GpuBenchPhasePrime => match r.prompt_tokens {
+        Absent => acc
+        Present { value: t } => measure_add(a: acc, b: t)
+      }
+      GpuBenchPhaseWarm => acc
+      GpuBenchPhaseShort => acc
+    }
+  })
+}
+
+// THE SESSIONS THAT WERE ACTUALLY PRIMED. A warm row is only evidence about a session that was primed
+// and retained; anything else was served cold.
+fn gpu_bench_prime_sessions(records: List<GpuBenchRequestV2>) -> List<Nat> {
+  fold(records, init: [] as List<Nat>, f: fn(acc, r) {
+    match r.phase {
+      GpuBenchPhasePrime =>
+        if list_member(xs: acc, x: r.session, eq: (a, b) => a == b) {
+          acc
+        } else {
+          acc |> list_push(r.session)
+        }
+      GpuBenchPhaseWarm => acc
+      GpuBenchPhaseShort => acc
+    }
+  })
+}
+
+fn gpu_bench_warm_session_outside_prime_cohort(
+  records: List<GpuBenchRequestV2>,
+  primed: List<Nat>,
+) -> Bool {
+  any(records, r => match r.phase {
+    GpuBenchPhaseWarm => !list_member(xs: primed, x: r.session, eq: (a, b) => a == b)
+    GpuBenchPhasePrime => false
+    GpuBenchPhaseShort => false
+  })
+}
+
+fn gpu_bench_retained_cohort(records: List<GpuBenchRequestV2>) -> WarmRetainedCohort {
+  let first = match records {
+    Empty => Absent
+    Cons { head: r, tail: _ } => Present { value: r.retained }
+  }
+  match first {
+    Absent => WarmRetainedAbsent { cause: "the receipt carries no rows to admit" as NonEmptyStr }
+    Present { value: retained } =>
+      if any(records, r => r.retained != retained) {
+        WarmRetainedInconsistent { retained: retained }
+      } else {
+        WarmRetained { retained: retained }
+      }
+  }
+}
+
+fn decimal_of_nat(value: Nat) -> NonEmptyStr {
+  nat_to_decimal_string(value: value) as NonEmptyStr
+}
+
+fn gpu_bench_refuse(cause: String) -> GpuBenchWarmRunAdmission {
+  WarmRunRefused { cause: cause as NonEmptyStr }
+}
+
+// THE ADMISSION FOLD, AND THE ONLY PLACE A WARM RUN IS DECLARED TO BE ONE. The order is the order a
+// reader would ask the questions: is there a prime, is there anything warm behind it, was one run
+// measured, did it complete, is the retained cohort coherent, and does every warm row belong to a
+// session inside that cohort. n_active is deliberately NOT checked: it is reported per row and varies
+// within one legitimate warm run (the committed receipt carries several values of it), so it is a shape
+// fact rather than a coherence fact.
+fn gpu_bench_warm_run_admission(records: List<GpuBenchRequestV2>) -> GpuBenchWarmRunAdmission {
+  if gpu_bench_prime_count(records: records) == 0 {
+    gpu_bench_refuse("no prime-phase request in the receipt")
+  } else {
+    if !gpu_bench_any_warm_attempt(records: records) {
+      gpu_bench_refuse("no warm-phase request in the receipt; a prime-only receipt proves nothing was reused")
+    } else {
+      if gpu_bench_mixed_run(records: records) {
+        gpu_bench_refuse("the receipt mixes rows from more than one run")
+      } else {
+        if gpu_bench_any_prime_or_warm_failed(records: records) {
+          gpu_bench_refuse("a prime or warm request did not complete")
+        } else {
+          if gpu_bench_any_prime_prompt_unread(records: records) {
+            gpu_bench_refuse("a prime-phase request carries no prompt_tokens")
+          } else {
+            match gpu_bench_retained_cohort(records: records) {
+              WarmRetainedAbsent { cause: c } => WarmRunRefused { cause: c }
+              WarmRetainedInconsistent { retained: r } => gpu_bench_refuse(join([
+                "the rows disagree on the retained prime cohort; ",
+                decimal_of_nat(value: r),
+                " is reported on a row that does not agree with the receipt's other rows",
+              ], ""))
+              WarmRetained { retained: r } => gpu_bench_admit_cohort(records: records, retained: r)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE LAST TWO ADMISSION QUESTIONS, IN A FUNCTION RATHER THAN INLINE IN A MATCH ARM. This is not style.
+// gunbc.recurring_failure_mode.match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering
+// records that an arm body OPENED BY A STATEMENT lowers to its first expression only: the binder, the
+// continuation, and any nested match's scrutinee and arms are all dropped, silently. Both bindings here
+// have to exist before the tests that consume them, so they are fn-body bindings in their own function
+// rather than a let inside `WarmRetained { retained: r } => ...`, where the shape is a lowering trap.
+fn gpu_bench_admit_cohort(records: List<GpuBenchRequestV2>, retained: Nat) -> GpuBenchWarmRunAdmission {
+  let primed = gpu_bench_prime_count(records: records)
+  if retained > primed {
+    gpu_bench_refuse(join([
+      "the retained prime cohort of ",
+      decimal_of_nat(value: retained),
+      " exceeds the ",
+      decimal_of_nat(value: primed),
+      " sessions the receipt primed",
+    ], ""))
+  } else {
+    let primed_sessions = gpu_bench_prime_sessions(records: records)
+    if gpu_bench_warm_session_outside_prime_cohort(records: records, primed: primed_sessions) {
+      gpu_bench_refuse("a warm request targets a session that was not primed in this run")
+    } else {
+      WarmRunAdmitted {
+        working_set_tokens: gpu_bench_prime_working_set_tokens(records: records),
+      }
+    }
+  }
+}
+
+// ── STAGE 2 ──────────────────────────────────────────────────────────────────────────────────────
+// Does the admitted run's working set fit the measured KV pool? This stage CANNOT PRODUCE ENGINE
+// EVIDENCE, and CapacityFits is deliberately not a synonym for WarmValid: it records that a working set
+// was no larger than a pool, and nothing about whether any of it was still resident. The arms are named
+// apart from the final verdict's on purpose, so an importing module that means the capacity judgment
+// cannot write the evidence judgment by accident.
+type WarmCapacityCheck
+  = CapacityFits { working_set_tokens: TokenCount, measured_kv_tokens: TokenCount }
+  | CapacityOver { working_set_tokens: TokenCount, measured_kv_tokens: TokenCount }
+  | CapacityUnread { cause: NonEmptyStr }
+  | ReceiptRejected { cause: NonEmptyStr }
+
+fn gpu_bench_warm_capacity_check(
+  admission: GpuBenchWarmRunAdmission,
+  measured_kv: TokenCount?,
+) -> WarmCapacityCheck {
+  match admission {
+    // An unevaluated receipt is not a receipt that fits. Folding this into CapacityUnread would let a
+    // caller that admitted nothing ask stage 3 about it and get a "not over, not unread" answer. A
+    // refusal of the receipt is its own outcome, and stage 3 reports it as WarmRejected.
+    WarmRunRefused { cause: c } => ReceiptRejected { cause: c }
+    WarmRunAdmitted { working_set_tokens: w } => match measured_kv {
+      Absent => CapacityUnread { cause: "measured KV capacity was not supplied" as NonEmptyStr }
+      Present { value: kv } =>
+        // Strictly over: a working set exactly equal to the measured capacity still
+        // fits, which is the behaviour before the carrier was restored.
+        if !measure_le(a: w, b: kv) {
+          CapacityOver { working_set_tokens: w, measured_kv_tokens: kv }
+        } else {
+          CapacityFits { working_set_tokens: w, measured_kv_tokens: kv }
+        }
+    }
+  }
+}
+
+fn gpu_bench_warm_capacity_check_from_capacity_ok(
+  admission: GpuBenchWarmRunAdmission,
+  log: String,
+) -> WarmCapacityCheck {
+  match gpu_bench_capacity_ok_tokens(log: log) {
+    CapacityOkMalformed { cause: c } => ReceiptRejected { cause: c }
+    CapacityOkAbsent => gpu_bench_warm_capacity_check(admission: admission, measured_kv: Absent)
+    CapacityOkRead { tokens: kv } =>
+      gpu_bench_warm_capacity_check(admission: admission, measured_kv: Present { value: kv })
+  }
+}
+
+// ── STAGE 3 ──────────────────────────────────────────────────────────────────────────────────────
+// THE ONLY OPERATION THAT TURNS A CAPACITY VERDICT INTO GpuBenchWarmStanding. A capacity fit is
+// arithmetic; it is not a claim that the prefix was still resident. That claim belongs to the replay
+// counter, so the counter is an ARGUMENT HERE rather than an opinion applied afterwards -- a caller
+// cannot ask for the final type without being handed the obligation to produce it.
+fn gpu_bench_warm_standing_after_replay(
+  check: WarmCapacityCheck,
+  replayed: NinferReplayedTokensRead,
+) -> GpuBenchWarmStanding {
+  match check {
+    CapacityFits { working_set_tokens: w, measured_kv_tokens: k } =>
+      gpu_bench_warm_against_cited_counter(w: w, k: k, replayed: replayed)
+    CapacityOver { working_set_tokens: w, measured_kv_tokens: k } =>
+      WarmOverCapacity { working_set_tokens: w, measured_kv_tokens: k }
+    CapacityUnread { cause: c } => WarmCapacityUnread { cause: c }
+    ReceiptRejected { cause: c } => WarmRejected { cause: c }
+  }
+}
+
+// THE GROUNDED RUNGS, JUDGED ONCE. A counter cited to an authority and a counter observed by a receipt
+// are judged by this one fold, so adding a rung to CitedFigureStanding cannot silently fork the
+// warm-capacity verdict. The uncited rung stays above, where the read obligation is carried into the
+// refusal instead of being dropped.
+fn gpu_bench_warm_against_cited_counter(
+  w: TokenCount,
+  k: TokenCount,
+  replayed: NinferReplayedTokensRead,
+) -> GpuBenchWarmStanding {
+  match replayed {
+    NinferReplayedTokensMalformed { cause: c } => WarmRejected { cause: c }
+    NinferReplayedTokensAbsent => WarmCapacityUnread {
+      cause: "ninfer_replayed_tokens_total was not observed" as NonEmptyStr
+    }
+    NinferReplayedTokensRead { tokens: n } =>
+      if !measure_le(a: n, b: token_count(count: 0)) {
+        WarmRejected { cause: "ninfer replayed tokens; prefix restore was not a snapshot hit" as NonEmptyStr }
+      } else {
+        WarmValid { working_set_tokens: w, measured_kv_tokens: k }
+      }
+  }
+}
+
+// THE WHOLE PROOF IN ONE CALL, for a caller holding the rows and the kit log. Admission is re-derived
+// from the rows rather than accepted from the caller, which is what makes a hand-written
+// WarmRunAdmitted worth nothing. The counter's citation standing is taken from the upstream model, not
+// from the caller: as long as ninfer's counter stands TranscribedUncited, no caller of THIS entry
+// point obtains WarmValid, and the only way to one is to face the counter directly at stage 3.
+fn gpu_bench_warm_standing_with_ninfer_log(
+  records: List<GpuBenchRequestV2>,
+  log: String,
+) -> GpuBenchWarmStanding {
+  let replayed = ninfer_replayed_tokens_total(log: log)
+  let check = gpu_bench_warm_capacity_check_from_capacity_ok(
+    admission: gpu_bench_warm_run_admission(records: records),
+    log: log,
+  )
+  match ninfer_replayed_tokens_total_standing {
+    TranscribedUncited { read_obligation: o } => match check {
+      // Fails closed at the reuse step, exactly as before this split: a capacity fit does not promote
+      // an uncited counter. The counter's own state still distinguishes the refusal -- a malformed line
+      // is a refused receipt, an unobserved counter is unread and says so in the same breath as the
+      // obligation, and a counter that merely reports tokens leaves the obligation as the whole cause.
+      CapacityFits { working_set_tokens: _ } => match replayed {
+        NinferReplayedTokensMalformed { cause: c } => WarmRejected { cause: c }
+        NinferReplayedTokensAbsent => WarmCapacityUnread {
+          cause: join(["ninfer_replayed_tokens_total was not observed; ", o as String], "") as NonEmptyStr
+        }
+        NinferReplayedTokensRead { tokens: _ } => WarmCapacityUnread { cause: o }
+      }
+      // A working set the pool cannot hold is a refusal no counter can rescue, cited or not, and it is
+      // reported as itself rather than folded into the citation's unread.
+      CapacityOver { working_set_tokens: w, measured_kv_tokens: k } =>
+        WarmOverCapacity { working_set_tokens: w, measured_kv_tokens: k }
+      CapacityUnread { cause: c } => WarmCapacityUnread { cause: c }
+      ReceiptRejected { cause: c } => WarmRejected { cause: c }
+    }
+    CitedToAuthority { authority: _ } =>
+      gpu_bench_warm_standing_after_replay(check: check, replayed: replayed)
+    // ObservedByReceipt grades as grounded, the same rung CitedToAuthority occupies:
+    // gunbc.product.node_power_envelope admits a channel clock on either, and
+    // gunbc.host.host_software_surface asks no read obligation of either. Only
+    // TranscribedUncited withholds. ObservedReceipt's sole mint admits nothing here, so
+    // this arm is exhaustiveness against the variant main gained in #13546, not a path
+    // this module can reach today; it judges the counter by the same fold a citation gets.
+    ObservedByReceipt { observed: _ } =>
+      gpu_bench_warm_standing_after_replay(check: check, replayed: replayed)
+  }
+}

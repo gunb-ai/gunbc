@@ -8,7 +8,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, DeclarationLocus, InvariantPortLocus, NodeLocus, NonEmptyDiagnostics, Rejected, SourcePortLocus, Textual, diagnostics_fatal }
 import v2.std.language_model { LanguageModel }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Bind, ComputationNode, Conj, Edge, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Atom, Bind, ComputationNode, Conj, Edge, Node, Positional, Symbol, TypeNode, NotADeclaration }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.resolution_policy { NamespaceOnlyY }
 import v2.std.symbol_index { empty_symbol_index }
@@ -76,9 +76,9 @@ fn walk_bind(binder: Node, value: Node, body: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Bind },
     children: [
-      Edge { label: Positional, target: binder },
-      Edge { label: Positional, target: value },
-      Edge { label: Positional, target: body }
+      Edge { label: Positional, target: binder, declaration: NotADeclaration },
+      Edge { label: Positional, target: value, declaration: NotADeclaration },
+      Edge { label: Positional, target: body, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -102,8 +102,8 @@ fn walk_chain_identity(c: NonEmptyDiagnostics) -> Symbol {
 
 fn walk_identities(w: ResolveNodeWalk) -> List<Symbol> {
   match w {
-    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => []
-    ResolveWalkRefused { first: f, rest: r, observation: _ } =>
+    ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => []
+    ResolveWalkRefused { first: f, rest: r, observation: _, partial: _ } =>
       Cons {
         head: walk_chain_identity(c: f),
         tail: fold_list(xs: r, empty: Empty, cons: fn(acc, c) { Cons { head: walk_chain_identity(c: c), tail: acc } })
@@ -113,15 +113,15 @@ fn walk_identities(w: ResolveNodeWalk) -> List<Symbol> {
 
 fn walk_chain_count(w: ResolveNodeWalk) -> Int {
   match w {
-    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => 0
-    ResolveWalkRefused { first: _, rest: r, observation: _ } => length(xs: r) + 1
+    ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => 0
+    ResolveWalkRefused { first: _, rest: r, observation: _, partial: _ } => length(xs: r) + 1
   }
 }
 
 fn walk_complete(w: ResolveNodeWalk) -> Bool {
   match w {
-    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => true
-    ResolveWalkRefused { first: _, rest: _, observation: o } =>
+    ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => true
+    ResolveWalkRefused { first: _, rest: _, observation: o, partial: _ } =>
       match o {
         ObservationComplete => true
         ObservationIncomplete { reason: _ } => false
@@ -205,8 +205,8 @@ test fn walk_clean_bind_is_accepted_holds() -> Bool {
     ctx: walk_probe_ctx(),
     n: walk_bind(binder: walk_atom(name: ^x), value: walk_int_literal, body: walk_reference(name: ^x, ordinal: 2))
   ) {
-    ResolveWalkAccepted { value: _, diagnostics: _, lexical: l } => length(xs: l) == 1
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => false
+    ResolveWalkAccepted { value: _, diagnostics: _, bindings: l } => length(xs: l) == 1
+    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => false
   }
 }
 
@@ -217,7 +217,7 @@ test fn walk_one_refusal_refuses_the_node_holds() -> Bool {
     ctx: walk_probe_ctx(),
     n: walk_bind(binder: walk_atom(name: ^x), value: walk_int_literal, body: walk_atom(name: ^absent_b))
   ) {
-    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => false
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => true
+    ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => false
+    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => true
   }
 }

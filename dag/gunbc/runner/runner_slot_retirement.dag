@@ -1,7 +1,7 @@
 module gunbc.runner.runner_slot_retirement
 
 import std.types { Bool, List, String, NonEmptyStr, list_length }
-import std.algebra { trim }
+import std.algebra { trim, list_head }
 import gunbc.host.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
@@ -490,6 +490,24 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
       }
     }
   }
+}
+
+// THE STATIC "MAY BE MASKED" SET: ONE FUNCTION, CALLED BY BOTH THE GRANTS AND THE APPLY. A host's sudoers is
+// rendered before any observation, while the apply's mask set depends on observed membership and standings,
+// so the two cannot be equal at runtime. What is one fact is the superset every runtime set is drawn from:
+// the units the operator's authorization names for the host. The grants render exactly one line per unit
+// here (gunbc.runner.runner_host_grants runner_slot_retirement_mask_operations), and the apply emits a mask
+// only for a candidate inside this set (gunbc.runner.runner_slot_provision retirement_actuation_units),
+// withholding every other candidate in a typed line. An absent authorization is the empty set.
+fn host_maskable_units(host: HostIdentity) -> List<NonEmptyStr> {
+  match interruption_authorization_for_host(host: host) {
+    HostInterruptionAuthorizationPresent { authorization: a } => a.scope
+    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => []
+  }
+}
+
+fn unit_in_maskable_scope(scope: List<NonEmptyStr>, unit: String) -> Bool {
+  any(scope, u => (u as String) == unit)
 }
 
 // THE OBLIGATION LIVES IN ITS OWN AUTHORITY, AND THIS MODULE ONLY CHECKS PERMISSION OVER IT.
@@ -1179,14 +1197,65 @@ fn retirement_standing_wire(s: RunnerRetirementStanding) -> String {
   }
 }
 
-fn retirement_baseline_rows(evidence: SlotRetirementEvidence) -> List<String> {
+// THE ONE INVERSE OF retirement_standing_wire. A wire text is decoded by asking which standing renders
+// to it, so no second copy of the encoding exists; text no standing renders to is undecodable, never a
+// default. The cause carried is the decode's own: the plan text holds the wire, not the original cause.
+type RetirementWireDecode
+  = RetirementWireDecoded { standing: RunnerRetirementStanding }
+  | RetirementWireUndecodable { unit: String, wire: String }
+
+fn retirement_standing_from_wire(unit: String, wire: String) -> RetirementWireDecode {
+  let candidates = [
+    RetirementComplete { unit: unit },
+    RetirementPendingDrain { unit: unit, cause: "decoded from plan wire" },
+    RetirementUnobserved { unit: unit, cause: "decoded from plan wire" },
+  ]
+  match list_head(xs: filter(candidates, c => retirement_standing_wire(s: c) == wire)) {
+    Absent => RetirementWireUndecodable { unit: unit, wire: wire }
+    Present { value: c } => RetirementWireDecoded { standing: c }
+  }
+}
+
+// THE MONOTONE ORDER. Teardown is rendered from a plan-time RetirementComplete and apply re-checks
+// nothing, so only planned pending / observed complete may drift: it under-actuates (the plan withheld
+// that teardown and still does). Every other pair is explicit so a new standing cannot inherit an answer.
+fn retirement_standing_admits_drift(planned: RunnerRetirementStanding, observed: RunnerRetirementStanding) -> Bool {
+  match planned {
+    RetirementComplete { unit: _ } => match observed {
+      RetirementComplete { unit: _ } => true
+      RetirementPendingDrain { unit: _, cause: _ } => false
+      RetirementUnobserved { unit: _, cause: _ } => false
+    }
+    RetirementPendingDrain { unit: _, cause: _ } => match observed {
+      RetirementComplete { unit: _ } => true
+      RetirementPendingDrain { unit: _, cause: _ } => true
+      RetirementUnobserved { unit: _, cause: _ } => false
+    }
+    RetirementUnobserved { unit: _, cause: _ } => match observed {
+      RetirementComplete { unit: _ } => false
+      RetirementPendingDrain { unit: _, cause: _ } => false
+      RetirementUnobserved { unit: _, cause: _ } => true
+    }
+  }
+}
+
+// THE EVIDENCE'S PRESENCE IS A PREMISE OF ACTUATION; ITS PER-UNIT STANDINGS ARE A SEPARATE FAMILY.
+// Teardown is rendered from a plan-time RetirementComplete and the apply script re-checks nothing, so
+// a standing that moved is judged unit by unit (fleet_converge_plan, retirement drift admission)
+// rather than hashed with the rest of the identity: planned pending / observed complete only
+// under-actuates, and every other change must refuse naming the unit.
+fn retirement_baseline_header_rows(evidence: SlotRetirementEvidence) -> List<String> {
   match evidence {
     SlotRetirementEvidenceAbsent { cause: _ } => ["retirement:absent"]
+    SlotRetirementEvidencePresent { authorization: _, standings: _ } => ["retirement:observed"]
+  }
+}
+
+fn retirement_unit_standing_rows(evidence: SlotRetirementEvidence) -> List<String> {
+  match evidence {
+    SlotRetirementEvidenceAbsent { cause: _ } => []
     SlotRetirementEvidencePresent { authorization: _, standings: ss } =>
-      concat(
-        ["retirement:observed"],
-        ss |> map(s => join(["retirement:", retirement_unit(s: s), "=", retirement_standing_wire(s: s)], "")),
-      )
+      ss |> map(s => join(["retirement:", retirement_unit(s: s), "=", retirement_standing_wire(s: s)], ""))
   }
 }
 

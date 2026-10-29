@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.witness_outside_gate_closure_falsified_by_other_file
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data witness_outside_gate_closure_falsified_by_other_file: RecurringFailureMode = RecurringFailureMode {
   identity: "witness_outside_gate_closure_falsified_by_other_file" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a witness outside the gate closure is falsified by a change to a DIFFERENT file and never reds** (THE WITNESS IS DECLARED, COMPILES, AND WOULD DISCRIMINATE CORRECTLY — it is routed to `DeclinedOutsideGateClosure` because its module falls outside the import closure of the required gate prefixes, so the floor never prepares, offers or executes it. A later, unrelated change touches a file other than the witness's own file — a file the witness may even IMPORT — and that change FALSIFIES the property the witness was written to check. The witness never reds, because it never runs; the floor was green because it never looked. The harm is doubly silent: the witness was discovered and its existence is reported as a decline, so the census reads as coverage.)",

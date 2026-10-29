@@ -1,7 +1,7 @@
 module extdeps.uri
 import std.optional { Absent, Optional, Present }
 
-import std.algebra { trim }
+import std.algebra { trim, collection_concat_shape, collection_join_shape }
 
 import std.types { NonEmptyStr, List }
 

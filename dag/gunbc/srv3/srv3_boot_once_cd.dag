@@ -29,12 +29,15 @@ import gunbc.srv3.srv3_bmc_credential_resolve {
 }
 import gunbc.auth.access_token_source { access_token_upsert_required_reason }
 import gunbc.bmc.bmc_onboarding { srv3_onboarding_plan }
-import gunbc.auth.netrc_binding {
-  NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains, place_netrc_binding,
+import gunbc.auth.private_secret_file {
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
 }
+import gunbc.auth.netrc_binding { netrc_binding_path, with_private_netrc_binding }
 import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim }
 import gunbc.tools.bmc_onboard {
-  bmc_onboard_netrc_path,
   boot_override_body,
   reset_body
 }
@@ -138,12 +141,9 @@ fn srv3_boot_once_cd_gated(approval: ScopedAuthorization<Srv3BootOverrideSubject
 // to answer the same `false`, so the operator got one sentence for two situations with different
 // next actions: a plain failure can be retried, a residue failure means a file that may hold this
 // BMC's credential is still on disk and must be cleaned before any retry. No locator is carried at
-// all -- what crosses is the fact, not the path.
-//
-// THIS NOTE SITS HERE, ABOVE THE DECLARATION, BECAUSE THAT IS THE ONLY GRAIN 4C MODELS. It was
-// first written inside the match and the floor lane refused it, four lines at once -- the fourth
-// time this session I have put an annotation inside a declaration body. A match arm is a
-// declaration body; so is a service body. The rule has no in-body form to reach for.
+// all -- what crosses is the fact, not the path. The netrc is per-call and private now
+// (with_private_netrc_binding), removed when the boot sequence returns on any arm; a removal that
+// fails refuses whatever the sequence concluded, and says the BMC may already have been reset.
 fn srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
 {
   let plan = srv3_onboarding_plan
@@ -164,26 +164,32 @@ fn srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExi
       return exit_failure(reason: concat("boot-once-cd: ", reason as String))
   }
 
-  let netrc_placement = place_netrc_binding(
-    path: bmc_onboard_netrc_path as FilePath,
+  match with_private_netrc_binding(
     machine: host as NonEmptyStr,
     login: account as NonEmptyStr,
-    password: password as Secret
-  )
-  match netrc_placement {
-    NetrcBindingRefused { cause: _ } =>
-      return exit_failure(
+    password: password as Secret,
+    use: fn(binding) { srv3_boot_once_cd_with_netrc(host: host as NonEmptyStr, netrc: netrc_binding_path(binding: binding) as NonEmptyStr) },
+  ) {
+    PrivateSecretFileCompleted { value: exit } => exit
+    PrivateSecretFileCompletedResidueRemains { value: _ } =>
+      exit_failure(
+        reason: "boot-once-cd: the boot sequence ran (the override and reset may have been applied) but its per-run netrc could not be removed, so credential material may remain on disk and requires cleanup before retry"
+      )
+    PrivateSecretFileNotEntered { cause: _ } =>
+      exit_failure(
         reason: "boot-once-cd: netrc stage failed: the owner-only credential file could not be created"
       )
-    NetrcBindingRefusedResidueRemains { cause: cause } =>
-      return exit_failure(
+    PrivateSecretFileNotEnteredResidueRemains { cause: cause } =>
+      exit_failure(
         reason: concat(
           "boot-once-cd: netrc stage failed AND credential material may remain on disk, requiring cleanup before retry: ",
           cause as String)
       )
-    NetrcBindingPlaced { binding: _ } => {}
   }
+}
 
+fn srv3_boot_once_cd_with_netrc(host: NonEmptyStr, netrc: NonEmptyStr) -> ProcessExit
+{
   match srv3_boot_cd_override_mode_refusal(mode: srv3_boot_cd_mode) {
     Present { value: r } =>
       return exit_failure(reason: r)
@@ -199,7 +205,7 @@ fn srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExi
       }
       let patch = redfish.Http.SetBootSourceOverride(
         bmc_host: host,
-        netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+        netrc_file: netrc,
         system_id: asrock_altrad8ud_redfish_system_id,
         request_body_file: srv3_boot_cd_body_path as NonEmptyStr
       )
@@ -215,7 +221,7 @@ fn srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExi
 
       let rst = redfish.Http.ResetSystem(
         bmc_host: host,
-        netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+        netrc_file: netrc,
         system_id: asrock_altrad8ud_redfish_system_id,
         request_body_file: srv3_reset_body_path as NonEmptyStr
       )

@@ -12,8 +12,9 @@
 // HAND-SPELLED SITES REMAINING (declared frontier): gunbc.live_deploy.operations
 // deploy_stage_visudo_check_command and the staged check in gunbc.ci.ci_deploy_sudoers. Their file
 // path is a runtime shell variable ($STAGE_DIR/<stage_name>), not a compile-time String, so they
-// cannot take these ops as-is; they are retired by W1 (snappy-newt-596) deploy preamble / PB2 typed
-// staging, which supplies the staged file path at realization.
+// cannot take these ops as-is; they retire when the apply route takes live_deploy_apply_preamble_on_host (the
+// dissolution rows gunbc.live_deploy.emit deploy_apply_preamble_steps_dissolution and gunbc.ci.ci_deploy_sudoers
+// deploy_sudoers_install_stmts_dissolution), whose staging supplies the staged file path at realization.
 
 // BOTH COMMANDS ARE ELEVATED, and the elevation lives in the argv: /usr/bin/sudo, its -n, the
 // visudo binary by absolute path. visudo is an ARGUMENT to sudo, not a program this repository
@@ -26,7 +27,7 @@
 
 module extdeps.sudo.visudo
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
@@ -45,15 +46,16 @@ data visudo_binary_path: NonEmptyStr = "/usr/sbin/visudo"
 
 // -cf is the SINGLE combined word, not two words: the shell builder the swap replaces spelled it
 // `-cf`, and the op must render the argv the shell rendered, byte for byte.
+fn visudo_check_arguments(file: String) -> List<String> {
+  [visudo_binary_path as String, "-cf", file]
+}
+
+// The elevated form: sudo's own prefix around the privilege-free arguments, which a transport that
+// applies elevation itself (gunbc.typed_remote_file_write) takes from visudo_check_arguments directly.
 fn visudo_check_command(file: String) -> ArgvCommand {
   argv_command(
     program: sudo_program(),
-    arguments: [
-      sudo_non_interactive_flag as String,
-      visudo_binary_path as String,
-      "-cf",
-      file,
-    ],
+    arguments: concat([sudo_non_interactive_flag as String], visudo_check_arguments(file: file)),
   )
 }
 

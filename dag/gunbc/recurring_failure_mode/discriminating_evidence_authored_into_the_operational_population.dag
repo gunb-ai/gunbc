@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.discriminating_evidence_authored_into_the_operational_population
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data discriminating_evidence_authored_into_the_operational_population: RecurringFailureMode = RecurringFailureMode {
   identity: "discriminating_evidence_authored_into_the_operational_population" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a check's discriminating RED is authored as rows in the LIVE SUBJECT LIST the check reads** (the probe is genuine, the arm it exercises is genuine, and the expected verdict is a refusal -- so every ordinary run of the instrument refuses about one of its own subjects, and the instrument's answer over the real population is knowingly wrong by construction).",

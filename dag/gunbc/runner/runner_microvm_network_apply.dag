@@ -31,7 +31,7 @@ import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.typed_remote_file_write {
+import gunbc.typed_remote_file_write { NoValidation,
   RemoteFileMode, RemoteFileModeOwnerReadWrite, RemoteFileViaNonInteractiveSudo,
   TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
   typed_remote_file_write_seal, converge_typed_remote_file, TypedRemoteFileWriteAdmissionRefused, TypedRemoteFileWriteAdmitted,
@@ -42,7 +42,7 @@ import gunbc.runner.runner_host_deploy {
 }
 import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_grantee }
 import gunbc.runner.runner_host_file_converge {
-  RunnerHostPathMetadata, PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable,
+  FleetHostPathMetadata, PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable,
   runner_host_root_only_find_argv, classify_root_only_paths, runner_host_path_metadata_wire,
   elevated_argv,
 }
@@ -138,7 +138,7 @@ data runner_microvm_admin_staging_owner: NonEmptyStr = "root" as NonEmptyStr
 // ownership decides the leaf's safety is the one the check must reach.
 //
 // THE PREFIXES COME FROM gunbc.file_access, WHICH IS THE ONE PLACE THAT DERIVES THEM. This fold was
-// copied here from gunbc.runner.runner_host_file_converge runner_host_path_ancestors, separator codepoint
+// copied here from gunbc.runner.runner_host_file_converge fleet_host_path_ancestors, separator codepoint
 // included, because that function filters to its own /etc scope and so could not be called directly
 // (review 69712). Copying it made two answers to "what are the ancestor directories of this path",
 // free to drift on trailing slashes, on the separator, and on whether the leaf is included -- which
@@ -300,7 +300,7 @@ fn observe_paths_root_only(
   transport: HostEffectTransport,
   paths: List<String>,
   kind: String,
-) -> RunnerHostPathMetadata
+) -> FleetHostPathMetadata
 {
   match run_admin_leg(subject: subject, transport: transport,
     command: runner_microvm_root_only_probe_command(paths: paths, kind: kind)) {
@@ -441,7 +441,8 @@ fn write_staged_file(
         target: target, context: context,
         admission: typed_remote_file_write_seal(path: file.path as FilePath,
           content: file.content, allowed_scope: runner_microvm_admin_staging_scope),
-        mode: RemoteFileModeOwnerReadWrite, privilege: RemoteFileViaNonInteractiveSudo) {
+        mode: RemoteFileModeOwnerReadWrite, privilege: RemoteFileViaNonInteractiveSudo,
+        validation: NoValidation,) {
         TypedRemoteFileConvergenceRefused { step: st, reason: why } => StagedWriteRefused { step: st, reason: why }
         TypedRemoteFileConverged { converged: _ } => StagedWritten
       }
@@ -602,9 +603,9 @@ type MicrovmNetworkApplyRun {
   subject: MicrovmNetworkApplySubject
   privilege: AdministratorPrivilege
   prerequisites: List<HostToolPrerequisite>
-  staging_dir: RunnerHostPathMetadata
+  staging_dir: FleetHostPathMetadata
   staged: List<StagedWriteResult>
-  staged_root_only: RunnerHostPathMetadata
+  staged_root_only: FleetHostPathMetadata
   operations: List<OperationResult>
   readback: RulesetReadback
 }
@@ -627,7 +628,7 @@ fn apply_run_succeeded(run: MicrovmNetworkApplyRun) -> Bool {
   }
 }
 
-fn path_metadata_ok(m: RunnerHostPathMetadata) -> Bool {
+fn path_metadata_ok(m: FleetHostPathMetadata) -> Bool {
   match m {
     PathsRootOnly => true
     PathsNotRootOnly { paths: _, detail: _ } => false
@@ -705,7 +706,7 @@ fn unstaged_microvm_network_apply_run(
   subject: MicrovmNetworkApplySubject,
   privilege: AdministratorPrivilege,
   prerequisites: List<HostToolPrerequisite>,
-  dir: RunnerHostPathMetadata,
+  dir: FleetHostPathMetadata,
 ) -> MicrovmNetworkApplyRun
 {
   MicrovmNetworkApplyRun {
@@ -750,9 +751,9 @@ fn uninstalled_microvm_network_apply_run(
   subject: MicrovmNetworkApplySubject,
   privilege: AdministratorPrivilege,
   prerequisites: List<HostToolPrerequisite>,
-  dir: RunnerHostPathMetadata,
+  dir: FleetHostPathMetadata,
   staged: List<StagedWriteResult>,
-  staged_meta: RunnerHostPathMetadata,
+  staged_meta: FleetHostPathMetadata,
 ) -> MicrovmNetworkApplyRun
 {
   MicrovmNetworkApplyRun {
@@ -772,7 +773,7 @@ fn run_staged_microvm_network_apply(
   transport: HostEffectTransport,
   privilege: AdministratorPrivilege,
   prerequisites: List<HostToolPrerequisite>,
-  dir: RunnerHostPathMetadata,
+  dir: FleetHostPathMetadata,
 ) -> MicrovmNetworkApplyRun
 {
   let files = converge_staged_files(

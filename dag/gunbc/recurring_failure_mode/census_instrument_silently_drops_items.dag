@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.census_instrument_silently_drops_items
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data census_instrument_silently_drops_items: RecurringFailureMode = RecurringFailureMode {
   identity: "census_instrument_silently_drops_items" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingNotStated },
+
   receipts: [
     "**a census instrument whose parser silently drops items reports a smaller population, and a short count reads as success** (INVALID STATE: the reader accepts a file and returns an item population missing members it never recognized -- no refusal, no located diagnostic -- so every consumer downstream treats the shortfall as absence.",
     "HARM: a seed-growth admission join over the short population reports fewer added and modified items than the change carries, and the shortfall is in the direction that admits. A hand-derived list and the instrument then agree on the smaller number, so the comparison that should expose the gap confirms it.",

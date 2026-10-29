@@ -1,0 +1,50 @@
+module gunbc.guest_image_delivery
+
+import std.types { String, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import gunbc.command_runner { run_shell_commands, LocalExec }
+import gunbc.runner.microvm_guest_artifacts {
+  GuestBaseArtifact, runner_guest_kernel_artifact, runner_guest_base_dir, runner_guest_base_artifact_path,
+  guest_artifact_verdict, ArtifactMatchesPin, ArtifactUnpinnedFirstContact, ArtifactBuildReceipt,
+  ArtifactContradictsPin, ArtifactNotMeasured,
+}
+
+// THE ONE DELIVERY SHAPE OF A CI-BUILT GUEST IMAGE, shared by the workspace image
+// (gunbc.workspace_image_delivery) and the revision-job image (gunbc.revision_job_image_delivery):
+// download the pinned inputs, refuse unless the kernel matches its pin, hand the staging root to the
+// image's own build, then write the image's SHA-256 as a receipt. Transport is not admission; the
+// digest is a receipt of one build, never a promise that mke2fs output is reproducible
+// (gunbc.recurring_failure_mode guest_image_digest_is_a_one_build_receipt).
+
+// Fetch the kernel and the image's other pinned artifacts, then admit the kernel by its pin; the
+// image's own build verifies the rest of its inputs. `prepare` is the image's extra directories.
+fn guest_image_stage_inputs(root: String, label: String, prepare: List<ArgvCommand>, downloads: List<GuestBaseArtifact>) -> ProcessExit {
+  match run_shell_commands(commands: concat(concat([mkdir_parents_command(path: runner_guest_base_dir(root: root))], prepare),
+    map(concat([runner_guest_kernel_artifact], downloads), a => curl_download_command(url: a.url as String,
+      destination: runner_guest_base_artifact_path(root: root, artifact: a)))), transport: LocalExec) {
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    ExitSuccess => match guest_artifact_verdict(artifact: runner_guest_kernel_artifact,
+      observed: sha256sum_file_digest_via_shell(path: runner_guest_base_artifact_path(root: root, artifact: runner_guest_kernel_artifact) as NonEmptyStr)) {
+      ArtifactMatchesPin => ExitSuccess
+      ArtifactUnpinnedFirstContact { digest_hex: _ } => exit_failure(reason: concat(label, ": kernel is unpinned"))
+      ArtifactBuildReceipt { digest_hex: _ } => exit_failure(reason: concat(label, ": kernel is not a pinned input"))
+      ArtifactContradictsPin { expected_hex: _, observed_hex: _ } => exit_failure(reason: concat(label, ": kernel contradicts pin"))
+      ArtifactNotMeasured { reason } => exit_failure(reason: reason)
+    }
+  }
+}
+
+fn guest_image_write_digest_receipt(image_path: String, receipt_path: String, key: String) -> ProcessExit {
+  match sha256sum_file_digest_via_shell(path: image_path as NonEmptyStr) {
+    Sha256FileDigestUnavailable { path: _, reason } => exit_failure(reason: reason)
+    Sha256FileDigest { digest } => {
+      let receipt = Filesystem.Write(path: receipt_path, content: join([key, "=", digest.hex as String, "\n"], ""))
+      if receipt.success { ExitSuccess } else { exit_failure(reason: receipt.error) }
+    }
+  }
+}

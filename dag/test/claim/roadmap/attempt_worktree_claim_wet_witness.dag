@@ -1,0 +1,300 @@
+module test.claim.roadmap.attempt_worktree_claim_wet_witness
+
+import extdeps.shell
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_attempt_worktree_claim_root { WorktreeClaimStoreReading, WorktreeClaimStoreReady, WorktreeClaimStoreUnready, worktree_claim_store, worktree_claim_slots_path }
+import std.types { Bool, String, List, NonEmptyStr, EpochSecs, FilePath }
+import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedCauseUnknown }
+import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive }
+import gunbc.roadmap.roadmap_attempt_worktree_claim {
+  WorktreeClaimOutcome, WorktreeClaimNoop, WorktreeClaimRemoved, WorktreeClaimClosed, WorktreeClaimKept, WorktreeClaimRed,
+  WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_new, worktree_claim_open,
+  worktree_claim_record_before_add, WorktreeClaimRecorded, WorktreeClaimNotRecorded,
+  ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits,
+  ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import test.claim.roadmap.session_placement_wet_witness { node_a, key_a, node_b, key_b, host, fresh_dir, stores_at, lifecycle_absent }
+
+// KILL-AT-EACH-TRANSITION CONTROLS for gunbc.roadmap.roadmap_attempt_worktree_claim over a real claim store.
+// A worktree is a marker file in a directory the witness owns; git, the unit manager and the capture record
+// are the injected seams. Every arm removes its directories and the removal joins the verdict.
+// On the local-repo wet lane with the exclusion row in gunbc.ci.ci_layer_roots naming the temp-directory write.
+
+fn cleaned(dirs: List<String>, verdict: Bool) -> Bool {
+  let removed = fold(dirs, init: true, f: fn(acc, d) { shell.Remove.RecursiveForce(path: d).success && acc })
+  verdict && removed
+}
+
+fn tree_path(td: String, n: String, k: String) -> String { join([td, "/", n, "-a", k], "") }
+fn plant(td: String, n: String, k: String) -> Bool { Filesystem.Write(path: tree_path(td: td, n: n, k: k), content: "gitdir").success }
+fn tree_there(td: String, n: String, k: String) -> Bool { Filesystem.Read(path: tree_path(td: td, n: n, k: k)).success }
+
+// THE CLAIM STORE UNDER A DIRECTORY THE TEST OWNS: the production mint over an instance whose state root is the
+// test's, its directory created the way the instance directory row would, so the store is minted from a real
+// listing of that directory exactly as the belt's is.
+fn claims_at(cd: String) -> WorktreeClaimStoreReading {
+  let instance = claim_instance(cd: cd)
+  let _made = shell.Mkdir.Parents(path: worktree_claim_slots_path(instance: instance) as String as FilePath)
+  worktree_claim_store(instance: instance)
+}
+
+fn claim_instance(cd: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "claim-wet" as NonEmptyStr),
+    instance_id: "claim-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: cd as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18098,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn open_claim(cd: String, td: String, n: String, k: String, opened: EpochSecs) -> Bool {
+  match claims_at(cd: cd) {
+    WorktreeClaimStoreUnready { detail: _ } => false
+    WorktreeClaimStoreReady { store: claims } =>
+      match worktree_claim_record_before_add(
+        claims: claims,
+        claim: worktree_claim_new(node_id: n, attempt_key: k, worktree_path: tree_path(td: td, n: n, k: k), opened_at: opened, launch_deadline: opened + 300)) {
+        WorktreeClaimRecorded => true
+        WorktreeClaimNotRecorded { detail: _ } => false
+      }
+  }
+}
+
+// THE PASS KEEPS ITS REFUSAL. A store that could not be minted (its directory missing or unlistable) is a
+// refused pass, never an empty one: ran_empty and ran_only answer false on a refusal, so a missing store can
+// not read as a valid store with no claims (review on gunbc#14944 at e78084e).
+fn pass(
+  dir: String, cd: String, td: String, others: AttemptUnitObservation, content: ClaimContent, capture: ClaimCapture, now: EpochSecs,
+) -> WorktreeClaimPass {
+  match claims_at(cd: cd) {
+  WorktreeClaimStoreUnready { detail } => WorktreeClaimPassRefused { detail: detail }
+  WorktreeClaimStoreReady { store: claims } =>
+  match stores_at(dir: dir) {
+  Absent => WorktreeClaimPassRefused { detail: "the witness's session placement stores could not be minted" }
+  Present { value: stores } =>
+  worktree_claim_ensure_pass_at(
+    stores: stores, claims: claims, host: host,
+    path_of: (n, k) => tree_path(td: td, n: n, k: k),
+    loaded_of: u => others, lifecycle_of: lifecycle_absent, now: now,
+    tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
+    content_of: p => content,
+    remove_tree: p => if shell.Remove.RecursiveForce(path: p).success { ClaimRemoved } else { ClaimRemoveDeclined { detail: "rm failed" } },
+    capture_of: (n, k) => capture)
+  }
+  }
+}
+
+fn is_noop(o: WorktreeClaimOutcome) -> Bool { match o { WorktreeClaimNoop { subject: _, why: _ } => true  WorktreeClaimRemoved { subject: _, detail: _ } => false  WorktreeClaimClosed { subject: _, detail: _ } => false  WorktreeClaimKept { subject: _, reason: _ } => false  WorktreeClaimRed { subject: _, reason: _ } => false } }
+fn is_removed(o: WorktreeClaimOutcome) -> Bool { match o { WorktreeClaimNoop { subject: _, why: _ } => false  WorktreeClaimRemoved { subject: _, detail: _ } => true  WorktreeClaimClosed { subject: _, detail: _ } => false  WorktreeClaimKept { subject: _, reason: _ } => false  WorktreeClaimRed { subject: _, reason: _ } => false } }
+fn is_closed(o: WorktreeClaimOutcome) -> Bool { match o { WorktreeClaimNoop { subject: _, why: _ } => false  WorktreeClaimRemoved { subject: _, detail: _ } => false  WorktreeClaimClosed { subject: _, detail: _ } => true  WorktreeClaimKept { subject: _, reason: _ } => false  WorktreeClaimRed { subject: _, reason: _ } => false } }
+fn is_kept(o: WorktreeClaimOutcome) -> Bool { match o { WorktreeClaimNoop { subject: _, why: _ } => false  WorktreeClaimRemoved { subject: _, detail: _ } => false  WorktreeClaimClosed { subject: _, detail: _ } => false  WorktreeClaimKept { subject: _, reason: _ } => true  WorktreeClaimRed { subject: _, reason: _ } => false } }
+
+fn is_red(o: WorktreeClaimOutcome) -> Bool { match o { WorktreeClaimRed { subject: _, reason: _ } => true  _ => false } }
+
+fn only(os: List<WorktreeClaimOutcome>, check: fn(WorktreeClaimOutcome) -> Bool) -> Bool {
+  os.length() == 1 && all(os, o => check(o))
+}
+
+fn ran_only(p: WorktreeClaimPass, check: fn(WorktreeClaimOutcome) -> Bool) -> Bool {
+  match p {
+    WorktreeClaimPassRan { outcomes } => only(os: outcomes, check: check)
+    WorktreeClaimPassRefused { detail: _ } => false
+  }
+}
+
+fn ran_empty(p: WorktreeClaimPass) -> Bool {
+  match p {
+    WorktreeClaimPassRan { outcomes } => outcomes.length() == 0
+    WorktreeClaimPassRefused { detail: _ } => false
+  }
+}
+
+fn refused(p: WorktreeClaimPass) -> Bool {
+  match p {
+    WorktreeClaimPassRan { outcomes: _ } => false
+    WorktreeClaimPassRefused { detail: _ } => true
+  }
+}
+
+fn store_unready(r: WorktreeClaimStoreReading) -> Bool {
+  match r {
+    WorktreeClaimStoreReady { store: _ } => false
+    WorktreeClaimStoreUnready { detail: _ } => true
+  }
+}
+
+// THE CONTROL PAIR FOR THE REFUSAL. RED arms: a claim store whose directory was never created, and one whose
+// path names a regular file, are each Unready (the mint lists the directory and refuses), and a pass over a
+// missing store is refused, not empty. GREEN arm: a_kill_before_the_claim_leaves_nothing_to_release below -- the
+// directory exists, lists empty, and the pass RAN with no outcomes.
+test fn a_claim_store_over_a_missing_directory_is_unready_and_its_pass_refuses() -> Bool {
+  let dir = fresh_dir(tag: "w11")
+  let cd = fresh_dir(tag: "w11c")
+  let td = fresh_dir(tag: "w11t")
+  let unready = store_unready(r: worktree_claim_store(instance: claim_instance(cd: cd)))
+  let ensured = ensure_pass_without_mkdir(dir: dir, cd: cd, td: td)
+  cleaned(dirs: [dir, cd, td], verdict: unready && refused(p: ensured))
+}
+
+test fn a_claim_store_whose_path_is_a_file_is_unready() -> Bool {
+  let cd = fresh_dir(tag: "w12c")
+  let instance = claim_instance(cd: cd)
+  let path = worktree_claim_slots_path(instance: instance) as String
+  let _parent = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
+  let planted = Filesystem.Write(path: path, content: "not a directory").success
+  cleaned(dirs: [cd], verdict: planted && store_unready(r: worktree_claim_store(instance: instance)))
+}
+
+fn ensure_pass_without_mkdir(dir: String, cd: String, td: String) -> WorktreeClaimPass {
+  match worktree_claim_store(instance: claim_instance(cd: cd)) {
+    WorktreeClaimStoreUnready { detail } => WorktreeClaimPassRefused { detail: detail }
+    WorktreeClaimStoreReady { store: claims } =>
+      match stores_at(dir: dir) {
+        Absent => WorktreeClaimPassRefused { detail: "the witness's session placement stores could not be minted" }
+        Present { value: stores } =>
+          worktree_claim_ensure_pass_at(
+            stores: stores, claims: claims, host: host,
+            path_of: (n, k) => tree_path(td: td, n: n, k: k),
+            loaded_of: u => AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: 5000,
+            tree_of: p => ClaimTreeAbsent, content_of: p => ClaimContentPushed,
+            remove_tree: p => ClaimRemoved, capture_of: (n, k) => ClaimCaptureSettled)
+      }
+  }
+}
+
+// KILL 1: before the claim. No record, no tree: nothing exists to own; a pass is a Noop (and has no subject).
+test fn a_kill_before_the_claim_leaves_nothing_to_release() -> Bool {
+  let dir = fresh_dir(tag: "w1")
+  let cd = fresh_dir(tag: "w1c")
+  let td = fresh_dir(tag: "w1t")
+  let p = pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 5000)
+  cleaned(dirs: [dir, cd, td], verdict: ran_empty(p: p))
+}
+
+// KILL 2: after the claim, before worktree-add. Inside the deadline the add may be in flight: Noop. Past it the
+// attempt never started and nothing was created: the record is closed, and a rerun is a Noop.
+test fn a_kill_between_claim_and_add_closes_the_record_only_past_the_deadline() -> Bool {
+  let dir = fresh_dir(tag: "w2")
+  let cd = fresh_dir(tag: "w2c")
+  let td = fresh_dir(tag: "w2t")
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let early = ran_only(p: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1299), check: is_noop)
+  let late = ran_only(p: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301), check: is_closed)
+  let rerun = ran_only(p: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302), check: is_noop)
+  cleaned(dirs: [dir, cd, td], verdict: opened && early && late && rerun && !tree_there(td: td, n: node_a, k: key_a))
+}
+
+// KILL 3: after worktree-add, before unit start, past the deadline: the tree is named by the record, clean and
+// pushed, so exactly it is removed WITHOUT touching anything else, the record closes, and a rerun is a Noop.
+test fn a_kill_between_add_and_unit_start_removes_the_recorded_clean_tree_once() -> Bool {
+  let dir = fresh_dir(tag: "w3")
+  let cd = fresh_dir(tag: "w3c")
+  let td = fresh_dir(tag: "w3t")
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let planted = plant(td: td, n: node_a, k: key_a)
+  let first = ran_only(p: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301), check: is_removed)
+  let gone = !tree_there(td: td, n: node_a, k: key_a)
+  let rerun = ran_only(p: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302), check: is_noop)
+  cleaned(dirs: [dir, cd, td], verdict: opened && planted && first && gone && rerun)
+}
+
+// KILL 4: after unit start. The worker is live: every pass is a Noop and the tree stays.
+test fn a_live_worker_keeps_its_tree() -> Bool {
+  let dir = fresh_dir(tag: "w4")
+  let cd = fresh_dir(tag: "w4c")
+  let td = fresh_dir(tag: "w4t")
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let planted = plant(td: td, n: node_a, k: key_a)
+  let one = ran_only(p: pass(dir: dir, cd: cd, td: td, others: AttemptUnitActive, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 99999), check: is_noop)
+  cleaned(dirs: [dir, cd, td], verdict: opened && planted && one && tree_there(td: td, n: node_a, k: key_a))
+}
+
+// DIRTY and UNPUSHED are refuse-and-keep: the tree survives every pass.
+test fn a_dirty_or_unpushed_tree_is_kept() -> Bool {
+  let dir = fresh_dir(tag: "w5")
+  let cd = fresh_dir(tag: "w5c")
+  let td = fresh_dir(tag: "w5t")
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let planted = plant(td: td, n: node_a, k: key_a)
+  let dirty = ran_only(p: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentDirty { detail: "M f" }, capture: ClaimCaptureSettled, now: 1301), check: is_kept)
+  let unpushed = ran_only(p: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentUnpushedCommits { detail: "ahead" }, capture: ClaimCaptureSettled, now: 1301), check: is_kept)
+  cleaned(dirs: [dir, cd, td], verdict: opened && planted && dirty && unpushed && tree_there(td: td, n: node_a, k: key_a))
+}
+
+// CAPTURE OWED waits (Noop, tree kept); once the commit step settles it the tree is released: no lost capture.
+test fn release_waits_for_the_capture_commit() -> Bool {
+  let dir = fresh_dir(tag: "w6")
+  let cd = fresh_dir(tag: "w6c")
+  let td = fresh_dir(tag: "w6t")
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let planted = plant(td: td, n: node_a, k: key_a)
+  let owed = ran_only(p: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureOwed { detail: "uncommitted" }, now: 1301), check: is_noop)
+  let kept = tree_there(td: td, n: node_a, k: key_a)
+  let settled = ran_only(p: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302), check: is_removed)
+  cleaned(dirs: [dir, cd, td], verdict: opened && planted && owed && kept && settled && !tree_there(td: td, n: node_a, k: key_a))
+}
+
+// NO RECORD, TREE PRESENT: the claim store has no subject, so the tree is not touched (the slice-4 sweep owns it).
+test fn a_tree_no_claim_names_is_never_touched() -> Bool {
+  let dir = fresh_dir(tag: "w7")
+  let cd = fresh_dir(tag: "w7c")
+  let td = fresh_dir(tag: "w7t")
+  let planted = plant(td: td, n: node_a, k: key_a)
+  let p = pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 99999)
+  cleaned(dirs: [dir, cd, td], verdict: planted && ran_empty(p: p) && tree_there(td: td, n: node_a, k: key_a))
+}
+
+// ANOTHER ATTEMPT'S TREE: A's claim ended and is released; B has a tree and no claim -- B's tree stays.
+test fn another_attempts_tree_is_never_removed() -> Bool {
+  let dir = fresh_dir(tag: "w8")
+  let cd = fresh_dir(tag: "w8c")
+  let td = fresh_dir(tag: "w8t")
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let pa = plant(td: td, n: node_a, k: key_a)
+  let pb = plant(td: td, n: node_b, k: key_b)
+  let first = ran_only(p: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301), check: is_removed)
+  cleaned(dirs: [dir, cd, td], verdict: opened && pa && pb && first && !tree_there(td: td, n: node_a, k: key_a) && tree_there(td: td, n: node_b, k: key_b))
+}
+
+// A SECOND OPEN of the same attempt is a lost race, never an overwrite (create-only).
+test fn a_second_claim_for_the_same_attempt_does_not_overwrite() -> Bool {
+  let cd = fresh_dir(tag: "w9c")
+  let td = fresh_dir(tag: "w9t")
+  let first = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let second = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 2000)
+  cleaned(dirs: [cd, td], verdict: first && !second)
+}
+
+// A host that cannot run git is RED with its own cause, never "git declined": the tree stays and the record stays open.
+test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
+  let dir = fresh_dir(tag: "w10")
+  let cd = fresh_dir(tag: "w10c")
+  let td = fresh_dir(tag: "w10t")
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let planted = plant(td: td, n: node_a, k: key_a)
+  let outcomes = match claims_at(cd: cd) {
+  WorktreeClaimStoreUnready { detail } => WorktreeClaimPassRefused { detail: detail }
+  WorktreeClaimStoreReady { store: claims } =>
+  match stores_at(dir: dir) {
+  Absent => WorktreeClaimPassRefused { detail: "the witness's session placement stores could not be minted" }
+  Present { value: stores } =>
+  worktree_claim_ensure_pass_at(
+    stores: stores, claims: claims, host: host,
+    path_of: (n, k) => tree_path(td: td, n: n, k: k),
+    loaded_of: u => AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: 1301,
+    tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
+    content_of: p => ClaimContentPushed,
+    remove_tree: p => ClaimRemoveUnexecuted { detail: "git is not resolvable on this host" },
+    capture_of: (n, k) => ClaimCaptureSettled)
+  }
+  }
+  cleaned(dirs: [dir, cd, td], verdict: opened && planted && ran_only(p: outcomes, check: is_red) && tree_there(td: td, n: node_a, k: key_a))
+}

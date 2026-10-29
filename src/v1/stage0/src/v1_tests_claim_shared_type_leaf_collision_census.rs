@@ -6,15 +6,16 @@ use self::SubjectBuild::*;
 pub use crate::std_types::{Bool, List};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
-pub use crate::v1_compiler_compile::compile_to_resolved;
-pub use crate::v1_compiler_compile::SourceFile;
+pub use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
 pub use crate::v1_compiler_emit_rust::maybe_mark_shared_type;
 pub use crate::v1_compiler_infer::build_emit_graph_info;
 use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{
     TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared,
 };
-pub use crate::v1_compiler_infer_emit_info::{type_decl_identities_of_leaf, type_summary_at_key};
-pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeSummaryLookup};
+pub use crate::v1_compiler_infer_emit_info::{
+    type_decl_identities_of_leaf, type_summary_at_key, EmitGraphInfo, TypeSummary,
+    TypeSummaryLookup,
+};
 pub use crate::v1_compiler_infer_items::ResolvedGraph;
 pub use crate::v1_compiler_languages::sharing_for_target;
 use crate::v1_rt;
@@ -103,10 +104,10 @@ pub fn sharing_of_collision(
     would_share: Rc<Vec<bool>>,
     recursive_type_set: Rc<BTreeSet<String>>,
 ) -> CollisionSharing {
-    if v1_rt::set_contains(&recursive_type_set, leaf.clone()) {
+    if v1_rt::set_contains(&recursive_type_set, leaf) {
         CollisionSharing::SharingUndeterminedByDeclaration
     } else {
-        collision_sharing_of(would_share.clone())
+        collision_sharing_of(would_share)
     }
 }
 
@@ -133,8 +134,8 @@ pub fn declaration_would_share(
         &crate::v1_compiler_emit_rust::maybe_mark_shared_type(
             v1_rt::rc_empty_set::<String>(),
             summary.clone(),
-            recursive_type_set.clone(),
-            needs_sharing.clone(),
+            recursive_type_set,
+            needs_sharing,
         ),
         summary.name.clone(),
     )
@@ -147,7 +148,7 @@ pub fn would_share_of_identity(
 ) -> bool {
     match (*crate::v1_compiler_infer_emit_info::type_summary_at_key(
         info.type_summaries.clone(),
-        identity.clone(),
+        identity,
     ))
     .clone()
     {
@@ -156,7 +157,7 @@ pub fn would_share_of_identity(
         } => declaration_would_share(
             summary.clone(),
             info.recursive_type_set.clone(),
-            needs_sharing.clone(),
+            needs_sharing,
         ),
         TypeSummaryLookup::TypeSummaryNotDeclared => false,
         TypeSummaryLookup::TypeSummaryLeafAmbiguous { leaf: _, .. } => false,
@@ -170,20 +171,20 @@ pub fn collision_row_of_leaf(
 ) -> Option<Rc<LeafCollisionRow>> {
     {
         let declarers = Rc::new({
-            let mut __sorted: Vec<_> =
+            let mut __keyed: Vec<_> =
                 crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
                     info.type_decl_items.clone(),
                     leaf.clone(),
                 )
                 .iter()
                 .cloned()
+                .map(|__e: String| {
+                    let __k = (|i: String| i.clone())(__e.clone());
+                    (__k, __e)
+                })
                 .collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka = (|i: String| i.clone())(a.clone());
-                let __kb = (|i: String| i.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         if ((declarers.clone().len() as i64) < 2) {
             std::option::Option::None
@@ -225,18 +226,18 @@ pub fn collisions_of_graph(graph: Rc<ResolvedGraph>) -> Rc<Vec<Rc<LeafCollisionR
             .needs_sharing
             .clone();
         Rc::new({
-            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(
-                &info.type_decl_items.clone().identities_by_leaf.clone(),
+            let mut __keyed: Vec<_> = Rc::new(v1_rt::map_keys(
+                &info.type_decl_items.identities_by_leaf.clone(),
             ))
             .iter()
             .cloned()
+            .map(|__e: String| {
+                let __k = (|k: String| k.clone())(__e.clone());
+                (__k, __e)
+            })
             .collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka = (|k: String| k.clone())(a.clone());
-                let __kb = (|k: String| k.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         })
         .iter()
         .cloned()
@@ -258,7 +259,7 @@ pub fn collisions_from_sources(
     sources: Rc<Vec<Rc<SourceFile>>>,
 ) -> Option<Rc<Vec<Rc<LeafCollisionRow>>>> {
     {
-        let result = crate::v1_compiler_compile::compile_to_resolved(sources.clone());
+        let result = crate::v1_compiler_compile::compile_to_resolved(sources);
         match result.graph.clone() {
             std::option::Option::None => std::option::Option::None,
             Some(graph) => Some(collisions_of_graph(graph.clone())),
@@ -312,7 +313,7 @@ pub fn report_has_no_collision(report: Rc<SubjectCollisionReport>) -> bool {
 }
 
 pub fn diagnostic_names_class(diagnostic: String, class: String) -> bool {
-    v1_rt::string_contains(&diagnostic, class.clone())
+    v1_rt::string_contains(&diagnostic, class)
 }
 
 pub fn refuse_control_holds(report: Rc<SubjectCollisionReport>) -> bool {
@@ -458,17 +459,14 @@ pub fn subject_summary_line(
                     ),
                 ),
                 v1_rt::concat(
-                    v1_rt::concat(" same_sharing=".to_string(), (same.clone()).to_string()),
-                    v1_rt::concat(
-                        " different_sharing=".to_string(),
-                        (different.clone()).to_string(),
-                    ),
+                    v1_rt::concat(" same_sharing=".to_string(), (same).to_string()),
+                    v1_rt::concat(" different_sharing=".to_string(), (different).to_string()),
                 ),
             ),
             v1_rt::concat(
                 v1_rt::concat(
                     " undetermined_sharing=".to_string(),
-                    (undetermined.clone()).to_string(),
+                    (undetermined).to_string(),
                 ),
                 v1_rt::concat(" build=".to_string(), build_label(report.build.clone())),
             ),
@@ -496,9 +494,9 @@ pub fn fixture_standing(
     green_report: Rc<SubjectCollisionReport>,
 ) -> String {
     {
-        let refuse_held = refuse_control_holds(refuse_report.clone());
-        let silent_held = silent_control_holds(silent_report.clone());
-        let green_held = green_control_holds(green_report.clone());
+        let refuse_held = refuse_control_holds(refuse_report);
+        let silent_held = silent_control_holds(silent_report);
+        let green_held = green_control_holds(green_report);
         let held = ((refuse_held.clone() && silent_held.clone()) && green_held.clone());
         Rc::new(vec![
             v1_rt::concat(
@@ -531,8 +529,8 @@ pub fn fixture_controls_hold(
     silent_report: Rc<SubjectCollisionReport>,
     green_report: Rc<SubjectCollisionReport>,
 ) -> bool {
-    ((refuse_control_holds(refuse_report.clone()) && silent_control_holds(silent_report.clone()))
-        && green_control_holds(green_report.clone()))
+    ((refuse_control_holds(refuse_report) && silent_control_holds(silent_report))
+        && green_control_holds(green_report))
 }
 
 pub fn observation_held(standing_held: bool, live_unobserved: bool) -> bool {

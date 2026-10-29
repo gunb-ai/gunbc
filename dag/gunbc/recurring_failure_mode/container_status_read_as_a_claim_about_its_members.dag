@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.container_status_read_as_a_claim_about_its_members
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data container_status_read_as_a_claim_about_its_members: RecurringFailureMode = RecurringFailureMode {
   identity: "container_status_read_as_a_claim_about_its_members" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**container status read as a claim about its members** (an aggregate field on a CONTAINER is read as though it asserted something about the container's MEMBERS. The field is not stale, not censored and not lying: it is answering a question about the container, faithfully, and the reader asked a question about a member. Every conclusion drawn is then true of the wrapper and false of the contents.",

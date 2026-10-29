@@ -30,9 +30,24 @@ data anonymous_record_resolution_seed_growth_justification: SeedGrowthJustificat
       module_path: "v1_compiler_tests.anonymous_record_struct_resolution_test",
       decl_name: "absent_nominal_candidate_remains_distinct_from_ambiguity",
       field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler_tests.anonymous_record_struct_resolution_test",
+      decl_name: "shape_one_selects_before_hint_filtering",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler_tests.anonymous_record_struct_resolution_test",
+      decl_name: "shape_many_hints_narrow_to_zero_keeps_absence_distinct",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler_tests.anonymous_record_struct_resolution_test",
+      decl_name: "shape_many_hints_narrow_to_many_keeps_refusal",
+      field: WholeDeclaration
     }
   ],
-  reason: "Five hand-authored Rust items retain the discriminating fixture for the v1 emitter repair: two fixture constructors and three tests. Their .dag authority is src/v1/05_emit_rust.dag anonymous_record_struct_candidates, find_struct_name_by_fields, and ambiguous_anonymous_record_literal_diagnostics; Rust is still needed because this fixture directly constructs the generated TypeSummary/Map representation and calls the seed emitter boundary, including the mutation control that restores the former alphabetical pick. The current .dag claim harness exercises compiled source programs, not direct generated-seed helper calls over synthetic TypeSummary tables, so moving this receipt there today would change the subject rather than migrate the evidence. Exact growth against the merge base: hand-item delta +5; hand-LOC delta +78 (76 lines in the new test module plus 2 lines enrolling that module in the existing lib.rs). The lib.rs module declaration is classified ExistingSeedItemModified rather than a sixth newly declared item.",
+  reason: "Eight hand-authored Rust items retain the discriminating fixture for the v1 emitter repair: two fixture constructors and six tests. Their .dag authority is src/v1/05_emit_rust.dag anonymous_record_struct_candidates, find_struct_name_by_fields, and ambiguous_anonymous_record_literal_diagnostics; Rust is still needed because this fixture directly constructs the generated TypeSummary/Map representation and calls the seed emitter boundary, including the mutation control that restores the former alphabetical pick. The current .dag claim harness exercises compiled source programs, not direct generated-seed helper calls over synthetic TypeSummary tables, so moving this receipt there today would change the subject rather than migrate the evidence. Exact growth against the merge base: hand-item delta +8; hand-LOC delta +166 (76 lines in the new test module plus 2 lines enrolling that module in the existing lib.rs, plus 88 lines in the three lane-G specimen tests added by v1-interface-cull-audit@63a464ed lane G: shape_one_selects_before_hint_filtering, shape_many_hints_narrow_to_zero_keeps_absence_distinct, shape_many_hints_narrow_to_many_keeps_refusal). The lib.rs module declaration is classified ExistingSeedItemModified rather than a ninth newly declared item.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete the entire Rust test module and its lib.rs enrollment when a .dag fixture runner can directly construct the emitter's TypeSummary candidate table, call the resolution boundary, and preserve all three discriminators: ambiguous identical shapes refuse, field hints select one candidate, and zero candidates remain distinct. Partial migration is not admissible because dropping the alphabetical mutation control would leave the repaired branch non-discriminating.",
   current_boundary: "src/v1/05_emit_rust.dag anonymous_record_struct_candidates/find_struct_name_by_fields -> generated v1_compiler_emit_rust seed helpers -> src/v1/tests/src/anonymous_record_struct_resolution_test.rs"

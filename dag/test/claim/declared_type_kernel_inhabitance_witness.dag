@@ -1,5 +1,13 @@
 module test.claim.declared_type_kernel_inhabitance_witness
 
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
 // A PLAIN KERNEL VALUE INHABITS NOTHING, AND SEVEN OF FOURTEEN DECLARED-TYPE POSITIONS ADMITTED IT.
 //
 // DESIGN section 4b puts `values inhabit declared types` in the ordinary compiler floor, beside
@@ -72,7 +80,7 @@ module test.claim.declared_type_kernel_inhabitance_witness
 // WHAT THE SCOPE ACTUALLY WAS, because "aliases were unchecked" overstates it in one direction and
 // understates it in another. An alias whose right-hand side is a KERNEL type
 // (`type KIntAlias = Int`) was already covered, but not by this relation:
-// `peel_nominal_alias_identity` drops the brand for a transparent primitive right-hand side, so the
+// `expand_nominal_alias_rhs` drops the brand for a transparent primitive right-hand side, so the
 // formal arrives spelled `Int` and never reaches the arm that failed. An alias over a RECORD or a
 // COPRODUCT keeps its brand, arrives spelled `KAlias`, and was admitted -- at every position that
 // consults the relation without peeling first. The record-literal field seam peels and was covered;
@@ -329,4 +337,200 @@ test fn kernel_at_applied_alias_named_field_must_refuse() -> Bool {
     [],
     []
   )
+}
+
+// ================================================================================================
+// MEASURED SPECIMEN FIVE OF gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel
+// (2026-10-17, node://adhoc-ed047a8d-5b3, pinned pair b97793f4603b -> f907616774e): THE KERNEL
+// DECLARED-TYPE RELATION BAILED ON THE PRODUCED VALUE'S RUNTIME SHAPE, so a Bool VARIABLE at a
+// scalar formal was ACCEPTED while the `true` LITERAL at the same formal refused. The corpus Bool is
+// `type Bool = True | False`: a Bool variable's node carries two children, the literal is a childless
+// kernel spelling, and the relation's first bail (`(actual_base.children |> count) > 0`) answered
+// `no mismatch` for the variable before any comparison -- one declared type, two verdicts, decided by
+// the value's spelling. The bail is withdrawn; the produced side is judged by its declared head name.
+// THE NINE REDS below are the eight shapes that flipped ACCEPTED -> REFUSED on the pinned pair (each
+// measured twice, seed at the parent and seed at the fix, on the v1-compiler-tests harness whose
+// filter is is_interpreter_blocking_diagnostic -- the same blocking predicate the census projects),
+// plus the Bool-LITERAL control at the same argument, which was already refusing before the repair
+// and is what makes the variable's acceptance a measurement rather than an absent check.
+// THE SEVEN GREENS are acceptances unchanged across the pin, each carrying a CITED ROUTE: the declared
+// dag_cast_rules rows (Int<->Float), the grounded identity rows of dag/std/coercion.dag (Int->Nat,
+// String->FreeMonoid -- the declared text unfold the operator ruled legitimate), name equality through
+// an alias, or a same-head application. The oracle counts blocking rows of EITHER refusing class,
+// exactly as test.claim.numeral_at_non_numeric_kernel_witness does for the same reason: the wall
+// refuses some of these positions as TypeMismatch from the kernel-mismatch arm and others as
+// DeclaredTypeNotInhabited from the inhabitance arm, and a RED needs one row while a GREEN needs zero
+// of both, which keeps -1 (not runnable) out of both arms.
+// ================================================================================================
+
+// The two-class blocking oracle, in the sibling witness's proven idiom. CensusObserved carries the
+// whole compile's rows including imported closures, which is why these fixtures import only
+// std.types/std.algebra/std.nat -- whose rows are known-clean -- and why a GREEN asserts zero of the
+// two SPECIFIC classes rather than zero rows of any class.
+fn inhabitance_or_mismatch_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// THE SHAPE, AT THE POSITION THE SHIPPED SEED BINARY WAS MEASURED ON (gentle-carp-16, probe for
+// gunbc#14152): 'takes(x: q)' with 'q: Bool' compiled with ZERO blocking diagnostics; 'takes(x: true)'
+// refused. The refusals at the literal are what make the variable's acceptance a measurement.
+fn sv5_arg_bool_var_source() -> String {
+  "module sv5.arg_bool_var\n\nimport std.types { Int, Bool }\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Bool) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn a_bool_variable_at_an_int_direct_call_argument_must_refuse() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_arg_bool_var_source()) >= 1
+}
+
+fn sv5_arg_bool_literal_source() -> String {
+  "module sv5.arg_bool_literal\n\nimport std.types { Int, Bool }\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe() -> Int {\n  takes(x: true)\n}\n"
+}
+
+test fn a_bool_literal_at_an_int_direct_call_argument_must_refuse() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_arg_bool_literal_source()) >= 1
+}
+
+// THE SAME DECLARED TYPE, AT THE OTHER CONSULTED POSITIONS: the variable and the literal now receive
+// the SAME verdict (measured: the variable accepted and the literal refused at every one of these
+// before the repair).
+fn sv5_return_bool_var_source() -> String {
+  "module sv5.return_bool_var\n\nimport std.types { Int, Bool }\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Bool) -> Int {\n  q\n}\n"
+}
+
+test fn a_bool_variable_at_an_int_declared_return_must_refuse() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_return_bool_var_source()) >= 1
+}
+
+fn sv5_field_bool_var_source() -> String {
+  "module sv5.field_bool_var\n\nimport std.types { Int, Bool }\n\ntype Box { n: Int }\n\nfn probe(q: Bool) -> Box {\n  Box { n: q }\n}\n"
+}
+
+test fn a_bool_variable_at_an_int_record_field_must_refuse() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_field_bool_var_source()) >= 1
+}
+
+fn sv5_let_bool_var_source() -> String {
+  "module sv5.let_bool_var\n\nimport std.types { Int, Bool }\n\nfn probe(q: Bool) -> Int {\n  let z: Int = q\n  z\n}\n"
+}
+
+test fn a_bool_variable_at_an_int_let_annotation_must_refuse() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_let_bool_var_source()) >= 1
+}
+
+// THE SHAPE BEYOND THE KERNEL FORMAL: a Bool at a differently-parameterised declared head, and a
+// differently-parameterised head at itself. These refuse as DeclaredTypeNotInhabited -- at the direct
+// call argument for the first, at the GENERIC TYPE ARGUMENT for the second (the child-count bail had
+// silenced both; measured ACCEPTED with zero diagnostics before).
+fn sv5_bool_at_free_monoid_int_source() -> String {
+  "module sv5.bool_at_fm_int\n\nimport std.types { Int, Bool }\nimport std.algebra { FreeMonoid }\n\nfn takes(x: FreeMonoid<Int>) -> Int {\n  1\n}\n\nfn probe(q: Bool) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn a_bool_variable_at_a_free_monoid_of_int_formal_must_refuse() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_bool_at_free_monoid_int_source()) >= 1
+}
+
+fn sv5_free_monoid_bool_at_free_monoid_int_source() -> String {
+  "module sv5.fm_bool_at_fm_int\n\nimport std.types { Int, Bool }\nimport std.algebra { FreeMonoid }\n\nfn takes(x: FreeMonoid<Int>) -> Int {\n  1\n}\n\nfn probe(q: FreeMonoid<Bool>) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn free_monoid_of_bool_at_a_free_monoid_of_int_formal_must_refuse() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_free_monoid_bool_at_free_monoid_int_source()) >= 1
+}
+
+// THE HARM, Pinned: the accepted path was not a lint gap but an INTERPRETATION breach -- with
+// 'takes(x: Int) -> Int { x }' the chain probe(q: true) through takes(x: q) evaluated Bool(true) at an
+// entry declared -> Int (graph:true, zero blocking diagnostics), and the emitted Rust carried
+// 'fn probe(q:bool) -> i64 { takes(x: q) }'. The refusal at the argument is what closes it.
+fn sv5_harm_through_int_source() -> String {
+  "module sv5.harm_through_int\n\nimport std.types { Int, Bool }\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Bool) -> Int {\n  takes(x: q)\n}\n\nfn entry() -> Int {\n  probe(q: true)\n}\n"
+}
+
+test fn the_bool_through_int_harm_chain_must_refuse() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_harm_through_int_source()) >= 1
+}
+
+// A BOOL AT A FLOAT FORMAL: refused. There is NO declared Bool->Float route -- the cast rows carry
+// Int<->Float only (std.coercion dag_cast_rules, verbatim: Int->Int, Int->Float, Float->Int,
+// Float->Float, Bool->Bool). Accepted before the repair, at zero diagnostics.
+fn sv5_bool_at_float_source() -> String {
+  "module sv5.bool_at_float\n\nimport std.types { Int, Bool, Float }\n\nfn takes(x: Float) -> Float {\n  x\n}\n\nfn probe(q: Bool) -> Float {\n  takes(x: q)\n}\n"
+}
+
+test fn a_bool_variable_at_a_float_formal_must_refuse() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_bool_at_float_source()) >= 1
+}
+
+// GREENS -- every acceptance the relation still grants, each by a CITED ROUTE, each measured unchanged
+// across the pin. A blanket refusal of variables or of structured values goes red here.
+
+// The declared numeric conversion route Int<->Float (dag_cast_rules): a Float variable at an Int
+// formal and an Int at a Float formal both stay admitted.
+fn sv5_green_float_var_at_int_source() -> String {
+  "module sv5.green_float_var\n\nimport std.types { Int, Float }\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(f: Float) -> Int {\n  takes(x: f)\n}\n"
+}
+
+test fn a_float_variable_at_an_int_formal_stays_admitted_by_the_declared_cast_route() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_green_float_var_at_int_source()) == 0
+}
+
+fn sv5_green_int_at_float_source() -> String {
+  "module sv5.green_int_at_float\n\nimport std.types { Int, Float }\n\nfn takes(x: Float) -> Float {\n  x\n}\n\nfn probe(n: Int) -> Float {\n  takes(x: n)\n}\n"
+}
+
+test fn an_int_variable_at_a_float_formal_stays_admitted_by_the_declared_cast_route() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_green_int_at_float_source()) == 0
+}
+
+// The grounded identity row Int -> Nat (dag/std/coercion.dag, operator ruling 3): an Int variable at
+// a declared Nat formal stays admitted.
+fn sv5_green_int_at_nat_source() -> String {
+  "module sv5.green_int_at_nat\n\nimport std.types { Int }\nimport std.nat { Nat }\n\nfn takes(x: Nat) -> Nat {\n  x\n}\n\nfn probe(n: Int) -> Nat {\n  takes(x: n)\n}\n"
+}
+
+test fn an_int_variable_at_a_nat_formal_stays_admitted_by_the_grounded_identity_row() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_green_int_at_nat_source()) == 0
+}
+
+// The declared text unfold, String -> FreeMonoid (grounded identity row, operator ruling 3): a String
+// at a FreeMonoid<Char> formal -- the acceptance gentle-carp-16's probe also observed, which IS
+// legitimate. It stays admitted, and the generic argument matches the Char the text unfolds into.
+fn sv5_green_string_at_free_monoid_char_source() -> String {
+  "module sv5.green_string_at_fm_char\n\nimport std.types { Int, String, Char }\nimport std.algebra { FreeMonoid }\n\nfn takes(x: FreeMonoid<Char>) -> Int {\n  1\n}\n\nfn probe(s: String) -> Int {\n  takes(x: s)\n}\n"
+}
+
+test fn a_string_at_a_free_monoid_of_char_formal_stays_admitted_by_the_declared_text_unfold() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_green_string_at_free_monoid_char_source()) == 0
+}
+
+// Name equality through an alias: `type IntAlias = Int` at an Int formal is the formal's own name.
+fn sv5_green_alias_of_int_source() -> String {
+  "module sv5.green_alias_of_int\n\nimport std.types { Int }\n\ntype IntAlias = Int\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(v: IntAlias) -> Int {\n  takes(x: v)\n}\n"
+}
+
+test fn an_alias_of_int_at_an_int_formal_stays_admitted_by_name_equality() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_green_alias_of_int_source()) == 0
+}
+
+// Same-head application: a FreeMonoid<Int> at a FreeMonoid<Int> formal, one argument away from the
+// refusing RED above -- the repair is a judgment, not a blanket refusal of shaped values.
+fn sv5_green_free_monoid_int_source() -> String {
+  "module sv5.green_fm_int\n\nimport std.types { Int }\nimport std.algebra { FreeMonoid }\n\nfn takes(x: FreeMonoid<Int>) -> Int {\n  1\n}\n\nfn probe(q: FreeMonoid<Int>) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn a_free_monoid_of_int_at_its_own_formal_stays_admitted() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_green_free_monoid_int_source()) == 0
+}
+
+// A Bool at a Bool formal, one name away from the first RED: the refusal is about the PAIR, not the value.
+fn sv5_green_bool_at_bool_source() -> String {
+  "module sv5.green_bool_at_bool\n\nimport std.types { Int, Bool }\n\nfn takes(x: Bool) -> Bool {\n  x\n}\n\nfn probe(q: Bool) -> Bool {\n  takes(x: q)\n}\n"
+}
+
+test fn a_bool_variable_at_a_bool_formal_stays_admitted() -> Bool {
+  inhabitance_or_mismatch_blocking_count(source: sv5_green_bool_at_bool_source()) == 0
 }

@@ -105,7 +105,7 @@ fn work_default_build() -> WorkOperation {
 }
 
 // The outputs an operation declares, each relative to a named root: cargo writes binaries under the
-// TARGET root (CARGO_TARGET_DIR), not under the checkout -- the first wet run declared them under the
+// TARGET root (cargo --target-dir), not under the checkout -- the first wet run declared them under the
 // checkout and reported a mismatch on a build that had succeeded, which is the mismatch arm doing its
 // job and the declaration being wrong. The provider now gives each IDENTITY its own target root
 // (under that identity's work_dir, not a host-wide shared one), so an identity's declared TargetRoot

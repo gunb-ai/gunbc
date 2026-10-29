@@ -85,18 +85,23 @@ type CapacityPolicy
 // TIMED RELEASE IS RETENTION, NOT FRESHNESS. ReleasedAfterInterval says the
 // store reclaims an entry a fixed interval after it was WRITTEN (an object
 // lifecycle rule, a workflow-artifact retention period): the entry is then
-// absent, and a lookup answers an established Miss. It is not TtlExpiry, which
-// lives on InvalidationTrigger and says the VALUE stops being the answer after a
-// window while the entry may still be held. A warming cache whose key is
-// complete has no freshness window at all -- its entry is correct for as long as
-// it exists -- so spelling its lifecycle rule as TtlExpiry would claim that a
-// held entry goes stale, and spelling a freshness window as timed release would
-// claim the store deletes what it merely stops trusting. Two facts, two carriers.
+// absent, and a lookup answers an established Miss. ReleasedAfterIdle says the
+// store reclaims an entry a fixed interval after it was LAST ACCESSED, so a
+// read resets the clock; writing and reading are different events, and GitHub
+// Actions cache's documented 7-day rule is idle, not age-from-write. It is not
+// TtlExpiry, which lives on InvalidationTrigger and says the VALUE stops being
+// the answer after a window while the entry may still be held. A warming cache
+// whose key is complete has no freshness window at all -- its entry is correct
+// for as long as it exists -- so spelling its lifecycle rule as TtlExpiry would
+// claim that a held entry goes stale, and spelling a freshness window as timed
+// release would claim the store deletes what it merely stops trusting. Two
+// facts, two carriers; two clocks, two timed-release arms.
 type ReleasePolicy
   = ReleasedAtProviderScopeExit
   | ReleasedNever
   | ReleasedManually
   | ReleasedAfterInterval { after_write: Second }
+  | ReleasedAfterIdle { idle: Second }
 
 // The product the old sum could not express. One vocabulary serves both the
 // cited mechanism and the ladder's required class: with the axes separated,
@@ -127,6 +132,7 @@ fn retention_growth_is_bounded(r: ProviderRetention) -> Bool {
     ReleasedNever => retention_has_capacity_bound(r: r)
     ReleasedManually => retention_has_capacity_bound(r: r)
     ReleasedAfterInterval { after_write: _ } => retention_has_capacity_bound(r: r)
+    ReleasedAfterIdle { idle: _ } => retention_has_capacity_bound(r: r)
   }
 }
 
@@ -247,7 +253,6 @@ type CacheRowEvidence
   = VendorCitation { source: NonEmptyStr, url: NonEmptyStr }
   | RunnerObserved { receipt: NonEmptyStr, observed_at: LogicalTime }
   | OperatorObserved { note: NonEmptyStr, observed_at: Optional<LogicalTime> }
-  | CiReceiptCitation { workflow_run_id: NonEmptyStr, step_id: NonEmptyStr }
 
 type CacheEvidence {
   field: NonEmptyStr

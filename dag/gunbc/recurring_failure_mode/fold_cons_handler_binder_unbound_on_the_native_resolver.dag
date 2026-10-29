@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.fold_cons_handler_binder_unbound_on_the_nati
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data fold_cons_handler_binder_unbound_on_the_native_resolver: RecurringFailureMode = RecurringFailureMode {
   identity: "fold_cons_handler_binder_unbound_on_the_native_resolver" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "(a) OBSERVED HISTORICAL REFUSAL (2026-10-02, eager-cat-664, head 17fccbf3f62): `gunbc test '//v2/test/claim/variant_field_native_specimen:all'` (emitted closure ae6fb52183d56945c0dedad90047279110c416c3f7ea5dcb6b5a10724ab7cff6): target/v2-native-lane/driver-rows.jsonl records all three identities of v2.test.claim.variant_field_native_specimen (vfb_specimen_binder_present_value_node_binds, vfb_specimen_variant_binder_binds, vfb_specimen_unbound_name_yields_no_candidates) as NativeTestRefused at NativeTestStagePrepare with head reason resolve_reason_unbound_symbol, anchor a fold_list_node spine over the atoms `candidate` and `path` in the claim's own cons handler. The same three claims are GREEN on the interpreted floor (gunbc run --claim-run, pool 7223 modules, exit 0). THE EXACT PREPARE-REFUSAL CAUSE IS UNESTABLISHED. It is not established that resolve_projection_base answered Absent for a LexicalFrame binder: #13028's parent f7303bb078 already had a BoundInFrame arm that gives LexicalFrame an accepted canonical-atom base.",

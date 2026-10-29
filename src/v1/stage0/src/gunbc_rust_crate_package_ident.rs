@@ -7,9 +7,9 @@ use self::PackageIdentSetOutcome::*;
 pub use crate::extdeps_languages_rust_emit::rust_reserved;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
-pub use crate::std_dissolution::retires_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{retires_dissolution, DissolutionCondition};
+pub use crate::std_host_text::chars;
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
@@ -85,27 +85,10 @@ pub fn rust_crate_package_ident(package_name: String) -> Rc<PackageIdentOutcome>
     } else {
         if {
             let mut __all = true;
-            for c in Rc::new(
-                package_name
-                    .clone()
-                    .chars()
-                    .map(|c| c as i64)
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            {
+            for c in v1_rt::chars(&package_name).iter().cloned() {
                 if !({
                     let mut __found = false;
-                    for a in Rc::new(
-                        package_ident_alphabet()
-                            .chars()
-                            .map(|c| c as i64)
-                            .collect::<Vec<_>>(),
-                    )
-                    .iter()
-                    .cloned()
-                    {
+                    for a in v1_rt::chars(&package_ident_alphabet()).iter().cloned() {
                         if (a.clone() == c.clone()) {
                             __found = true;
                             break;
@@ -275,7 +258,9 @@ pub fn rust_crate_package_idents(package_names: Rc<Vec<String>>) -> Rc<PackageId
                 bindings: Rc::new(vec![]),
                 refusal: std::option::Option::None,
             }),
-            |acc: _, package_name: String| package_ident_step(acc, package_name.clone()),
+            |acc: Rc<PackageIdentFold>, package_name: String| {
+                package_ident_step(acc, package_name.clone())
+            },
         );
         match folded.refusal.clone() {
             Some(cause) => Rc::new(PackageIdentSetOutcome::PackageIdentSetRefused {
@@ -294,7 +279,9 @@ pub fn package_ident_bound(
 ) -> Option<String> {
     bindings.iter().cloned().fold(
         std::option::Option::None,
-        |found: _, binding: Rc<PackageIdentBinding>| match (binding.package_name.clone()
+        |found: Option<String>, binding: Rc<PackageIdentBinding>| match (binding
+            .package_name
+            .clone()
             == package_name.clone())
         {
             true => Some(binding.ident.clone()),

@@ -8,18 +8,18 @@ on:
       label:
         description: The rostered instrument to run (gunbc.instrument_targets); the run executes `gunbc test <label>` at the dispatched ref.
         required: true
-        options: [//gunbc/instruments:dag-emit-real-grammar-round-trips, //gunbc/instruments:self-host-behavioral-equivalence, //gunbc/instruments:dependency-demand-census, //gunbc/instruments:v2-native-census, //gunbc/instruments:type-declaration-use-census, //gunbc/instruments:regen-round-cost, //gunbc/instruments:compute-run-unit-cold, //gunbc/instruments:compute-run-unit-sccache-probe, //gunbc/instruments:compute-wrong-capture, //gunbc/instruments:compute-dependency-wrong-capture]
+        options: [//gunbc/instruments:dag-emit-real-grammar-round-trips, //gunbc/instruments:self-host-behavioral-equivalence, //gunbc/instruments:dependency-demand-census, //gunbc/instruments:self-host-frontier, //gunbc/instruments:decl-ref-census, //gunbc/instruments:effect-pair-census, //gunbc/instruments:v2-native-census, //gunbc/instruments:type-declaration-use-census, //gunbc/instruments:regen-round-cost, //gunbc/instruments:compute-run-unit-cold, //gunbc/instruments:compute-run-unit-sccache-probe, //gunbc/instruments:compute-run-unit-cold-same-path, //gunbc/instruments:compute-wrong-capture, //gunbc/instruments:compute-dependency-wrong-capture, //gunbc/instruments:known-red-derivation, //gunbc/instruments:roster-reach-inhabitance, //gunbc/instruments:router-proxy-falsifier, //gunbc/instruments:serving-benchmark-run, //gunbc/instruments:ambient-name-census, //gunbc/instruments:roster-import-sweep-controls, //gunbc/instruments:credential-acquisition-systemd-rows]
         type: choice
 permissions:
   contents: read
 concurrency:
   queue: max
-  group: instrument-dispatch-queued
+  group: instrument-dispatch-${{ github.ref }}-${{ inputs.label }}
   cancel-in-progress: false
 jobs:
   instrument:
-    runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 240
+    runs-on: ${{ inputs.label == '//gunbc/instruments:serving-benchmark-run' && fromJSON('["self-hosted", "linux", "arm64", "gunbc-gpu-docker", "srv3"]') || fromJSON('["self-hosted", "linux", "arm64"]') }}
+    timeout-minutes: 360
     permissions:
       contents: read
     steps:
@@ -42,7 +42,8 @@ jobs:
           cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
           memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
           memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
-          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
           if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
@@ -58,7 +59,8 @@ jobs:
           cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
           memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
           memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
-          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
           if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
@@ -67,6 +69,23 @@ jobs:
           INSTRUMENT_LABEL: ${{ inputs.label }}
           REQUIRED_MEMORY_BYTES: "18253611008"
         if: inputs.label == '//gunbc/instruments:compute-run-unit-cold'
+      - name: Require the declared memory for //gunbc/instruments:compute-run-unit-cold-same-path
+        run: |
+          set -e
+          machine=$('free' '-b' | 'grep' '^Mem:' | 'tr' '-s' ' ' | 'cut' '-d' ' ' '-f' '2')
+          cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
+          memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
+          memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
+          if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+        shell: bash
+        env:
+          INSTRUMENT_LABEL: ${{ inputs.label }}
+          REQUIRED_MEMORY_BYTES: "18253611008"
+        if: inputs.label == '//gunbc/instruments:compute-run-unit-cold-same-path'
       - name: Require the declared memory for //gunbc/instruments:compute-wrong-capture
         run: |
           set -e
@@ -74,7 +93,8 @@ jobs:
           cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
           memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
           memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
-          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
           if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
@@ -90,7 +110,8 @@ jobs:
           cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
           memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
           memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
-          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
           if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
@@ -106,7 +127,8 @@ jobs:
           cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
           memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
           memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
-          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
           if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
@@ -115,6 +137,57 @@ jobs:
           INSTRUMENT_LABEL: ${{ inputs.label }}
           REQUIRED_MEMORY_BYTES: "21474836480"
         if: inputs.label == '//gunbc/instruments:dependency-demand-census'
+      - name: Require the declared memory for //gunbc/instruments:self-host-frontier
+        run: |
+          set -e
+          machine=$('free' '-b' | 'grep' '^Mem:' | 'tr' '-s' ' ' | 'cut' '-d' ' ' '-f' '2')
+          cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
+          memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
+          memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
+          if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+        shell: bash
+        env:
+          INSTRUMENT_LABEL: ${{ inputs.label }}
+          REQUIRED_MEMORY_BYTES: "21474836480"
+        if: inputs.label == '//gunbc/instruments:self-host-frontier'
+      - name: Require the declared memory for //gunbc/instruments:decl-ref-census
+        run: |
+          set -e
+          machine=$('free' '-b' | 'grep' '^Mem:' | 'tr' '-s' ' ' | 'cut' '-d' ' ' '-f' '2')
+          cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
+          memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
+          memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
+          if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+        shell: bash
+        env:
+          INSTRUMENT_LABEL: ${{ inputs.label }}
+          REQUIRED_MEMORY_BYTES: "21474836480"
+        if: inputs.label == '//gunbc/instruments:decl-ref-census'
+      - name: Require the declared memory for //gunbc/instruments:effect-pair-census
+        run: |
+          set -e
+          machine=$('free' '-b' | 'grep' '^Mem:' | 'tr' '-s' ' ' | 'cut' '-d' ' ' '-f' '2')
+          cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
+          memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
+          memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
+          if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+        shell: bash
+        env:
+          INSTRUMENT_LABEL: ${{ inputs.label }}
+          REQUIRED_MEMORY_BYTES: "21474836480"
+        if: inputs.label == '//gunbc/instruments:effect-pair-census'
       - name: Require the declared memory for //gunbc/instruments:v2-native-census
         run: |
           set -e
@@ -122,7 +195,8 @@ jobs:
           cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
           memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
           memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
-          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
           if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
           if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
@@ -131,6 +205,57 @@ jobs:
           INSTRUMENT_LABEL: ${{ inputs.label }}
           REQUIRED_MEMORY_BYTES: "21474836480"
         if: inputs.label == '//gunbc/instruments:v2-native-census'
+      - name: Require the declared memory for //gunbc/instruments:known-red-derivation
+        run: |
+          set -e
+          machine=$('free' '-b' | 'grep' '^Mem:' | 'tr' '-s' ' ' | 'cut' '-d' ' ' '-f' '2')
+          cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
+          memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
+          memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
+          if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+        shell: bash
+        env:
+          INSTRUMENT_LABEL: ${{ inputs.label }}
+          REQUIRED_MEMORY_BYTES: "21474836480"
+        if: inputs.label == '//gunbc/instruments:known-red-derivation'
+      - name: Require the declared memory for //gunbc/instruments:roster-reach-inhabitance
+        run: |
+          set -e
+          machine=$('free' '-b' | 'grep' '^Mem:' | 'tr' '-s' ' ' | 'cut' '-d' ' ' '-f' '2')
+          cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
+          memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
+          memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
+          if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+        shell: bash
+        env:
+          INSTRUMENT_LABEL: ${{ inputs.label }}
+          REQUIRED_MEMORY_BYTES: "21474836480"
+        if: inputs.label == '//gunbc/instruments:roster-reach-inhabitance'
+      - name: Require the declared memory for //gunbc/instruments:ambient-name-census
+        run: |
+          set -e
+          machine=$('free' '-b' | 'grep' '^Mem:' | 'tr' '-s' ' ' | 'cut' '-d' ' ' '-f' '2')
+          cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
+          memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
+          memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
+          if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+        shell: bash
+        env:
+          INSTRUMENT_LABEL: ${{ inputs.label }}
+          REQUIRED_MEMORY_BYTES: "21474836480"
+        if: inputs.label == '//gunbc/instruments:ambient-name-census'
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -158,6 +283,20 @@ jobs:
       - name: Build the compiler
         id: build_witness_fold
         run: |+
+          GUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')
+          '[' -n "$GUNBC_SEED_CHECKOUT" ']' || ('echo' '::error title=seedBuildRemap CheckoutRootUnread::the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build'; exit 1)
+          GUNBC_SEED_TARGET=${CARGO_TARGET_DIR:-$GUNBC_SEED_CHECKOUT'/target'}
+          GUNBC_SEED_CARGO_HOME=${CARGO_HOME:-$HOME'/.cargo'}
+          GUNBC_SEED_SYSROOT=$('rustc' '--print' 'sysroot')
+          '[' -n "$GUNBC_SEED_SYSROOT" ']' || ('echo' '::error title=seedBuildRemap SysrootUnread::the rustc sysroot read back empty, so the sysroot remap would name nothing; refusing to build'; exit 1)
+          RUSTFLAGS="-D warnings --remap-path-prefix=$GUNBC_SEED_CHECKOUT=/build/checkout --remap-path-prefix=$GUNBC_SEED_TARGET=/build/target --remap-path-prefix=$GUNBC_SEED_CARGO_HOME=/build/cargo-home --remap-path-prefix=$GUNBC_SEED_SYSROOT=/build/rust"
+          export RUSTFLAGS
+          if '[' -z "${GUNBC_MATERIALIZED_TREE_IDENTITY:-}" ']' && '[' -z "$('git' 'status' '--porcelain=1' '--untracked-files=no')" ']'; then
+          GUNBC_SEED_OBJECT_FORMAT=$('git' 'rev-parse' '--show-object-format')
+          '[' -n "$GUNBC_SEED_OBJECT_FORMAT" ']' || ('echo' '::error title=seedBuildIdentity ObjectFormatUnread::the git object format read back empty, so the pinned identity would be malformed; refusing to build'; exit 1)
+          GUNBC_MATERIALIZED_TREE_IDENTITY='tree:'"$GUNBC_SEED_OBJECT_FORMAT"':'"$('git' 'rev-parse' 'HEAD^{tree}')"
+          export GUNBC_MATERIALIZED_TREE_IDENTITY
+          fi
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
           'set' '+e'
           'set' '-o' 'pipefail'

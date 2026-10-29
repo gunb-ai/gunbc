@@ -10,7 +10,7 @@ import std.optional { Present, Absent }
 import std.env_binding { EnvBinding, EnvSet }
 import extdeps.exec.command { ArgvCommand, env_prefixed_command_in, env_cleared_command_in }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.github.actions { SelfHosted }
+import extdeps.github.actions { SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.automation.playwright {
   PlaywrightBuild, playwright_1_62_1,
   PlaywrightNpmTarball, playwright_1_62_1_npm_tarball, playwright_core_1_62_1_npm_tarball,
@@ -75,6 +75,12 @@ import gunbc.runner.runner_microvm_host_ready {
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import v2.std.node { Node }
 import gunbc.runner.runner_unit { runner_unit_dropin_path }
+// THE DROP-IN PATH IS IMPORTED, NOT DECLARED HERE. It is the capability table's, because the same path is
+// the EVIDENCE a sibling converge reads to decide whether to restate gunbc-browser-ready (see
+// gunbc.runner.runner_capability_labels). A write target and an evidence target spelled twice drift apart
+// eventually, and the drift is invisible: this converge writes capability bytes to one file while the
+// restating converge reads another, so the capability is withheld forever and nothing is red.
+import gunbc.runner.runner_capability_labels { browser_ready_labels_dropin_path }
 import gunbc.runner.runner_unit_file { runner_host_browser_ready_labels_dropin_text, RunnerUnitText, RunnerUnitTextRefused }
 import gunbc.host.host_effect_realize {
   run_argv_over_host_effect_transport, run_argv_stdin_over_host_effect_transport,
@@ -153,16 +159,20 @@ fn write_digest_receipt(receipt: String, line: String) -> ProcessExit {
   if w.success { ExitSuccess } else { exit_failure(reason: join(["the digest receipt could not be written at ", receipt, ": ", w.error, " (", line, ")"], "")) }
 }
 
+fn archive_digest_receipt(url: String, destination: String, receipt: String) -> ProcessExit {
+  match sha256sum_file_digest_via_shell(path: destination as NonEmptyStr) {
+    Sha256FileDigestUnavailable { path: _, reason: r } => exit_failure(reason: r)
+    Sha256FileDigest { digest: d } => write_digest_receipt(receipt: receipt, line: join(["archive_sha256=", d.hex as String, " url=", url], ""))
+  }
+}
+
 // THE PRODUCER THE TWO RECEIPTS ABOVE CITE: fetch a url to a path and print its sha256, so the
 // observation is re-derivable by anyone rather than carried on a session's word.
 fn runner_browser_toolchain_archive_sha256_of_wet(url: String, destination: String, receipt: String) -> ProcessExit {
   match run_shell_command_capture(command: curl_download_command(url: url, destination: destination), transport: LocalExec) {
     ProcessRefused { exit_code: c, stderr: e } => exit_failure(reason: join(["fetch failed (exit ", to_string(c), "): ", trim(s: e)], ""))
-    _ =>
-      match sha256sum_file_digest_via_shell(path: destination as NonEmptyStr) {
-        Sha256FileDigestUnavailable { path: _, reason: r } => exit_failure(reason: r)
-        Sha256FileDigest { digest: d } => write_digest_receipt(receipt: receipt, line: join(["archive_sha256=", d.hex as String, " url=", url], ""))
-      }
+    ProcessOutputPresent { text: _ } => archive_digest_receipt(url: url, destination: destination, receipt: receipt)
+    ProcessOutputAbsent => archive_digest_receipt(url: url, destination: destination, receipt: receipt)
   }
 }
 
@@ -322,6 +332,12 @@ fn host_runs_floor_labels(deploy: RunnerHostDeploy, floor_labels: List<String>) 
   }
 }
 
+fn browser_toolchain_pool_not_self_hosted() -> BrowserToolchainPool {
+  BrowserToolchainPoolUndefined {
+    cause: "the floor job's selected runner target (gunbc.ci.ci_runner_target selected_ci_runner_target) is not the self-hosted fleet, so no fleet runner runs it and there is no pool to converge",
+  }
+}
+
 fn runner_browser_toolchain_pool_of(deploys: List<RunnerHostDeploy>) -> BrowserToolchainPool {
   match gunbc_ci_selected_runner_spec() {
     SelfHosted { labels: floor_labels } =>
@@ -329,10 +345,8 @@ fn runner_browser_toolchain_pool_of(deploys: List<RunnerHostDeploy>) -> BrowserT
         hosts: fold(deploys, init: [], f: (acc, d) =>
           if host_runs_floor_labels(deploy: d, floor_labels: floor_labels) { list_append(left: acc, right: [d]) } else { acc }),
       }
-    _ =>
-      BrowserToolchainPoolUndefined {
-        cause: "the floor job's selected runner target (gunbc.ci.ci_runner_target selected_ci_runner_target) is not the self-hosted fleet, so no fleet runner runs it and there is no pool to converge",
-      }
+    HostedRunner { label: _ } => browser_toolchain_pool_not_self_hosted()
+    RunsOnExpression { expression: _ } => browser_toolchain_pool_not_self_hosted()
   }
 }
 
@@ -1110,7 +1124,7 @@ fn run_ok(command: ArgvCommand) -> Bool {
 // step is `mv -T <stage> <root>`, which fails if anything occupies <root> by then -- a competing
 // converge that published first -- and the readback then judges that converge's tree.
 fn publish_staged_wet(location: RunnerBrowserToolchainLocation, staging: String) -> Bool {
-  publish_staged_tree_wet(staging: staging, root: location.root as String)
+  publish_staged_tree_wet(staging: staging, root: location.root as String, transport: LocalShell)
 }
 
 // EVERY CONVERGE OWNS ITS SCRATCH AND ITS STAGING: manifests in a temporary directory of its own,
@@ -1128,7 +1142,7 @@ fn place_toolchain_wet(location: RunnerBrowserToolchainLocation, archives: List<
 }
 
 fn stage_and_publish_wet(location: RunnerBrowserToolchainLocation, archives: List<StagedArchive>, pinned: NonEmptyStr, scratch: String, staging: String) -> ToolchainPlacement {
-  let staged = stage_archives_wet(archives_dir: location.archives as String, staging: staging, archives: archives)
+  let staged = stage_archives_wet(archives_dir: location.archives as String, staging: staging, archives: archives, transport: LocalShell)
   if archives_all_staged(ps: staged, archives: archives) == false {
     ToolchainPlacementRefused { archives: staged, cause: "an archive did not verify or extract into staging; nothing was published" }
   } else {
@@ -1228,7 +1242,11 @@ fn superseded_trees_text(r: SupersededTrees) -> String {
 // host in the floor's pool reads ready, the floor's runs-on names it (a separate change, ordered
 // after the converge, because a runs-on naming a label no runner carries queues every floor), and a
 // runner whose toolchain is absent can no longer take the floor's real-Chromium wet claims.
-data browser_ready_labels_dropin_path: NonEmptyStr = runner_unit_dropin_path(file_name: "85-browser-ready-labels.conf" as NonEmptyStr)
+// THE DROP-IN PATH IS IMPORTED, NOT DECLARED HERE. It is the capability table's, because the same path is
+// the EVIDENCE a sibling converge reads to decide whether to restate gunbc-browser-ready (see
+// gunbc.runner.runner_capability_labels). A write target and an evidence target spelled twice drift apart
+// eventually, and the drift is invisible: this converge writes capability bytes to one file while the
+// restating converge reads another, so the capability is withheld forever and nothing is red.
 
 // THE ELEVATION POSTURE IS A PARAMETER, NOT A GLOBAL: SudoElevated is the production posture --
 // the legs wrap in sudo -n through sudo_elevate_command, the carrier the deleted privileged
@@ -1464,8 +1482,6 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "apt_outcome_holds" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "libraries_resolved" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "runner_browser_toolchain_archive_sha256_of_wet" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "runner_browser_toolchain_pool_of" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "runner_browser_toolchain_ready" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "tree_sha256_wet" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "versions_match" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },

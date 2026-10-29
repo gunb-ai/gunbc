@@ -2,7 +2,14 @@ module gunbc.roadmap.roadmap_attempt_exit_spool
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import extdeps.shell
+import extdeps.posix.identity { PosixOwnerNames }
+import extdeps.tools.gnu_coreutils { install_directory_owned_argv_command }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryoneTraverse, declared_directory_mode }
 import gunbc.host.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
+import gunbc.durable_handoff_host {
+  HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
+  host_spool_create_only_command,
+}
 import extdeps.systemd.service_exec {
   ServiceStopVariable, InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable,
   ServiceResult, service_result_of_wire, ServiceExitCode, service_exit_code_of_wire,
@@ -15,7 +22,6 @@ import extdeps.posix.signal {
   LinuxStandardSignal, linux_standard_signal_of_name,
   linux_standard_signal_of_number, linux_standard_signal_wire_name,
 }
-import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
@@ -74,6 +80,7 @@ type AttemptUnitRole
   | AttemptReviewerRole { criterion_key: String, head_sha: String }
   | AttemptAuditorRole { head_sha: String }
   | AttemptObligationRole
+  | AttemptSupervisorRole { turn: Int }
 
 fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
   match role {
@@ -81,6 +88,7 @@ fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
     AttemptReviewerRole { criterion_key, head_sha } => join(["review.", criterion_key, ".", head_sha], "")
     AttemptAuditorRole { head_sha } => join(["audit.", head_sha], "")
     AttemptObligationRole => "obligation"
+    AttemptSupervisorRole { turn } => join(["supervise.t", to_string(value: turn)], "")
   }
 }
 
@@ -97,11 +105,20 @@ fn attempt_exit_entry_parts(inbox: String, node_id: String, attempt_key: String,
   ]
 }
 
-fn attempt_exit_hook(instance_root: String, node_id: String, attempt_key: String, role: AttemptUnitRole) -> AttemptExitHook {
+// THE RECORD IS CREATED OWNED BY ITS CONSUMER. The hook runs as the system manager (root) for a unit with
+// a foreign User=, so a bare mkdir leaves a root:root record that the drain -- the service user -- cannot
+// rename from inbox to queued (renaming a directory needs write permission on the directory itself).
+// record_owner is the drain's principal (HostDashboardInstance directory_owner), never a literal, and
+// gunbc.roadmap.dispatch_unit_created_paths judges the same creation the hook is built from.
+// install -d is idempotent where mkdir was create-only; the invocation id in the name keeps each record
+// unique, so a repeated hook still names one record.
+data attempt_exit_record_mode: DeclaredDirectoryMode = DirectoryOwnerAllEveryoneTraverse
+
+fn attempt_exit_hook(instance_root: String, node_id: String, attempt_key: String, role: AttemptUnitRole, record_owner: PosixOwnerNames) -> AttemptExitHook {
   match exec_word_render(parts: attempt_exit_entry_parts(inbox: attempt_exit_inbox_dir(instance_root: instance_root), node_id: node_id, attempt_key: attempt_key, role: role)) {
     ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
     ExecWordRendered { word } =>
-      match exec_command_line_full_privileges(command: mkdir_create_only_command(path: word as String)) {
+      match exec_command_line_full_privileges(command: install_directory_owned_argv_command(mode: declared_directory_mode(m: attempt_exit_record_mode), owner: record_owner.user, group: record_owner.group, path: word as String)) {
         ExecCommandLineRefused { reason } => AttemptExitHookRefused { reason: reason }
         ExecCommandLineRendered { line } => AttemptExitHookRendered { exec_line: line }
       }
@@ -201,14 +218,7 @@ fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
 // WHERE IN THE SPOOL AN ENTRY STANDS, which is responsibility, not evidence: the record means the
 // same thing in every stage. Inbox: no obligation has taken it. Queued: recorded and handed off, no run has
 // claimed it. Running: a live run claimed it and has not settled it. Done: its obligation's receipt exists. Refused: the drain could not hand it off.
-type AttemptExitSpoolStage
-  = AttemptExitInbox
-  | AttemptExitQueued
-  | AttemptExitRunning
-  | AttemptExitDone
-  | AttemptExitRefused
-
-fn attempt_exit_spool_stage_dir(instance_root: String, stage: AttemptExitSpoolStage) -> String {
+fn attempt_exit_spool_stage_dir(instance_root: String, stage: HostSpoolStage) -> String {
   match stage {
     AttemptExitInbox => attempt_exit_inbox_dir(instance_root: instance_root)
     AttemptExitQueued => attempt_exit_queued_dir(instance_root: instance_root)
@@ -309,7 +319,7 @@ fn attempt_exit_record_matching(
   }
 }
 
-fn attempt_exit_stage_list(instance_root: String, stage: AttemptExitSpoolStage) -> AttemptExitStageListing {
+fn attempt_exit_stage_list(instance_root: String, stage: HostSpoolStage) -> AttemptExitStageListing {
   let dir = attempt_exit_spool_stage_dir(instance_root: instance_root, stage: stage)
   let listed = Filesystem.List(path: dir)
   attempt_exit_stage_listing(listing: filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error))
@@ -420,11 +430,11 @@ fn attempt_exit_vendor_pane_entry_name_of_death(node_id: String, attempt_key: St
 
 // Vendor tmux panes have no ExecStopPost. The belt writes an inbox mkdir-name when it first sees
 // the dead pane, before it may reap. Callers that will reap must CHECK the result and keep the
-// dead pane when the write fails. Create-only mkdir is `mkdir_create_only_command`: the spool must
+// dead pane when the write fails. Create-only mkdir is `host_spool_create_only_command`: the spool must
 // already exist; a missing or read-only inbox is a failed write, not a parent-creating success.
 fn attempt_exit_record_put_mkdir_name(instance_root: String, entry_name: String) -> AttemptExitRecordPut {
   let path = join([attempt_exit_inbox_dir(instance_root: instance_root), "/", entry_name], "")
-  let command = mkdir_create_only_command(path: path)
+  let command = host_spool_create_only_command(path: path)
   let ran = shell.Exec.RunArgv(
     program: command.program.invocation as String,
     arguments: command.arguments,

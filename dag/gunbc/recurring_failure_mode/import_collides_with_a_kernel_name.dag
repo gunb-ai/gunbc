@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.import_collides_with_a_kernel_name
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data import_collides_with_a_kernel_name: RecurringFailureMode = RecurringFailureMode {
   identity: "import_collides_with_a_kernel_name" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**import collides with a kernel name** (INVALID STATE: a module authors `import M \{ Optional \}` where M declares a type named Optional that is not the kernel mint, while the kernel Optional (`std.optional`, minted by `v1.compiler.infer` `kernel_optional_type_node`) is also in the closure. The type environment's by-name overlay (`overlay_skips_kernel_name`: kernel wins) and the interned-identity lookup (`lookup_binding`: import can win) then type the same spelling two ways. The emitted module rendered `HeldChoice<present_value>`, a leaked kernel type variable. Silent wrongness on the source path; rustc was the only wall.",

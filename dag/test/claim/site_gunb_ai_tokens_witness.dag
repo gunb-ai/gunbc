@@ -1,0 +1,174 @@
+module test.claim.site_gunb_ai_tokens_witness
+
+import std.types { Bool, Int, List, String }
+import std.algebra { string_contains, collection_concat_shape, collection_map_shape, collection_join_shape, list_push }
+import gunbc.design.material { CssDecl }
+import extdeps.languages.css.properties { CustomProperty }
+import gunbc.design.gunb_ai_hues { gunb_ai_hues_admissible }
+import gunbc.site.gunb_ai_tokens {
+  token_binding_complete, token_contrast_floors_hold, token_root_decls,
+  review_render, ReviewHtml, ReviewEmitRefused, type_scale_wires, review_rules, review_css_text,
+}
+
+// Renders-and-checks the tokens layer (DESIGN §5: a witness goes RED when the layer
+// breaks; each claim is a property of the RENDERED artifact, not of a type).
+// Consumer: claim-run — `gunbc run --source-root dag --entry
+// dag/test/claim/site_gunb_ai_tokens_witness.dag --claim-run`, alongside the other
+// site witnesses on the compiler gate.
+//
+// No count is copied from the tree (§5: a count equality is a change detector, not
+// completeness — completeness is the identity join in token_binding_complete). Every
+// claim below is a property of what actually renders, and each carries the RED control
+// that justifies its existence: two of them were earned by defects a weaker claim let
+// through green.
+
+// 1. The hue set enters palette the way every other set must.
+test fn witness_hue_set_admissible() -> Bool {
+  gunb_ai_hues_admissible()
+}
+
+// 2. The binding is total as an identity join (every hue claimed, every bound swatch
+//    in the set, roles distinct and well-formed) — no pinned width.
+test fn witness_binding_total() -> Bool {
+  token_binding_complete()
+}
+
+// 3. The rendered page carries the token layer as CSS that actually applies, and every
+//    token reference in it resolves.
+//
+//    RED control A (the :root incident): an earlier draft emitted the declarations BARE
+//    inside <style> — no selector — so every declaration still appeared in the text and
+//    a "the string is present" check went GREEN on a page that rendered unthemed. A
+//    property of CSS is checked, not mere presence: the declarations sit inside rules.
+//
+//    RED control B (review 81513): main read scale_var(t: measure_page) with no such
+//    name imported; the resolver bound it AMBIENTLY to gunbc.design.scale.measure_page
+//    (custom property --measure, the WORKSPACE site's row). This page's :root never
+//    declared --measure, so the reference dangled, the container silently lost its width
+//    cap, and every presence-only claim stayed green. Hence the negative arm below.
+//
+//    Totality (review 81528: the class was caught for two hand-pinned references and
+//    left open for ~15 more) comes from two halves:
+//      (a) the serialized CSS is re-derived here from review_rules() and required
+//          VERBATIM in the page — the artifact's style text IS this rule set;
+//      (b) every declaration value the traversal visits has all of its var(--…)
+//          references resolved against token_root_decls.
+//    The traversal is total BY CONSTRUCTION, not by convention: its match is exhaustive
+//    over gunbc.design.material.BuildRule, so a new rule arm is a compile error until
+//    its declarations are checked too, and material's serialize_rule gives every arm a
+//    text form, so no rule can contribute declarations without contributing text that
+//    (a) pins.
+test fn witness_rendered_root_is_bound_output() -> Bool {
+  match review_render() {
+    ReviewHtml { html: h } =>
+      string_contains(s: h, pattern: ":root { ")
+        && string_contains(s: h, pattern: "body { ")
+        && all(token_root_decls(), d => string_contains(s: h, pattern: decl_wire(d: d)))
+        && string_contains(s: h, pattern: review_css_text())
+        && all(review_rule_decl_values(), v => value_is_bound(v: v))
+        && !string_contains(s: h, pattern: "var(--measure)")
+    ReviewEmitRefused { reason: r } => false
+  }
+}
+
+fn decl_wire(d: CssDecl) -> String {
+  match d.prop {
+    CustomProperty { name: n } => join(["--", n, ": ", d.value], "")
+    _ => "PROPERTY-CHANNEL-MISMATCH-MUST-FAIL"
+  }
+}
+
+// 4. Contrast floors hold on the night canvas (fail-closed: a refused channel reads 0).
+test fn witness_contrast_floors() -> Bool {
+  token_contrast_floors_hold()
+}
+
+// 5. Fail closed on emit, checked through the TYPE rather than a marker string: a
+//    refusal is its own arm, so there is no page content a refused render could hide in.
+//    The landed type scale (operator pick B, compact) must reach the page through the
+//    upstream wire — display=40px comes from gunbc.design.scale.scale_value_wire over
+//    the ScaleToken rows, never from a second literal list. The negative arm holds the
+//    rejected option-A magnitude (52px) out of the artifact.
+test fn witness_render_and_landed_scale() -> Bool {
+  match review_render() {
+    ReviewHtml { html: h } =>
+      starts_with(s: h, prefix: "<!DOCTYPE html>")
+        && string_contains(s: h, pattern: join(type_scale_wires(), "   "))
+        && string_contains(s: h, pattern: "display=40px")
+        && !string_contains(s: h, pattern: "52px")
+    ReviewEmitRefused { reason: r } => false
+  }
+}
+
+// -- Reference resolution over the rules the page renders.
+//
+// Written over the RULES rather than as one cursor walk over the whole page text: the
+// rules are the model the page is generated from, the walk is bounded by a declaration
+// value's length instead of by the artifact's, and var_scan_bound() below makes the walk
+// fail closed (a value longer than the bound REDS the claim) rather than trusting that
+// every future value will be short.
+
+fn review_rule_decl_values() -> List<String> {
+  flat_map(review_rules(), r => match r {
+    StaticRule { selector: _, decls: ds } => map(ds, d => d.value)
+    MediaRule { condition: _, selector: _, decls: ds } => map(ds, d => d.value)
+    ResponseRule {
+      subject: _, shape: _, trigger: _, transition_props: _, timing: _,
+      base_decls: bs, response_decls: rs,
+    } => concat(map(bs, d => d.value), map(rs, d => d.value))
+    AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => []
+  })
+}
+
+// A value either holds no token reference, or EVERY reference in it names a custom
+// property :root declares. Over-long values RED rather than recurse deeper.
+fn value_is_bound(v: String) -> Bool {
+  string_length(s: v) <= var_scan_bound()
+    && (!string_contains(s: v, pattern: "var(--")
+      || all(var_reference_names(s: v, at: 0, limit: string_length(s: v), found: []),
+        name => declared_property_names(name: name)))
+}
+
+fn var_scan_bound() -> Int {
+  256
+}
+
+// Cursor walk in the shape std/import_statement.dag uses for typed source scanning
+// (substring / char_at / string_length are builtins, used unimported there too).
+fn var_reference_names(s: String, at: Int, limit: Int, found: List<String>) -> List<String> {
+  if at + 6 > limit {
+    found
+  } else if substring(s: s, start: at, end: at + 6) == "var(--" {
+    let name = var_name_at(s: s, at: at + 6, limit: limit, chars: [])
+    var_reference_names(s: s, at: at + 6, limit: limit, found: found |> list_push(name))
+  } else {
+    var_reference_names(s: s, at: at + 1, limit: limit, found: found)
+  }
+}
+
+fn var_name_at(s: String, at: Int, limit: Int, chars: List<String>) -> String {
+  if at >= limit {
+    join(chars, "")
+  } else {
+    let c = char_at(s: s, pos: at)
+    if c == ")" {
+      join(chars, "")
+    } else {
+      var_name_at(s: s, at: at + 1, limit: limit, chars: chars |> list_push(c))
+    }
+  }
+}
+
+// A name resolves iff token_root_decls declares it — the same upstream call the page
+// builds :root from, so this never agrees with a second copy of the token list.
+fn declared_property_names(name: String) -> Bool {
+  let needle = join(["--", name], "")
+  fold(token_root_decls(), init: false, f: (acc, d) => acc || decl_custom_name(d: d) == needle)
+}
+
+fn decl_custom_name(d: CssDecl) -> String {
+  match d.prop {
+    CustomProperty { name: n } => join(["--", n], "")
+    _ => "NOT-A-CUSTOM-PROPERTY-MUST-NOT-MATCH"
+  }
+}

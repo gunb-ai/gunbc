@@ -1,0 +1,24 @@
+module gunbc.runtime_calibration_suite_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data runtime_calibration_suite_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "RUNTIME_CALIBRATION_FILTER", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "RUNTIME_CALIBRATION_EXPECTED", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "runtime_suite_outcomes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "runtime_suite_verdict", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "run_runtime_calibration_suite", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "run_runtime_calibration", field: WholeDeclaration }
+  ],
+
+  reason: "Runs the emitted runtime's counting_allocator_tests (a #[cfg(test)] module of the v2-emitted-runtime crate the emitted workspace carries, generated from src/v1/runtime_rust.dag) against the SAME emitted workspace the self-host subject was built from, under the build's own bound compiler, -D warnings and target directory, and requires each named test identity to have executed with outcome ok. A filtered cargo test exits 0 with zero tests, so the verdict is read from the per-test lines and the exit status alone is not accepted; a restored product with no workspace refuses. Before it nothing on the required path compiled that cfg, so the allocation meter's calibration (per-method GlobalAlloc counts, the absent provider reading Unobservable) was green only where somebody ran it. It sits in the producer that builds the workspace because that is the only place the workspace exists; a committed shell harness or a separate job would be a second path beside it.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these declarations when the native lane's post-build actions are a .dag fold over a modeled cargo-test invocation and its per-test outcome rows (extdeps cargo test harness output), SUFFICIENT FOR the self-host subject to execute a named list of generated test identities against its own emitted workspace and refuse on a missing, failing or unexecuted test with no hand-authored cargo spawn or output parse.",
+
+  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs: run_runtime_calibration, called once from run_self_host after the emitted compiler is built and before the eval-driver door walk; src/v1/stage0/src/emitted_closure_compile_host.rs: run_runtime_calibration_suite and the verdict readers it calls"
+}

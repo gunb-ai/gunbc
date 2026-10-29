@@ -32,11 +32,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data upload_artifact_v4_6_2: ActionRelease = ActionRelease {
-  owner: "actions", repo: "upload-artifact", tag: "v4.6.2", commit: "ea165f8d65b6e75b540449e92b4886f43607fa02"
+  owner: "actions", repo: "upload-artifact", tag: "v4.6.2", commit: "ea165f8d65b6e75b540449e92b4886f43607fa02", subdirectory: none
 }
 
 data upload_artifact_v6_0_0: ActionRelease = ActionRelease {
-  owner: "actions", repo: "upload-artifact", tag: "v6.0.0", commit: "b7c566a772e6b6bfb58ed0dc250532a479d7789f"
+  owner: "actions", repo: "upload-artifact", tag: "v6.0.0", commit: "b7c566a772e6b6bfb58ed0dc250532a479d7789f", subdirectory: none
 }
 
 // Each declaration below was read from the action.yml blob at the release's commit

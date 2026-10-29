@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.compensating_errors_cancel_in_the_aggregate
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data compensating_errors_cancel_in_the_aggregate: RecurringFailureMode = RecurringFailureMode {
   identity: "compensating_errors_cancel_in_the_aggregate" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**compensating errors cancel in the aggregate** (a completeness check compares a COUNT on each side instead of joining the two populations by IDENTITY, so a member missing from one side and a phantom member on the other cancel exactly, and the check reports the coverage it was written to refuse.",

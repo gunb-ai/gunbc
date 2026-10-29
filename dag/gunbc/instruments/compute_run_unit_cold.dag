@@ -1,5 +1,7 @@
 module gunbc.instruments.compute_run_unit_cold
 
+import gunbc.compute.compute_attempt_slots_root { compute_seat_directory, ComputeFlatSeat }
+import gunbc.owned_directory { owned_directory_path }
 import std.types { String, Bool, Int, List, FilePath, GitRef, NonEmptyStr }
 import std.algebra { trim, length }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -7,22 +9,24 @@ import std.measure {
   ByteSize, Kibibyte, gibibyte, gibibyte_to_byte_size,
   kibibyte_from_byte_size_floor, measure_add,
 }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.env_binding { EnvSet, EnvBinding }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.roadmap.roadmap_dashboard_instance {
   fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance, IsolatedJobToolchainHomes,
-  srv1_live_dashboard_instance, dashboard_path_is_under,
+  dashboard_path_is_under, prod_role_realization, ProdRoleRealizedBy, ProdRoleRealizationRefused,
 }
 import extdeps.shell
 import extdeps.rust.cargo { cargo_environment_variable_name, CargoHomeEnv }
 import extdeps.cache.sccache {
   sccache_installed_binary_path, sccache_server_default_tcp_port,
-  SccacheServerUnixSocket, SccacheServerTcpPort,
+  SccacheServerUnixSocket, SccacheServerTcpPort, SccacheRustKeyFacts, sccache_rust_key_facts,
 }
 import extdeps.tools.id { id_binary_path }
 import extdeps.iproute2.ss { ss_binary_path }
 import extdeps.tools.stat { stat_program }
+import extdeps.tools.grep { grep_program }
+import gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path { build_cache_residual_reuse_floor, build_cache_residual_manifest_dir_crates, build_cache_residual_out_dir_crates }
 import extdeps.tools.hostname { hostname_program }
 import extdeps.procps.ps { ps_program, ps_user_uid_pid_args_listing_args }
 import extdeps.systemd.systemctl { systemctl_user_manager_probe_command }
@@ -32,7 +36,7 @@ import extdeps.rust.rustup { rustup_home_env_name }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
-  ComputeUnitStopObservation, NoStopObservation, SccacheStatsAtStop,
+  ComputeUnitStopObservation, NoStopObservation, SccacheStatsAtStop, NoPathVirtualization, CheckoutAndTargetAtStablePaths,
   NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire,
   compute_return_outputs, OutputsReturned, OutputsMismatch, compute_observe_toolchain, ToolchainObserved, ToolchainObservationRefused,
   compute_resolve_subject, SubjectResolved, SubjectResolutionRefused, compute_store, ComputeMaterialization, ComputeMemoized,
@@ -46,8 +50,9 @@ import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_request { work_default_build, work_declared_outputs, WorkSucceeded, work_outcome_wire }
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
-import extdeps.git { shape_git_worktree_add_detached_argv }
-import extdeps.linux.procfs { procfs_status_effective_uid }
+import extdeps.git { shape_git_worktree_add_detached_argv, git_worktree_remove_force_command }
+import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
+import gunbc.host.user_session_runtime { UserSessionRuntimeBound, UserSessionRuntimeAbsent, observe_user_session_runtime, user_session_unit_setenv, user_session_launcher_env }
 import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.systemd.systemd_run {
   SystemdRunWaitSummary, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
@@ -82,13 +87,17 @@ fn compute_run_unit_cold_job_memory_demand() -> ByteSize {
   measure_add(a: compute_run_unit_cold_unit_grant_bytes, b: compute_run_unit_cold_launcher_headroom)
 }
 
-type HermeticUserSessionRuntime
-  = HermeticUserSessionRuntimeBound { runtime_dir: FilePath }
-  | HermeticUserSessionRuntimeAbsent
-
+// THE PRODUCTION ROOT IS THE PROD-ROLE HOLDER'S, resolved through the role, never srv1 by name
+// (gunbc.recurring_failure_mode a_test_deployment_acts_on_the_prod_deployments_state). An unresolved
+// role answers true: a run that cannot tell where production lives refuses rather than risk it.
 fn path_is_under_production_instance_root(path: String) -> Bool {
-  let root = srv1_live_dashboard_instance().instance_root
-  (path == root as String) || dashboard_path_is_under(path: path as FilePath, root: root)
+  match prod_role_realization() {
+    ProdRoleRealizationRefused { cause: _ } => true
+    ProdRoleRealizedBy { holder } => {
+      let root = holder.instance.instance_root
+      (path == root as String) || dashboard_path_is_under(path: path as FilePath, root: root)
+    }
+  }
 }
 
 fn observe_workspace(instance: HostDashboardInstance) -> String {
@@ -103,36 +112,6 @@ fn observe_run_frame() -> Int? {
     ClockUnixMillisRefused { detail: _ } => none
     ClockUnixMillisObserved { millis } => Present { value: millis }
   }
-}
-
-fn observe_hermetic_user_session_runtime() -> HermeticUserSessionRuntime {
-  let status = Filesystem.Read(path: "/proc/self/status")
-  if !status.success {
-    HermeticUserSessionRuntimeAbsent
-  } else {
-    match procfs_status_effective_uid(content: status.content) {
-      Absent => HermeticUserSessionRuntimeAbsent
-      Present { value: uid } => {
-        let runtime_dir = join(["/run/user/", to_string(value: uid)], "")
-        let listed = Filesystem.List(path: runtime_dir as FilePath)
-        if listed.success && any(split(s: listed.entries, delimiter: "\n"), n => n == "bus") {
-          HermeticUserSessionRuntimeBound { runtime_dir: runtime_dir as FilePath }
-        } else {
-          HermeticUserSessionRuntimeAbsent
-        }
-      }
-    }
-  }
-}
-
-fn hermetic_user_session_unit_setenv(runtime_dir: FilePath) -> List<SystemdSetenvBinding> {
-  [
-    SystemdSetenvBinding { name: "XDG_RUNTIME_DIR", value: runtime_dir as String as NonEmptyStr },
-    SystemdSetenvBinding {
-      name: "DBUS_SESSION_BUS_ADDRESS",
-      value: join(["unix:path=", runtime_dir as String, "/bus"], "") as NonEmptyStr,
-    },
-  ]
 }
 
 fn observe_isolated_job_toolchain_homes() -> IsolatedJobToolchainHomes? {
@@ -170,13 +149,6 @@ fn hermetic_toolchain_unit_setenv(homes: IsolatedJobToolchainHomes) -> List<Syst
       name: rustup_home_env_name,
       value: homes.rustup_home as String as NonEmptyStr,
     },
-  ]
-}
-
-fn hermetic_user_session_launcher_env(runtime_dir: FilePath) -> List<EnvBinding> {
-  [
-    EnvSet { name: "XDG_RUNTIME_DIR", value: runtime_dir as String },
-    EnvSet { name: "DBUS_SESSION_BUS_ADDRESS", value: join(["unix:path=", runtime_dir as String, "/bus"], "") },
   ]
 }
 
@@ -280,13 +252,13 @@ fn no_observation(bytes: String, reason: String) -> CliWireResponse {
 }
 
 fn compute_run_unit_cold_exit() -> CliWireResponse {
-  match observe_hermetic_user_session_runtime() {
-    HermeticUserSessionRuntimeAbsent =>
+  match observe_user_session_runtime() {
+    UserSessionRuntimeAbsent =>
       no_observation(
         bytes: "compute-run-unit-cold: no observation: user session bus absent at /run/user/<uid>/bus (systemd-run --user cannot run)",
         reason: "user session bus absent",
       )
-    HermeticUserSessionRuntimeBound { runtime_dir } =>
+    UserSessionRuntimeBound { runtime_dir } =>
       match observe_isolated_job_toolchain_homes() {
         Absent =>
           CliWirePrintable {
@@ -394,13 +366,14 @@ fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobTool
         identity_hex: identity,
         argv: ["/usr/bin/printenv"],
         env: concat(
-          hermetic_user_session_unit_setenv(runtime_dir: runtime_dir),
+          user_session_unit_setenv(runtime_dir: runtime_dir),
           hermetic_toolchain_unit_setenv(homes: toolchain_homes),
         ),
-        launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
+        launcher_env: user_session_launcher_env(runtime_dir: runtime_dir),
         granted: kibibyte_from_byte_size_floor(b: gibibyte_to_byte_size(g: gibibyte(count: 1))),
         user_runtime_dir: runtime_dir,
         stop_observation: NoStopObservation,
+        path_virtualization: NoPathVirtualization,
       ) {
         ComputeUnitRunRefused { cause: _ } => UnitPrintenvRefused { reason: "unit launch refused", text: "" }
         ComputeUnitRunExecuted { run: unit_run } =>
@@ -431,10 +404,10 @@ fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobTool
 fn compute_run_unit_sccache_probe_exit() -> CliWireResponse {
   let host = observe_sccache_host_probe()
   let head = join(["compute-run-unit-sccache-probe\n", host], "")
-  match observe_hermetic_user_session_runtime() {
-    HermeticUserSessionRuntimeAbsent =>
+  match observe_user_session_runtime() {
+    UserSessionRuntimeAbsent =>
       no_observation(bytes: join([head, "no observation: user session bus absent\n"], ""), reason: "user session bus absent")
-    HermeticUserSessionRuntimeBound { runtime_dir } =>
+    UserSessionRuntimeBound { runtime_dir } =>
       match observe_isolated_job_toolchain_homes() {
         Absent => CliWirePrintable {
           bytes: join([head, "ToolchainHomesNotIsolated\n"], ""),
@@ -454,7 +427,89 @@ fn compute_run_unit_sccache_probe_exit() -> CliWireResponse {
 
 
 fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, stop_observation: ComputeUnitStopObservation) -> CliWireResponse {
-      let identity = to_string(value: frame)
+  cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: frame, identity: to_string(value: frame), checkout_at: none, target_at: none, stable_at: none, stop_observation: stop_observation)
+}
+
+// The layout with its checkout placed at a caller-chosen absolute path; every other piece (target,
+// lease, attempts) stays this identity's own, so only the source path the build presents to rustc moves.
+fn layout_with_checkout(layout: ComputeLayout, checkout: String) -> ComputeLayout {
+  ComputeLayout {
+    root: layout.root,
+    work_dir: layout.work_dir,
+    checkout: checkout,
+    out_dir: layout.out_dir,
+    leases_dir: layout.leases_dir,
+    lease_path: layout.lease_path,
+    staging_dir: layout.staging_dir,
+    target_dir: layout.target_dir,
+    log_path: layout.log_path,
+    consumption_path: layout.consumption_path,
+  }
+}
+
+// Likewise for the cargo target directory (the --target-dir the unit's cargo is given): a control only,
+// run sequentially after the original owner's target is moved aside, never a shared writable target.
+fn layout_with_target(layout: ComputeLayout, target: String) -> ComputeLayout {
+  ComputeLayout {
+    root: layout.root,
+    work_dir: layout.work_dir,
+    checkout: layout.checkout,
+    out_dir: layout.out_dir,
+    leases_dir: layout.leases_dir,
+    lease_path: layout.lease_path,
+    staging_dir: layout.staging_dir,
+    target_dir: target,
+    log_path: layout.log_path,
+    consumption_path: layout.consumption_path,
+  }
+}
+
+// The crates the unit's own sccache server logged a cache miss for ("[<crate>]: Cache miss in ...").
+fn missed_crates(path: String) -> String {
+  match compute_exec(program: grep_program().invocation as String, workdir: ".", args: ["-h", "Cache miss in", path]) {
+    ComputeExecOk { stdout, stderr: _ } => stdout
+    ComputeExecFailed { exit_code, stdout: _, stderr } =>
+      if exit_code == 1 { "" } else { join(["none read (grep exit ", to_string(value: exit_code), "): ", stderr], "") }
+  }
+}
+
+// The crate names an arm's unit server logged a cache miss for, read back out of that arm's text. Absent when
+// the log could not be read (grep exit above 1, or no section at all): the join below then reports no observation.
+fn arm_miss_set(text: String) -> List<String>? {
+  if string_contains(s: text, pattern: "none read (grep exit") || !string_contains(s: text, pattern: "sccache missed (server log):") {
+    none
+  } else {
+    Present { value: fold(split(s: text, delimiter: "\n"), init: [], f: (acc, l) =>
+      if string_contains(s: l, pattern: "]: Cache miss in") {
+        let tail = fold(split(s: l, delimiter: "["), init: "", f: (_, part) => part)
+        let crate = fold(split(s: tail, delimiter: "]"), init: none, f: (found, part) => match found { Present { value: _ } => found  Absent => Present { value: part } })
+        list_append(left: acc, right: [match crate { Present { value: c } => c  Absent => "" }])
+      } else { acc }) }
+  }
+}
+
+fn miss_set_within(missed: List<String>, declared: List<String>) -> Bool {
+  fold(missed, init: true, f: (ok, c) => ok && contains(declared, c))
+}
+
+// sccache prints no "Cache misses (Rust)" line when an arm missed nothing (run 38988326364: A2 hits=111 and D hits=111
+// carry only the hits line). So zero misses is READ from a present hits line with no miss line; a text carrying
+// NEITHER line is no observation, never zero misses (DESIGN §5: no fabricated default).
+fn arm_rust_misses_are_zero(text: String) -> Bool {
+  match rust_sccache_misses(text: text) {
+    Present { value: m } => m == 0
+    Absent => match rust_sccache_hits(text: text) { Present { value: _ } => true  Absent => false }
+  }
+}
+
+fn arm_rust_misses_readable(text: String) -> Bool {
+  match rust_sccache_misses(text: text) {
+    Present { value: _ } => true
+    Absent => match rust_sccache_hits(text: text) { Present { value: _ } => true  Absent => false }
+  }
+}
+
+fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, identity: String, checkout_at: String?, target_at: String?, stable_at: String?, stop_observation: ComputeUnitStopObservation) -> CliWireResponse {
       let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
       let workspace = observe_workspace(instance: probe)
       if workspace == "" {
@@ -476,7 +531,9 @@ fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHom
               bytes: "compute-run-unit-cold: the hermetic instance declares no materialization store",
               exit: ExitFailure { code: 1, reason: "no materialization store declared" },
             }
-          Present { value: layout } => {
+          Present { value: placed } => {
+        let checkout_placed = match checkout_at { Present { value: at } => layout_with_checkout(layout: placed, checkout: at)  Absent => placed }
+        let layout = match target_at { Present { value: at } => layout_with_target(layout: checkout_placed, target: at)  Absent => checkout_placed }
         let root = compute_root(instance: instance) as String
         if path_is_under_production_instance_root(path: instance.instance_root as String) || path_is_under_production_instance_root(path: root) {
           CliWirePrintable {
@@ -487,7 +544,7 @@ fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHom
           let roots_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
             && mkdir_ok(instance: instance, path: layout.work_dir)
             && mkdir_ok(instance: instance, path: layout.target_dir)
-            && mkdir_ok(instance: instance, path: layout.attempts_dir)
+            && mkdir_ok(instance: instance, path: owned_directory_path(t: compute_seat_directory(instance: instance, seat: ComputeFlatSeat)) as String)
           if !roots_ok {
             CliWirePrintable {
               bytes: join(["compute-run-unit-cold: could not create layout under ", layout.root], ""),
@@ -513,22 +570,32 @@ fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHom
                   CliWirePrintable { bytes: wt, exit: ExitFailure { code: 1, reason: wt } }
                 } else {
                   let op = work_default_build()
+                  let server_log_path = join([layout.work_dir, "/sccache-server.log"], "")
+                  let stable_src = match stable_at { Present { value: s } => join([s, "/src"], "")  Absent => "" }
+                  let stable_target = match stable_at { Present { value: s } => join([s, "/target"], "")  Absent => "" }
+                  let stable_made = match stable_at { Present { value: _ } => mkdir_ok(instance: instance, path: stable_src) && mkdir_ok(instance: instance, path: stable_target)  Absent => true }
+                  let virtualization = match stable_at {
+                    Present { value: _ } => CheckoutAndTargetAtStablePaths { checkout_at: stable_src, target_at: stable_target }
+                    Absent => NoPathVirtualization
+                  }
+                  let argv_layout = match stable_at { Present { value: _ } => layout_with_target(layout: layout_with_checkout(layout: layout, checkout: stable_src), target: stable_target)  Absent => layout }
                   match compute_run_unit(
                     instance: instance,
                     layout: layout,
                     identity_hex: identity,
-                    argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency),
+                    argv: compute_command_argv(instance: instance, layout: argv_layout, op: op, dependency: NoComputeDependency),
                     env: concat(
                       concat(
-                        concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
+                        concat(compute_operation_env(op: op), user_session_unit_setenv(runtime_dir: runtime_dir)),
                         hermetic_toolchain_unit_setenv(homes: toolchain_homes),
                       ),
-                      [SystemdSetenvBinding { name: "SCCACHE_LOG", value: "debug" as NonEmptyStr }],
+                      [SystemdSetenvBinding { name: "SCCACHE_LOG", value: "debug" as NonEmptyStr }, SystemdSetenvBinding { name: "SCCACHE_ERROR_LOG", value: server_log_path as NonEmptyStr }],
                     ),
-                    launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
+                    launcher_env: user_session_launcher_env(runtime_dir: runtime_dir),
                     granted: compute_run_unit_cold_unit_grant(),
                     user_runtime_dir: runtime_dir,
                     stop_observation: stop_observation,
+                    path_virtualization: virtualization,
                   ) {
                     ComputeUnitRunRefused { cause: _ } =>
                       CliWirePrintable {
@@ -553,6 +620,8 @@ fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHom
                         "unit_invoked=", if invoked { "true" } else { "false" }, "\n",
                         "unit result: ", compute_summary_result_wire(summary: unit_run.summary), "\n",
                         "unit peak: ", compute_summary_peak_wire(summary: unit_run.summary), "\n",
+                        "stable_paths_made=", if stable_made { "true" } else { "false" }, " stable_target_written_on_host=", match stable_at { Present { value: _ } => if target_dir_is_empty(path: stable_target) { "false" } else { "true" }  Absent => "n/a" }, " own_target_written=", if target_dir_is_empty(path: layout.target_dir) { "false" } else { "true" }, "\n",
+                        "sccache missed (server log):\n", missed_crates(path: server_log_path), "\n",
                         match unit_run.exec {
                           ComputeExecOk { stdout, stderr } => join(["exec=ok\n", stdout, stderr], "")
                           ComputeExecFailed { exit_code, stdout, stderr } =>
@@ -695,5 +764,303 @@ fn cold_two_identity_exit(runtime_dir: FilePath, toolchain_homes: IsolatedJobToo
         }
       }
     }
+  }
+}
+
+fn rust_sccache_hits(text: String) -> Int? {
+  sccache_stat_value(text: text, label: "Cache hits (Rust)")
+}
+
+fn rust_sccache_misses(text: String) -> Int? {
+  sccache_stat_value(text: text, label: "Cache misses (Rust)")
+}
+
+// Removes the checkout at `path` from the invoking repository's worktree list. Used between builds
+// so the next build at that path is a fresh checkout.
+fn drop_checkout(toolchain_homes: IsolatedJobToolchainHomes, frame: Int, path: String) -> String {
+  let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+  let workspace = observe_workspace(instance: probe)
+  let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+  let drop = git_worktree_remove_force_command(repository_dir: workspace, path: path)
+  match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: workspace, args: drop.arguments) {
+    ComputeExecFailed { exit_code, stdout: _, stderr } => join(["worktree remove exited ", to_string(value: exit_code), ": ", stderr], "")
+    ComputeExecOk { stdout: _, stderr: _ } => ""
+  }
+}
+
+fn checkout_path_of(toolchain_homes: IsolatedJobToolchainHomes, frame: Int, identity: String) -> String {
+  let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+  let workspace = observe_workspace(instance: probe)
+  let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+  match compute_layout(instance: instance, identity_hex: identity) {
+    Absent => ""
+    Present { value: layout } => layout.checkout
+  }
+}
+
+fn target_path_of(toolchain_homes: IsolatedJobToolchainHomes, frame: Int, identity: String) -> String {
+  let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+  let workspace = observe_workspace(instance: probe)
+  let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+  match compute_layout(instance: instance, identity_hex: identity) {
+    Absent => ""
+    Present { value: layout } => layout.target_dir
+  }
+}
+
+fn same_path_target_aside(toolchain_homes: IsolatedJobToolchainHomes, frame: Int, suffix: String) -> String {
+  let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+  let workspace = observe_workspace(instance: probe)
+  let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+  match compute_layout(instance: instance, identity_hex: to_string(value: frame)) {
+    Absent => "no materialization store declared"
+    Present { value: layout } => {
+      let aside = mv_exact_destination_command(source: layout.target_dir, destination: join([layout.target_dir, suffix], ""))
+      match compute_exec(program: aside.program.invocation as String, workdir: ".", args: aside.arguments) {
+        ComputeExecFailed { exit_code, stdout: _, stderr } => join(["target move exited ", to_string(value: exit_code), ": ", stderr], "")
+        ComputeExecOk { stdout: _, stderr: _ } => ""
+      }
+    }
+  }
+}
+
+// An arm's Rust reading: sccache prints a "(Rust)" line only for a nonzero count, so a Rust line
+// absent beside the other present is a zero, not an unobservation.
+fn arm_rust_hits(text: String) -> Int? {
+  match rust_sccache_hits(text: text) {
+    Present { value: h } => Present { value: h }
+    Absent =>
+      match rust_sccache_misses(text: text) {
+        Present { value: _ } => Present { value: 0 }
+        Absent => none
+      }
+  }
+}
+
+fn arm_rust_wire(label: String, text: String) -> String {
+  match arm_rust_hits(text: text) {
+    Absent => join([label, ": rust hits unobserved\n"], "")
+    Present { value: hits } => join([label, ": rust hits=", to_string(value: hits), " misses=", to_string(value: match rust_sccache_misses(text: text) { Present { value: m } => m  Absent => 0 }), "\n"], "")
+  }
+}
+
+fn arm_failed(bytes: String, reason: String) -> CliWireResponse {
+  CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: reason } }
+}
+
+// THE PRODUCTION-SHAPED FIX ARMS: two identities (fresh frames, each with its own backing checkout and
+// target) build in the user-manager transient unit with BindPaths= making ONE stable checkout and ONE stable
+// target path visible inside each unit, so the paths sccache hashes are identical while nothing is shared
+// between units. F1 fills the cache cold; F2 is the second identity. Both must show the same Rust hits as a
+// warm build (checked by the caller against A2), and each unit must write only its own backing target
+// (stable_target_written_on_host=false, own_target_written=true in each arm's lines).
+type StableArmsReading = StableArmsRead { text: String, f2_hits: Int?, wrote_only_own: Bool } | StableArmsNoFrame { text: String }
+
+fn stable_path_arms(runtime_dir: FilePath, homes: IsolatedJobToolchainHomes, stable_root: String) -> StableArmsReading {
+  match observe_run_frame() {
+    Absent => StableArmsNoFrame { text: "stable arms: no run frame for F1" }
+    Present { value: frame_f1 } => {
+      let f1 = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_f1, identity: to_string(value: frame_f1), checkout_at: none, target_at: none, stable_at: Present { value: stable_root }, stop_observation: SccacheStatsAtStop)
+      let reset_f1 = drop_checkout(toolchain_homes: homes, frame: frame_f1, path: checkout_path_of(toolchain_homes: homes, frame: frame_f1, identity: to_string(value: frame_f1)))
+      match observe_run_frame() {
+        Absent => StableArmsNoFrame { text: "stable arms: no run frame for F2" }
+        Present { value: frame_f2 } => {
+          let f2 = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_f2, identity: to_string(value: frame_f2), checkout_at: none, target_at: none, stable_at: Present { value: stable_root }, stop_observation: SccacheStatsAtStop)
+          let reset_f2 = drop_checkout(toolchain_homes: homes, frame: frame_f2, path: checkout_path_of(toolchain_homes: homes, frame: frame_f2, identity: to_string(value: frame_f2)))
+          let t1 = cold_run_bytes(r: f1)
+          let t2 = cold_run_bytes(r: f2)
+          StableArmsRead {
+            text: join(["\n=== F1: identity F1 at stable paths (BindPaths) ===\n", t1, "\n=== F2: identity F2 at stable paths (BindPaths) ===\n", t2, "\n",
+              arm_rust_wire(label: "F1 (stable paths, cold fill)", text: t1),
+              arm_rust_wire(label: "F2 (stable paths, other identity)", text: t2),
+              "stable root: ", stable_root, " cleanup: ", reset_f1, reset_f2, "\n"], ""),
+            f2_hits: if cold_run_succeeded(r: f1) && cold_run_succeeded(r: f2) { arm_rust_hits(text: t2) } else { none },
+            wrote_only_own: string_contains(s: t1, pattern: "stable_target_written_on_host=false own_target_written=true")
+              && string_contains(s: t2, pattern: "stable_target_written_on_host=false own_target_written=true"),
+          }
+        }
+      }
+    }
+  }
+}
+
+// CAUSE-CONFIRMATION CONTROL FOR C9, all four cells of {identity, path} in ONE dispatch on one
+// slot and cache. A1 fills the cache (identity A at path PA). Then, each build cold:
+//   A2: identity A at PA              (same identity, same path)       expect Rust hits > 0
+//   B : identity B at PA              (different identity, same path)  expect Rust hits > 0 if path is the cause
+//   C : identity A at path PC != PA   (same identity, different path)  expect Rust hits = 0 if path is the cause
+// B's checkout is placed at PA through layout_with_checkout; B keeps its own instance root, target
+// and lease. Path-only causation is: A2 > 0, B > 0, C = 0. Exit 0 iff that holds.
+// THE PREMISE OF THE DECLARED RESIDUAL, READ FROM THE UPSTREAM FACT RECORD. The 16 declared misses
+// (gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path) are the attainable
+// ceiling only while sccache hashes CARGO_* env into the Rust key and SCCACHE_BASEDIRS does not strip
+// CARGO_MANIFEST_DIR. If either fact differs (a sccache bump changed the key), the declared residual is
+// stale and a pass over it would certify the wrong ceiling: refuse with exit 2 instead.
+fn same_path_premise_refusal(facts: SccacheRustKeyFacts) -> Optional<String> {
+  if facts.cargo_prefixed_env_enters_key && !facts.basedirs_strips_cargo_manifest_dir { Absent }
+  else { Present { value: "premise changed: re-derive the residual (extdeps.cache.sccache sccache_rust_key_facts no longer has cargo_prefixed_env_enters_key=true and basedirs_strips_cargo_manifest_dir=false)" } }
+}
+
+// The F arms are the observation of the RFM row's next-rung trigger ("per-unit path virtualization available to
+// user-manager units"). While BindPaths is refused (226/NAMESPACE) f2_hits is absent and nothing is written to the
+// host stable path: the residual ceiling stands. An F2 that built means the wall lifted, so the ceiling must be
+// re-derived (exit 2, not green); an F build that wrote the host stable path breaks the isolation the arm claims.
+fn stable_arm_refusal(f2_hits: Int?, wrote_only_own: Bool) -> Optional<String> {
+  match f2_hits {
+    Absent => Absent
+    Present { value: h } =>
+      if !wrote_only_own { Present { value: "stable arms built but wrote the host stable path: path virtualization is not isolating" } }
+      else { Present { value: "premise changed: stable-path arms F1/F2 built under BindPaths, so the next-rung trigger fired; re-derive the residual ceiling" } }
+  }
+}
+
+fn first_refusal(a: Optional<String>, b: Optional<String>) -> Optional<String> {
+  match a {
+    Present { value: why } => Present { value: why }
+    Absent => b
+  }
+}
+
+fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
+  match observe_user_session_runtime() {
+    UserSessionRuntimeAbsent =>
+      no_observation(bytes: "compute-run-unit-cold-same-path: no observation: user session bus absent", reason: "user session bus absent")
+    UserSessionRuntimeBound { runtime_dir } =>
+      match observe_isolated_job_toolchain_homes() {
+        Absent => arm_failed(bytes: "compute-run-unit-cold-same-path: ToolchainHomesNotIsolated", reason: "ToolchainHomesNotIsolated")
+        Present { value: homes } =>
+          match observe_run_frame() {
+            Absent => no_observation(bytes: "compute-run-unit-cold-same-path: no observation: run frame unreadable", reason: "run frame unreadable")
+            Present { value: frame_a } => {
+              let id_a = to_string(value: frame_a)
+              let path_a = checkout_path_of(toolchain_homes: homes, frame: frame_a, identity: id_a)
+              let target_a = target_path_of(toolchain_homes: homes, frame: frame_a, identity: id_a)
+              let a1 = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_a, stop_observation: SccacheStatsAtStop)
+              if !cold_run_succeeded(r: a1) {
+                a1
+              } else {
+                let reset_a = drop_checkout(toolchain_homes: homes, frame: frame_a, path: path_a)
+                let aside_a = same_path_target_aside(toolchain_homes: homes, frame: frame_a, suffix: ".run1")
+                if reset_a != "" || aside_a != "" {
+                  arm_failed(bytes: join([cold_run_bytes(r: a1), "\nreset after A1 failed: ", reset_a, aside_a], ""), reason: "reset after A1 failed")
+                } else {
+                  let a2 = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_a, stop_observation: SccacheStatsAtStop)
+                  let reset_a2 = drop_checkout(toolchain_homes: homes, frame: frame_a, path: path_a)
+                  match observe_run_frame() {
+                    Absent => no_observation(bytes: cold_run_bytes(r: a2), reason: "arm B frame unreadable")
+                    Present { value: frame_b } => {
+                      let b = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_b, identity: to_string(value: frame_b), checkout_at: Present { value: path_a }, target_at: none, stable_at: none, stop_observation: SccacheStatsAtStop)
+                      let reset_b = drop_checkout(toolchain_homes: homes, frame: frame_b, path: path_a)
+                      match observe_run_frame() {
+                        Absent => no_observation(bytes: cold_run_bytes(r: b), reason: "arm C frame unreadable")
+                        Present { value: frame_c } => {
+                          let c = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_c, identity: id_a, checkout_at: none, target_at: none, stable_at: none, stop_observation: SccacheStatsAtStop)
+                          let aside_d = same_path_target_aside(toolchain_homes: homes, frame: frame_a, suffix: ".run2")
+                          match observe_run_frame() {
+                            Absent => no_observation(bytes: cold_run_bytes(r: c), reason: "arm D frame unreadable")
+                            Present { value: frame_d } => {
+                          let d = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_d, identity: to_string(value: frame_d), checkout_at: Present { value: path_a }, target_at: Present { value: target_a }, stable_at: none, stop_observation: SccacheStatsAtStop)
+                          let reset_d = drop_checkout(toolchain_homes: homes, frame: frame_d, path: path_a)
+                          let path_c = checkout_path_of(toolchain_homes: homes, frame: frame_c, identity: id_a)
+                          let reset_c = drop_checkout(toolchain_homes: homes, frame: frame_c, path: path_c)
+                          let aside_e = same_path_target_aside(toolchain_homes: homes, frame: frame_a, suffix: ".run3")
+                          match observe_run_frame() {
+                            Absent => no_observation(bytes: cold_run_bytes(r: d), reason: "arm E frame unreadable")
+                            Present { value: frame_e } => {
+                          let e = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_e, identity: id_a, checkout_at: Present { value: path_c }, target_at: Present { value: target_a }, stable_at: none, stop_observation: SccacheStatsAtStop)
+                          let reset_e = drop_checkout(toolchain_homes: homes, frame: frame_e, path: path_c)
+                          let ta1 = cold_run_bytes(r: a1)
+                          let ta2 = cold_run_bytes(r: a2)
+                          let tb = cold_run_bytes(r: b)
+                          let tc = cold_run_bytes(r: c)
+                          let td = cold_run_bytes(r: d)
+                          let te = cold_run_bytes(r: e)
+                          let bytes = join([
+                            ta1, "\n=== A2: identity A at path PA ===\n", ta2,
+                            "\n=== B: identity B at path PA ===\n", tb,
+                            "\n=== C: identity A at path PC ===\n", tc,
+                            "\n=== D: identity B at path PA with identity A's target dir ===\n", td,
+                            "\n=== E: identity A at path PC with identity A's target dir ===\n", te, "\n",
+                            "path PA: ", path_a, "\n",
+                            arm_rust_wire(label: "A1 (identity A, PA, cold fill)", text: ta1),
+                            arm_rust_wire(label: "A2 (identity A, PA)", text: ta2),
+                            arm_rust_wire(label: "B  (identity B, PA)", text: tb),
+                            arm_rust_wire(label: "C  (identity A, PC)", text: tc),
+                            arm_rust_wire(label: "D  (identity B, PA, A's target dir)", text: td),
+                            arm_rust_wire(label: "E  (identity A, PC, A's target dir)", text: te),
+                            "path PC: ", path_c, " target dir of A: ", target_a, " aside: ", aside_d, aside_e, reset_c, "\n",
+                            "cleanup: ", reset_a2, reset_b, reset_d, reset_e, "\n",
+                          ], "")
+                          if !cold_run_succeeded(r: a2) || !cold_run_succeeded(r: b) || !cold_run_succeeded(r: c) || !cold_run_succeeded(r: d) || !cold_run_succeeded(r: e) {
+                            arm_failed(bytes: bytes, reason: "an arm's build failed")
+                          } else {
+                            match stable_path_arms(runtime_dir: runtime_dir, homes: homes, stable_root: join([runtime_dir as String, "/c9-stable"], "")) {
+                              StableArmsNoFrame { text: why } => no_observation(bytes: join([bytes, why], ""), reason: "no observation: stable arms had no run frame")
+                              StableArmsRead { text: stable_text, f2_hits: f2_hits, wrote_only_own: wrote_only_own } => {
+                            let bytes = join([bytes, stable_text], "")
+                            match arm_rust_hits(text: ta2) {
+                              Absent => no_observation(bytes: bytes, reason: "no observation: A2 Rust stats unreadable")
+                              Present { value: h_a2 } =>
+                                match arm_rust_hits(text: tb) {
+                                  Absent => no_observation(bytes: bytes, reason: "no observation: B Rust stats unreadable")
+                                  Present { value: h_b } =>
+                                    match arm_rust_hits(text: tc) {
+                                      Absent => no_observation(bytes: bytes, reason: "no observation: C Rust stats unreadable")
+                                      Present { value: h_c } =>
+                                        match arm_rust_hits(text: td) {
+                                          Absent => no_observation(bytes: bytes, reason: "no observation: D Rust stats unreadable")
+                                          Present { value: h_d } =>
+                                        match arm_rust_hits(text: te) {
+                                          Absent => no_observation(bytes: bytes, reason: "no observation: E Rust stats unreadable")
+                                          Present { value: h_e } =>
+                                        match arm_miss_set(text: tb) {
+                                          Absent => no_observation(bytes: bytes, reason: "no observation: B miss set unreadable")
+                                          Present { value: miss_b } =>
+                                        match arm_miss_set(text: tc) {
+                                          Absent => no_observation(bytes: bytes, reason: "no observation: C miss set unreadable")
+                                          Present { value: miss_c } =>
+                                        match arm_miss_set(text: te) {
+                                          Absent => no_observation(bytes: bytes, reason: "no observation: E miss set unreadable")
+                                          Present { value: miss_e } =>
+                                        match first_refusal(a: same_path_premise_refusal(facts: sccache_rust_key_facts), b: stable_arm_refusal(f2_hits: f2_hits, wrote_only_own: wrote_only_own)) {
+                                        Present { value: why } => no_observation(bytes: bytes, reason: why)
+                                        Absent =>
+                                        if !arm_rust_misses_readable(text: ta2) || !arm_rust_misses_readable(text: td) {
+                                          no_observation(bytes: bytes, reason: "no observation: A2 or D Rust miss line unreadable")
+                                        } else
+                                        if h_a2 > 0 && arm_rust_misses_are_zero(text: ta2) && arm_rust_misses_are_zero(text: td)
+                                          && h_b >= build_cache_residual_reuse_floor && h_c >= build_cache_residual_reuse_floor && h_e >= build_cache_residual_reuse_floor
+                                          && miss_set_within(missed: miss_b, declared: concat(build_cache_residual_manifest_dir_crates, build_cache_residual_out_dir_crates))
+                                          && miss_set_within(missed: miss_c, declared: concat(build_cache_residual_manifest_dir_crates, build_cache_residual_out_dir_crates))
+                                          && miss_set_within(missed: miss_e, declared: build_cache_residual_manifest_dir_crates) {
+                                          CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+                                        } else {
+                                          arm_failed(bytes: bytes, reason: "cross-identity Rust reuse regressed: want A2 and D with 0 Rust misses, B, C and E each reusing at least the declared floor, B and C missing only the declared residual crates, E missing only the declared manifest-dir crates (gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path)")
+                                        }
+                                        }
+                                        }
+                                        }
+                                        }
+                                        }
+                                        }
+                                    }
+                                }
+                            }
+                              }
+                            }
+                          }
+                            }
+                          }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+      }
   }
 }

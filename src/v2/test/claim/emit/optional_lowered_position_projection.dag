@@ -1,0 +1,186 @@
+module v2.test.claim.emit.optional_lowered_position_projection
+
+import std.algebra { Cons, Empty, length, fold_list, list_starts_with, list_tail }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.nat { Succ, Zero }
+import std.types { List }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
+import v2.compiler.translate { translate_type_expression_project }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.rust { rust_target_model, rust_type_expression_projection }
+import v2.extdeps.languages.swift { swift_target_model, swift_type_expression_projection }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.compilers.target_model { TargetModel, TargetTypeExpressionProjection }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Conj, Instantiation, Node, TypeNode, node_subtree_nodes }
+import v2.std.optional_layers { TypeNodeOccupancy, type_node_occupancy_read }
+import std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIELD AND PARAMETER `Int?` POSITIONS, AS THE PRODUCTION LOWERING DELIVERS THEM, projected by each
+// target. The inputs are not hand-built: source text runs through assemble_program_from_ingest (with a
+// peer std.optional root, the substitute route while the std.algebra native claim route is blocked on T1.0),
+// and every one-layer optional type node in the resolved tree is projected and serialized. The expected
+// text is the target's own spelling of the optional head applied to `Int`. Measured on main (Occupancy
+// wrapper, same probe): Rust serialized the lowered one-child form as `i32 <  > ` and Swift as `X<>`, both
+// malformed because only a hand-built two-child specimen had ever been exercised. This tree emits
+// `Option < i32 > ` and `Optional<Int32>`: a declared correction on both targets over this type-expression
+// path, not a byte-identical A/B.
+data olp_artifact: Artifact = Artifact { kind: SourceFile, id: ^olp_artifact_id, file_path: "src/v2/pilot/olp_pilot.dag" }
+
+data olp_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^olp_std_artifact_id, file_path: "src/v2/pilot/olp_std_pilot.dag" }
+
+fn olp_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^olp_cu,
+    source_root: V2Tree
+  }
+}
+
+fn olp_resolved() -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: [
+      olp_witness(src: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n", artifact: olp_std_artifact),
+      olp_witness(src: "module p\n\ntype R {\n  n: Int?\n}\n\ntype Box<T> {\n  v: T\n}\n\nfn f(x: Int?) -> Int { 0 }\n\nfn g(b: Box<Int?>) -> Int { 0 }\n", artifact: olp_artifact)
+    ],
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn olp_is_one_layer(n: Node) -> Bool {
+  match type_node_occupancy_read(n: n) {
+    TypeNodeOccupancy { depth: Succ { prev: Zero }, base: _ } => true
+    _ => false
+  }
+}
+
+fn olp_layers() -> List<Node> {
+  match olp_resolved() {
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: [], f: fn(acc, m) { if olp_is_one_layer(n: m) { Cons { head: m, tail: acc } } else { acc } })
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+fn olp_text(node: Node, target: TargetModel, projection: TargetTypeExpressionProjection) -> String {
+  match translate_type_expression_project(node: node, target: target, projection: projection) {
+    Rejected { diagnostics: _ } => "<refused>"
+    Accepted { value: emitted, diagnostics: _ } =>
+      match target_serialize_source_from_model(target: target, emitted: emitted) {
+        Accepted { value: source, diagnostics: _ } => source.carried
+        Rejected { diagnostics: _ } => "<unserializable>"
+      }
+  }
+}
+
+fn olp_every_layer_is(expected: String, target: TargetModel, projection: TargetTypeExpressionProjection) -> Bool {
+  (length(xs: olp_layers()) >= 2)
+    && fold(olp_layers(), init: true, f: fn(acc, m) { acc && (olp_text(node: m, target: target, projection: projection) == expected) })
+}
+
+// RUST: the serializer joins tokens with spaces (rustfmt runs later), so `Int?` is `Option < i32 > `. This literal
+// is the text the field and parameter positions must spell.
+test fn olp_rust_field_and_parameter_optional_positions_emit_option_holds() -> Bool {
+  olp_every_layer_is(expected: "Option < i32 > ", target: rust_target_model(), projection: rust_type_expression_projection())
+}
+
+// SWIFT: `Optional<Int32>`. The pre-cut tree produced a malformed one-child `Int32<>` here (the declared correction).
+test fn olp_swift_field_and_parameter_optional_positions_emit_optional_holds() -> Bool {
+  olp_every_layer_is(expected: "Optional<Int32>", target: swift_target_model(), projection: swift_type_expression_projection())
+}
+
+// THE PLANTED ERROR: a wrong spelling must go red, so the equality above is not vacuous.
+test fn olp_a_wrong_wrapper_spelling_is_refuted_holds() -> Bool {
+  !olp_every_layer_is(expected: "Maybe < i32 > ", target: rust_target_model(), projection: rust_type_expression_projection())
+}
+
+// THE NESTED POSITIONS. The claims above project each optional layer extracted to the ROOT, so they cannot
+// see a nested Optional: the COMPLETE enclosing type is projected here -- a generic application whose argument
+// is `Int?` (Box<Int?>) and a record whose field is `Int?` (R). Disabling the nested handling at the shared
+// per-node boundary (v2.compiler.translate translate_algebra_finalize_at_node) fails these while the standalone
+// claims above stay green.
+fn olp_has_optional_descendant(n: Node) -> Bool {
+  fold(node_subtree_nodes(root: n), init: false, f: fn(a, m) { a || olp_is_one_layer(n: m) })
+}
+
+fn olp_is_application(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Instantiation } => true
+    _ => false
+  }
+}
+
+fn olp_is_record(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Conj } => true
+    _ => false
+  }
+}
+
+fn olp_enclosing(select: fn(Node) -> Bool) -> List<Node> {
+  match olp_resolved() {
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: [], f: fn(acc, m) {
+        if !olp_is_one_layer(n: m) && select(m) && olp_has_optional_descendant(n: m) { Cons { head: m, tail: acc } } else { acc }
+      })
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+type OlpScan {
+  rest: String
+  found: Bool
+}
+
+// Whether `needle` occurs in `text`: each suffix is tried as a prefix match.
+fn olp_contains(text: String, needle: String) -> Bool {
+  let scan = fold_list(xs: text, empty: OlpScan { rest: text, found: false }, cons: fn(acc, _c) {
+    OlpScan {
+      rest: match list_tail(xs: acc.rest) { Present { value: t } => t Absent => Empty },
+      found: acc.found || list_starts_with(xs: acc.rest, prefix: needle, eq: fn(a, b) { a == b })
+    }
+  })
+  scan.found
+}
+
+fn olp_enclosing_spell(select: fn(Node) -> Bool, needle: String, target: TargetModel, projection: TargetTypeExpressionProjection) -> Bool {
+  (length(xs: olp_enclosing(select: select)) >= 1)
+    && fold(olp_enclosing(select: select), init: true, f: fn(acc, m) { acc && olp_contains(text: olp_text(node: m, target: target, projection: projection), needle: needle) })
+}
+
+test fn olp_rust_enclosing_application_spells_the_nested_optional_holds() -> Bool {
+  olp_enclosing_spell(select: olp_is_application, needle: "Option < i32 >", target: rust_target_model(), projection: rust_type_expression_projection())
+}
+
+test fn olp_swift_enclosing_application_spells_the_nested_optional_holds() -> Bool {
+  olp_enclosing_spell(select: olp_is_application, needle: "Optional<Int32>", target: swift_target_model(), projection: swift_type_expression_projection())
+}
+
+// Some record in the resolved tree (R) has the nested optional field; the quantifier is existential because
+// the other Conj nodes holding an optional descendant are not that record.
+fn olp_some_enclosing_spells(select: fn(Node) -> Bool, needle: String, target: TargetModel, projection: TargetTypeExpressionProjection) -> Bool {
+  fold(olp_enclosing(select: select), init: false, f: fn(acc, m) { acc || olp_contains(text: olp_text(node: m, target: target, projection: projection), needle: needle) })
+}
+
+test fn olp_rust_enclosing_record_spells_the_nested_optional_holds() -> Bool {
+  olp_some_enclosing_spells(select: olp_is_record, needle: "Option < i32 >", target: rust_target_model(), projection: rust_type_expression_projection())
+}
+
+test fn olp_swift_enclosing_record_spells_the_nested_optional_holds() -> Bool {
+  olp_some_enclosing_spells(select: olp_is_record, needle: "Optional<Int32>", target: swift_target_model(), projection: swift_type_expression_projection())
+}
+
+test fn olp_a_wrong_nested_spelling_is_refuted_holds() -> Bool {
+  !olp_enclosing_spell(select: olp_is_application, needle: "Maybe < i32 >", target: rust_target_model(), projection: rust_type_expression_projection())
+}

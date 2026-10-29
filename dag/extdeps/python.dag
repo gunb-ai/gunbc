@@ -51,6 +51,11 @@ data python_interpreter_command: String = "python3"
 
 fn python_program() -> ProgramIdentity = uncataloged_program(invocation: python_interpreter_command as NonEmptyStr)
 
+// AN INTERPRETER NAMED BY ITS PATH rather than resolved through PATH. Which file that is (a virtual
+// environment's or a prefix's bin/python) is the caller's selection; this only says that the
+// program run is that file, so no PATH lookup can substitute a different interpreter.
+fn python_interpreter_at(executable: NonEmptyStr) -> ProgramIdentity = uncataloged_program(invocation: executable)
+
 fn python_run_program_argv(program: PythonProgramText) -> List<String> {
   [python_interpreter_command, python_program_flag, program as String]
 }

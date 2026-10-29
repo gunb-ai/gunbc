@@ -7,7 +7,7 @@ pub use crate::extdeps_external_authority::{
 };
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_algebra::{collection_concat_shape, FreeMonoid};
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
@@ -324,7 +324,7 @@ pub fn rust_traits_for_construction_contract(
     deserialize_forbidden: bool,
 ) -> Rc<Vec<RustCapability>> {
     if deserialize_forbidden.clone() {
-        rust_traits_without_deserialize(traits.clone())
+        rust_traits_without_deserialize(traits)
     } else {
         traits.clone()
     }

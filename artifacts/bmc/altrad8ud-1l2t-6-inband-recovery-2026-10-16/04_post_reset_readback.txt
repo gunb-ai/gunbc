@@ -1,0 +1,18 @@
+### request: GET https://192.168.1.250/redfish/v1/Managers/bmc  (netrc root/0penBmc)
+### response status + body:
+{
+  "@Message.ExtendedInfo": [
+    {
+      "@odata.type": "#Message.v1_1_1.Message",
+      "Message": "The password provided for this account must be changed before access is granted.  PATCH the Password property for this account located at the target URI '/redfish/v1/AccountService/Accounts/root' to complete this process.",
+      "MessageArgs": [
+        "/redfish/v1/AccountService/Accounts/root"
+      ],
+      "MessageId": "Base.1.16.0.PasswordChangeRequired",
+      "MessageSeverity": "Critical",
+      "Resolution": "Change the password for this account using a PATCH to the Password property at the URI provided."
+    }
+  ]
+}
+### HTTP 403
+NOT CAPTURED: the unauthenticated service root (firmware/version context) was never saved for this response; the FirmwareVersion in this run came from an authenticated GET that followed the temporary-password write, whose body was not saved either. Do not read firmware/version from this file.

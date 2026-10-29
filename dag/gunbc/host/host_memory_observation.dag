@@ -8,7 +8,7 @@ import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_mtcollins1 }
 import extdeps.filesystem.filesystem_io {
@@ -435,7 +435,68 @@ fn host_fixed_overhead_from_capture(envelope: BoundHostCaptureEnvelope) -> Obser
   }
 }
 
-data mtcollins1_census_boot_capture_path: String = "artifacts/bmc/mtcollins1-boot-run-38789347052/mtcollins1-boot-sol.capture"
+// THE ONE POINTER TO THE LATEST COMMITTED CENSUS BOOT. It changes ONLY in the PR that commits that
+// run's artifacts under artifacts/bmc/mtcollins1-boot-run-<id>/, so evidence and pointer land as one
+// transition and the pointer never names an uncommitted directory (claim
+// mtcollins1_census_capture_file_is_the_committed_receipt reads the derived path). The RAM reading and
+// the CPU model reading both fold over it. Named frontier, not this change: the boot job emitting an
+// evidence record the corpus can fold over, which removes this row edit.
+data mtcollins1_census_boot_run: NonEmptyStr = "39010930690"
+
+fn mtcollins1_census_boot_capture_path_of(run: NonEmptyStr) -> String {
+  join(["artifacts/bmc/mtcollins1-boot-run-", run as String, "/mtcollins1-boot-sol.capture"], "")
+}
+
+fn mtcollins1_census_boot_capture_path() -> String {
+  mtcollins1_census_boot_capture_path_of(run: mtcollins1_census_boot_run)
+}
+
+// WHY THE lscpu READ HAS ITS OWN REFUSAL TYPE: a missing or unparsable lscpu section is a fact about
+// the CPU-model reading, and reporting it under a meminfo-named cause would mislocate it (DESIGN §5).
+// A failure of the capture itself (file unreadable, envelope open or unbound) is not an lscpu fact and
+// rides CensusLscpuCaptureUnread unchanged, so the two readings still agree on why the capture failed.
+type CensusLscpuUnread
+  = CensusLscpuSectionAbsent
+  | CensusLscpuSectionPending
+  | CensusLscpuSectionMalformed { reason: String }
+  | CensusLscpuExitNonzero { exit_code: String }
+  | CensusLscpuNoBiosModelLine
+  | CensusLscpuAmbiguousBiosModelLines
+  | CensusLscpuCaptureUnread { cause: CensusMeminfoUnread }
+
+// THE MODEL NAME FIRMWARE REPORTS, FROM THE lscpu SECTION OF THE SAME ENVELOPE. lscpu prints the core
+// ("Model name: Neoverse-N1") and, indented beneath it, the SMBIOS processor string ("BIOS Model name:
+// Ampere(R) Altra(R) Processor Q80-30 CPU @ 3.0GHz"); the latter names the part and its frequency.
+fn census_cpu_bios_model_reading(envelope: BoundHostCaptureEnvelope) -> ObservationAttempt<String, CensusLscpuUnread> {
+  match host_capture_section_reading(envelope: envelope, name: "lscpu") {
+    SectionAbsent => ObservationRefused { cause: CensusLscpuSectionAbsent }
+    SectionPending { output: _ } => ObservationRefused { cause: CensusLscpuSectionPending }
+    SectionMalformed { reason: r } => ObservationRefused { cause: CensusLscpuSectionMalformed { reason: r } }
+    SectionComplete { exit_code: code, output: out } =>
+      if code != "0" {
+        ObservationRefused { cause: CensusLscpuExitNonzero { exit_code: code } }
+      } else {
+        let lines = filter(out, l => string_contains(s: l, pattern: "BIOS Model name:"))
+        match first(lines) {
+          Present { value: line } =>
+            if count(lines) == 1 {
+              ObservationEstablished { observed: line }
+            } else {
+              ObservationRefused { cause: CensusLscpuAmbiguousBiosModelLines }
+            }
+          Absent => ObservationRefused { cause: CensusLscpuNoBiosModelLine }
+        }
+      }
+  }
+}
+
+// THE RECEIPT ObservedByReceipt POINTS AT: the BIOS model line read from the committed census capture.
+fn mtcollins1_census_cpu_bios_model() -> ObservationAttempt<String, CensusLscpuUnread> {
+  match mtcollins1_census_envelope_attempt() {
+    ObservationRefused { cause: c } => ObservationRefused { cause: CensusLscpuCaptureUnread { cause: c } }
+    ObservationEstablished { observed: e } => census_cpu_bios_model_reading(envelope: e)
+  }
+}
 
 fn census_envelope_from_capture_text(capture: String, machine: NonEmptyStr) -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread> {
   match host_capture_bind_transcript(capture: capture, machine: machine) {
@@ -454,7 +515,7 @@ fn census_envelope_from_read(success: Bool, content: String, error: String, mach
 }
 
 fn mtcollins1_census_envelope_attempt() -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread> {
-  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path)
+  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path())
   census_envelope_from_read(
     success: read.success,
     content: read.content,

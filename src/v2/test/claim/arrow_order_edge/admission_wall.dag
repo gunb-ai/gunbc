@@ -12,7 +12,7 @@ import v2.extdeps.languages.dag { dag_language_model_void }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.std.diagnostic { Accepted, None, Rejected, diagnostics_fatal_reason }
-import v2.std.node { Arrow, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, well_formed }
+import v2.std.node { Arrow, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, well_formed, NotADeclaration }
 import v2.std.node_query { binder_edge }
 import v2.std.symbol_index { empty_symbol_index }
 
@@ -41,8 +41,8 @@ fn aoe_named_domain_without_order() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: Node { kind: TypeNode { connective: Conj }, children: [aoe_binder()], occurrence_id: OccurrenceSynthetic } },
-      Edge { label: Positional, target: aoe_atom(sym: ^aoe_int) }
+      Edge { label: Positional, target: Node { kind: TypeNode { connective: Conj }, children: [aoe_binder()], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration },
+      Edge { label: Positional, target: aoe_atom(sym: ^aoe_int), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -53,7 +53,7 @@ fn aoe_named_domain_with_order() -> Node {
   let signature = declared_signature(params: [aoe_binder()], source: aoe_atom(sym: ^aoe_int))
   Node {
     kind: TypeNode { connective: Arrow },
-    children: [signature.domain, Edge { label: Positional, target: aoe_atom(sym: ^aoe_int) }, signature.order],
+    children: [signature.domain, Edge { label: Positional, target: aoe_atom(sym: ^aoe_int), declaration: NotADeclaration }, signature.order],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -62,7 +62,7 @@ fn aoe_named_domain_with_order() -> Node {
 fn aoe_positional_no_binder() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    children: [Edge { label: Positional, target: aoe_atom(sym: ^aoe_int) }, Edge { label: Positional, target: aoe_atom(sym: ^aoe_int) }],
+    children: [Edge { label: Positional, target: aoe_atom(sym: ^aoe_int), declaration: NotADeclaration }, Edge { label: Positional, target: aoe_atom(sym: ^aoe_int), declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -71,7 +71,7 @@ fn aoe_positional_no_binder() -> Node {
 fn aoe_module_root(arrow: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Authored { name: ^aoe_decl }, target: arrow }],
+    children: [Edge { label: Authored { name: ^aoe_decl }, target: arrow, declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -84,7 +84,7 @@ test fn aoe_well_formed_refuses_a_named_domain_without_order() -> Bool {
 
 // PATH: infer, entered directly with a ResolvedTree.
 fn aoe_infer_reason(arrow: Node) -> Symbol {
-  match infer(tree: ResolvedTree { root: aoe_module_root(arrow: arrow), symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }) {
+  match infer(tree: ResolvedTree { root: aoe_module_root(arrow: arrow), symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), occurrence_resolutions: empty_map(), duplicate_binding_records: [], module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }) {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
     Accepted { value: _, diagnostics: _ } => ^aoe_accepted
   }

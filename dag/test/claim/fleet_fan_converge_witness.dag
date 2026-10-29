@@ -1,0 +1,300 @@
+module test.claim.fleet_fan_converge_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, DissolutionFired, DissolutionPending, DissolutionUnbound, dissolution_status }
+import std.measure { percent }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcObservedIdentity }
+import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, FleetFanPolicy, HeldAtDutyFloor, fleet_fan_policy }
+import product.fan_policy_standing { ConvergeRouteBound, ConvergeRouteUnbound }
+import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_fan_converge {
+  FleetFanConverged,
+  FleetFanControlObserved,
+  FleetFanControlUnobservable,
+  FleetFanDecision,
+  FleetFanDiverged,
+  FleetFanNoop,
+  FleetFanObserved,
+  FleetFanOutcome,
+  FleetFanReadReceipt,
+  FleetFanReading,
+  FleetFanRefuse,
+  FleetFanRefused,
+  FleetFanUnobservable,
+  fleet_fan_decide,
+  fleet_fan_family_refusal,
+  fleet_fan_observed,
+  fleet_fan_boot_gate_consumer_frontier,
+  fleet_fan_boot_gate_ref,
+  fleet_fan_standing,
+  fleet_fan_wire_read_adapter_frontier,
+  fleet_fan_wire_read_ref,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.managed_host { ManagedHostFound, managed_host_binding_for, managed_host_fixture, managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
+import gunbc.machine_intake.fan_observe { FanObserveAdmitted, FanObserveHost, fan_observe_admission }
+
+// SUPPLIED: the adapter's normalized reading and receipt. EXECUTED: the real binding of mtcollins1
+// (FanObserveHost off the real managed row), the real decision and the real standing. There is no
+// Apply arm: every divergence refuses, since no projection to a family writer target exists.
+
+fn held(p: Int) -> FleetFanPolicy {
+  FleetFanPolicy { control: HeldAtDutyFloor { floor: percent(p) }, guard: fleet_fan_policy.guard }
+}
+
+fn seen_held(p: Int) -> FleetFanControl { HeldAtDutyFloor { floor: percent(p) } }
+
+// mtcollins1's real binding, as the fan read would hold it. Absent fails every claim below (false).
+fn real_subject() -> FanObserveHost? {
+  match fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)) {
+    FanObserveAdmitted { host: h } => Present { value: h }
+    _ => Absent
+  }
+}
+
+fn as_openbmc(o: BmcAccessObservation) -> BmcAccessObservation
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "variant_subject"),
+  ]
+{
+  BmcAccessObservation {
+    endpoint: o.endpoint,
+    identity: BmcObservedIdentity { board: o.identity.board, chassis_part_number: o.identity.chassis_part_number, firmware: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: o.identity.firmware.raw_version) },
+    discovered_surfaces: o.discovered_surfaces,
+    boot_control_routes: o.boot_control_routes,
+    redfish_virtual_media_probe: o.redfish_virtual_media_probe,
+    successful_read_surfaces: o.successful_read_surfaces,
+    successful_write_surfaces: o.successful_write_surfaces,
+    raw_response: o.raw_response,
+    observed_at: o.observed_at,
+  }
+}
+
+// THE ONE FIXTURE CALL: the real managed row with ONLY its host identity and/or observed family
+// replaced, bound through the real fan_observe_admission.
+fn variant_subject(host: HostIdentity, openbmc: Bool) -> FanObserveHost?
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "witness_subject_identity_is_checked"),
+  ]
+{
+  match managed_hosts().first() {
+    Absent => Absent
+    Present { value: h } => match h.access {
+      BmcAccessObserved { observation: o } => {
+        let access = if openbmc { BmcAccessObserved { observation: as_openbmc(o: o) } } else { h.access }
+        let fixture = managed_host_fixture(host: host, access: access, secure: h.secure, smpro: h.smpro)
+        match fan_observe_admission(lookup: ManagedHostFound { host: fixture, control: bmc_control_binding(observed: fixture.access, secured: fixture.secure) }) {
+          FanObserveAdmitted { host: v } => Present { value: v }
+          _ => Absent
+        }
+      }
+      _ => Absent
+    }
+  }
+}
+
+fn receipt(s: FanObserveHost, n: Int) -> FleetFanReadReceipt {
+  FleetFanReadReceipt { attempt: n, raw_response: s.observation.raw_response }
+}
+
+fn saw(c: FleetFanControl) -> FleetFanReading { FleetFanControlObserved { control: c } }
+
+fn read(s: FanObserveHost, n: Int, r: FleetFanReading) -> FleetFanObserved
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "witness_divergence_refuses_for_the_bound_family"),
+    decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "witness_inexpressible_floor_refuses"),
+    decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "witness_matching_control_is_noop"),
+    decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "witness_standing_reads_only_the_readback"),
+    decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "witness_subject_identity_is_checked"),
+    decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "witness_unobservable_refuses_and_is_never_converged"),
+    decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "refused_decision_never_converges"),
+  ]
+{
+  fleet_fan_observed(subject: s, receipt: receipt(s: s, n: n), reading: r)
+}
+
+fn decided_noop(d: FleetFanDecision) -> Bool {
+  match d.outcome {
+    FleetFanNoop { deciding: _ } => true
+    FleetFanRefuse { cause: _ } => false
+  }
+}
+
+fn decided_refused(d: FleetFanDecision) -> Bool { !decided_noop(d: d) }
+
+test fn witness_matching_control_is_noop() -> Bool {
+  match real_subject() {
+    Absent => false
+    Present { value: s } => decided_noop(d: fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: saw(c: FirmwareAutomatic))))
+  }
+}
+
+// DIVERGENCE REFUSES, with a held floor MegaRAC expresses (30 is on its step-5 set).
+test fn witness_divergence_refuses_for_the_bound_family() -> Bool {
+  match real_subject() {
+    Absent => false
+    Present { value: s } => {
+      let d = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: saw(c: seen_held(30))))
+      decided_refused(d: d) && refused_with(d: d, why: megarac_route_obligation())
+    }
+  }
+}
+
+// THE DIVERGENCE CAUSE IS THE FAMILY ROUTE'S OWN READ OBLIGATION, not a string authored here.
+fn megarac_route_obligation() -> NonEmptyStr? {
+  match fan_converge_route_for_family(family: AmiMegaRac) {
+    ConvergeRouteUnbound { authority: _, read_obligation: o } => Present { value: o }
+    ConvergeRouteBound { authority: _, write_operation: _, transport: _, readback: _ } => Absent
+  }
+}
+
+fn refused_with(d: FleetFanDecision, why: NonEmptyStr?) -> Bool {
+  match d.outcome {
+    FleetFanRefuse { cause: c } => match why {
+      Present { value: w } => (c as String) == (w as String)
+      Absent => false
+    }
+    FleetFanNoop { deciding: _ } => false
+  }
+}
+
+fn is_present(v: NonEmptyStr?) -> Bool {
+  match v {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A FLOOR THE FAMILY CANNOT EXPRESS REFUSES BEFORE ANY EQUALITY: MegaRAC 22% observed as 22% must
+// Refuse with the family's cause, never Noop. 30 is on the step-5 set and 22 is not.
+test fn witness_inexpressible_floor_refuses() -> Bool {
+  let off_set = fleet_fan_family_refusal(family: AmiMegaRac, control: seen_held(22))
+  let on_set = fleet_fan_family_refusal(family: AmiMegaRac, control: seen_held(30))
+  let openbmc = fleet_fan_family_refusal(family: OpenBmc, control: seen_held(30))
+  is_present(off_set) && !is_present(on_set) && is_present(openbmc)
+    && match real_subject() {
+      Absent => false
+      Present { value: s } => refused_with(fleet_fan_decide(policy: held(22), subject: s, observed: read(s: s, n: 1, r: saw(c: seen_held(22)))), off_set)
+    }
+}
+
+test fn witness_unobservable_refuses_and_is_never_converged() -> Bool {
+  match real_subject() {
+    Absent => false
+    Present { value: s } => {
+      let u = FleetFanControlUnobservable { cause: "bmc unreachable" as NonEmptyStr }
+      let d = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: u))
+      let gated = standing_refused(d: d, r: read(s: s, n: 2, r: u))
+      let noop = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: saw(c: FirmwareAutomatic)))
+      let unreadable_readback = match fleet_fan_standing(decision: noop, readback: read(s: s, n: 2, r: u)) {
+        FleetFanUnobservable { host: _, cause: _ } => true
+        _ => false
+      }
+      decided_refused(d: d) && gated && decided_noop(d: noop) && unreadable_readback
+    }
+  }
+}
+
+test fn witness_standing_reads_only_the_readback() -> Bool {
+  match real_subject() {
+    Absent => false
+    Present { value: s } => {
+      let d = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: saw(c: FirmwareAutomatic)))
+      let ok = match fleet_fan_standing(decision: d, readback: read(s: s, n: 2, r: saw(c: FirmwareAutomatic))) {
+        FleetFanConverged { evidence: e } => host_identity_eq(a: e.host, b: s.host)
+        _ => false
+      }
+      let bad = match fleet_fan_standing(decision: d, readback: read(s: s, n: 2, r: saw(c: seen_held(20)))) {
+        FleetFanDiverged { host: _, observed: _ } => true
+        _ => false
+      }
+      ok && bad
+    }
+  }
+}
+
+fn standing_refused(d: FleetFanDecision, r: FleetFanObserved) -> Bool {
+  match fleet_fan_standing(decision: d, readback: r) {
+    FleetFanRefused { host: _, cause: _ } => true
+    _ => false
+  }
+}
+
+// A REFUSED DECISION NEVER CONVERGES: the deciding observation belongs to another host (refused), then
+// a healthy same-host readback at a later attempt arrives. The standing must be Refused, not Converged.
+fn refused_decision_never_converges(s: FanObserveHost, other_host: FanObserveHost) -> Bool
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fleet_fan_converge_witness", decl_name: "witness_subject_identity_is_checked"),
+  ]
+{
+  let foreign = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: other_host, n: 1, r: saw(c: FirmwareAutomatic)))
+  let unreadable = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: FleetFanControlUnobservable { cause: "bmc unreachable" as NonEmptyStr }))
+  standing_refused(d: foreign, r: read(s: s, n: 2, r: saw(c: FirmwareAutomatic)))
+    && standing_refused(d: unreadable, r: read(s: s, n: 2, r: saw(c: FirmwareAutomatic)))
+}
+
+// SUBJECT IDENTITY, PRODUCER-BOUND: a readback or observation for another host, or another observed
+// family, refuses; a readback that is not a LATER read than the decision's own receipt (the same read
+// relabelled, or a lower ordinal) refuses; and one host's Converged names its own host so it cannot
+// stand for another. The decision carries the deciding receipt, so a falsely supplied deciding id has
+// no parameter to arrive in. (A controller swap is not constructible: the binding refuses an access
+// endpoint that differs from the secured one, so it never reaches a FanObserveHost.)
+test fn witness_subject_identity_is_checked() -> Bool {
+  match real_subject() {
+    Absent => false
+    Present { value: s } => match variant_subject(host: "mtjade1" as HostIdentity, openbmc: false) {
+      Absent => false
+      Present { value: other_host } => match variant_subject(host: s.host, openbmc: true) {
+        Absent => false
+        Present { value: other_family } => {
+          let d = fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: s, n: 1, r: saw(c: FirmwareAutomatic)))
+          let converged_names_its_host = match fleet_fan_standing(decision: d, readback: read(s: s, n: 2, r: saw(c: FirmwareAutomatic))) {
+            FleetFanConverged { evidence: e } => host_identity_eq(a: e.host, b: s.host) && !host_identity_eq(a: e.host, b: other_host.host)
+            _ => false
+          }
+          standing_refused(d: d, r: read(s: other_host, n: 2, r: saw(c: FirmwareAutomatic)))
+            && standing_refused(d: d, r: read(s: other_family, n: 2, r: saw(c: FirmwareAutomatic)))
+            && standing_refused(d: d, r: read(s: s, n: 1, r: saw(c: FirmwareAutomatic)))
+            && standing_refused(d: d, r: read(s: s, n: 0, r: saw(c: FirmwareAutomatic)))
+            && decided_refused(d: fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: other_host, n: 1, r: saw(c: FirmwareAutomatic))))
+            && decided_refused(d: fleet_fan_decide(policy: fleet_fan_policy, subject: s, observed: read(s: other_family, n: 1, r: saw(c: FirmwareAutomatic))))
+            && converged_names_its_host
+            && refused_decision_never_converges(s: s, other_host: other_host)
+        }
+      }
+    }
+  }
+}
+
+fn is_pending(c: DissolutionCondition) -> Bool {
+  match dissolution_status(condition: c, present_decls: []) {
+    DissolutionPending => true
+    DissolutionFired => false
+    DissolutionUnbound => false
+  }
+}
+
+fn is_fired_with(c: DissolutionCondition, ref: DeclarationRef) -> Bool {
+  match dissolution_status(condition: c, present_decls: [ref]) {
+    DissolutionFired => true
+    DissolutionPending => false
+    DissolutionUnbound => false
+  }
+}
+
+// EACH FRONTIER ROW IS PENDING WITHOUT ITS DECLARATION AND FIRED WITH IT, and is not fired by the other
+// row's declaration: the two triggers are independent.
+test fn witness_first_consumer_frontiers_are_bound_and_independent() -> Bool {
+  is_pending(c: fleet_fan_boot_gate_consumer_frontier)
+    && is_pending(c: fleet_fan_wire_read_adapter_frontier)
+    && is_fired_with(c: fleet_fan_boot_gate_consumer_frontier, ref: fleet_fan_boot_gate_ref)
+    && is_fired_with(c: fleet_fan_wire_read_adapter_frontier, ref: fleet_fan_wire_read_ref)
+    && !is_fired_with(c: fleet_fan_boot_gate_consumer_frontier, ref: fleet_fan_wire_read_ref)
+    && !is_fired_with(c: fleet_fan_wire_read_adapter_frontier, ref: fleet_fan_boot_gate_ref)
+}

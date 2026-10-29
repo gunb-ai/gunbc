@@ -1,0 +1,710 @@
+module test.claim.fabric.serving_recipe_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, List, Bool, Int, String }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import std.rational { NonzeroNatFraction }
+import std.measure {
+  MoneyRate, MoneyPerHour, MoneyPerSecond, MoneyAmountMicro, money_amount_micro, money_amount_micro_count,
+  second, tokens_per_second, hardware_thread_count, ByteSize, byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size,
+}
+import extdeps.currency.currency { Usd, Eur }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.work {
+  Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,
+  ControlPlaneCapacity, RevocationAccepted,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply {
+  SupplierOffer, QuotedPerHour, ObservedSupply, StableRosterOrder, PlacementAffinityKey,
+  ExactGrantDuration,
+}
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound,
+  DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse, PermitNamesAnotherOffer,
+  PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand,
+  AvailableRevocable, AvailableIndefinitely, PayAsYouGo, StartCostMeasured,
+  NoTransitionRequired, OperatingCostBorneBySupplier, NoFeasibleAlternativeUse,
+  SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply,
+}
+import product.fabric.serving_recipe {
+  ServingRecipe, ThroughputUnread, EngineNinfer, EngineVllm, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm, serving_recipes_interchangeable,
+  serving_recipe_frontier, ServingCardFacts, ServingCardVerdict, CardAccepted, CardRefusedWrongCard,
+  CardRefusedDriverBelowFloor, CardRefusedDriverUnread, CardScreenedOnUncitedFloor, serving_recipe_accepts_card,
+  ServingCardSupply, RentedCardSupply, OwnedCardSupply, ServingDiskRate,
+  ServingHourlyCost, HourlyCostQuoted, HourlyCostEstimated, HourlyCostUnamortizable, HourlyCostCurrencyMismatch,
+  serving_card_hourly,
+  ServingUnitCost, UnitCostQuoted, UnitCostEstimated, UnitCostThroughputUnread, UnitCostHourlyUnavailable, serving_cost_per_million_tokens,
+  ServingSelectionQuote, SelectionQuoteEstablished, SelectionQuoteRefusedEstimated, SelectionQuoteRefusedUnavailable, serving_unit_cost_for_selection,
+  ServingSettingStanding, SettingOperatorPolicy, SettingReading, ServingSettingStandings, ServingThroughput, ThroughputOperatorReading,
+  ServingStartRoute, StartFromPlacedWeights, StartFromObjectStoreObserved, StartFromHubPinned, StartRouteUnread,
+  ServingStartSource, StartSourcePlaced, StartSourceObserved, StartSourceHubPinned, StartSourcePlacementMissing, StartSourceUnread, serving_start_source,
+  ServingWeightsSource, WeightsPinnedAtHub,
+  ServingCacheSizing, CacheNone, CacheFractionOfHost, serving_cache_bytes,
+}
+import test.claim.fabric.provider_use_fixture {
+  fixture_admitted_for_offer, fixture_demand_for, fixture_work_for, fixture_route,
+}
+import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
+import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_server_catalog, nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog }
+import gunbc.serving.rented_ninfer_source { rented_qwen3_8_27b_nvfp4_weights_placement }
+import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_release }
+import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
+import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
+import extdeps.external_authority { TranscribedUncited, CitedFigureStanding }
+import extdeps.procps.kill { procps_kill_standing }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.roster_frontier { frontier_rows_keyed_roster_build }
+import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn t_caps() -> CapabilityManifestRef { "gunbc.capabilities.linux-rust-toolchain" }
+fn t_trust() -> TrustDomainRef { "gunbc.trust.internal-fleet" }
+
+fn t_reqs() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) }, envelope: unstated_envelope() },
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: IsolationProfile { guarantees: [] },
+    revocation: RevocationAccepted,
+  }
+}
+
+fn t_offer(key: OfferKey, rate: MoneyPerHour) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: "gunbc", key: key },
+    executor: "gunbc",
+    route: fixture_route(),
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 64) }, envelope: unstated_envelope() },
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: IsolationProfile { guarantees: [] },
+    quantity_bound: 1,
+    ready_at: "2026-10-13T00:00:00Z",
+    quote: QuotedPerHour(rate),
+    billing_quantum: second(count: 3600),
+    evidence: ObservedSupply { observed_at: "2026-10-13T00:00:00Z", receipt: "obs-recipe" },
+  }
+}
+
+fn t_bound(offer: SupplierOffer<NonEmptyStr>, revocable: Bool) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: offer,
+    dispatch: DispatchInputs {
+      offer: offer.id,
+      availability: if revocable {
+        AvailableRevocable { delay: second(count: 0), receipt: "avail-revocable" }
+      } else {
+        AvailableIndefinitely { delay: second(count: 0), receipt: "avail-owned" }
+      },
+      commitment: PayAsYouGo,
+      start: StartCostMeasured {
+        amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+        receipt: "start-1",
+      },
+      transition: NoTransitionRequired,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: NoFeasibleAlternativeUse { receipt: "opp-1" },
+    },
+    admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
+    demand: fixture_demand_for(offer: offer.id),
+    work: fixture_work_for(offer: offer.id),
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
+  }
+}
+
+fn t_no_delay() -> MoneyPerSecond {
+  MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }
+}
+
+fn t_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
+  select_supply(
+    requirements: t_reqs(),
+    candidates: candidates,
+    duration: ExactGrantDuration { seconds: second(count: 90) },
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: t_no_delay(),
+    tie: StableRosterOrder,
+    affinity: "test.recipe" as PlacementAffinityKey,
+  )
+}
+
+fn t_selected_key(s: SupplySelection<NonEmptyStr>) -> String {
+  match s {
+    OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
+      (sel.candidate.offer.id.key as String)
+    NoAdmissibleOffer { considered: _ } => "none"
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => "tie-unresolved"
+  }
+}
+
+fn usd_hour(micro: Nat) -> MoneyPerHour {
+  MoneyPerHour { amount: money_amount_micro(count: micro), currency: Usd }
+}
+
+fn gib(n: Nat) -> ByteSize {
+  gibibyte_to_byte_size(g: gibibyte(count: n))
+}
+
+fn card(name: String, vram_gib: Nat, driver: Nat?) -> ServingCardFacts {
+  ServingCardFacts {
+    product: if string_contains(s: name, pattern: "PRO 6000") {
+      Present { value: nvidia_rtx_pro_6000_server_catalog }
+    } else if string_contains(s: name, pattern: "PRO 5000 72") {
+      Present { value: nvidia_rtx_pro_5000_72gb_catalog }
+    } else if string_contains(s: name, pattern: "PRO 5000") {
+      Present { value: nvidia_rtx_pro_5000_48gb_catalog }
+    } else {
+      none
+    },
+    vram: gib(n: vram_gib),
+    driver_major: driver,
+  }
+}
+
+fn verdict_is_accepted(v: ServingCardVerdict) -> Bool {
+  match v {
+    CardAccepted { class: _ } => true
+    CardRefusedWrongCard => false
+    CardRefusedDriverBelowFloor { required: _, observed: _ } => false
+    CardRefusedDriverUnread => false
+    CardScreenedOnUncitedFloor { class: _, required: _, observed: _, floor_met: met } => met
+  }
+}
+
+fn accepts(recipe: ServingRecipe, c: ServingCardFacts) -> Bool {
+  verdict_is_accepted(v: serving_recipe_accepts_card(recipe: recipe, card: c))
+}
+
+// ── each recipe resolves to its card classes ─────────────────────────────────────────────────
+
+test fn qwen_recipe_resolves_to_the_catalogued_pro_6000_class() -> Bool {
+  accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 595 }))
+}
+
+test fn qwen_recipe_admits_the_48gb_and_72gb_pro_5000_catalog_rows() -> Bool {
+  accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX PRO 5000", vram_gib: 48, driver: Present { value: 595 }))
+    && accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX PRO 5000 72", vram_gib: 72, driver: Present { value: 595 }))
+}
+
+test fn flash_next_refuses_the_pro_5000_rows() -> Bool {
+  match serving_recipe_accepts_card(
+    recipe: serving_recipe_flash_next_lab_vllm,
+    card: card(name: "RTX PRO 5000", vram_gib: 48, driver: Present { value: 595 }),
+  ) {
+    CardRefusedWrongCard => true
+    _ => false
+  }
+}
+
+test fn flash_next_recipe_resolves_to_pro_6000_only() -> Bool {
+  accepts(recipe: serving_recipe_flash_next_lab_vllm, c: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 595 }))
+}
+
+// ── refusals ─────────────────────────────────────────────────────────────────────────────────
+
+test fn qwen_is_refused_on_cards_without_a_catalog_product_whatever_their_vram() -> Bool {
+  (match serving_recipe_accepts_card(
+    recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+    card: card(name: "RTX 5000 Ada", vram_gib: 48, driver: Present { value: 595 }),
+  ) {
+    CardRefusedWrongCard => true
+    _ => false
+  })
+    && (match serving_recipe_accepts_card(
+      recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+      card: card(name: "H100", vram_gib: 80, driver: Present { value: 595 }),
+    ) {
+      CardRefusedWrongCard => true
+      _ => false
+    })
+}
+
+test fn serving_recipe_frontier_builds_a_keyed_roster() -> Bool {
+  match frontier_rows_keyed_roster_build(rows: serving_recipe_frontier) {
+    KeyedRosterBuilt { rows: _ } => true
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+test fn flash_next_engine_ref_names_the_lab_release_row() -> Bool {
+  (match serving_recipe_flash_next_lab_vllm.engine {
+    EngineVllm { build: r } => (r.release_name as String) == (local_inference_lab_vllm_release.release_name as String)
+    EngineNinfer { build: _ } => false
+  })
+    && (match serving_recipe_qwen3_8_27b_nvfp4_ninfer.engine {
+      EngineNinfer { build: _ } => true
+      EngineVllm { build: _ } => false
+    })
+    && (match local_inference_lab_vllm_release.standing {
+      TranscribedUncited { read_obligation: _ } => true
+      _ => false
+    })
+}
+
+test fn flash_next_is_refused_off_pro_6000_even_with_enough_vram() -> Bool {
+  match serving_recipe_accepts_card(
+    recipe: serving_recipe_flash_next_lab_vllm,
+    card: card(name: "RTX A6000", vram_gib: 96, driver: Present { value: 595 }),
+  ) {
+    CardRefusedWrongCard => true
+    _ => false
+  }
+}
+
+test fn a_driver_below_the_floor_is_refused_and_an_unread_driver_is_refused() -> Bool {
+  (match serving_recipe_accepts_card(
+    recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+    card: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 570 }),
+  ) {
+    CardScreenedOnUncitedFloor { class: _, required: r, observed: o, floor_met: met } => r == 580 && o == 570 && !met
+    _ => false
+  })
+    && (match serving_recipe_accepts_card(
+      recipe: serving_recipe_flash_next_lab_vllm,
+      card: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 575 }),
+    ) {
+      CardScreenedOnUncitedFloor { class: _, required: r, observed: o, floor_met: met } => r == 580 && o == 575 && !met
+      _ => false
+    })
+    && (match serving_recipe_accepts_card(
+      recipe: serving_recipe_flash_next_lab_vllm,
+      card: card(name: "RTX PRO 6000", vram_gib: 96, driver: none),
+    ) {
+      CardRefusedDriverUnread => true
+      _ => false
+    })
+}
+
+// ── non-fungible recipes are never substituted ───────────────────────────────────────────────
+
+test fn flash_next_is_not_interchangeable_with_the_27b_in_either_direction() -> Bool {
+  serving_recipes_interchangeable(left: serving_recipe_qwen3_8_27b_nvfp4_ninfer, right: serving_recipe_qwen3_8_27b_nvfp4_ninfer)
+    && serving_recipes_interchangeable(left: serving_recipe_flash_next_lab_vllm, right: serving_recipe_flash_next_lab_vllm)
+    && !serving_recipes_interchangeable(left: serving_recipe_qwen3_8_27b_nvfp4_ninfer, right: serving_recipe_flash_next_lab_vllm)
+    && !serving_recipes_interchangeable(left: serving_recipe_flash_next_lab_vllm, right: serving_recipe_qwen3_8_27b_nvfp4_ninfer)
+}
+
+test fn the_27b_recipe_names_the_existing_catalog_unit_and_flash_next_names_none_yet() -> Bool {
+  (match serving_recipe_qwen3_8_27b_nvfp4_ninfer.catalog_unit {
+    Present { value: u } =>
+      match u {
+        Qwen3_8_27bOnNinfer => true
+        _ => false
+      }
+    Absent => false
+  })
+    && (match serving_recipe_flash_next_lab_vllm.catalog_unit {
+      Present { value: _ } => false
+      Absent => true
+    })
+}
+
+// ── disk is part of a rented card's cost ─────────────────────────────────────────────────────
+
+// 400 GiB at 375 micro-dollars per GiB-hour is 150000 micro per hour (the operator's ~0.15/h).
+fn t_disk_rate() -> ServingDiskRate {
+  ServingDiskRate { rate: MoneyRate { amount: money_amount_micro(count: 375), currency: Usd } }
+}
+
+fn hourly_micro(h: ServingHourlyCost) -> Int {
+  match h {
+    HourlyCostQuoted { rate: r } => money_amount_micro_count(m: r.amount) as Int
+    HourlyCostEstimated { rate: r, standing: _ } => money_amount_micro_count(m: r.amount) as Int
+    HourlyCostUnamortizable => -1
+    HourlyCostCurrencyMismatch => -2
+  }
+}
+
+test fn a_rented_cards_hourly_cost_is_its_dph_plus_the_recipes_disk() -> Bool {
+  hourly_micro(h: serving_card_hourly(
+    recipe: serving_recipe_flash_next_lab_vllm,
+    supply: RentedCardSupply { dph: usd_hour(micro: 900000), disk_rate: t_disk_rate() },
+  )) == 1050000
+}
+
+test fn disk_scales_with_the_recipes_disk_need() -> Bool {
+  // 27B needs 32 GiB: 32 * 375 = 12000
+  hourly_micro(h: serving_card_hourly(
+    recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+    supply: RentedCardSupply { dph: usd_hour(micro: 900000), disk_rate: t_disk_rate() },
+  )) == 912000
+}
+
+test fn a_disk_rate_in_another_currency_is_refused_not_added() -> Bool {
+  match serving_card_hourly(
+    recipe: serving_recipe_flash_next_lab_vllm,
+    supply: RentedCardSupply {
+      dph: usd_hour(micro: 900000),
+      disk_rate: ServingDiskRate { rate: MoneyRate { amount: money_amount_micro(count: 375), currency: Eur } },
+    },
+  ) {
+    HourlyCostCurrencyMismatch => true
+    _ => false
+  }
+}
+
+test fn an_owned_card_amortizes_its_capital_and_zero_hours_is_unamortizable() -> Bool {
+  // $10,000 over 10,000 hours is $1/h.
+  (hourly_micro(h: serving_card_hourly(
+    recipe: serving_recipe_flash_next_lab_vllm,
+    supply: OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization: second(count: 36000000) },
+  )) == 1000000)
+    && (hourly_micro(h: serving_card_hourly(
+      recipe: serving_recipe_flash_next_lab_vllm,
+      supply: OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization: second(count: 0) },
+    )) == -1)
+}
+
+// ── owned and rented reach selection under one recipe; disk changes the ranking ──────────────
+
+fn recipe_rate(supply: ServingCardSupply) -> MoneyPerHour {
+  match serving_card_hourly(recipe: serving_recipe_flash_next_lab_vllm, supply: supply) {
+    HourlyCostQuoted { rate: r } => r
+    HourlyCostEstimated { rate: r, standing: _ } => r
+    HourlyCostUnamortizable => usd_hour(micro: 0)
+    HourlyCostCurrencyMismatch => usd_hour(micro: 0)
+  }
+}
+
+fn owned_supply() -> ServingCardSupply {
+  OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization: second(count: 36000000) }
+}
+
+fn rented_supply() -> ServingCardSupply {
+  RentedCardSupply { dph: usd_hour(micro: 900000), disk_rate: t_disk_rate() }
+}
+
+fn candidates(owned_rate: MoneyPerHour, rented_rate: MoneyPerHour) -> List<CandidateOffer<NonEmptyStr>> {
+  concat(
+    t_bound(offer: t_offer(key: "owned-pro6000", rate: owned_rate), revocable: false),
+    t_bound(offer: t_offer(key: "rented-pro6000", rate: rented_rate), revocable: true),
+  )
+}
+
+test fn an_owned_and_a_rented_pro_6000_both_reach_select_supply_under_one_recipe() -> Bool {
+  match t_select(candidates: candidates(owned_rate: recipe_rate(supply: owned_supply()), rented_rate: recipe_rate(supply: rented_supply()))) {
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: cs, tie_policy: _ } => length(cs) == 2
+    NoAdmissibleOffer { considered: _ } => false
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => false
+  }
+}
+
+test fn disk_cost_flips_the_selection_that_dph_alone_would_make() -> Bool {
+  // dph only: rented 0.90/h undercuts owned 1.00/h. With the 0.15/h disk, rented is 1.05/h.
+  (t_selected_key(s: t_select(candidates: candidates(owned_rate: usd_hour(micro: 1000000), rented_rate: usd_hour(micro: 900000))))
+    == "rented-pro6000")
+    && (t_selected_key(s: t_select(candidates: candidates(
+      owned_rate: recipe_rate(supply: owned_supply()),
+      rented_rate: recipe_rate(supply: rented_supply()),
+    ))) == "owned-pro6000")
+}
+
+// ── cost per accepted unit, per recipe × card ────────────────────────────────────────────────
+
+fn flash_hourly(micro: Int) -> ServingHourlyCost {
+  HourlyCostQuoted { rate: usd_hour(micro: micro) }
+}
+
+test fn cost_per_million_tokens_is_computable_where_throughput_is_read_and_unread_where_not() -> Bool {
+  // Flash-Next: operator reading ~900 tok/s. 1.05/h -> 1050000 * 1e6 / (900 * 3600) = 324074 micro per Mtok.
+  (match serving_cost_per_million_tokens(recipe: serving_recipe_flash_next_lab_vllm, hourly: flash_hourly(micro: 1050000)) {
+    UnitCostEstimated { amount: a, currency: _, standings: _ } => (money_amount_micro_count(m: a) as Int) == 324075
+    _ => false
+  })
+    && (match serving_cost_per_million_tokens(recipe: serving_recipe_flash_next_lab_vllm, hourly: flash_hourly(micro: 3240000)) {
+      UnitCostEstimated { amount: a, currency: _, standings: _ } => (money_amount_micro_count(m: a) as Int) == 1000000
+      _ => false
+    })
+    && (match serving_cost_per_million_tokens(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, hourly: flash_hourly(micro: 1050000)) {
+      UnitCostThroughputUnread => true
+      _ => false
+    })
+    && (match serving_cost_per_million_tokens(recipe: serving_recipe_flash_next_lab_vllm, hourly: HourlyCostUnamortizable) {
+      UnitCostHourlyUnavailable => true
+      _ => false
+    })
+}
+
+// ── standing propagates (DESIGN 4d): same numbers, only the standing changes, the outcome changes ──
+fn flash_with_throughput_standing(sd: CitedFigureStanding) -> ServingRecipe {
+  ServingRecipe {
+    id: serving_recipe_flash_next_lab_vllm.id,
+    model: serving_recipe_flash_next_lab_vllm.model,
+    engine: serving_recipe_flash_next_lab_vllm.engine,
+    catalog_unit: serving_recipe_flash_next_lab_vllm.catalog_unit,
+    published_tcp_port: serving_recipe_flash_next_lab_vllm.published_tcp_port,
+    cards: serving_recipe_flash_next_lab_vllm.cards,
+    driver_floor: serving_recipe_flash_next_lab_vllm.driver_floor,
+    disk: serving_recipe_flash_next_lab_vllm.disk,
+    cache: serving_recipe_flash_next_lab_vllm.cache,
+    start: serving_recipe_flash_next_lab_vllm.start,
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 900), at_concurrency: 16, standing: sd },
+    settings: serving_recipe_flash_next_lab_vllm.settings,
+  }
+}
+
+fn flash_with_disk_setting(setting: ServingSettingStanding) -> ServingRecipe {
+  ServingRecipe {
+    id: serving_recipe_flash_next_lab_vllm.id,
+    model: serving_recipe_flash_next_lab_vllm.model,
+    engine: serving_recipe_flash_next_lab_vllm.engine,
+    catalog_unit: serving_recipe_flash_next_lab_vllm.catalog_unit,
+    published_tcp_port: serving_recipe_flash_next_lab_vllm.published_tcp_port,
+    cards: serving_recipe_flash_next_lab_vllm.cards,
+    driver_floor: serving_recipe_flash_next_lab_vllm.driver_floor,
+    disk: serving_recipe_flash_next_lab_vllm.disk,
+    cache: serving_recipe_flash_next_lab_vllm.cache,
+    start: serving_recipe_flash_next_lab_vllm.start,
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 900), at_concurrency: 16, standing: procps_kill_standing() },
+    settings: ServingSettingStandings {
+      disk: setting,
+      cache: serving_recipe_flash_next_lab_vllm.settings.cache,
+      port: serving_recipe_flash_next_lab_vllm.settings.port,
+    },
+  }
+}
+
+fn selection_quote_is_established(c: ServingUnitCost) -> Bool {
+  match serving_unit_cost_for_selection(cost: c) {
+    SelectionQuoteEstablished { amount: _, currency: _ } => true
+    SelectionQuoteRefusedEstimated { standings: _ } => false
+    SelectionQuoteRefusedUnavailable => false
+  }
+}
+
+test fn an_uncited_throughput_makes_the_cost_estimated_and_its_cited_twin_established() -> Bool {
+  // identical numbers (900 tok/s at 1.05/h); only the throughput standing differs.
+  let uncited = serving_cost_per_million_tokens(recipe: flash_with_throughput_standing(sd: serving_recipe_flash_next_lab_vllm.driver_floor.standing), hourly: flash_hourly(micro: 1050000))
+  let cited = serving_cost_per_million_tokens(recipe: flash_with_throughput_standing(sd: procps_kill_standing()), hourly: flash_hourly(micro: 1050000))
+  (match uncited {
+    UnitCostEstimated { amount: a, currency: _, standings: _ } => (money_amount_micro_count(m: a) as Int) == 324075
+    _ => false
+  })
+    && (match cited {
+      UnitCostQuoted { amount: a, currency: _ } => (money_amount_micro_count(m: a) as Int) == 324075
+      _ => false
+    })
+    && !selection_quote_is_established(c: uncited)
+    && selection_quote_is_established(c: cited)
+}
+
+test fn an_uncited_disk_size_makes_the_hourly_estimated_and_the_unit_cost_with_it() -> Bool {
+  let supply = RentedCardSupply { dph: usd_hour(micro: 900000), disk_rate: t_disk_rate() }
+  let uncited_disk = flash_with_disk_setting(setting: SettingReading { standing: serving_recipe_flash_next_lab_vllm.driver_floor.standing })
+  let policy_disk = flash_with_disk_setting(setting: serving_recipe_flash_next_lab_vllm.settings.disk)
+  let h_uncited = serving_card_hourly(recipe: uncited_disk, supply: supply)
+  let h_policy = serving_card_hourly(recipe: policy_disk, supply: supply)
+  (match h_uncited {
+    HourlyCostEstimated { rate: r, standing: _ } => (money_amount_micro_count(m: r.amount) as Int) == 1050000
+    _ => false
+  })
+    && (match h_policy {
+      HourlyCostQuoted { rate: r } => (money_amount_micro_count(m: r.amount) as Int) == 1050000
+      _ => false
+    })
+    && !selection_quote_is_established(c: serving_cost_per_million_tokens(recipe: uncited_disk, hourly: h_uncited))
+    && selection_quote_is_established(c: serving_cost_per_million_tokens(recipe: policy_disk, hourly: h_policy))
+}
+
+test fn the_flash_template_settings_cite_the_operator_template_ruling() -> Bool {
+  let ruling = decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2")
+  (match serving_recipe_flash_next_lab_vllm.settings.disk {
+    SettingOperatorPolicy { ruling: r } => declaration_ref_eq(a: r, b: ruling)
+    SettingReading { standing: _ } => false
+  })
+    && (match serving_recipe_flash_next_lab_vllm.settings.cache {
+      SettingOperatorPolicy { ruling: r } => declaration_ref_eq(a: r, b: ruling)
+      SettingReading { standing: _ } => false
+    })
+    && (match serving_recipe_flash_next_lab_vllm.settings.port {
+      SettingOperatorPolicy { ruling: r } => declaration_ref_eq(a: r, b: ruling)
+      SettingReading { standing: _ } => false
+    })
+    && qwen_settings_cite_ruling(ruling: ruling)
+}
+
+fn qwen_settings_cite_ruling(ruling: DeclarationRef) -> Bool {
+  (match serving_recipe_qwen3_8_27b_nvfp4_ninfer.settings.disk {
+    SettingOperatorPolicy { ruling: r } => declaration_ref_eq(a: r, b: ruling)
+    SettingReading { standing: _ } => false
+  })
+    && (match serving_recipe_qwen3_8_27b_nvfp4_ninfer.settings.cache {
+      SettingOperatorPolicy { ruling: r } => declaration_ref_eq(a: r, b: ruling)
+      SettingReading { standing: _ } => false
+    })
+    && (match serving_recipe_qwen3_8_27b_nvfp4_ninfer.settings.port {
+      SettingOperatorPolicy { ruling: r } => declaration_ref_eq(a: r, b: ruling)
+      SettingReading { standing: _ } => false
+    })
+}
+
+fn flash_uncited_throughput_and_disk() -> ServingRecipe {
+  let base = flash_with_disk_setting(setting: SettingReading { standing: serving_recipe_flash_next_lab_vllm.driver_floor.standing })
+  ServingRecipe {
+    id: base.id,
+    model: base.model,
+    engine: base.engine,
+    catalog_unit: base.catalog_unit,
+    published_tcp_port: base.published_tcp_port,
+    cards: base.cards,
+    driver_floor: base.driver_floor,
+    disk: base.disk,
+    cache: base.cache,
+    start: base.start,
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 900), at_concurrency: 16, standing: serving_recipe_flash_next_lab_vllm.driver_floor.standing },
+    settings: base.settings,
+  }
+}
+
+test fn an_estimate_carries_every_uncited_obligation_it_rests_on_through_to_the_refused_quote() -> Bool {
+  let r = flash_uncited_throughput_and_disk()
+  let h = serving_card_hourly(recipe: r, supply: RentedCardSupply { dph: usd_hour(micro: 900000), disk_rate: t_disk_rate() })
+  let c = serving_cost_per_million_tokens(recipe: r, hourly: h)
+  (match c {
+    UnitCostEstimated { amount: _, currency: _, standings: ss } => length(ss) == 2
+    _ => false
+  })
+    && (match serving_unit_cost_for_selection(cost: c) {
+      SelectionQuoteRefusedEstimated { standings: ss } => length(ss) == 2
+      _ => false
+    })
+}
+
+// ── start route and cache adapt ──────────────────────────────────────────────────────────────
+
+// 2026-10-25: the flash row STARTS from its Hub-pinned checkpoint, so its start source is the pinned
+// arm — no fallback re-resolution, and the standing is an OBSERVED reading (the srv1 launcher's own
+// download behavior), not an operator ruling. The object-store arm below keeps the old expectation for
+// any recipe still observing one.
+test fn flash_next_starts_from_the_pinned_hub_revision_only_with_no_hub_fallback() -> Bool {
+  match serving_start_source(recipe: serving_recipe_flash_next_lab_vllm) {
+    StartSourceHubPinned { checkpoint: c, hub_fallback: fb, standing: sd } =>
+      !fb
+        && (c.revision as String) == (qwen3_8_flash_next_manifest.revision as String)
+        && (match sd {
+          SettingReading { standing: _ } => true
+          SettingOperatorPolicy { ruling: _ } => false
+        })
+    _ => false
+  }
+}
+
+test fn flash_next_weights_are_pinned_at_the_hub_with_the_engine_reported_quantization() -> Bool {
+  match serving_recipe_flash_next_lab_vllm.model.source {
+    WeightsPinnedAtHub { checkpoint: c, quantization: q } =>
+      (c.revision as String) == (qwen3_8_flash_next_manifest.revision as String)
+        && (match q {
+          Present { value: v } => (v as String) == (srv1_serving_startup_reading.weight_quantization as String)
+          Absent => false
+        })
+    _ => false
+  }
+}
+
+test fn the_qwen_start_source_is_derived_from_its_placement() -> Bool {
+  (match serving_start_source(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+    StartSourcePlaced { source: src } =>
+      (src.locator.key as String) == (rented_qwen3_8_27b_nvfp4_weights_placement.object_key as String)
+    _ => false
+  })
+    && (match serving_start_source(
+      recipe: ServingRecipe {
+        id: serving_recipe_flash_next_lab_vllm.id,
+        model: serving_recipe_flash_next_lab_vllm.model,
+        engine: serving_recipe_flash_next_lab_vllm.engine,
+        catalog_unit: none,
+        published_tcp_port: 8000,
+        cards: [],
+        driver_floor: serving_recipe_flash_next_lab_vllm.driver_floor,
+        disk: serving_recipe_flash_next_lab_vllm.disk,
+        cache: serving_recipe_flash_next_lab_vllm.cache,
+        start: StartFromPlacedWeights,
+        throughput: ThroughputUnread,
+        settings: serving_recipe_flash_next_lab_vllm.settings,
+      },
+    ) {
+      StartSourcePlacementMissing => true
+      _ => false
+    })
+}
+
+// THE ARM #15222 OWED ITS SIBLINGS (2026-10-27 main break, review protocol §6b). A recipe that STARTS
+// from placed weights but carries the HUB-PINNED weights source has nothing placed — the answer is
+// StartSourcePlacementMissing, spelled as its own arm (not folded into a wildcard, so a future variant
+// of ServingWeightsSource is refused by the compiler rather than absorbed silently). Without this arm
+// the closure through product.fabric.serving_recipe refuses to resolve as non-exhaustive — which is how
+// main broke: this file's fixtures all pair StartFromHubPinned with WeightsPinnedAtHub, so no EXISTING
+// row ever drove the StartFromPlacedWeights arm with a pinned source. This is that driving row.
+test fn a_placed_weights_start_over_a_hub_pinned_source_reports_placement_missing() -> Bool {
+  match serving_start_source(
+    recipe: ServingRecipe {
+      id: serving_recipe_flash_next_lab_vllm.id,
+      model: serving_recipe_flash_next_lab_vllm.model,  // WeightsPinnedAtHub — the variant under test
+      engine: serving_recipe_flash_next_lab_vllm.engine,
+      catalog_unit: none,
+      published_tcp_port: 8000,
+      cards: [],
+      driver_floor: serving_recipe_flash_next_lab_vllm.driver_floor,
+      disk: serving_recipe_flash_next_lab_vllm.disk,
+      cache: serving_recipe_flash_next_lab_vllm.cache,
+      start: StartFromPlacedWeights,
+      throughput: ThroughputUnread,
+      settings: serving_recipe_flash_next_lab_vllm.settings,
+    },
+  ) {
+    StartSourcePlacementMissing => true
+    _ => false
+  }
+}
+
+test fn bare_flash_settings_carry_standing() -> Bool {
+  qwen_settings_cite_ruling(ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"))
+}
+
+test fn cache_sizes_follow_the_host() -> Bool {
+  // one half of the host
+  let half = CacheFractionOfHost { fraction: NonzeroNatFraction { num: 1, denom_predecessor: 1 } }
+  (byte_size_count(b: serving_cache_bytes(sizing: half, host: gib(n: 512))) == byte_size_count(b: gib(n: 256)))
+    && (byte_size_count(b: serving_cache_bytes(sizing: half, host: gib(n: 128))) == byte_size_count(b: gib(n: 64)))
+    && byte_size_count(b: serving_cache_bytes(sizing: CacheNone, host: gib(n: 512))) == 0
+}
+
+// 5400 s is 1.5 h: capital 3000000 micro over it is 2000000 micro/h, not the 3000000 a whole-hour floor gives;
+// and a horizon under one hour is amortizable, not refused.
+test fn an_owned_cards_horizon_is_not_rounded_to_whole_hours() -> Bool {
+  (match serving_card_hourly(
+    recipe: serving_recipe_flash_next_lab_vllm,
+    supply: OwnedCardSupply { capital: money_amount_micro(count: 3000000), currency: Usd, amortization: second(count: 5400) },
+  ) {
+    HourlyCostQuoted { rate: r } => (money_amount_micro_count(m: r.amount) as Int) == 2000000
+    _ => false
+  })
+    && (match serving_card_hourly(
+      recipe: serving_recipe_flash_next_lab_vllm,
+      supply: OwnedCardSupply { capital: money_amount_micro(count: 1000000), currency: Usd, amortization: second(count: 1800) },
+    ) {
+      HourlyCostQuoted { rate: r } => (money_amount_micro_count(m: r.amount) as Int) == 2000000
+      _ => false
+    })
+    && (match serving_card_hourly(
+      recipe: serving_recipe_flash_next_lab_vllm,
+      supply: OwnedCardSupply { capital: money_amount_micro(count: 1000000), currency: Usd, amortization: second(count: 7000) },
+    ) {
+      HourlyCostQuoted { rate: r } => (money_amount_micro_count(m: r.amount) as Int) == 514286
+      _ => false
+    })
+}

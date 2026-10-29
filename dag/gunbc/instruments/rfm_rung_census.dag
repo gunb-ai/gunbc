@@ -1,0 +1,226 @@
+module gunbc.instruments.rfm_rung_census
+
+import std.types { Int, List, String, Bool, NonEmptyStr }
+import std.list { distinct_by_key }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+import gunbc.recurring_failure_mode {
+  RecurringFailureMode, RungReading, RungUnread, RungRead, RungStanding, AtCeiling, BelowCeiling,
+  RungPosition, FoundOnRung, FoundBelowTheLadder, UnreadCause,
+  NoRungStated, FoundAtAmbiguous, CeilingNotStated, CeilingAmbiguous, CurrentRungUnstatedAfterClimb,
+  CeilingStatedWithoutTrigger, TriggerNamesArtifactNotCapability, BlockerClassUnstated,
+  StandingAdmission, StandingAdmitted, StandingNotBelowCeiling, StandingTriggerRefused, standing_admission,
+}
+import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
+
+// THE RUNG CENSUS OF THE RECURRING-FAILURE-MODE LEDGER (DESIGN section 4b, the ledger rule: rung
+// found at, ceiling with reason, next trigger). Every count below is read from the typed `rung`
+// field of the roster's rows, never from receipt prose. `gunbc test //gunbc/instruments:rfm-rung-census`.
+//
+// WHAT IT REFUSES: a row whose typed standing is malformed -- BelowCeiling with current at or above
+// its ceiling, or a trigger with a blank capability or one spelled as a lifecycle-bounded referent.
+// A BelowCeiling whose blocker is CannotClimbFurther is not refused here: it is unwritable (gunbc.rung_climb ClimbBlocker has no such arm).
+// WHAT IT ONLY COUNTS: RungUnread rows, by cause. An unread row is a counted debt and a different
+// fact from a refused one; no count literal is compared (a count copied from the tree is a change
+// detector, DESIGN section 5), so a green here does not say how many rows are unread.
+//
+// KNOWN GAP 2, tracked at gunbc.recurring_failure_mode below_ceiling_order_is_checked_at_runtime_not_constructed: current < ceiling is
+// refused by StandingNotBelowCeiling at runtime because no strict-order witness over GuaranteeRung exists.
+//
+// KNOWN GAP, tracked at gunbc.recurring_failure_mode ledger_row_authored_unread_after_the_rung_migration (its trigger names the
+// capability): nothing here stops a row authored after the migration from choosing a
+// RungUnread cause. The cause arms are real prose classes, not a grandfather list, so the wall that
+// would refuse a new row's unread arm needs a decidable notion of "new" (a roster of grandfathered
+// identities would be the second authority the doctrine forbids).
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type RfmRungCase {
+  identity: String
+  held: Bool
+  observed: String
+}
+
+fn unread_cause_label(c: UnreadCause) -> String {
+  match c {
+    NoRungStated => "NoRungStated"
+    FoundAtAmbiguous => "FoundAtAmbiguous"
+    CeilingNotStated => "CeilingNotStated"
+    CeilingAmbiguous => "CeilingAmbiguous"
+    CurrentRungUnstatedAfterClimb => "CurrentRungUnstatedAfterClimb"
+    CeilingStatedWithoutTrigger => "CeilingStatedWithoutTrigger"
+    TriggerNamesArtifactNotCapability => "TriggerNamesArtifactNotCapability"
+    BlockerClassUnstated => "BlockerClassUnstated"
+  }
+}
+
+fn row_admission(r: RecurringFailureMode) -> StandingAdmission {
+  match r.rung {
+    RungUnread { cause: _ } => StandingAdmitted
+    RungRead { found_at: _, standing: s } => standing_admission(subject: r.identity, s: s)
+  }
+}
+
+fn row_is_admitted(r: RecurringFailureMode) -> Bool {
+  match row_admission(r: r) {
+    StandingAdmitted => true
+    StandingNotBelowCeiling { subject: _ } => false
+    StandingTriggerRefused { subject: _, admission: _ } => false
+  }
+}
+
+fn row_is_unread(r: RecurringFailureMode) -> Bool {
+  match r.rung {
+    RungUnread { cause: _ } => true
+    RungRead { found_at: _, standing: _ } => false
+  }
+}
+
+fn row_is_below_ceiling(r: RecurringFailureMode) -> Bool {
+  match r.rung {
+    RungUnread { cause: _ } => false
+    RungRead { found_at: _, standing: s } =>
+      match s {
+        AtCeiling { rung: _, ceiling_reason: _ } => false
+        BelowCeiling { current: _, ceiling: _, blocker: _, trigger_capability: _ } => true
+      }
+  }
+}
+
+fn row_unread_cause_is(r: RecurringFailureMode, label: String) -> Bool {
+  match r.rung {
+    RungUnread { cause: c } => unread_cause_label(c: c) == label
+    RungRead { found_at: _, standing: _ } => false
+  }
+}
+
+fn row_unread_label(r: RecurringFailureMode) -> String {
+  match r.rung {
+    RungUnread { cause: c } => unread_cause_label(c: c)
+    RungRead { found_at: _, standing: _ } => ""
+  }
+}
+
+// THE CAUSES ARE DERIVED, NEVER LISTED (DESIGN section 3, single authority): unread_cause_label is an exhaustive
+// match over gunbc.recurring_failure_mode UnreadCause, so a cause added there and not labelled here is a
+// compile refusal (test.claim.rfm_rung_census_unread_cause_witness holds the RED), and the report names
+// the causes the roster's unread rows carry. A cause with no row is absent from the report, not counted zero.
+fn unread_cause_labels() -> List<String> {
+  distinct_by_key(xs: recurring_failure_mode_roster |> filter(r => row_is_unread(r: r)) |> map(r => row_unread_label(r: r)), key: fn(l) { l })
+}
+
+fn unread_cause_row(label: String) -> String {
+  count_case_row(identity: concat("census_unread_", label), n: recurring_failure_mode_roster |> filter(r => row_unread_cause_is(r: r, label: label)) |> count)
+}
+
+// SUPPLIED VALUES AT THE ONE INTERFACE standing_admission decides (DESIGN section 3, a witness
+// discriminates at one interface); the live roster above is the inhabitance claim that the real
+// rows reach it.
+data control_below_ceiling_with_a_trigger: RungStanding = BelowCeiling {
+  current: FoundOnRung { rung: Mitigatable },
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+  trigger_capability: "control capability restored",
+}
+
+data control_below_ceiling_blank_capability: RungStanding = BelowCeiling {
+  current: FoundOnRung { rung: Mitigatable },
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+  trigger_capability: "",
+}
+
+data control_current_at_ceiling_yet_below: RungStanding = BelowCeiling {
+  current: FoundOnRung { rung: StructurallyGuaranteed },
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+  trigger_capability: "control capability restored",
+}
+
+data control_below_the_ladder_to_a_ceiling: RungStanding = BelowCeiling {
+  current: FoundBelowTheLadder,
+  ceiling: Mitigatable,
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+  trigger_capability: "control capability restored",
+}
+
+data control_at_ceiling: RungStanding = AtCeiling {
+  rung: StructurallyGuaranteed,
+  ceiling_reason: "control reason" as NonEmptyStr,
+}
+
+fn standing_is_admitted(s: RungStanding) -> Bool {
+  match standing_admission(subject: "control", s: s) {
+    StandingAdmitted => true
+    StandingNotBelowCeiling { subject: _ } => false
+    StandingTriggerRefused { subject: _, admission: _ } => false
+  }
+}
+
+fn admitted_row_count() -> Int {
+  recurring_failure_mode_roster |> filter(r => row_is_admitted(r: r)) |> count
+}
+
+fn roster_row_count() -> Int {
+  recurring_failure_mode_roster |> count
+}
+
+fn rfm_rung_cases() -> List<RfmRungCase> {
+  [
+    RfmRungCase { identity: "live_roster_every_read_row_is_admitted", held: admitted_row_count() == roster_row_count(), observed: concat(to_string(value: admitted_row_count()), concat("/", to_string(value: roster_row_count()))) },
+    RfmRungCase { identity: "control_below_ceiling_with_a_trigger_is_admitted", held: standing_is_admitted(s: control_below_ceiling_with_a_trigger), observed: "positive control" },
+    RfmRungCase { identity: "control_at_ceiling_is_admitted", held: standing_is_admitted(s: control_at_ceiling), observed: "positive control" },
+    RfmRungCase { identity: "red_below_ceiling_with_a_blank_capability_is_refused", held: !standing_is_admitted(s: control_below_ceiling_blank_capability), observed: "discriminating red" },
+    RfmRungCase { identity: "red_current_at_ceiling_but_declared_below_is_refused", held: !standing_is_admitted(s: control_current_at_ceiling_yet_below), observed: "discriminating red" },
+    RfmRungCase { identity: "positive_control_below_the_ladder_to_a_ceiling_is_admitted", held: standing_is_admitted(s: control_below_the_ladder_to_a_ceiling), observed: "positive control" },
+  ]
+}
+
+fn rfm_rung_expected_identities() -> List<String> {
+  [
+    "live_roster_every_read_row_is_admitted",
+    "control_below_ceiling_with_a_trigger_is_admitted",
+    "control_at_ceiling_is_admitted",
+    "red_below_ceiling_with_a_blank_capability_is_refused",
+    "red_current_at_ceiling_but_declared_below_is_refused",
+    "positive_control_below_the_ladder_to_a_ceiling_is_admitted",
+  ]
+}
+
+fn case_row(c: RfmRungCase) -> String {
+  concat("case ", concat(c.identity, concat(if c.held { " held" } else { " not_held" }, concat(" observed=", concat(c.observed, "\n")))))
+}
+
+// THE COUNTS ARE REPORTED AS `case` ROWS THAT HOLD BY CONSTRUCTION, because the claim-program report
+// admits only a roster line and case rows. They carry no budget: no count here is compared with a
+// literal (DESIGN section 5), and a case that can only hold is a report, not a check.
+fn count_case_row(identity: String, n: Int) -> String {
+  concat("case ", concat(identity, concat(" held observed=", concat(to_string(value: n), "\n"))))
+}
+
+fn census_identities() -> List<String> {
+  ["census_rows", "census_read", "census_below_ceiling"]
+}
+
+fn census_roster_line() -> String {
+  concat(
+    concat(census_identities() |> join(separator: ","), ","),
+    unread_cause_labels() |> map(l => concat("census_unread_", l)) |> join(separator: ","),
+  )
+}
+
+fn census_rows() -> String {
+  let rows = count_case_row(identity: "census_rows", n: recurring_failure_mode_roster |> count)
+  let read = count_case_row(identity: "census_read", n: recurring_failure_mode_roster |> filter(r => !row_is_unread(r: r)) |> count)
+  let below = count_case_row(identity: "census_below_ceiling", n: recurring_failure_mode_roster |> filter(r => row_is_below_ceiling(r: r)) |> count)
+  concat(rows, concat(read, concat(below, unread_cause_labels() |> map(l => unread_cause_row(label: l)) |> join(separator: ""))))
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let cases = rfm_rung_cases()
+  let roster = concat("roster ", concat(rfm_rung_expected_identities() |> join(separator: ","), concat(",", concat(census_roster_line(), "\n"))))
+  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
+  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
+  NativeClaimReport { stdout: concat(roster, concat(census_rows(), cases |> map(c => case_row(c: c)) |> join(separator: ""))), terminal: terminal }
+}

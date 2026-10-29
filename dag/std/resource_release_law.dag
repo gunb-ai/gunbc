@@ -1,0 +1,51 @@
+module std.resource_release_law
+
+import std.types { String, Bool, EpochSecs }
+import std.durable_exclusive_hold {
+  DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
+}
+
+// WHETHER A RESOURCE MAY REFUSE A STALE HOLDER. Moved from product.capacity.lease ReleaseLaw:
+// FencedResource means the resource itself rejects an obsolete fence, so expiry frees capacity;
+// QuiescenceRequired means it cannot, so capacity stays held until the holder is observed gone.
+//
+// QuiescenceFact was a second spelling of DurableHoldHolderLiveness (Quiescent = observed dead,
+// QuiescenceUnobserved = unobservable). Capacity after expiry now takes the holder's liveness
+// verdict directly.
+
+type ReleaseLaw
+  = FencedResource
+  | QuiescenceRequired
+
+type CapacityAfterExpiry
+  = LeaseNotExpired { until: EpochSecs }
+  | CapacityFreed
+  | CapacityHeldPendingQuiescence
+
+fn release_law_wire(law: ReleaseLaw) -> String {
+  match law {
+    FencedResource => "fenced-resource"
+    QuiescenceRequired => "quiescence-required"
+  }
+}
+
+fn resource_capacity_after_expiry(
+  law: ReleaseLaw,
+  expires_at: EpochSecs,
+  at: EpochSecs,
+  holder: DurableHoldHolderLiveness,
+) -> CapacityAfterExpiry {
+  if expires_at > at {
+    LeaseNotExpired { until: expires_at }
+  } else {
+    match law {
+      FencedResource => CapacityFreed
+      QuiescenceRequired =>
+        match holder {
+          HolderObservedDead { evidence: _ } => CapacityFreed
+          HolderObservedLive { evidence: _ } => CapacityHeldPendingQuiescence
+          HolderLivenessUnobservable { cause: _ } => CapacityHeldPendingQuiescence
+        }
+    }
+  }
+}

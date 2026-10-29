@@ -6,15 +6,26 @@ import std.goal_assessment { ObservationAttempt, ObservationEstablished, Observa
 import product.host_identity { HostIdentity }
 import gunbc.ci.ci_fleet {
   mtcollins1_offer, mtcollins1_runner_host, mtcollins1_socket0_cpu,
-  mtcollins1_socket0_cpu_part_standing,
+  mtcollins1_socket0_cpu_part_standing, cpu_bios_line_names_part,
 }
-import extdeps.external_authority { cited_figure_read_obligation }
+import extdeps.external_authority { ObservedByReceipt, observed_receipt_ref }
 import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv3 }
+import gunbc.host.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound, fleet_converge_policy_from }
+import gunbc.ci.ci_runner_placement {
+  runner_deployment_plan, runner_image_baked_deployment_plan, runner_host_deployment_for,
+  HostRunnerDeploymentRefused, HostRunnerDeploymentDerived, RefusedHostDeployment, HostNotEnrolledInFleet,
+  HostRealizedByImage, runner_fleet_capacity_plan,
+}
 import gunbc.machine_intake.host_capture_envelope {
   BoundHostCaptureEnvelope, HostCaptureBoundSection, KernelBootId,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.machine_intake.mtcollins1_eight_rdimm_boot_observation {
+  mtcollins1_eight_rdimm_attestation_matches_firmware, mtcollins1_eight_rdimm_firmware_read_module_count,
+  mtcollins1_eight_rdimm_one_rank_module_count, mtcollins1_eight_rdimm_two_rank_module_count,
+  mtcollins1_eight_rdimm_trained_megatransfers,
+}
 import gunbc.machine_intake.mtcollins1_socket1_investigation_observation { MtCollins1Socket1InvestigationBoot, mtcollins1_socket1_investigation_boots }
 import gunbc.host.host_memory_observation {
   HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
@@ -24,7 +35,9 @@ import gunbc.host.host_memory_observation {
   HostFixedOverheadMeasured, HostFixedOverheadUnmeasured, host_fixed_overhead_from_capture,
   gunbc_ci_host_usable_ram_for, gunbc_ci_host_fixed_overhead_for,
   mtcollins1_census_boot_capture_path,
-  mtcollins1_census_envelope_attempt, census_envelope_from_capture_text, census_envelope_from_read,
+  mtcollins1_census_envelope_attempt, census_cpu_bios_model_reading, CensusLscpuSectionAbsent, CensusLscpuSectionPending,
+  CensusLscpuSectionMalformed, CensusLscpuExitNonzero, CensusLscpuNoBiosModelLine, CensusLscpuAmbiguousBiosModelLines,
+  CensusLscpuCaptureUnread, census_envelope_from_capture_text, census_envelope_from_read,
 }
 import gunbc.session_residency { SessionResidency, NoInteractiveSessions, HostsInteractiveSessions, host_session_residency }
 import gunbc.session_reservation_policy { HostSessionReservationOutcome, SessionReservationNotApplicable, host_session_reservation_outcome }
@@ -46,7 +59,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn census_envelope(meminfo_body: String) -> BoundHostCaptureEnvelope {
   BoundHostCaptureEnvelope {
     machine: "mtcollins1",
-    run: KernelBootId { boot_id: "designed-fixture-boot" },
+    run: KernelBootId { boot_id: "aaaaaaaa-0000-4000-8000-000000000004" },
     sections: [HostCaptureBoundSection { name: "meminfo", body: meminfo_body }],
   }
 }
@@ -82,7 +95,7 @@ test fn census_meminfo_receipt_reads_as_measured_usable_ram() -> Bool {
     "MemTotal:       131000000 kB\nMemAvailable:   127000000 kB\n----EXIT meminfo: 0\n")))
   measured_bytes(a: a) == 131000000 * 1024
     && measured_provenance_names(a: a, pattern: "mtcollins1")
-    && measured_provenance_names(a: a, pattern: "designed-fixture-boot")
+    && measured_provenance_names(a: a, pattern: "aaaaaaaa-0000-4000-8000-000000000004")
 }
 
 fn refusal_is(a: ObservationAttempt<HostUsableRam, CensusMeminfoUnread>, expected: String) -> Bool {
@@ -105,7 +118,7 @@ fn refusal_is(a: ObservationAttempt<HostUsableRam, CensusMeminfoUnread>, expecte
 
 test fn census_meminfo_RED_non_reads_refuse_by_cause() -> Bool {
   refusal_is(a: host_usable_ram_from_capture(envelope: BoundHostCaptureEnvelope {
-      machine: "mtcollins1", run: KernelBootId { boot_id: "designed-fixture-boot" }, sections: [],
+      machine: "mtcollins1", run: KernelBootId { boot_id: "aaaaaaaa-0000-4000-8000-000000000004" }, sections: [],
     }), expected: "absent")
     && refusal_is(a: host_usable_ram_from_capture(envelope: census_envelope(meminfo_body: concat(meminfo_argv,
       "MemTotal:       131000000 kB\n"))), expected: "pending")
@@ -128,13 +141,37 @@ fn one_socket_boot_reads_width(b: MtCollins1Socket1InvestigationBoot, width: Int
   }
 }
 
-test fn mtcollins1_socket0_cpu_part_is_a_typed_bet_not_a_deduced_catalog_row() -> Bool {
-  match cited_figure_read_obligation(standing: mtcollins1_socket0_cpu_part_standing) {
-    Absent => false
-    Present { value: o } =>
-      string_contains(s: o as String, pattern: "census")
-        && string_contains(s: o as String, pattern: "model number")
+test fn mtcollins1_socket0_cpu_part_is_observed_by_the_census_capture() -> Bool {
+  match mtcollins1_socket0_cpu_part_standing() {
+    ObservedByReceipt { observed: o } =>
+      (observed_receipt_ref(observed: o).decl_name as String) == "mtcollins1_census_cpu_bios_model"
+    _ => false
   }
+}
+
+test fn mtcollins1_RED_a_bios_line_naming_another_part_keeps_no_citation() -> Bool {
+  cpu_bios_line_names_part(line: "BIOS Model name:      Ampere(R) Altra(R) Processor Q80-30 CPU @ 3.0GHz", model_number: "Q80-30")
+    && cpu_bios_line_names_part(line: "BIOS Model name:      Ampere(R) Altra(R) Processor Q64-30 CPU @ 3.0GHz", model_number: "Q80-30") == false
+    && cpu_bios_line_names_part(line: "BIOS Model name:      Ampere(R) Altra(R) Processor Q80-30X CPU", model_number: "Q80-30") == false
+}
+
+test fn mtcollins1_RED_missing_lscpu_refuses_the_cpu_reading_with_its_own_cause_while_ram_stays_measured() -> Bool {
+  let e = census_envelope(meminfo_body: concat(meminfo_argv, "MemTotal: 134217728 kB\nMemAvailable: 130000000 kB\n----EXIT meminfo: 0\n"))
+  let ram_ok = measured_bytes(a: host_usable_ram_from_capture(envelope: e)) > 0
+  let cpu_cause_ok = match census_cpu_bios_model_reading(envelope: e) {
+    ObservationRefused { cause: c } =>
+      match c {
+        CensusLscpuSectionAbsent => true
+        CensusLscpuSectionPending => false
+        CensusLscpuSectionMalformed { reason: _ } => false
+        CensusLscpuExitNonzero { exit_code: _ } => false
+        CensusLscpuNoBiosModelLine => false
+        CensusLscpuAmbiguousBiosModelLines => false
+        CensusLscpuCaptureUnread { cause: _ } => false
+      }
+    ObservationEstablished { observed: _ } => false
+  }
+  ram_ok && cpu_cause_ok
 }
 
 test fn mtcollins1_offer_cpu_width_equals_the_measured_one_socket_reading() -> Bool {
@@ -176,9 +213,9 @@ test fn mtcollins1_carries_no_sessions_and_owes_no_reservation() -> Bool {
 }
 
 test fn mtcollins1_census_capture_file_is_the_committed_receipt() -> Bool {
-  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path)
+  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path())
   read.success
-    && string_contains(s: mtcollins1_census_boot_capture_path, pattern: "38789347052")
+    && string_contains(s: mtcollins1_census_boot_capture_path(), pattern: "39010930690")
     && string_contains(s: read.content, pattern: "MemTotal:")
 }
 
@@ -196,7 +233,7 @@ test fn mtcollins1_production_usable_ram_is_the_census_capture_reading() -> Bool
                 HostUsableRamMeasured { bytes: pb, provenance: pp } =>
                   byte_size_count(b: b) == byte_size_count(b: pb)
                     && (p as String) == (pp as String)
-                    && string_contains(s: p as String, pattern: "66141451-278b-4eb0-bc57-595563e1247b")
+                    && string_contains(s: p as String, pattern: "292ec1bf-b85c-4a76-81db-cb1247c98370")
                     && string_contains(s: p as String, pattern: "census_meminfo_reading")
                 _ => false
               }
@@ -220,7 +257,7 @@ test fn mtcollins1_production_overhead_is_the_census_capture_reading() -> Bool {
                 HostFixedOverheadMeasured { bytes: pb, provenance: pp } =>
                   byte_size_count(b: b) == byte_size_count(b: pb)
                     && (p as String) == (pp as String)
-                    && string_contains(s: p as String, pattern: "66141451-278b-4eb0-bc57-595563e1247b")
+                    && string_contains(s: p as String, pattern: "292ec1bf-b85c-4a76-81db-cb1247c98370")
                     && string_contains(s: p as String, pattern: "quiescent census boot")
                 _ => false
               }
@@ -231,7 +268,7 @@ test fn mtcollins1_production_overhead_is_the_census_capture_reading() -> Bool {
 }
 
 data open_complete_meminfo_capture: String = join([
-  "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=designed-open-boot begin 2026-10-15T00:00:00Z=====\n",
+  "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=aaaaaaaa-0000-4000-8000-000000000005 begin 2026-10-15T00:00:00Z=====\n",
   "----SECTION meminfo----\n",
   "----ARGV meminfo: grep -E 'MemTotal|MemAvailable' /proc/meminfo\n",
   "MemTotal:       131000000 kB\n",
@@ -258,21 +295,20 @@ test fn mtcollins1_RED_unread_receipt_is_not_an_unbegun_capture() -> Bool {
   }
 }
 
-test fn mtcollins1_production_committed_width_is_unresolved_until_catalog_enrolment() -> Bool {
+// Through fleet_intent_offers, with no supplied offer: enrolling the host is what moved its committed width
+// off WidthComputeOfferAbsent. The figure is the one mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_five_slots
+// derives from supplied values; this is its pairing inhabitance claim over the production route.
+test fn mtcollins1_production_committed_width_is_derived_through_the_enrolled_offer() -> Bool {
   match gunbc_runner_committed_width(host: operator_host_mtcollins1) {
-    RunnerWidthUnresolved { cause: c } =>
-      match c {
-        WidthComputeOfferAbsent { host: h } => (h as String) == (operator_host_mtcollins1 as String)
-        _ => false
-      }
-    RunnerWidthDerived { slots: _ } => false
+    RunnerWidthDerived { slots: n } => n == 5
+    RunnerWidthUnresolved { cause: _ } => false
   }
 }
 
-test fn mtcollins1_census_usable_ram_is_below_one_declared_slot() -> Bool {
+test fn mtcollins1_census_usable_ram_holds_at_least_one_declared_slot() -> Bool {
   match gunbc_ci_host_usable_ram_for(host: operator_host_mtcollins1) {
     HostUsableRamMeasured { bytes: u, provenance: _ } =>
-      (byte_size_count(b: u) as Int) < gunbc_runner_slot_memory_max_bytes
+      (byte_size_count(b: u) as Int) >= gunbc_runner_slot_memory_max_bytes
     _ => false
   }
 }
@@ -302,14 +338,14 @@ fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) ->
     control_plane: real.control_plane,
     served_deployment: real.served_deployment,
     disk: real.disk,
-    carries_shakedown_slot: real.carries_shakedown_slot,
+    authored_slots: real.authored_slots,
   }
 }
 
-test fn mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_zero_slots() -> Bool {
+test fn mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_five_slots() -> Bool {
   let real = host_width_facts(host: operator_host_mtcollins1)
   match committed_width_of(f: mtcollins1_supplied_facts(ram: real.usable_ram, overhead: real.fixed_overhead)) {
-    RunnerWidthDerived { slots: n } => n == 0
+    RunnerWidthDerived { slots: n } => n == 5
     RunnerWidthUnresolved { cause: _ } => false
   }
 }
@@ -393,5 +429,52 @@ fn mtcollins1_supplied_standing_text() -> String {
   ) {
     HostRunnerDeploymentDerived { deployment: d } => concat("derived runner_count=", to_string(d.runner_count))
     HostRunnerDeploymentRefused { refusal: r } => host_deployment_refusal_text(c: r.cause)
+  }
+}
+
+test fn mtcollins1_eight_rdimm_attestation_contradicts_the_firmware_reading() -> Bool {
+  !mtcollins1_eight_rdimm_attestation_matches_firmware
+    && mtcollins1_eight_rdimm_firmware_read_module_count
+      == mtcollins1_eight_rdimm_one_rank_module_count + mtcollins1_eight_rdimm_two_rank_module_count
+    && mtcollins1_eight_rdimm_firmware_read_module_count == 8
+    && mtcollins1_eight_rdimm_trained_megatransfers == 2133
+}
+
+// RED: THE PLAN AND THE POLICY PARTITION BY HOW THE HOST IS REALIZED. A RamImageBoot host in
+// fleet_intent_offers emits no converge target and emits an image-baked entry; mutating the partition so
+// the converge-applied arm takes it reds the first two conjuncts. Control: a converge-delivered host is a
+// converge target and not image-baked.
+test fn ram_image_boot_host_is_image_baked_and_never_a_converge_target() -> Bool {
+  match fleet_converge_policy_from(plan: runner_deployment_plan(), image_baked: runner_image_baked_deployment_plan()) {
+    ConvergePolicyDerived { hosts: applied, image_baked: baked } =>
+      !any(applied, h => (h.identity as String) == (operator_host_mtcollins1 as String))
+        && any(baked, h => (h.identity as String) == (operator_host_mtcollins1 as String))
+        && !any(baked, h => (h.identity as String) == (operator_host_srv3 as String))
+        && any(applied, h => (h.identity as String) == (operator_host_srv3 as String))
+    ConvergePolicyUnsound { reason: _ } => false
+  }
+}
+
+test fn the_converge_applied_plan_does_not_name_a_ram_image_host() -> Bool {
+  match runner_host_deployment_for(p: runner_deployment_plan(), host: operator_host_mtcollins1) {
+    HostRunnerDeploymentRefused { refusal: RefusedHostDeployment { host: _, cause: HostRealizedByImage } } => true
+    _ => false
+  }
+}
+
+// An enrolled image-baked host is not "not enrolled": the refusal names how it is realized. Control: a host
+// the fleet never enrolled keeps HostNotEnrolledInFleet.
+test fn an_unenrolled_host_still_refuses_as_not_enrolled() -> Bool {
+  match runner_host_deployment_for(p: runner_deployment_plan(), host: "not-a-fleet-host" as HostIdentity) {
+    HostRunnerDeploymentRefused { refusal: RefusedHostDeployment { host: _, cause: HostNotEnrolledInFleet } } => true
+    _ => false
+  }
+}
+
+// The capacity plan keeps mtcollins1: CI capacity readers do not drop an image-baked host.
+test fn the_fleet_capacity_plan_carries_the_ram_image_host() -> Bool {
+  match runner_host_deployment_for(p: runner_fleet_capacity_plan(), host: operator_host_mtcollins1) {
+    HostRunnerDeploymentDerived { deployment: d } => d.runner_count == 5
+    _ => false
   }
 }

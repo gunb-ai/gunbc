@@ -26,6 +26,7 @@ import gunbc.seed_growth_admission {
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { Bool, Int, List, String }
 import std.algebra { list_append, length, list_map }
+import std.integer { int_to_decimal_string }
 
 // THE NAMED INSTRUMENT FOR THE ITEM-GRAIN CENSUS.
 //
@@ -56,13 +57,13 @@ import std.algebra { list_append, length, list_map }
 fn item_row(item: RustItemIdentity) -> String {
   concat(
     rust_item_identity_key(item: item),
-    concat("\tstart=", concat(item.start_line as String, concat("\tloc=", item.loc as String)))
+    concat("\tstart=", concat(int_to_decimal_string(value: item.start_line), concat("\tloc=", int_to_decimal_string(value: item.loc))))
   )
 }
 
 fn section(title: String, rows: List<String>) -> List<String> {
   list_append(
-    left: [concat(title, concat(" (", concat(length(xs: rows) as String, ")")))],
+    left: [concat(title, concat(" (", concat(int_to_decimal_string(value: length(xs: rows)), ")")))],
     right: rows
   )
 }
@@ -86,11 +87,11 @@ fn change_rows(change: RustItemChangeObservation) -> List<String> {
         )
       )
     RustItemChangeUnattributed { repo_path: path, line: line, detail: detail } =>
-      ["change-observation REFUSED: unattributed", concat(path, concat(":", concat(line as String, concat(" ", detail))))]
+      ["change-observation REFUSED: unattributed", concat(path, concat(":", concat(int_to_decimal_string(value: line), concat(" ", detail))))]
     RustItemChangeScanRefused { repo_path: path, line: line, line_text: text, detail: detail } =>
       [
         "change-observation REFUSED: source not readable at item grain",
-        concat(path, concat(":", concat(line as String, concat(" ", detail)))),
+        concat(path, concat(":", concat(int_to_decimal_string(value: line), concat(" ", detail)))),
         concat("  line: ", text)
       ]
     RustItemChangeHostRefused { detail: detail } =>
@@ -101,7 +102,7 @@ fn change_rows(change: RustItemChangeObservation) -> List<String> {
 fn scan_refusal_row(scan: RustFileScan) -> String {
   match scan {
     RustFileScanRefused { repo_path: path, line: line, line_text: text, detail: detail } =>
-      concat(path, concat(":", concat(line as String, concat(" ", concat(detail, concat(" -- line: ", text))))))
+      concat(path, concat(":", concat(int_to_decimal_string(value: line), concat(" ", concat(detail, concat(" -- line: ", text))))))
     RustFileScanned { repo_path: path, items: _, macro_regions: _, line_count: _ } => path
   }
 }
@@ -110,7 +111,7 @@ fn live_rows(live: LiveHandRustObservation) -> List<String> {
   match live {
     LiveHandRustObserved { items: items, unscannable: unscannable } =>
       list_append(
-        left: [concat("live-hand-items (", concat(length(xs: items) as String, ")"))],
+        left: [concat("live-hand-items (", concat(int_to_decimal_string(value: length(xs: items)), ")"))],
         right: section(
           title: "live-files-not-readable-at-item-grain",
           rows: list_map(xs: unscannable, f: fn(s) { scan_refusal_row(scan: s) })

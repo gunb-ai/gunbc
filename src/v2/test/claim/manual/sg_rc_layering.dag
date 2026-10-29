@@ -1,5 +1,7 @@
 module v2.test.claim.manual.sg_rc_layering
 
+import v2.std.node { NotADeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data sg_rc_fail_text: String = ""
@@ -79,7 +81,8 @@ fn sg_rc_outcome_node_source_type() -> Node {
           kind: TypeNode { connective: Atom { identity: ^target_carrier_outcome } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -87,7 +90,8 @@ fn sg_rc_outcome_node_source_type() -> Node {
           kind: TypeNode { connective: Atom { identity: ^target_carrier_node } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

@@ -1,0 +1,134 @@
+module extdeps.languages.css.grid_values
+
+import std.types { Int, String }
+import std.integer { PositiveInt }
+import std.algebra { FreeSemigroup, non_empty_singleton, non_empty_to_list, fold_list }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.css.values { CssLength, css_length_wire, CssVarRef, css_var_ref_wire }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/css-grid-2"
+  }
+}
+
+// Cited upstream: W3C CSS Grid Layout Module Level 2.
+// §7.1 track-listing: <track-list> = [ <track-size> | <line-name> ]+, and the repeat() notation
+//   repeat( [ <integer [1,∞]> | auto-fill | auto-fit ] , <track-list> ).
+// §7.2.3 the minmax() notation: minmax( <inflexible-breadth> , <track-size> ).
+// §7.2.3 <flex> = <number [0,∞]>fr, and <length-percentage>.
+//
+// THE TYPE IS THE GRAMMAR, NOT A DESCRIPTION OF IT (§5: "stronger than catching a wrong state
+// is making it unwritable"). Three productions are carried by the sum types themselves:
+//
+// 1. minmax()'s MIN position is <inflexible-breadth>, which EXCLUDES <flex>. So the min field
+//    takes CssInflexibleBreadth, not the breadth sum: minmax(1fr, 200px) is invalid CSS and is
+//    now not a value this language can express. It used to be constructible, and the first
+//    version of this module's own witness built exactly that and asserted it as expected
+//    output — a test recording an invalid state as correct is worse than no test, because it
+//    launders the defect into evidence. The witness now asserts the ABSENCE of that shape.
+// 2. <track-list> is a PLUS production (one or more). Tracks are FreeSemigroup, whose shape
+//    (head: T, tail: FreeMonoid) has no empty inhabitant, so repeat(3, ) cannot be built. A
+//    List<CssTrackSize> could be [] and serialized to "" — an empty value for a grammar that
+//    has none (§3b: cardinality is a domain fact, carried not guarded).
+// 3. repeat()'s count is <integer [1,∞]>, so it is std.integer.PositiveInt, the single
+//    authority for positivity, consumed rather than re-minted (§3).
+//
+// HOW FAR THAT POSITIVITY ACTUALLY REACHES — measured on this tree, not assumed (the same
+// question std/page_fold.dag had to answer and record): a LITERAL violation is refused at
+// parse ("expected 'Product(PositiveInt)', got 'Primitive(Int)'"), while an Int-typed
+// declaration REFERENCE is admitted without the check. So the guarantee RepeatCount carries is
+// "no caller can write repeat(0, …) as a literal" — a caller routing a computed Int into the
+// field is not stopped by the type today. No such caller exists here (the sole construction,
+// gunb_ai_layout.tracks_fixed, passes a literal through GridChoice), so no live value is wrong;
+// the gap is in what the type forbids, and saying "PositiveInt, therefore it cannot be zero"
+// without that qualifier would repeat the prose-over-enforcement claim this module exists to
+// avoid. witness_repeat_count_carries_its_domain records the measured behaviour.
+//
+// DELIBERATELY NOT MODELLED, with what would bring them: min-content / max-content / none and
+// the auto-fit keyword — no consumer constructs them today (§3c forbids modelling "for later").
+// Their trigger is the first consumer that asks for a track of that shape; each is one arm plus
+// one wire case, and the arms must arrive with a constructor, not ahead of one.
+
+// A <flex> factor: <number>fr. Integers only, because that is what consumers construct; a
+// fractional factor (0.5fr) needs the number model widened deliberately, not silently.
+type CssTrackBreadth
+  = FlexTracks { factor: Int }
+  | LengthTrack { length: CssLength }
+  | VarTrack { reference: CssVarRef }
+
+// <inflexible-breadth> = <length-percentage> | min-content | max-content | <calc-size()>.
+// The two arms this repo can construct today; the remaining two wait for a consumer (see the
+// not-modelled note). Deliberately a SUBSET sum rather than a filter on CssTrackBreadth, so a
+// flex factor in the min position is unrepresentable rather than representable-and-checked.
+type CssInflexibleBreadth
+  = InflexLength { length: CssLength }
+  | InflexVar { reference: CssVarRef }
+
+fn css_inflexible_breadth_wire(b: CssInflexibleBreadth) -> String {
+  match b {
+    InflexLength { length: l } => css_length_wire(l: l)
+    InflexVar { reference: r } => css_var_ref_wire(v: r)
+  }
+}
+
+fn css_track_breadth_wire(b: CssTrackBreadth) -> String {
+  match b {
+    FlexTracks { factor: f } => join([to_string(f), "fr"], "")
+    LengthTrack { length: l } => css_length_wire(l: l)
+    VarTrack { reference: r } => css_var_ref_wire(v: r)
+  }
+}
+
+// <track-size>. The two minmax() positions are separate fields of DIFFERENT types, which is
+// what makes the production's asymmetry structural rather than documentary.
+type CssTrackSize
+  = TrackBreadth { breadth: CssTrackBreadth }
+  | TrackMinMax { min: CssInflexibleBreadth, max: CssTrackBreadth }
+
+fn css_track_size_wire(t: CssTrackSize) -> String {
+  match t {
+    TrackBreadth { breadth: b } => css_track_breadth_wire(b: b)
+    TrackMinMax { min: lo, max: hi } =>
+      join(["minmax(", css_inflexible_breadth_wire(b: lo), ", ", css_track_breadth_wire(b: hi), ")"], "")
+  }
+}
+
+fn track_join(tracks: FreeSemigroup<CssTrackSize>) -> String {
+  fold_list(
+    xs: non_empty_to_list(xs: tracks),
+    empty: "",
+    cons: fn(acc, t) {
+      if acc == "" { css_track_size_wire(t: t) }
+      else { join([acc, " ", css_track_size_wire(t: t)], "") }
+    }
+  )
+}
+
+// <track-list>, in the three notations consumers actually use. Every tracks field is a
+// FreeSemigroup: the plus production has no empty inhabitant.
+type CssTrackList
+  = TrackList { tracks: FreeSemigroup<CssTrackSize> }
+  | RepeatCount { count: PositiveInt, tracks: FreeSemigroup<CssTrackSize> }
+  | RepeatAutoFill { tracks: FreeSemigroup<CssTrackSize> }
+
+fn css_track_list_wire(l: CssTrackList) -> String {
+  match l {
+    TrackList { tracks: ts } => track_join(tracks: ts)
+    RepeatCount { count: c, tracks: ts } =>
+      join(["repeat(", to_string(c), ", ", track_join(tracks: ts), ")"], "")
+    RepeatAutoFill { tracks: ts } =>
+      join(["repeat(auto-fill, ", track_join(tracks: ts), ")"], "")
+  }
+}
+
+// The one-track case — what a single-column grid is. Delegates to std.algebra's own smart
+// constructor rather than hand-building the record, so this module cannot drift from how the
+// carrier is built everywhere else in the repo (ci_spec, scm.commit_closure). Named because
+// callers reach for it constantly, and building the semigroup by hand at each site is how an
+// empty list creeps back in.
+fn one_track(t: CssTrackSize) -> FreeSemigroup<CssTrackSize> {
+  non_empty_singleton(item: t)
+}

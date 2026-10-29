@@ -2,13 +2,14 @@ module extdeps.bmc.redfish
 
 
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.firmware.types { FirmwareSemanticVersion }
 import extdeps.uri { Uri, Https }
 import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot, FanTachSensor, RedfishMemorySummary, RedfishPowerControl, RedfishPowerState, RedfishPowerSubsystem, RedfishProcessorSummary, RedfishSensorReading, RedfishSystemInventory, TemperatureSensor }
 import std.measure { ByteSize, Gibibyte, HardwareThreadCount, gibibyte_to_byte_size, watt, watt_count }
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.optional { Present, Absent }
 import extdeps.languages.json.parse {
-  parse_json_document, json_field, json_field_string,
+  parse_json_document, json_document_gap_text, json_field, json_field_string,
   JsonDocumentParsed, JsonDocumentUnreadable, FieldRead, FieldAbsent, FieldMalformed,
 }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
@@ -152,52 +153,179 @@ fn redfish_system_total_memory_bytes(inv: RedfishSystemInventory) -> ByteSize {
 // the same service is a bare 401. The registry version varies by service, so the id is matched as
 // the "Base." registry prefix plus the ".PasswordChangeRequired" key, and the message is read from
 // either the top-level annotation (bmcweb) or the standard error object's annotation.
+// THREE ARMS, BECAUSE THERE ARE THREE THINGS THE BODY CAN SAY, and the third one is not the second.
+//
+//   - it names the message, and the id it names TRAVELS with the arm. A verdict that reports "the message
+//     was named" and then lets the consumer re-type the id is a verdict that invites a copy of a string
+//     somebody else wrote; the only reading of this arm that says anything about a particular response is
+//     the id the response itself contained (§4c: an annotation is never evidence that a machine claim holds,
+//     and neither is a comment quoting a registry version).
+//   - it was read, and does not name it.
+//   - it could not be read at all. That is NOT the arm above: "the body is truncated", "the transport
+//     returned nothing", "the JSON has a gap" are facts about the CAPTURE, and a consumer that reads them as
+//     "the service did not ask for a password change" is drawing a conclusion about a service from the state
+//     of its own notebook (§4d: do not assert as deduced what is only inferred). This module used to fold the
+//     unreadable case into RedfishPasswordChangeNotIndicated, which is exactly that inference, made silently,
+//     by a function whose name promises a verdict about the service.
+// A BUILD THAT FORCES THE PUBLISHED CREDENTIAL'S CHANGE ON FIRST LOGIN, as the vendor's catalogue
+// records it: the exact MessageId the build answers with and the version it was read on. Rows live in the
+// vendor's module beside the release they describe (extdeps.boards.asrock_rack
+// asrock_altrad8ud_bmc_3_22_00_first_login_password_change), so the next unit on that build inherits the
+// fact; a build with no row asserts nothing. Which of our controllers answered it is a receipt in the
+// observing layer, not a field here.
+type RedfishFirstLoginPasswordChange {
+  message_id: NonEmptyStr
+  read_on: FirmwareSemanticVersion
+  authority: ExternalAuthority
+}
+
 type RedfishPasswordChangeVerdict
-  = RedfishPasswordChangeRequired
+  = RedfishPasswordChangeRequired { message_id: String }
   | RedfishPasswordChangeNotIndicated
+  | RedfishResponseBodyUnreadable { cause: NonEmptyStr }
 
 fn redfish_message_id_is_password_change_required(id: String) -> Bool {
   starts_with(s: id, prefix: "Base.") && ends_with(s: id, suffix: ".PasswordChangeRequired")
 }
 
-fn redfish_message_requires_password_change(message: JsonValue) -> Bool {
+// THE ID IS RETURNED, NOT MERELY CONFIRMED. The id is the String that was READ, kept as a String rather
+// than cast into a NonEmptyStr: the cast would be a claim about a byte string this module has not examined,
+// and the reader that matters (redfish_message_id_is_password_change_required, above) has already checked the
+// only structure that is being asserted. Nothing downstream needs a proof of non-emptiness; they need to know
+// what the service said.
+//
+// A FieldMalformed MessageId is answered "no" rather than "unreadable", because this is a scan of an
+// ANNOTATION LIST: one entry that is not shaped like an annotation does not make the response unreadable,
+// and the fold keeps looking at the other entries. It is the whole @Message.ExtendedInfo member that cannot
+// be read that earns RedfishResponseBodyUnreadable, below.
+fn redfish_message_id_if_password_change_required(message: JsonValue) -> Optional<String> {
   match json_field_string(obj: message, key: "MessageId") {
-    FieldRead { value: id } => redfish_message_id_is_password_change_required(id: id)
-    FieldAbsent => false
-    FieldMalformed { cause: _ } => false
+    FieldRead { value: id } =>
+      if redfish_message_id_is_password_change_required(id: id) {
+        Present { value: id }
+      } else {
+        Absent
+      }
+    FieldAbsent => Absent
+    FieldMalformed { cause: _ } => Absent
   }
 }
 
-fn redfish_extended_info_requires_password_change(holder: JsonValue) -> Bool {
+// THE ANNOTATION LIST AS A SUM, because "there is no annotation" and "the annotation could not be read"
+// are different answers, and the second is a fact about the capture rather than about the service.
+fn redfish_extended_info_message_id(holder: JsonValue) -> RedfishExtendedInfoScan {
   match json_field(obj: holder, key: "@Message.ExtendedInfo") {
     FieldRead { value: v } =>
       match v {
         JsonArray { elements: elements } =>
-          fold(elements, init: false, f: fn(acc, m) { acc || redfish_message_requires_password_change(message: m) })
-        JsonNull => false
-        JsonBool { value: _ } => false
-        JsonNumber { lexeme: _ } => false
-        JsonString { value: _ } => false
-        JsonObject { members: _ } => false
+          match fold(elements, init: Absent, f: fn(acc, m) {
+            match acc {
+              Present { value: found } => acc
+              Absent => redfish_message_id_if_password_change_required(message: m)
+            }
+          }) {
+            Present { value: found } => RedfishExtendedInfoNamesTheMessage { message_id: found }
+            Absent => RedfishExtendedInfoHoldsNothing { scanned: list_length(items: elements) }
+          }
+        JsonNull => RedfishExtendedInfoHoldsNothing { scanned: 0 }
+        JsonBool { value: _ } => RedfishExtendedInfoUnreadable { cause: "the annotation is a boolean, not the array the registry publishes" }
+        JsonNumber { lexeme: _ } => RedfishExtendedInfoUnreadable { cause: "the annotation is a number, not the array the registry publishes" }
+        JsonString { value: _ } => RedfishExtendedInfoUnreadable { cause: "the annotation is a string, not the array the registry publishes" }
+        JsonObject { members: _ } => RedfishExtendedInfoUnreadable { cause: "the annotation is an object, not the array the registry publishes" }
       }
-    FieldAbsent => false
-    FieldMalformed { cause: _ } => false
+    FieldAbsent => RedfishExtendedInfoAbsent
+    FieldMalformed { cause: cause } => RedfishExtendedInfoUnreadable { cause: cause }
   }
 }
 
 fn redfish_password_change_verdict(body: String) -> RedfishPasswordChangeVerdict {
   match parse_json_document(s: body) {
-    JsonDocumentUnreadable { gap: _ } => RedfishPasswordChangeNotIndicated
+    // THE CAPTURE IS BROKEN, AND THAT IS SAID RATHER THAN RECORDED AS A VERDICT ABOUT THE SERVICE.
+    JsonDocumentUnreadable { gap: gap } =>
+      RedfishResponseBodyUnreadable { cause: join(["the response body did not parse as a JSON document: ", json_document_gap_text(gap: gap)], "") as NonEmptyStr }
     JsonDocumentParsed { value: doc } =>
-      if redfish_extended_info_requires_password_change(holder: doc) {
-        RedfishPasswordChangeRequired
-      } else {
-        match json_field(obj: doc, key: "error") {
-          FieldRead { value: err } =>
-            if redfish_extended_info_requires_password_change(holder: err) { RedfishPasswordChangeRequired } else { RedfishPasswordChangeNotIndicated }
-          FieldAbsent => RedfishPasswordChangeNotIndicated
-          FieldMalformed { cause: _ } => RedfishPasswordChangeNotIndicated
-        }
+      match redfish_extended_info_message_id(holder: doc) {
+        RedfishExtendedInfoNamesTheMessage { message_id: message_id } =>
+          RedfishPasswordChangeRequired { message_id: message_id }
+        RedfishExtendedInfoHoldsNothing { scanned: _ } =>
+          match redfish_password_change_verdict_in_error_object(doc: doc) {
+            RedfishPasswordChangeRequired { message_id: message_id } =>
+              RedfishPasswordChangeRequired { message_id: message_id }
+            RedfishPasswordChangeNotIndicated => RedfishPasswordChangeNotIndicated
+            RedfishResponseBodyUnreadable { cause: cause } => RedfishResponseBodyUnreadable { cause: cause }
+          }
+        // bmcweb publishes the annotation at the top level; if it is there and unreadable, the body cannot
+        // answer the question and must not be recorded as having said "no".
+        RedfishExtendedInfoUnreadable { cause: cause } => RedfishResponseBodyUnreadable { cause: cause }
+        RedfishExtendedInfoAbsent =>
+          match redfish_password_change_verdict_in_error_object(doc: doc) {
+            RedfishPasswordChangeRequired { message_id: message_id } =>
+              RedfishPasswordChangeRequired { message_id: message_id }
+            RedfishPasswordChangeNotIndicated => RedfishPasswordChangeNotIndicated
+            RedfishResponseBodyUnreadable { cause: cause } => RedfishResponseBodyUnreadable { cause: cause }
+          }
       }
   }
 }
+
+// THE STANDARD ERROR OBJECT, same three-way answer. A present-but-unreadable `error` member is a capture
+// fault, not a negative answer from the service.
+fn redfish_password_change_verdict_in_error_object(doc: JsonValue) -> RedfishPasswordChangeVerdict {
+  match json_field(obj: doc, key: "error") {
+    FieldRead { value: err } =>
+      match redfish_extended_info_message_id(holder: err) {
+        RedfishExtendedInfoNamesTheMessage { message_id: message_id } =>
+          RedfishPasswordChangeRequired { message_id: message_id }
+        RedfishExtendedInfoHoldsNothing { scanned: _ } => RedfishPasswordChangeNotIndicated
+        RedfishExtendedInfoUnreadable { cause: cause } => RedfishResponseBodyUnreadable { cause: cause }
+        RedfishExtendedInfoAbsent => RedfishPasswordChangeNotIndicated
+      }
+    FieldAbsent => RedfishPasswordChangeNotIndicated
+    FieldMalformed { cause: cause } => RedfishResponseBodyUnreadable { cause: cause }
+  }
+}
+
+// HOW THE ANNOTATION ANSWERED, as four arms rather than a Bool, because the unreadable arms are what stop a
+// consumer concluding "no password change requested" from a body it could not read.
+type RedfishExtendedInfoScan
+  = RedfishExtendedInfoNamesTheMessage { message_id: String }
+  | RedfishExtendedInfoHoldsNothing { scanned: Int }
+  | RedfishExtendedInfoAbsent
+  | RedfishExtendedInfoUnreadable { cause: NonEmptyStr }
+
+// THE DMTF REDFISH `ResetToDefaultsType` ENUM ──────────────────────────────────────────────────
+//
+// WHY THIS LIVES HERE AND NOT IN WHICHEVER MODULE HAPPENS TO ACTUATE A RESET. The three arms below are
+// not a workflow's vocabulary: they are the members DMTF publishes for the Manager's ResetToDefaults
+// action, and they are versioned by DMTF, not by this repository. DESIGN §3 requires an independently
+// versioned upstream to be declared in its own extdeps module, with its source cited and its real names
+// kept -- which is also what makes it reusable: a second Redfish consumer (a fleet-wide factory-reset job,
+// a network-configuration audit) would otherwise have to import a machine-intake route, or re-mint the
+// enum and drift from it.
+//
+// SOURCED FROM THE PUBLISHED SCHEMA, not from a transcription. The members, their meanings and the
+// parameter name below were read out of the DMTF-published Manager schema at
+// https://redfish.dmtf.org/schemas/v1/Manager.v1_19_3.json, `#/definitions/ResetToDefaults`:
+//   parameters: { "ResetType": { "$ref": "#/definitions/ResetToDefaultsType", "requiredParameter": true } }
+//   ResetToDefaultsType.enum: ["ResetAll", "PreserveNetworkAndUsers", "PreserveNetwork"]
+// with the enumDescriptions quoted per arm below. Two facts that were NOT carried over, both because the
+// schema says otherwise:
+//   * The action's parameter is spelled `ResetType`, NOT `ResetToDefaultsType` -- the latter is the NAME OF
+//     THE TYPE, not of the field. An implementation that puts the type's name in the body has not read the
+//     action, and a firmware that demands it has not published it; that difference is a reported device
+//     observation and lives in the observing layer, never here (§3: an observation this repository makes
+//     is a receipt downstream, not a property of the upstream).
+//   * `SensorThresholds` appears in some vendor implementations' generated enum (bmcweb's
+//     redfish-core/include/generated/enums/manager.hpp) but is NOT in DMTF's published enum for this
+//     schema version. A vendor extension is a vendor fact, not a DMTF fact; it does not join this sum from
+//     an assumption about what a Redfish implementation ought to accept.
+//
+// THE WIRE NAMES ARE KEPT EXACTLY AS PUBLISHED, in the schema's own PascalCase, because that is the
+// string an implementation puts in the parameter. The recovery route's judgement about which arm clears
+// the user table is NOT here: that is a question about BMC recovery, not about the schema, and it stays in
+// the module that asks it. What IS here is what each member PUBLISHES itself to do, in the schema's words,
+// because that is the fact the route's judgement is made from.
+type RedfishResetToDefaultsType
+  = ResetAll
+  | PreserveNetworkAndUsers
+  | PreserveNetwork

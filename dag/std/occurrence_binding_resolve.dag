@@ -1,7 +1,7 @@
 module std.occurrence_binding_resolve
 
 import std.optional { Present, Absent }
-import std.algebra { FreeMonoid, Empty }
+import std.algebra { FreeMonoid, Empty, collection_concat_shape }
 import std.types { String, List, Int }
 import std.occurrence_binding {
   ContainmentPath,

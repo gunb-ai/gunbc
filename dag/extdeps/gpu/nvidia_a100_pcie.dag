@@ -1,0 +1,38 @@
+module extdeps.gpu.nvidia_a100_pcie
+
+import std.measure { micrometer }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.gpu.types { PcieCardSideOutline }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// NVIDIA A100 80GB PCIe product brief PB-10577-001. The PDF's own footer reads v03; the URL says
+// v02. Read 2026-10-19 by decompressing the PDF: Figure 3, "NVIDIA A100 80GB PCIe Card Dimensions",
+// is a raster carried in the image's soft mask. The brief states the card conforms to NVIDIA Form
+// Factor 5.0 for a full-height, full-length dual-slot server PCIe card, and that "nominal dimensions
+// are shown"; tolerances live in 2D drawings (NVOnline 1052306) this repository has not read.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/PB-10577-001_v02.pdf"
+  }
+}
+
+// Figure 3, as dimensioned: 268.60 with I/O bracket, 267.70 without, 111.15 overall height.
+data a100_pcie_side_outline: PcieCardSideOutline = PcieCardSideOutline {
+  length_without_bracket: micrometer(count: 267700),
+  length_with_bracket: micrometer(count: 268600),
+  height: micrometer(count: 111150),
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.gpu.nvidia_a100_pcie",
+      decl_name: "a100_pcie_side_outline",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

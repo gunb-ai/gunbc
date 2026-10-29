@@ -1,0 +1,127 @@
+module test.claim.parse_verdict_restore_witness
+
+import std.types { Bool, String }
+import extdeps.languages.yaml.types { YamlValue, YamlString }
+import std.optional { Absent, Present }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import gunbc.action_use_admission { cache_restore_action, cache_save_action }
+import extdeps.github.action_release { action_release_uses_text }
+import gunbc.parse_verdict_publish { materialization_publish_if }
+import gunbc.parse_verdict_restore {
+  parse_verdict_identity_restore_step,
+  parse_verdict_locate_script,
+  parse_verdict_ancestor_sha_expr,
+  parse_verdict_receipts_restore_step,
+  parse_verdict_restore_if,
+  parse_verdict_reuse_command,
+  parse_verdict_reuse_walk_step,
+  parse_verdict_record_step,
+  parse_verdict_record_script,
+  parse_verdict_restored_ancestor_expression,
+}
+import gunbc.parse_verdict_publish { parse_verdict_identity_blob_file, parse_verdict_receipts_file }
+import extdeps.github.expressions { serialize_expression }
+
+fn restore_step_is_exact_restore_on_pull_request(step: Step, key_marker: String) -> Bool {
+  match step {
+    UsesStep { name: _, id: _, uses: u, with: w, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      (action_release_uses_text(action_release: u) == action_release_uses_text(action_release: cache_restore_action))
+        && (action_release_uses_text(action_release: u) != action_release_uses_text(action_release: cache_save_action))
+        && (match c { Present { value: v } => string_contains(s: v, pattern: parse_verdict_restore_if())  Absent => false })
+        && match w {
+          Present { value: kvs } =>
+            any(kvs, kv => kv.key == "key")
+              && any(kvs, kv => kv.key == "path")
+              && (any(kvs, kv => kv.key == "restore-keys") == false)
+          Absent => false
+        }
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+// POSITIVE CONTROL, ROUTE ASSERTED: both restores are the cache RESTORE action (not save), guarded by
+// the pull-request scope, with an exact key and no restore-keys, which a near-identity hit would need.
+test fn the_base_sha_entries_are_restored_exactly_on_pull_request_only() -> Bool {
+  restore_step_is_exact_restore_on_pull_request(step: parse_verdict_identity_restore_step(ordinal: 3), key_marker: "")
+    && restore_step_is_exact_restore_on_pull_request(step: parse_verdict_receipts_restore_step(ordinal: 3), key_marker: "")
+    && (parse_verdict_restore_if() != materialization_publish_if())
+}
+
+// The walk that consumes them is the reuse walk: it names --reuse-from, and writes nothing.
+test fn the_pull_request_walk_reuses_and_does_not_publish() -> Bool {
+  string_contains(s: parse_verdict_reuse_command(), pattern: " --reuse-from ")
+    && (string_contains(s: parse_verdict_reuse_command(), pattern: "--receipts") == false)
+    && (string_contains(s: parse_verdict_reuse_command(), pattern: "--write-identity") == false)
+}
+
+// The locator is bounded newest-first: ordinal 0 is the base itself (--skip=0), the script walks
+// first-parent only, and the restore key reads the ordinal's own output, not a prefix.
+test fn the_locator_walks_first_parent_ancestors_of_the_base_exactly() -> Bool {
+  string_contains(s: parse_verdict_locate_script(), pattern: "--first-parent")
+    && string_contains(s: parse_verdict_locate_script(), pattern: "--skip=0")
+    && string_contains(s: parse_verdict_locate_script(), pattern: "--skip=11")
+    && (string_contains(s: parse_verdict_locate_script(), pattern: "--skip=12") == false)
+    && string_contains(s: parse_verdict_ancestor_sha_expr(ordinal: 3), pattern: "steps.parse_ancestors.outputs.a3")
+}
+
+fn yaml_text(v: YamlValue) -> String {
+  match v {
+    YamlString { value: t } => t
+    _ => ""
+  }
+}
+
+fn step_cache_path(step: Step) -> String {
+  match step {
+    UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match w {
+        Present { value: kvs } => fold(kvs, init: "", f: fn(acc, e) { if e.key == "path" { yaml_text(v: e.value) } else { acc } })
+        Absent => ""
+      }
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn step_condition(step: Step) -> String {
+  match step {
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c { Present { value: v } => v  Absent => "" }
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c { Present { value: v } => v  Absent => "" }
+  }
+}
+
+// RED, THE CHAIN IS GATED: ordinal 3 restores only while ordinals 0, 1 and 2 did not hit, and never
+// consults 4 or later, so the first published identity is the one the verb decides against and a
+// mismatch cannot fall through to a nearer match. Its receipts restore only on its own identity hit.
+test fn the_restore_chain_takes_the_first_hit_and_never_falls_through() -> Bool {
+  let identity = step_condition(step: parse_verdict_identity_restore_step(ordinal: 3))
+  let receipts = step_condition(step: parse_verdict_receipts_restore_step(ordinal: 3))
+  string_contains(s: identity, pattern: "steps.parse_identity_0.outputs['cache-hit'] != 'true'")
+    && string_contains(s: identity, pattern: "steps.parse_identity_2.outputs['cache-hit'] != 'true'")
+    && (string_contains(s: identity, pattern: "parse_identity_3") == false)
+    && (string_contains(s: identity, pattern: "parse_identity_4") == false)
+    && (step_condition(step: parse_verdict_identity_restore_step(ordinal: 0)) == parse_verdict_restore_if())
+    && string_contains(s: receipts, pattern: "steps.parse_identity_3.outputs['cache-hit'] == 'true'")
+    && (string_contains(s: receipts, pattern: "!=") == false)
+}
+
+// POSITIVE CONTROL, ROUTE ASSERTED: publisher and restore spell the SAME relative path, which is what
+// makes a cache entry's version (a hash of the path) agree across runners. A path through the runner's
+// temp directory is a version only that runner can reproduce.
+test fn publisher_and_restore_share_one_runner_independent_path() -> Bool {
+  (step_cache_path(step: parse_verdict_identity_restore_step(ordinal: 7)) == parse_verdict_identity_blob_file())
+    && (step_cache_path(step: parse_verdict_receipts_restore_step(ordinal: 7)) == parse_verdict_receipts_file())
+    && (string_contains(s: parse_verdict_identity_blob_file(), pattern: "runner") == false)
+    && (string_contains(s: parse_verdict_receipts_file(), pattern: "/") == false)
+}
+
+// The walk is told the ancestor by the first ordinal whose identity hit, through env (an expression
+// never enters the script), and the script only writes that variable to the record the verb reads.
+test fn the_record_step_names_the_first_hit_through_env() -> Bool {
+  let e = serialize_expression(expression: parse_verdict_restored_ancestor_expression())
+  string_contains(s: e, pattern: "steps.parse_identity_0.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a0")
+    && string_contains(s: e, pattern: "steps.parse_ancestors.outputs.a11")
+    && string_contains(s: parse_verdict_record_script(), pattern: "RESTORED_ANCESTOR")
+    && (string_contains(s: parse_verdict_record_script(), pattern: "steps.") == false)
+}

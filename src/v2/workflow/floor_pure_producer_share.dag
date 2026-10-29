@@ -113,7 +113,7 @@ type CallSiteDemandCause
 // the projection rule would decline at a finer grain -- never one the fold without this rule would
 // have declined -- so it is a missed refusal with a located population, not a widening; its
 // next-rung trigger is the dependency read
-// set of demand-engine M1 (docs/plans/demand-engine-program.md), which carries every projection a
+// set of demand-engine M1 (`gunbc.plans.demand_engine_program`), which carries every projection a
 // consumer reads off a value rather than only the immediate one.
 //   ProjectionFieldNameUnreadable -- the call is a field access's base, and reading the field's
 //                                    name failed: a projection of unknown grain.
@@ -1166,7 +1166,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.body_lowering.single_arm_match",
     claims: [
       SingleClaimFillDebtClaim { claim: "three_arm_match_keeps_every_arm_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "zero_arm_match_still_refuses_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "zero_arm_match_lowers_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -1232,7 +1232,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "oar_an_optional_at_a_required_record_field_refuses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "oar_an_optional_returned_at_a_declared_int_refuses_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "oar_the_lift_is_still_accepted_on_the_route_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "oar_a_bare_lift_is_refused_on_the_route_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -1332,7 +1332,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "mab_binder_does_not_leak_to_a_sibling_arm", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_non_payload_declared_in_two_modules_binds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_record_data_row_binds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_record_data_row_refuses", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_sibling_module_binds_the_arm", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_variant_declared_in_two_modules_refuses", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_where_alias_binds", standing: ActiveFillDebt },
@@ -1393,8 +1393,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "a_block_with_a_second_statement_is_refused_not_accepted_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_list_literal_call_argument_conserves_every_element_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_named_argument_label_is_conserved_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "a_statement_let_binder_is_reported_dropped_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_repeated_spelling_is_conserved_with_no_row_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_statement_let_binder_is_conserved_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_string_literal_is_conserved_by_its_value_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "caret_symbol_payloads_are_conserved_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "dotted_spine_segments_keep_their_own_occurrence_holds", standing: ActiveFillDebt },
@@ -1426,8 +1426,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "a_dropping_body_lowering_member_is_observed_dropped_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_field_projection_on_a_call_result_in_an_operand_is_admitted_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "an_operator_expression_call_argument_is_admitted_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "an_operator_expression_in_an_if_arm_is_admitted_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "explaining_one_of_two_same_spelled_drops_leaves_the_other_refused_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "an_operator_expression_in_an_if_arm_is_admitted_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -1732,6 +1731,52 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.self_host.stage0_production_target",
     claims: [
       SingleClaimFillDebtClaim { claim: "stage0_production_target_emits_boundary_compatible_source_holds", standing: ActiveFillDebt }
+    ]
+  },
+  // THE CENSUS'S OWN PAIRING CLAIM, enrolled by identity for the fixed-pipeline reason (gunbc#14469,
+  // warm-wolf-570's ruling on the census's pairing obligation). DESIGN §3 binds a census that reads a real
+  // declaration to a claim that reads the SAME declaration through the real producer; for a row of the
+  // claim-coverage census the only thing that can change is DISCOVERY, so the claim must run the census's
+  // fold over the checkout rather than inject a fixture universe -- a fixture could not fail when the claim
+  // it vouches for was deleted. Measured by claim_batch, plain invocation, scoped to the ONE governed root
+  // that holds the file: 143,868,239 eval steps (cpu 297,278 ms, wall 309,053 ms) against the 72,300-step
+  // new-witness budget. The cause is not the assertion -- it is 12 steps -- and not the scope, which is
+  // already one directory. It is the marker channel: test-function identity comes from
+  // `v2.compiler.module_acquisition acquisition_test_markers`, which is INTERPRETED, so reading a directory's
+  // worth of files pays interpreter cost per file. That is the same cost that keeps the live census off CI,
+  // and the same fix retires this row: the host-native marker read on the C4-E native route.
+  // Trigger: `acquisition_test_markers` gains a host-native implementation, so a scoped discovery costs file
+  // reads rather than interpreted parses -- SUFFICIENT FOR this claim to fall inside the new-witness budget.
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.claim_coverage_census_s1_live_pairing",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "the_module_real_path_pairing_row_grounds_against_the_real_discovery", standing: ActiveFillDebt }
+    ]
+  },
+  // THE WITNESS'S LIVE-ENTRY CLAIM, enrolled by identity on warm-wolf-570's ruling (gunbc#14575).
+  // `the_live_entry_exits_one_while_the_wet_lane_has_no_executor` calls the no-argument live entry
+  // `gunbc.claim_coverage_census_live claim_coverage_census_exit` and checks its exit number, so like
+  // the pairing row above it must run the census's fold over the checkout -- fixtures cannot vouch for
+  // what discovery can change. COST, recorded as a LOWER BOUND because the claim never FINISHED a run
+  // to measure: no verdict within a 3400s wall at head 8f7af1271081476ec2c2019db4d2d448c481ea52 and at
+  // fork-base 201fe0bd10da30ff0eeabaf2eabfc1b42f5e02f1 with the same head-built binary
+  // (claim_batch --features text_lookup_work_counter,interp_test_witness,test_hooks). The six sibling
+  // claims of the same file pass; the fold's cost is the interpreted marker channel, the same one the
+  // row above records. NO STEP COUNT IS ASSERTED -- a step count for a run that never ended would be
+  // fabricated, so this row carries the lower bound and the identity of the run instead.
+  // TRIGGER (the capability that retires this row, identical to the row above): the host-native marker
+  // read on the C4-E native route, so a scoped discovery costs file reads rather than interpreted
+  // parses. SEPARATE OPEN ITEM, kept on the record and NOT absorbed here: in one of seven attempts at
+  // the head tree (the v9 run, binary sha256 1dedddfd8aafa665592e5584fedabe91791b9ca2dc5ab9d56b49ea758debdaa9,
+  // 1800s timeout) the claim ended with `runtime error [type-error]: type error: call` at ~9 minutes,
+  // unplaced and unreproduced in six controlled re-attempts (including both trees and a call-chain
+  // instrumented binary). A budget wall should surface as a budget terminal, not a type error, so that
+  // observation is either a misclassified terminal or a real defect; it is triaged as its own row
+  // (unplaced, 1/7), not as this debt, and not as inherited -- placement is open.
+  SingleClaimFillDebtModule {
+    module: "test.claim.claim_coverage_census_witness",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "the_live_entry_exits_one_while_the_wet_lane_has_no_executor", standing: ActiveFillDebt }
     ]
   }
 ]

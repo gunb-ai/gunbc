@@ -7,7 +7,6 @@ import std.decl_ref { DeclarationRef }
 import product.host_identity { HostIdentity }
 import product.fabric.work { identity_frame }
 import product.fabric.supply { SupplierOffer }
-import product.supplier.vast_ai { VastAiAskReceipt }
 import std.measure { MoneyPerHour }
 import extdeps.network.endpoint { SocketAddress, render_uri_host }
 import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward }
@@ -70,15 +69,19 @@ fn rented_allocation_wire(id: RentedAllocationIdentity) -> NonEmptyStr {
 // owner is the label that isolates this bidder's rentals from another bidder on the same provider account.
 // asked_rate is the rate actually PUT, not the offer's advertised minimum. asked_at is the PUT time, the
 // same instant a rent cooldown starts from, because a create that timed out may still have rented.
-// DECLARED FRONTIER (DESIGN 3c): the producer of Acquired is the flex bidder's wet create loop
-// (product.fabric.flex_vast_shadow flex_rented_serving_allocation_join). It constructs on an answered
-// create, and on a lost create whose reconcile finds the instance held; it never constructs on a refused
-// create. STATED DIVERGENCE (DESIGN 3, upstream decomposition): the provider ask is Vast's own receipt
-// type because Vast is the only bidder; a second acquiring provider makes it a per-provider receipt
-// rather than a widened field here.
+// The producer of Acquired is the flex bidder's wet create loop
+// (product.fabric.flex_vast_loop flex_acquired_allocation). It constructs on an answered
+// create (flex_created_outcome); a lost create whose reconcile finds the instance held is built by
+// flex_reconciled_allocation, which only the next pass's entry will call (flex_run_pass_caller_frontier); it never constructs on a refused
+// create. NO PROVIDER ASK RIDES HERE. What a create named before actuation differs by supplier in kind,
+// not only spelling (Vast: the selected offer and machine, known before the PUT; EC2: a RunInstances
+// client token, with the instance id known only after the answer or a client-token reconcile), so the
+// pending-create receipt stays in the supplier row (Vast: product.fabric.flex_vast_shadow FlexCreateStanding),
+// and this carrier holds only the returned resource identity (identity.contract) the supplier answered.
+
 type RentedAllocationOrigin
   = RentedAllocationImported { imported_by: PrincipalRef, imported_at: EpochMs, found_running: DeclarationRef }
-  | RentedAllocationAcquired { owner: NonEmptyStr, asked_at: EpochMs, asked_rate: MoneyPerHour, provider_ask: VastAiAskReceipt }
+  | RentedAllocationAcquired { owner: NonEmptyStr, asked_at: EpochMs, asked_rate: MoneyPerHour }
 
 // WHEN THE ALLOCATION IS MEANT TO END. An allocation with no stated end is an open-ended spend, so the end
 // is a required field, and "the operator decides" is a stated end rather than its absence. EVERY INSTANT
@@ -187,8 +190,9 @@ type RentedAllocationEnrollment
 // route, the ceiling from the engine's own concurrency flag, the host access from the allocation, and the
 // engine pattern from the engine's program name. DECLARED FRONTIER (DESIGN 3c): the consumer that puts
 // these rows in gunbc.serving.rented_enrollment rented_cohort_enrollments is the enroll-and-seat slice of
-// the rented-serving-allocation vertical, which also retires gunbc.harness.harness_operator_route; until it
-// lands the witnesses are the only caller.
+// the rented-serving-allocation vertical (gunbc.harness.rented_allocation_seat consumes it for the seat);
+// gunbc.harness.harness_operator_route is KEPT as the last executing api-key path and retires on the frontier
+// row in gunbc.serving.serving_launch; until the flex wet create (product.fabric.flex_market) produces a RentedAllocationAcquired allocation the witnesses are the only caller.
 fn rented_allocation_enrollment(a: RentedServingAllocation) -> RentedAllocationEnrollment {
   match rented_allocation_endpoint(a: a) {
     RentedEndpointRefused { allocation: id, obligation: o } => RentedAllocationNotEnrollable { allocation: id, obligation: o }

@@ -6,7 +6,8 @@ import gunbc.runner.runner_microvm_attempt { bind_owned_attempt }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
 import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, restricted_group_1 }
 import extdeps.github.actions_jit_runner { jit_config_mint_outcome }
-import gunbc.runner.runner_attempt_launch { GitHubLaunchPayload, launch_payload_device }
+import gunbc.runner.runner_attempt_launch {
+  InputDriveStaging, GitHubLaunchPayload, launch_payload_device }
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.optional { Absent, Present }
@@ -601,6 +602,7 @@ fn staged_jail_material() -> JailMaterialStaging {
     rootfs_exit: 0,
     kernel: PathPresent,
     rootfs: PathPresent,
+    inputs: [],
   }
 }
 
@@ -614,13 +616,19 @@ fn staged_jail_material() -> JailMaterialStaging {
 // where the jailer will open it is the host's, and the two are separated by a full disk. A gate that
 // read only the exits would pass the first three reds and fail these two.
 test fn a_failed_or_missing_jail_material_does_not_admit_the_jailer() -> Bool {
-  jail_label(m: JailMaterialStaging { jail_root_exit: 1, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent }) == "step-failed:jail root"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 1, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent }) == "step-failed:kernel"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 2, kernel: PathPresent, rootfs: PathPresent }) == "step-failed:rootfs"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathAbsentOrUnstattable, rootfs: PathPresent }) == "missing:kernel"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathAbsentOrUnstattable }) == "missing:rootfs"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathExistenceUnreadable { reason: "test -e exited 126" as NonEmptyStr } }) == "unobservable:rootfs"
+  jail_label(m: JailMaterialStaging { jail_root_exit: 1, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent, inputs: [] }) == "step-failed:jail root"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 1, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent, inputs: [] }) == "step-failed:kernel"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 2, kernel: PathPresent, rootfs: PathPresent, inputs: [] }) == "step-failed:rootfs"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathAbsentOrUnstattable, rootfs: PathPresent, inputs: [] }) == "missing:kernel"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathAbsentOrUnstattable, inputs: [] }) == "missing:rootfs"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathExistenceUnreadable { reason: "test -e exited 126" as NonEmptyStr }, inputs: [] }) == "unobservable:rootfs"
     && jail_label(m: staged_jail_material()) == "admit"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent,
+         inputs: [InputDriveStaging { jail_path: "/tree.tar", exit: 1, present: PathPresent }] }) == "step-failed:input drive /tree.tar"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent,
+         inputs: [InputDriveStaging { jail_path: "/tree.tar", exit: 0, present: PathPresent }, InputDriveStaging { jail_path: "/vendor.tar", exit: 0, present: PathAbsentOrUnstattable }] }) == "missing:input drive /vendor.tar"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent,
+         inputs: [InputDriveStaging { jail_path: "/tree.tar", exit: 0, present: PathPresent }] }) == "admit"
 }
 
 fn jail_label(m: JailMaterialStaging) -> String {
