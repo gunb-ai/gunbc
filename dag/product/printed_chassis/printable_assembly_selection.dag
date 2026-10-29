@@ -18,7 +18,7 @@ import product.printed_chassis.gpu_duct {
 }
 import std.optional { Present, Absent }
 import product.printed_chassis.duct_card_catalog { DuctCard, DuctCardDims, a16_duct_card, duct_card_dims, duct_card_unread_reason }
-import product.printed_chassis.card_cooling_route {admit_home, PlaneOnEnd, RouteAdmission, RouteAdmittedOnOperatorBound, RouteRefusedByChassis, RouteHomeUnmeasured, RouteProposalOnly, RouteAdmitted, demand_display}
+import product.printed_chassis.card_cooling_route {admit_home, RouteSubject, PlaneOnEnd, RouteAdmission, RouteAdmittedOnOperatorBound, RouteRefusedByChassis, RouteHomeUnmeasured, RouteProposalOnly, RouteAdmitted, demand_display}
 import product.printed_chassis.assembly_geometry {Printed, Purchased, Metal}
 
 // THE ONE PLACE A ROOT BECOMES PARTS. Every consumer on the print path -- the CAD check, preparation
@@ -59,7 +59,7 @@ fn plane_on_end_selection(root: PrintedAssemblyRoot, card: DuctCard) -> Printabl
 }
 
 fn plane_on_end_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims) -> PrintableAssemblySelection {
-  match admit_home(home: PlaneOnEnd) {
+  match admit_home(s: RouteSubject { face: dims.face, wall: a16_duct_design, fan: a16_blower_duct_design }, home: PlaneOnEnd) {
     RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, governed_by: _, margin: _} => {
       let parts = plane_on_end_duct_parts(f: dims.face, card: dims.card, d: a16_duct_design, b: a16_blower_duct_design)
       PrintableAssemblyReady {
