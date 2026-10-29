@@ -2118,8 +2118,10 @@ fn floor_route_gap_expectation_chunk_32() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.reviewer_placement_wet_witness.a_pre_gate_start_failure_returns_the_real_seat", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.reviewer_placement_wet_witness.the_reviewer_pass_settles_only_the_slot_whose_identity_names_a_criterion", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.reviewer_placement_wet_witness.the_real_slice_reader_reads_a_unit_the_witness_started", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
-  }  }  }  }  }  }  }  }  }  }  }  }  }
+  }  }  }  }  }  }  }  }  }  }  }  }  }  }
 }
 
 // THE ALLOCATION AUTH REAL-FILE CLAIMS (gunbc#13004): the login transaction's create-new consume,

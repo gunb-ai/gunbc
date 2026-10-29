@@ -871,6 +871,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.reviewer_placement_wet_witness", function: "the_real_slice_reader_reads_a_unit_the_witness_started" },
+      entry: "dag/test/claim/roadmap/reviewer_placement_wet_witness.dag",
+      function: "the_real_slice_reader_reads_a_unit_the_witness_started",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.session_placement_wet_witness", function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after" },
       entry: "dag/test/claim/roadmap/session_placement_wet_witness.dag",
       function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after",

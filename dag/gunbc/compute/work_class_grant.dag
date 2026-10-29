@@ -2,7 +2,7 @@ module gunbc.compute.work_class_grant
 
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
-import std.measure { Kibibyte, kibibyte, kibibyte_count, byte_size_count }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, byte_size_count, kibibyte_from_byte_size_ceiling }
 import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, cargo_profile_wire, work_operation_canonical }
 import extdeps.systemd.systemd_run {
   SystemdRunWaitSummary, SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported, systemd_formatted_bytes_upper,
@@ -118,11 +118,13 @@ type WorkClassPeakSample {
 
 // THE SAMPLE PRODUCER: the launcher's summary to a typed sample (review 69829 -- the upper bound was
 // computed and then written only as prose). The byte upper bound is rounded UP to kibibytes, the
-// direction a capacity reading may round. A summary with no peak, an unparseable peak or an
-// unreadable clock takes NO sample and says which; it never takes a zero.
+// direction a capacity reading may round -- by the ONE home of that rule, std.measure's
+// kibibyte_from_byte_size_ceiling (review 87589: the hand-written +1023/1024 here was a second
+// implementation of the fold the helper now carries). A summary with no peak, an unparseable peak
+// or an unreadable clock takes NO sample and says which; it never takes a zero.
 fn work_class_summary_peak_upper(summary: SystemdRunWaitSummary) -> Kibibyte? {
   match summary.memory_peak {
-    MemoryPeakRead { peak: b } => Present { value: kibibyte(count: (byte_size_count(b: systemd_formatted_bytes_upper(b: b)) + 1023) / 1024) }
+    MemoryPeakRead { peak: b } => Present { value: kibibyte_from_byte_size_ceiling(b: systemd_formatted_bytes_upper(b: b)) }
     MemoryPeakUnparseable { text: _ } => none
     MemoryPeakNotReported { absence: _ } => none
     MemoryPeakFormatNotGrounded { standing: _ } => none

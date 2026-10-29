@@ -2,7 +2,7 @@ module test.claim.roadmap.reviewer_placement_wet_witness
 
 import extdeps.shell
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs }
-import std.measure { kibibyte, kibibyte_count }
+import std.measure { kibibyte, kibibyte_count, ByteSize, byte_size_count, kibibyte_to_byte_size }
 import std.optional { Present, Absent }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first, cas_generation_count }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
@@ -13,6 +13,8 @@ import gunbc.compute.host_capacity {
   ComputeCapacitySubject, compute_reserve_against, compute_capacity_store, compute_release_on,
   ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused,
+  ReviewerSliceBudget, SliceBudgetObserved, reviewer_slice_budget_from_reading,
+  SliceLimitReading, SliceLimitObserved, SliceLimitUnbounded, SliceLimitAbsent, SliceLimitUnreadable, observe_slice_limit_for,
 }
 import gunbc.compute.work_class_grant { WorkClassReviewerSession, GrantAtCeiling, ClassUnmeasured }
 import gunbc.compute.attempt_lifecycle {
@@ -370,4 +372,32 @@ test fn the_reviewer_pass_settles_only_the_slot_whose_identity_names_a_criterion
     AttemptSlotUnreadable { detail: _ } => false
   }
   charged && opened && worker_opened && settlement_count(p: p) == 1 && released_unit(s: settlement_of(p: p)) == r_unit() && worker_held
+}
+
+// ONE INHABITANCE CLAIM FOR THE SLICE READER'S REAL BOUNDARY (DESIGN 3, review round 4): every
+// other claim plants the manager's answer -- and the round that caught the plain-bytes form proves
+// planted answers can omit the shape the instrument actually prints. This claim runs the REAL
+// reader (observe_slice_limit_for: systemd.Systemctl.ShowUserProperty, systemctl --user show
+// -p MemoryMax) against a unit this witness itself starts: a transient user SERVICE (async start,
+// unlike --scope which blocks), unique per run, 20 MiB MemoryMax -- a figure the claim asserts
+// BYTE-EXACT after the real round trip, floored to 20480 KiB by the budget fold, landing in the
+// OBSERVED arm specifically (a reader stuck at 'unreadable' or the declared row reddens this even
+// when the shell cooperates). Writes nothing to any ledger: the unit carries RuntimeMaxSec and
+// --collect so it self-collects within a minute, and a killed run leaves at worst one sleeping
+// scope gone by its own timer.
+test fn the_real_slice_reader_reads_a_unit_the_witness_started() -> Bool {
+  let dir = fresh_dir(tag: "c7")
+  let token = string_replace(source: dir, needle: "/", replacement: "-")
+  let unit = join(["gunbc-witness-g5r-", token, ".service"], "") as NonEmptyStr
+  let started = shell.Exec.RunArgv(program: "systemd-run", arguments: ["--user", "--unit", unit as String, "-p", "MemoryMax=20971520", "-p", "RuntimeMaxSec=60", "--collect", "/bin/sleep", "60"]).exit_code == 0
+  let reading = observe_slice_limit_for(unit: unit)
+  let bytes_exact = match reading {
+    SliceLimitObserved { limit } => byte_size_count(b: limit) == 20971520
+    _ => false
+  }
+  let observed_arm_at_20_mib = match reviewer_slice_budget_from_reading(observed: reading, declared: kibibyte(count: 999999999)) {
+    SliceBudgetObserved { budget, detail: _ } => kibibyte_count(k: budget) == 20480
+    _ => false
+  }
+  started && bytes_exact && observed_arm_at_20_mib
 }

@@ -382,10 +382,20 @@ fn reviewer_slice_budget_from_reading(observed: SliceLimitReading, declared: Kib
   }
 }
 
+// THE WET READING, ONE UNIT NAME WIDER THAN THE PRODUCTION CALLER: the same fold, the same
+// instrument arm, the same question -- asked of any unit the caller can name. The production
+// reader below pins the declared slice unit; a witness uses this one against a unit it created
+// itself, so the REAL instrument -- the manager's plain-bytes receipt included -- executes at
+// least once outside planted inputs (DESIGN 3: supplied inputs may not remove the last execution
+// of the real path). Nothing is written here: this is a show, not a set.
+fn observe_slice_limit_for(unit: NonEmptyStr) -> SliceLimitReading {
+  let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: systemd_memory_max_property)
+  slice_limit_from_shell(outcome: read.outcome, success: read.success, value: read.value)
+}
+
 // THE WET READING: ask the user manager the one question, in the one form.
 fn observe_reviewer_slice_limit() -> SliceLimitReading {
-  let read = systemd.Systemctl.ShowUserProperty(unit: user_work_slice_unit_name, property: systemd_memory_max_property)
-  slice_limit_from_shell(outcome: read.outcome, success: read.success, value: read.value)
+  observe_slice_limit_for(unit: user_work_slice_unit_name)
 }
 
 // THE SLICE LEG ITSELF, as a fold over supplied figures: the seats a launch wants and what is
