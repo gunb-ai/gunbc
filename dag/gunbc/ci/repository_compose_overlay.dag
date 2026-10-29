@@ -108,13 +108,22 @@ fn unset_may_be_absent(name: String) -> Node {
 // `RUNNER_TMP_ROOT="$RUNNER_TEMP"`, falling back to the row's default when the runner did not set it - the
 // two-statement spelling of the parameter default the bash grammar does not carry. Named once per script
 // so the composed tree and its run log cannot disagree about where the run's record lives.
+// THE TEMPORARY ROOT, resolved before strict mode is completed. `set -u` makes an unset variable an error
+// that aborts the shell rather than a normal command failure, so the `|| fallback` below would never get a
+// chance to run on a runner without RUNNER_TEMP: the reference to it has to happen inside a `set +u`
+// window, and the window is closed again on the next line rather than left open for the rest of the step.
+// The final `test -n` proves the fallback row was not itself empty, which would otherwise put the composed
+// tree at "/<dir>" and make every later check observe nothing.
 fn runner_tmp_root_stmts(fallback: NonEmptyStr) -> List<Node> {
   [
+    command_words(rest: ["set", "+u"]),
+    bash_build_assign(name: "RUNNER_TMP_ROOT", value: var_word(name: "RUNNER_TEMP")),
     bash_build_or_else(
-      left: bash_build_assign(name: "RUNNER_TMP_ROOT", value: var_word(name: "RUNNER_TEMP")),
+      left: command(words: [word(text: "test"), word(text: "-n"), var_word(name: "RUNNER_TMP_ROOT")]),
       right: bash_build_assign(name: "RUNNER_TMP_ROOT", value: word(text: fallback as String))
     ),
-    command(words: [word(text: "test"), word(text: "-n"), var_word(name: "RUNNER_TMP_ROOT")])
+    command(words: [word(text: "test"), word(text: "-n"), var_word(name: "RUNNER_TMP_ROOT")]),
+    command_words(rest: ["set", "-u"]),
   ]
 }
 
@@ -287,26 +296,33 @@ fn compose_reentry(seed: PublicSeed, compose_dir: NonEmptyStr) -> Outcome<String
 // composed tree is what the compiler resolves against: the same claim run from the mirror checkout
 // directly resolves against a corpus the seed's compiler has never seen. The roots arrive as data and each
 // becomes one `--source-root` word pair here, so no caller can compose a flag line by hand.
-fn compose_gunbc_run_statements(overlay: OverlayIngest, source_roots: List<String>, entry: NonEmptyStr, function: NonEmptyStr) -> List<Node> {
+// ONE SUBJECT, ONE PROCESS, OVER THE COMPOSED ROOT - the command, as one Node. This is the single
+// spelling of "run the seed's compiler over this corpus at this entry and function"; the roster gate of
+// gunbc.witness.witness_roster folds it into its verdict arms rather than re-deriving the argument list,
+// because a second spelling of the launcher is how a gate ends up testing a corpus other than the one it
+// composed.
+fn compose_gunbc_run_command(overlay: OverlayIngest, source_roots: List<String>, entry: NonEmptyStr, function: NonEmptyStr) -> Node {
   let root_words = fold(
     source_roots,
     init: [] as List<Node>,
     f: (acc, root) => concat(acc, [word(text: "--source-root"), word(text: root as String)])
   )
-  [
-    command(
-      words: concat(
+  command(
+    words: concat(
+      concat(
         concat(
-          concat(
-            [var_word(name: "GUNBC"), word(text: "run")],
-            root_words
-          ),
-          [word(text: "--entry"), word(text: concat(overlay.entry_prefix as String, entry as String))]
+          [var_word(name: "GUNBC"), word(text: "run")],
+          root_words
         ),
-        [word(text: "--function"), word(text: function as String)]
-      )
+        [word(text: "--entry"), word(text: concat(overlay.entry_prefix as String, entry as String))]
+      ),
+      [word(text: "--function"), word(text: function as String)]
     )
-  ]
+  )
+}
+
+fn compose_gunbc_run_statements(overlay: OverlayIngest, source_roots: List<String>, entry: NonEmptyStr, function: NonEmptyStr) -> List<Node> {
+  [compose_gunbc_run_command(overlay: overlay, source_roots: source_roots, entry: entry, function: function)]
 }
 
 fn compose_gunbc_run(overlay: OverlayIngest, source_roots: List<String>, entry: NonEmptyStr, function: NonEmptyStr) -> Outcome<String> {

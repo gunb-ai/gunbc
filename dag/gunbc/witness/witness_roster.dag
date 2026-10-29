@@ -1,7 +1,15 @@
 module gunbc.witness.witness_roster
 
 import std.types { NonEmptyStr, String, List, Bool }
-import std.algebra { list_flat_map }
+import std.algebra { list_flat_map, list_map }
+import gunbc.ci.repository_ci_profile { DagInvocation }
+import gunbc.ci.repository_compose_overlay { OverlayIngest, compose_gunbc_run_command }
+import v2.std.node { Node }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_command_with_words, bash_build_stmt_list_from_nodes,
+  bash_build_assign, bash_build_assign_lit, bash_build_word_cmdsubst, bash_build_pipe, bash_build_or_else,
+  bash_build_if, bash_build_if_else, bash_build_negation, bash_build_test_bracket, bash_build_with_redir
+}
 
 // THE ROSTER ROW TYPES, AND WHY THEY ARE GUNBC'S RATHER THAN ONE REPOSITORY'S.
 //
@@ -23,9 +31,9 @@ import std.algebra { list_flat_map }
 //   expecting-red would be satisfied by the probe having rotted; a probe that refuses for a reason other
 //   than the one it names is measuring a different wall and says so (PROBE DRIFT).
 // - Both kinds carry a trigger, and the step that enforces them prints it. They are temporary arrangements
-//   with a named successor capability, not permanent fixtures - see gunbc.ci.repository_ci_profile
-//   ComposedOverlayInterpreterRoster hand_shell_dissolves_when for the capability that turns these arms
-//   into typed step outcomes.
+//   with a named successor capability, not permanent fixtures: the overlay these arms read is copied rather
+//   than admitted as a second source root, and gunbc.ci.repository_ci_profile OverlayIngest carries the
+//   trigger that says what retires it.
 //
 // WHERE THE ROWS LIVE: in the repository that owns the claims. The public profile row
 // (gunbc.ci.repository_ci_profile gunbc_repository_ci_profile) declares no entries precisely so the
@@ -104,149 +112,300 @@ fn roster_needs_declared_cause_arms(entries: List<RosterEntry>) -> Bool {
   any(entries, e => roster_entry_is_known_red(entry: e) || roster_entry_is_must_not_compile(entry: e))
 }
 
-// ONE SUBJECT, ONE PROCESS, THROUGH THE SEED'S COMPILER OVER THE COMPOSED ROOT.
-// Why the compiler is invoked from the composed checkout rather than the repository checkout it came
-// from: the runner follows the working directory for its workspace root, so a run started in a checkout
-// that lacks Cargo.toml and dag/ refuses before resolving anything. Composing first is what makes the
-// corpus the compiler sees the corpus the run claims to be testing.
-fn run_one_definition(source_roots_argv: String) -> String {
-  join([
-    "run_one() {\n",
-    "  \"$GUNBC\" run ", source_roots_argv, " --entry \"$1\" --function \"$2\"\n",
-    "}\n"
-  ], "")
+// THE SHELL VOCABULARY, ONE HELPER PER SHAPE THE ROSTER NEEDS. Every line of the gate is a Node built
+// here and serialized by v2.workflow.bash_emit::bash_emit_stmts - the same path
+// gunbc.instruments.instrument_dispatch_workflow uses for the committed instrument-dispatch step, so the
+// quoting belongs to the grammar and a shape it cannot express comes back Refused rather than as a string
+// that quietly means something else. The earlier version of this file assembled these same lines from
+// string literals with join and +, which is the hand-shell the ctrl review policy blocks as a hard
+// blocker and DESIGN 6 lists as the unmodelled-realization tell; its cost was that the roster's verdict
+// was only as faithful to the roster as someone's quoting of a here-string.
+fn roster_word(text: String) -> Node {
+  bash_build_word_lit(text: text)
 }
 
-// THE ENFORCED VERDICT, printed as one line. Its wording is the repository's own claim - "every enforced
-// witness, in one process" is a statement about how the gate is run, not a generic success string - so
-// both banners are rows on the profile (gunbc.ci.repository_ci_profile RosterAggregate).
-fn enforced_run_line(aggregate_entry: NonEmptyStr, aggregate_function: NonEmptyStr, entry_prefix: NonEmptyStr, pass_banner: String, fail_banner: NonEmptyStr) -> String {
-  join([
-    "if out=$(run_one \"", entry_prefix, aggregate_entry as String, "\" \"", aggregate_function as String, "\" 2>&1); then\n",
-    "  echo \"$out\"\n",
-    "  echo \"PASS  ", pass_banner, " — ", aggregate_entry as String, "\"\n",
-    "else\n",
-    "  echo \"$out\"\n",
-    "  echo \"::error::", fail_banner as String, "\"\n",
-    "  fail=1\n",
-    "fi\n"
-  ], "")
+fn roster_variable(name: String) -> Node {
+  bash_build_word_var(name: name)
+}
+
+fn roster_command(words: List<Node>) -> Node {
+  bash_build_command_with_words(words: words)
+}
+
+fn roster_statements(stmts: List<Node>) -> Node {
+  bash_build_stmt_list_from_nodes(stmts: stmts)
+}
+
+fn roster_echo(text: String) -> Node {
+  roster_command(words: [roster_word(text: "echo"), roster_word(text: text)])
+}
+
+fn roster_echo_variable(name: String) -> Node {
+  roster_command(words: [roster_word(text: "echo"), roster_variable(name: name)])
+}
+
+// THE DIAGNOSTIC IS PRINTED WITH echo "$x", NOT WITH printf '%s<newline>' "$x". Both print the same
+// text for a diagnostic. The difference is that the printf format word carries an escape the fold renders
+// as a real newline, which wraps the pipeline across two lines *inside a quoted token* - and a YAML literal
+// block scalar whose continuation line is indented differently from its opening terminates early,
+// silently truncating the script that decides whether a witness is green. A check that can vanish from the
+// step without failing is not a check, so the one-line form is the one this module uses.
+
+fn roster_flag(name: String, value: String) -> Node {
+  bash_build_assign_lit(name: name, text: value)
+}
+
+fn roster_capture(name: String, body: Node) -> Node {
+  bash_build_assign(name: name, value: bash_build_word_cmdsubst(body: body))
+}
+
+// THE AGGREGATE: present when the repository runs its whole enforced roster inside ONE process and prints
+// one verdict, rather than one process per row. It lives with the roster rows because it IS one of them -
+// the row naming the entry that closes the enforced set - and the banners are rows too, since their wording
+// is that repository's own claim about itself rather than this module's. The invocation is TYPED: the
+// launcher that turns it into words is compose_gunbc_run_command below, so no row can spell a command line.
+type RosterAggregate {
+  invocation: DagInvocation
+  pass_banner: String
+  fail_banner: NonEmptyStr
+}
+
+// THE SUBJECT RUN, ASKED OF THE COMPOSITION MODULE. Which compiler over which corpus is
+// gunbc.ci.repository_compose_overlay's fact (compose_gunbc_run_command), not this module's: a second
+// spelling of the launcher is how a gate ends up judging a corpus other than the one it composed. What
+// this module owns is what to DO with the run - whose verdict, whose causes, whose refusal.
+fn roster_capture_run(overlay: OverlayIngest, source_roots: List<String>, name: String, entry: NonEmptyStr, function: NonEmptyStr) -> Node {
+  roster_capture(
+    name: name,
+    body: bash_build_with_redir(
+      inner: compose_gunbc_run_command(overlay: overlay, source_roots: source_roots, entry: entry, function: function),
+      redir: ^bash_production_fold_redir_stderr_to_stdout,
+    )
+  )
 }
 
 // A DECLARED CAUSE MUST HAVE OCCURRED. Checked per cause, with the cause quoted in the refusal, so a
 // reader learns which of the quarantine's claims stopped being true instead of learning that the
 // quarantine is somehow wrong.
-fn expected_cause_check(entry: NonEmptyStr, function: NonEmptyStr, cause: NonEmptyStr) -> String {
-  join([
-    "  if printf '%s\\n' \"$out\" | grep -qF -- \"", cause as String, "\"; then :; else\n",
-    "    echo \"::error::CAUSE DRIFT ", entry as String, " ", function as String,
-    " — quarantined for a NAMED SET of causes and one of them did not occur. Expected to find: ", cause as String, "\"\n",
-    "    fail=1\n",
-    "    drift=1\n",
-    "  fi\n"
-  ], "")
+fn roster_cause_absent(cause: NonEmptyStr) -> Node {
+  bash_build_negation(
+    inner: bash_build_pipe(
+      left: roster_echo_variable(name: "out"),
+      right: roster_command(words: [
+        roster_word(text: "grep"), roster_word(text: "-qF"), roster_word(text: "--"), roster_word(text: cause as String),
+      ])
+    )
+  )
+}
+
+fn roster_cause_check(entry: NonEmptyStr, function: NonEmptyStr, cause: NonEmptyStr) -> Node {
+  bash_build_if(
+    cond: roster_cause_absent(cause: cause),
+    body: roster_statements(stmts: [
+      roster_echo(text: join([
+        "::error::CAUSE DRIFT ", entry as String, " ", function as String,
+        " — quarantined for a NAMED SET of causes and one of them did not occur. Expected to find: ", cause as String,
+      ], "")),
+      roster_flag(name: "fail", value: "1"),
+      roster_flag(name: "drift", value: "1"),
+    ])
+  )
 }
 
 // THE OTHER DIRECTION: every diagnostic that came out must match a declared cause. Absence-only checking
 // let a quarantine pass while new defects arrived beside the expected ones - deleted APIs, stale imports,
-// annotation violations - because nothing looked at what was NOT declared.
-fn undeclared_filter_step(cause: NonEmptyStr) -> String {
-  join([" | grep -vF -- \"", cause as String, "\""], "")
+// annotation violations - because nothing looked at what was NOT declared. Each declared cause strips one
+// filter off the observed diagnostics, and what survives is undeclared.
+fn roster_undeclared_filter(cause: NonEmptyStr) -> Node {
+  roster_command(words: [
+    roster_word(text: "grep"), roster_word(text: "-vF"), roster_word(text: "--"), roster_word(text: cause as String),
+  ])
+}
+
+fn roster_undeclared_chain(causes: List<NonEmptyStr>) -> Node {
+  fold(
+    causes,
+    init: bash_build_pipe(
+      left: roster_echo_variable(name: "out"),
+      right: roster_command(words: [roster_word(text: "grep"), roster_word(text: "-F"), roster_word(text: "--"), roster_word(text: "error:")])
+    ),
+    f: fn(acc, cause) {
+      bash_build_pipe(left: acc, right: roster_undeclared_filter(cause: cause))
+    }
+  )
+}
+
+fn roster_undeclared_capture(causes: List<NonEmptyStr>) -> Node {
+  roster_capture(
+    name: "undeclared",
+    body: bash_build_or_else(
+      left: roster_undeclared_chain(causes: causes),
+      right: roster_command(words: [roster_word(text: "true")])
+    )
+  )
+}
+
+fn roster_test(words: List<Node>) -> Node {
+  bash_build_test_bracket(words: words)
+}
+
+fn roster_nonempty(name: String) -> Node {
+  roster_test(words: [roster_word(text: "-n"), roster_variable(name: name)])
+}
+
+fn roster_equals_zero(name: String) -> Node {
+  roster_test(words: [roster_variable(name: name), roster_word(text: "="), roster_word(text: "0")])
 }
 
 // THE DECLARED-RED ARM. `roster_authority` is named in the STALE QUARANTINE refusal because the row an
 // operator must retire lives in the repository's own file, and the refusal has to say where to find it.
-fn known_red_run_line(entry: RosterEntry, entry_prefix: NonEmptyStr, roster_authority: NonEmptyStr) -> String {
+// A red that has started PASSING is a failure rather than good news: the row then describes a repository
+// that no longer exists.
+fn roster_known_red_verdict(entry: RosterEntry, overlay: OverlayIngest, source_roots: List<String>, roster_authority: NonEmptyStr) -> List<Node> {
   match entry.kind {
-    Enforced => ""
-    MustNotCompile { guards, expected_refusals, dissolution } => ""
-    KnownRed { reason, expected_causes, restoration_trigger } => join([
-      "if out=$(run_one \"", entry_prefix, entry.entry as String, "\" \"", entry.function as String, "\" 2>&1); then\n",
-      "  echo \"$out\"\n",
-      "  echo \"::error::STALE QUARANTINE ", entry.entry as String, " ", entry.function as String,
-      " — a declared known-red witness PASSED. Retire its KnownRed row in ", roster_authority as String,
-      " rather than leaving the roster describing a repository that no longer exists.\"\n",
-      "  fail=1\n",
-      "else\n",
-      "  echo \"$out\"\n",
-      "  drift=0\n",
-      fold(expected_causes, init: "", f: fn(acc, c) {
-        join([acc, expected_cause_check(entry: entry.entry, function: entry.function, cause: c)], "")
-      }),
-      "  undeclared=$(printf '%s\\n' \"$out\" | grep -F -- 'error:'",
-      fold(expected_causes, init: "", f: fn(acc, c) {
-        join([acc, undeclared_filter_step(cause: c)], "")
-      }),
-      " || true)\n",
-      "  if [ -n \"$undeclared\" ]; then\n",
-      "    echo \"::error::UNDECLARED FAILURE ", entry.entry as String, " ", entry.function as String,
-      " — this witness emitted a diagnostic its KnownRed row does not declare. A quarantine that only requires its OWN causes to be present still hides every new defect that arrives beside them. Declare it or fix it:\"\n",
-      "    printf '%s\\n' \"$undeclared\"\n",
-      "    fail=1\n",
-      "    drift=1\n",
-      "  fi\n",
-      "  if [ \"$drift\" = \"0\" ]; then\n",
-      "    echo \"known-red held  ", entry.entry as String, " ", entry.function as String,
-      " — failed for exactly its declared causes\"\n",
-      "  fi\n",
-      "fi\n"
-    ], "")
+    Enforced => []
+    MustNotCompile { guards, expected_refusals, dissolution } => []
+    KnownRed { reason, expected_causes, restoration_trigger } => [
+      bash_build_if_else(
+        cond: roster_capture_run(overlay: overlay, source_roots: source_roots, name: "out", entry: entry.entry, function: entry.function),
+        then_body: roster_statements(stmts: [
+          roster_echo_variable(name: "out"),
+          roster_echo(text: join([
+            "::error::STALE QUARANTINE ", entry.entry as String, " ", entry.function as String,
+            " — a declared known-red witness PASSED. Retire its KnownRed row in ", roster_authority as String,
+            " rather than leaving the roster describing a repository that no longer exists.",
+          ], "")),
+          roster_flag(name: "fail", value: "1"),
+        ]),
+        else_body: roster_statements(stmts: concat(
+          [
+            roster_echo_variable(name: "out"),
+            roster_flag(name: "drift", value: "0"),
+          ],
+          concat(
+            list_map(xs: expected_causes, f: cause => roster_cause_check(entry: entry.entry, function: entry.function, cause: cause)),
+            [
+              roster_undeclared_capture(causes: expected_causes),
+              bash_build_if(
+                cond: roster_nonempty(name: "undeclared"),
+                body: roster_statements(stmts: [
+                  roster_echo(text: join([
+                    "::error::UNDECLARED FAILURE ", entry.entry as String, " ", entry.function as String,
+                    " — this witness emitted a diagnostic its KnownRed row does not declare. A quarantine that only requires its OWN causes to be present still hides every new defect that arrives beside them. Declare it or fix it:",
+                  ], "")),
+                  roster_echo_variable(name: "undeclared"),
+                  roster_flag(name: "fail", value: "1"),
+                  roster_flag(name: "drift", value: "1"),
+                ])
+              ),
+              bash_build_if(
+                cond: roster_equals_zero(name: "drift"),
+                body: roster_statements(stmts: [
+                  roster_echo(text: join([
+                    "known-red held  ", entry.entry as String, " ", entry.function as String,
+                    " — failed for exactly its declared causes",
+                  ], "")),
+                ])
+              ),
+            ]
+          )
+        ))
+      )
+    ]
   }
 }
 
 // THE MUST-NOT-COMPILE ARM: the program is expected to be refused, and the REFUSAL is what is compared.
-fn must_not_compile_run_line(entry: RosterEntry, entry_prefix: NonEmptyStr) -> String {
+fn roster_must_not_compile_verdict(entry: RosterEntry, overlay: OverlayIngest, source_roots: List<String>) -> List<Node> {
   match entry.kind {
-    Enforced => ""
-    KnownRed { reason, expected_causes, restoration_trigger } => ""
-    MustNotCompile { guards, expected_refusals, dissolution } => join([
-      "if out=$(run_one \"", entry_prefix, entry.entry as String, "\" \"", entry.function as String, "\" 2>&1); then\n",
-      "  echo \"$out\"\n",
-      "  echo \"::error::WALL GONE ", entry.entry as String, " — this program MUST NOT COMPILE and it compiled. What it guards: ", guards as String, "\"\n",
-      "  fail=1\n",
-      "else\n",
-      "  probe_drift=0\n",
-      fold(expected_refusals, init: "", f: fn(acc, c) {
-        join([acc, must_not_compile_refusal_check(entry: entry.entry, cause: c)], "")
-      }),
-      "  if [ \"$probe_drift\" = \"0\" ]; then\n",
-      "    echo \"refusal probe held  ", entry.entry as String, " — refused for exactly the walls it names\"\n",
-      "  fi\n",
-      "fi\n"
-    ], "")
+    Enforced => []
+    KnownRed { reason, expected_causes, restoration_trigger } => []
+    MustNotCompile { guards, expected_refusals, dissolution } => [
+      bash_build_if_else(
+        cond: roster_capture_run(overlay: overlay, source_roots: source_roots, name: "out", entry: entry.entry, function: entry.function),
+        then_body: roster_statements(stmts: [
+          roster_echo_variable(name: "out"),
+          roster_echo(text: join([
+            "::error::WALL GONE ", entry.entry as String, " — this program MUST NOT COMPILE and it compiled. What it guards: ", guards as String,
+          ], "")),
+          roster_flag(name: "fail", value: "1"),
+        ]),
+        else_body: roster_statements(stmts: concat(
+          [roster_flag(name: "probe_drift", value: "0")],
+          concat(
+            list_map(xs: expected_refusals, f: cause => roster_refusal_check(entry: entry.entry, cause: cause)),
+            [
+              bash_build_if(
+                cond: roster_equals_zero(name: "probe_drift"),
+                body: roster_statements(stmts: [
+                  roster_echo(text: join([
+                    "refusal probe held  ", entry.entry as String, " — refused for exactly the walls it names",
+                  ], "")),
+                ])
+              ),
+            ]
+          )
+        ))
+      )
+    ]
   }
 }
 
 // A PROBE THAT REFUSES FOR THE WRONG REASON IS NOT EVIDENCE. Any nonzero exit satisfies a bare
 // expecting-red check - a typo in an import refuses too - so the diagnostic is compared and a missing
 // declared refusal fails the run instead of passing quietly on an exit code.
-fn must_not_compile_refusal_check(entry: NonEmptyStr, cause: NonEmptyStr) -> String {
-  join([
-    "  if ! printf '%s\\n' \"$out\" | grep -qF -- \"", cause as String, "\"; then\n",
-    "    echo \"::error::PROBE DRIFT ", entry as String,
-    " — refused, but NOT for its declared cause: ", cause as String,
-    ". A probe that refuses for a different reason is measuring a different wall.\"\n",
-    "    fail=1\n",
-    "    probe_drift=1\n",
-    "  fi\n"
-  ], "")
+fn roster_refusal_check(entry: NonEmptyStr, cause: NonEmptyStr) -> Node {
+  bash_build_if(
+    cond: roster_cause_absent(cause: cause),
+    body: roster_statements(stmts: [
+      roster_echo(text: join([
+        "::error::PROBE DRIFT ", entry as String,
+        " — refused, but NOT for its declared cause: ", cause as String,
+        ". A probe that refuses for a different reason is measuring a different wall.",
+      ], "")),
+      roster_flag(name: "fail", value: "1"),
+      roster_flag(name: "probe_drift", value: "1"),
+    ])
+  )
 }
 
-// THE BLOCKS, folded into the run script. Each non-enforced row stays an explicitly emitted line rather
-// than a data-driven loop over a heredoc: a piped while-read loop loses `fail=1` in its subshell, and an
-// indented heredoc terminator breaks the YAML scalar - both turn a failing witness green, which is the
-// failure mode this whole module exists to prevent.
-fn known_red_block(entries: List<RosterEntry>, entry_prefix: NonEmptyStr, roster_authority: NonEmptyStr, scaffold_banner: NonEmptyStr) -> String {
-  join([
-    "echo \"", roster_authority as String, ": ", scaffold_banner as String, "\"\n",
-    fold(known_red_entries(entries: entries), init: "", f: fn(acc, w) {
-      join([acc, known_red_run_line(entry: w, entry_prefix: entry_prefix, roster_authority: roster_authority)], "")
-    })
-  ], "")
+// THE ENFORCED VERDICT, printed as one line. Its wording is the repository's own claim - "every enforced
+// witness, in one process" is a statement about how the gate is run, not a generic success string - so
+// both banners are rows on the profile (gunbc.ci.repository_ci_profile RosterAggregate).
+fn roster_enforced_verdict(aggregate: RosterAggregate, overlay: OverlayIngest, source_roots: List<String>) -> List<Node> {
+  [
+    bash_build_if_else(
+      cond: roster_capture_run(overlay: overlay, source_roots: source_roots, name: "out", entry: aggregate.invocation.entry, function: aggregate.invocation.function),
+      then_body: roster_statements(stmts: [
+        roster_echo_variable(name: "out"),
+        roster_echo(text: join(["PASS  ", aggregate.pass_banner, " — ", aggregate.invocation.entry as String], "")),
+      ]),
+      else_body: roster_statements(stmts: [
+        roster_echo_variable(name: "out"),
+        roster_echo(text: join(["::error::", aggregate.fail_banner as String], "")),
+        roster_flag(name: "fail", value: "1"),
+      ])
+    )
+  ]
 }
 
-fn must_not_compile_block(entries: List<RosterEntry>, entry_prefix: NonEmptyStr) -> String {
-  fold(must_not_compile_entries(entries: entries), init: "", f: fn(acc, w) {
-    join([acc, must_not_compile_run_line(entry: w, entry_prefix: entry_prefix)], "")
-  })
+// THE BLOCKS, as statements rather than a script body. Each non-enforced row stays an explicitly emitted
+// statement rather than a data-driven loop over a heredoc: a piped while-read loop loses `fail=1` in its
+// subshell, and an indented heredoc terminator breaks the YAML scalar - both turn a failing witness green,
+// which is the failure mode this whole module exists to prevent.
+fn roster_known_red_statements(entries: List<RosterEntry>, overlay: OverlayIngest, source_roots: List<String>, roster_authority: NonEmptyStr, scaffold_banner: NonEmptyStr) -> List<Node> {
+  concat(
+    [roster_echo(text: join([roster_authority as String, ": ", scaffold_banner as String], ""))],
+    list_flat_map(
+      xs: known_red_entries(entries: entries),
+      f: row => roster_known_red_verdict(entry: row, overlay: overlay, source_roots: source_roots, roster_authority: roster_authority)
+    )
+  )
+}
+
+fn roster_must_not_compile_statements(entries: List<RosterEntry>, overlay: OverlayIngest, source_roots: List<String>) -> List<Node> {
+  list_flat_map(
+    xs: must_not_compile_entries(entries: entries),
+    f: row => roster_must_not_compile_verdict(entry: row, overlay: overlay, source_roots: source_roots)
+  )
 }
