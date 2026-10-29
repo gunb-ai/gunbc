@@ -15,6 +15,9 @@ module test.claim.roadmap.dispatch_replay_wet_witness
 // replay that commits must go red). It also carries the two refusal controls (a worktree at another base; a
 // recording ref moved to a commit with another tree) which must exit with the refusal code and leave HEAD and the
 // tree untouched. Mutations: make replay_worker_apply skip ResetWorktreeToTree (tree equality goes red); make it
+// skip RemoveUntrackedFromWorktree (the planted-stray control goes red: the belt's commit stops equaling the
+// recorded tree because a stray from the worktree's previous occupant rides along, and the `??` assertion goes red);
+// make it
 // mint a commit -- restore the git.Plumbing.CommitIndex step this repair removed (the identity control goes red,
 // because the dedicated account holds no identity, and HEAD-still-the-base goes red); drop the base comparison in
 // recording_replay_admission (the other-base control goes red); drop the ref-to-tree comparison in
@@ -61,6 +64,18 @@ fn git_out(dir: String, args: List<String>) -> String {
   }
 }
 
+// A DIRECTORY THE FIXTURE NEEDS BEFORE IT CAN PLANT A FILE IN IT. `Filesystem.Write` does NOT create parent
+// directories (measured: writing `<worktree>/stale-dir/nested.txt` into a worktree that has no `stale-dir` returns
+// success=false), so an untracked DIRECTORY -- the shape `git clean` needs `-d` for -- has to be made with mkdir,
+// through the same host-exec transport the witness already uses for git.
+fn mkdir_p(path: String) -> Bool {
+  match belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["-p", path]), workdir: "/") {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
 fn git_ok(dir: String, args: List<String>) -> Bool {
   match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir) {
     ExecOk { stdout: _ } => true
@@ -69,8 +84,13 @@ fn git_ok(dir: String, args: List<String>) -> Bool {
   }
 }
 
+// THE FIXTURE'S OWN COMMITS, with the identity spelled at the call site the way the belt spells its own
+// (belt_commit_staged's identity comes from its own environment, never from the repository's config). Command-line
+// `-c` is git's highest precedence, so these commits succeed whatever the repository says -- which is what lets every
+// fixture below hold the dedicated account's posture (NO identity in the repository at all) from its first commit on.
 fn commit_all(dir: String, message: String) -> Bool {
-  git_ok(dir: dir, args: ["add", "-A"]) && git_ok(dir: dir, args: ["commit", "-q", "-m", message])
+  git_ok(dir: dir, args: concat(witness_identity_config_pairs, ["add", "-A"]))
+    && git_ok(dir: dir, args: concat(witness_identity_config_pairs, ["commit", "-q", "-m", message]))
 }
 
 fn exit_record(status: Int) -> AttemptExitRecord {
@@ -122,6 +142,20 @@ data recording_recorded_object_type: String = "tree"
 
 data belt_identity_config_pairs: List<String> = ["-c", "user.name=gunbc-belt", "-c", "user.email=gunbc-belt@invalid"]
 
+// THE WITNESS'S OWN COMMITTING IDENTITY, for commits the fixture makes about itself (a base, a candidate). It is
+// spelled here and nowhere in the repository config, so the repository can hold the dedicated account's posture.
+data witness_identity_config_pairs: List<String> = ["-c", "user.name=gunbc-witness", "-c", "user.email=gunbc-witness@invalid"]
+
+// THE DEDICATED ACCOUNT'S POSTURE, pinned at `init` before anything is committed: an EMPTY local name and email.
+// UNSET is not this posture -- with nothing configured git auto-detects an identity from the OS user and a commit
+// SUCCEEDS, which is exactly how a witness stayed green while the lab died at "Author identity unknown" (the lab run
+// of 2026-10-26). An empty value is what git refuses on, whatever the invoking account's ~/.gitconfig holds, so this
+// claim says the same thing in a container that has a global identity and on a lab account that has none.
+fn account_holds_no_identity(dir: String) -> Bool {
+  git_ok(dir: dir, args: ["config", "--local", "user.name", ""])
+    && git_ok(dir: dir, args: ["config", "--local", "user.email", ""])
+}
+
 // THE BELT'S COMMIT OVER THE ATTEMPT WORKTREE, run the way belt_commit_staged runs it, so the claim is about the
 // state the replay leaves and not about a step the replay does not take.
 fn belt_mints_commit_from(dir: String, message: String) -> Bool {
@@ -131,8 +165,7 @@ fn belt_mints_commit_from(dir: String, message: String) -> Bool {
 
 fn replay_over(repo: String, work: String) -> Bool {
   let built = git_ok(dir: repo, args: ["init", "-q"])
-    && git_ok(dir: repo, args: ["config", "user.name", "witness"])
-    && git_ok(dir: repo, args: ["config", "user.email", "witness@invalid"])
+    && account_holds_no_identity(dir: repo)
     && Filesystem.Write(path: join([repo, "/a.txt"], ""), content: "one").success
     && commit_all(dir: repo, message: "base")
   let base = git_out(dir: repo, args: ["rev-parse", "HEAD"])
@@ -153,19 +186,28 @@ fn replay_over(repo: String, work: String) -> Bool {
       let added = git_ok(dir: repo, args: ["worktree", "add", "-q", "-b", "attempt/replay", wt, base])
         && git_ok(dir: repo, args: ["worktree", "add", "-q", "--detach", wt_other, result])
         && git_ok(dir: repo, args: ["worktree", "add", "-q", "--detach", wt_moved, base])
+      // THE NODE WAS NOT ALWAYS THIS ATTEMPT'S. A dispatch runs on a node whose worktree may still hold what the
+      // attempt before it left: files git has never heard of. They are not in the recorded tree, and the belt
+      // commits with `git add -A`, so anything that survives the replay is committed as though the recorded worker
+      // had written it. Both shapes are left behind -- a loose stray and a directory of them -- because `git clean`
+      // without `-d` leaves the directory standing, and `read-tree -u --reset` reports success beside either.
+      let strays = mkdir_p(path: join([wt, "/stale-dir"], ""))
+        && Filesystem.Write(path: join([wt, "/stray-from-a-previous-attempt.txt"], ""), content: "stale").success
+        && Filesystem.Write(path: join([wt, "/stale-dir/nested-from-before.txt"], ""), content: "stale").success
       // THE DEDICATED ACCOUNT'S POSTURE, PINNED BEFORE ANY REPLAY RUNS. The worker unit runs as gunbc-worker under
-      // WorkerDedicatedAccount, and that account holds NO git identity -- which is what the lab hit on 2026-10-26,
-      // where the replay attempt died at exit 78 with "committing the recorded tree as the worker failed: Author
-      // identity unknown". A throwaway repository whose identity is merely UNSET does not model that account: git
-      // then auto-detects one from the OS user and a commit SUCCEEDS, which is why the pre-repair witness stayed
-      // green on its configured identity. An empty local user.name is the posture that refuses the way the account
-      // refuses (measured on the runner: git commit exits 128, "Author identity unknown"), and config is shared by
-      // every worktree of the repository, so no replay below can inherit an identity.
-      let identity_blanked = git_ok(dir: repo, args: ["config", "--local", "user.name", ""])
-      let other_exit = exit_code_of(exit: replay_worker_cli(worktree: wt_other, repo_root: repo, recording_id: recording_id_of(ref_name: ref_name)))
+let other_exit = exit_code_of(exit: replay_worker_cli(worktree: wt_other, repo_root: repo, recording_id: recording_id_of(ref_name: ref_name)))
       let other_untouched = git_out(dir: wt_other, args: ["rev-parse", "HEAD"]) == result
         && git_out(dir: wt_other, args: ["status", "--porcelain"]) == ""
-      let replay_exit = exit_code_of(exit: replay_worker_cli(worktree: wt, repo_root: repo, recording_id: recording_id_of(ref_name: ref_name)))
+      // THE STRAYS ARE A PRECONDITION OF THE REPLAY, spelled as a DATA dependency and not as a line order: a binding
+      // is forced where it is first USED, so a `let` above another `let` does not make it run first. Without the
+      // `if strays`, the writes could land after the replay had already cleaned, and the claim would be asserting
+      // against a worktree that was never dirty. (Measured the hard way: with the plain call, the stray writes ran
+      // after the replay and the claim failed on the leftover they re-planted.)
+      let replay_exit = if strays {
+        exit_code_of(exit: replay_worker_cli(worktree: wt, repo_root: repo, recording_id: recording_id_of(ref_name: ref_name)))
+      } else {
+        1
+      }
       // WHAT THE REPLAY LEAVES BEHIND IS THE RECORDED ATTEMPT'S END STATE, NOT A COMMIT. The recorded worker ended
       // with its result UNCOMMITTED (attempt a9, 2026-10-26: commits-since-base 0, dirty worktree) and the belt made
       // the commit, so HEAD must still be the base, the attempt branch must still be the base, and the worktree must
@@ -174,6 +216,15 @@ fn replay_over(repo: String, work: String) -> Bool {
       let head_still_base = git_out(dir: wt, args: ["rev-parse", "HEAD"]) == base
       let branch_still_base = git_out(dir: repo, args: ["rev-parse", "attempt/replay"]) == base
       let worktree_dirty = git_out(dir: wt, args: ["status", "--porcelain"]) != ""
+      // NOTHING THE RECORDED WORKER DID NOT HAVE SURVIVES: a `??` line still in `git status` here would mean the
+      // belt is about to commit a stray as part of the replayed result.
+      // FORCED AFTER THE REPLAY BY THE SAME MECHANISM: depending on `replay_exit` makes the status read observe the
+      // state the replay left, not the state before it.
+      let nothing_untracked_left = if replay_exit == 3 {
+        !string_contains(s: git_out(dir: wt, args: ["status", "--porcelain"]), pattern: "??")
+      } else {
+        false
+      }
       let replayed_tree = git_out(dir: wt, args: ["write-tree"])
       // THE BELT'S OWN COMMIT OVER THAT WORKTREE: what every stage downstream of the worker actually reads.
       let belt_committed = belt_mints_commit_from(dir: wt, message: "dispatch checkpoint of the replayed attempt")
@@ -222,9 +273,13 @@ fn replay_over(repo: String, work: String) -> Bool {
           }
         RecordingCaptured { id: _, ref_name: _ } => false
       }
+      // THE ORDER OF THIS CONJUNCTION IS THE ORDER THE OPS RUN IN: a binding is forced where it is first used, so a
+      // step that must observe the replay sits AFTER `replay_exit`, and a step that must be true BEFORE it (planting
+      // the strays) sits before. Reordering these lines changes what the git commands see, not just how they read.
       added
-        && identity_blanked
+        && strays
         && replay_exit == 3
+        && nothing_untracked_left
         && head_still_base
         && branch_still_base
         && worktree_dirty
@@ -300,8 +355,7 @@ fn capture_over(root: String) -> Bool {
   let instance = capture_instance(root: root)
   let repo = instance.repo_root as String
   let built = git_ok(dir: root, args: ["init", "-q", repo])
-    && git_ok(dir: repo, args: ["config", "user.name", "witness"])
-    && git_ok(dir: repo, args: ["config", "user.email", "witness@invalid"])
+    && account_holds_no_identity(dir: repo)
     && Filesystem.Write(path: join([repo, "/a.txt"], ""), content: "one").success
     && commit_all(dir: repo, message: "base")
   let base = git_out(dir: repo, args: ["rev-parse", "HEAD"])
@@ -391,8 +445,7 @@ fn recording_id_text_with_provenance(text: String, word: String) -> String {
 
 fn prepared_over(repo: String, work: String) -> Bool {
   let built = git_ok(dir: repo, args: ["init", "-q"])
-    && git_ok(dir: repo, args: ["config", "user.name", "witness"])
-    && git_ok(dir: repo, args: ["config", "user.email", "witness@invalid"])
+    && account_holds_no_identity(dir: repo)
     && Filesystem.Write(path: join([repo, "/a.txt"], ""), content: "one").success
     && commit_all(dir: repo, message: "base")
   let base = git_out(dir: repo, args: ["rev-parse", "HEAD"])
@@ -402,9 +455,7 @@ fn prepared_over(repo: String, work: String) -> Bool {
     && commit_all(dir: repo, message: "the candidate the prepared recording carries")
   let result = git_out(dir: repo, args: ["rev-parse", "HEAD"])
   let result_tree = git_out(dir: repo, args: ["rev-parse", concat(result, recording_peel_to_tree_suffix)])
-  // The account that replays has no identity, pinned before anything runs (see the captured claim).
-  let identity_blanked = git_ok(dir: repo, args: ["config", "--local", "user.name", ""])
-  if !staged || !identity_blanked {
+if !staged {
     false
   } else {
     match recording_prepare(repo_root: repo, base_sha: base, result_commit: result, exit_status: 3) {
@@ -414,6 +465,11 @@ fn prepared_over(repo: String, work: String) -> Bool {
       let wt_other_word = join([work, "/captured-word"], "")
       let added = git_ok(dir: repo, args: ["worktree", "add", "-q", "-b", "attempt/prepared", wt, base])
         && git_ok(dir: repo, args: ["worktree", "add", "-q", "--detach", wt_other_word, base])
+      // THE SAME LEFTOVER STATE, on the prepared arm's worktree: the exactness obligation is the route's, not one
+      // provenance arm's.
+      let strays = mkdir_p(path: join([wt, "/stale-dir"], ""))
+        && Filesystem.Write(path: join([wt, "/stray-from-a-previous-attempt.txt"], ""), content: "stale").success
+        && Filesystem.Write(path: join([wt, "/stale-dir/nested-from-before.txt"], ""), content: "stale").success
 
       // NAMESPACE: the ref is under the prepared prefix and nothing exists under the captured one.
       // The ref exists under the prepared prefix, its OBJECT IS THE RECORDED TREE (same object type as the captured
@@ -429,10 +485,23 @@ fn prepared_over(repo: String, work: String) -> Bool {
         && git_out(dir: repo, args: ["for-each-ref", "--count=1", recording_ref_prefix]) == ""
       let prepared_id = recording_id_of(ref_name: ref_name)
       // THE PREPARED END STATE REPLAYS THROUGH THE SAME ROUTE: same tree, same exit, still uncommitted.
-      let replay_exit = exit_code_of(exit: replay_worker_cli(worktree: wt, repo_root: repo, recording_id: prepared_id))
+      let replay_exit = if strays {
+        exit_code_of(exit: replay_worker_cli(worktree: wt, repo_root: repo, recording_id: prepared_id))
+      } else {
+        1
+      }
       let head_still_base = git_out(dir: wt, args: ["rev-parse", "HEAD"]) == base
       let branch_still_base = git_out(dir: repo, args: ["rev-parse", "attempt/prepared"]) == base
       let worktree_dirty = git_out(dir: wt, args: ["status", "--porcelain"]) != ""
+      // NOTHING THE RECORDED WORKER DID NOT HAVE SURVIVES: a `??` line still in `git status` here would mean the
+      // belt is about to commit a stray as part of the replayed result.
+      // FORCED AFTER THE REPLAY BY THE SAME MECHANISM: depending on `replay_exit` makes the status read observe the
+      // state the replay left, not the state before it.
+      let nothing_untracked_left = if replay_exit == 3 {
+        !string_contains(s: git_out(dir: wt, args: ["status", "--porcelain"]), pattern: "??")
+      } else {
+        false
+      }
       let replayed_tree = git_out(dir: wt, args: ["write-tree"])
       let belt_committed = belt_mints_commit_from(dir: wt, message: "dispatch checkpoint of the prepared replay")
       let belt_tree = git_out(dir: wt, args: ["rev-parse", concat(git_out(dir: wt, args: ["rev-parse", "HEAD"]), recording_peel_to_tree_suffix)])
@@ -456,9 +525,12 @@ fn prepared_over(repo: String, work: String) -> Bool {
         RecordingCaptureRefused { cause } => match cause { RecordingCaptureExitUnreplayable { cause: end_cause } => match end_cause { RecordedEndCollidesWithReplayRefusal { status } => status == replay_refusal_exit_code  _ => false }  _ => false }
         RecordingCaptured { id: _, ref_name: _ } => false
       }
+      // SAME DISCIPLINE AS THE CAPTURED ARM: the conjunction's order is the execution order (see the note there).
       added
+        && strays
         && in_prepared_namespace
         && replay_exit == 3
+        && nothing_untracked_left
         && head_still_base
         && branch_still_base
         && worktree_dirty

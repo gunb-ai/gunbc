@@ -67,11 +67,24 @@ fn replay_worker_admit(worktree: String, id: RecordingId) -> ProcessExit {
   }
 }
 
+// THE WORKTREE IS FORCED IN TWO STEPS, AND BOTH MUST SUCCEED OR NOTHING IS CLAIMED. read-tree -u --reset makes the
+// TRACKED content equal the recorded tree and says nothing about files the index has never heard of -- measured:
+// it exits 0 beside a `?? junk.txt` and a `?? sub/`. Those strays are exactly what a REUSED node worktree carries
+// from whatever attempt ran on that node before this one (a9's node had ended an attempt that left its worktree
+// dirty), and the belt commits with `git add -A`, so a surviving stray would land in the attempt's commit: the
+// recorded end state, plus files the recorded worker never had. That is an undeclared input deciding the outcome
+// (DESIGN section 5), so the untracked files go first, before the tracked content is forced, and either failure
+// exits 78 naming itself.
 fn replay_worker_apply(address: GitRepositoryAddress, id: RecordingId) -> ProcessExit {
-  let reset = git.Plumbing.ResetWorktreeToTree(address: address, treeish: recording_object_hex(oid: id.result_tree))
-  if !(reset.exit_code == 0) {
-    replay_refused(reason: join(["forcing the worktree to the recorded tree failed: ", trim(s: reset.stderr)], ""))
+  let cleared = git.Plumbing.RemoveUntrackedFromWorktree(address: address)
+  if !(cleared.exit_code == 0) {
+    replay_refused(reason: join(["dropping the worktree's untracked files failed: ", trim(s: cleared.stderr)], ""))
   } else {
-    replay_recorded_exit(id: id)
+    let reset = git.Plumbing.ResetWorktreeToTree(address: address, treeish: recording_object_hex(oid: id.result_tree))
+    if !(reset.exit_code == 0) {
+      replay_refused(reason: join(["forcing the worktree to the recorded tree failed: ", trim(s: reset.stderr)], ""))
+    } else {
+      replay_recorded_exit(id: id)
+    }
   }
 }

@@ -295,6 +295,23 @@ service git.Plumbing {
     transport shell { argv: ["git", git_repository_address_argv(address: address), "read-tree", "-u", "--reset", "{treeish}"] }
   }
 
+  // DROP WHAT THE INDEX DOES NOT KNOW ABOUT: `git clean -f -d`, which removes untracked files and untracked
+  // DIRECTORIES and nothing else. The flags are fixed rather than passed in, so no caller can widen this to `-x`
+  // (which would delete the ignored build caches that make a real attempt's next run cheap) or narrow it to `-f`
+  // alone (which leaves a directory of strays standing, measured: `read-tree -u --reset` reports success beside
+  // `?? junk.txt` and `?? sub/`). Paired with ResetWorktreeToTree by its consumers: that operation makes the
+  // TRACKED content equal the tree and is silent about untracked files, so forcing a worktree to EXACTLY a tree
+  // needs both. Writes no objects, so it needs no git identity.
+  operation RemoveUntrackedFromWorktree {
+    requires opaque
+    input { address: GitRepositoryAddress }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "clean", "-f", "-d"] }
+  }
+
   operation CommitTree {
     requires opaque
     input { address: GitRepositoryAddress, tree: String, parents: GitCommitParents, message: String }
