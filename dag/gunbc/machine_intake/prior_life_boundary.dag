@@ -871,26 +871,97 @@ type DryPriorLifeStep {
 // incomplete and the unit never enters the fleet) WITHOUT being a plain refusal (which says the boundary
 // failed; this says it cannot yet be decided and names the decision that would decide it).
 //
-// WHY ENTRIES-PRESENT-BUT-NONE-BEFORE-THE-WRITE IS ALSO INDETERMINATE: an archive holding entries all
-// dated at or after the write instant is exactly what an erased-then-refilled history looks like; it
+// WHY ENTRIES-PRESENT-BUT-NONE-BEFORE-THE-WRITE IS ALSO INDETERMINATE: an archive holding entries none of
+// which this run held before the write is exactly what an erased-then-refilled history looks like; it
 // cannot establish that any entry predates the write, which is the whole obligation. So both non-present
-// arms reach the operator. Only an entry the reader grounded strictly before the write establishes.
+// arms reach the operator. Only an entry the run's OWN pre-write capture held establishes.
 //
-// (rung: pure classification over a standing the reader grounds. The discriminating RED is
+// (rung: pure derivation over two sealed archives this run holds. The discriminating RED is
 // w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write, and its positive
 // control w_a_pre_write_entry_across_the_forced_write_establishes_normally, both in
 // test.claim.machine_intake.machine_intake_prior_life_boundary_witness.)
 
-// WHAT THE POST-WRITE ARCHIVE SHOWS RELATIVE TO THE WRITE INSTANT. An entry's own time is a vendor-served
-// fact, so the comparison lives keyed by firmware in the reader (extdeps.bmc.*) and what the reader read
-// is a receipt here; the dry model supplies the standing the same way it supplies the SEL archive and the
-// virtual-media census. An entry whose time the reader cannot compare is NOT a pre-write entry: it falls
-// into EntriesPresentNoneBeforeWrite, which fails closed toward the operator and never toward a silent
-// establish (§5).
+// AN ENTRY OF AN ARCHIVE, KEPT AS THE VENDOR SERVED IT. An entry's identity is the content the archive
+// captured for it: a SEL record's own served fields, a log entry's (Id, Severity, Message) under its log
+// service's Id, an account event's (Id, Severity, Message). No string stands in for a reference (§2), and
+// no caller supplies one: the standing below is DERIVED inside this module from the two sealed archives,
+// because a caller that could name a pre-write entry could name one over an archive whose history the
+// write erased -- the exact run the third outcome exists to stop (§3, §5: unwritable, not caught).
+// WHY NOT A TIMESTAMP COMPARISON, as an outside review proposed: an entry's served time is the
+// CONTROLLER's clock, which orders nothing (extdeps.bmc.redfish_telemetry, on RedfishLogEntry.Created:
+// "Created is the BMC's clock and orders nothing") and which this project has observed wrong at the
+// factory; comparing it to an observer-side write instant would read an ordering out of a fact the vendor
+// module itself declares unordered (§5, no fabricated defaults). The ONE grounded ordering fact this layer
+// holds is whether THIS RUN captured the entry BEFORE the write. Consumers: PostWriteEntryStanding and
+// prior_life_pre_write_standing below.
+type ArchivedEntryIdentity
+  = SelEntryIdentity { record: BmcSelRecord }
+  | LogServiceEntryIdentity { service: NonEmptyStr, entry: RedfishLogEntry }
+  | AccountEventEntryIdentity { entry: RedfishLogEntry }
+
+// SEL records are modeled, not wire-served, so they carry no OData Id: their identity is their content.
+fn bmc_sel_record_eq(a: BmcSelRecord, b: BmcSelRecord) -> Bool {
+  ((a.id_hex as String) == (b.id_hex as String)) && ((a.date as String) == (b.date as String)) && ((a.time as String) == (b.time as String)) && ((a.sensor as String) == (b.sensor as String)) && ((a.event as String) == (b.event as String)) && ((a.state as String) == (b.state as String))
+}
+
+// Two Redfish log entries are the same entry when the service served the same (Id, Severity, Message).
+fn redfish_log_entry_eq(a: RedfishLogEntry, b: RedfishLogEntry) -> Bool {
+  a.id == b.id && (a.severity as String) == (b.severity as String) && (a.message as String) == (b.message as String)
+}
+
+fn archived_entry_identity_eq(a: ArchivedEntryIdentity, b: ArchivedEntryIdentity) -> Bool {
+  match a {
+    SelEntryIdentity { record: ra } => match b { SelEntryIdentity { record: rb } => bmc_sel_record_eq(a: ra, b: rb)  _ => false }
+    LogServiceEntryIdentity { service: sa, entry: ea } => match b { LogServiceEntryIdentity { service: sb, entry: eb } => (sa as String) == (sb as String) && redfish_log_entry_eq(a: ea, b: eb)  _ => false }
+    AccountEventEntryIdentity { entry: ea } => match b { AccountEventEntryIdentity { entry: eb } => redfish_log_entry_eq(a: ea, b: eb)  _ => false }
+  }
+}
+
+// THE ENTRIES AN ARCHIVE CAPTURED, read off its own sealed carrier captures: the SEL records, every log
+// service's entries under that service's Id, and the account events. A captured gap contributes nothing.
+// Consumers: prior_life_pre_write_standing below and, through it, the forced-write archive arm.
+fn archived_entry_identities(captures: List<CarrierCapture>) -> List<ArchivedEntryIdentity> {
+  fold(captures, init: [], f: fn(acc, c) {
+    match c {
+      CarrierGap { carrier: _, cause: _ } => acc
+      CarrierCaptured { carrier: _, payload: p } => match p {
+        SelPayload { records: rs } => concat(acc, map(rs, r => SelEntryIdentity { record: r }))
+        LogServicesPayload { services: ss } => concat(acc, fold(ss, init: [], f: fn(inner, s) { concat(inner, map(s.entries, e => LogServiceEntryIdentity { service: s.id, entry: e })) }))
+        AccountEventsPayload { entries: es } => concat(acc, map(es, e => AccountEventEntryIdentity { entry: e }))
+        BmcClockPayload { date_time: _ } => acc
+        BootOverridePayload { boot_override: _ } => acc
+        VirtualMediaPayload { members: _ } => acc
+        PowerStatePayload { power: _ } => acc
+        SensorSnapshotPayload { points: _ } => acc
+      }
+    }
+  })
+}
+
+// WHAT THE POST-WRITE ARCHIVE SHOWS AGAINST THE RUN'S OWN PRE-WRITE CAPTURE -- derived inside this module
+// from the two sealed archives, never supplied. Consumers: dry_archive_prior_life_across_forced_write,
+// which re-decides only the Established arm with it, and the third-outcome verdict, which carries it to
+// the operator verbatim so the decision arrives named rather than as a bare no.
 type PostWriteEntryStanding
-  = PreWriteEntryPresent { entry_receipt: NonEmptyStr }
+  = PreWriteEntryPresent { entry: ArchivedEntryIdentity }
   | EntriesPresentNoneBeforeWrite { entries_seen: Int }
   | NoPriorLifeEntries {}
+
+// THE DERIVATION. An entry of the post-write archive counts as pre-write when the SAME served content --
+// not a timestamp, whose source orders nothing -- appears in the archive this run captured before the
+// write. No pre-write capture grounds NOTHING: that is the 03.22.00 first-boot case, where the
+// authenticated read answers the forced 403 until the write, and a factory-fresh controller and an
+// erased one read identically from here; so neither is claimed, and the operator is asked (§5 fail
+// closed, and item 6: not a pass, not a plain refusal). Consumer: dry_archive_prior_life_across_forced_write.
+fn prior_life_pre_write_standing(post: List<ArchivedEntryIdentity>, pre: List<ArchivedEntryIdentity>) -> PostWriteEntryStanding {
+  match post |> filter(e => 0 < length(xs: pre |> filter(p => archived_entry_identity_eq(a: e, b: p)))) |> first() {
+    Present { value: e } => PreWriteEntryPresent { entry: e }
+    Absent => match post |> first() {
+      Present { value: _ } => EntriesPresentNoneBeforeWrite { entries_seen: length(xs: post) }
+      Absent => NoPriorLifeEntries {}
+    }
+  }
+}
 
 // THE TWO RESOLUTIONS THE OPERATOR MUST CHOOSE BETWEEN, named on the verdict so the run says WHICH
 // decision it needs rather than failing with a bare no (item 6).
@@ -899,13 +970,21 @@ type FactoryFreshOrQuarantine
   | QuarantineUnit { quarantine_reason: NonEmptyStr }
 
 // THE RUN'S FORCED-WRITE CONTEXT, supplied by the arrival step ONLY when the run took the
-// ForcedFirstRotationPrecedesPriorLife row: the instant THIS run's forced root write returned, and what
-// the post-write archive shows against it. It is bound to the run by the caller -- the arrival step
-// builds it only from the write that admit_forced_first_rotation already admitted for THIS run,
-// controller and build -- so a context for another run cannot reach the archive arm.
+// ForcedFirstRotationPrecedesPriorLife row: the instant THIS run's forced root write returned (the
+// obligation instant the operator decision is about; its single authority is the step that performed the
+// write), and the archive THIS RUN read before that write -- Absent when the pre-write read was refused,
+// which on a forced-change build is the rule, not the exception. The run supplies the SEALED ARCHIVES it
+// holds, never a classification of them: the standing is derived from their content inside the boundary.
 type PriorLifeForcedWriteContext {
   write_instant: EpochMs
-  standing: PostWriteEntryStanding
+  pre_write_archive: PriorLifeArchive?
+}
+
+// A PRE-WRITE CAPTURE GROUNDS THIS RUN ONLY IF IT IS THIS RUN'S: captures sealed for another subject are
+// no pre-write evidence at all (they fall to nothing-grounds, the same as an absent capture). Consumer:
+// dry_archive_prior_life_across_forced_write.
+fn forced_pre_capture_is_of_subject(archive: PriorLifeArchive, subject: MachineIntakeSubject) -> Bool {
+  ((archive.subject.subject.unit_key as NonEmptyStr) == (subject.subject.unit_key as NonEmptyStr)) && ((archive.subject.attempt_id as NonEmptyStr) == (subject.attempt_id as NonEmptyStr))
 }
 
 // THE TYPED THIRD OUTCOME. Not a refusal, not a pass: it stops fleet admission and names the operator
@@ -918,17 +997,6 @@ type PriorLifeIndeterminateAcrossForcedWrite sole_constructor {
   standing: PostWriteEntryStanding
   options: List<FactoryFreshOrQuarantine>
   question: NonEmptyStr
-}
-
-// ONLY AN ENTRY THE READER GROUNDED STRICTLY BEFORE THE WRITE ESTABLISHES PRE-WRITE HISTORY. The other two
-// arms -- entries present but none before the write, and no entries at all -- are the two faces of the
-// ambiguity and reach the operator.
-fn pre_write_history_present(standing: PostWriteEntryStanding) -> Bool {
-  match standing {
-    PreWriteEntryPresent { entry_receipt: _ } => true
-    EntriesPresentNoneBeforeWrite { entries_seen: _ } => false
-    NoPriorLifeEntries {} => false
-  }
 }
 
 fn prior_life_indeterminate_across_forced_write(
@@ -950,24 +1018,26 @@ fn prior_life_indeterminate_across_forced_write(
     standing: standing,
     options: [
       ConfirmFactoryFresh { confirm_receipt: "confirm the controller was factory-fresh before the forced write (its prior life was empty before the write, not erased by it)" },
-      QuarantineUnit { quarantine_reason: "the controller held prior-life entries none of which is grounded before the forced write; quarantine until their fate is established" },
+      QuarantineUnit { quarantine_reason: "the controller held prior-life entries none of which this run held in a pre-write capture; quarantine until their fate is established" },
     ],
-    question: "the post-write archive has no entry grounded before the forced root write; is this controller factory-fresh, or did the write erase its prior life?" as NonEmptyStr,
+    question: "the post-write archive has no entry this run held in a pre-write capture; is this controller factory-fresh, or did the forced root write erase its prior life?" as NonEmptyStr,
   }
 }
 
 // THE ARCHIVE ARM FOR A RUN THAT TOOK THE FORCED-FIRST-ROTATION ROW. The archive is read AFTER the
 // admitted forced root write, so an established outcome is trustworthy only if the post-write archive
-// still grounds an entry from before the write instant. If it does, the establishment stands UNCHANGED --
-// the archive arm is run in full and its sealed receipt is returned as any other unit's, never re-minted
-// here. If it grounds no such entry -- whether the controller is genuinely factory-fresh (no entries at
-// all) or the write erased its history -- the run takes the indeterminate third outcome instead of being
-// silently established. A refusal or an incomplete from the archive is returned UNTOUCHED: a refusal is
-// still a refusal and an incomplete is still an incomplete; this arm only re-decides the ESTABLISHED arm,
-// the one place where fresh and erased are indistinguishable from this layer. With `across` Absent (every
-// non-forced unit) the result is identical to dry_archive_prior_life.
+// still grounds an entry from before the write. If it does, the establishment stands UNCHANGED -- the
+// archive arm is run in full and its sealed receipt is returned as any other unit's, never re-minted here.
+// If it grounds no such entry -- whether the controller is genuinely factory-fresh (no entries at all) or
+// the write erased its history -- the run takes the indeterminate third outcome instead of being silently
+// established. The standing is DERIVED HERE from the run's own two sealed archives: a caller cannot claim
+// a pre-write entry the archives do not hold, nor hide one they do. A refusal or an incomplete from the
+// archive is returned UNTOUCHED: a refusal is still a refusal and an incomplete is still an incomplete;
+// this arm only re-decides the ESTABLISHED arm, the one place where fresh and erased are indistinguishable
+// from this layer. With `across` Absent (every non-forced unit) the result is identical to
+// dry_archive_prior_life.
 //
-// (rung: pure re-decision of one arm; the discriminating RED is
+// (rung: pure re-decision of one arm over the run's own sealed archives; the discriminating RED is
 // w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write in
 // test.claim.machine_intake.machine_intake_prior_life_boundary_witness, paired with the positive control
 // w_a_pre_write_entry_across_the_forced_write_establishes_normally and with the real arrival-path control
@@ -993,23 +1063,41 @@ fn dry_archive_prior_life_across_forced_write(
     Absent => base
     Present { value: ctx } =>
       match base.outcome {
-        PriorLifeArchiveEstablished { receipt: _ } =>
-          if pre_write_history_present(standing: ctx.standing) {
-            base
-          } else {
-            DryPriorLifeStep {
+        PriorLifeArchiveEstablished { receipt: r } => {
+          let post = archived_entry_identities(captures: r.archive.captures)
+          let pre = match ctx.pre_write_archive {
+            Absent => []
+            Present { value: a } => if forced_pre_capture_is_of_subject(archive: a, subject: subject) { archived_entry_identities(captures: a.captures) } else { [] }
+          }
+          let standing = prior_life_pre_write_standing(post: post, pre: pre)
+          match standing {
+            PreWriteEntryPresent { entry: _ } => base
+            EntriesPresentNoneBeforeWrite { entries_seen: _ } => DryPriorLifeStep {
               outcome: PriorLifeArchiveIndeterminateAcrossForcedWrite {
                 verdict: prior_life_indeterminate_across_forced_write(
                   key: key,
                   consumed_identity: consumed_identity,
                   subject: subject,
                   write_instant: ctx.write_instant,
-                  standing: ctx.standing,
+                  standing: standing,
+                ),
+              },
+              store: base.store,
+            }
+            NoPriorLifeEntries {} => DryPriorLifeStep {
+              outcome: PriorLifeArchiveIndeterminateAcrossForcedWrite {
+                verdict: prior_life_indeterminate_across_forced_write(
+                  key: key,
+                  consumed_identity: consumed_identity,
+                  subject: subject,
+                  write_instant: ctx.write_instant,
+                  standing: standing,
                 ),
               },
               store: base.store,
             }
           }
+        }
         PriorLifeArchiveRefused { cause: _ } => base
         PriorLifeArchiveIncomplete { cause: _ } => base
         PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: _ } => base
@@ -1086,6 +1174,8 @@ fn dry_archive_prior_life(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_two_log_populations_that_a_delimiter_join_conflated_archive_distinctly"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_virtual_media_connected_via_and_media_types_are_archived"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_two_locators_that_render_one_resource_path_archive_distinctly"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "pre_capture"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "forced_pre_capture"),
   ]
 {
   match prior_life_policy_for(platform: platform) {

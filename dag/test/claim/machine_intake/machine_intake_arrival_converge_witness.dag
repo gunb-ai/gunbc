@@ -50,7 +50,8 @@ import gunbc.machine_intake.prior_life_boundary {
   DryPriorLifeWorld, DryArchiveStore, DryArchiveStoreLosesWrites, ArchiveWrittenButNotReadBack, ArchiveWritten, LogsArchivedWithBaselineCursor,
   mt_jade_platform_ref, prior_life_receipt_archive, prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_realization,
   prior_life_receipt_consumed_identity, prior_life_archive_digest, baseline_cursor_archive, baseline_cursor_sel_final_record,
-  PriorLifeForcedWriteContext, PostWriteEntryStanding, PreWriteEntryPresent, EntriesPresentNoneBeforeWrite, NoPriorLifeEntries, ConfirmFactoryFresh,
+  PriorLifeForcedWriteContext, EntriesPresentNoneBeforeWrite, ConfirmFactoryFresh,
+  PriorLifeArchive, PriorLifeArchiveEstablished, dry_archive_prior_life,
 }
 import std.content_hash { content_hash_equal, content_hash_of_value, sha256_hex_of_text }
 import gunbc.machine_intake.receipt { EvidenceRef }
@@ -1892,6 +1893,22 @@ fn admitted_forced_write_at(endpoint: BmcControllerEndpoint, attempt: AttemptIde
   }
 }
 
+// THE RUN'S OWN PRE-WRITE CAPTURE, sealed by the REAL archive producer (dry_archive_prior_life) over the
+// same world and subject the fold reads after the write. The witnesses below hand the boundary ARCHIVES,
+// never a classification of them: the standing is derived inside prior_life_boundary (review 88155).
+fn forced_pre_capture() -> PriorLifeArchive? {
+  match dry_archive_prior_life(
+    key: step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key),
+    consumed_identity: step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key),
+    subject: mtjade1_intake_subject(),
+    platform: mt_jade_platform_ref,
+    world: prior_life_minimal_dry_world(),
+  ).outcome {
+    PriorLifeArchiveEstablished { receipt: r } => Present { value: prior_life_receipt_archive(r) }
+    _ => none
+  }
+}
+
 // (i) POSITIVE CONTROL. The full forced-change unit sequence converges on the real fold: srv13's OWN
 // admitted forced write precedes PriorLife, PriorLife establishes (a pre-write entry is present), and
 // BmcSecure reads Noop (secured) at the build inferred from the 403. All four instances converge.
@@ -1910,9 +1927,9 @@ test fn w_forced_change_unit_sequence_converges_under_the_row() -> Bool uses fs:
         read: read_mtjade1_current_manager_read(),
         inputs: mtjade1_identity_bind_inputs(),
         prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
-        across: PriorLifeForcedWriteContext {
-          write_instant: t_read,
-          standing: PreWriteEntryPresent { entry_receipt: "prior-life-entry-before-the-forced-write" },
+        across: match forced_pre_capture() {
+          Absent => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }
+          Present { value: cap } => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: Present { value: cap } }
         },
         bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: build_3_22()),
         write: write,
@@ -1995,7 +2012,7 @@ test fn w_a_forced_state_from_another_run_or_controller_cannot_take_the_row() ->
               read: read_mtjade1_current_manager_read(),
               inputs: mtjade1_identity_bind_inputs(),
               prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
-              across: PriorLifeForcedWriteContext { write_instant: t_read, standing: PreWriteEntryPresent { entry_receipt: "e" } },
+              across: match forced_pre_capture() { Absent => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }  Present { value: cap } => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: Present { value: cap } } },
               bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: build_3_22()),
               write: write,
               locked: none,
@@ -2017,7 +2034,7 @@ test fn w_a_forced_state_from_another_run_or_controller_cannot_take_the_row() ->
             read: read_mtjade1_current_manager_read(),
             inputs: mtjade1_identity_bind_inputs(),
             prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
-            across: PriorLifeForcedWriteContext { write_instant: t_read, standing: PreWriteEntryPresent { entry_receipt: "e" } },
+            across: match forced_pre_capture() { Absent => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }  Present { value: cap } => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: Present { value: cap } } },
             bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: build_3_22()),
             write: foreign,
             locked: none,
@@ -2041,7 +2058,7 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_on_the_rea
   match admitted_forced_write_at(endpoint: srv13(), attempt: "attempt-1" as AttemptIdentity) {
     Absent => false
     Present { value: write } => {
-      let across = PriorLifeForcedWriteContext { write_instant: t_read, standing: NoPriorLifeEntries {} }
+      let across = PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }
       let bmc = forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: build_3_22())
       let incomplete_on_fold =
         match converge_arrival_forced_through_bmc_secure(
@@ -2090,6 +2107,7 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_on_the_rea
                 match o {
                   StepIncomplete { key: _, cause: ForcedWritePriorLifeIndeterminate { verdict: v } } =>
                     length(xs: v.options) == 2
+                      && (match v.standing { EntriesPresentNoneBeforeWrite { entries_seen: _ } => true  _ => false })
                   _ => false
                 }
               Absent => false
@@ -2125,7 +2143,7 @@ test fn w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_s
               read: read_mtjade1_current_manager_read(),
               inputs: mtjade1_identity_bind_inputs(),
               prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
-              across: PriorLifeForcedWriteContext { write_instant: t_read, standing: PreWriteEntryPresent { entry_receipt: "e" } },
+              across: match forced_pre_capture() { Absent => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }  Present { value: cap } => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: Present { value: cap } } },
               bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: foreign_read),
               write: write,
               locked: none,
@@ -2143,7 +2161,7 @@ test fn w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_s
             read: read_mtjade1_current_manager_read(),
             inputs: mtjade1_identity_bind_inputs(),
             prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
-            across: PriorLifeForcedWriteContext { write_instant: t_read, standing: PreWriteEntryPresent { entry_receipt: "e" } },
+            across: match forced_pre_capture() { Absent => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }  Present { value: cap } => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: Present { value: cap } } },
             bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: foreign_read),
             row: row,
             locked: none,
