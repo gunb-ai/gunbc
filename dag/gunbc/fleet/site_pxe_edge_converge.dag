@@ -3,6 +3,7 @@ module gunbc.fleet.site_pxe_edge_converge
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs }
 import std.algebra { FreeSemigroup }
 import std.algebra { trim }
+import gunbc.systemctl_show_read { SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_value_from_stdout }
 import std.filesystem { path_parent_directory }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, serialize_content_hash, sha256_hex_digest }
@@ -1631,11 +1632,19 @@ fn observe_site_pxe_edge_unit_active(target: SshTarget, context: FleetSshExecuti
     TypedArgvExecConverged { result: r } =>
       if (r.success == false) {
         SitePxeEdgeProbeUnobservable { reason: join(["systemctl show exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
-      } else if trim(s: r.stdout) == "ActiveState=active" {
-        SitePxeEdgeProbeHeld
       } else {
-        SitePxeEdgeProbeObservedNegative { reason: join(["unit ", site_pxe_edge_unit_name as String, " ", trim(s: r.stdout)], "") }
+        site_pxe_edge_unit_active_standing(capture: systemctl_show_property_value_from_stdout(success: r.success, stdout: r.stdout))
       }
+  }
+}
+
+// The argv asks for `--value`, so the answer is the bare state word; the shared decoder reads that line.
+fn site_pxe_edge_unit_active_standing(capture: SystemdPropertyCapture) -> SitePxeEdgeProbe {
+  match capture {
+    SystemdPropertyCaptured { value: v } =>
+      if v == "active" { SitePxeEdgeProbeHeld } else { SitePxeEdgeProbeObservedNegative { reason: join(["unit ", site_pxe_edge_unit_name as String, " ActiveState=", v], "") } }
+    SystemdPropertyBlank => SitePxeEdgeProbeUnobservable { reason: join(["unit ", site_pxe_edge_unit_name as String, " ActiveState blank"], "") }
+    SystemdPropertyCaptureRefused { reason: why } => SitePxeEdgeProbeUnobservable { reason: why }
   }
 }
 
