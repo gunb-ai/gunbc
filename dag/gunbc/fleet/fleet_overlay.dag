@@ -41,8 +41,13 @@ import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, brand }
 import std.error_primitives { Err, Ok, Result }
 import std.optional { Absent, Optional, Present }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.dissolution { DissolutionCondition, bound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_rows_well_formed }
+import std.dissolution {
+  BoundDissolution,
+  UnboundDissolution,
+  bound_dissolution,
+  dissolution_trigger_ref,
+}
+import std.roster_frontier { DeclSubject, FrontierRow, frontier_row_decl, frontier_rows_well_formed }
 import gunbc.fleet.fleet_naming { FleetMemberLabel, fleet_member_label }
 import gunbc.fleet.owned_host_incarnation { OwnedHostIncarnation, OwnedHostIncarnationId, incarnation_is_ongoing }
 import gunbc.fleet.fleet_endpoint { ReachDemand }
@@ -314,33 +319,38 @@ fn managed_overlay_attachments(
 // They are P1's and P4's to land, so they are recorded here as rows that must dissolve rather than as local
 // types that could disagree with the census. Every row is bound to a trigger: the day the named declaration
 // appears, the row retires -- which is what makes a frontier auditable instead of a comment.
+// Every row's SUBJECT is a declaration this module really has (the record, or the mint, whose shape the
+// slot must land on), and every TRIGGER is a named declaration that does not exist yet. That split is the
+// bmc_recovery_route_frontier shape the corpus already uses, and review 87158 named why the alternative is
+// a defect: a subject naming a field that is not on the record -- a dotted decl_name -- does not resolve,
+// because the DeclarationRef resolver reads the owner's field list and a dotted name is not a declaration.
+// Such a row points at nothing, and a check that compared against the same dotted string kept agreeing
+// with it. The slot each row waits for is named in the reason, where prose belongs; the refs are for
+// machines, and they resolve.
+//
+// WHY THE TRIGGERS ARE WHOLE DECLARATIONS AND NOT FIELDS: every consumer that grades these rows (the
+// dissolution census, and the witness claims below) decides Pending against the corpus's declaration
+// census by a qualified-name join. A field-grain trigger would read PRESENT through that join -- the owner
+// record exists -- and a frontier that reads fired the day it is written discharges a deficit nobody
+// closed.
 data fleet_overlay_provider_identity_frontier: List<FrontierRow> = [
   frontier_row_decl(
-    ref: decl_ref(
-      module_path: "gunbc.fleet.fleet_overlay",
-      decl_name: "OverlayMemberBinding.provider_device_identity",
-    ),
-    reason: "the provider's device identity belongs on the binding and must not be named here: device identity is upstream provider vocabulary, not a name in the fabric, and the P1 census owns the devices API model (extdeps.tailscale.devices)" as NonEmptyStr,
+    ref: decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "OverlayMemberBinding"),
+    reason: "the record carries no provider device identity slot and must not mint one: device identity is upstream provider vocabulary, not a name in the fabric, and the P1 census owns the devices API model (extdeps.tailscale.devices DeviceId, whose arrival retires this row -- the P3 producer PR adds the binding's provider device field and deletes this row together, which is what retirement means)" as NonEmptyStr,
     dissolution: bound_dissolution(
       ref: decl_ref(module_path: "extdeps.tailscale.devices", decl_name: "DeviceId"),
     ),
   ),
   frontier_row_decl(
-    ref: decl_ref(
-      module_path: "gunbc.fleet.fleet_overlay",
-      decl_name: "OverlayMemberBinding.provider_node_identity",
-    ),
-    reason: "the provider's node identity is not the member's name and its home is the realization; a local copy would give one device id two homes" as NonEmptyStr,
+    ref: decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "overlay_member_binding"),
+    reason: "the mint cannot check a binding's provider node identity against the device it claims to bind, because the mint has no node slot to check: the join key is the provider's nodekey (extdeps.tailscale.devices NodeId), whose home is the P1 realization module, not a second copy here -- a local spelling would give one device id two homes" as NonEmptyStr,
     dissolution: bound_dissolution(
       ref: decl_ref(module_path: "extdeps.tailscale.devices", decl_name: "NodeId"),
     ),
   ),
   frontier_row_decl(
-    ref: decl_ref(
-      module_path: "gunbc.fleet.fleet_overlay",
-      decl_name: "FleetOverlayAttachment.selected_realization",
-    ),
-    reason: "which realization an attachment selects is a policy fact and no selection row exists yet; P2 declares the contract shape and P4 enrolls a realization onto it" as NonEmptyStr,
+    ref: decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "FleetOverlayAttachment"),
+    reason: "which realization an attachment selects is carried as an operator-branded string, because no selection row exists to point at: the day gunbc.fleet.fleet_overlay gains fleet_overlay_realization_selection (P4 enrolls a realization onto it), the selection field becomes a ref and this row retires" as NonEmptyStr,
     dissolution: bound_dissolution(
       ref: decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "fleet_overlay_realization_selection"),
     ),
@@ -351,6 +361,23 @@ data fleet_overlay_provider_identity_frontier: List<FrontierRow> = [
 // dissolves on nothing is a red claim rather than a decoration.
 fn fleet_overlay_frontier_is_well_formed() -> Bool {
   frontier_rows_well_formed(rows: fleet_overlay_provider_identity_frontier)
+}
+
+// A FRONTIER THAT DISSOLVES ON WHAT IT IS ABOUT WAS NEVER WAITING FOR ANYTHING. If a row's trigger is its
+// own subject, the trigger is satisfied the moment the row is written, the row is fired-and-still-present
+// from birth, and the capability that would close the deficit is named nowhere (review 87158 finding 2
+// caught exactly this shape in a sibling module). Checked structurally rather than asserted in prose, so
+// the shape cannot come back without this going red.
+fn overlay_frontier_rows_do_not_dissolve_on_their_own_subject() -> Bool {
+  fleet_overlay_provider_identity_frontier.all(
+    r => match r.subject {
+      DeclSubject { ref: subject } => match r.dissolution {
+        BoundDissolution { trigger: t } => dissolution_trigger_ref(trigger: t) != subject
+        UnboundDissolution { description: _ } => false
+      }
+      _ => false
+    },
+  )
 }
 
 // A BINDING WITHOUT AN INCARNATION OR WITHOUT ROLES IS CONFUSION, NOT A PARTIAL FACT. The incarnation

@@ -15,7 +15,7 @@ module test.claim.fleet_naming_witness
 // where every `test fn` here executes over one load of one closure.
 
 import std.types { Bool, Int, List, NonEmptyStr, Port, String }
-import std.algebra { string_contains }
+import std.algebra { list_append, list_map, string_contains }
 import std.measure { second }
 import std.error_primitives { Err, Ok, Result }
 import std.optional { Absent, Optional, Present }
@@ -52,6 +52,7 @@ import gunbc.fleet.fleet_enrollment {
 }
 import gunbc.fleet.fleet_overlay {
   AttachmentSelection,
+  overlay_frontier_rows_do_not_dissolve_on_their_own_subject,
   BindingForAnotherSubject,
   BindingIncarnationHasEnded,
   BindingIncarnationIsAnotherMachine,
@@ -115,6 +116,9 @@ import gunbc.fleet.fleet_naming {
 }
 import gunbc.fleet.fleet_endpoint {
   AdministerMember,
+  deployment_risk_seam_does_not_dissolve_on_its_own_subject,
+  fleet_endpoint_authority_frontier,
+  fleet_endpoint_deployment_risk_frontier,
   CiConvergence,
   DirectLane,
   ExternalConsumer,
@@ -156,6 +160,16 @@ import gunbc.fleet.fleet_naming_policy {
 import extdeps.network.endpoint { NetworkHost, HostByName, HostByAddress, render_uri_host }
 import extdeps.dns.domain_name { host_name_eq }
 import product.host_identity { HostIdentity }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigger_ref }
+import std.roster_frontier { DeclSubject, FrontierRow, PathSubject }
+import v2.std.decl_index { DeclFact, decl_facts_at }
+import v2.std.decl_ref_resolution_host {
+  declaration_ref_resolution_arm_key,
+  declaration_ref_target_qualified_name,
+  resolve_declaration_ref_live_over,
+}
 
 // THE FIVE SLOTS THE PLAN NAMES, listed here rather than filtered out of the roster so a witness that
 // silently stops covering a slot goes red instead of quietly covering less.
@@ -1257,4 +1271,153 @@ test fn witness_the_three_confusions_are_sayable_and_distinct() -> Bool {
       }
     }
   }
+}
+
+// ===================== THE FRONTIER READ AGAINST THE LIVE DECLARATION CENSUS =====================
+// The frontier claims above are shape claims: they read the row's own fields and compare them with
+// strings hand-typed beside them. That is exactly how review 87158 caught subjects pointing at
+// declarations that do not exist -- `gunbc.fleet` as a module_path (a directory, not a module) and
+// `OverlayMemberBinding.provider_device_identity` as a decl_name (the resolver reads a declaration's
+// field list, never a dotted path through one) -- both read green, because nothing in the claim ever
+// asked the tree. These claims ask it: one keyed census read over the population the rows name, then
+// the join every consumer uses. A ref that names no declaration makes them red whatever its string says.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE ROOTS ARE SIBLINGS, NOT NESTED. A walk of `dag/gunbc` already covers `dag/gunbc/fleet`; passing
+// both walked every fleet file twice, the join then found two rows under one qualified name, and the
+// resolver answered "ambiguous" -- the census declining to pick between its own duplicates. A root
+// that does not exist, or holds no .dag, refuses the read outright rather than contributing nothing.
+data frontier_census_pool_roots: List<String> = ["dag/gunbc", "dag/extdeps/tailscale"]
+
+// The whole population: three provider-identity rows, the authority gap, the deployment-risk seam --
+// read from the model's own data, never re-listed here.
+data frontier_census_rows: List<FrontierRow> = list_append(
+  left: list_append(left: fleet_overlay_provider_identity_frontier, right: fleet_endpoint_authority_frontier),
+  right: fleet_endpoint_deployment_risk_frontier,
+)
+
+fn frontier_census_subject_refs(rows: List<FrontierRow>) -> List<DeclarationRef> {
+  fold(rows, init: [], f: fn(acc, row) {
+    match row.subject {
+      DeclSubject { ref: r } => list_append(left: acc, right: [r])
+      PathSubject { path: _ } => acc
+    }
+  })
+}
+
+fn frontier_census_trigger_refs(rows: List<FrontierRow>) -> List<DeclarationRef> {
+  fold(rows, init: [], f: fn(acc, row) {
+    match row.dissolution {
+      BoundDissolution { trigger: t } => list_append(left: acc, right: [dissolution_trigger_ref(trigger: t)])
+      UnboundDissolution { description: _ } => acc
+    }
+  })
+}
+
+// THE SPELLINGS THAT MUST NOT RESOLVE. Each is a defect this PR actually had, kept here as the
+// discriminating negative: same name, wrong home. A read that answered "present" to these is not a
+// read of the tree at all, and the subject claim above would then prove nothing either.
+data frontier_census_misspellings: List<DeclarationRef> = [
+  // The subject half left off: `gunbc.fleet` is a directory, and the resolver's module key is the
+  // module, not the folder it sits under.
+  decl_ref(module_path: "gunbc.fleet", decl_name: "service_endpoint_identity"),
+  decl_ref(module_path: "gunbc.fleet", decl_name: "FleetOverlayAttachment"),
+  // A field is not a declaration: a dotted decl_name matches no row, so a field-grain subject reads
+  // absent forever and its row never dissolves.
+  decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "OverlayMemberBinding.provider_device_identity"),
+  decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "overlay_member_binding.provider_device_identity"),
+  decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "FleetOverlayAttachment.provider_device_identity"),
+]
+
+// ONE LIVE DECLARATION PER ROOT, as the vacuity guard: if a root were mistyped or unreadable, every
+// trigger would read absent and the pending claim below would be a green no-op. These resolve or the
+// absence claims mean nothing.
+data frontier_census_controls: List<DeclarationRef> = [
+  decl_ref(module_path: "gunbc.fleet.fleet_endpoint", decl_name: "service_endpoint_https_url"),
+  decl_ref(module_path: "gunbc.deployment_risk", decl_name: "deployment_external_binding_table"),
+  decl_ref(module_path: "extdeps.tailscale.identity", decl_name: "tailnet_identity_of"),
+]
+
+// ONE keyed read for the whole population -- subjects, triggers, misspellings, and controls.
+data frontier_census_requested_refs: List<DeclarationRef> = list_append(
+  left: list_append(
+    left: frontier_census_subject_refs(rows: frontier_census_rows),
+    right: frontier_census_trigger_refs(rows: frontier_census_rows),
+  ),
+  right: list_append(left: frontier_census_misspellings, right: frontier_census_controls),
+)
+
+// WHY THE KEYED READ IS WRITTEN OUT RATHER THAN TAKEN FROM `declaration_ref_live_facts`: the census
+// matches a FUNCTION or a DATA row by qualified name and a TYPE only by its bare name -- a qualified
+// name asked of a type returns zero rows, which is no answer at all. Most of these subjects ARE types
+// (ServiceEndpointIdentity, OverlayMemberBinding, FleetOverlayAttachment), so the bare-name key is
+// asked for alongside. Both keys come from the refs themselves, never from a spelling typed here, and
+// the join still filters what came back by qualified name and kind.
+data frontier_census_live_facts: List<DeclFact> = decl_facts_at(
+  pool_roots: frontier_census_pool_roots,
+  qualified_names: list_map(
+    xs: frontier_census_requested_refs,
+    f: fn(r) { declaration_ref_target_qualified_name(ref: r) }
+  ),
+  type_names: list_map(xs: frontier_census_requested_refs, f: fn(r) { r.decl_name as String }),
+)
+
+fn frontier_census_arm(ref: DeclarationRef) -> String {
+  declaration_ref_resolution_arm_key(
+    resolution: resolve_declaration_ref_live_over(
+      ref: ref,
+      pool_roots: frontier_census_pool_roots,
+      live_facts: frontier_census_live_facts,
+    )
+  )
+}
+
+fn frontier_census_resolves(ref: DeclarationRef) -> Bool { frontier_census_arm(ref: ref) == "resolved" }
+
+// Absent means the census walked the module and the name is not there (or the module itself is not):
+// the gap is real. It is not "the read did not look", which is what the controls above rule out.
+fn frontier_census_is_absent_today(ref: DeclarationRef) -> Bool {
+  let arm = frontier_census_arm(ref: ref)
+  arm == "module-absent" || arm == "declaration-absent"
+}
+
+test fn witness_frontier_subjects_are_declarations_the_live_tree_has() -> Bool {
+  // Population counted first: a row dropped from the fold would take its subject and its trigger out
+  // of the census together, and the two claims below would each lose a branch to silence.
+  frontier_census_rows.count() == 5
+    && frontier_census_subject_refs(rows: frontier_census_rows).count() == 5
+    // EVERY SUBJECT RESOLVES against the tree. This is the claim review 87158's first finding needed:
+    // a subject naming no declaration -- wrong module, or a field spelled with a dot -- makes it red.
+    && frontier_census_subject_refs(rows: frontier_census_rows).all(fn(r) { frontier_census_resolves(ref: r) })
+    // ...and the answer came from the tree, not from a matching pair of strings.
+    && frontier_census_misspellings.all(fn(bad) { !frontier_census_resolves(ref: bad) })
+}
+
+test fn witness_frontier_triggers_describe_gaps_the_tree_still_has() -> Bool {
+  frontier_census_trigger_refs(rows: frontier_census_rows).count() == 5
+    // EVERY TRIGGER IS ABSENT TODAY: each row describes a capability that does not exist yet, so the
+    // row is pending rather than fired at birth -- the shape review 87158's second finding had, where
+    // the deployment-risk seam's trigger was the row's own subject, present the moment it was written.
+    && frontier_census_trigger_refs(rows: frontier_census_rows).all(fn(t) { frontier_census_is_absent_today(ref: t) })
+    // THE PAIR THAT MAKES THE ANSWER MEAN SOMETHING: the same read, in the same roots, does find the
+    // declarations that exist -- one control per root.
+    && frontier_census_controls.all(fn(c) { frontier_census_resolves(ref: c) })
+    // AND NO ROW RETIRES ON THE DECLARATION IT IS ABOUT.
+    && overlay_frontier_rows_do_not_dissolve_on_their_own_subject()
+    && deployment_risk_seam_does_not_dissolve_on_its_own_subject()
+}
+
+// THE ONE-HOME RULE, CHECKED WHERE A FORK WOULD BE: P1 owns provider device/node identity in
+// extdeps.tailscale.devices, so no fleet module may mint a stand-in beside it. The census answers, so
+// a local DeviceId declared tomorrow turns this red without anyone re-reading the comment.
+test fn witness_provider_device_identity_is_not_forked_into_the_fleet_namespace() -> Bool {
+  ["DeviceId", "DeviceKey", "NodeId", "DeviceIdentity"].all(fn(name) {
+    !frontier_census_resolves(ref: decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: name))
+      && !frontier_census_resolves(ref: decl_ref(module_path: "gunbc.fleet.fleet_endpoint", decl_name: name))
+  })
+    && frontier_census_is_absent_today(ref: decl_ref(module_path: "extdeps.tailscale.devices", decl_name: "DeviceId"))
+    // The overlay's triggers point at P1's home, not at a fleet-local name.
+    && frontier_census_trigger_refs(rows: fleet_overlay_provider_identity_frontier)
+         .all(fn(t) { t.module_path == "extdeps.tailscale.devices" || t.module_path == "gunbc.fleet.fleet_overlay" })
 }

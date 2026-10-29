@@ -38,7 +38,12 @@ module gunbc.fleet.fleet_endpoint
 import std.types { Bool, Int, List, NonEmptyStr, Port, String, brand }
 import std.measure { Second, second_count }
 import std.decl_ref { decl_ref }
-import std.dissolution { bound_dissolution, unbound_dissolution }
+import std.dissolution {
+  BoundDissolution,
+  UnboundDissolution,
+  bound_dissolution,
+  dissolution_trigger_ref,
+}
 import std.roster_frontier { FrontierRow, DeclSubject, frontier_row_decl, frontier_rows_well_formed }
 import std.error_primitives { Err, Ok, Result }
 import extdeps.dns.domain_name {
@@ -200,11 +205,30 @@ fn service_endpoint_authority_is_supported(authority: ServiceEndpointAuthority) 
 // somebody asserts, plus the consumer that is this gate consulting it. Until then, this module's
 // declarations -- which carry the member and its name, both grounded -- stay usable, and the authority
 // field must be read as claimed rather than shown.
+//
+// WHY THE TRIGGER IS A NAMED, NOT-YET-EXISTING DECLARATION AND NOT A SENTENCE. gunbc.dissolution_census
+// folds the corpus's frontier roster and REFUSES to answer at all when a trigger ref cannot be decided,
+// and fires (red) the moment a bound trigger's declaration appears. An UnboundDissolution -- a description
+// -- is decidable by nobody: the day P4 lands the evidence, nothing turns red, and the row silently
+// outlives the gap it names. Naming the carrier the evidence must arrive as makes the retirement
+// observable, exactly as gunbc.machine_intake.bmc_recovery_route_frontier names its missing consumer.
+//
+// WHY THE SUBJECT SAYS gunbc.fleet.fleet_endpoint AND NOT gunbc.fleet. DESIGN section 3c's name-to-path
+// rule puts a module a.b.c at <root(a)>/b/c.dag: this module is stored at dag/gunbc/fleet/fleet_endpoint.dag
+// and its declarations are qualified gunbc.fleet.fleet_endpoint.*; there is no `gunbc.fleet` module to
+// hold `service_endpoint_identity`. A ref to the parent module's name is a ref to a module that does not
+// exist, and a check that compared against the same wrong string would agree with its own row forever --
+// the corpus has a name for that failure (review 81115 #1, the frontier rows "pointing at declarations
+// that do not exist, guarded by green witnesses that compared strings to themselves"). The witness claim
+// therefore asks the compiler's own declaration census whether the ref resolves; it does not re-read this
+// file's text.
 data fleet_endpoint_authority_frontier: List<FrontierRow> = [
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.fleet", decl_name: "service_endpoint_identity"),
+    ref: decl_ref(module_path: "gunbc.fleet.fleet_endpoint", decl_name: "service_endpoint_identity"),
     reason: "the authority argument (FleetDns / ProviderNameserver) is unchecked because no resolution or zone-ownership observation exists in dag/ to check it against; a caller can label a provider-derived name FleetDns and this gate cannot see the difference. Only LiteralAddress is refused today.",
-    dissolution: unbound_dissolution(description: "a resolution/ownership observation with a real producer (zone that answered a query for this member's name, and when) lands with a named consumer, and service_endpoint_identity consults it instead of accepting the caller's assertion -- P4's resolution record is the expected landing"),
+    dissolution: bound_dissolution(
+      ref: decl_ref(module_path: "gunbc.fleet.fleet_endpoint", decl_name: "EndpointResolutionEvidence"),
+    ),
   ),
 ]
 
@@ -220,7 +244,8 @@ fn fleet_endpoint_authority_frontier_is_well_formed() -> Bool {
 fn authority_gap_frontier_names_this_gate() -> Bool {
   fleet_endpoint_authority_frontier.any(
     r => match r.subject {
-      DeclSubject { ref: d } => d.module_path == "gunbc.fleet" && d.decl_name == "service_endpoint_identity"
+      DeclSubject { ref: d } =>
+        d.module_path == "gunbc.fleet.fleet_endpoint" && d.decl_name == "service_endpoint_identity"
       _ => false
     },
   )
@@ -270,11 +295,27 @@ fn service_endpoint_identity_eq(a: ServiceEndpointIdentity, b: ServiceEndpointId
 // nearest existing type. P2 is model-only, so the risk rows are not touched here (that is the P5 cutover);
 // what belongs at P2 is the honest statement of the seam and its condition, which is the frontier below.
 // No gunbc.deployment_risk declaration is edited or forked by this module.
+// WHY THE TRIGGER IS NOT THE SUBJECT (review 87158 finding 2). The row that was first written here
+// dissolved on `deployment_external_binding_table` -- the same declaration it was about. That is not a
+// frontier: the trigger is met the day the row is written, so the row is fired-and-still-present from
+// birth, and the capability that would actually retire it -- a deployment-risk row CARRYING a service
+// endpoint -- is named nowhere. A dissolution names what has to become true, and a row can never make
+// itself true.
+//
+// WHY THE TRIGGER IS A DECLARATION IN AN EXISTING MODULE THAT DOES NOT EXIST YET. gunbc.dissolution_census
+// refuses to answer at all when a trigger ref cannot be decided (an undecidable ref is neither present nor
+// absent, and guessing fires a trigger direction), so a trigger is only auditable when the resolver can
+// reach it: same module the row is about, declaration not yet written. `deployment_risk_service_endpoint`
+// is the row P5 writes -- the service endpoint a risk is filed against -- and the day it appears this row
+// retires. Its absence is what a claim checks, positively, against the live declaration census; a trigger
+// naming the subject, or any declaration already in the tree, goes red.
 data fleet_endpoint_deployment_risk_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.deployment_risk", decl_name: "deployment_external_binding_table"),
     reason: "a deployment-risk row is meant to name the service endpoint it is about; today it names only its external bindings, so an operator reading a ProdRisk row cannot see which service answering which member the row was filed against. The field is not added at P2 (model-only phase; the plan puts the cutover at P5), and ServiceEndpointIdentity is not slipped in beside it, which would be a second source for the same fact.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.deployment_risk", decl_name: "deployment_external_binding_table")),
+    dissolution: bound_dissolution(
+      ref: decl_ref(module_path: "gunbc.deployment_risk", decl_name: "deployment_risk_service_endpoint"),
+    ),
   ),
 ]
 
@@ -293,6 +334,22 @@ fn deployment_risk_seam_names_the_binding_table() -> Bool {
     r => match r.subject {
       DeclSubject { ref: d } =>
         d.module_path == "gunbc.deployment_risk" && d.decl_name == "deployment_external_binding_table"
+      _ => false
+    },
+  )
+}
+
+// A frontier that dissolves on its own subject is a row already discharged: the trigger is satisfied by
+// the thing the row is waiting on to change, so the deficit can never be observed closing. Every row must
+// dissolve on something OTHER than what it is about -- checked structurally here, so the shape cannot
+// regress without this going red.
+fn deployment_risk_seam_does_not_dissolve_on_its_own_subject() -> Bool {
+  fleet_endpoint_deployment_risk_frontier.all(
+    r => match r.subject {
+      DeclSubject { ref: subject } => match r.dissolution {
+        BoundDissolution { trigger: t } => dissolution_trigger_ref(trigger: t) != subject
+        UnboundDissolution { description: _ } => false
+      }
       _ => false
     },
   )
