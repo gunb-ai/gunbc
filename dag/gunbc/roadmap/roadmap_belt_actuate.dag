@@ -281,7 +281,7 @@ import gunbc.worker_lifecycle {
 }
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
 import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir, attempt_exit_stalled_dir, attempt_exit_stall_record_path }
-import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_reported_unit_already_exists }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_request_from_plan,
   attempt_system_unit_enqueue_start, AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied,
@@ -669,7 +669,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 // transient units (dispatch_unit_exec_argv -> belt_exec, resolving systemd-run from instance.toolchain),
 // so arming the wake is not a new transport or a second door -- it reads the instant off the decision and
 // runs systemd-run --user --on-calendar --collect execing belt_dispatch_node_cli for the same node+key.
-import gunbc.roadmap.roadmap_attempt_redelivery_wake { attempt_redelivery_wake_command, attempt_redelivery_wake_unit_name }
+import gunbc.roadmap.roadmap_attempt_redelivery_wake { attempt_redelivery_wake_command, attempt_redelivery_wake_unit_name, attempt_redelivery_wake_unit_stem }
 import gunbc.harness.harness_session_recovery {
   SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_recovery_of_events,
 }
@@ -861,6 +861,36 @@ type BeltExecOutcome
   = ExecOk { stdout: String }
   | ExecFailed { program: String, exit_code: Int, stderr: String }
   | ExecRefused { program: String, reason: String }
+
+// THE RESULT OF TRYING TO ARM A RE-DELIVERY WAKE. A host exec of systemd-run has a fourth outcome the
+// generic ExecOk/ExecFailed/ExecRefused shape cannot express: systemd-run REFUSES to start a unit whose
+// name is already loaded ('Unit ... already exists'). Because the wake's name fixes the one re-delivery
+// instant it targets, that refusal means the exact wake is ALREADY armed -- idempotence, not failure --
+// while every other nonzero exit stays a real failure carrying exit code and stderr (DESIGN §5: no
+// plausible output fabricated, the diagnostic located). Recognition lives in extdeps.systemd
+// (systemd_run_reported_unit_already_exists), not as a bare string test here.
+type BeltWakeArm
+  = WakeArmed
+  | WakeAlreadyArmed
+  | WakeArmFailed { program: String, exit_code: Int, stderr: String }
+  | WakeArmRefused { program: String, reason: String }
+
+// CLASSIFY A WAKE-ARMING HOST EXEC. Pure: it reads a BeltExecOutcome the caller already has and the wake
+// unit stem (the identity systemd echoes on the already-exists refusal) and returns the outcome the fold
+// reports. A same-name start is WakeAlreadyArmed only when systemd-run names THIS stem; anything else is
+// a real failure with exit code and stderr kept.
+fn belt_redelivery_wake_arm(exec: BeltExecOutcome, unit_stem: NonEmptyStr) -> BeltWakeArm {
+  match exec {
+    ExecOk { stdout: _ } => WakeArmed
+    ExecFailed { program, exit_code, stderr } =>
+      if systemd_run_reported_unit_already_exists(stderr: stderr, unit_stem: unit_stem) {
+        WakeAlreadyArmed
+      } else {
+        WakeArmFailed { program: program, exit_code: exit_code, stderr: stderr }
+      }
+    ExecRefused { program, reason } => WakeArmRefused { program: program, reason: reason }
+  }
+}
 
 // Probe via shell.PosixCommandV.Check exit_success (Bool), NOT .path: the .path realization is a
 // bare-stdout string wet (the Optional-over-Value::Null realization fork — DESIGN open thread), so
@@ -2818,18 +2848,25 @@ fn belt_actuate_spawn_exec_modeled(
     // A request-pending attempt held until a named instant arms ONE transient re-delivery wake for its
     // own key, execed through the SAME host-exec transport the belt uses for its other transient units
     // (dispatch_unit_exec_argv -> belt_exec, systemd-run resolved from the instance toolchain). Fail-
-    // closed: with no systemd-run, a refused command, or a failed host exec the attempt stays held and
-    // is retried -- never a silent drop. On success the pass still spawns nothing (not due); it reports
-    // the armed wake, and the idempotent unit name makes the re-arm safe (one wake per pending window).
+    // closed: with no systemd-run, a refused command, or a genuine host-exec failure the attempt stays
+    // held and is retried -- never a silent drop, and the failure keeps exit code and stderr (DESIGN §5).
+    // The wake's name fixes the one instant it targets, so a later belt pass re-runs the SAME command and
+    // systemd-run refuses it ('already exists'); belt_redelivery_wake_arm reads that as the wake already
+    // being armed -- idempotence, not a spurious failure -- while any other exit stays a real failure.
     SpawnRouteWake { attempt_key, at } =>
       match instance.toolchain.systemd_run {
         Absent => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["the request-pending attempt ", attempt_key, " is held until a re-delivery wake at ", to_string(value: at), " but this host carries no systemd-run to arm it; the belt cannot wake it -- provision systemd-run"], ""), provider: provider_wire_label, launch: launch }
         Present { value: systemd_run } => match attempt_redelivery_wake_command(node_id: node.node as String, instance_id: instance.instance_id as String, attempt_key: attempt_key, next_delivery: at) {
           SystemdRunCommandRefused { cause } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["the request-pending attempt ", attempt_key, " could not arm its re-delivery wake: ", cause], ""), provider: provider_wire_label, launch: launch }
-          SystemdRunCommandReady { command } => match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: workdir) {
-            ExecOk => SpawnFailed { node_id: node.node as String, step: "continuation-hold-until", detail: join(["the prior attempt ", attempt_key, " is request-pending and its re-delivery is not due yet; its wake ", attempt_redelivery_wake_unit_name(node_id: node.node as String, attempt_key: attempt_key), " is armed at ", to_string(value: at), " to re-deliver the same key by belt_dispatch_node_cli; the re-arm is idempotent and no resume is spent now"], ""), provider: provider_wire_label, launch: launch }
-            ExecFailed { program, exit_code: _, stderr: _ } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["arming the re-delivery wake for ", attempt_key, " failed on host exec of ", program, "; the attempt stays held and is retried on the next belt pass"], ""), provider: provider_wire_label, launch: launch }
-            ExecRefused { program, reason: _ } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["arming the re-delivery wake for ", attempt_key, " was refused on host exec of ", program, "; the attempt stays held and is retried on the next belt pass"], ""), provider: provider_wire_label, launch: launch }
+          SystemdRunCommandReady { command } => {
+            let wake_stem = attempt_redelivery_wake_unit_stem(node_id: node.node as String, attempt_key: attempt_key, instant: at)
+            let wake_unit = attempt_redelivery_wake_unit_name(node_id: node.node as String, attempt_key: attempt_key, instant: at)
+            match belt_redelivery_wake_arm(exec: belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: workdir), unit_stem: wake_stem) {
+              WakeArmed => SpawnFailed { node_id: node.node as String, step: "continuation-hold-until", detail: join(["the prior attempt ", attempt_key, " is request-pending and its re-delivery is not due yet; its wake ", wake_unit as String, " is armed at ", to_string(value: at), " to re-deliver the same key by belt_dispatch_node_cli; no resume is spent now"], ""), provider: provider_wire_label, launch: launch }
+              WakeAlreadyArmed => SpawnFailed { node_id: node.node as String, step: "continuation-hold-until", detail: join(["the prior attempt ", attempt_key, " is request-pending and its re-delivery at ", to_string(value: at), " was already armed as ", wake_unit as String, "; the wake is not double-armed and no resume is spent now"], ""), provider: provider_wire_label, launch: launch }
+              WakeArmFailed { program, exit_code, stderr } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["arming the re-delivery wake for ", attempt_key, " failed on host exec of ", program, " with exit ", to_string(value: exit_code), "; stderr: ", stderr, "; the attempt stays held and is retried on the next belt pass"], ""), provider: provider_wire_label, launch: launch }
+              WakeArmRefused { program, reason } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["arming the re-delivery wake for ", attempt_key, " was refused on host exec of ", program, ": ", reason, "; the attempt stays held and is retried on the next belt pass"], ""), provider: provider_wire_label, launch: launch }
+            }
           }
         }
       }

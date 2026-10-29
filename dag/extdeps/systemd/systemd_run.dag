@@ -129,11 +129,24 @@ type SystemdRunOption
   | PathTrigger { directive: SystemdPathDirective }
   | PathDependency { directive: SystemdUnitDirective }
   | SetEnv { binding: SystemdSetenvBinding }
+  // systemd-run(1) --timer-property=NAME=VALUE: a property on the transient TIMER unit --create, not the
+  // service. A one-shot --on-calendar timer defaults to RemainAfterElapse=yes (systemd.timer(5)), so it
+  // STAYS loaded after it fires; --collect covers only the service. The belt arms one-shot wakes and
+  // needs the elapsed timer to unload, so it passes RemainAfterElapse=no -- a real upstream option, not a
+  // second spelling of anything.
+  | TimerProperty { binding: SystemdTimerPropertyBinding }
   | Wait
   | Quiet
   | Pipe
   | Collect
   | EndOfOptions
+
+// A --timer-property=NAME=VALUE assignment on the transient timer unit. Same one-line, no-'=' shape as a
+// --setenv binding; the name is the property (e.g. RemainAfterElapse), the value its setting (e.g. no).
+type SystemdTimerPropertyBinding {
+  name: NonEmptyStr
+  value: NonEmptyStr
+}
 
 // WHAT THE WIRE CANNOT CARRY IS REFUSED AT THE PROJECTION — a refusal at the wall between the
 // typed value and the words, not a mangled word downstream. Each arm names the wire fact it
@@ -150,6 +163,9 @@ type SystemdRunOptionWordsRefusedCause
   | CredentialSourceNotOneAbsolutePath
   | PathPropertyMultiline
   | OnCalendarMultiline
+  | TimerPropertyNameContainsEquals
+  | TimerPropertyNameMultiline
+  | TimerPropertyValueMultiline
 
 type SystemdRunPropertyAssignmentReading
   = SystemdRunPropertyAssignmentReady { assignment: String }
@@ -190,6 +206,9 @@ fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRef
     CredentialSourceNotOneAbsolutePath => "a LoadCredential= source is one line naming an absolute path, which the manager reads"
     PathPropertyMultiline => "a --path-property= setting is one line"
     OnCalendarMultiline => "a --on-calendar= expression is one line (systemd.time(7))"
+    TimerPropertyNameContainsEquals => "--timer-property= takes NAME=VALUE, so the NAME side carries no = of its own"
+    TimerPropertyNameMultiline => "--timer-property= takes NAME=VALUE, so the NAME side is one line"
+    TimerPropertyValueMultiline => "--timer-property= takes NAME=VALUE, so the VALUE side is one line"
   }
 }
 
@@ -334,6 +353,16 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
         Quiet => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--quiet"]) }
         Pipe => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--pipe"]) }
         Collect => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--collect"]) }
+        TimerProperty { binding: b } =>
+          if string_contains(s: b.name as String, pattern: "=") {
+            systemd_run_option_word_refused(cause: TimerPropertyNameContainsEquals)
+          } else if systemd_run_option_word_has_newline(s: b.name as String) {
+            systemd_run_option_word_refused(cause: TimerPropertyNameMultiline)
+          } else if systemd_run_option_word_has_newline(s: b.value as String) {
+            systemd_run_option_word_refused(cause: TimerPropertyValueMultiline)
+          } else {
+            SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--timer-property=", concat(b.name as String, concat("=", b.value as String)))]) }
+          }
         EndOfOptions => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--"]) }
       }
   }
@@ -441,14 +470,36 @@ fn systemd_onetime_calendar_expression(instant: EpochSecs) -> String {
 }
 
 // THE USER-MANAGER TRANSIENT ONE-SHOT TIMER: `systemd-run --user --on-calendar=EXPR --unit=NAME
-// --collect --setenv=K=V ... -- CMD`. ONE wake at the named instant; --collect lets the unit fall away
-// after it runs, so a re-arm (same NAME) replaces the pending wake instead of stacking. No cadence,
-// no scheduler: systemd's own wallclock timer fires the command once.
+// --timer-property=RemainAfterElapse=no --collect --setenv=K=V ... -- CMD`. ONE wake at the named instant;
+// no cadence, no scheduler: systemd's own wallclock timer fires the command once. Two facts are modelled
+// here, both from systemd.timer(5)/systemd-run(1): (1) an OnCalendar transient defaults to
+// RemainAfterElapse=yes, so the TIMER unit stays loaded after it fires and --collect (which covers only
+// the service) would leave the name loaded and block a later arm of the same name -- RemainAfterElapse=no
+// unloads the elapsed one-shot so the name is free again; (2) systemd-run has no --replace: starting a
+// name that is ALREADY loaded is refused ('Unit ... already exists', read by
+// systemd_run_reported_unit_already_exists), NOT a re-apply. So a same-name start is idempotent only
+// because the belt keys the name on the exact instant (same name == same wake), and a genuinely new
+// instant is a new name. This builder does NOT claim a re-arm replaces a pending timer.
 fn systemd_run_user_oneshot_timer_command(unit: NonEmptyStr, on_calendar: NonEmptyStr, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_command_of(
-    options: list_append(left: [RunUserManager, OnCalendar { expression: on_calendar }, RunUnit { unit: unit }, Collect], right: systemd_run_setenv_options(bindings: setenv_bindings)),
+    options: list_append(left: [RunUserManager, OnCalendar { expression: on_calendar }, RunUnit { unit: unit }, Collect, TimerProperty { binding: SystemdTimerPropertyBinding { name: "RemainAfterElapse", value: "no" } }], right: systemd_run_setenv_options(bindings: setenv_bindings)),
     command_argv: list_append(left: [EndOfOptions], right: command_argv),
   )
+}
+
+// THE 'ALREADY EXISTS' REFUSAL, AS A TYPED READING OF systemd-run's FAILURE. systemd-run(1) creates a
+// FRESH transient unit; the manager's StartUnit refuses to start a name that is ALREADY loaded and
+// run.c prints 'Failed to create transient ... unit: Unit <name> already exists.' to stderr with a
+// nonzero exit. This is not a re-apply -- systemd-run has no --replace, and --collect only GCs a unit
+// AFTER it has run -- so the belt reads this refusal as the signal that the exact wake it wants (same
+// unit stem = same node, attempt key, instant) is ALREADY armed, idempotence rather than failure.
+// Matching keys on BOTH the already-exists phrase AND the echoed unit stem, so a collision on a
+// DIFFERENT unit is never read as ours; anything unrecognized stays a real failure carrying exit code
+// and stderr. The stem is matched, not the suffixed .timer name, because the manager echoes the unit
+// with a suffix that need not be the one the builder spelled. Verified against systemd 255
+// (255.4-1ubuntu8.18) on the srv1 lab.
+fn systemd_run_reported_unit_already_exists(stderr: String, unit_stem: NonEmptyStr) -> Bool {
+  string_contains(s: stderr, pattern: "already exists") && string_contains(s: stderr, pattern: unit_stem as String)
 }
 
 // THE USER-MANAGER WAITING TRANSIENT: the start above plus --wait --pipe --collect, and NOT

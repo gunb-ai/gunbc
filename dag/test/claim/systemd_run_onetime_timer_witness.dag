@@ -47,9 +47,12 @@ test fn the_calendar_spelling_holds_the_epoch_and_a_leap_day() -> Bool {
     && systemd_onetime_calendar_expression(instant: 1583020800) == "2020-03-01 00:00:00 UTC"
 }
 
-// THE WAKE'S ACTUAL COMMAND: one transient --user timer, --collect so a re-arm replaces the pending wake
-// rather than stacking, firing the attempt's route with its env. The projection reaches ready and the
-// argv carries --on-calendar, --unit, --collect, --setenv and the separator.
+// THE WAKE'S ACTUAL COMMAND: one transient --user timer that UNLOADS when it elapses (--collect GCs the
+// service; --timer-property=RemainAfterElapse=no unloads the timer, systemd.timer(5)), so a later arm of
+// the name is not blocked -- a same-name start is NOT a replace (systemd-run has no --replace; it refuses
+// 'already exists', read as already-armed). Firing the attempt's route with its env. The projection
+// reaches ready and the argv carries --on-calendar, --unit, --collect, the RemainAfterElapse=no timer
+// property, --setenv and the separator.
 test fn the_transient_oneshot_timer_projects_a_ready_command() -> Bool {
   match systemd_run_user_oneshot_timer_command(
     unit: "gunbc-attempt-redeliver-n1-e5a42384c6a5e13d" as NonEmptyStr,
@@ -63,5 +66,6 @@ test fn the_transient_oneshot_timer_projects_a_ready_command() -> Bool {
       string_contains(s: line, pattern: "--on-calendar=2023-11-14 22:13:20 UTC")
         && string_contains(s: line, pattern: "--unit=gunbc-attempt-redeliver-n1-e5a42384c6a5e13d")
         && string_contains(s: line, pattern: "--collect")
+        && string_contains(s: line, pattern: "--timer-property=RemainAfterElapse=no")
   }
 }

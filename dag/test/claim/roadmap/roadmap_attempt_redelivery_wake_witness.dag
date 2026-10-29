@@ -9,7 +9,7 @@ module test.claim.roadmap.roadmap_attempt_redelivery_wake
 // (untimed) Hold, a due-now Resume, and a non-pending recovery map to NO wake -- so only the not-due
 // request-pending hold wakes. The authorization pattern is DERIVED from the selector, not borrowed.
 
-import std.types { Bool, Int, EpochSecs, NonEmptyStr }
+import std.types { Bool, EpochSecs, NonEmptyStr }
 import std.optional { Present }
 import gunbc.auth.authorization_pattern_selection { PatternSelected, FederatedScopedGrant, select_authorization_pattern, witness_required }
 import gunbc.roadmap.roadmap_attempt_redelivery_wake {
@@ -17,22 +17,21 @@ import gunbc.roadmap.roadmap_attempt_redelivery_wake {
   attempt_redelivery_wake_selects_pattern,
   attempt_redelivery_wake_needs_no_witness,
   attempt_redelivery_wake_unit_name,
+  attempt_redelivery_wake_unit_stem,
   attempt_redelivery_wake_command,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
-  ContinuationDecision,
   ContinuationHoldUntil,
-  ContinuationResume,
   continuation_decision,
 }
-import gunbc.roadmap.roadmap_belt_actuate { BeltSpawnRoute, SpawnRouteWake, SpawnRouteNone, SpawnRouteResume, SpawnRouteWorker, belt_spawn_route_for_decision }
-import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, SessionRecoveryRequestPending }
+import gunbc.roadmap.roadmap_belt_actuate { SpawnRouteWake, SpawnRouteNone, SpawnRouteResume, SpawnRouteWorker, belt_spawn_route_for_decision, ExecOk, ExecFailed, ExecRefused, WakeArmed, WakeAlreadyArmed, WakeArmFailed, WakeArmRefused, belt_redelivery_wake_arm }
+import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryRequestPending }
 import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureAbsent }
-import gunbc.roadmap.roadmap_provider_events { ProviderExecutionState, ProviderRequestPending }
+import gunbc.roadmap.roadmap_provider_events { ProviderRequestPending }
 import gunbc.roadmap.roadmap_belt_obligation { belt_capture_recording_owed }
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
-import extdeps.systemd.systemd_run { SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
+import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.exec.command { argv_words }
 
 const wake_now: EpochSecs = 1_700_000_000
@@ -101,7 +100,9 @@ test fn the_wedged_pending_attempt_holds_until_an_instant_and_arms_a_wake() -> B
         let line = join(argv_words(command: command), separator: " ")
         string_contains(s: line, pattern: "--user")
           && string_contains(s: line, pattern: "--on-calendar=")
-          && string_contains(s: line, pattern: "gunbc-attempt-redeliver-roadmap-belt-e5a42384c6a5e13d.timer")
+          && string_contains(s: line, pattern: "gunbc-attempt-redeliver-roadmap-belt-e5a42384c6a5e13d-")
+          && string_contains(s: line, pattern: ".timer")
+          && string_contains(s: line, pattern: "--timer-property=RemainAfterElapse=no")
           && string_contains(s: line, pattern: "belt_dispatch_node_cli")
       SystemdRunCommandRefused { cause: _ } => false
     }
@@ -110,11 +111,33 @@ test fn the_wedged_pending_attempt_holds_until_an_instant_and_arms_a_wake() -> B
   capture_owed && is_hold_until && route_is_wake && armed
 }
 
-// ONE WAKE PER PENDING WINDOW. Re-arming the same node+key names the same transient unit, so a re-pend
-// replaces the pending timer rather than stacking one per re-pend.
-test fn the_timer_is_re_armed_for_the_same_key_not_stacked() -> Bool {
-  attempt_redelivery_wake_unit_name(node_id: wake_node, attempt_key: wake_key)
-    == attempt_redelivery_wake_unit_name(node_id: wake_node, attempt_key: wake_key)
+// ONE WAKE PER PENDING WINDOW, AND A RE-PEND WAKES AGAIN. The unit name carries the re-delivery instant,
+// so arming the SAME instant twice names the SAME unit (systemd-run's 'already exists' is then true
+// idempotence, not a stack), while a re-pend to a LATER instant -- the redelivered-attempt-429-again
+// case, where the transport-retry policy computes a new instant -- names a DISTINCT unit and so is
+// genuinely re-armed rather than masked by the old one. Both directions, one witness.
+test fn a_repended_wake_gets_a_distinct_unit_and_the_same_instant_is_the_same_unit() -> Bool {
+  let earlier = wake_now
+  let later = wake_now + 30
+  let same_instant_is_same_unit = attempt_redelivery_wake_unit_name(node_id: wake_node, attempt_key: wake_key, instant: earlier)
+    == attempt_redelivery_wake_unit_name(node_id: wake_node, attempt_key: wake_key, instant: earlier)
+  let later_instant_is_distinct_unit = attempt_redelivery_wake_unit_name(node_id: wake_node, attempt_key: wake_key, instant: earlier)
+    != attempt_redelivery_wake_unit_name(node_id: wake_node, attempt_key: wake_key, instant: later)
+  same_instant_is_same_unit && later_instant_is_distinct_unit
+}
+
+// THE ALREADY-EXISTS REFUSAL IS READ AS ALREADY-ARMED, NOT A FAILURE (review 87556). The same-name start
+// that systemd-run refuses with 'Unit ... already exists' on THIS wake's stem classifies as WakeAlreadyArmed,
+// so a belt pass that re-runs the arming of the same instant is not a spurious failure. A refusal naming a
+// DIFFERENT unit is not ours and stays a real failure; anything unrecognized keeps exit code + stderr.
+test fn the_already_exists_refusal_is_idempotence_and_other_exits_stay_failures() -> Bool {
+  let stem = attempt_redelivery_wake_unit_stem(node_id: wake_node, attempt_key: wake_key, instant: wake_now)
+  let armed = match belt_redelivery_wake_arm(exec: ExecOk { stdout: "" }, unit_stem: stem) { WakeArmed => true, _ => false }
+  let already = match belt_redelivery_wake_arm(exec: ExecFailed { program: "systemd-run", exit_code: 1, stderr: "Failed to create transient unit: Unit gunbc-attempt-redeliver-roadmap-belt-e5a42384c6a5e13d-1700000000.timer already exists." }, unit_stem: stem) { WakeAlreadyArmed => true, _ => false }
+  let other_unit_is_not_ours = match belt_redelivery_wake_arm(exec: ExecFailed { program: "systemd-run", exit_code: 1, stderr: "Failed to create transient unit: Unit somebody-else.timer already exists." }, unit_stem: stem) { WakeArmFailed { exit_code, stderr } => exit_code == 1 && string_contains(s: stderr, pattern: "already exists"), _ => false }
+  let real_failure_keeps_evidence = match belt_redelivery_wake_arm(exec: ExecFailed { program: "systemd-run", exit_code: 7, stderr: "Failed to connect to bus" }, unit_stem: stem) { WakeArmFailed { exit_code, stderr } => exit_code == 7 && string_contains(s: stderr, pattern: "Failed to connect to bus"), _ => false }
+  let refused = match belt_redelivery_wake_arm(exec: ExecRefused { program: "systemd-run", reason: "no transport" }, unit_stem: stem) { WakeArmRefused { reason } => reason == "no transport", _ => false }
+  armed && already && other_unit_is_not_ours && real_failure_keeps_evidence && refused
 }
 
 // A PLAIN (UNTIMED) HOLD IS NOT WOKEN -- THE DISCRIMINATOR. A request-pending recovery whose worker has
