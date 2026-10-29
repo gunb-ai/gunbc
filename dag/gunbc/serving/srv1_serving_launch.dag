@@ -174,7 +174,6 @@ fn srv1_image_file_replaced(path: NonEmptyStr, base: NonEmptyStr, replaced: NonE
 fn srv1_image_file_added(path: NonEmptyStr, added: NonEmptyStr) -> Srv1ImageFileChange {
   Srv1ImageFileAdded { path: path, added_file_sha256_hex: added }
 }
-}
 
 data srv1_serving_image_derivation: Srv1ServingImageDerivation = Srv1ServingImageDerivation {
   repository: "local/eager-checkpoint-attribution" as NonEmptyStr,
