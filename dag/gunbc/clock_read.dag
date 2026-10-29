@@ -87,6 +87,7 @@ fn observer_clock_modeled(millis: EpochMs, realization: NonEmptyStr) -> Observer
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "threshold_three_refuses_three_failing_logins_and_admits_two"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "an_unread_threshold_refuses_the_failing_logins_a_served_one_admits"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "declared_retries_are_charged_as_logins"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "the_surface_the_plan_will_authenticate_on_is_the_one_that_judges_it"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "the_forced_change_path_costs_no_failed_login_on_the_surface_it_is_grounded_for"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "a_served_never_locked_threshold_licenses_what_an_unread_one_refuses"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_prior_life_instant"),
