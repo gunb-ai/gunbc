@@ -422,7 +422,7 @@ test fn the_locked_route_wraps_the_step_as_flocks_trailing_command() -> Bool {
     privilege: RemoteFileViaNonInteractiveSudo,
     argv: ["dd", "status=none", "conv=fsync", "of=/etc/subuid.gunbc-staging"],
   ) == [
-    "sudo", "-n",
+    "/usr/bin/sudo", "-n",
     "/usr/bin/flock", "--exclusive", "--wait", "120", "--conflict-exit-code", "75",
     fleet_generation_lock,
     "dd", "status=none", "conv=fsync", "of=/etc/subuid.gunbc-staging",
@@ -453,7 +453,7 @@ test fn the_unlocked_route_adds_no_flock_at_all() -> Bool {
     lock: NoFileLock,
     privilege: RemoteFileViaNonInteractiveSudo,
     argv: ["mv", "-f", "/etc/subuid.gunbc-staging", "/etc/subuid"],
-  ) == ["sudo", "-n", "mv", "-f", "/etc/subuid.gunbc-staging", "/etc/subuid"]
+  ) == ["/usr/bin/sudo", "-n", "mv", "-f", "/etc/subuid.gunbc-staging", "/etc/subuid"]
 }
 
 // ── THE RE-READ COMPARE ────────────────────────────────────────────────────────────────────────────

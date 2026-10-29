@@ -1171,3 +1171,29 @@ test fn an_unreadable_map_row_is_refused_rather_than_skipped() -> Bool {
     GpuContainerProvisionMapUnreadableRow { row: _ } => true
   }
 }
+
+// THE ROW BUILDER'S CONTRACT, DIRECTLY, without the plan's guards in the way: survivors keep the order
+// they were READ in, the displaced row is re-granted IN PLACE at the new first rather than moved to the
+// end, and the declared row is appended only when the account does not already hold exactly it. Read order
+// matters because shadow appends to these files; re-granting at the end would reorder a file the next
+// shadow write also appends to, and a witness that only checked the SET of rows would not notice.
+test fn the_rows_keep_read_order_regrant_in_place_and_append_only_what_is_missing() -> Bool {
+  let displacee_row = SubordinateRange { account: "ubuntu", first: 100000, count: 65536 }
+  let rows = subordinate_rows_after_plan(
+    rs: [
+      displacee_row,
+      SubordinateRange { account: "briansrls", first: 165536, count: 65536 },
+      SubordinateRange { account: "carol", first: 296608, count: 65536 },
+    ],
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    stale: [],
+    movable: [displacee_row],
+    displacee_regrant_first: 231072,
+    holds_exactly: false,
+  )
+  join(map(rows, r => subordinate_range_text(r: r)), "\n")
+    == "ubuntu:231072:65536\nbriansrls:165536:65536\ncarol:296608:65536\nghrunner:100000:65536"
+}

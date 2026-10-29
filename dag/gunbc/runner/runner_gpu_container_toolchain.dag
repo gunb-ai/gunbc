@@ -111,7 +111,6 @@ import extdeps.shadow.subordinate_ids {
   plan_subordinate_file,
   subordinate_file_bytes,
   render_subordinate_file,
-  subordinate_step_text,
   subordinate_plan_text,
 }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
