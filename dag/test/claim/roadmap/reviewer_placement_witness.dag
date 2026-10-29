@@ -170,16 +170,16 @@ test fn a_reviewer_record_binds_composite_key_and_review_unit_and_nothing_else()
   // (non-composite) attempt key, another criterion's composite key and review unit, and the
   // worker's unit wire: each is Foreign to this name, and none of them is fabricated -- they are
   // exactly the shapes the binder must refuse.
-  let raw_key = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(r: forged_record(attempt_key: rattempt, unit: gunbc.roadmap.roadmap_session_placement.session_unit_wire(node_id: rnode, attempt_key: rattempt), grant_identity: "evt-7")))), name: name_a(), host: rhost) {
+  let raw_key = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(r: forged_record(attempt_key: rattempt, unit: gunbc.roadmap.roadmap_session_placement.session_unit_wire(node_id: rnode, attempt_key: rattempt), grant_identity: "evt-7", identity: gunbc.roadmap.roadmap_session_placement.session_reviewer_identity(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a))))), name: name_a(), host: rhost) {
     SessionGrantForeign { path: _, detail: _ } => true
     _ => false
   }
   let g_b = reviewer_grant(node_id: rnode, attempt_key: rattempt, criterion_key: crit_b)
-  let other_criterion = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: record_bytes(grant: g_b)), name: name_a(), host: rhost) {
+  let other_criterion = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(r: forged_record(attempt_key: session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_b), unit: review_unit(node_id: rnode, attempt_key: rattempt, criterion_key: crit_b), grant_identity: "evt-7", identity: gunbc.roadmap.roadmap_session_placement.session_reviewer_identity(node_id: rnode, attempt_key: rattempt, criterion_key: crit_b))))), name: name_a(), host: rhost) {
     SessionGrantForeign { path: _, detail: _ } => true
     _ => false
   }
-  let worker_unit = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(r: forged_record(attempt_key: session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_a), unit: gunbc.roadmap.roadmap_session_placement.session_unit_wire(node_id: rnode, attempt_key: rattempt), grant_identity: "evt-7")))), name: name_a(), host: rhost) {
+  let worker_unit = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(r: forged_record(attempt_key: session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_a), unit: gunbc.roadmap.roadmap_session_placement.session_unit_wire(node_id: rnode, attempt_key: rattempt), grant_identity: "evt-7", identity: gunbc.roadmap.roadmap_session_placement.session_reviewer_identity(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a))))), name: name_a(), host: rhost) {
     SessionGrantForeign { path: _, detail: _ } => true
     _ => false
   }
@@ -188,7 +188,7 @@ test fn a_reviewer_record_binds_composite_key_and_review_unit_and_nothing_else()
 
 // ONE FORGED RECORD, BUILT NOT SPLICED: the grant's fields with the three identity-bearing members
 // taken from the caller -- the way a mispointed writer would emit them, without a text layer.
-fn forged_record(attempt_key: String, unit: NonEmptyStr, grant_identity: String) -> SessionPlacementRecord {
+fn forged_record(attempt_key: String, unit: NonEmptyStr, grant_identity: String, identity: String) -> SessionPlacementRecord {
   let g = reviewer_grant(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a)
   SessionPlacementRecord {
     schema: gunbc.roadmap.roadmap_session_placement.session_placement_schema,
@@ -196,6 +196,7 @@ fn forged_record(attempt_key: String, unit: NonEmptyStr, grant_identity: String)
     attempt_key: attempt_key,
     host: rhost,
     unit: unit as String,
+    identity: identity,
     reference: g.lease.reference as String,
     grant_identity: grant_identity,
     fence_generation: g.lease.fence.generation,
