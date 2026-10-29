@@ -192,20 +192,39 @@ data mtcollins1_boot_branch_attribute_mapping: Map<String, String> = {
 // merry-fox-82 caught at 18c3e1d0 (an Absent arm returning `base`). A caller therefore cannot get a pin
 // list that is missing the ref roster or the environment: the answer to "what does this provider admit"
 // is either the whole rule or nothing.
-fn mtcollins1_boot_branch_claim_pins() -> List<OidcClaimPin>? {
+// THE RULE, AS A FUNCTION OF ITS TWO MEMBERSHIP PINS. Taking them as arguments rather than reading them
+// is what makes the fail-closed arm testable: in the live world the boot federation DOES name its
+// environment, so `Absent => none` and the old `Absent => base` produce byte-identical output there and no
+// world-reading claim can tell the two apart. A claim can hand this builder a missing pin and watch it
+// refuse, which is the difference the review at 18c3e1d0 was about.
+fn mtcollins1_boot_branch_claim_pins_with(
+  ref_pin: OidcClaimPin?,
+  environment_pin: OidcClaimPin?,
+) -> List<OidcClaimPin>? {
   let base = [
     oidc_equals(claim: "repository_id", value: to_string(gunbc_repository_numeric_identity.repository_id)),
     oidc_equals(claim: "repository_owner_id", value: to_string(gunbc_repository_numeric_identity.owner_id)),
     oidc_starts_with(claim: "workflow_ref", value: fleet_converge_workflow_ref_heads_prefix()),
     oidc_equals(claim: "event_name", value: workflow_dispatch_event_name),
   ]
-  match mtcollins1_boot_trusted_ref_pin() {
+  match ref_pin {
     Absent => none
-    Present { value: ref_pin } => match mtcollins1_boot_trusted_environment_pin() {
+    Present { value: admitted_ref } => match environment_pin {
       Absent => none
-      Present { value: env_pin } => Present { value: concat(concat(base, [ref_pin]), [env_pin]) }
+      Present { value: named_environment } =>
+        Present { value: concat(concat(base, [admitted_ref]), [named_environment]) }
     }
   }
+}
+
+// THE SAME DECISION, READ FROM THE WORLD. Every projection of the rule -- the CEL GCP stores, the
+// admission this corpus evaluates, the converged provider, the workflow's credential renderer -- folds
+// THIS, so none of them can be handed a list with a conjunct missing.
+fn mtcollins1_boot_branch_claim_pins() -> List<OidcClaimPin>? {
+  mtcollins1_boot_branch_claim_pins_with(
+    ref_pin: mtcollins1_boot_trusted_ref_pin(),
+    environment_pin: mtcollins1_boot_trusted_environment_pin(),
+  )
 }
 
 fn mtcollins1_boot_branch_attribute_condition() -> String? {

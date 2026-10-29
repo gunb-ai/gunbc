@@ -47,10 +47,11 @@ import gunbc.auth.privileged_effect_census { mtcollins1_branch_boot_operator_rul
 import gunbc.auth.branch_dispatch_federation { branch_boot_credential_effect_approval_free }
 import gunbc.auth.mtcollins1_branch_boot_trust {
   mtcollins1_boot_trusted_branches, mtcollins1_boot_trusted_branch_ref, mtcollins1_boot_trusted_environment,
-  mtcollins1_boot_trusted_environment_is_nameable,
+  mtcollins1_boot_trusted_environment_is_nameable, mtcollins1_boot_trusted_ref_pin,
   mtcollins1_boot_branch_admits, mtcollins1_boot_branch_presented_claims, mtcollins1_boot_branch_is_trusted,
   mtcollins1_boot_branch_service_account, mtcollins1_boot_branch_provider_resource,
-  mtcollins1_boot_branch_claim_pins, mtcollins1_boot_branch_attribute_condition,
+  mtcollins1_boot_branch_claim_pins, mtcollins1_boot_branch_claim_pins_with,
+  mtcollins1_boot_branch_attribute_condition,
   mtcollins1_boot_branch_provider, mtcollins1_boot_branch_federation, mtcollins1_boot_trusted_environment_pin,
   mtcollins1_boot_branch_federation_with, mtcollins1_boot_branch_secret_grants_with,
   mtcollins1_boot_branch_bmc_grant, mtcollins1_boot_branch_reader_grant,
@@ -863,6 +864,60 @@ test fn the_environment_conjunct_is_never_droppable() -> Bool {
               }
         }
     }
+    }
+  }
+}
+
+// THE MUTANT PROOF FOR THE FAIL-OPEN, made observable. In the live world the boot federation names its
+// environment, so the fail-closed arm (`Absent => none`) and the fail-open it replaced (an Absent arm
+// returning `base`, the defect merry-fox-82 caught at 18c3e1d0) produce byte-identical output and NO
+// world-reading claim can separate them -- which is why gunbc.auth.mtcollins1_branch_boot_trust
+// mtcollins1_boot_branch_claim_pins_with takes the two membership pins as arguments. Hand it a missing pin
+// and the rule's all-or-nothing character becomes visible: a missing environment, or a missing roster,
+// takes the whole conjunct list with it. Revert either arm to `Present { value: base }` and this claim goes
+// red -- the list comes back carrying the four fixed identity conjuncts and no environment term for GCP to
+// check, which is a provider LESS restrictive than the route it stands for.
+test fn a_missing_membership_pin_takes_the_whole_rule_with_it() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: nothing to judge, and this claim is RED for that
+    // reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+      let ref_pin = mtcollins1_boot_trusted_ref_pin()
+      let environment_pin = mtcollins1_boot_trusted_environment_pin()
+      // THE WORLD'S OWN PAIR builds a rule carrying both membership conjuncts, so the refusals below are
+      // about the missing pin and not about a builder that ignores its arguments.
+      let complete_pair_builds_the_whole_rule = match mtcollins1_boot_branch_claim_pins_with(
+        ref_pin: ref_pin,
+        environment_pin: environment_pin,
+      ) {
+        Absent => false
+        Present { value: pins } =>
+          match filter(pins, pin => (pin.claim as String) == "environment").first() {
+            Absent => false
+            Present { value: named_environment } =>
+              named_environment.value == c.environment
+                && length(filter(pins, pin => (pin.claim as String) == "environment")) == 1
+                && length(filter(pins, pin => (pin.claim as String) == "ref")) == 1
+          }
+      }
+      // NO ENVIRONMENT => NO RULE. Not a rule with one conjunct quietly dropped.
+      let environment_missing_refuses = match mtcollins1_boot_branch_claim_pins_with(
+        ref_pin: ref_pin,
+        environment_pin: none,
+      ) {
+        Absent => true
+        Present { value: _ } => false
+      }
+      // NO ROSTER => NO RULE, for the same reason and by the same arm.
+      let roster_missing_refuses = match mtcollins1_boot_branch_claim_pins_with(
+        ref_pin: none,
+        environment_pin: environment_pin,
+      ) {
+        Absent => true
+        Present { value: _ } => false
+      }
+      complete_pair_builds_the_whole_rule && environment_missing_refuses && roster_missing_refuses
     }
   }
 }
