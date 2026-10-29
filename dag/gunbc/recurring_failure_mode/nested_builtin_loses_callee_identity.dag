@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.nested_builtin_loses_callee_identity
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, NoRungStated }
+
+data nested_builtin_loses_callee_identity: RecurringFailureMode = RecurringFailureMode {
+  identity: "nested_builtin_loses_callee_identity" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+  receipts: [
+    "2026-10-29, srv1 qualification of main ee5ce7d0379 and lab 33c74c8e3ea: gunbc.compute.capacity_migration capacity_migration_enumerate_family refuses at RESOLVE: function fold not found in scope; effect summary incomplete, no established callee identity. Its preceding form using any failed at the same predicate position. Other any and fold calls in the same production module resolve.",
+    "Observed position: a builtin in the predicate lambda passed to filter under nested Result match arms, in a function with a function-typed reader parameter. This describes the specimen, NOT an isolated root cause. Five small candidates at 9e3121ea9c4, in test.claim.compute.migration_builtin_repro_* modules, all passed: exact shape, no function parameter, one match, no filter, and a named predicate. None is a reproducer of the production failure.",
+    "Stated divergence, authorized by calm-crab-645: hoist the exclusion predicate and manager predicate to named top-level functions so the nested call sites hold no builtin. This changes declaration placement, not the selection law. It is not claimed to repair the resolver or to be necessary language usage.",
+    "Next trigger: run the imported production-namespace candidate gunbc.compute.migration_builtin_repro from test.claim.compute.migration_builtin_repro_imported, isolated branch session/bold-dove-340-resolver-repro at c7902c0eaf7. If it passes, delta-debug the actual production module imports/declarations in halves until a measured red and its neighboring green identify the resolver trigger. Route that evidence to the existing resolver owner; do not invent another predicate API or call a passing candidate a repro.",
+  ],
+  evidence: [],
+}
