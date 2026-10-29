@@ -1,0 +1,33 @@
+// Minimal repro B (delete once the front-end ruling lands).
+// Same shape of data value — a nested constructor literal — but built from record literals only, no call.
+// This is the control for repro A: if A is refused and this is not, the refusal is the call, not the depth
+// or the nested constructor literal in a data item.
+module v2.test.fixture.namespace_xl0.lst_probe_data_cons
+
+type PList
+  = PEmpty
+  | PCons { head: Int, tail: PList }
+
+data probe_list: PList = PCons {
+    head: 1,
+    tail: PCons {
+    head: 2,
+    tail: PCons {
+    head: 3,
+    tail: PCons {
+    head: 4,
+    tail: PCons {
+    head: 5,
+    tail: PCons {
+    head: 6,
+    tail: PEmpty
+  }
+  }
+  }
+  }
+  }
+  }
+
+fn probe_sum_tail() -> PList {
+  probe_list.tail
+}
