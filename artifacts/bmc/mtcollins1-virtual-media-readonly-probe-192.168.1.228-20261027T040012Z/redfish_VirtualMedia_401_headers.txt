@@ -1,0 +1,9 @@
+HTTP/1.1 401 Unauthorized
+Server: AMI MegaRAC Redfish Service
+WWW-Authenticate: Basic realm="AMI_Redfish_Server"
+WWW-Authenticate: X-Auth-Token realm="AMI_Redfish_Server"
+OData-Version: 4.0
+Content-Type: application/json; charset=UTF-8
+Content-Length: 602
+Date: Tue, 27 Oct 2026 04:00:11 GMT
+

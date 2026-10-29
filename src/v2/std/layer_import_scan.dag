@@ -4,7 +4,7 @@ import std.types { List }
 import v2.std.layer { LayerImportFact }
 import v2.std.text { String }
 
-// Transitional host producer (layering-imports-reference-repoint-design.md §3.1): import-syntax
+// Transitional host producer for the containment consumers below: import-syntax
 // rows for import-bearing files in the scan roots, plus
 // reference_edges_as_import_facts(strict=true) for import-less files; import-syntax wins on (path,
 // target_module) collision. Terminal step (namespace import-grammar deletion, Phase 3) deletes the

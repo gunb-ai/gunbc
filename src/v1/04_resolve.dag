@@ -16,7 +16,7 @@ import v1.std.core { Unmarked,
   field_from_key_property_name,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   ErrorNode, make_error_node,
-  InternalError, TypeAliasCycle, ArityMismatch, UnresolvedType, UnlistedImportUse, TypeArgumentKindMismatch,
+  InternalError, TypeAliasCycle, ArityMismatch, UnresolvedType, TypeRefMeasureBindingDisagreement, UnlistedImportUse, TypeArgumentKindMismatch,
   Cardinality, Required,
   StringPart, Text, Interpolation,
   MatchPattern, Wildcard,
@@ -31,8 +31,8 @@ import v1.std.core { Unmarked,
   expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at,
   make_arg_node, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node,
   find_property, expr_literal_int_optional, type_param_kind_property_name,
-  make_transport_node, local_transport_node,
-  is_local_transport, transport_request_body,
+  make_transport_node, undeclared_transport_node,
+  is_undeclared_transport, transport_request_body,
   is_kernel_type, is_container_type,
   with_optional_cardinality, with_required_cardinality, join_optional_cardinality, preserve_outer_optional_cardinality,
   Connective, Conj, Disj, Arrow, NoConnective,
@@ -49,9 +49,9 @@ import v1.compiler.infer_types {
 import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
+  TypeEnv, TypeBinding, substitute_type_slots, substitute_type_slots_scoped, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
-  type_ref_measure_binding_authority,
+  type_ref_measure_binding_authority, TypeRefMeasureBinding, TypeRefMeasureBound, TypeRefMeasureDisagreesWithProduction, TypeRefMeasureUnbound,
   width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
   UnitVariantContribution
 }
@@ -522,60 +522,6 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   }
 }
 
-fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>) -> Node {
-  substitute_type_slots_scoped(n: n, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: false)
-}
-
-fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>, bind_type_variables: Bool) -> Node {
-  let tv_slot = if bind_type_variables {
-    match n.inferred {
-      Present { value: TypeVariable { id: tv_id } } => map_get(slot_bindings, tv_id)
-      _ => none
-    }
-  } else { none }
-  if tv_slot != none { return preserve_outer_optional_cardinality(outer: n, inner: tv_slot.value) }
-  let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
-  if is_slot {
-    match map_get(slot_bindings, authored_name_at(source_indices: source_indices, node: n)) {
-      Present { value: concrete } => preserve_outer_optional_cardinality(outer: n, inner: concrete)
-      Absent => n
-    }
-  } else {
-    let new_children = n.children |> map(child =>
-      if authored_name_at(source_indices: source_indices, node: child) == decl_name {
-        let substituted_args = child.children |> map(arg =>
-          substitute_type_slots_scoped(n: arg, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables)
-        )
-        Node {
-          occurrence_identity: child.occurrence_identity, name: child.name, span: child.span, ident_span: child.ident_span, children: substituted_args,
-          connective: child.connective, params: child.params,
-          inferred: child.inferred, return_cardinality: child.return_cardinality,
-          uses: child.uses, body: child.body, transport: child.transport,
-          properties: child.properties, type_annotation: child.type_annotation,
-          is_self_recursive: child.is_self_recursive,
-          has_non_tail_self_call: child.has_non_tail_self_call, match_pattern: child.match_pattern, module_item_kind: child.module_item_kind, declaration_marker: child.declaration_marker, declaration: child.declaration, expr_data: child.expr_data
-        }
-      } else {
-        substitute_type_slots_scoped(n: child, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables)
-      }
-    )
-    let new_inferred = match n.inferred {
-      Present { value: Resolved { node: rt } } =>
-        Present { value: Resolved { node: substitute_type_slots_scoped(n: rt, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables) } }
-      _ => n.inferred
-    }
-    Node {
-      occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: new_children,
-      connective: n.connective, params: n.params,
-      inferred: new_inferred, return_cardinality: n.return_cardinality,
-      uses: n.uses, body: n.body, transport: n.transport,
-      properties: n.properties, type_annotation: n.type_annotation,
-      is_self_recursive: n.is_self_recursive,
-      has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
-    }
-  }
-}
-
 type AliasKind = AliasParameterized | AliasLeaf | AliasPassthrough
 
 fn classify_alias(target: Node) -> AliasKind {
@@ -626,8 +572,11 @@ fn resolve_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> Node
 data resolve_node_bounded_masked_boundary: String = "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (expand_nominal_alias_rhs :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561, and the field-access alias peel — v1.compiler.infer peel_alias_once_for_field_access, added 2026-09-09 after the census measured it charging definer-tree names to importers), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority."
 
 // N1a MEASUREMENT ARM (quiet-hawk-219): when type_ref_hit_ne_bind_measure_active (v1_rt host
-// bracket), a masked leaf pool-hit without type_ref_measure_binding_authority emits UnresolvedType
-// via bare_name_miss_diagnostic — never Product(<anon>). Production (measure off) keeps the
+// bracket), a masked leaf pool-hit the measure's binding authority answers Unbound for emits
+// UnresolvedType via bare_name_miss_diagnostic — never Product(<anon>); one it answers
+// DisagreesWithProduction for (a qualified hit production binds through the symbol index but whose
+// qualifier is neither an ancestor nor an imported module) emits TypeRefMeasureBindingDisagreement,
+// so a production binding is never charged to UnresolvedType. Production (measure off) keeps the
 // UnlistedImportUse advisory path. Leaf path only; is_user_generic_use_site unchanged. Dissolve-on:
 // gunbc.type_ref_hit_ne_bind_measure.authority type_ref_hit_ne_bind_measure_dissolve_trigger.
 
@@ -873,15 +822,18 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
           let type_name = authored_name(env: env, node: n)
           let is_optional = n.return_cardinality == CardOptional
           let final_resolved = if is_optional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
-          if masked
+          let measure_refusal = if masked
             && type_ref_hit_ne_bind_measure_active()
-            && type_ref_measure_binding_authority(env: env, name: type_name) == false
             && is_kernel_type(name: type_name) == false
             && is_kernel_type(name: qualified_last_segment(name: type_name)) == false {
-            NodeResolveResult {
-              resolved: final_resolved,
-              diagnostics: [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: type_name, span: n.span), module_name: module_name)]
+            match type_ref_measure_binding_authority(env: env, name: type_name) {
+              TypeRefMeasureBound => []
+              TypeRefMeasureUnbound => [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: type_name, span: n.span), module_name: module_name)]
+              TypeRefMeasureDisagreesWithProduction => [make_error_node(diagnostic: TypeRefMeasureBindingDisagreement { name: type_name, production_route: "v1.compiler.infer_env lookup_qualified_module_projection (exact symbol_index hit on the qualified name)", span: n.span }, module_name: module_name)]
             }
+          } else { [] }
+          if measure_refusal |> count > 0 {
+            NodeResolveResult { resolved: final_resolved, diagnostics: measure_refusal }
           } else {
             let unlisted_diags = if masked && map_is_empty(m: env.source_visible_names) == false && map_has(m: env.source_visible_names, key: type_name) == false && resolved_node_is_kernel_identity_for_name(node: n, name: type_name) == false {
               [make_error_node(diagnostic: UnlistedImportUse { name: type_name, span: n.span }, module_name: module_name)]
@@ -1046,7 +998,7 @@ fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> Fi
 }
 
 fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String) -> TransportResolveResult {
-  if is_local_transport(t: transport, source_indices: env.source_indices) {
+  if is_undeclared_transport(t: transport, source_indices: env.source_indices) {
     TransportResolveResult { transport: transport, diagnostics: [] }
   } else {
     let prop_results = map(transport.properties, p =>
@@ -1519,7 +1471,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   let anno_diags = anno_resolved.diagnostics
 
   let transport_resolved = if item.transport == none {
-    TransportResolveResult { transport: local_transport_node(occurrence_identity: OccurrenceSynthetic, span: no_span()), diagnostics: [] }
+    TransportResolveResult { transport: undeclared_transport_node(occurrence_identity: OccurrenceSynthetic, span: no_span()), diagnostics: [] }
   } else {
     resolve_transport_binding(transport: item.transport.value, env: env, module_name: module_name)
   }

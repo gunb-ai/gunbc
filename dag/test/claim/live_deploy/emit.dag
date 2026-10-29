@@ -166,7 +166,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import std.algebra { FreeSemigroup }
 import std.measure { byte_size_count }
-import v2.std.orchestration { Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call }
+import v2.std.orchestration { Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -922,7 +922,7 @@ test fn the_fabric_storage_store_areas_reach_the_srv1_apply_path() -> Bool {
 // the refusal when a directory grants o+x, are witnessed on synthetic principals in
 // test.claim.managed_directory_witness.
 test fn the_placed_fabric_store_derives_entry_mode_0400() -> Bool {
-  match fabric_storage_entry_mode(store_root: fabric_storage_store_root(instance: srv1_live_dashboard_instance())) {
+  match fabric_storage_entry_mode(instance: srv1_live_dashboard_instance()) {
     FabricStorageEntryModeDerived { mode } => file_mode_octal(mode: mode) == "0400"
     FabricStorageEntryModeRefused { detail: _ } => false
   }

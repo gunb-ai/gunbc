@@ -819,6 +819,54 @@ pub(crate) fn process_termination_value(
     }
 }
 
+/// Build `v2.std.host_run` `EmitHostTransportResult`, the one shape both emit-host transports
+/// return. `phase` is an `EmitHostTransportPhase` variant name; termination is already a
+/// `ProcessTermination`; the octets are `std.types` `Bytes` (a list of 0..255 ints, the value
+/// `bytes_octets` reads); the log lines are a `BuildLog`.
+fn emit_host_transport_result_value(
+    phase: &str,
+    termination: Value,
+    stdout: &[u8],
+    stderr: &[u8],
+    build_log: Vec<Value>,
+    ctx: &InterpContext,
+) -> Value {
+    let octets = |bytes: &[u8]| {
+        list_value(
+            bytes
+                .iter()
+                .map(|b| Value::Int(*b as i64))
+                .collect::<Vec<Value>>(),
+        )
+    };
+    Value::Record {
+        type_name: ctx.sym("EmitHostTransportResult"),
+        // fields_get is a binary search by Symbol id, so a multi-field record
+        // MUST be sorted at construction; declaration order is interning-order-
+        // dependent and broke .success lookups when #6904 shifted interning.
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("phase"),
+                Value::Variant {
+                    type_name: ctx.sym("EmitHostTransportPhase"),
+                    variant_name: ctx.sym(phase),
+                    fields: Rc::new(Vec::new()),
+                },
+            ),
+            (ctx.sym("termination"), termination),
+            (ctx.sym("stdout_bytes"), octets(stdout)),
+            (ctx.sym("stderr_bytes"), octets(stderr)),
+            (
+                ctx.sym("build_log"),
+                Value::Record {
+                    type_name: ctx.sym("BuildLog"),
+                    fields: Rc::new(vec![(ctx.sym("lines"), list_value(build_log))]),
+                },
+            ),
+        ])),
+    }
+}
+
 /// Human-facing rendering of a termination for a build log line. Kept beside the
 /// projection above so the two spellings of one observation cannot drift.
 pub(crate) fn process_termination_label(status: &std::process::ExitStatus) -> String {
@@ -1199,6 +1247,45 @@ fn detach_portable_children(value: &mut PortableValue, pending: &mut Vec<Portabl
     }
 }
 
+/// UNIQUELY OWNED CARRIERS ARE DRAINED EVEN WHEN A `Weak` HANDLE IS OUTSTANDING.
+///
+/// `Rc::get_mut` is the obvious test for "nobody else can observe this carrier", and it is too strict
+/// for THIS interpreter: it returns `None` whenever any `Weak` exists, even with the strong count at
+/// one, and this interpreter deliberately keeps `Weak` handles on live carriers (`CompositeWeak` in the
+/// recompute memo, taken by `Rc::downgrade` in the `EvalRecomputeFrameKind` finalizers). So a carrier
+/// can be uniquely owned and still refuse `get_mut`; its members were then never moved to the worklist,
+/// and `Value::drop`'s own return released them through drop glue -- one host frame per value level,
+/// which is the abort this function exists to prevent.
+///
+/// THE INSTRUMENT FOR THAT CLAIM is this module's `a_weak_held_list_chain_drops` and
+/// `a_weak_held_variant_chain_drops`: a 262,144-level chain whose every carrier is uniquely owned but
+/// has a `Weak` outstanding. Take the three fallback arms out and they abort the test process with a
+/// host stack overflow; with them they pass, and they pass in one module run beside the pre-existing
+/// `a_deep_variant_chain_drops` / `a_deep_list_drops` guards, which already passed with and without
+/// this change -- that pair is what says the escape was specific to `Weak`-held carriers rather than
+/// to deep values in general.
+///
+/// `Rc::try_unwrap` is the route that works, and that is pinned rather than assumed:
+/// `an_outstanding_weak_blocks_get_mut_but_not_try_unwrap` asserts that a `Weak` blocks `get_mut` and
+/// does NOT block `try_unwrap`, and says so if a future std changes either way. It is also the honest
+/// route, because it re-checks ownership itself instead of trusting the guard above it: it returns
+/// `Err` unless the strong count is one, so a genuinely SHARED carrier is left in place for its other
+/// owners -- the invariant the `VALUE_DROP_INLINE_DEPTH` note above states, pinned on the shared side
+/// by this module's `a_shared_deep_chain_drops_once_per_owner`, by `slice_cost_tests`'
+/// `dropping_a_slice_of_a_shared_list_moves_no_member` /
+/// `the_detaching_drop_moves_the_slice_members` pair, and on this fallback's own side by
+/// `a_weak_held_but_shared_carrier_keeps_its_members_for_its_other_owner`. The `strong_count` test
+/// above is what keeps the common shared case off the `try_unwrap` path entirely; the `Err` branch only
+/// reverts to the previous behaviour, and restores the carrier.
+///
+/// A `Weak` OBSERVER OF A DRAINED CARRIER SEES WHAT IT WOULD SEE AFTER AN ORDINARY DROP:
+/// `strong_count` 0. Draining the members does not resurrect the carrier or keep the chain alive, so
+/// the recompute memo's liveness check — `CompositeWeak::alive`, which consults `strong_count` and
+/// never the contents — reads the same answer it read before this change.
+///
+/// This is NARROW by construction: it adds a fallback where the drain previously did nothing. It does
+/// not touch `value_depth_guarded` or any `stacker::maybe_grow` site, so the separate unfired-guard
+/// item (an interpreted recursion whose frames keep allocating) is NOT retired here.
 fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_carriers: bool) {
     match value {
         Value::List(items) if detach_carriers => {
@@ -1206,6 +1293,18 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
                 #[cfg(test)]
                 DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + items.len() as u64));
                 pending.extend(std::mem::take(items));
+            } else if Rc::strong_count(items) == 1 {
+                // Uniquely owned but `Weak`-held: take the carrier out and put it back if the unwrap
+                // refuses, so no path can leave this value looking at an emptied carrier.
+                let carrier = std::mem::replace(items, Rc::new(RrbVector::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(mut owned) => {
+                        #[cfg(test)]
+                        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + owned.len() as u64));
+                        pending.extend(std::mem::take(&mut owned));
+                    }
+                    Err(restored) => *items = restored,
+                }
             }
         }
         Value::Map(entries) if detach_carriers => {
@@ -1213,11 +1312,27 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
                 #[cfg(test)]
                 DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + entries.len() as u64));
                 pending.extend(std::mem::take(entries).into_iter().map(|(_, v)| v));
+            } else if Rc::strong_count(entries) == 1 {
+                let carrier = std::mem::replace(entries, Rc::new(HamtMap::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(owned) => {
+                        #[cfg(test)]
+                        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + owned.len() as u64));
+                        pending.extend(owned.into_iter().map(|(_, v)| v));
+                    }
+                    Err(restored) => *entries = restored,
+                }
             }
         }
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             if let Some(fields) = Rc::get_mut(fields) {
                 pending.extend(fields.drain(..).map(|(_, v)| v));
+            } else if Rc::strong_count(fields) == 1 {
+                let carrier = std::mem::replace(fields, Rc::new(Vec::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(owned) => pending.extend(owned.into_iter().map(|(_, v)| v)),
+                    Err(restored) => *fields = restored,
+                }
             }
         }
         _ => {}
@@ -13445,8 +13560,8 @@ mod cast_scope_index_tests {
     #[ignore = "real repository scope; run explicitly on a remote worker"]
     fn real_scope_cast_index_matches_the_retired_scan() {
         use crate::cli_run::{
-            claim_scope_for, evaluation_frame, prepare_repository_closure, process_shared_index,
-            witness_exclusion_substrings,
+            claim_scope_for, evaluation_frame, prepare_repository_closure,
+            process_shared_index_or_refuse, witness_exclusion_substrings,
         };
         // Locate the runtime checkout: remote builds can remap CARGO_MANIFEST_DIR to a
         // relative compilation path, which is not a usable execution-time source root.
@@ -13467,7 +13582,7 @@ mod cast_scope_index_tests {
         std::env::set_current_dir(root).expect("enter repository root");
         let roots = ["dag", "src/v2"].map(|path| root.join(path).to_string_lossy().into_owned());
         let entry = "test.claim.compiler_frontend_program_status_witness".to_string();
-        let index = process_shared_index(&roots);
+        let index = process_shared_index_or_refuse(&roots);
         let (prepared, _) = prepare_repository_closure(
             &roots,
             &witness_exclusion_substrings(),
@@ -16155,7 +16270,38 @@ fn compile_diagnostic_census_row_value(
     subject_name: String,
     blocking: bool,
     count: i64,
+    rendered_pair: Option<crate::cli_run::RenderedPair>,
 ) -> Value {
+    // The model's Optional<RenderedPair>: `None` here is the optional's OWN absence (a class the
+    // extractor's total match says carries no pair) projected to the model's Absent — never a
+    // stand-in for "the pair was equal", which is Uniform { expected, got } with expected == got.
+    let rendered_pair_value = match rendered_pair {
+        None => optional_absent(ctx),
+        Some(crate::cli_run::RenderedPair::Uniform { expected, got }) => optional_present(
+            Value::Variant {
+                type_name: ctx.sym("RenderedPair"),
+                variant_name: ctx.sym("Uniform"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("expected"), str_value(expected)),
+                    (ctx.sym("got"), str_value(got)),
+                ])),
+            },
+            ctx,
+        ),
+        Some(crate::cli_run::RenderedPair::Varied {
+            distinct_pair_count,
+        }) => optional_present(
+            Value::Variant {
+                type_name: ctx.sym("RenderedPair"),
+                variant_name: ctx.sym("Varied"),
+                fields: Rc::new(sorted_fields(vec![(
+                    ctx.sym("distinct_pair_count"),
+                    Value::Int(distinct_pair_count),
+                )])),
+            },
+            ctx,
+        ),
+    };
     Value::Record {
         type_name: ctx.sym("CompileDiagnosticCensusRow"),
         fields: Rc::new(sorted_fields(vec![
@@ -16163,10 +16309,10 @@ fn compile_diagnostic_census_row_value(
             (ctx.sym("subject_name"), str_value(subject_name)),
             (ctx.sym("blocking"), Value::Bool(blocking)),
             (ctx.sym("count"), Value::Int(count)),
+            (ctx.sym("rendered_pair"), rendered_pair_value),
         ])),
     }
 }
-
 fn reference_derived_candidate_disposition_value(
     disposition: &crate::v1_compiler_emit_rust::ReferenceDerivedCandidateDisposition,
     ctx: &InterpContext,
@@ -16246,6 +16392,7 @@ fn compile_diagnostic_census_value(
                                 r.subject_name,
                                 r.blocking,
                                 r.count,
+                                r.rendered_pair,
                             )
                         })
                         .collect::<Vec<_>>(),
@@ -16303,6 +16450,7 @@ fn claim_scope_fixture_value(
                             row.subject_name.clone(),
                             row.blocking,
                             row.count,
+                            row.rendered_pair.clone(),
                         )
                     })
                     .collect::<Vec<_>>(),
@@ -16348,6 +16496,7 @@ fn multi_module_compile_fixture_value(
                         r.subject_name,
                         r.blocking,
                         r.count,
+                        r.rendered_pair,
                     )
                 })
                 .collect::<Vec<_>>(),
@@ -17166,65 +17315,6 @@ fn gate_receipt_value(receipt: crate::cli_run::GateReceipt, ctx: &InterpContext)
             variant_name: ctx.sym("GateNotRun"),
             fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
         },
-    }
-}
-
-fn unlisted_import_binding_source_value(
-    source: crate::cli_run::UnlistedImportBindingSource,
-    ctx: &InterpContext,
-) -> Value {
-    let variant = match source {
-        crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
-        crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
-        crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
-        crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
-    };
-    Value::Variant {
-        type_name: ctx.sym("UnlistedImportBindingSource"),
-        variant_name: ctx.sym(variant),
-        fields: Rc::new(vec![]),
-    }
-}
-
-fn declared_import_closure_binding_value(
-    observation: crate::cli_run::DeclaredImportClosureBindingObservation,
-    ctx: &InterpContext,
-) -> Value {
-    match observation {
-        crate::cli_run::DeclaredImportClosureBindingObservation::Observed(observed) => {
-            let binding_source = match observed.binding_source {
-                Some(source) => {
-                    optional_present(unlisted_import_binding_source_value(source, ctx), ctx)
-                }
-                None => optional_absent(ctx),
-            };
-            Value::Variant {
-                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
-                variant_name: ctx.sym("BindingObserved"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("binding_source"), binding_source),
-                    (
-                        ctx.sym("definer_module"),
-                        str_value(observed.definer_module.unwrap_or_default()),
-                    ),
-                    (
-                        ctx.sym("symbol_resolves"),
-                        Value::Bool(observed.symbol_resolves),
-                    ),
-                    (
-                        ctx.sym("blocking_hard_diagnostic_count"),
-                        Value::Int(observed.blocking_hard_diagnostic_count),
-                    ),
-                ])),
-            }
-        }
-        crate::cli_run::DeclaredImportClosureBindingObservation::NotRunnable(cause) => {
-            Value::Variant {
-                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
-                variant_name: ctx.sym("BindingNotRunnable"),
-                fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
-            }
-        }
     }
 }
 
@@ -23260,7 +23350,6 @@ fn emit_host_run_transport_cached_in_workspace(
 ) -> InterpResult<Value> {
     let ready_marker = workspace.join(".native_ready");
     let cold_compile_receipt = workspace.join(".native_cold_compile_nanos");
-    let artifact_lookup_started = std::time::Instant::now();
     // Cold control (falsifier cadence): widen-only — ignoring the ready marker can
     // only force a FULL cold rebuild, never skip work (the compile-clean cold-control
     // pattern). Not an escape hatch: no value of the env makes the run do less.
@@ -23285,7 +23374,6 @@ fn emit_host_run_transport_cached_in_workspace(
     let compile_skipped = !cold_control
         && ready_marker.exists()
         && (!require_transition_timing || recorded_cold_compile_nanos.is_some());
-    let artifact_lookup_nanos = artifact_lookup_started.elapsed().as_nanos();
     eprintln!(
         "[native-cache] key={} compile_skipped={} cold_control={}",
         workspace
@@ -23295,59 +23383,6 @@ fn emit_host_run_transport_cached_in_workspace(
         compile_skipped,
         cold_control
     );
-
-    let transport_result = |phase: &str,
-                            termination: Value,
-                            stdout: &[u8],
-                            stderr: &[u8],
-                            build_log: Vec<Value>,
-                            compile_skipped: bool,
-                            cold_compile_nanos: u128,
-                            native_execution_nanos: u128|
-     -> Value {
-        Value::Record {
-            type_name: ctx.sym("EmitHostTransportResult"),
-            // fields_get is a binary search by Symbol id, so a multi-field record
-            // MUST be sorted at construction; declaration order is interning-order-
-            // dependent and broke .success lookups when #6904 shifted interning.
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("phase"), str_value(phase.to_string())),
-                (ctx.sym("termination"), termination),
-                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
-                (
-                    ctx.sym("artifact_lookup_nanos"),
-                    Value::Int(artifact_lookup_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("cold_compile_nanos"),
-                    Value::Int(cold_compile_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("native_execution_nanos"),
-                    Value::Int(native_execution_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("stdout_octets"),
-                    list_value(
-                        stdout
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("stderr_octets"),
-                    list_value(
-                        stderr
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (ctx.sym("build_log"), list_value(build_log)),
-            ])),
-        }
-    };
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
@@ -23375,23 +23410,19 @@ fn emit_host_run_transport_cached_in_workspace(
             )));
             if !out.status.success() {
                 build_log.push(str_value(String::from_utf8_lossy(&out.stderr).to_string()));
-                return Ok(transport_result(
-                    "build",
+                return Ok(emit_host_transport_result_value(
+                    "EmitHostBuildStepFailed",
                     process_termination_value(&out.status, ctx),
                     &out.stdout,
                     &out.stderr,
                     build_log,
-                    false,
-                    compile_started.elapsed().as_nanos(),
-                    0,
+                    ctx,
                 ));
             }
         }
 
         let cold_compile_nanos = compile_started.elapsed().as_nanos();
-        let native_started = std::time::Instant::now();
         let out = run_command(run_argv)?;
-        let native_execution_nanos = native_started.elapsed().as_nanos();
         build_log.push(str_value(format!(
             "{} -> {}",
             run_argv.join(" "),
@@ -23413,36 +23444,30 @@ fn emit_host_run_transport_cached_in_workspace(
                 )
             })?;
         }
-        return Ok(transport_result(
-            "run",
+        return Ok(emit_host_transport_result_value(
+            "EmitHostRanCold",
             process_termination_value(&out.status, ctx),
             &out.stdout,
             &out.stderr,
             build_log,
-            false,
-            cold_compile_nanos,
-            native_execution_nanos,
+            ctx,
         ));
     }
 
-    let native_started = std::time::Instant::now();
     let out = run_command(run_argv)?;
-    let native_execution_nanos = native_started.elapsed().as_nanos();
     let mut build_log: Vec<Value> = Vec::new();
     build_log.push(str_value(format!(
         "{} -> {}",
         run_argv.join(" "),
         process_termination_label(&out.status)
     )));
-    Ok(transport_result(
-        "run_cached",
+    Ok(emit_host_transport_result_value(
+        "EmitHostRanWarm",
         process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
-        true,
-        recorded_cold_compile_nanos.unwrap_or(0),
-        native_execution_nanos,
+        ctx,
     ))
 }
 
@@ -23487,45 +23512,6 @@ fn emit_host_run_transport_in_workspace(
             .map_err(|e| host_tool_spawn_failure("emit_host_run_transport", &argv[0], &program, &e))
     };
 
-    let transport_result = |phase: &str,
-                            termination: Value,
-                            stdout: &[u8],
-                            stderr: &[u8],
-                            build_log: Vec<Value>,
-                            compile_skipped: bool|
-     -> Value {
-        Value::Record {
-            type_name: ctx.sym("EmitHostTransportResult"),
-            // fields_get is a binary search by Symbol id, so a multi-field record
-            // MUST be sorted at construction; declaration order is interning-order-
-            // dependent and broke .success lookups when #6904 shifted interning.
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("phase"), str_value(phase.to_string())),
-                (ctx.sym("termination"), termination),
-                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
-                (
-                    ctx.sym("stdout_octets"),
-                    list_value(
-                        stdout
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("stderr_octets"),
-                    list_value(
-                        stderr
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (ctx.sym("build_log"), list_value(build_log)),
-            ])),
-        }
-    };
-
     let mut build_log: Vec<Value> = Vec::new();
     for argv in build_argvs {
         let out = run_command(argv)?;
@@ -23536,13 +23522,13 @@ fn emit_host_run_transport_in_workspace(
         )));
         if !out.status.success() {
             build_log.push(str_value(String::from_utf8_lossy(&out.stderr).to_string()));
-            return Ok(transport_result(
-                "build",
+            return Ok(emit_host_transport_result_value(
+                "EmitHostBuildStepFailed",
                 process_termination_value(&out.status, ctx),
                 &out.stdout,
                 &out.stderr,
                 build_log,
-                false,
+                ctx,
             ));
         }
     }
@@ -23553,13 +23539,13 @@ fn emit_host_run_transport_in_workspace(
         run_argv.join(" "),
         process_termination_label(&out.status)
     )));
-    Ok(transport_result(
-        "run",
+    Ok(emit_host_transport_result_value(
+        "EmitHostRanCold",
         process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
-        false,
+        ctx,
     ))
 }
 
@@ -23913,8 +23899,8 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
             },
 
-            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (std.primitives
-            // sha256_hex_of_text_contract).
+            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (the host realization
+            // of the declared seam std.content_hash sha256_hex_of_text).
             arm "free_call.sha256_hex_of_text" { "sha256_hex_of_text" } => {
                 Ok(Some(str_value(sha256_hex_of_text_digest(
                     expect_value_str($positional.first().copied(), "sha256_hex_of_text text")?.as_str(),
@@ -25193,22 +25179,6 @@ macro_rules! v1_builtin_arms {
                         &pool_roots,
                         &target_leaves,
                         &exact_resolved_roots,
-                    ),
-                    $ctx,
-                )))
-            },
-
-            arm "free_call.observe_declared_import_closure_symbol_binding" { "observe_declared_import_closure_symbol_binding" } => {
-                let pool_roots = expect_str_list($positional.first().copied(), $name)?;
-                let entry_path = expect_str($positional.get(1).copied(), $name)?;
-                let consumer_module = expect_str($positional.get(2).copied(), $name)?;
-                let symbol = expect_str($positional.get(3).copied(), $name)?;
-                Ok(Some(declared_import_closure_binding_value(
-                    crate::cli_run::observe_declared_import_closure_symbol_binding(
-                        &pool_roots,
-                        &entry_path,
-                        &consumer_module,
-                        &symbol,
                     ),
                     $ctx,
                 )))
@@ -26859,7 +26829,7 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
 }
 
 // SHA-256 of the text's UTF-8 bytes, lowercase hex: the host realization of the builtin
-// sha256_hex_of_text (std.primitives sha256_hex_of_text_contract), the same RustCrypto sha2 the HMAC
+// sha256_hex_of_text (declared at std.content_hash sha256_hex_of_text), the same RustCrypto sha2 the HMAC
 // seam below uses. The pure fold extdeps.crypto.sha2 sha256_hex shares its known answers.
 fn sha256_hex_of_text_digest(text: &str) -> String {
     use sha2::{Digest, Sha256};
@@ -30127,9 +30097,9 @@ mod value_depth_walker_tests {
 
     use super::{
         account_value, cross_representation_numeric_straddle,
-        free_monoid_symbol_value_to_dotted_string, json_to_value, list_value,
+        free_monoid_symbol_value_to_dotted_string, json_to_value, list_value, map_value,
         portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
-        portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash,
+        portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash, CanonKey,
         ExecutionMode, InterpContext, MemoryAccounting, Value,
     };
 
@@ -30176,6 +30146,138 @@ mod value_depth_walker_tests {
             value = list_value(vec![value]);
         }
         value
+    }
+
+    // THE RED: A UNIQUELY OWNED CARRIER HELD BY A `Weak` STILL REACHES THE WORKLIST.
+    //
+    // `Rc::get_mut` refuses any carrier with an outstanding `Weak`, even at strong count one, and this
+    // interpreter keeps such handles on live carriers on purpose (`CompositeWeak` in the recompute
+    // memo). Before the fallback in detach_owned_children, no level's members were moved, so
+    // `Value::drop`'s return released them through drop glue and the 262,144-deep chain aborted the
+    // process on the default 2 MiB test-thread stack -- the same host abort the wet lane shows after a
+    // reported refusal. Remove the fallback and THIS test aborts; that is its discriminating input.
+    #[test]
+    fn a_weak_held_list_chain_drops() {
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = list_value(Vec::<Value>::new());
+        for _ in 0..DEPTH {
+            let carrier = Rc::new(im_vec![value]);
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::List(carrier);
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // Same through the fields carrier, which detach_owned_children drains at EVERY depth rather than
+    // only past VALUE_DROP_INLINE_DEPTH, so it is the arm the wet-lane Variant/Record values take.
+    #[test]
+    fn a_weak_held_variant_chain_drops() {
+        let ctx = fresh_ctx();
+        let (chain, link, end, next) = (
+            ctx.sym("Chain"),
+            ctx.sym("Link"),
+            ctx.sym("End"),
+            ctx.sym("next"),
+        );
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = Value::Variant {
+            type_name: chain,
+            variant_name: end,
+            fields: Rc::new(vec![]),
+        };
+        for _ in 0..DEPTH {
+            let fields = Rc::new(vec![(next, value)]);
+            weaks.push(Rc::downgrade(&fields));
+            value = Value::Variant {
+                type_name: chain,
+                variant_name: link,
+                fields,
+            };
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // THE THIRD CARRIER TYPE, TESTED THE SAME WAY. detach_owned_children has three fallback arms
+    // (List, Map, fields), and the two above cover List and fields; without this one the Map arm could
+    // be deleted and the suite would stay green. Same shape: uniquely owned at every level, one `Weak`
+    // outstanding at every level, deep enough that detach_carriers is on.
+    #[test]
+    fn a_weak_held_map_chain_drops() {
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = map_value(HashMap::new());
+        for level in 0..DEPTH {
+            let mut entries = HashMap::new();
+            entries.insert(
+                CanonKey::new(Value::Int(level as i64)).expect("reflexive key"),
+                value,
+            );
+            let carrier = Rc::new(entries);
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::Map(carrier);
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // THE POSITIVE CONTROL: A SHARED CARRIER IS STILL NOT STOLEN. The fallback must drain only what the
+    // dropping value exclusively owns. Here every level's carrier has a SECOND STRONG OWNER held
+    // elsewhere, so the strong_count guard must keep it off the try_unwrap path entirely: after the
+    // chain is dropped, each retained carrier still holds its one member. Widen the fallback to ignore
+    // the strong count and this fails instead of passing.
+    #[test]
+    fn a_weak_held_but_shared_carrier_keeps_its_members_for_its_other_owner() {
+        const SHARED_DEPTH: usize = 1_024;
+        let mut retained: Vec<Rc<im::Vector<Value>>> = Vec::with_capacity(SHARED_DEPTH);
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(SHARED_DEPTH);
+        let mut value = list_value(Vec::<Value>::new());
+        for _ in 0..SHARED_DEPTH {
+            let carrier = Rc::new(im_vec![value]);
+            retained.push(Rc::clone(&carrier));
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::List(carrier);
+        }
+        drop(value);
+        assert_eq!(
+            retained.iter().map(|carrier| carrier.len()).sum::<usize>(),
+            SHARED_DEPTH,
+            "a shared carrier was drained from under its other owner"
+        );
+        drop(retained);
+        drop(weaks);
+    }
+
+    // WHY try_unwrap AND NOT A STRONGER get_mut TEST: the fallback rests on `Weak` not blocking
+    // `Rc::try_unwrap` while it does block `Rc::get_mut`. That is std behaviour this file now depends
+    // on, so it is pinned here rather than trusted: if a future std made `Weak` block try_unwrap, the
+    // two deep tests above would abort again and THIS one would say why.
+    #[test]
+    fn an_outstanding_weak_blocks_get_mut_but_not_try_unwrap() {
+        let mut carrier: Rc<Vec<(crate::v1_interpreter::Symbol, Value)>> = Rc::new(vec![]);
+        let weak = Rc::downgrade(&carrier);
+        let extra = Rc::clone(&carrier);
+        assert!(
+            Rc::get_mut(&mut carrier).is_none(),
+            "two strong owners must not grant get_mut"
+        );
+        drop(extra);
+        assert_eq!(
+            Rc::strong_count(&carrier),
+            1,
+            "the extra owner was not released"
+        );
+        assert_eq!(Rc::weak_count(&carrier), 1, "the Weak handle vanished");
+        assert!(
+            Rc::get_mut(&mut carrier).is_none(),
+            "Weak stopped blocking get_mut: the fallback arm this pins is then dead weight"
+        );
+        assert!(
+            Rc::try_unwrap(carrier).is_ok(),
+            "std started letting Weak block try_unwrap: uniquely owned carriers stop draining \
+             and the deep drops abort again"
+        );
+        assert_eq!(weak.strong_count(), 0, "the carrier survived its unwrap");
     }
 
     #[test]

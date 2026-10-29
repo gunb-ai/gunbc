@@ -5,6 +5,7 @@ import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.toolchain.types { Aarch64 }
+import gunbc.site_pxe_edge { EveryKnownClient }
 import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly }
 import gunbc.machine_intake.subject { UnitKey }
 import gunbc.fleet.site_pxe_edge_converge {
@@ -18,6 +19,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   SecureBootVerdictBooted,
   SecureBootVerdictRejected,
   site_pxe_edge_chainloader_build_receipt,
+  SitePxeEdgeCommittedArtifact,
 }
 import gunbc.secure_boot_observation { SecureBootDisabled, VendorCommandRejected }
 import gunbc.provisioning.provisioning_arm {
@@ -82,8 +84,8 @@ import extdeps.provisioning.network_boot { UefiHttpBoot }
 import extdeps.uri { uri_https }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
 import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
-import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
-import test.claim.altra_autoinstall_seed_witness { built_seed_and_binding }
+import gunbc.provisioning.ubuntu_autoinstall_seed { UbuntuAutoinstallSeedBinding }
+import test.claim.ubuntu_autoinstall_seed_witness { built_seed_and_binding }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -91,7 +93,7 @@ fn fixture_origin() -> UbuntuNetworkOrigin? {
   ubuntu_noble_arm64_network_origin()
 }
 
-fn fixture_seed() -> AltraAutoinstallSeedBinding? {
+fn fixture_seed() -> UbuntuAutoinstallSeedBinding? {
   match built_seed_and_binding() {
     Present { value: built } => Present { value: built.binding }
     Absent => Absent
@@ -161,7 +163,7 @@ fn pin_with(secure_boot: SitePxeEdgeSecureBootStanding) -> SitePxeEdgeChainPin {
       built_from_commit: "fixture-commit",
       build_target: ipxe_arm64_efi_snponly,
       architecture: Aarch64,
-      digest: digest_a,
+      artifact: SitePxeEdgeCommittedArtifact { path: "artifacts/ipxe/snponly-arm64.efi", digest: digest_a },
       installed_filename: "snponly.efi",
       secure_boot: secure_boot,
     )
@@ -287,7 +289,7 @@ test fn the_firmware_route_comes_from_the_standing_not_from_a_default() -> Bool 
 }
 
 test fn virtual_media_arm_does_not_need_a_pinned_chainloader() -> Bool {
-  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chain: SitePxeEdgeChainUnpinned { architecture: Aarch64, obligation: "fixture" }, virtual_media: media_available())
+  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chain: SitePxeEdgeChainUnpinned { architecture: Aarch64, audience: EveryKnownClient, obligation: "fixture" }, virtual_media: media_available())
   match derive(strategy: VirtualMedia, evidence: e, unit: "unit-alpha") {
     ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => true
     ArmedPxeOrUefiHttp { chain: _, firmware: _, origin: _, seed: _ } => false
@@ -302,7 +304,7 @@ test fn unobserved_firmware_is_an_unobserved_arm_not_a_fallback_to_virtual_media
 }
 
 test fn an_unpinned_chainloader_is_an_unobserved_arm() -> Bool {
-  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chain: SitePxeEdgeChainUnpinned { architecture: Aarch64, obligation: "pin it" }, virtual_media: media_available())
+  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chain: SitePxeEdgeChainUnpinned { architecture: Aarch64, audience: EveryKnownClient, obligation: "pin it" }, virtual_media: media_available())
   is_unobserved_as(arm: derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha"), expected: LoaderChainNotPinned { obligation: "pin it" })
 }
 

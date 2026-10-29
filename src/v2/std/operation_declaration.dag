@@ -270,6 +270,30 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     shape: DeclaredShape { shape: ReadEffect }
   ),
   operation_declaration_row(
+    module_path: "std.content_hash",
+    decl_name: "sha256_hex_of_text",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "text_digest") },
+    shape: DeclaredShape { shape: ReadEffect }
+  ),
+  operation_declaration_row(
+    module_path: "std.operation_argv",
+    decl_name: "shell_materialize_operation_argv",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "argv_materialization") },
+    shape: DeclaredShape { shape: ReadEffect }
+  ),
+  operation_declaration_row(
+    module_path: "gunbc.compile_diagnostic_census",
+    decl_name: "compile_dag_diagnostic_census",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "source_diagnostic_census") },
+    shape: DeclaredShape { shape: ReadEffect }
+  ),
+  operation_declaration_row(
     module_path: "std.algebra",
     decl_name: "empty_map_primitive_delegate",
     requirement: RequiresNone,

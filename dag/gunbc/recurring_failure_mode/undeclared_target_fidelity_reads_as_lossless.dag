@@ -1,0 +1,43 @@
+module gunbc.recurring_failure_mode.undeclared_target_fidelity_reads_as_lossless
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data undeclared_target_fidelity_reads_as_lossless: RecurringFailureMode = RecurringFailureMode {
+  identity: "undeclared_target_fidelity_reads_as_lossless" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyImpossible,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "every target's decode fidelity is a declared quotient with its own grounds, and a consumer that needs a fidelity for a target that declares none refuses with a typed, located FidelityUndeclared, executed against a RED undeclared target at a fidelity-needing consumer and a positive control that declares Lossless with its grounds"
+    }
+  },
+
+  receipts: [
+    "**a target that declares no fidelity quotient is read as Lossless, the strongest fidelity, by default.** v2.compiler.target_carriers decode_fidelity_from_target binds target_fidelity_quotient_optional (that is, bundle_fidelity_quotient_optional over target.bundle) and maps Absent to outcome_accepted(Lossless). The module comment above bundle_fidelity_quotient_optional states the policy: 'A MISSING quotient is a target that declares none, which decodes Lossless.' Absence becomes the best answer: DESIGN section 5's fabricated default, and the cardinality/absence rule that absence is not the strongest claim.",
+
+    "INVALID STATE: a Medium whose fidelity is Lossless because its target declared nothing, not because Lossless was established for that target.",
+
+    "HARM: Lossless is the claim that decoding loses nothing. A consumer that trusts the medium's fidelity (a round-trip, an equality or a contract that holds only for lossless carriers) is admitted for every target without a quotient, with no evidence. As routed by sleek-owl-397 from merry-deer-485 via keen-heron-809, rust, python, bash and every other target except github-expression, bmc-lifecycle and dag are in that position. That target set is relayed, not re-derived here; the census below re-derives it. The wrong answer is silent: nothing marks a defaulted Lossless as different from a declared one, so the class was FOUND below the ladder.",
+
+    "DISTINGUISHING FACTS: the default sits in ONE consumer of the optional reader, decode_fidelity_from_target. bundle_fidelity_quotient_optional itself returns Absent honestly, and refuses an AMBIGUOUS quotient (target_carriers_fidelity_quotient_ambiguous). READERS ON main, by module (enumerated 2026-10-25 by text search; a starting list for step (1), not the census itself). decode_fidelity_from_target is read DIRECTLY by v2.workflow.gha_expression_fidelity and v2.workflow.bmc_lifecycle_roundtrip (production), and by the claims v2.test.claim.manual.target_carriers_fidelity, v2.test.claim.manual.path_y_fidelity_successor and v2.test.claim.round_trip.source_authority_contract. It is read INDIRECTLY through target_source_medium, whose production callers are v2.compiler.emit_module, v2.compiler.emit_produced, v2.compiler.target_serialize and v2.compiler.translate. So every emitted or translated source medium passes through the default. A first draft named target_source_medium as the sole reader and omitted translate and both workflow readers; corrected per the side-chat review of #15187. A second candidate for the census: fidelity_quotient_decode_fidelity folds a Conj quotient from an initial Lossless, which may make a quotient with no edges decode Lossless too. That is unread, and it is the same question at one remove. lossless_source(text) constructs Lossless by name; whether its callers establish the fact is also a census question. It is distinct from mitigation_injected_where_judgment_declined, which cites this module for outcome_accepted's free type parameter, not for the default. FAMILY: this is a member of the absence family audited on [[absent_reads_identically_to_never_looked]], by its shape test: an EMPTINESS (no declared quotient) consumed AS AN AFFIRMATIVE VERDICT (Lossless). It is separated from its siblings, such as [[absence_classifier_default_bucket]], by WHAT IS ABSENT: a target's declared fidelity quotient. It is cited there by name so the family stays reachable from its members, the gap that audit measured.",
+
+    "RULING (sleek-owl-397, 2026-10-25): an undeclared fidelity becomes a typed FidelityUndeclared, refused and located, wherever a consumer needs a fidelity. Each target declares its quotient explicitly; Lossless is a claim with its own evidence, never the fallback. ORDER, because turning the refusal on is not subtractive: (1) a census of every consumer that reads the quotient (directly or through target_source_medium) and which targets reach each, reported as cleared, surviving and newly refusing; (2) quotients declared, each with its grounds, for the targets those consumers actually reach; (3) the default flipped to refuse. Staffing: not N7-critical; an existing slot when one frees, and no new worker.",
+
+    "CEILING: structurally impossible. A TargetModel whose bundle cannot be constructed without a fidelity quotient leaves the undeclared state without a constructor. The interim refusal at the consumer is mechanically preventable, the rung step (3) reaches. Dissolution on climb: once construction requires the quotient, the FidelityUndeclared refusal path is deleted, and its RED stays enrolled as a regression control.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v2.compiler.target_carriers", decl_name: "decode_fidelity_from_target"),
+    decl_ref(module_path: "v2.compiler.target_carriers", decl_name: "bundle_fidelity_quotient_optional"),
+    decl_ref(module_path: "v2.compiler.target_carriers", decl_name: "target_source_medium"),
+    decl_ref(module_path: "v2.compiler.target_carriers", decl_name: "fidelity_quotient_decode_fidelity"),
+    decl_ref(module_path: "extdeps.communication.medium", decl_name: "DecodeFidelity"),
+  ],
+}

@@ -133,7 +133,7 @@ test fn every_declaration_row_is_a_projected_host_seam_holds() -> Bool {
 
 // THE SECOND HALF, AT THE SAME KEY: the census's seam arm dispatches on std.primitive_projection, so
 // the count of declaration rows the arm dispatches on EQUALS the roster (one row per sealed seam, no
-// seam left without a row and no row without a seam), the population is the 27 projected seams, and
+// seam left without a row and no row without a seam), the population is the 30 projected seams, and
 // the M2V population the census counts is still the seven.
 test fn every_host_realized_seam_carries_exactly_one_declaration_row_holds() -> Bool {
   fold_list(
@@ -147,7 +147,7 @@ test fn every_host_realized_seam_carries_exactly_one_declaration_row_holds() -> 
       }
     }
   ) == length(xs: operation_declaration_roster)
-    && length(xs: operation_declaration_roster) == 27
+    && length(xs: operation_declaration_roster) == 30
     && length(xs: operation_declaration_m2v_population()) == 7
     && demand_census_declaration_is_host_seam(path: read_seam_path())
 }

@@ -1,0 +1,164 @@
+module extdeps.docker.cli_service
+
+import std.types { String, Int, List, NonEmptyStr }
+import std.measure { Second, second_count }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/reference/cli/docker/"
+  }
+}
+
+// The `-t` word of `docker stop` is docker's own rendering of a std.measure Second: the grace
+// period is a duration, and the seconds spelling exists only at this argv boundary (the same
+// posture as extdeps.http.client http_client_max_time_flag rendering curl's --max-time). A
+// caller cannot hand this operation a string and hope it parses as a number of seconds.
+fn docker_stop_grace_flag(grace: Second) -> NonEmptyStr {
+  to_string(second_count(s: grace)) as NonEmptyStr
+}
+
+// THE DOCKER CLI AS A SHELL-TRANSPORT SERVICE, one fixed argv per operation. extdeps.docker.cli builds the
+// same commands as ArgvCommand values for units and scripts; this module performs them, and is its own
+// module so a native program that runs containers does not take that module's JSON closure.
+//
+// Fixed argv, not literal policy: the docker program, container names, images, networks, paths and the
+// container's command all arrive as parameters, so the caller states every choice. The service is the
+// narrow process-spawn effect the native claim route admits (std.compiler_entry
+// native_claim_route_denominator; ruling gunbc.design_ruling native_claim_route_admits_the_docker_cli);
+// generic exec stays out.
+//
+// No operation declares an exit block: the exit code is a returned field, so a caller can read a refusal
+// (a failed `openresty -t`, an unreachable daemon) as a value. A program that cannot be spawned at all is
+// a transport error, which the native claim main reports as no observation.
+service DockerCli {
+  operation Version {
+    requires opaque
+    input { docker: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "version"] }
+  }
+
+  operation VersionAtHost {
+    requires opaque
+    input { docker: NonEmptyStr, host: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "--host", host, "version"] }
+  }
+
+  operation Create {
+    requires opaque
+    input { docker: NonEmptyStr, name: NonEmptyStr, network: NonEmptyStr, image: NonEmptyStr, command: List<String> }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "create", "--name", name, "--network", network, image, command] }
+  }
+
+  operation CopyInto {
+    requires opaque
+    input { docker: NonEmptyStr, source: String, destination: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "cp", source, destination] }
+  }
+
+  operation Start {
+    requires opaque
+    input { docker: NonEmptyStr, name: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "start", name] }
+  }
+
+  operation StartAttached {
+    requires opaque
+    input { docker: NonEmptyStr, name: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "start", "-a", name] }
+  }
+
+  operation RunRemoved {
+    requires opaque
+    input { docker: NonEmptyStr, network: NonEmptyStr, image: NonEmptyStr, arguments: List<String> }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "run", "--rm", "--network", network, image, arguments] }
+  }
+
+  operation RemoveForce {
+    requires opaque
+    input { docker: NonEmptyStr, name: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "rm", "-f", name] }
+  }
+
+  // `docker create` for one container plan. The subcommand is fixed here and NOTHING ELSE is spelled
+  // by the caller: `arguments` is extdeps.docker.create_spec docker_create_arguments_without_verb —
+  // the one renderer every container plan in this repository uses (identity, restart policy,
+  // resources, image, command) — so no caller can silently drop --ipc, --shm-size or --restart,
+  // and no caller can hand-assemble the identity flags. stdout carries the new container's id.
+  operation CreateWithFlags {
+    requires opaque
+    input { docker: NonEmptyStr, arguments: List<String> }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "create", arguments] }
+  }
+
+  // `docker stop -t <seconds>`: SIGTERM, then SIGKILL after the grace, so a sampler flushes its file.
+  operation Stop {
+    requires opaque
+    input { docker: NonEmptyStr, name: NonEmptyStr, grace: Second }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "stop", "-t", docker_stop_grace_flag(grace: grace), name] }
+  }
+
+  // `docker inspect --format <template>`: one field of a container, read by template.
+  operation InspectFormat {
+    requires opaque
+    input { docker: NonEmptyStr, name: NonEmptyStr, format: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "inspect", "--format", format, name] }
+  }
+}

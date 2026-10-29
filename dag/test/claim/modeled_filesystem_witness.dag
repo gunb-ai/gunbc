@@ -27,7 +27,8 @@ import extdeps.filesystem.filesystem_io {
 import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire, FileHoldAcquired, FileHoldOccupied,
 }
-import gunbc.host.managed_host_unit_hold { boot_run_owner }
+import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_path }
+import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import gunbc.filesystem_model {
   ModeledFilesystem, ModeledFile, ModeledPathStat, filesystem_bindings, filesystem_ownership_bindings, filesystem_operation,
   owner_only_directory_mode,
@@ -43,7 +44,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // /var/lib on the host running the witness.
 data realization_identity: NonEmptyStr = "modeled-filesystem-witness" as NonEmptyStr
 
-data hold_root: NonEmptyStr = "/var/lib/gunbc/unit-holds" as NonEmptyStr
+// The hold root is DERIVED -- the ONE host-state tree plus the unit-hold store's own member declaration,
+// never a spelled path. It is an argument to the hold library (which takes roots by design) inside the
+// MODELED filesystem: nothing here touches a real /var/lib.
+data hold_root: NonEmptyStr = unit_hold_store_path(tree: host_state_tree())
 
 data hold_key: NonEmptyStr = "operator-host-mtcollins1" as NonEmptyStr
 
@@ -74,7 +78,7 @@ fn filesystem_frame(initial: ModeledFilesystem) -> WitnessEvaluationFrame<Modele
 }
 
 fn empty_hold_store() -> ModeledFilesystem {
-  ModeledFilesystem { directories: ["/", "/var", "/var/lib", "/var/lib/gunbc", hold_root as String], files: [], refused_reads: [], stats: [] }
+  ModeledFilesystem { directories: ["/", "/var", "/var/lib", host_state_tree_path(tree: host_state_tree()) as String, hold_root as String], files: [], refused_reads: [], stats: [] }
 }
 
 fn route_operations(route: List<DispatchRecord>) -> List<String> {

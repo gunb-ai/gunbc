@@ -12,13 +12,15 @@ import v2.std.node { symbol_lexeme, named_edge_sort_key }
 import v2.std.node_query { node_labeled_child_edges }
 import v2.std.decl_index { DataDeclTypeFact, data_decl_type_facts, decl_facts }
 import extdeps.gpu.types {
-  GpuModelCatalogRow, PcieAddInCard, SxmModule, IntegratedComputePackage, gpu_catalog_row_eq
+  GpuBoardAdmission, GpuBoardAdmitted, GpuBoardRefused, PcieAddInBoard, SxmModule,
+  gpu_board_admission_facts, gpu_board_power_ceiling, gpu_catalog_row_eq
 }
 import extdeps.gpu.nvidia {
-  nvidia_rtx_5090_catalog, nvidia_rtx_pro_6000_workstation_catalog,
-  nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog,
-  nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
-  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog, nvidia_h200_nvl_catalog
+  nvidia_rtx_5090_board_catalog, nvidia_rtx_pro_6000_workstation_board_catalog,
+  nvidia_rtx_pro_6000_max_q_board_catalog, nvidia_rtx_pro_6000_server_board_catalog,
+  nvidia_rtx_pro_5000_48gb_board_catalog, nvidia_rtx_pro_5000_72gb_board_catalog,
+  nvidia_b200_sxm_board_catalog, nvidia_b300_sxm_board_catalog, nvidia_h200_nvl_board_catalog,
+  nvidia_rtx_2000_ada_board_catalog
 }
 import gunbc.serving.home_serving_accelerator_field {
   home_serving_add_in_card_catalog_rows, home_serving_reference_sxm_catalog_rows,
@@ -137,7 +139,7 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
   // really carries the symbols it is supposed to carry — break the read and the claim goes
   // red instead of green.
   t.length() > 4000
-    && string_contains(s: t, pattern: "extdeps.gpu.types::GpuModelCatalogRow.tdp_watts")
+    && string_contains(s: t, pattern: "extdeps.gpu.types::GpuBoardCatalogFacts.board_power")
     && string_contains(s: t, pattern: "gunbc.spark.serving_performance_subject::ServingAcceleratorRealization.applied_power_limit")
     && string_contains(s: t, pattern: "v1.compiler.infer::constructor_admission_diags_from_lookup")
     && !(string_contains(s: t, pattern: ".dag:")
@@ -207,7 +209,7 @@ fn p4_citation_count_is_conserved(t: String) -> Bool {
 // carries -- so the file is the census's, not one this claim guessed. Honest about its reach:
 // this proves the field is written as a field line (`  name: Type`) somewhere in that file,
 // which is weaker than a name-resolved field lookup, and the two citations that need it are
-// `extdeps.gpu.types::GpuModelCatalogRow.tdp_watts` and
+// `extdeps.gpu.types::GpuBoardCatalogFacts.board_power` and
 // `gunbc.spark.serving_performance_subject::ServingAcceleratorRealization.applied_power_limit`.
 fn p4_declares_field(fact: DeclFact, field: String) -> Bool {
   let source = filesystem_read(path: fact.rel_path)
@@ -262,7 +264,7 @@ test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bo
 // DESIGN §5: "a typecheck and a `.contains()` grep are not consumers. Done means
 // a real consumer green by execution plus a discriminating input that goes red
 // when the behavior is wrong." Everything below consumes TYPED VALUES — the
-// frontier's lists of `GpuModelCatalogRow`, the declaration AST the census
+// frontier's lists of `GpuBoardAdmission`, the declaration AST the census
 // carries, and the receipt parser that owns the fixture format. Nothing here
 // greps a source file or this plan's own prose, because a grep of text stays
 // green when the thing it describes changes. Each claim says what reddens it.
@@ -282,58 +284,73 @@ fn mentions_power_word(s: String) -> Bool {
     || string_contains(s: s, pattern: "Limit")
 }
 
-fn p4_row_has_cited_ceiling(row: GpuModelCatalogRow) -> Bool {
-  match row.tdp_watts {
-    Present { value: w } => watt_count(w: w) > 0
-    Absent => false
+// The ceiling, the attachment and the admission are all BOARD facts: a GPU device row carries none of
+// them. A refused board has no row, so it has no ceiling a candidate could be held to.
+fn p4_row_admitted(row: GpuBoardAdmission) -> Bool {
+  match row {
+    GpuBoardAdmitted { row: _ } => true
+    GpuBoardRefused { facts: _, refusal: _ } => false
   }
 }
 
-fn p4_row_ceiling_absent(row: GpuModelCatalogRow) -> Bool {
-  match row.tdp_watts {
+fn p4_row_has_cited_ceiling(row: GpuBoardAdmission) -> Bool {
+  p4_row_admitted(row: row) && (match gpu_board_admission_facts(admission: row).board_power {
+    Present { value: spec } => watt_count(w: gpu_board_power_ceiling(spec: spec)) > 0
+    Absent => false
+  })
+}
+
+fn p4_row_ceiling_absent(row: GpuBoardAdmission) -> Bool {
+  match gpu_board_admission_facts(admission: row).board_power {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-fn p4_row_is_add_in_card(row: GpuModelCatalogRow) -> Bool {
-  match row.package {
-    PcieAddInCard => true
+fn p4_row_is_add_in_card(row: GpuBoardAdmission) -> Bool {
+  match gpu_board_admission_facts(admission: row).attachment {
+    PcieAddInBoard { link: _ } => true
     SxmModule => false
-    IntegratedComputePackage => false
+    MxmModule { variant: _, link: _ } => false
+    SolderedBga => false
   }
 }
 
-fn p4_row_is_sxm(row: GpuModelCatalogRow) -> Bool {
-  match row.package {
-    PcieAddInCard => false
+fn p4_row_is_sxm(row: GpuBoardAdmission) -> Bool {
+  match gpu_board_admission_facts(admission: row).attachment {
+    PcieAddInBoard { link: _ } => false
     SxmModule => true
-    IntegratedComputePackage => false
+    MxmModule { variant: _, link: _ } => false
+    SolderedBga => false
   }
 }
 
 // THE CATALOG UNIVERSE, IMPORTED BY NAME. The claims below partition this list,
 // so it is the thing a narrowing attack would have to edit. The census count of
-// `data <row>: GpuModelCatalogRow` in `extdeps.gpu.nvidia` is compared against
+// `data <row>: GpuBoardAdmission` in `extdeps.gpu.nvidia` is compared against
 // its length, so a row added without being named here reddens the claim rather
 // than being silently unpartitioned -- as `nvidia_h200_nvl_catalog` did when #14718
 // added it, until it was named below. That is the honest shape: the rows
 // are read as typed values, and the census is what keeps the value list fresh.
-data p4_catalog_universe: List<GpuModelCatalogRow> = [
-  nvidia_rtx_5090_catalog, nvidia_rtx_pro_6000_workstation_catalog,
-  nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog,
-  nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
-  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog, nvidia_h200_nvl_catalog
+data p4_catalog_universe: List<GpuBoardAdmission> = [
+  nvidia_rtx_5090_board_catalog, nvidia_rtx_pro_6000_workstation_board_catalog,
+  nvidia_rtx_pro_6000_max_q_board_catalog, nvidia_rtx_pro_6000_server_board_catalog,
+  nvidia_rtx_pro_5000_48gb_board_catalog, nvidia_rtx_pro_5000_72gb_board_catalog,
+  nvidia_b200_sxm_board_catalog, nvidia_b300_sxm_board_catalog, nvidia_h200_nvl_board_catalog,
+  nvidia_rtx_2000_ada_board_catalog
 ]
 
 // Same membership fold the shipped home-serving witness uses, so row identity is
 // the catalog's own equality rather than a field-by-field guess.
-fn p4_is_in(row: GpuModelCatalogRow, rows: List<GpuModelCatalogRow>) -> Bool {
-  fold(rows, init: false, f: (acc, r) => acc || gpu_catalog_row_eq(a: r, b: row))
+fn p4_is_in(row: GpuBoardAdmission, rows: List<GpuBoardAdmission>) -> Bool {
+  fold(rows, init: false, f: (acc, r) => acc || gpu_catalog_row_eq(
+    a: gpu_board_admission_facts(admission: r).gpu,
+    b: gpu_board_admission_facts(admission: row).gpu,
+  ))
 }
 
 fn p4_row_counted(fact: DataDeclTypeFact) -> Bool {
-  fact.module_path == "extdeps.gpu.nvidia" && fact.type_name == "GpuModelCatalogRow"
+  fact.module_path == "extdeps.gpu.nvidia" && fact.type_name == "GpuBoardAdmission"
 }
 
 // THE CANDIDATE CEILINGS, READ. The plan used to print which cards were candidates
@@ -421,11 +438,11 @@ fn p4_declared_field_names(fact: DeclFact) -> List<String> {
 // rather than falling through to a vacuous match.
 // REDDENS: the `?` being dropped (a missing reading would stop being expressible), the type being
 // renamed away from `Watt`, or the field ceasing to be a declared field of THAT type.
-fn p4_field_is_declared_optional_watt(fact: DeclFact, decl: String, field: String) -> Bool {
+fn p4_field_is_declared_optional(fact: DeclFact, decl: String, field: String, ty: String) -> Bool {
   let source = filesystem_read(path: fact.rel_path)
   string_contains(
     s: p4_type_block(content: source.content, decl: decl),
-    pattern: concat("  ", concat(field, ": Watt?"))
+    pattern: concat("  ", concat(field, concat(": ", concat(ty, "?"))))
   )
 }
 
@@ -451,67 +468,74 @@ fn p4_type_block(content: String, decl: String) -> String {
 // inside the type it names (so a retype or a lost `?` reddens it). One conjunct alone would let the
 // other drift: a file that still spells the field while the census no longer carries it, or a census
 // row whose declaring file has been rewritten underneath it.
-fn p4_optional_watt_field(facts: List<DeclFact>, cite: String, field: String) -> Bool {
+fn p4_optional_field(facts: List<DeclFact>, cite: String, field: String, ty: String) -> Bool {
   let c = plan_citation_parse(w: cite)
   let rows = plan_citation_census_rows_in(facts: facts, cite: cite)
   count(rows) > 0
     && p4_declares_field_by_name(facts: facts, cite: cite, field: field)
-    && all(rows, fact => p4_field_is_declared_optional_watt(
+    && all(rows, fact => p4_field_is_declared_optional(
       fact: fact,
       decl: c.decl_name,
-      field: field
+      field: field,
+      ty: ty
     ))
 }
 
 // THE TWO WATT CARRIERS, READ FROM WHERE THEY ARE DECLARED. The plan's whole
 // point is that a catalog TDP and an applied limit are the same carrier type and
 // nothing relates them; both halves used to be sentences. Now each field is read
-// out of the AST of the module that declares it as an optional `Watt`, and the
+// out of the AST of the module that declares it as optional, and the
 // "nothing relates them" half is read as an absence over the census: no
 // declaration anywhere mentions both names, and neither of the two modules that
 // could hold such a rule mentions TDP at all. REDDENS: either field retyped or
 // made required; OR a rule appearing that relates them — which is the good red,
 // because that is the change this plan argues for, and when it lands this claim
 // must fail until the plan is retired.
+// THE CATALOG CARRIER IS THE BOARD'S POWER SPECIFICATION (2026-10-28). The TDP used to be a
+// `tdp_watts: Watt?` on the GPU row; the device/board split moved it to the board as
+// `board_power: GpuBoardPowerSpecification?`, whose ceiling (extdeps.gpu.types gpu_board_power_ceiling)
+// is the `Watt` the applied limit is compared against. So the catalog read names that type, and the
+// applied limit is still read as an optional `Watt`.
 // THE PAIR OF POSITIVE READS, AND THE TWO CONTROLS THAT STOP THEM BEING DECORATION (§4b). A
 // conjunct nobody can imagine failing is not a check, so each read here is paired with the same
 // call on an input it MUST refuse.
 //
-// `memory_bandwidth` is the sharpest available negative for the Watt read: it sits in the SAME
-// block as `tdp_watts` and is optional too, but its unit is `Bandwidth`, not `Watt`. So a bug that
-// quietly degraded the pattern from "optional Watt" to "any optional field" — a dropped `Watt?` in
-// the concatenation, say — would make the positives pass and this control go red. If this control
-// ever reddens because `memory_bandwidth` really was retyped to a watt, that is the control working:
-// a new watt field on the card row is exactly the kind of change this plan exists to notice.
+// `zero_power` is the sharpest available negative for the type read: it sits in the SAME block as
+// `board_power` and is optional too, but its type is `GpuZeroPowerSupport`. So a bug that quietly
+// degraded the pattern from "optional power specification" to "any optional field" — a dropped type
+// in the concatenation, say — would make the positives pass and this control go red.
 //
-// `wattage_ceiling` is the negative for the NAME read: no such field exists on the card row, so a
+// `wattage_ceiling` is the negative for the NAME read: no such field exists on the board facts, so a
 // name read that accepted anything at all would be caught here rather than looking strong.
 test fn the_two_watt_fields_are_optional_watts_where_they_are_declared() -> Bool {
   let facts = plan_citation_census_read(cites: [
-    "extdeps.gpu.types::GpuModelCatalogRow",
+    "extdeps.gpu.types::GpuBoardCatalogFacts",
     "gunbc.spark.serving_performance_subject::ServingAcceleratorRealization"
   ])
-  p4_optional_watt_field(
+  p4_optional_field(
     facts: facts,
-    cite: "extdeps.gpu.types::GpuModelCatalogRow",
-    field: "tdp_watts"
+    cite: "extdeps.gpu.types::GpuBoardCatalogFacts",
+    field: "board_power",
+    ty: "GpuBoardPowerSpecification"
   )
-    && p4_optional_watt_field(
+    && p4_optional_field(
       facts: facts,
       cite: "gunbc.spark.serving_performance_subject::ServingAcceleratorRealization",
-      field: "applied_power_limit"
+      field: "applied_power_limit",
+      ty: "Watt"
     )
     && all(
-      plan_citation_census_rows_in(facts: facts, cite: "extdeps.gpu.types::GpuModelCatalogRow"),
-      row => !p4_field_is_declared_optional_watt(
+      plan_citation_census_rows_in(facts: facts, cite: "extdeps.gpu.types::GpuBoardCatalogFacts"),
+      row => !p4_field_is_declared_optional(
         fact: row,
-        decl: "GpuModelCatalogRow",
-        field: "memory_bandwidth"
+        decl: "GpuBoardCatalogFacts",
+        field: "zero_power",
+        ty: "GpuBoardPowerSpecification"
       )
     )
     && !p4_declares_field_by_name(
       facts: facts,
-      cite: "extdeps.gpu.types::GpuModelCatalogRow",
+      cite: "extdeps.gpu.types::GpuBoardCatalogFacts",
       field: "wattage_ceiling"
     )
     && !any(
@@ -521,14 +545,34 @@ test fn the_two_watt_fields_are_optional_watts_where_they_are_declared() -> Bool
     )
 }
 
-// NO CARD IS CHOSEN — READ, NOT WORDS. The plan used to assert that no card or
-// power limit had been picked. That is a DissolutionCondition the frontier
-// carries: an unbound frontier whose trigger is still unset. REDDENS the moment
-// someone binds it — i.e. actually chooses — which is the only way a sentence
-// about "not yet" can be worth anything.
-test fn the_frontier_still_holds_no_card_and_no_limit() -> Bool {
+// THE FRONTIER IS BOUND TO THE FOLD THAT CONSUMES IT, AND THAT IS NOT A CLAIM ABOUT CHOOSING.
+// This check used to require the frontier UNBOUND and was cited as "no card is chosen". That was two
+// facts riding on one carrier, and the second one was only ever a proxy: while no consuming fold
+// existed, the only thing that could bind the frontier was someone picking a card, so unbound happened
+// to mean not-yet-chosen. The fold now exists (gunbc.serving.home_serving_candidate_field), so the
+// frontier's own trigger has fired and it is bound — and a check that kept demanding unbound would be
+// holding a satisfied §3c frontier open just to preserve a sentence about "not yet".
+//
+// WHAT EACH FACT NOW READS AT ITS OWN SEAT:
+//  - "the lists are consumed" — the frontier is bound, and std.dissolution says
+//    dissolution_is_bound answers a carrier-SHAPE question (it calls dissolution_status with
+//    present_decls: [], so a BoundDissolution reports Pending-or-Fired regardless of whether the named
+//    declaration is on the tree). So shape alone is not enough and the ref itself is read out: the
+//    bound condition's own description, produced by declaration_ref_display_key, is the module::name of
+//    the consuming fold. If the frontier were bound to anything else, this goes red.
+//  - "no card is chosen" — NOT claimed here. It is seen by calling the fold, in
+//    test.claim.home_serving_candidate_field_witness::home_serving_live_verdict_is_never_a_pick_and_never_empty,
+//    which fails if the live selection returns SelectedWithin. A proxy could not tell a refusal from a
+//    pick; a call into the fold can.
+// REDDENS: if the frontier is unbound again, if it is bound to some other declaration, or if the
+// candidate field empties.
+test fn the_frontier_is_bound_to_the_fold_that_consumes_it() -> Bool {
   count(home_serving_add_in_card_catalog_rows) > 0
-    && dissolution_is_bound(condition: home_serving_accelerator_field_p4_frontier) == false
+    && dissolution_is_bound(condition: home_serving_accelerator_field_p4_frontier)
+    && string_contains(
+         s: dissolution_description(condition: home_serving_accelerator_field_p4_frontier),
+         pattern: "gunbc.serving.home_serving_candidate_field::select_home_serving_candidate"
+       )
 }
 
 // THE RECEIPTS, THROUGH THE PARSER THAT OWNS THEM. `gpu_bench_parse_jsonl` is the

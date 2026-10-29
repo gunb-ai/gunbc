@@ -1,0 +1,96 @@
+module test.claim.card_cooling_route_witness
+
+import std.types {Bool}
+import std.measure {micrometer}
+import product.printed_chassis.card_cooling_route {
+  PlaneOnEnd, PlaneAcrossRowStanding, OverTheRow, BesideTheRow,
+  RouteAdmission, RouteAdmitted, RouteProposalOnly, RouteRefusedByChassis, RouteHomeUnmeasured,
+  admit_home, plane_on_end_run_back, plane_on_end_slot_demand, plane_across_row_run_back,
+  a16_blower, a16_wall_design, a16_route_report, outlet_alignment_obligation,
+}
+import product.printed_chassis.gpu_duct {a16_blower_duct_design, blower_reach_behind, um}
+import product.printed_chassis.chassis_clearances {card_end_rear_fan_clearance, chassis_gaps, gap_may_be_printed_on, remeasure_before_print}
+
+// ═══ THE 70 mm IS NOT THE ONLY CONSTRAINT, AND THE WITNESSES SAY SO ═══
+//
+// The operator asked for a duct that curves inside the ~70 mm between the A16's plug end and the rear
+// chassis fan. These tests pin the two things that make that ask a design question rather than a drawing
+// exercise: (a) which orientation actually spends the 70 mm, and (b) which chassis gaps a home depends on
+// that nobody has ever measured. A test that only checked "36 mm fits in 70 mm" would certify a duct that
+// puts 97 mm of blower housing into the neighbouring card's lane.
+
+fn is_admitted(a: RouteAdmission) -> Bool { match a { RouteAdmitted {home: _, needs: _} => true RouteProposalOnly {home: _, needs: _, on_estimate: _, margin: _} => false RouteRefusedByChassis {home: _, unmet: _, gap: _} => false RouteHomeUnmeasured {home: _, unmet: _, gap: _} => false } }
+fn is_chassis_refusal(a: RouteAdmission) -> Bool { match a { RouteAdmitted {home: _, needs: _} => false RouteProposalOnly {home: _, needs: _, on_estimate: _, margin: _} => false RouteRefusedByChassis {home: _, unmet: _, gap: _} => true RouteHomeUnmeasured {home: _, unmet: _, gap: _} => false } }
+fn is_unmeasured_refusal(a: RouteAdmission) -> Bool { match a { RouteAdmitted {home: _, needs: _} => false RouteProposalOnly {home: _, needs: _, on_estimate: _, margin: _} => false RouteRefusedByChassis {home: _, unmet: _, gap: _} => false RouteHomeUnmeasured {home: _, unmet: _, gap: _} => true } }
+
+// DERIVATION, NOT DECORATION: the plane-on-end home spends only the blower's thickness behind the plug
+// end. Delta's cited envelope is 33.0 mm thick +/- 0.5 (extdeps.fans.delta delta_bfb1012m_envelope) and
+// the duct's wall is 2 mm (product.printed_chassis.gpu_duct a16_duct_design): 37.5 mm of the operator's
+// ~70 mm. If Delta's number or the wall moves, this test moves with it -- that is the point of the literal.
+test fn w_plane_on_end_spends_its_thickness_not_its_face_behind_the_end() -> Bool {
+  plane_on_end_run_back(b: a16_blower(), d: a16_wall_design()) == 33000 + 500 + 2 * 2000
+    && plane_on_end_run_back(b: a16_blower(), d: a16_wall_design()) <= 70000
+}
+
+// THE SAME HOME PAYS ACROSS THE SLOT. Plane on end, the housing's LONG face (97.2 mm) spans the slot
+// direction, where the next card's duct starts at the slot pitch -- 40.64 mm by the PCIe class the design
+// carries. The orientation that fits the 70 mm is the orientation that does NOT fit the pitch, and the
+// model must keep both numbers in the reader's head at once.
+test fn w_plane_on_end_spills_into_the_neighbour_lane() -> Bool {
+  plane_on_end_slot_demand(b: a16_blower()) == 97200
+    && plane_on_end_slot_demand(b: a16_blower()) > um(m: a16_blower_duct_design.slot_pitch)
+}
+
+// THE STRAIGHT BACK, MEASURED HONESTLY: what the duct built today asks for behind the end is the socket's
+// bound -- the housing's longer edge while the outlet's edge on the drawing stays unread -- plus the
+// socket's depth and a wall. That is well over the 70 mm, which is the whole reason this module exists.
+test fn w_the_straight_back_asks_the_chassis_for_more_than_it_has() -> Bool {
+  let asked = plane_across_row_run_back(b: a16_blower(), d: a16_wall_design())
+  asked == blower_reach_behind(b: a16_blower_duct_design) + 10000 + 2000 && asked > 70000
+}
+
+// ADMISSION: the straight-back home is refused BY THE CHASSIS, not by an unread gap -- its verdict does
+// not change when the unmeasured gaps are read, and a reader must not be sent to measure the wrong thing.
+test fn w_straight_back_is_refused_by_the_chassis_itself() -> Bool {
+  is_chassis_refusal(a: admit_home(home: PlaneAcrossRowStanding))
+}
+
+// ADMISSION: the plane-on-end home is refused by the gap nobody has measured (the neighbour lane), and
+// the over-the-row home by the height nobody has measured. Every home the 70 mm opens depends on a
+// reading that does not exist yet -- that is the report the operator asked for.
+test fn w_every_home_the_70mm_opens_wants_an_unread_gap() -> Bool {
+  is_unmeasured_refusal(a: admit_home(home: PlaneOnEnd))
+    && is_unmeasured_refusal(a: admit_home(home: OverTheRow {riser: micrometer(count: 6000)}))
+    && is_unmeasured_refusal(a: admit_home(home: BesideTheRow))
+}
+
+// NOTHING PRINTS TODAY, AND NOT BECAUSE THE MODEL IS BROKEN: with the rear-fan gap standing as the
+// operator's estimate and the other three gaps unread, no home is admitted, and an ESTIMATE admits
+// nothing even where the arithmetic fits -- a 70 mm that turns out to be 64 mm is a cracked housing.
+test fn w_no_home_is_admitted_on_estimates_and_blind_gaps() -> Bool {
+  let report = a16_route_report()
+  length(list: report) == 4
+    && !is_admitted(a: admit_home(home: PlaneOnEnd))
+    && !is_admitted(a: admit_home(home: PlaneAcrossRowStanding))
+    && !is_admitted(a: admit_home(home: OverTheRow {riser: micrometer(count: 6000)}))
+    && !is_admitted(a: admit_home(home: BesideTheRow))
+    && !gap_may_be_printed_on(g: card_end_rear_fan_clearance)
+}
+
+// THE BENCH LIST IS THE OUTPUT: the gaps the operator must read are reachable as data, and the estimate
+// appears in it as a re-read demand rather than silently counting as a measurement.
+test fn w_the_bench_list_carries_every_gap_the_model_refuses_on() -> Bool {
+  length(list: remeasure_before_print(gaps: chassis_gaps)) == length(list: chassis_gaps)
+}
+
+// THE ONE THING NO GEOMETRY CAN CLOSE: the outlet's position on Delta's housing is unread, so every home
+// here assumes the air CAN be aimed at the window and says so. A check invented over that blank would be
+// a guess about where the fan blows.
+// The outlet ambiguity itself is witnessed where it is minted (test.claim.gpu_duct_witness, on
+// extdeps.fans.delta delta_bfb1012m_outlet_standing); what this module's tests must pin is that the route
+// model CARRIES the obligation rather than silently assuming the aim.
+test fn w_outlet_alignment_stays_an_obligation_not_a_check() -> Bool {
+  string_length(outlet_alignment_obligation()) > 0
+}
+
+// The card rows' claims are in test.claim.duct_card_catalog_witness, beside the catalog that joins them.

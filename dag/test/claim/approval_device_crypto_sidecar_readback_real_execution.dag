@@ -3,7 +3,7 @@ module test.claim.approval_device_crypto_sidecar_readback_real_execution
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Int, List }
 import std.measure { second }
-import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused, operation_argv_bind_text }
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused, operation_argv_bind_text, shell_materialize_operation_argv }
 import std.materialization_ladder { string_list_contains }
 import extdeps.exec.command { LocalExec }
 import extdeps.languages.bash.invocation { bash_program_command }

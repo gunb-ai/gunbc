@@ -417,15 +417,13 @@ pub fn declaration_is_grounded_natural(
     {
         let mut __found = false;
         for r in rows.iter().cloned() {
-            if ((crate::std_decl_ref::declaration_ref_eq(r.carrier.clone(), d.clone())
+            if (((crate::std_decl_ref::declaration_ref_eq(r.carrier.clone(), d.clone())
                 && match (*r.view.clone()).clone() {
                     KernelGroundingView::PeanoGroundingView => true,
                     KernelGroundingView::SignedGroundingView { .. } => false,
                 })
-                && match r.extent.clone() {
-                    IntegerExtent::UnboundedNaturals => true,
-                    IntegerExtent::UnboundedIntegers => false,
-                })
+                && integer_extent_within(r.extent.clone(), IntegerExtent::UnboundedNaturals))
+                && integer_extent_within(IntegerExtent::UnboundedNaturals, r.extent.clone()))
             {
                 __found = true;
                 break;

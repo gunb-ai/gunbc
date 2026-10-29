@@ -106,8 +106,10 @@ pub enum Scale {
     Nano,
     Micro,
     Milli,
+    Centi,
     One,
     Sixty,
+    ThirtySixHundred,
     RackUnitHeight,
     SquareFootArea,
     ArcsecondAngle,
@@ -133,11 +135,13 @@ pub fn scale_exponent(s: Scale) -> Option<i64> {
         Scale::Nano => Some(v1_rt::int_neg(9)),
         Scale::Micro => Some(v1_rt::int_neg(6)),
         Scale::Milli => Some(v1_rt::int_neg(3)),
+        Scale::Centi => Some(v1_rt::int_neg(2)),
         Scale::One => Some(0),
         Scale::ArcsecondAngle => std::option::Option::None,
         Scale::DegreeAngle => std::option::Option::None,
         Scale::TurnAngle => std::option::Option::None,
         Scale::Sixty => std::option::Option::None,
+        Scale::ThirtySixHundred => std::option::Option::None,
         Scale::RackUnitHeight => std::option::Option::None,
         Scale::SquareFootArea => std::option::Option::None,
         Scale::Kilo => Some(3),
@@ -213,6 +217,7 @@ pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
         Scale::DegreeAngle => std::option::Option::None,
         Scale::TurnAngle => std::option::Option::None,
         Scale::Sixty => Some(seconds_per_minute()),
+        Scale::ThirtySixHundred => Some(v1_rt::int_mul(minutes_per_hour(), seconds_per_minute())),
         Scale::RackUnitHeight => std::option::Option::None,
         Scale::SquareFootArea => std::option::Option::None,
         Scale::Atto => std::option::Option::None,
@@ -221,6 +226,7 @@ pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
         Scale::Nano => std::option::Option::None,
         Scale::Micro => std::option::Option::None,
         Scale::Milli => std::option::Option::None,
+        Scale::Centi => std::option::Option::None,
         Scale::Kilo => std::option::Option::None,
         Scale::Mega => std::option::Option::None,
         Scale::Giga => std::option::Option::None,
@@ -247,10 +253,12 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
         Scale::Nano => std::option::Option::None,
         Scale::Micro => std::option::Option::None,
         Scale::Milli => std::option::Option::None,
+        Scale::Centi => std::option::Option::None,
         Scale::ArcsecondAngle => std::option::Option::None,
         Scale::DegreeAngle => std::option::Option::None,
         Scale::TurnAngle => std::option::Option::None,
         Scale::Sixty => std::option::Option::None,
+        Scale::ThirtySixHundred => std::option::Option::None,
         Scale::RackUnitHeight => std::option::Option::None,
         Scale::SquareFootArea => std::option::Option::None,
         Scale::Kilo => std::option::Option::None,
@@ -521,8 +529,6 @@ pub type PowerCordCount = Rc<Measure<Count, One, Nat>>;
 
 pub type MemoryControllerCount = Rc<Measure<Count, One, Nat>>;
 
-pub type SdrUndecodedLineCount = Rc<Measure<Count, One, Nat>>;
-
 pub type ObservationRoundCount = Rc<Measure<Count, One, Nat>>;
 
 pub type FanCount = Rc<Measure<Count, One, Nat>>;
@@ -761,6 +767,19 @@ pub fn events_per_minute(count: Nat) -> EventsPerMinute {
 }
 
 pub fn events_per_minute_count(r: EventsPerMinute) -> Nat {
+    measure_count(r)
+}
+
+pub type EventsPerHour = Rc<Measure<Frequency, ThirtySixHundred, Nat>>;
+
+pub fn events_per_hour(count: Nat) -> EventsPerHour {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn events_per_hour_count(r: EventsPerHour) -> Nat {
     measure_count(r)
 }
 
@@ -1629,17 +1648,6 @@ pub fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
     measure_count(c)
 }
 
-pub fn sdr_undecoded_line_count(count: Nat) -> SdrUndecodedLineCount {
-    Rc::new(Measure {
-        count: count.clone(),
-        _phantom: std::marker::PhantomData,
-    })
-}
-
-pub fn sdr_undecoded_line_count_value(c: SdrUndecodedLineCount) -> Nat {
-    measure_count(c)
-}
-
 pub fn observation_round_count(count: Nat) -> ObservationRoundCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -1742,7 +1750,7 @@ pub fn giga_tensor_operations_per_second(count: Nat) -> GigaTensorOperationsPerS
 }
 
 pub fn giga_tensor_operations_per_second_count(r: GigaTensorOperationsPerSecond) -> Nat {
-    measure_count(r.clone())
+    measure_count(r)
 }
 
 pub type MilliRequestsPerSecond = Rc<Measure<Frequency, Milli, Nat>>;
@@ -2001,7 +2009,7 @@ pub fn percent_count(p: Percent) -> Nat {
     measure_count(p)
 }
 
-pub type ConcurrentRequestHundredths = Rc<Measure<Dimensionless, One, Nat>>;
+pub type ConcurrentRequestHundredths = Rc<Measure<Count, Centi, Nat>>;
 
 pub fn concurrent_request_hundredths(count: Nat) -> ConcurrentRequestHundredths {
     Rc::new(Measure {
@@ -2078,10 +2086,10 @@ pub fn permille(count: Nat) -> Permille {
 }
 
 pub fn permille_count(p: Permille) -> Nat {
-    measure_count(p.clone())
+    measure_count(p)
 }
 
-pub type ConcurrentRequestThousandths = Rc<Measure<Dimensionless, Milli, Nat>>;
+pub type ConcurrentRequestThousandths = Rc<Measure<Count, Milli, Nat>>;
 
 pub fn concurrent_request_thousandths(count: Nat) -> ConcurrentRequestThousandths {
     Rc::new(Measure {
@@ -2091,7 +2099,7 @@ pub fn concurrent_request_thousandths(count: Nat) -> ConcurrentRequestThousandth
 }
 
 pub fn concurrent_request_thousandths_count(c: ConcurrentRequestThousandths) -> Nat {
-    measure_count(c.clone())
+    measure_count(c)
 }
 
 pub type AmortizationMonths = Rc<Measure<Count, One, Nat>>;
@@ -2597,9 +2605,13 @@ pub struct Micro;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Milli;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Centi;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct One;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Sixty;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ThirtySixHundred;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RackUnitHeight;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -7,7 +7,7 @@ import product.fan_policy_standing {
   FanDutyConvergeRoute,
   FanPolicyAuthority,
 }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc, SupermicroAten }
 
 // ONE CONVERGE ROUTE PER BMC FAMILY, AND THE DISPATCH THAT PICKS ONE.
 //
@@ -53,10 +53,21 @@ data megarac_fan_converge_route: FanDutyConvergeRoute = ConvergeRouteUnbound {
   read_obligation: "bind extdeps.bmc.megarac_fan_policy megarac_fan_mode_surface to a wet write/readback fold that POSTs set_fan_speed (fan_pwm_all) and set_manager_status and reads get_fan_info pwm echo plus thermal-guard dwell; catalog rows megarac_op_fan_set_fan_speed and megarac_op_session_login are shape, not that fold",
 }
 
+// THE SUPERMICRO CONVERGE ROUTE IS UNBOUND. extdeps.bmc.supermicro_oem_fan carries the OEM mode and
+// zone-duty raw commands (in band), but no fleet fold writes them and reads the zone back, and what a
+// zone holds when no host writes is unread (supermicro_unwritten_duty_standing).
+data supermicro_fan_converge_route: FanDutyConvergeRoute = ConvergeRouteUnbound {
+  authority: FanPolicyAuthority {
+    declaration: decl_ref("extdeps.bmc.supermicro_oem_fan", "SupermicroFanMode"),
+  },
+  read_obligation: "bind extdeps.bmc.supermicro_oem_fan SetFanMode/SetZoneDuty to a wet write/readback fold that echoes GetFanMode and GetZoneDuty per zone, after supermicro_unwritten_duty_standing is read",
+}
+
 fn fan_converge_route_for_family(family: BmcFirmwareFamily) -> FanDutyConvergeRoute {
   match family {
     OpenBmc => openbmc_fan_converge_route
     AmiMegaRac => megarac_fan_converge_route
+    SupermicroAten => supermicro_fan_converge_route
   }
 }
 
@@ -78,9 +89,16 @@ data openbmc_fan_observation_authority: FanPolicyAuthority = FanPolicyAuthority 
   declaration: decl_ref("extdeps.bmc.phosphor_fan_control", "phosphor_fan_zone_policy_contract"),
 }
 
+// Supermicro's fan policy is its OEM fan mode (the mode code a get answers), whose names and unwritten-duty
+// behaviour carry TranscribedUncited standings in that module.
+data supermicro_fan_observation_authority: FanPolicyAuthority = FanPolicyAuthority {
+  declaration: decl_ref("extdeps.bmc.supermicro_oem_fan", "SupermicroFanMode"),
+}
+
 fn fan_observation_authority_for_family(family: BmcFirmwareFamily) -> FanPolicyAuthority {
   match family {
     OpenBmc => openbmc_fan_observation_authority
     AmiMegaRac => megarac_fan_observation_authority
+    SupermicroAten => supermicro_fan_observation_authority
   }
 }

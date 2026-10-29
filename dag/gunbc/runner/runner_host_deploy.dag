@@ -17,7 +17,12 @@ import gunbc.auth.github_apps {
 import extdeps.cache.sccache { sccache_release_0_15_0 }
 import extdeps.crypto.hash { sha256_digest }
 import gunbc.host.sccache_verified_install { sccache_verified_install_script }
-import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
+import extdeps.container.docker_ce { DockerCeAptRepo, docker_ce_apt_repo_noble_arm64, docker_ce_packages }
+import extdeps.container.nvidia_container_toolkit {
+  NvidiaContainerToolkitAptRepo,
+  nvidia_container_toolkit_apt_repo_stable,
+  nvidia_container_toolkit_packages,
+}
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { runner_slot_index_suffix, RunnerSlotIdentity }
@@ -103,6 +108,10 @@ fn runner_host_spec_of(deploy: RunnerHostDeploy) -> RunnerHostSpec {
 }
 
 data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
+
+// The listener's JIT registration group (ctrl scripts/session-dashboard/host/jit-runner.sh reads it
+// into runner_group_id, defaulting to the org's Default group).
+data runner_group_id_env_name: String = "RUNNER_GROUP_ID"
 
 // runner_user is the fragment's User= (the account that owns the runner tree). unit_user is the
 // depriv drop-in's User= (root mints the JIT config). job_user is CTRL_RUNNER_JOB_USER after
@@ -425,9 +434,154 @@ data fleet_runner_host_deploy_resolutions: List<RunnerHostDeployResolution> = fl
 // then sccache (the pinned binary install-ctrl-sccache.sh assumes on PATH). Each cites its
 // upstream; the shell leaves carry dissolution triggers in their extdeps modules.
 
-fn runner_host_docker_provision_script() -> String {
-  docker_ce_repo_install_script(repo: docker_ce_apt_repo_noble_arm64, packages: docker_ce_packages)
+// THERE IS NO DOCKER INSTALL SCRIPT ON THIS PATH ANY MORE, and the deletion is the point. This function
+// used to return extdeps.container.docker_ce docker_ce_repo_install_script — a POSIX program assembled by
+// joining string literals — which gunbc.runner.runner_gpu_container_toolchain staged to a file and ran with
+// `sh`. Review 86503 blocked on it: the same converge models the NVIDIA repository as typed actions, so a
+// hand-written shell sitting beside it is parallel authority, and §6 names that a scaffold tell. What
+// replaces it is not a marker on the old path but the absence of one:
+//   - the repository (pinned row docker_ce_apt_repo_noble_arm64) is a FIELD OF THE PER-HOST ROW below, and
+//     provisioning stages it as typed argv legs beside the NVIDIA ones;
+//   - the packages (docker_ce_packages) are a FIELD OF THE SAME ROW and reach the host through the ONE
+//     modeled apt route, runner_gpu_container_toolchain_ensure_steps over srv3_ensure_apt — the same route
+//     the nvidia packages use, which is why there is no `apt-get install` in any leg;
+//   - the sources line is written as FILE CONTENT by the sealed typed writer, from
+//     extdeps.container.docker_ce docker_ce_apt_source_line.
+// extdeps.container.docker_ce keeps its own script and dissolution trigger for the fleet paths that
+// predate this module (gunbc.runner.runner_provision_actions and the realization census); deleting them from
+// here is not the same as deleting them from main, and this PR does not touch them.
+
+// ── THE GPU CONTAINER TOOLCHAIN IS A DECLARED PER-HOST CAPABILITY, AND DESIRE IS NOT PRESENCE ──
+//
+// Operator decision 2026-10-25 (work item node://adhoc-0cabf47d-be0): fleet CI jobs must run
+// containers that see GPUs WITHOUT root equivalence. Two .dag gates depend on it — the S1b
+// //gunbc/instruments:router-proxy-falsifier (#15089) and the serving benchmark. The shape the
+// decision names is rootless Docker for the job user plus the NVIDIA container toolkit with a
+// generated CDI spec, so `docker run --device nvidia.com/gpu=all` resolves.
+//
+// WHY A DECLARATION HERE RATHER THAN AN INSTALL. A host either carries this capability or it does
+// not, and the ONLY thing that may change that is converge: nothing here is hand-installed. So this
+// row states the DESIRED state — which host is meant to be able to run GPU containers, from which
+// pinned repository — and gunbc.runner.runner_gpu_container_toolchain turns the same fact into a
+// runner registration label ONLY after a readback on the machine holds. Desire and presence are two
+// different claims and get two different carriers; a host can be Desired-and-not-yet-Ready, which is
+// exactly the state converge exists to leave behind, and it can never be Ready-without-Desired.
+//
+// WHY THE DOCKER GROUP IS NOT THE FIX. gunbc.fleet.fleet_posix_accounts
+// fleet_root_equivalent_group_names lists "docker" as root-equivalent: the rootful socket IS the root
+// socket, so adding the job user to it buys the capability by granting root, which the decision
+// forbids. Every row here therefore means the ROOTLESS shape — the job user's own
+// unix:///run/user/<uid>/docker.sock, which gunbc.runner.runner_unit_file docker_host_from_uid_reading
+// already forms for the slot's job user. A host that only has the rootful socket has NOT got this
+// capability, however well its nvidia-smi reads.
+type RunnerHostGpuContainerToolchain
+  = GpuContainerToolchainDesired {
+      repo: NvidiaContainerToolkitAptRepo
+      // THE DOCKER REPOSITORY IS PART OF WHAT IS DESIRED, not an incidental of installing it. The two
+      // pinned rows come from different upstreams (download.docker.com and nvidia.github.io) and each
+      // carries its own signing-key fingerprint, so both have to be named where the host's desire is
+      // declared — a host that gets one and not the other has a dockerd with no GPU route, or a toolkit
+      // with no daemon, and neither is a state converge should be able to reach by omission.
+      docker_repo: DockerCeAptRepo
+      packages: List<NonEmptyStr>
+    }
+  | GpuContainerToolchainNotWanted { reason: NonEmptyStr }
+  // UNMEASURED IS NOT NOT-WANTED. srv2 and srv4 have never been probed for GPUs, container
+  // toolchains, or a rootless socket, and "nobody looked" must not be recorded as "this host does not
+  // want GPU containers" — the first is a gap that blocks converge, the second is a decision that
+  // justifies it. A host with no row at all is a fourth, distinct answer (RunnerHostGpuToolchainAbsent).
+  | GpuContainerToolchainUnmeasured { }
+
+type RunnerHostGpuContainerToolchainLookup
+  = RunnerHostGpuToolchainFound { host: HostIdentity, toolchain: RunnerHostGpuContainerToolchain }
+  | RunnerHostGpuToolchainAbsent { host: HostIdentity }
+
+type RunnerHostGpuContainerToolchainRow {
+  host: HostIdentity
+  toolchain: RunnerHostGpuContainerToolchain
 }
+
+// srv3: the host the two gates need, measured 2026-10-25 — `nvidia-smi -L` reports the two RTX 2000
+// Ada cards and a driver, and NEITHER docker NOR the container toolkit is installed, so this row is
+// the instruction to install them. srv1: measured the same day to already carry the rootless shape
+// (docker-ce-rootless-extras, nvidia-container-toolkit, /etc/cdi/nvidia.yaml, and the job user's own
+// socket answering), and `docker run --device nvidia.com/gpu=all` ran as the job user and saw the
+// card. Both rows cite the same pinned repository row and the same package closure; a per-host
+// divergence in either would be a supply-chain difference smuggled in as topology.
+//
+// THE DRIVER VERSION IS NOT DECLARED HERE, ON PURPOSE. srv3's driver read 580.126.09 on one probe and
+// 595.91.07 on another within the same day, so any pin authored from a message would be a coin flip.
+// The toolkit is what makes a container see whatever driver is present; the driver belongs to the host
+// OS axis, not to this one, and converge reads it rather than asserting it.
+data runner_host_gpu_container_toolchain_rows: List<RunnerHostGpuContainerToolchainRow> = [
+  RunnerHostGpuContainerToolchainRow {
+    host: operator_host_srv1,
+    toolchain: GpuContainerToolchainDesired {
+      repo: nvidia_container_toolkit_apt_repo_stable,
+      docker_repo: docker_ce_apt_repo_noble_arm64,
+      // ONE PACKAGE CLOSURE, ONE INSTALL ROUTE. Both upstreams' packages ride the same modeled apt ensure
+      // below, so "install the toolkit" and "install the engine" cannot drift into two code paths with two
+      // notions of success. The order is the one dpkg needs no help with: the engine's rootless extras are
+      // what make the job user's own socket exist, and they are listed with their engine rather than
+      // smuggled in as a runtime assumption.
+      packages: append(nvidia_container_toolkit_packages, items: docker_ce_packages),
+    },
+  },
+  RunnerHostGpuContainerToolchainRow {
+    host: operator_host_srv3,
+    toolchain: GpuContainerToolchainDesired {
+      repo: nvidia_container_toolkit_apt_repo_stable,
+      docker_repo: docker_ce_apt_repo_noble_arm64,
+      // ONE PACKAGE CLOSURE, ONE INSTALL ROUTE. Both upstreams' packages ride the same modeled apt ensure
+      // below, so "install the toolkit" and "install the engine" cannot drift into two code paths with two
+      // notions of success. The order is the one dpkg needs no help with: the engine's rootless extras are
+      // what make the job user's own socket exist, and they are listed with their engine rather than
+      // smuggled in as a runtime assumption.
+      packages: append(nvidia_container_toolkit_packages, items: docker_ce_packages),
+    },
+  },
+  RunnerHostGpuContainerToolchainRow {
+    host: operator_host_srv2,
+    toolchain: GpuContainerToolchainUnmeasured { },
+  },
+  RunnerHostGpuContainerToolchainRow {
+    host: operator_host_srv4,
+    toolchain: GpuContainerToolchainUnmeasured { },
+  },
+]
+
+fn runner_host_gpu_container_toolchain_for(host: HostIdentity) -> RunnerHostGpuContainerToolchainLookup {
+  match filter(runner_host_gpu_container_toolchain_rows, r => (r.host as String) == (host as String)).first() {
+    Present { value: r } => RunnerHostGpuToolchainFound { host: host, toolchain: r.toolchain }
+    Absent => RunnerHostGpuToolchainAbsent { host: host }
+  }
+}
+
+// THE ONE QUESTION A CONSUMER IS ALLOWED TO ASK. Granting anything on the strength of this row alone
+// would read a wish as a fact, so this returns true only for the DESIRED arm and every consumer that
+// ships capacity has to reach for the readback in gunbc.runner.runner_gpu_container_toolchain as
+// well. Kept as a single fold rather than letting each caller pattern-match, because the failure that
+// matters — a host being treated as GPU-capable because it was merely named — is easier to commit in
+// three scattered matches than in one function.
+fn runner_host_gpu_container_toolchain_declared(host: HostIdentity) -> Bool {
+  match runner_host_gpu_container_toolchain_for(host: host) {
+    RunnerHostGpuToolchainFound { host: _, toolchain: t } => match t {
+      GpuContainerToolchainDesired { repo: _, docker_repo: _, packages: _ } => true
+      GpuContainerToolchainNotWanted { reason: _ } => false
+      GpuContainerToolchainUnmeasured { } => false
+    }
+    RunnerHostGpuToolchainAbsent { host: _ } => false
+  }
+}
+
+// THE GPU TOOLCHAIN ROW IS READ AS TYPED DATA, NOT RENDERED TO A SCRIPT. This module once carried
+// runner_host_gpu_container_toolchain_provision_script, which returned the whole provisioning sequence as a
+// String? for the converge to stage and run — and it returned Absent for three quite different situations
+// (unwanted, unmeasured, no row at all) collapsed into one answer. Both halves are gone. The plan reads the
+// typed GpuContainerToolchainDesired { repo, docker_repo, packages } through runner_host_gpu_container_toolchain_for
+// above and builds the install itself, so the host row is the single place that says what a host should
+// have AND the only shape that fact travels in: there is no string in this system that has to stay in
+// step with the row, and an absence is distinguished by reason at the site that refuses.
 
 // THE SCCACHE PREREQ USES THE GENERIC VERIFIED DOWNLOAD-PLUS-INSTALL EFFECT, run with sccache's
 // boundary values (gunbc.host.sccache_verified_install). It used to call
@@ -634,5 +788,121 @@ fn runner_host_admission_gate_accepts(
         RunnerCommandReady { command: _ } => false
         RunnerCommandRefused { host_label: _, reason: _ } => true
       }
+  }
+}
+
+// ── SUBORDINATE IDS: THE DECLARATION ROOTLESS DOCKER CANNOT START WITHOUT ───────────────────────
+//
+// /etc/subuid and /etc/subgid are per-host state, so they are declared per host, beside the other
+// per-host facts this module owns. They belong in the MODEL rather than in an installer because the
+// failure mode is silent and cross-account: RootlessKit maps the daemon's uid 0 onto the first uid of
+// the account's subordinate range, so when two accounts hold the SAME range the second daemon to start
+// builds a namespace over ids a namespace already claims, and fails — with a message that names neither
+// file. Neither account's own state reveals the collision; only the file does, and only read whole.
+//
+// EVERY NUMBER HERE IS COPIED FROM A HOST OR DERIVED FROM NUMBERS COPIED FROM A HOST, on 2026-10-25.
+// The rule for the re-grant is that it lands above the highest range the plan does not delete, so
+// adjacency is allowed and overlap is not — a range ending at 362143 and the next starting at 362144 is
+// free, while a range starting at 296608 would sit on top of gunbc-worker.
+//
+// THE JOB USER KEEPS ITS CURRENT RANGE ON BOTH HOSTS, and that is a deliberate choice rather than an
+// accident of measurement. The operator decision of 2026-10-25 says to give the NEW range to whichever
+// account has no rootless container store, because a subordinate range is baked into the ownership of
+// every file a rootless daemon has ever written under that account: pull a range out from under a
+// account with images and its store becomes unreadable uid numbers. On srv1 that means ghrunner stays at
+// 100000:65536 (its daemon is running against a 149 MB store) and briansrls — which has no
+// ~/.local/share/docker — is what moves. On srv3 nobody has a store yet, so the job user keeps the low
+// range and the admin account is displaced.
+//
+// BEING DECLARED IS NOT BEING PERMITTED. gunbc.runner.runner_gpu_container_toolchain re-reads both
+// files, refuses to touch any range belonging to an account other than the declared-displaceable one,
+// and re-establishes at run time that the displaceable account still holds no container store — the
+// latter matters because the store's absence is a fact about today, not about the model's lifetime.
+type RunnerHostSubordinateIds {
+  // The range the JOB USER must hold. This is the one rootless Docker needs.
+  job_user_first: Int
+  job_user_count: Int
+  // The one account permitted to be moved off that range, if it currently occupies it.
+  displaceable: NonEmptyStr
+  // Where the displaced account is re-granted. It is MOVED, never stripped: it arrived holding a range,
+  // and anything already running under it was built expecting one. Width is preserved from the file.
+  displacee_regrant_first: Int
+}
+
+type RunnerHostSubordinateIdsFile
+  = SubordinateIdsRowDeclared { ids: RunnerHostSubordinateIds }
+  | SubordinateIdsRowUnmeasured {}
+
+type RunnerHostSubordinateIdRow {
+  host: HostIdentity
+  ids: RunnerHostSubordinateIdsFile
+}
+
+type RunnerHostSubordinateIdsResolution
+  = RunnerHostSubordinateIdsDeclared { spec: RunnerHostSubordinateIds }
+  | RunnerHostSubordinateIdsUnmeasured { reason: String }
+
+
+data runner_host_subordinate_id_rows: List<RunnerHostSubordinateIdRow> = [
+  // srv1 /etc/subuid as read: briansrls 100000:65536, ghrunner 100000:65536 (COLLIDE),
+  // gunbc-fleet 165536:65536, ubuntu 231072:65536, gunbc-worker 296608:65536. The plan therefore keeps
+  // ghrunner at 100000:65536 — which it already holds, so it costs no write — drops briansrls's
+  // colliding range, and re-grants briansrls at 362144, the first start clear of gunbc-worker's end.
+  RunnerHostSubordinateIdRow {
+    host: operator_host_srv1,
+    ids: SubordinateIdsRowDeclared { ids: RunnerHostSubordinateIds {
+      job_user_first: 100000, job_user_count: 65536,
+      displaceable: "briansrls" as NonEmptyStr, displacee_regrant_first: 362144,
+    } },
+  },
+  // srv3 /etc/subuid as read: ghrunner 100000:65536, ubuntu 100000:65536 (COLLIDE),
+  // briansrls 165536:65536. The job user keeps 100000:65536 and ubuntu is re-granted above
+  // briansrls's end at 231071.
+  RunnerHostSubordinateIdRow {
+    host: operator_host_srv3,
+    ids: SubordinateIdsRowDeclared { ids: RunnerHostSubordinateIds {
+      job_user_first: 100000, job_user_count: 65536,
+      displaceable: "ubuntu" as NonEmptyStr, displacee_regrant_first: 231072,
+    } },
+  },
+  // srv2 and srv4 are never measured, so nothing is declared. A range here would be a value with no
+  // measurement behind it, and the converge would usermod accounts on a host whose subordinate file has
+  // not been read — on a host where, for all we know, both accounts already have container stores. The
+  // gap is recorded as a gap and the converge refuses, which is the honest arm.
+  RunnerHostSubordinateIdRow { host: operator_host_srv2, ids: SubordinateIdsRowUnmeasured {} },
+  RunnerHostSubordinateIdRow { host: operator_host_srv4, ids: SubordinateIdsRowUnmeasured {} },
+]
+
+data runner_host_subordinate_id_row_count_bound: Int = 8
+
+fn subordinate_ids_declared_for(host: HostIdentity) -> RunnerHostSubordinateIdsResolution {
+  if length(runner_host_subordinate_id_rows) > runner_host_subordinate_id_row_count_bound {
+    RunnerHostSubordinateIdsUnmeasured {
+      reason: concat("gunbc.runner.runner_host_deploy: the subordinate-id row table has ",
+                     to_string(length(runner_host_subordinate_id_rows)),
+                     " rows, over its bound of ", to_string(runner_host_subordinate_id_row_count_bound),
+                     " — refusing to read a table that may be truncated"),
+    }
+  } else {
+    match filter(runner_host_subordinate_id_rows, row => row.host == host).first() {
+      Absent => RunnerHostSubordinateIdsUnmeasured {
+        reason: concat("gunbc.runner.runner_host_deploy: host ", host as String,
+                       " has no subordinate-id row, so the job user has no declared range to be given"),
+      }
+      Present { value: row } => match row.ids {
+        SubordinateIdsRowUnmeasured {} => RunnerHostSubordinateIdsUnmeasured {
+          reason: concat("gunbc.runner.runner_host_deploy: host ", host as String,
+                         " declares no subordinate range because its /etc/subuid has never been read"),
+        }
+        SubordinateIdsRowDeclared { ids: d0 } => match d0 {
+          RunnerHostSubordinateIds { job_user_first: f, job_user_count: c, displaceable: d, displacee_regrant_first: g } =>
+          RunnerHostSubordinateIdsDeclared {
+            spec: RunnerHostSubordinateIds {
+              job_user_first: f, job_user_count: c, displaceable: d, displacee_regrant_first: g,
+            },
+          },
+        }
+      }
+    }
   }
 }

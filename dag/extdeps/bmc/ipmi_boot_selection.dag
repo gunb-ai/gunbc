@@ -1,6 +1,9 @@
 module extdeps.bmc.ipmi_boot_selection
 
-import std.types { Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.numeric.base16 { base16_word_value }
 import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }
 import extdeps.numeric.base16 { base16_encode_lower }
 import extdeps.external_authority { ExternalAuthority }
@@ -81,6 +84,17 @@ fn ipmi_boot_device_label(device: IpmiBootDevice) -> NonEmptyStr {
     IpmiBootCdrom => "cdrom"
   }
 }
+
+// THE WORD THAT CLEARS THE OVERRIDE. `ipmitool chassis bootdev none` is the clear: `none` is ipmitool's
+// word for the SAME selector this module already grounds as 0 = 'no override' (ipmi_boot_selector_reading
+// below, IPMI v2.0 rev 1.1 data-2 bits 5:2), and the state it leaves on mtcollins1 is a capture, byte for
+// byte -- extdeps.bmc.ipmitool_observed_output ipmitool_bootparam5_no_override: 'Boot parameter data:
+// 0000000000', 'Boot Flag Invalid', 'Boot Device Selector : No override'. It is deliberately NOT an
+// IpmiBootDevice: this model never SELECTS 'none' -- there is no device to force -- so it has no selector
+// arm, no label arm, and no place in IpmiBootSelection or ipmi_boot_selectable_devices (which stays the
+// two devices that CAN be forced). What the command PRINTS is a different question, held beside the other
+// observed output at extdeps.bmc.ipmitool_observed_output ipmitool_bootdev_none_reply_standing.
+data ipmi_boot_device_none: NonEmptyStr = "none"
 
 fn ipmi_boot_mode_label(mode: IpmiFirmwareBootMode) -> NonEmptyStr {
   match mode {
@@ -190,5 +204,67 @@ fn ipmi_boot_flags_parameter_hex(selection: IpmiBootSelection) -> String? {
   match uint8_octets_of_ints(values: ipmi_boot_flags_parameter_data(selection: selection)) {
     QualifiedOctetsReady { value: o } => Present { value: base16_encode_lower(octets: o) }
     QualifiedOctetsRefused { observed: _ } => Absent
+  }
+}
+
+// THE STATE OF PARAMETER 5 AS READ, decoded from the bytes `chassis bootparam get 5` prints after "Boot
+// parameter data: " -- the same five bytes ipmi_boot_flags_parameter_data writes, read in the other
+// direction. This is the read-only observation of what is in force (an intake reads it before any write);
+// judging a write's readback stays with ipmi_boot_expected_*_rendering above, and this is not a second judge.
+// Data 1 bit 7 valid, bit 6 persistent, bit 5 EFI; data 2 bits 5:2 the device selector (IPMI v2.0 rev 1.1,
+// Get System Boot Options, parameter 5).
+type IpmiBootFlagsReading {
+  flag_valid: Bool
+  persistent: Bool
+  efi: Bool
+  device_selector: Int
+}
+
+// WHAT A SELECTOR NAMES. The two devices this model writes are read back as themselves; 0 is "no override";
+// every other selector the specification defines (hard drive, BIOS setup, remote media, ...) is kept as
+// its number rather than mapped onto a device this model cannot select.
+type IpmiBootSelectorReading
+  = IpmiSelectorNoOverride
+  | IpmiSelectorModeled { device: IpmiBootDevice }
+  | IpmiSelectorUnmodeled { selector: Int }
+
+data ipmi_boot_selectable_devices: List<IpmiBootDevice> = [IpmiBootPxe, IpmiBootCdrom]
+
+fn ipmi_boot_selector_reading(selector: Int) -> IpmiBootSelectorReading {
+  if selector == 0 { IpmiSelectorNoOverride } else {
+    match first(filter(ipmi_boot_selectable_devices, d => ipmi_boot_device_selector(device: d) == selector)) {
+      Present { value: d } => IpmiSelectorModeled { device: d }
+      Absent => IpmiSelectorUnmodeled { selector: selector }
+    }
+  }
+}
+
+fn bootparam_data_line(stdout: String) -> String? {
+  first(map(filter(split(s: stdout, delimiter: "\n"), l => starts_with(s: trim(l), prefix: "Boot parameter data: ")), l => trim(substring(s: trim(l), start: 21, end: string_length(s: trim(l))))))
+}
+
+fn hex_byte_at(hex: String, i: Int) -> Int? {
+  base16_word_value(word: substring(s: hex, start: i * 2, end: i * 2 + 2), max_digits: 2)
+}
+
+// Exactly ten hex digits, or no reading: a shorter line is a different parameter or a truncated capture.
+fn ipmi_boot_flags_reading_of_bootparam_get(stdout: String) -> IpmiBootFlagsReading? {
+  match bootparam_data_line(stdout: stdout) {
+    Absent => none
+    Present { value: hex } =>
+      if string_length(s: hex) != 10 { none } else {
+        match hex_byte_at(hex: hex, i: 0) {
+          Absent => none
+          Present { value: d1 } => match hex_byte_at(hex: hex, i: 1) {
+            Absent => none
+            Present { value: d2 } => Present { value: IpmiBootFlagsReading {
+              flag_valid: d1 / 128 == 1,
+              persistent: (d1 / 64) % 2 == 1,
+              efi: (d1 / 32) % 2 == 1,
+              device_selector: (d2 / 4) % 16,
+            } }
+          }
+        }
+      }
   }
 }

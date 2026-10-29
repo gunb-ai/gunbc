@@ -29,6 +29,7 @@ import gunbc.keyed_dependency_edge_read_seed_growth { keyed_dependency_edge_read
 import gunbc.host_crypto_digest_seed_growth { host_crypto_digest_seed_growth_justification }
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
 import gunbc.fixture_render_selection_seed_growth { fixture_render_selection_seed_growth_justification }
+import gunbc.census_rendered_pair_seed_growth { census_rendered_pair_seed_growth_justification }
 import gunbc.fixture_closure_union_emit_seed_growth { fixture_closure_union_emit_seed_growth_justification }
 import gunbc.fabric_door_socket_seed_growth { fabric_door_socket_seed_growth_justification }
 import gunbc.serve_cookie_header_seed_growth { serve_cookie_header_seed_growth_justification }
@@ -38,6 +39,7 @@ import gunbc.claim_batch_function_preflight_seed_growth { claim_batch_function_p
 import gunbc.claim_batch_entry_closure_preflight_seed_growth { claim_batch_entry_closure_preflight_seed_growth_justification }
 import gunbc.claim_batch_exit_composition_seed_growth { claim_batch_exit_composition_seed_growth_justification }
 import gunbc.claim_batch_exit_two_seed_growth { claim_batch_exit_two_seed_growth_justification }
+import gunbc.claim_batch_outcomes_out_seed_growth { claim_batch_outcomes_out_seed_growth_justification }
 import gunbc.declaration_index_seed_growth { declaration_index_seed_growth_justification }
 import gunbc.declaration_lookup_index_seed_growth { declaration_lookup_index_seed_growth_justification }
 import gunbc.emitted_closure_compile_seed_growth { emitted_closure_compile_seed_growth_justification }
@@ -326,6 +328,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     claim_batch_entry_closure_preflight_seed_growth_justification,
     claim_batch_exit_composition_seed_growth_justification,
     claim_batch_exit_two_seed_growth_justification,
+    claim_batch_outcomes_out_seed_growth_justification,
     shared_fill_attribution_seed_growth_justification,
     pool_reading_attribution_seed_growth_justification,
     source_root_eval_driver_seed_growth_justification,
@@ -348,6 +351,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     runtime_calibration_suite_seed_growth_justification,
     census_memo_seed_growth_justification,
     fixture_render_selection_seed_growth_justification,
+    census_rendered_pair_seed_growth_justification,
     fixture_closure_union_emit_seed_growth_justification,
     fabric_door_socket_seed_growth_justification,
     serve_cookie_header_seed_growth_justification,
