@@ -3,15 +3,14 @@ module test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witnes
 import std.types { Bool, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.scoped_authorization { ScopedAuthorization }
+import std.scoped_authorization { AttemptIdentity, ScopedAuthorization }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, OpenBmc, bmc_controller_of_endpoint }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { SurfaceAccountManagement }
-import extdeps.bmc.redfish { redfish_password_change_verdict }
 import extdeps.bmc.ipmi_channel { IpmiPrivilegeNoAccess, ipmi_user_channel_access }
 import gunbc.fleet.fleet_intent { srv13_baseboard, srv4_baseboard }
 import gunbc.machine_intake.bmc_credential_policy {
-  PublishedCredentialChangeForced, ForcedChangeAdmitted, ForcedChangeRefused,
+  PublishedCredentialChangeForced, ForcedChangeAdmitted, ForcedChangeRefused, ForcedChangeBuildUnreadable,
   admit_published_credential_change_forced, asrock_altrad8ud_openbmc_3_22_00_key,
 }
 import gunbc.machine_intake.bmc_rotation_route {
@@ -19,21 +18,23 @@ import gunbc.machine_intake.bmc_rotation_route {
   ObservedSurfaceRead, QualifyByRotation, RotateCredential, QualifyRoute,
   BmcWriteApprovalNotGranted, BmcWriteApprovalDenied, BmcWriteApprovalForAnotherPurpose, BmcWriteApprovalForAnotherSubject, BmcWriteApprovalIntentNotItsSubject, BmcWriteApprovalScopesNotItsSubject,
   ForcedFirstRotationAdmitted, ForcedFirstRotationRefused,
-  ForcedStateForAnotherController, ForcedStateForAnotherBuild, ForcedWriteIsNotTheFactoryAccountsPasswordWrite,
+  ForcedStateForAnotherController, ForcedStateForAnotherBuild, ForcedStateFromAnotherAttempt, ForcedWriteIsNotTheFactoryAccountsPasswordWrite,
   ForcedRouteDoesNotNameThisWrite, ForcedWriteApprovalRefused,
   rotation_route_candidate, rotation_route_ungrounded, redfish_account_password_write, admit_forced_first_rotation,
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import std.content_hash { content_hash_of_value }
 import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write, denied_bmc_write }
-import test.claim.machine_intake.machine_intake_bmc_credential_policy_witness { srv13_forced_change_body }
+import test.claim.machine_intake.machine_intake_bmc_credential_policy_witness { srv13_forced_change_body, srv13_capture, controller_reading }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE FIRST ROTATION OF A CONTROLLER WHOSE BUILD FORCES THE PUBLISHED CREDENTIAL'S CHANGE. The forced state
 // is entered through its real admission (gunbc.machine_intake.bmc_credential_policy
-// admit_published_credential_change_forced) from srv13's committed 403 body read by the real parser, at
-// srv13's controller on 3.22.00. Every claim here varies one input from that admitted case.
+// admit_published_credential_change_forced) from srv13's committed 403 response under its committed capture,
+// classified by the real parser, at srv13's controller, with the build unreadable before the write (as on
+// 3.22.00) and so inferred from the response. Every claim here varies one input from that admitted case.
 //
 // NO WRITE IS MADE. srv13 carries a standing write restriction (merry-fox-82): this witness exercises the
 // admission over supplied values and writes nothing to any controller.
@@ -59,14 +60,19 @@ fn root_write() -> BmcAccountWriteRequest {
   redfish_account_password_write(account: "root" as NonEmptyStr)
 }
 
-fn forced_at(endpoint: BmcControllerEndpoint) -> PublishedCredentialChangeForced? {
-  match admit_published_credential_change_forced(
-    endpoint: endpoint,
-    key: asrock_altrad8ud_openbmc_3_22_00_key(),
+// srv13's forced state, as read in run `attempt`.
+fn forced_in(attempt: AttemptIdentity) -> PublishedCredentialChangeForced? {
+  let reading = controller_reading(
+    endpoint: srv13(),
+    attempt: attempt,
+    board: asrock_altrad8ud_board_authority,
+    login: "root" as NonEmptyStr,
     status: 403,
-    verdict: redfish_password_change_verdict(body: srv13_forced_change_body),
-    response_evidence: response_receipt,
-  ) {
+    body: srv13_forced_change_body,
+    capture: srv13_capture,
+    firmware: ForcedChangeBuildUnreadable,
+  )
+  match admit_published_credential_change_forced(reading: reading) {
     ForcedChangeAdmitted { state: s } => Present { value: s }
     ForcedChangeRefused { cause: _ } => none
   }
@@ -82,7 +88,11 @@ fn go(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, purpo
 }
 
 fn verdict(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, approval: ScopedAuthorization<BmcAccountWriteApproval>) -> String {
-  match forced_at(endpoint: srv13()) {
+  verdict_in(read_in: "attempt-1" as AttemptIdentity, standing: standing, request: request, approval: approval)
+}
+
+fn verdict_in(read_in: AttemptIdentity, standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, approval: ScopedAuthorization<BmcAccountWriteApproval>) -> String {
+  match forced_in(attempt: read_in) {
     Absent => "forced-state-not-entered"
     Present { value: f } =>
       match admit_forced_first_rotation(forced: f, standing: standing, request: request, approval: approval) {
@@ -91,6 +101,7 @@ fn verdict(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, 
           match c {
             ForcedStateForAnotherController { forced: _, route: _ } => "another-controller"
             ForcedStateForAnotherBuild { forced: _, route: _ } => "another-build"
+            ForcedStateFromAnotherAttempt { forced: _, approved: _ } => "another-attempt"
             ForcedWriteIsNotTheFactoryAccountsPasswordWrite { request: _, factory_account: _ } => "not-the-factory-password-write"
             ForcedRouteDoesNotNameThisWrite { grounding: _ } => "route-does-not-name-it"
             ForcedWriteApprovalRefused { cause: a } =>
@@ -152,4 +163,12 @@ test fn the_route_must_name_the_forced_write() -> Bool {
   let other = candidate(endpoint: srv13(), firmware: build_3_22(), request: redfish_account_password_write(account: "admin" as NonEmptyStr))
   verdict(standing: ungrounded, request: root_write(), approval: go(standing: ungrounded, request: root_write(), purpose: QualifyByRotation)) == "route-does-not-name-it"
     && verdict(standing: other, request: root_write(), approval: go(standing: other, request: root_write(), purpose: QualifyByRotation)) == "route-does-not-name-it"
+}
+
+// THE RUN. The 403 is evidence about the controller at the time it was read, in the run that read it: a forced
+// state read in an earlier run admits nothing under this run's go, even for the same controller, build and
+// write (paired with the positive control, which differs only in the attempt).
+test fn a_forced_state_from_another_run_admits_nothing() -> Bool {
+  let route = candidate(endpoint: srv13(), firmware: build_3_22(), request: root_write())
+  verdict_in(read_in: "attempt-0" as AttemptIdentity, standing: route, request: root_write(), approval: go(standing: route, request: root_write(), purpose: QualifyByRotation)) == "another-attempt"
 }

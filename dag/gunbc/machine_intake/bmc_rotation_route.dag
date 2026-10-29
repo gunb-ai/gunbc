@@ -1162,7 +1162,8 @@ fn redfish_account_password_write(account: NonEmptyStr) -> BmcAccountWriteReques
 // password write, and that write is the only request the state admits. So the first rotation of such a
 // controller is admitted here, from the forced state itself rather than from a reading of the account:
 //
-// - the forced state was read at this controller, at this build;
+// - the forced state was read at this controller, at this build, in this run (the approval's attempt is
+//   the attempt that read the 403, so a 403 kept from an earlier run admits nothing);
 // - the write is the password write of the account the factory login names (OpenBMC root), and nothing
 //   else -- not a privilege write, not another account;
 // - the route names exactly that write, as a candidate (the controller's own 403 names the target) or
@@ -1175,12 +1176,13 @@ fn redfish_account_password_write(account: NonEmptyStr) -> BmcAccountWriteReques
 // controller after the write.
 
 data forced_first_rotation_apply_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a live apply consumes AdmittedForcedFirstRotation -- materializing the generation's bytes through gunbc.auth.secret_ref_credential fetch_secret_ref_credential at its pinned version, writing them under the published credential the forced state admits, grounding the route through qualify_rotation_route from that write's own request and response receipts, and reading back with the ordinary BmcSecure read under the new generation -- so that on a forcing build that write is the first rotation and the converge then reads the controller as secured, a Noop; NOT satisfied by the dry realization or by a write whose bytes were supplied out of band" as NonEmptyStr,
+  description: "dissolves when a live apply consumes AdmittedForcedFirstRotation -- materializing the generation's bytes through gunbc.auth.secret_ref_credential fetch_secret_ref_credential at its pinned version, writing them under the published credential the forced state admits, grounding the route through qualify_rotation_route from that write's own request and response receipts, and reading back with the ordinary BmcSecure read under the new generation, whose firmware must be the forced state's build (on a build unreadable before the write, gunbc.machine_intake.bmc_credential_policy ForcedBuildInferredFromTheResponse, that read is the inference's only confirmation, and a different build refuses BmcSecure) -- so that on a forcing build that write is the first rotation and the converge then reads the controller as secured, a Noop; NOT satisfied by the dry realization or by a write whose bytes were supplied out of band" as NonEmptyStr,
 )
 
 type ForcedFirstRotationRefusal
   = ForcedStateForAnotherController { forced: BmcControllerEndpoint, route: BmcControllerEndpoint }
   | ForcedStateForAnotherBuild { forced: BmcFirmwareReleaseIdentity, route: BmcFirmwareReleaseIdentity }
+  | ForcedStateFromAnotherAttempt { forced: AttemptIdentity, approved: AttemptIdentity }
   | ForcedWriteIsNotTheFactoryAccountsPasswordWrite { request: BmcAccountWriteRequest, factory_account: NonEmptyStr }
   | ForcedRouteDoesNotNameThisWrite { grounding: BmcRotationRouteGrounding }
   | ForcedWriteApprovalRefused { cause: BmcWriteApprovalRefusal }
@@ -1233,8 +1235,12 @@ fn admit_forced_first_rotation(
     match read_bmc_write_approval(approval: approval, subject: route_subject_of(standing: standing, request: request), required: QualifyByRotation) {
       BmcWriteApprovalRefused { cause: c } => ForcedFirstRotationRefused { cause: ForcedWriteApprovalRefused { cause: c } }
       BmcWriteApproved { attempt: a, granted_by: by } =>
-        ForcedFirstRotationAdmitted {
-          admitted: AdmittedForcedFirstRotation { forced: forced, standing: standing, request: request, attempt: a, decided_by: by },
+        if (a as String) != (forced.attempt as String) {
+          ForcedFirstRotationRefused { cause: ForcedStateFromAnotherAttempt { forced: forced.attempt, approved: a } }
+        } else {
+          ForcedFirstRotationAdmitted {
+            admitted: AdmittedForcedFirstRotation { forced: forced, standing: standing, request: request, attempt: a, decided_by: by },
+          }
         }
     }
   }
