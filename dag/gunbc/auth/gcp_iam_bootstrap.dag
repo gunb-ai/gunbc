@@ -63,7 +63,10 @@ import gunbc.auth.gcp_iam_bootstrap_authority {
   RemoveAuthority, AuthoritySettled, AuthorityRefused,
 }
 import gunbc.auth.approval_gate { approval_instant_now }
-import std.measure { second }
+import std.measure { second, second_count }
+import extdeps.clock { clock_unix_millis_read, clock_timestamp_to_unix_secs, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused, ClockTimestampObserved, ClockTimestampRefused }
+import extdeps.cloud.gcp.error_info { decode_429_error_info, quota_retry_wait_for, QuotaErrorInfoObserved, QuotaErrorInfoRefused, QuotaWaitBefore, QuotaWaitNow, QuotaWaitRefused }
+import gunbc.auth.gcp_operation_wait { gcp_quota_wait_fits_actuation_allowance, OperationWaitDone, iam_deny_create_operation_outcome, operation_wait_refusal }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 // Operator-authorized initial setup. This entry does not forge an app approval or workflow
@@ -444,12 +447,21 @@ fn iam_bootstrap_ensure_deny_bounded(policy: IamBootstrapDenyPolicy, token: Secr
         else {
           match gcp.IamDeny.CreatePolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id, rules: policy.rules) {
             RestRefused { refusal: made_refusal } =>
-              if bootstrap_deny_retry_admitted(refusal: made_refusal, remaining: remaining, live: iam_bootstrap_current_authority_live()) {
+              if bootstrap_deny_retry_admitted(refusal: made_refusal, admitted_status: 429, remaining: remaining, live: iam_bootstrap_current_authority_live()) {
+                match iam_bootstrap_quota_wait(refusal: made_refusal) {
+                  "" => iam_bootstrap_ensure_deny_bounded(policy: policy, token: token, remaining: remaining - 1)
+                  refused => refused
+                }
+              } else if bootstrap_deny_retry_admitted(refusal: made_refusal, admitted_status: 403, remaining: remaining, live: iam_bootstrap_current_authority_live()) {
                 if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
                   iam_bootstrap_ensure_deny_bounded(policy: policy, token: token, remaining: remaining - 1)
                 } else { "deny authority propagation wait failed" }
               } else { rest_refusal_text(o: made_refusal) }
-            RestAnswered { answer: _ } => iam_bootstrap_deny_creation_readback(policy: policy, token: token, remaining: 6)
+            RestAnswered { answer: made } =>
+              match iam_deny_create_operation_outcome(token: token, attachment_point: iam_bootstrap_attachment_point() as String, policy_id: policy.policy_id as String, operation_name: made.operation_name, done: made.done, error: made.error) {
+                OperationWaitDone => iam_bootstrap_deny_creation_readback(policy: policy, token: token)
+                pending => operation_wait_refusal(outcome: pending, render_refusal: r => rest_refusal_text(o: r))
+              }
           }
         }
       }
@@ -1117,7 +1129,7 @@ fn iam_bootstrap_probe_token(token: Secret, account: ServiceAccountEmail, remain
       let intent = BootstrapAuthorityIntent { operation: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_ID"),
         expires_at: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT") as Timestamp }
       let live = match approval_instant_now() { Absent => false Present { value: now } => bootstrap_authority_may_grant(intent: intent, now: now) }
-      if bootstrap_deny_retry_admitted(refusal: generated_refusal, remaining: remaining, live: live) {
+      if bootstrap_deny_retry_admitted(refusal: generated_refusal, admitted_status: 403, remaining: remaining, live: live) {
         if sleep_delay_seconds_second_carrier_projection(duration: second(count: 5)) {
           iam_bootstrap_probe_token(token: token, account: account, remaining: remaining - 1)
         } else { BootstrapProbeTokenRefused { reason: "probe permission propagation wait failed" } }
@@ -1352,18 +1364,40 @@ fn iam_bootstrap_current_authority_live() -> Bool {
   match approval_instant_now() { Present { value: now } => bootstrap_authority_may_grant(intent: intent, now: now) Absent => false }
 }
 
-// An accepted asynchronous create is followed only by bounded reads, never another create.
-fn iam_bootstrap_deny_creation_readback(policy: IamBootstrapDenyPolicy, token: Secret, remaining: Int) -> String {
+// An accepted asynchronous create is read back ONCE, after its operation reported done (AIP-151). A
+// policy still absent after done is a typed refusal naming that fact, not a reason to sleep and ask again.
+fn iam_bootstrap_deny_creation_readback(policy: IamBootstrapDenyPolicy, token: Secret) -> String {
   match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id) {
     RestAnswered { answer: check } =>
       if iam_bootstrap_deny_rules_match(observed: check.rules, declared: policy.rules) { "" }
       else { join([policy.policy_id as String, ": created deny policy differs; no capabilities granted; read: ", deny_rules_text(rules: check.rules), "; declared: ", deny_rules_text(rules: Present { value: policy.rules })], "") }
     RestRefused { refusal: check_refusal } =>
-      if outcome_is_not_found(o: check_refusal) && remaining > 0 {
-        if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
-          iam_bootstrap_deny_creation_readback(policy: policy, token: token, remaining: remaining - 1)
-        } else { "deny creation readback wait failed" }
-      } else { concat("deny creation accepted but exact readback is not established: ", rest_refusal_text(o: check_refusal)) }
+      if outcome_is_not_found(o: check_refusal) { concat(policy.policy_id as String, ": the deny create's operation reported done yet the policy is absent on readback; no capabilities granted") }
+      else { concat("deny creation done but exact readback is not established: ", rest_refusal_text(o: check_refusal)) }
+  }
+}
+
+// A 429's wait is DERIVED from the google.rpc.ErrorInfo the body carries (google.aip.dev/193), never
+// chosen here: "" after sleeping exactly that wait, otherwise the typed refusal naming the missing fact.
+fn iam_bootstrap_quota_wait(refusal: RestRefusal) -> String {
+  match refusal {
+    RestStatusRefused { status: _, body } =>
+      match decode_429_error_info(body: body) {
+        QuotaErrorInfoRefused { missing } => concat("429 without a derivable wait: ", missing as String)
+        QuotaErrorInfoObserved { info } =>
+          match clock_unix_millis_read() {
+            ClockUnixMillisRefused { detail } => concat("429 wait needs the clock: ", detail)
+            ClockUnixMillisObserved { millis } =>
+              match quota_retry_wait_for(info: info, now_secs: epoch_secs_of_millis(millis: millis), to_epoch_secs: t => match clock_timestamp_to_unix_secs(timestamp: t) { ClockTimestampObserved { epoch_secs } => Present { value: epoch_secs }  ClockTimestampRefused { detail: _ } => none }) {
+                QuotaWaitRefused { missing } => concat("429 without a derivable wait: ", missing as String)
+                QuotaWaitNow => ""
+                QuotaWaitBefore { wait } =>
+                  if !gcp_quota_wait_fits_actuation_allowance(wait: wait) { join(["429 quota window reopens in ", to_string(second_count(s: wait)), " seconds, beyond the ceremony's actuation allowance; the create is not reissued -- rerun after the window"], "") }
+                  else if sleep_delay_seconds_second_carrier_projection(duration: wait) { "" } else { "429 quota wait failed" }
+              }
+          }
+      }
+    _ => "429 refusal carries no body"
   }
 }
 

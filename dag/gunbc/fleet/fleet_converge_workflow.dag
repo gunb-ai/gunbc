@@ -58,7 +58,7 @@ import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
 import gunbc.auth.access_token_source { workload_identity_token_env }
 import std.measure { Second, minute_count, second_count }
-import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget, runner_host_cap_step_budget_env_name }
+import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget, runner_host_cap_step_budget_env_name, runner_host_closure_resolve_budget }
 
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.github.actions {
@@ -2305,7 +2305,7 @@ fn fleet_converge_runner_host_file_converge_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_runner_host_file_converge_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)]) }
+    timeout_minutes: Present { value: fleet_converge_runner_host_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)]) }
   }
 }
 
@@ -2330,7 +2330,7 @@ fn fleet_converge_runner_host_withdraw_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_runner_host_withdraw_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)]) }
+    timeout_minutes: Present { value: fleet_converge_runner_host_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)]) }
   }
 }
 
@@ -2424,7 +2424,7 @@ fn fleet_converge_runner_host_cap_release_step() -> Step {
     working_directory: none,
     if_condition: Present { value: join(["always() && (", fleet_converge_runner_host_file_converge_step_if, ")"], "") },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [runner_host_cap_drain_policy.release_allowance]) }
+    timeout_minutes: Present { value: fleet_converge_runner_host_step_timeout_minutes(phases: [runner_host_cap_drain_policy.release_allowance]) }
   }
 }
 
@@ -3043,9 +3043,21 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
 // (gunbc.ci.ci_spec gunbc_ci_sm_max_time; the prelude's other lines are local file writes) and the probe's
 // declared bound; for the always() release, the owned release alone. The flat aux budget
 // is what killed a probe's first wet run while it was still typechecking.
-fn fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: List<Second>) -> Int {
-  let secs = fold(phases, gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60, (acc, p) => acc + (second_count(s: p) as Int))
+// A GUNBC RUN STEP'S TIMEOUT, ONE RULE: its startup (the resolve of its entry's closure) plus the phases it
+// runs after it, rounded up to whole minutes. The callers differ only in which startup budget they name.
+fn fleet_converge_step_timeout_minutes(startup_seconds: Int, phases: List<Second>) -> Int {
+  let secs = fold(phases, startup_seconds, (acc, p) => acc + (second_count(s: p) as Int))
   (secs + 59) / 60
+}
+
+// A RUNNER-HOST STEP'S TIMEOUT: its closure's resolve budget (gunbc.runner.runner_host_cap_bracket
+// runner_host_closure_resolve_budget, not the generic resolve figure) plus the phases it runs after it.
+fn fleet_converge_runner_host_step_timeout_minutes(phases: List<Second>) -> Int {
+  fleet_converge_step_timeout_minutes(startup_seconds: second_count(s: runner_host_closure_resolve_budget) as Int, phases: phases)
+}
+
+fn fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: List<Second>) -> Int {
+  fleet_converge_step_timeout_minutes(startup_seconds: gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60, phases: phases)
 }
 
 // THE REAL KVM OBSERVER AGAINST THE REAL BMC, NO BOOT (gunbc.machine_intake.mtcollins1_kvm_observer_observe):

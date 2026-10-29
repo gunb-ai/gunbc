@@ -27,10 +27,15 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_
 // residential print assembly -- reached implicitly through review_realization main. Naming it keeps
 // the two from being confused for one another.
 // The four A16 axial roots are the two card mounts, each as a full duct and as a fit ring; the blower
-// root is the radial-blower duct on the plug mount.
-type PrintedAssemblyRoot = ResidentialCassette | CassetteRackReview | A16PlugDuct | A16SleeveDuct | A16PlugFitRing | A16SleeveFitRing | A16BlowerDuct
+// root is the radial-blower duct on the plug mount; the flat-on-end root is the third blower home, admitted
+// 2026-10-26 on the operator's declared conservative bounds (product.printed_chassis.card_cooling_route
+// PlaneOnEnd, gunbc.design_ruling a16_rear_clearance_and_sides_are_operator_declared_bounds). It gets its
+// OWN root rather than a mode of A16BlowerDuct, because its geometry differs in kind: that one is a socket
+// the blower drops into beside the plug end, this one carries the housing on an open shoulder behind the end
+// with a channel turned back into the window. Two shapes, two attempts, two names to point at at the printer.
+type PrintedAssemblyRoot = ResidentialCassette | CassetteRackReview | A16PlugDuct | A16SleeveDuct | A16PlugFitRing | A16SleeveFitRing | A16BlowerDuct | A16BlowerFlatOnEndDuct
 
-data printed_assembly_roots: List<PrintedAssemblyRoot> = [ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct]
+data printed_assembly_roots: List<PrintedAssemblyRoot> = [ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct, A16BlowerFlatOnEndDuct]
 
 fn printed_assembly_root_wire(root: PrintedAssemblyRoot) -> String {
   match root {
@@ -41,6 +46,7 @@ fn printed_assembly_root_wire(root: PrintedAssemblyRoot) -> String {
     A16PlugFitRing => "a16-plug-fit-ring"
     A16SleeveFitRing => "a16-sleeve-fit-ring"
     A16BlowerDuct => "a16-blower-duct"
+    A16BlowerFlatOnEndDuct => "a16-blower-flat-on-end-duct"
   }
 }
 

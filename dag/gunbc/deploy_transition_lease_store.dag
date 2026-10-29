@@ -1,0 +1,273 @@
+module gunbc.deploy_transition_lease_store
+
+import std.types { String, NonEmptyStr }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_listing_observation,
+  FilesystemDirectoryListed,
+  FilesystemDirectoryListingRefused,
+  FilesystemDirectorySubjectRefused,
+}
+import std.durable_compare_and_set {
+  CasGeneration,
+  cas_generation_count,
+  cas_unreadable_slot_detail,
+  cas_store_failure_detail,
+}
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef,
+  DurableHoldReleaseRef,
+  DurableHoldReleaseRefusal,
+  HoldReleaseSlotAbsent,
+  HoldReleaseAlreadyFree,
+  HoldReleaseHeldByAnotherOwner,
+  HoldReleaseAgainstAnotherGeneration,
+  HoldReleaseSlotUndecodable,
+  HoldReleaseObservationUnavailable,
+}
+import gunbc.durable_exclusive_hold_file_store {
+  FileHoldAcquireOutcome,
+  FileHoldAcquired,
+  FileHoldOccupied,
+  FileHoldAcquireLost,
+  FileHoldAcquireStoreUnavailable,
+  FileHoldSlotUndecodable,
+  FileHoldKeyNotSlotAddressable,
+  FileHoldReleasePlanned,
+  FileHoldReleaseNotEligible,
+  FileHoldReleaseOutcome,
+  FileHoldReleased,
+  FileHoldReleaseLost,
+  FileHoldReleaseStoreUnavailable,
+  FileHoldReleaseKeyNotSlotAddressable,
+  file_hold_acquire,
+  file_hold_release_assess,
+  file_hold_release_commit,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_root_spelling_refusal }
+
+// THE TRANSITION LEASE, A HOLD ON THE HOLD LIBRARY. gunbc.deploy_transition decides what the lease
+// SERIALIZES; this leaf module is the only place that knows where it lives and how it is held. It
+// replaces a hand lock -- an owner-only exclusive create of transition-lease.json, released by a
+// Delete -- which forked std.durable_exclusive_hold (the leasing row of DESIGN 3b). Acquire and the
+// holder's release are now gunbc.durable_exclusive_hold_file_store's, over the compare-and-set file
+// store, so the lease has the protocol's one holder equality, its one codec and its typed refusals,
+// and a stale holder can no longer free a successor's lease by deleting a path.
+//
+// WHAT IS NOT HERE: A NON-HOLDER RELEASE. The lease used to be deleted on every clearance basis,
+// including evidence and an operator abandonment, neither of which is the holder. The hold library's
+// non-holder release (file_hold_nonholder_release_assess) is generic in its Observation and its roster
+// is frozen (ruling stern-ram-763, 2026-10-25), so this store offers no non-holder release at all and
+// gunbc.deploy_transition refuses one, named at
+// gunbc.recurring_failure_mode.a_generic_release_assess_accepts_evidence_its_caller_authored.
+//
+// KEEP-ALL RETENTION, because the generation line is the lease's audit trail: every acquire and every
+// release is a generation naming its owner or its releaser (DESIGN 3b, leasing boundary). It is also
+// the only route open to this store: the windowed acquire admits its callers by roster, and this
+// change adds no roster member.
+
+// THE ONE DECLARATION OF THE STORE: the slot it is under the instance root. The slot's generations are
+// files directly in the instance root (<instance_root>/transition-lease.<N>), which the instance itself
+// provisions, so the store owns no directory and there is no directory row to derive -- the same shape
+// as gunbc.deploy_transition_store transition_inhibition_slots, its neighbour in that root. The mint,
+// the slot key and every operation derive from this row, so deleting it breaks every reader.
+type TransitionLeaseDeclaration { member: NonEmptyStr }
+
+data transition_lease_slots: TransitionLeaseDeclaration = TransitionLeaseDeclaration {
+  member: "transition-lease" as NonEmptyStr,
+}
+
+// THE LEASE STORE: DATA ONLY (no closure fields, stern-ram-763 2026-10-24). Sole constructor,
+// non-generic and never a variant arm, so only transition_lease_store below builds one, and only from
+// the instance's declared root, checked canonical and listed. What is sealed is CONSTRUCTION; field
+// reads are not sealed, so a holder can read `root` and write raw -- the declared residual every
+// sealed store carries, and no rung is claimed for it.
+type TransitionLeaseStore sole_constructor {
+  instance: NonEmptyStr
+  root: NonEmptyStr
+}
+
+type TransitionLeaseStoreReading
+  = TransitionLeaseStoreReady { store: TransitionLeaseStore }
+  | TransitionLeaseStoreUnready { detail: String }
+
+// THE STORE'S ONLY MINT. It takes the instance and nothing else; the root is the instance root as the
+// declaration spells it, and it is LISTED before a store is handed out, so a store over a root that
+// does not exist is never minted. A hold's identity is its store root and slot AS SPELLED
+// (gunbc.durable_exclusive_hold_file_store file_hold_ref), so a root that is not absolute or not spelled one
+// way refuses first, by the instance's own rule (gunbc.roadmap.roadmap_dashboard_instance
+// dashboard_instance_root_spelling_refusal), the same rule the inhibition store applies.
+fn transition_lease_store(instance: HostDashboardInstance) -> TransitionLeaseStoreReading {
+  let root = instance.instance_root as String
+  let name = transition_lease_slots.member as String
+  match dashboard_instance_root_spelling_refusal(instance: instance) {
+    Present { value: why } =>
+      TransitionLeaseStoreUnready {
+        detail: join(["the instance root ", root, " holding the ", name, " lease is refused because ", why], ""),
+      }
+    Absent => {
+      let listing = Filesystem.List(path: root)
+      match filesystem_listing_observation(directory: root, success: listing.success, entries: listing.entries, error: listing.error) {
+        FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+          TransitionLeaseStoreUnready {
+            detail: join(["the instance root holding the ", name, " lease is not admissible: ", c], ""),
+          }
+        FilesystemDirectoryListingRefused { directory: _, error: e } =>
+          TransitionLeaseStoreUnready {
+            detail: join(["the instance root holding the ", name, " lease could not be listed: ", e], ""),
+          }
+        FilesystemDirectoryListed(_) =>
+          TransitionLeaseStoreReady {
+            store: TransitionLeaseStore { instance: instance.instance_id, root: root as NonEmptyStr },
+          }
+      }
+    }
+  }
+}
+
+// THE PROOF THAT THE LEASE IS HELD, minted only on the acquire arm below from that call's own committed
+// compare-and-set, never from a supplied outcome. It carries the store it was taken in and the owner and
+// generation the hold library committed, so the holder's release presents exactly what was acquired and
+// cannot be pointed at another store.
+type TransitionLeaseHeld sole_constructor {
+  store: TransitionLeaseStore
+  owner: DurableHoldOwnerRef
+  generation: CasGeneration
+}
+
+// EVERY WAY AN ACQUIRE ENDS, KEPT APART BECAUSE THE REMEDIES DIFFER: held means wait for the holder;
+// undecodable means an operator reads the slot; lost means another acquirer won between this call's read
+// and its write, so re-observe; unavailable says nothing about who holds the lease (the store could not
+// be read or written, or the key is not slot-addressable), so fix the host. Lost and unavailable are not
+// folded together (store_refusal_reported_as_contention). The refusals are their own type so a consumer can
+// fold them without the held proof's arm, which only this module constructs.
+type TransitionLeaseAcquire
+  = TransitionLeaseAcquired { held: TransitionLeaseHeld }
+  | TransitionLeaseRefused { refusal: TransitionLeaseRefusal }
+
+type TransitionLeaseRefusal
+  = TransitionLeaseOccupied { holder: String, generation: Int }
+  | TransitionLeaseUndecodable { detail: String }
+  | TransitionLeaseLost { detail: String }
+  | TransitionLeaseUnavailable { detail: String }
+
+fn transition_lease_location(store: TransitionLeaseStore) -> String {
+  join(["the transition lease of instance ", store.instance as String], "")
+}
+
+// THE REFUSIONS, read off the hold library's acquire outcome. PUBLIC AND REFUSAL-ONLY by design: the arms below
+// carry no proof, so folding them is safe for any caller. What is deliberately NOT here is the admitted arm, and
+// there is no public function anywhere that turns an acquire outcome -- authored, or genuine and taken from some
+// other store or slot -- into a held lease. This is a specimen of gunbc.recurring_failure_mode
+// admitted_call_edge_with_unrestricted_value_egress: a confined type whose admitted caller RETURNS the confined
+// value is itself an unrestricted constructor for it, and in a language with no module-private the only repairs are
+// to remove the alternate mint or close its egress, and the repair here took the first. The admitting arm used to
+// live here as
+// `transition_lease_acquire_of(store, outcome)`, and it was a laundering route: it ignored the outcome's
+// slot_key and paired whatever outcome it was handed with whatever STORE the caller named beside it, so a real
+// acquire at store A slot X minted a held lease for the transition store B with no CAS in B at all. It now lives
+// only inside transition_lease_acquire below, where the outcome is this call's own file_hold_acquire.
+// The acquired arm is typed here too, and REFUSES: an outcome that says "acquired" reaching a refusal fold is a
+// caller substituting a value, and it gets no lease.
+fn transition_lease_acquire_refused(location: String, outcome: FileHoldAcquireOutcome) -> TransitionLeaseAcquire {
+  match outcome {
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } =>
+      TransitionLeaseRefused {
+        refusal: TransitionLeaseUnavailable {
+          detail: join([location, ": an acquire outcome that reports success never reaches this fold; transition_lease_acquire is the only mint of a held lease"], ""),
+        },
+      }
+    FileHoldOccupied { slot_key: _, holder: h, generation: g } =>
+      TransitionLeaseRefused { refusal: TransitionLeaseOccupied { holder: h as String, generation: cas_generation_count(g: g) } }
+    FileHoldSlotUndecodable { slot_key: _, generation: g, detail: d } =>
+      TransitionLeaseRefused {
+        refusal: TransitionLeaseUndecodable {
+          detail: join([location, " is undecodable at generation ", to_string(cas_generation_count(g: g)), ": ", d as String], ""),
+        },
+      }
+    FileHoldAcquireLost { slot_key: _ } =>
+      TransitionLeaseRefused { refusal: TransitionLeaseLost { detail: join([location, " was taken by another acquirer between this acquire's read and its write"], "") } }
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: c } =>
+      TransitionLeaseRefused { refusal: TransitionLeaseUnavailable { detail: join([location, " could not be read or written: ", cas_store_failure_detail(cause: c)], "") } }
+    FileHoldKeyNotSlotAddressable { slot_key: k } =>
+      TransitionLeaseRefused { refusal: TransitionLeaseUnavailable { detail: join([location, ": the slot key ", k as String, " is not slot-addressable"], "") } }
+  }
+}
+
+// THE ACQUIRE, AND THE ONLY MINT OF A HELD LEASE. The owner is the caller's identity, derived by
+// gunbc.deploy_transition from the actor it already names; the hold library reads the slot, admits only absent or
+// free, and writes the next generation exclusively, so two racing acquirers cannot both win.
+//
+// THE ADMITTING ARM IS INLINED HERE ON PURPOSE, beside the file_hold_acquire call whose return value it reads.
+// A held lease is paired with `store` only where the outcome is THIS call's own acquire over THIS store's root
+// and its declared slot key -- which the arm checks by name, so an outcome for another slot is refused rather
+// than rebound. There is no callable that accepts an outcome and a store: taking the admit out of any such
+// function is what closes the route the deleted transition_lease_acquire_of left open.
+fn transition_lease_acquire(store: TransitionLeaseStore, owner: NonEmptyStr) -> TransitionLeaseAcquire {
+  let outcome = file_hold_acquire(root: store.root, slot_key: transition_lease_slots.member, requested_owner: owner as DurableHoldOwnerRef)
+  match outcome {
+    FileHoldAcquired { slot_key: k, owner: o, generation: g } =>
+      if (k as String) == (transition_lease_slots.member as String) {
+        TransitionLeaseAcquired { held: TransitionLeaseHeld { store: store, owner: o, generation: g } }
+      } else {
+        TransitionLeaseRefused {
+          refusal: TransitionLeaseUnavailable {
+            detail: join([transition_lease_location(store: store), ": the acquire answered for slot ", k as String, ", not ", transition_lease_slots.member as String], ""),
+          },
+        }
+      }
+    _ => transition_lease_acquire_refused(location: transition_lease_location(store: store), outcome: outcome)
+  }
+}
+
+type TransitionLeaseRelease
+  = TransitionLeaseReleased
+  | TransitionLeaseReleaseRefused { detail: String }
+
+fn transition_lease_release_refusal_text(refusal: DurableHoldReleaseRefusal) -> String {
+  match refusal {
+    HoldReleaseSlotAbsent => "no lease was ever held in this store"
+    HoldReleaseAlreadyFree { generation: g, released_by: r } =>
+      join(["the lease is already free at generation ", to_string(cas_generation_count(g: g)), ", released by ", r as String], "")
+    HoldReleaseHeldByAnotherOwner { generation: g, holder: h } =>
+      join(["the lease is held by ", h as String, " at generation ", to_string(cas_generation_count(g: g)), ", not by this holder"], "")
+    HoldReleaseAgainstAnotherGeneration { acquired: a, observed: o } =>
+      join(["the lease was acquired at generation ", to_string(cas_generation_count(g: a)), " and the slot now stands at ", to_string(cas_generation_count(g: o))], "")
+    HoldReleaseSlotUndecodable { generation: g, detail: d } =>
+      join(["the lease is undecodable at generation ", to_string(cas_generation_count(g: g)), ": ", d as String], "")
+    HoldReleaseObservationUnavailable { cause: c } =>
+      join(["the lease could not be read: ", cas_unreadable_slot_detail(cause: c)], "")
+  }
+}
+
+fn transition_lease_release_committed(location: String, outcome: FileHoldReleaseOutcome) -> TransitionLeaseRelease {
+  match outcome {
+    FileHoldReleased { slot_key: _, generation: _ } => TransitionLeaseReleased
+    FileHoldReleaseLost { slot_key: _ } =>
+      TransitionLeaseReleaseRefused { detail: join([location, " moved after the release was assessed; it is not released by this call"], "") }
+    FileHoldReleaseStoreUnavailable { slot_key: _, cause: c } =>
+      TransitionLeaseReleaseRefused { detail: join([location, " could not be released, and it is STILL held: ", cas_store_failure_detail(cause: c)], "") }
+    FileHoldReleaseKeyNotSlotAddressable { slot_key: k } =>
+      TransitionLeaseReleaseRefused { detail: join([location, ": the slot key ", k as String, " is not slot-addressable"], "") }
+  }
+}
+
+// THE HOLDER'S RELEASE. It takes the proof of the hold and nothing that names a store or a generation,
+// so it frees exactly the hold this holder acquired: the hold library re-reads the slot, refuses a hold
+// that changed hands or moved since, and commits held-at-N to free-at-N+1 by compare-and-set.
+fn transition_lease_release(held: TransitionLeaseHeld, released_by: NonEmptyStr) -> TransitionLeaseRelease {
+  let location = transition_lease_location(store: held.store)
+  match file_hold_release_assess(
+    root: held.store.root,
+    slot_key: transition_lease_slots.member,
+    owner: held.owner,
+    acquired_generation: held.generation,
+    released_by: released_by as DurableHoldReleaseRef,
+  ) {
+    FileHoldReleaseNotEligible { slot_key: _, refusal: r } =>
+      TransitionLeaseReleaseRefused { detail: join([location, " is not released: ", transition_lease_release_refusal_text(refusal: r)], "") }
+    FileHoldReleasePlanned { plan: p } =>
+      transition_lease_release_committed(location: location, outcome: file_hold_release_commit(plan: p))
+  }
+}
