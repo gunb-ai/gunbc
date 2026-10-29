@@ -3699,7 +3699,14 @@ type InferRemainderTally {
   nullary: Bool
 }
 
-undefined
+fn infer_match_catch_all_binder_widens_over_a_nullary_diagnostic(arm: Node, nullary_remainder: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_catch_all_binder_widens_over_a_nullary_variant,
+    at: node_locus(node: arm),
+    correction: Suggested { node: nullary_remainder }
+  }
+}
+
 // AN ARM AFTER A CATCH-ALL IS UNREACHABLE, AND REFUSES. A wildcard or a catch-all binder covers every
 // alternative (infer_coproduct_arm_row CoversAll), so a later arm can never be taken: the authored
 // program says something the match will never do. For a binder this is also the first defence against a
