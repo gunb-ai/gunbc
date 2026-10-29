@@ -34,6 +34,7 @@ import gunbc.roadmap.roadmap_provider_events {
   ProviderFailed,
   ProviderBudgetSpent,
   ProviderEventsRefused,
+  ProviderRequestPending,
   parse_codex_jsonl,
   parse_codex_jsonl_with_line_budget,
   classify_provider_event_line,
@@ -46,6 +47,7 @@ import gunbc.roadmap.roadmap_provider_events {
   TurnStarted,
   TurnCompleted,
   TurnFailed,
+  HarnessRequestPending,
   codex_provider_event_line_observation_budget,
   codex_provider_projection_type_budget,
   codex_provider_projection_detail_budget,
@@ -58,7 +60,7 @@ import gunbc.roadmap.roadmap_provider_events {
   provider_execution_terminality,
   provider_item_activity_kind,
   provider_execution_carried_detail,
-  TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking,
+  TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking, TerminalityPending,
   ItemKindReporting, ItemKindWorking,
 }
 
@@ -832,6 +834,7 @@ test fn a_fold_event_is_locked_for_every_locked_class() -> Bool {
            TerminalityCompleted { activity: _ } => true
            TerminalityRefused => true
            TerminalityEventsRefused => true
+           TerminalityPending { activity: _ } => true
            TerminalityNotStarted => false
            TerminalityWorking => false
          },
@@ -874,4 +877,53 @@ test fn a_detail_partition_fold_matches_the_detail_reader() -> Bool {
            none => provider_execution_detail(state: s) == ""
          },
   )
+}
+
+// ================= REQUEST-PENDING PROJECTION (the wedged e5a42384c6a5e13d, srv1 2026-10-28) =================
+// THE DISCRIMINATING CHAIN, PART 1: a round the front would not serve records ONE durable
+// turn.request_pending line and the worker exits. Before this contract reached the belt's classifier the
+// line had NO arm, fell through the Claude fall-through, and the WHOLE stream was refused as an unknown
+// event type (ProviderEventsRefused) -- which is exactly how the capture-owed rule and belt_commit_decision
+// both read "provider not completed" and capture was never owed. A stream that ends on a pending request
+// projects as its OWN standing now, labelled the harness's own word.
+data request_pending_stream: String = "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"round.usage\",\"step\":7,\"input_tokens\":900,\"output_tokens\":40,\"epoch_ms\":1000000,\"files_changed\":0}\n{\"type\":\"turn.request_pending\",\"round\":7,\"resumable\":true,\"interrupted_calls\":[]}\n"
+
+test fn a_request_pending_round_projects_as_pending_not_refused() -> Bool {
+  let state = provider_execution_state(parsed: parse_codex_jsonl(text: request_pending_stream))
+  match state {
+    ProviderRequestPending { activity, detail } =>
+      provider_execution_state_label(state: state) == "request-pending"
+        && string_contains(s: activity, pattern: "request-pending")
+        && string_contains(s: detail, pattern: "request_pending")
+    _ => false
+  }
+}
+
+// THE PENDING STANDING IS ITS OWN TERMINALITY: neither the refused end nor the completed end. A fold that
+// mapped it onto TerminalityRefused would make the belt owe nothing AND let a refuse-shaped consumer act;
+// mapping it onto Completed would mint a candidate that never arrived.
+test fn a_request_pending_stream_is_terminal_as_pending() -> Bool {
+  let state = provider_execution_state(parsed: parse_codex_jsonl(text: request_pending_stream))
+  match provider_execution_terminality(state: state) {
+    TerminalityPending { activity } => string_contains(s: activity, pattern: "request-pending")
+    _ => false
+  }
+}
+
+// THE CLASSIFIER ARMS THE LINE DIRECTLY (not via the Claude fall-through). Observed, never refused.
+test fn turn_request_pending_is_observed_not_refused() -> Bool {
+  match classify_provider_event_line(raw: "{\"type\":\"turn.request_pending\",\"round\":7,\"resumable\":true}") {
+    ProviderEventObserved { kind } => kind == HarnessRequestPending
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL, THE OTHER HALF OF THE FIX: teaching the classifier one legitimate line must NOT soften
+// the refusal of a genuinely unknown line. An unrecognized type is still refused, so the fix is one honest
+// arm -- not a wildcard that swallows unreadable evidence into a legible standing.
+test fn an_unknown_event_is_still_refused_after_the_pending_arm() -> Bool {
+  match provider_execution_state(parsed: parse_codex_jsonl(text: "{\"type\":\"turn.something_nobody_authorized\"}\n")) {
+    ProviderEventsRefused { activity: _, detail: _ } => true
+    _ => false
+  }
 }

@@ -26,6 +26,7 @@ import gunbc.roadmap.roadmap_provider_events {
   ProviderNotStarted,
   ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance,
   ProviderRunning,
+  ProviderRequestPending,
   ProviderCompleted,
   ProviderFailed,
   ProviderBudgetSpent,
@@ -436,6 +437,12 @@ fn provider_execution_reconcile_process(
         Present { value: forced } => forced
         none => provider
       }
+    // A PENDING REQUEST KEEPS ITSELF. The durable turn.request_pending line is the harness's own
+    // record that the round drew no answer and the worker exited to await re-delivery; the expected
+    // exit of that worker is a non-zero exit (the round did NOT complete), which reconciling against
+    // the Completed rule would misread as conflicting terminal evidence. The pending standing is the
+    // authority here, so it is kept, not reconciled.
+    TerminalityPending { activity: _ } => provider
   }
 }
 
@@ -540,6 +547,15 @@ fn provider_workflow_segment(
       WorkflowSegment {
         kind: AgentWorkflowSegment,
         state: WorkflowSegmentStopped,
+        detail: join([activity, ": ", detail], ""),
+      }
+    // THE AGENT SEGMENT READS AS WAITING, NOT FAILED. A pending request is an active lineage the belt
+    // intends to re-deliver; the operator sees it waiting, with the harness's own word for the
+    // standing. It is not WorkflowSegmentFailed (nothing failed) nor Refused (the stream is legible).
+    ProviderRequestPending { activity, detail } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentActive,
         detail: join([activity, ": ", detail], ""),
       }
     ProviderEventsRefused { activity, detail } =>

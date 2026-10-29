@@ -34,6 +34,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceRootUnknown,
   dashboard_instance_for_repo_root,
 }
+import gunbc.roadmap.roadmap_belt_actuate { belt_dispatch_node_for_instance, belt_dispatch_result_ok, belt_spawn_outcome_json, belt_dispatch_env_var, belt_redeliver_instance_env_var, belt_redeliver_attempt_key_env_var, belt_continuation_decision_for_instance, belt_lookup_node, NodeFound, NodeMissing, AuthorityProjectionRefused }
+import gunbc.roadmap.roadmap_attempt_continuation { ContinuationDecision, ContinuationResume, ContinuationHoldUntil, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltPassRecorded, BeltPassDeferred, BeltPassRefused, BeltPassFailed,
   belt_run_once_in,
@@ -466,6 +468,93 @@ fn belt_instance_obligation_cli(kind: String) -> ProcessExit {
     Absent => exit_failure(reason: join(["belt_instance_obligation_cli: no instance obligation is named ", kind], ""))
     Present { value: k } =>
       belt_instance_from_env(entry: "belt_instance_obligation_cli", continuation: instance => belt_instance_obligation_run(instance: instance, kind: k))
+  }
+}
+
+// THE WAKE'S RE-DISPATCH ENTRY (armed by the belt's SpawnRouteWake fold, roadmap_attempt_redelivery_wake).
+// A transient re-delivery timer fires THIS with GUNBC_BELT_SPAWN_WORKDIR (the attempt's own repo root),
+// GUNBC_BELT_NODE_ID and GUNBC_BELT_REDELIVER_INSTANCE_ID (the instance the attempt belongs to). It
+// resolves the instance BY REPO ROOT with the belt's OWN existing resolver, belt_instance_from_env -- the
+// same one belt_run_once_cli / the obligation and discovery units use, and the only one that resolves
+// srv1-lab-codex-feedback-v0, which belt_dispatch_node_cli's narrow fail-closed admitted list REFUSES --
+// then hands the node to the SAME belt_dispatch_node_for_instance the door ends in. It is a composition of
+// those two existing functions with no copied dispatch logic. It REFUSES loudly, before any dispatch, when
+// the repo root resolves no instance (belt_instance_from_env's own refusal) OR a DIFFERENT one than the
+// wake named: the node is looked up over the GLOBAL plan (belt_find_node_in), so the instance identity is
+// the only thing that stops a wake firing on the wrong instance -- and that is worse than a wedge.
+// THE ENTRY MAY ONLY CONTINUE, NEVER START (review 87645, decision A1): it also reads
+// GUNBC_BELT_REDELIVER_ATTEMPT_KEY and, before dispatch, requires belt_continuation_decision_for_instance
+// (the SAME derivation the belt fold uses) for the node to be a Resume or a request-pending Hold-Until for
+// EXACTLY that key -- see belt_redeliver_attempt_continues. So the wake re-delivers an attempt the door already
+// admitted, never fresh work; it is not a second door into new dispatch, and the fail-closed admitted-instance
+// list still governs what it was written for -- STARTING work from the belt-dispatch CLI.
+// The pure predicate behind belt_redeliver_attempt_cli's wrong-instance guard (rationale
+// in that entry's comment above): the root-resolved instance must equal the wake-named
+// one. Kept separate and Bool so the guard is witnessed hermetically apart from the env
+// reads and dispatch the entry wraps around it.
+fn belt_redeliver_instance_matches(resolved: String, expected: String) -> Bool {
+  resolved == expected
+}
+
+// THE STRUCTURAL GUARD (review 87645, manager decision A1): the wake entry may ONLY continue, never start.
+// It re-delivers only when the node's own continuation decision -- the existing belt_continuation_decision_for_instance,
+// the SAME derivation the belt fold uses, so no second decision path -- is a Resume or a request-pending
+// Hold-Until for EXACTLY the attempt the armed wake names. Spawn-fresh, plain hold, complete, ended, refused,
+// or a Resume/Hold-Until for a DIFFERENT key all refuse: a wake re-delivers admitted in-flight work, it does not
+// open a second door into new dispatch. Pure, so it is witnessed hermetically apart from the env reads/dispatch.
+fn belt_redeliver_attempt_continues(decision: ContinuationDecision, attempt_key: String) -> Bool {
+  match decision {
+    ContinuationResume { reason: _, attempt_key: k, ordinal: _, causes: _ } => k == attempt_key
+    ContinuationHoldUntil { reason: _, attempt_key: k, redeliver_at: _ } => k == attempt_key
+    ContinuationSpawnFresh { reason: _ } => false
+    ContinuationRefused { reason: _ } => false
+    ContinuationHold { reason: _ } => false
+    ContinuationComplete { reason: _ } => false
+    ContinuationEnded { reason: _ } => false
+  }
+}
+
+fn belt_redeliver_attempt_cli() -> ProcessExit {
+  match shell.Env.Get(name: belt_dispatch_env_var).value {
+    Absent => exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_NODE_ID not set — a re-delivery wake must name the node it re-delivers (fail-closed)")
+    Present { value: node_id } =>
+      if string_length(s: node_id) == 0 {
+        exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_NODE_ID is empty — a re-delivery wake must name the node it re-delivers (fail-closed)")
+      } else {
+        match shell.Env.Get(name: belt_redeliver_instance_env_var).value {
+          Absent => exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_REDELIVER_INSTANCE_ID not set — the wake must name the instance the attempt belongs to, so a wrong spawn root cannot dispatch elsewhere (fail-closed)")
+          Present { value: expected_instance } =>
+            if string_length(s: expected_instance) == 0 {
+              exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_REDELIVER_INSTANCE_ID is empty — the wake must name the instance the attempt belongs to (fail-closed)")
+            } else {
+              match shell.Env.Get(name: belt_redeliver_attempt_key_env_var).value {
+                Absent => exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_REDELIVER_ATTEMPT_KEY not set — the wake must name the attempt it re-delivers, so the entry can refuse to start fresh work (fail-closed)")
+                Present { value: attempt_key } =>
+                  if string_length(s: attempt_key) == 0 {
+                    exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_REDELIVER_ATTEMPT_KEY is empty — the wake must name the attempt it re-delivers (fail-closed)")
+                  } else {
+                    belt_instance_from_env(entry: "belt_redeliver_attempt_cli", continuation: instance =>
+                      if !belt_redeliver_instance_matches(resolved: instance.instance_id as String, expected: expected_instance) {
+                        exit_failure(reason: join(["belt_redeliver_attempt_cli: GUNBC_BELT_SPAWN_WORKDIR resolves instance ", instance.instance_id as String, " but the wake names ", expected_instance, " — refusing; a wake firing for the wrong instance is worse than a wedge"], ""))
+                      } else {
+                        match belt_lookup_node(node_id: node_id) {
+                          NodeMissing => exit_failure(reason: join(["belt_redeliver_attempt_cli: node ", node_id, " is not in the accepted plan, so its continuation cannot be read — refusing re-delivery (fail-closed)"], ""))
+                          AuthorityProjectionRefused { detail: detail } => exit_failure(reason: join(["belt_redeliver_attempt_cli: the authority projection is refused, so node ", node_id, "'s continuation cannot be read: ", detail, " — refusing re-delivery (fail-closed)"], ""))
+                          NodeFound { node: node } =>
+                            if belt_redeliver_attempt_continues(decision: belt_continuation_decision_for_instance(instance: instance, node: node), attempt_key: attempt_key) {
+                              let r = belt_dispatch_node_for_instance(instance: instance, node_id: node_id)
+                              if belt_dispatch_result_ok(r: r) { ExitSuccess } else { exit_failure(reason: serialize_json(v: belt_spawn_outcome_json(o: r))) }
+                            } else {
+                              exit_failure(reason: join(["belt_redeliver_attempt_cli: node ", node_id, " has no Resume or request-pending Hold-Until continuation for attempt ", attempt_key, " — a wake may only re-deliver an already-admitted attempt, never start fresh work; refusing"], ""))
+                            }
+                        }
+                      }
+                    )
+                  }
+              }
+            }
+        }
+      }
   }
 }
 

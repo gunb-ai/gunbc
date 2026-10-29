@@ -28,7 +28,7 @@ import gunbc.harness.harness_throughput {
 }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance, ProviderRunning, ProviderCompleted, ProviderFailed,
-  ProviderBudgetSpent, ProviderEventsRefused, provider_execution_state, parse_codex_jsonl,
+  ProviderBudgetSpent, ProviderEventsRefused, ProviderRequestPending, provider_execution_state, parse_codex_jsonl,
 }
 import product.capacity.event_chain {
   PartitionId, ChainEnvelope, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
@@ -267,6 +267,10 @@ fn metering_role_terminal(body: String) -> Bool {
     ProviderAwaitingAcceptance { handin: _ } => false
     ProviderRunning { activity: _ } => false
     ProviderEventsRefused { activity: _, detail: _ } => false
+    // THE ROUND ENDED: the worker drew no answer, recorded the durable turn.request_pending and
+    // exited, so this role's provider evidence is terminal for metering -- the round is closed and
+    // counting stops. Re-delivery runs the round again later and meters that round on its own.
+    ProviderRequestPending { activity: _, detail: _ } => true
   }
 }
 

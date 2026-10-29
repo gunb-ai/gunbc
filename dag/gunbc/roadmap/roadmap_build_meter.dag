@@ -13,7 +13,7 @@ import gunbc.harness.harness_tool_kind {
 }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance, ProviderRunning,
-  ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,
+  ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused, ProviderRequestPending,
 }
 import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
@@ -110,6 +110,7 @@ fn failure_kind_of_provider(provider: ProviderExecutionState) -> FailureKind? {
     ProviderAwaitingAcceptance { handin: _ } => none
     ProviderRunning { activity: _ } => none
     ProviderCompleted { activity: _ } => none
+    ProviderRequestPending { activity: _, detail: _ } => none
   }
 }
 
@@ -124,6 +125,7 @@ fn provider_failure_detail(provider: ProviderExecutionState) -> String {
     ProviderAwaitingAcceptance { handin: _ } => ""
     ProviderRunning { activity: _ } => ""
     ProviderCompleted { activity: _ } => ""
+    ProviderRequestPending { activity: _, detail: _ } => ""
   }
 }
 
@@ -330,6 +332,9 @@ fn build_meter_pose(failed: Bool, provider: ProviderExecutionState, handoff: Can
       ProviderFailed { activity: _, detail: _ } => BuildMeterStopped
       ProviderBudgetSpent { activity: _, detail: _ } => BuildMeterStopped
       ProviderEventsRefused { activity: _, detail: _ } => BuildMeterStopped
+      // WAITING, NOT STOPPED: the meter reads a pending request the way it reads a seat wait -- the
+      // attempt is live and the belt intends to re-deliver it, not a failed/stopped run.
+      ProviderRequestPending { activity: _, detail: _ } => BuildMeterWaitingForSeat
     }
   }
 }

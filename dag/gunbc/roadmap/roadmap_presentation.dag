@@ -45,7 +45,7 @@ import gunbc.roadmap.roadmap_launch_admission {
 }
 import gunbc.roadmap.roadmap_provider_events {
   provider_execution_activity,
-  ProviderEventsRefused, ProviderAwaitingSeat, ProviderAwaitingAcceptance }
+  ProviderEventsRefused, ProviderAwaitingSeat, ProviderAwaitingAcceptance, ProviderRequestPending }
 import gunbc.auth.profile_projection { PrincipalProfile }
 import gunbc.roadmap.roadmap_fleet_components { spark_host_component_paths }
 import gunbc.roadmap.roadmap_workflow_stage {
@@ -1074,6 +1074,17 @@ fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityVie
         current_activity: provider_execution_activity(state: progress.provider),
       )
     ProviderBudgetSpent { activity: _, detail: _ } =>
+      activity_view_from_parts(
+        segments: progress.segments,
+        remaining: progress.reconciliation.remaining_count,
+        process: progress.process,
+        throughput: harness_throughput_from_ledger(ledger: progress.rounds),
+        current_activity: provider_execution_activity(state: progress.provider),
+      )
+    // A PENDING REQUEST RIDES THE ACTIVITY VIEW AS WAITING. Its current_activity is the provider
+    // projection's own word ("request-pending · awaiting re-delivery"), never a failure label; the
+    // round strip shows it waiting, and the attempt is not marked failed or superseded.
+    ProviderRequestPending { activity: _, detail: _ } =>
       activity_view_from_parts(
         segments: progress.segments,
         remaining: progress.reconciliation.remaining_count,

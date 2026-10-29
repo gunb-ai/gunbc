@@ -1,0 +1,71 @@
+module test.claim.systemd_run_onetime_timer_witness
+
+// THE WAKE'S SYSTEMD SURFACE, WITNESSED. The pending attempt's wake is ONE transient wallclock timer
+// armed through the modelled systemd realization (extdeps.systemd.systemd_run --on-calendar), so the
+// two things the wake leans on are pinned here: the --on-calendar option's man-page spelling and
+// refusal (systemd-run(1)), and the one-shot calendar expression's grammar (systemd.time(7)), which is
+// the projection that consumes extdeps.units.iso8601_calendar's civil-from-days.
+import std.types { Bool, String, NonEmptyStr, EpochSecs }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.systemd_run {
+  SystemdRunOptionWordsReading, SystemdRunOptionWordsProjected, SystemdRunOptionWordsRefused,
+  systemd_run_option_words, RunUserManager, RunUnit, Collect, EndOfOptions, OnCalendar,
+  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  systemd_onetime_calendar_expression, systemd_run_user_oneshot_timer_command,
+}
+
+// systemd-run(1) --on-calendar=EXPR projects the exact man-page word. One wake, no cadence.
+test fn on_calendar_projects_the_man_page_word() -> Bool {
+  match systemd_run_option_words(options: [RunUserManager, OnCalendar { expression: "2026-10-29 00:05:00 UTC" as NonEmptyStr }]) {
+    SystemdRunOptionWordsRefused { cause: _ } => false
+    SystemdRunOptionWordsProjected { words } =>
+      join(words, separator: " ") == "--user --on-calendar=2026-10-29 00:05:00 UTC"
+  }
+}
+
+// A calendar expression with a newline is refused at the projection -- the one place the wire is read,
+// so a multi-line expression never reaches systemd-run as a single token.
+test fn a_multiline_calendar_expression_is_refused() -> Bool {
+  match systemd_run_option_words(options: [OnCalendar { expression: "2026-10-29 00:05:00 UTC\nrm -rf /" as NonEmptyStr }]) {
+    SystemdRunOptionWordsRefused { cause: _ } => true
+    SystemdRunOptionWordsProjected { words: _ } => false
+  }
+}
+
+// THE ONE-SHOT CALENDAR SPELLING (systemd.time(7)): "YYYY-MM-DD HH:MM:SS UTC". The instant is admitted
+// at a typed position (EpochSecs, no brand cast); the civil split is iso8601_calendar's. 1700000000 is
+// the reference instant 2023-11-14T22:13:20Z, so the calendar form is 2023-11-14 22:13:20 UTC. This is
+// the spelling systemd-analyze calendar accepts for a single fire.
+test fn a_wallclock_instant_spells_one_fire_in_utc() -> Bool {
+  systemd_onetime_calendar_expression(instant: 1700000000) == "2023-11-14 22:13:20 UTC"
+}
+
+// Midnight and the year/day/month roll are the edges a wallclock wake must not get wrong. 0 is
+// 1970-01-01 00:00:00 UTC; the leap-day instant 1583020800 is 2020-03-01 00:00:00 UTC.
+test fn the_calendar_spelling_holds_the_epoch_and_a_leap_day() -> Bool {
+  systemd_onetime_calendar_expression(instant: 0) == "1970-01-01 00:00:00 UTC"
+    && systemd_onetime_calendar_expression(instant: 1583020800) == "2020-03-01 00:00:00 UTC"
+}
+
+// THE WAKE'S ACTUAL COMMAND: one transient --user timer that UNLOADS when it elapses (--collect GCs the
+// service; --timer-property=RemainAfterElapse=no unloads the timer, systemd.timer(5)), so a later arm of
+// the name is not blocked -- a same-name start is NOT a replace (systemd-run has no --replace; it refuses
+// 'already exists', read as already-armed). Firing the attempt's route with its env. The projection
+// reaches ready and the argv carries --on-calendar, --unit, --collect, the RemainAfterElapse=no timer
+// property, --setenv and the separator.
+test fn the_transient_oneshot_timer_projects_a_ready_command() -> Bool {
+  match systemd_run_user_oneshot_timer_command(
+    unit: "gunbc-attempt-redeliver-n1-e5a42384c6a5e13d" as NonEmptyStr,
+    on_calendar: "2023-11-14 22:13:20 UTC" as NonEmptyStr,
+    setenv_bindings: [],
+    command_argv: ["gunbc", "run", "--function", "belt_dispatch_node_cli"],
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command } =>
+      let line = join(argv_words(command: command), separator: " ")
+      string_contains(s: line, pattern: "--on-calendar=2023-11-14 22:13:20 UTC")
+        && string_contains(s: line, pattern: "--unit=gunbc-attempt-redeliver-n1-e5a42384c6a5e13d")
+        && string_contains(s: line, pattern: "--collect")
+        && string_contains(s: line, pattern: "--timer-property=RemainAfterElapse=no")
+  }
+}

@@ -1,13 +1,13 @@
 module test.claim.roadmap.roadmap_attempt_continuation_witness
 
-import std.types { Bool, String, Int }
+import std.types { Bool, String, Int, EpochSecs }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
-  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded,
+  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationHoldUntil, ContinuationResume, ContinuationComplete, ContinuationEnded,
   continuation_decision, continuation_decision_with_retirement,
   LineageRetireAdmission, LineageRetireAdmitted, LineageRetireRefused, lineage_retire_admission,
 }
-import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
+import gunbc.harness.harness_session_recovery { SessionRecoveryNone, SessionRecoveryRequestPending }
 import std.optional { Present }
 import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord }
 import gunbc.roadmap.roadmap_lineage_retire_record {
@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_submission {
   WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
   SubmissionCapture, submission_digest, SubmissionCaptureRootBound,
   SubmissionCaptureObservation,
-  CaptureForHead, CaptureAbsent, CaptureUnreadable,
+  CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable,
 }
 import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState, VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
@@ -333,4 +333,59 @@ test fn retire_record_commit_first_decision_stands() -> Bool {
     LineageRetireCommitRefused { step, detail: _ } => step == "lineage-retire-conflict"
     LineageRetireCommitted { record: _ } => false
   })
+}
+
+// ============ THE PLANTED END-TO-END CHAIN: a pending request resumes, never refused for capture ============
+// The recovery is the harness's own durable read of the worker's turn.request_pending line: round 7 drew a
+// 429, the request stands pending and resumable, no tool effect was left half-run. The attempt is LIVE.
+fn pending_recovery() -> SessionRecoveryRequestPending {
+  SessionRecoveryRequestPending {
+    cause: "provider refused round 7 (429 too many requests)",
+    since: 1700000000,
+    re_deliveries: 0,
+    wakes_made: 0,
+    last_delivery_at: 1700000000,
+    resumable: true,
+    interrupted_calls: [],
+    resume_round: 7,
+  }
+}
+
+fn pending_pri(capture: SubmissionCaptureObservation) -> PriorAttemptFacts {
+  PriorAttemptFacts {
+    node_id: "n1",
+    attempt_key: "e5a42384c6a5e13d",
+    branch: "roadmap/n1/e5a42384c6a5e13d",
+    worker_terminal: true,
+    capture: capture,
+    verification: none,
+    review: none,
+    goal_audit: none,
+    recovery: pending_recovery(),
+    verification_retry: RefusedRetryOperatorOnly,
+    now: Present { value: 1700000000 },
+  }
+}
+
+// POSITIVE CONTROL, THE FIXED PATH: once the belt has run the commit step (the projection made capture owed),
+// the prior attempt reads CaptureAbsent. The continuation then reaches its request-pending branch and answers
+// Hold-with-instant or Resume -- NEVER Refused-for-capture-owed. This is the attempt the belt must re-deliver.
+test fn a_pending_request_with_a_recorded_capture_holds_or_resumes_never_refused() -> Bool {
+  match continuation_decision(prior: pending_pri(CaptureAbsent)) {
+    ContinuationHoldUntil { reason, redeliver_at } => string_contains(s: reason, pattern: "re-delivery") && redeliver_at > 1700000000
+    ContinuationResume { reason: _, attempt_key, ordinal: _, causes: _ } => attempt_key == "e5a42384c6a5e13d"
+    _ => false
+  }
+}
+
+// THE SAFETY INVARIANT, INTACT (the reason the belt MUST record the capture). Before the commit step runs the
+// capture reads CaptureNotAttempted, and the continuation must NOT guess it was a yield -- it refuses, and the
+// decision waits for the capture. This is what was wedged: capture was never made owed, so it stayed
+// NotAttempted, so the refusal never cleared. The projection fix makes it owed; this witness pins that a
+// NOT-attempted capture is still refused, so the fix lives upstream in the projection, not in loosening here.
+test fn a_pending_request_with_no_recorded_capture_is_still_refused_for_owed_capture() -> Bool {
+  match continuation_decision(prior: pending_pri(CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" })) {
+    ContinuationRefused { reason } => true
+    _ => false
+  }
 }

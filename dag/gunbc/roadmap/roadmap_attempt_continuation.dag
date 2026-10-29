@@ -63,6 +63,12 @@ type ContinuationDecision
   = ContinuationSpawnFresh { reason: String }
   | ContinuationRefused { reason: String }
   | ContinuationHold { reason: String }
+  // A request-pending attempt whose re-delivery is NOT yet due holds UNTIL a TYPED instant, not just a
+  // prose reason. The instant is transport_retry_next_delivery_at -- the SAME value the reason quotes --
+  // so the belt arms exactly one re-delivery wake at it (roadmap_belt_actuate's SpawnRouteWake), reading
+  // it off the decision rather than re-deriving it. Untimed holds (worker running, interrupted calls,
+  // an unreadable clock) stay plain ContinuationHold: they name no clock and must never arm a wake.
+  | ContinuationHoldUntil { reason: String, attempt_key: String, redeliver_at: EpochSecs }
   | ContinuationComplete { reason: String }
   | ContinuationEnded { reason: String }
   | ContinuationResume { reason: String, attempt_key: String, ordinal: Int, causes: List<String> }
@@ -181,21 +187,28 @@ fn continuation_from_request_pending(prior: PriorAttemptFacts, cause: String, si
         ContinuationHold {
           reason: join(["the prior attempt ", prior.attempt_key, " is request-pending and this sweep could not read the clock, so the next re-delivery instant cannot be named; the request still stands and the belt re-delivers it on a sweep that can read the clock; the request began pending: ", cause], ""),
         }
-      Present { value: now } =>
+      Present { value: now } => {
+        let next_delivery = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: last_delivery_at, re_deliveries: re_deliveries, session_key: prior.attempt_key)
         if transport_retry_redelivery_due(policy: harness_transport_retry_policy_now, last_delivery_at: last_delivery_at, re_deliveries: re_deliveries, session_key: prior.attempt_key, at: now) {
           ContinuationResume {
             reason: join(["the prior attempt ", prior.attempt_key, " is request-pending and its next re-delivery is due: the same round of its own session is RE-DELIVERED (re-delivery ", to_string(value: re_deliveries + 1),
-              ", the S3 resume count of ", to_string(value: session_resume_bound), " is not spent by a re-delivery); the request began pending ", to_string(value: now - since), " seconds ago: ", cause], ""),
+              ", the S3 resume count of ", to_string(value: session_resume_bound), " is not spent by a re-delivery); the request began pending at epoch ", to_string(value: since), ": ", cause], ""),
             attempt_key: prior.attempt_key,
             ordinal: wakes_made + 1,
             causes: [cause],
           }
         } else {
-          ContinuationHold {
-            reason: join(["the prior attempt ", prior.attempt_key, " is request-pending and its next re-delivery is not due until ", to_string(value: transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: last_delivery_at, re_deliveries: re_deliveries, session_key: prior.attempt_key)),
+          // THE INSTANT IS TYPED ON THE DECISION, not only prose: one derivation of transport_retry_next_delivery_at
+          // feeds both the reason and redeliver_at, so the belt arms its wake at exactly the instant the
+          // continuation names -- it cannot name two times for the same attempt.
+          ContinuationHoldUntil {
+            reason: join(["the prior attempt ", prior.attempt_key, " is request-pending and its next re-delivery is not due until ", to_string(value: next_delivery),
               "; next re-delivery at that instant, no resume is spent; the request began pending: ", cause], ""),
+            attempt_key: prior.attempt_key,
+            redeliver_at: next_delivery,
           }
         }
+      }
     }
   }
 }
@@ -313,6 +326,7 @@ fn continuation_decision_with_retirement(prior: PriorAttemptFacts?, retire: Line
             ContinuationSpawnFresh { reason: r } => continuation_retire_over_non_ended(record: record, state: "spawn-fresh", reason: r)
             ContinuationRefused { reason: r } => continuation_retire_over_non_ended(record: record, state: "refused", reason: r)
             ContinuationHold { reason: r } => continuation_retire_over_non_ended(record: record, state: "held or active", reason: r)
+            ContinuationHoldUntil { reason: r, attempt_key: _, redeliver_at: _ } => continuation_retire_over_non_ended(record: record, state: "held until re-delivery", reason: r)
             ContinuationComplete { reason: r } => continuation_retire_over_non_ended(record: record, state: "complete", reason: r)
             ContinuationResume { reason: r, attempt_key: _, ordinal: _, causes: _ } => continuation_retire_over_non_ended(record: record, state: "recovery-needed and resumable", reason: r)
           }
@@ -354,6 +368,7 @@ fn lineage_retire_admission(prior: PriorAttemptFacts?, attempt_key: String, reas
           ContinuationSpawnFresh { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (spawn-fresh): ", r], "") }
           ContinuationRefused { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (refused): ", r], "") }
           ContinuationHold { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (held or active): ", r], "") }
+          ContinuationHoldUntil { reason: r, attempt_key: _, redeliver_at: _ } => LineageRetireRefused { reason: join(["the lineage is not Ended (held until re-delivery): ", r], "") }
           ContinuationComplete { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (complete): ", r], "") }
           ContinuationResume { reason: r, attempt_key: _, ordinal: _, causes: _ } => LineageRetireRefused { reason: join(["the lineage is not Ended (recovery-needed, resumable): ", r], "") }
         }

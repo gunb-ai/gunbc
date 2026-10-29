@@ -96,6 +96,7 @@ type ProviderEventKind
   | HarnessSupervisionUnavailable
   | HarnessWireLogUnwritable
   | HarnessPlacementWaiting
+  | HarnessRequestPending
 
 // Skip is not refuse: a line the classifier names as noise is dropped and the stream continues.
 // Refuse is a located stream failure. The classifier decides which; jq does not.
@@ -151,6 +152,25 @@ type ProviderExecutionState
   | ProviderFailed { activity: String, detail: String }
   | ProviderBudgetSpent { activity: String, detail: String }
   | ProviderEventsRefused { activity: String, detail: String }
+  | ProviderRequestPending { activity: String, detail: String }
+
+// REQUEST-PENDING IS NEITHER REFUSED NOR A COMPLETED TURN -- IT IS ITS OWN STANDING (srv1 lab
+// 2026-10-28, the patient-request contract gunbc#15313). A round the front would not serve (a 429)
+// records ONE durable turn.request_pending line (gunbc.harness.harness_session_recovery
+// session_event_request_pending) and the worker EXITS; the attempt is not failed and has no
+// candidate -- it is LIVE, waiting to be re-delivered at the instant its recovery already names.
+// Before this state existed the line had no classifier arm, so the WHOLE stream reached the
+// Claude fall-through and was refused as an unknown event type (ProviderEventsRefused), and both
+// consumers of that one fact -- the capture-owed rule and belt_commit_decision -- read "provider not
+// completed", so capture was never owed, no capture was ever recorded, and the continuation refused
+// the attempt for a capture it was never allowed to make. It is not ProviderFailed (nothing failed),
+// not ProviderEventsRefused (the stream is legible), not ProviderCompleted (there is no candidate):
+// a distinct state, so every consumer is forced to answer what a pending request owes rather than
+// inheriting another state's answer.
+//
+// THE LABEL IS THE HARNESS'S OWN WORD. harness_turn names this standing "request-pending"; this
+// projection spells it the SAME, one spelling, because a second name for one fact is the drift §2
+// forbids. The activity reads as WAITING, never as failure.
 
 // review 44089. These are budgets measured in CHARACTERS — a count of a unit, not a bare scalar —
 // so they consume std.measure's CharacterCount on the same Measure<Count, One, Nat> axis
@@ -520,6 +540,8 @@ fn classify_provider_event_line(raw: String) -> ProviderEventLineDisposition {
     ProviderEventObserved { kind: HarnessSupervisionUnavailable }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.placement_waiting") {
     ProviderEventObserved { kind: HarnessPlacementWaiting }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.request_pending") {
+    ProviderEventObserved { kind: HarnessRequestPending }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.wire_log_unwritable") {
     ProviderEventObserved { kind: HarnessWireLogUnwritable }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "error") {
@@ -702,8 +724,7 @@ fn harness_handed_in_id(raw: String) -> String {
 
 // THE WAIT'S REASON, READ FROM ITS OWN LINE. The line is the harness's own construction, so a
 // line that does not decode is shown as itself rather than guessed at.
-fn harness_placement_waiting_detail(raw: String) -> String {
-  match parse_json_document(s: raw) {
+fn harness_placement_waiting_detail(raw: String) -> String {  match parse_json_document(s: raw) {
     JsonDocumentUnreadable { gap: _ } => join(["undecodable wait announcement: ", raw], "")
     JsonDocumentParsed { value: v } => {
       let reason = match json_field_string(obj: v, key: "reason") {
@@ -734,6 +755,7 @@ fn provider_execution_fold_event(
     TerminalityCompleted { activity: _ } => state
     TerminalityRefused => state
     TerminalityEventsRefused => state
+    TerminalityPending { activity: _ } => state
     TerminalityNotStarted => provider_execution_event_step(state: state, event: event)
     TerminalityWorking => provider_execution_event_step(state: state, event: event)
   }
@@ -752,6 +774,10 @@ fn provider_execution_event_step(
     HarnessRoundUsage => state
     HarnessWireLogUnwritable => state
     HarnessPlacementWaiting => ProviderAwaitingSeat { detail: harness_placement_waiting_detail(raw: event.raw) }
+    HarnessRequestPending => ProviderRequestPending {
+      activity: "request-pending · awaiting re-delivery",
+      detail: event.raw,
+    }
     HarnessTransportRetry => state
     HarnessSupervisionVerdict => state
     HarnessHandedIn => ProviderAwaitingAcceptance { handin: harness_handed_in_id(raw: event.raw) }
@@ -827,6 +853,8 @@ fn provider_execution_state(parsed: ProviderEventParse) -> ProviderExecutionStat
             join(["last observed · ", activity], "")
           ProviderBudgetSpent { activity, detail: _ } =>
             join(["last observed · ", activity], "")
+          ProviderRequestPending { activity, detail: _ } =>
+            join(["last observed · ", activity], "")
           ProviderEventsRefused { activity, detail: _ } =>
             join(["last observed · ", activity], "")
         },
@@ -847,6 +875,7 @@ fn provider_execution_state_label(state: ProviderExecutionState) -> String {
     ProviderCompleted { activity: _ } => "completed"
     ProviderFailed { activity: _, detail: _ } => "failed"
     ProviderBudgetSpent { activity: _, detail: _ } => "budget_spent"
+    ProviderRequestPending { activity: _, detail: _ } => "request-pending"
     ProviderEventsRefused { activity: _, detail: _ } => "events_refused"
   }
 }
@@ -861,6 +890,7 @@ fn provider_execution_activity(state: ProviderExecutionState) -> String {
     ProviderCompleted { activity: _ } => "Agent complete"
     ProviderFailed { activity: _, detail: _ } => "Agent failed"
     ProviderBudgetSpent { activity, detail: _ } => activity
+    ProviderRequestPending { activity, detail: _ } => activity
     ProviderEventsRefused { activity, detail: _ } => activity
   }
 }
@@ -874,20 +904,25 @@ fn provider_execution_detail(state: ProviderExecutionState) -> String {
 
 // TERMINALITY PARTITION: the ONE classifier over ProviderExecutionState that
 // every terminality reader folds over, instead of each matching the variant
-// list with its own arm set. The five classes are the least common refinement
-// of the three consumers' partitions:
-//   belt (belt_provider_is_terminal):        TerminalCompleted, TerminalRefused  => true
+// list with its own arm set. The classes are the least common refinement
+// of the consumers' partitions:
+//   belt (belt_provider_terminal -- "the worker has ended, so its capture is owed"):
+//                                            TerminalCompleted, TerminalRefused, TerminalPending => true
 //                                            EventsRefused, NotStarted, Working => false
-//   event fold (provider_execution_fold_event): the two Terminal* classes and EventsRefused are the
-//                                            locked arm (the event is over); NotStarted and Working
-//                                            are the unlocked arm (the event still folds)
+//   event fold (provider_execution_fold_event): the two Terminal* classes, EventsRefused and
+//                                            Pending are the locked arm (the event is over); NotStarted
+//                                            and Working are the unlocked arm (the event still folds)
 //   reconcile (provider_execution_reconcile_process): TerminalCompleted reconciles against the
-//                                            process evidence; the other four classes keep
-//                                            themselves (Working except for its not-started arm)
+//                                            process evidence; Pending, Refused, EventsRefused and the
+//                                            other classes keep themselves (Working except for its
+//                                            not-started arm)
 // The EventsRefused difference that used to live in a comment (the belt keeps it
 // open, the event fold locks it) is a SEPARATE VARIANT here, so it lives in the
 // type: belt folds one way over TerminalRefused and another over
-// TerminalityEventsRefused, and the event fold folds them identically.
+// TerminalityEventsRefused, and the event fold folds them identically. Pending
+// is a third end -- the worker drew no answer, recorded the durable
+// turn.request_pending and exited -- so the belt owes it a capture (a yield, not
+// a candidate) while the event fold and reconcile keep the standing.
 // dag/std/algebra has no projection combinator, so this is hand-authored: a
 // total match over the closed coproduct's inhabitance onto a small typed
 // partition (the A3/A6 house shape — one total named classifier as the single
@@ -898,6 +933,7 @@ type ProviderExecutionTerminality
   | TerminalityEventsRefused
   | TerminalityNotStarted
   | TerminalityWorking
+  | TerminalityPending { activity: String }
 
 fn provider_execution_terminality(state: ProviderExecutionState) -> ProviderExecutionTerminality {
   match state {
@@ -909,6 +945,7 @@ fn provider_execution_terminality(state: ProviderExecutionState) -> ProviderExec
     ProviderCompleted { activity } => TerminalityCompleted { activity }
     ProviderFailed { activity: _, detail: _ } => TerminalityRefused
     ProviderBudgetSpent { activity: _, detail: _ } => TerminalityRefused
+    ProviderRequestPending { activity, detail: _ } => TerminalityPending { activity }
     ProviderEventsRefused { activity: _, detail: _ } => TerminalityEventsRefused
   }
 }
@@ -944,11 +981,12 @@ fn provider_item_activity_kind(activity: ProviderItemActivity) -> ProviderItemAc
   }
 }
 
-// CARRIED DETAIL: the states that inhabit a detail string — the three refusals
-// and the awaiting-seat wait — and the value is that detail. std's Optional
+// CARRIED DETAIL: the states that inhabit a detail string — the three refusals,
+// the awaiting-seat wait, and the pending request (whose detail is the durable
+// turn.request_pending line) — and the value is that detail. std's Optional
 // carrier applied to this coproduct's inhabitance (A3/A6 house shape); the
-// reader matches the partition (Present/none) instead of re-listing the four
-// detail-carrying variants with a wildcard default.
+// reader matches the partition (Present/none) instead of re-listing the detail-
+// carrying variants with a wildcard default.
 fn provider_execution_carried_detail(state: ProviderExecutionState) -> String? {
   match state {
     ProviderNotStarted => none
@@ -959,6 +997,7 @@ fn provider_execution_carried_detail(state: ProviderExecutionState) -> String? {
     ProviderCompleted { activity: _ } => none
     ProviderFailed { activity: _, detail } => Present { value: detail }
     ProviderBudgetSpent { activity: _, detail } => Present { value: detail }
+    ProviderRequestPending { activity: _, detail } => Present { value: detail }
     ProviderEventsRefused { activity: _, detail } => Present { value: detail }
   }
 }
