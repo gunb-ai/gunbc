@@ -32,7 +32,7 @@ fn capacity_discharge_admit(record: CapacityCutoverRecord, reloads: Result<List<
     || !all(record.created_paths, path => capacity_recovery_has_artifact(artifacts: record.artifacts, path: path)) {
     return Err { value: "journal removal requires completed owned-link removal receipts" }
   }
-  if record.phase != CapacityCleanupOnly {
+  if (record.phase != CapacityCleanupOnly) {
   let completed = match reloads { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   if !all(completed, receipt => receipt.attempt == record.attempt && receipt.boundary == CapacityAfterRemoval)
     || !all(record.created_paths, path => count(filter(completed, receipt => receipt.manager == path.subject.manager)) == 1) {
@@ -60,7 +60,7 @@ fn capacity_discharge_admit(record: CapacityCutoverRecord, reloads: Result<List<
         }
         Ok { value: CapacityDischargeReady { record: record,
           foreign_entries: ready.foreign_entries + foreign,
-          externally_masked: ready.externally_masked + (if state == UnitLoadMasked { [artifact.inhibition.subject] } else { [] }) } }
+          externally_masked: ready.externally_masked + (if (state == UnitLoadMasked) { [artifact.inhibition.subject] } else { [] }) } }
       }
     })
 }

@@ -72,8 +72,8 @@ type CapacityRecoveryLeg
 // The cursor is diagnostic, never authority to skip a file or trust a hash.
 // Both branches re-prove drain and the entire selected generation before removal.
 fn capacity_recovery_plan(record: CapacityCutoverRecord, choice: CapacityRecoveryChoice) -> Result<List<CapacityRecoveryLeg>, String> {
-  if record.phase == CapacityClosed { return Err { value: "cutover is closed; its apply identity cannot be reused" } }
-  if record.phase == CapacityCleanupOnly {
+  if (record.phase == CapacityClosed) { return Err { value: "cutover is closed; its apply identity cannot be reused" } }
+  if (record.phase == CapacityCleanupOnly) {
     return match choice {
       CapacityRollback => Err { value: "rollback is forbidden after cleanup-only; captured bytes may be reclaimed" }
       CapacityResume => Ok { value: [CapacityRecoveryRequireApproval { attempt: record.attempt, choice: choice },
@@ -138,7 +138,7 @@ type CapacityRecoveryFinding
 fn capacity_recovery_finding(record: CasSlotObservation<CapacityCutoverRecord>, owned_masks: Result<List<CapacityInhibitionPath>, String>) -> CapacityRecoveryFinding {
   match record {
     CasObservedUnreadable { cause: _ } => CapacityRecoveryUnreadable { cause: "cutover record unreadable; retain inhibition and inspect the durable slot" }
-    CasObservedReadable { readable: CasReadablePresent { version: version } } => if version.value.phase == CapacityClosed { match owned_masks {
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => if (version.value.phase == CapacityClosed) { match owned_masks {
       Err { value: why } => CapacityRecoveryUnreadable { cause: why }
       Ok { value: paths } => if count(paths) == 0 { CapacityRecoveryCompleted { record: version.value } }
         else { CapacityRecoveryOrphanMasks { paths: paths, remedy: "closed cutover still has owned masks; preserve them and reconcile" } }

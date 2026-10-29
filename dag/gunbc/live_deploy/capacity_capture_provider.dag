@@ -100,7 +100,7 @@ fn capacity_capture_journal_open(store: CapacityCaptureStore, journal: SlotStore
 }
 
 fn capacity_capture_record_result(record: CapacityCutoverRecord, file: CapacityGenerationFile) -> Result<CapacityCutoverRecord, String> {
-  if record.phase != CapacityCapturingGeneration {
+  if (record.phase != CapacityCapturingGeneration) {
     Err { value: "capture results cannot be appended after inhibition begins" }
   } else if any(record.prior, existing => existing.host == file.host && existing.destination == file.destination) {
     Err { value: "capture result already recorded for this source" }

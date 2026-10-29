@@ -37,7 +37,7 @@ fn capacity_cleanup_begin(ready: CapacityDischargeReady) -> CapacityCutoverRecor
 }
 
 fn capacity_cleanup_admission(record: CapacityCutoverRecord) -> Result<CapacityCutoverRecord, String> {
-  if record.phase == CapacityCleanupOnly { Ok { value: record } }
+  if (record.phase == CapacityCleanupOnly) { Ok { value: record } }
   else { Err { value: "provider reclamation requires a persisted cleanup-only phase" } }
 }
 
@@ -88,7 +88,7 @@ fn capacity_cleanup_held(store: CapacityCaptureStore, held: LocalStoreFamilyHeld
   let observed = match capacity_cutover_journal_read(store: store, journal: journal, key: key) {
     Err { value: why } => { return Err { value: CapacityCleanupBoundaryRefused { detail: why } } } Ok { value: value } => value
   }
-  if observed.record.target_revision != approval.intent.revision || observed.record.phase == CapacityClosed {
+  if (observed.record.target_revision != approval.intent.revision || observed.record.phase == CapacityClosed) {
     return Err { value: CapacityCleanupBoundaryRefused { detail: "cleanup journal is closed or names another revision" } }
   }
   match capacity_cleanup_consent(store: store, approval: approval, now: now) {
@@ -101,7 +101,7 @@ fn capacity_cleanup_held(store: CapacityCaptureStore, held: LocalStoreFamilyHeld
   let ready = match capacity_discharge_admit(record: observed.record, reloads: reloads, read_entry: read_entry, read_unit: read_unit) {
     Err { value: why } => { return Err { value: CapacityCleanupBoundaryRefused { detail: why } } } Ok { value: value } => value
   }
-  if observed.record.phase != CapacityCleanupOnly {
+  if (observed.record.phase != CapacityCleanupOnly) {
     match capacity_capture_record_replace(journal: journal, key: key, prior: observed, record: capacity_cleanup_begin(ready: ready)) {
       Err { value: why } => { return Err { value: CapacityCleanupBoundaryRefused { detail: why } } } Ok { value: _ } => {}
     }
