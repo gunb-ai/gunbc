@@ -19,7 +19,7 @@ import gunbc.bmc_model {
   BmcWorld, BmcPowerOn, BmcIpmiUser,
   bmc_world, bmc_with_ipmi_users, bmc_with_redfish_accounts, bmc_ipmi_user_accepts,
   BmcRedfishAccount, BmcRedfishCredentialSharesIpmi, BmcRedfishCredentialOwn,
-  BmcRedfishLockoutThreshold, BmcRedfishLockoutNever, BmcRedfishLockoutAfter,
+  BmcRedfishLockoutThreshold, BmcRedfishLockoutNever, BmcRedfishLockoutAfter, BmcRedfishFailedLoginStep,
   bmc_redfish_authorize, bmc_redfish_change_password, bmc_redfish_note_failed_login, bmc_redfish_account,
   bmc_redfish_surface, bmc_redfish_census,
   RedfishAuthTransport, RedfishAuthAccepted, RedfishAuthUnauthorized, RedfishAuthForcedPasswordChange,
@@ -187,6 +187,13 @@ test fn disabled_locked_and_unknown_read_401_not_access() -> Bool {
 // THE FAILED-LOGIN COUNTER counts up and locks under a typed After { count } threshold; Never NEVER locks (so
 // a build that serves no lockout is modelled without a sentinel). After the lock the correct credential no
 // longer authenticates (401), so a locked account cannot be secured until the lockout lane lifts it.
+fn was_counted(step: BmcRedfishFailedLoginStep) -> Bool {
+  match step.blocked {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
 test fn the_failed_login_counter_locks_under_after_and_never_under_never() -> Bool {
   let base = world_with([free_root(managed_password)])
   let after_three: BmcRedfishLockoutThreshold = BmcRedfishLockoutAfter { count: 3 }
@@ -212,6 +219,7 @@ test fn the_failed_login_counter_locks_under_after_and_never_under_never() -> Bo
     Present { value: account } => !account.locked
   }
   counted && locked_now && locked_refuses && never_locked
+    && was_counted(step: first) && was_counted(step: third) && was_counted(step: never_world)
 }
 
 // INHABITANCE. The body the world emits on the 403 (built in bmc_redfish_authorize through the extdeps
@@ -374,4 +382,27 @@ test fn an_unmodeled_surface_refuses_as_unmodeled_not_as_no_such_account() -> Bo
   // and neither refusal changed the world it was handed.
   let untouched = bmc_redfish_change_password(world: unmodeled, name: "root", new_password: managed_password).world == unmodeled
   auth_unmodeled && auth_modeled_empty && write_unmodeled && write_modeled_empty && untouched
+}
+
+// A FAILED LOGIN NOBODY COULD COUNT IS NOT "NOT LOCKED" (review 87961). Against an unmodeled surface the step
+// refuses SurfaceUnmodeled, against a modeled surface without the account it refuses NoSuchAccount; both return
+// the world they were handed. The counted case above carries no `blocked` (paired control).
+test fn a_failed_login_against_an_unmodeled_surface_or_unknown_account_is_refused_not_counted() -> Bool {
+  let unmodeled = bmc_world(power: BmcPowerOn)
+  let modeled = world_with([free_root(managed_password)])
+  let after_three: BmcRedfishLockoutThreshold = BmcRedfishLockoutAfter { count: 3 }
+  let on_unmodeled = bmc_redfish_note_failed_login(world: unmodeled, name: "root", at_lockout_threshold: after_three)
+  let on_unknown = bmc_redfish_note_failed_login(world: modeled, name: "ghost", at_lockout_threshold: after_three)
+  (match on_unmodeled.blocked {
+    Present { value: BmcRedfishChangeSurfaceUnmodeled {} } => true
+    _ => false
+  })
+    && (match on_unknown.blocked {
+      Present { value: BmcRedfishChangeNoSuchAccount {} } => true
+      _ => false
+    })
+    && on_unmodeled.world == unmodeled
+    && on_unknown.world == modeled
+    && !on_unmodeled.locked_now
+    && !on_unknown.locked_now
 }
