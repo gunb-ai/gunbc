@@ -1874,7 +1874,8 @@ data gpu_container_provision_subordinate_lock_conflict_exit_code: Int = 75
 // which answers which namespace every one of those pids is in, and a process's map is read only if that
 // answer puts it in a CHILD user namespace. On a host where none of the account's processes is inside a user
 // namespace -- the state srv1 and srv3 are actually in -- the whole precheck costs three legs no matter how
-// many processes the account has: pgrep, the reference link of /proc/1, and the batch.
+// many processes the account has: pgrep, the reference link of /proc/1, and the batch (a pid that vanishes
+// mid-batch is named by readlink -v and left out, so churn costs no further leg either).
 //
 // WHAT STILL GROWS WITH THE COUNT, so the bound is not decorative:
 //   - The batch's word list and its report. MEASURED on this tree's coreutils 9.7: with 4096 operands the
@@ -1884,13 +1885,9 @@ data gpu_container_provision_subordinate_lock_conflict_exit_code: Int = 75
 //     (gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh), so that is the budget that binds;
 //     gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed governs which CHARACTERS may
 //     appear in a word, not how many words there are.
-//   - One branch still pays per pid. When the account HAS processes in child namespaces AND a pid disappears
-//     while the batch is running, the report's lines cannot be matched to pids, and the pids are then read
-//     one at a time -- up to one link leg plus one map leg per pid. At 4096 that is 8,192 legs, which at a
-//     leg cost of ~100 ms is ~14 minutes, inside the 15-minute timeout of the step this converge runs in
-//     (gunbc.fleet.fleet_workflow_steps gunbc_ci_fleet_converge_plan_step_timeout_minutes) by a hair. That is
-//     why the bound is 4096 and not an order of magnitude more, and the leg cost inside it is the assumption
-//     a measured srv1 rate should replace.
+//   - Each process in a CHILD user namespace pays one map leg per range set, since its rows have to be read.
+//     That cost scales with the account's child-namespace processes and not with its process count; a host
+//     with none pays nothing, and the pid bound is the ceiling on it.
 //
 // THE RUN THAT KILLED 256. Fleet-converge run 40837033922 refused on srv1 with "briansrls has 556 processes;
 // this converge certifies at most 256". srv1 is a session host: the console account running several hundred
@@ -2024,33 +2021,26 @@ type GpuContainerProvisionProcessNamespace {
   target: String
 }
 
-// WHAT ONE readlink(1) OVER EVERY PID ANSWERED. readlink takes one path per operand and prints one line per
-// operand it could read, IN OPERAND ORDER -- and, measured on coreutils 9.7, it says NOTHING about the
-// operands it could not: a pid that vanished leaves no line, stderr stays empty, and the exit status is 1. So
-// the report identifies namespaces exactly, but a missing line cannot be attributed to a pid. The four arms
-// are the four things that can honestly be said about that:
+// WHAT ONE readlink -v (1) OVER EVERY PID ANSWERED. readlink takes one path per operand and prints one line
+// per operand it could read, IN OPERAND ORDER. With -v it ALSO names each operand it could not read on
+// stderr as `readlink: <path>: <strerror>`, and the exit status is 1 (measured on coreutils 9.7; without -v
+// a failed operand is silent and its line is simply missing, which would make a missing line impossible to
+// attribute). So every pid is accounted for exactly one way:
 //
-//   Aligned       exit 0 and one line per pid asked. Every line belongs to a known pid, so every process's
-//                 namespace is known exactly, and only the pids whose target differs from the reference cost
-//                 anything further.
-//   AllInitial    lines are missing AND every line that came back is the reference. The missing pids are gone:
-//                 an elevated readlink does not fail on a LIVE pid's link (root reads /proc/<pid>/ns/user of
-//                 any process on the host, which is why every read in this converge is a root read -- see
-//                 gpu_container_provision_read_argv), so the only failure left is ENOENT, and a vanished
-//                 process's namespaces went with it. This is the srv1 and srv3 answer, and it costs no extra
-//                 leg at all.
-//   Unattributed  lines are missing AND at least one line is a child namespace: the model cannot say WHICH
-//                 pid is in it, so the pids are resolved one at a time. This is the branch the pid bound
-//                 above pays for.
-//   Unreadable    nothing came back, or readlink exited 0 without answering every operand -- the tool
-//                 contradicting its own measured contract, which is a refusal, not a short report.
+//   Aligned     the pids named on stderr as `No such file or directory` are GONE -- a vanished process's
+//               namespaces went with it -- and the stdout lines pair, in order, with the remaining pids.
+//               The line count must equal the remaining pid count, and the exit status must be 0 exactly
+//               when nothing was named on stderr. `gone` is how many pids vanished, for the record.
+//   Unreadable  anything else: a stderr line that is not a No-such-file for a pid asked (a permission
+//               denial, an LSM or hidepid refusal, a form this model does not describe), a count that does
+//               not match, or a contradictory exit status. A pid whose link could not be read for a reason
+//               other than its disappearance is NOT evidence that it maps nothing, so the scan refuses.
 type GpuContainerProvisionNamespaceBatch
   = GpuContainerProvisionNamespaceBatchAligned {
       reference: String
       namespaces: List<GpuContainerProvisionProcessNamespace>
+      gone: Int
     }
-  | GpuContainerProvisionNamespaceBatchAllInitial { reference: String, read: Int, asked: Int }
-  | GpuContainerProvisionNamespaceBatchUnattributed { reference: String, read: Int, asked: Int }
   | GpuContainerProvisionNamespaceBatchUnreadable { cause: String }
 
 // THE PAIRING, index by index, of pids to the lines readlink printed for them. Only reached when the exit
@@ -2074,47 +2064,49 @@ fn gpu_container_provision_pair_pid_namespaces(
   }
 }
 
-// THE REPORT, AS A READING OF THE TOOL'S OUTPUT -- which pids were asked, what came back, and what exit
-// status came with it. Split out from the leg so the shape of the answer is testable against literal
-// reports, including the ones where a pid vanished mid-scan and readlink said nothing about it.
+// WHETHER STDERR NAMED THIS PID'S LINK AS GONE.
+fn gpu_container_provision_pid_named_gone(pid: Int, stderr_lines: List<String>) -> Bool {
+  stderr_lines.any(line => trim(s: line) == join(["readlink: ", user_namespace_link_path(pid: pid), ": No such file or directory"], ""))
+}
+
+// THE REPORT, AS A READING OF THE TOOL'S OUTPUT -- which pids were asked, what came back on stdout and stderr,
+// and what exit status came with it. Split out from the leg so the shape of the answer is testable against
+// literal reports, including the ones where a pid vanished mid-scan and the ones where a live pid's link
+// could not be read.
 fn gpu_container_provision_namespace_batch_reading(
   reference: String,
   pids: List<Int>,
   exit_code: Int,
   stdout: String,
+  stderr: String,
 ) -> GpuContainerProvisionNamespaceBatch {
   let lines = filter(split(s: stdout, delimiter: "\n"), line => trim(s: line) != "")
-  if length(lines) == 0 {
+  let stderr_lines = filter(split(s: stderr, delimiter: "\n"), line => trim(s: line) != "")
+  let gone = filter(pids, pid => gpu_container_provision_pid_named_gone(pid: pid, stderr_lines: stderr_lines))
+  let remaining = filter(pids, pid => !gpu_container_provision_pid_named_gone(pid: pid, stderr_lines: stderr_lines))
+  let expected_exit = if length(stderr_lines) == 0 { 0 } else { 1 }
+  if length(stderr_lines) != length(gone) {
     GpuContainerProvisionNamespaceBatchUnreadable {
-      cause: join(["readlink named no namespace for any of the ", to_string(length(pids)), " pids asked (exit ", to_string(exit_code), ")"], "")
+      cause: join(["readlink reported ", to_string(length(stderr_lines) - length(gone)), " failure(s) that are not a vanished pid: ", trim(s: stderr)], "")
     }
-  } else if exit_code != 0 && !lines.any(line => trim(s: line) != reference) {
-    GpuContainerProvisionNamespaceBatchAllInitial {
-      reference: reference,
-      read: length(lines),
-      asked: length(pids),
+  } else if exit_code != expected_exit {
+    GpuContainerProvisionNamespaceBatchUnreadable {
+      cause: join(["readlink exited ", to_string(exit_code), " with ", to_string(length(stderr_lines)), " failure line(s) on stderr"], "")
     }
-  } else if exit_code == 0 && length(lines) == length(pids) {
-    GpuContainerProvisionNamespaceBatchAligned {
-      reference: reference,
-      namespaces: gpu_container_provision_pair_pid_namespaces(pids: pids, targets: map(lines, line => trim(s: line))),
-    }
-  } else if exit_code != 0 {
-    GpuContainerProvisionNamespaceBatchUnattributed {
-      reference: reference,
-      read: length(lines),
-      asked: length(pids),
+  } else if length(lines) != length(remaining) {
+    GpuContainerProvisionNamespaceBatchUnreadable {
+      cause: join(["readlink answered ", to_string(length(lines)), " namespace lines for ", to_string(length(remaining)), " pids still present; its contract is one line per operand read"], "")
     }
   } else {
-    GpuContainerProvisionNamespaceBatchUnreadable {
-      cause: join(["readlink exited 0 but answered ", to_string(length(lines)), " namespace lines for ", to_string(length(pids)), " pids; its contract is one line per operand read"], "")
+    GpuContainerProvisionNamespaceBatchAligned {
+      reference: reference,
+      namespaces: gpu_container_provision_pair_pid_namespaces(pids: remaining, targets: map(lines, line => trim(s: line))),
+      gone: length(gone),
     }
   }
 }
 
-// ONE NAMESPACE LINK, asked on its own -- used for the reference, and for each pid in the Unattributed
-// branch, where the per-pid question is churn-robust because a pid that vanishes between the scan and its own
-// read answers "No such file" and its namespaces went with it.
+// ONE NAMESPACE LINK, asked on its own -- used for the reference alone, where any failure ends the scan.
 fn gpu_container_provision_namespace_link_read(
   path: String,
   transport: HostEffectTransport,
@@ -2166,7 +2158,7 @@ fn gpu_container_provision_namespace_batch(
       GpuContainerProvisionNamespaceBatchUnreadable { cause: r as String }
     RunArgvTransportObserved { observed: o } =>
       gpu_container_provision_namespace_batch_reading(
-        reference: reference, pids: pids, exit_code: o.exit_code, stdout: o.stdout)
+        reference: reference, pids: pids, exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
   }
 }
 
@@ -2324,11 +2316,9 @@ fn gpu_container_provision_displaced_maps(
                         reference: reference, pids: pids, transport: transport) {
                         GpuContainerProvisionNamespaceBatchUnreadable { cause: why } =>
                           Present { value: join(["cannot scan the user namespaces of ", account as String, ": ", why], "") }
-                        // Every line read is the host's own namespace, and the lines that are missing can only
-                        // be pids that vanished (see the batch type): their namespaces went with them. No map
-                        // leg is paid for any of them. This is what srv1 and srv3 answer today.
-                        GpuContainerProvisionNamespaceBatchAllInitial { reference: _, read: _, asked: _ } => none
-                        GpuContainerProvisionNamespaceBatchAligned { reference: _, namespaces: namespaces } =>
+                        // Every pid is accounted for: vanished pids are named on stderr and left out, and the
+                        // rest pair with their namespace. Only a pid in a CHILD namespace pays a map leg.
+                        GpuContainerProvisionNamespaceBatchAligned { reference: _, namespaces: namespaces, gone: _ } =>
                           fold(namespaces, init: none, f: (acc, at) =>
                             match acc {
                               Present { value: _ } => acc
@@ -2336,22 +2326,6 @@ fn gpu_container_provision_displaced_maps(
                                 account: account, pid: at.pid, map_name: map_name, ranges: ranges,
                                 scope: gpu_container_provision_namespace_scope(
                                   link: GpuContainerProvisionNamespaceLinkRead { target: at.target },
-                                  init_namespace: reference),
-                                transport: transport)
-                            })
-                        // A child namespace is present and the report cannot say which pid is in it, because a
-                        // pid disappeared mid-scan. The pids are then asked one at a time -- the per-pid cost
-                        // shape, which the bound above is what keeps payable.
-                        GpuContainerProvisionNamespaceBatchUnattributed { reference: _, read: _, asked: _ } =>
-                          fold(pids, init: none, f: (acc, pid) =>
-                            match acc {
-                              Present { value: _ } => acc
-                              Absent => gpu_container_provision_pid_map(
-                                account: account, pid: pid, map_name: map_name, ranges: ranges,
-                                scope: gpu_container_provision_namespace_scope(
-                                  link: gpu_container_provision_namespace_link_read(
-                                    path: user_namespace_link_path(pid: pid),
-                                    transport: transport),
                                   init_namespace: reference),
                                 transport: transport)
                             })

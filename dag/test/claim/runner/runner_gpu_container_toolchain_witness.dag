@@ -29,7 +29,7 @@ module test.claim.runner.runner_gpu_container_toolchain_witness
 // against the exact range pair srv3 shipped with (two accounts both at 100000+65536).
 
 import std.logic { Bool }
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Int, String }
 import std.algebra { trim, string_contains }
 import std.measure { second_count }
 
@@ -75,8 +75,6 @@ import gunbc.runner.runner_gpu_container_toolchain {
   GpuContainerProvisionNamespaceLinkUnreadable,
   GpuContainerProvisionNamespaceBatch,
   GpuContainerProvisionNamespaceBatchAligned,
-  GpuContainerProvisionNamespaceBatchAllInitial,
-  GpuContainerProvisionNamespaceBatchUnattributed,
   GpuContainerProvisionNamespaceBatchUnreadable,
   gpu_container_provision_namespace_scope,
   gpu_container_provision_namespace_batch_reading,
@@ -1215,52 +1213,61 @@ test fn an_unreadable_namespace_link_is_refused_rather_than_read_as_the_host() -
     text: "         0          0 4294967295") == "unreadable-namespace"
 }
 
-// THE BATCH READING, against literal readlink output. All pids read, all host: aligned, nothing costs more.
+// THE BATCH READING, against literal readlink -v output. Gone pids are named on stderr and left out; the
+// stdout lines pair in order with the pids that remain.
+fn batch_namespaces_of(pids: List<Int>, exit_code: Int, stdout: String, stderr: String) -> String {
+  match gpu_container_provision_namespace_batch_reading(
+    reference: host_user_namespace(), pids: pids, exit_code: exit_code, stdout: stdout, stderr: stderr) {
+    GpuContainerProvisionNamespaceBatchAligned { reference: _, namespaces: ns, gone: g } =>
+      join(["aligned gone=", to_string(g), " ", join(map(ns, n => join([to_string(n.pid), "=", n.target], "")), ",")], "")
+    GpuContainerProvisionNamespaceBatchUnreadable { cause: _ } => "unreadable"
+  }
+}
+
 test fn a_complete_batch_report_pairs_every_pid_with_its_namespace() -> Bool {
-  match gpu_container_provision_namespace_batch_reading(
-    reference: host_user_namespace(), pids: [10, 20], exit_code: 0,
-    stdout: "user:[4026531837]\nuser:[4026532871]\n") {
-    GpuContainerProvisionNamespaceBatchAligned { reference: _, namespaces: ns } =>
-      length(ns) == 2 && ns.any(n => n.pid == 20 && n.target == child_user_namespace())
-    GpuContainerProvisionNamespaceBatchAllInitial { reference: _, read: _, asked: _ } => false
-    GpuContainerProvisionNamespaceBatchUnattributed { reference: _, read: _, asked: _ } => false
-    GpuContainerProvisionNamespaceBatchUnreadable { cause: _ } => false
-  }
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 0,
+    stdout: "user:[4026531837]\nuser:[4026532871]\n", stderr: "")
+    == "aligned gone=0 10=user:[4026531837],20=user:[4026532871]"
 }
 
-// A VANISHED PID leaves no line and exit 1 (measured, coreutils 9.7). With only host lines that is clear.
-test fn a_vanished_pid_among_host_lines_costs_no_further_leg() -> Bool {
-  match gpu_container_provision_namespace_batch_reading(
-    reference: host_user_namespace(), pids: [10, 20, 30], exit_code: 1,
-    stdout: "user:[4026531837]\nuser:[4026531837]\n") {
-    GpuContainerProvisionNamespaceBatchAllInitial { reference: _, read: _, asked: _ } => true
-    GpuContainerProvisionNamespaceBatchAligned { reference: _, namespaces: _ } => false
-    GpuContainerProvisionNamespaceBatchUnattributed { reference: _, read: _, asked: _ } => false
-    GpuContainerProvisionNamespaceBatchUnreadable { cause: _ } => false
-  }
+// A VANISHED PID is named on stderr, left out, and the lines pair with the pids that REMAIN -- even when a
+// child namespace is among them, so the child is attributed to its own pid and not guessed.
+test fn a_vanished_pid_is_named_and_the_rest_stay_attributed() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20, 30], exit_code: 1,
+    stdout: "user:[4026531837]\nuser:[4026532871]\n",
+    stderr: "readlink: /proc/20/ns/user: No such file or directory\n")
+    == "aligned gone=1 10=user:[4026531837],30=user:[4026532871]"
 }
 
-// A vanished pid beside a CHILD namespace line cannot be attributed, so it is resolved per pid, not guessed.
-test fn a_vanished_pid_beside_a_child_namespace_is_resolved_per_pid() -> Bool {
-  match gpu_container_provision_namespace_batch_reading(
-    reference: host_user_namespace(), pids: [10, 20, 30], exit_code: 1,
-    stdout: "user:[4026531837]\nuser:[4026532871]\n") {
-    GpuContainerProvisionNamespaceBatchUnattributed { reference: _, read: _, asked: _ } => true
-    GpuContainerProvisionNamespaceBatchAligned { reference: _, namespaces: _ } => false
-    GpuContainerProvisionNamespaceBatchAllInitial { reference: _, read: _, asked: _ } => false
-    GpuContainerProvisionNamespaceBatchUnreadable { cause: _ } => false
-  }
+// A LIVE PID WHOSE LINK COULD NOT BE READ IS NOT A VANISHED PID: a permission denial names the pid but not
+// as No-such-file, so the scan refuses rather than reading the pid as host-namespace.
+test fn a_live_pid_whose_link_is_denied_is_refused_not_counted_as_gone() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 1,
+    stdout: "user:[4026531837]\n",
+    stderr: "readlink: /proc/20/ns/user: Permission denied\n") == "unreadable"
 }
 
-// NOTHING BACK is a refusal, not a clear.
+// A MISSING LINE WITH NOTHING NAMED ON STDERR cannot be attributed to anything: refused.
+test fn a_missing_line_that_stderr_does_not_name_is_refused() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 1, stdout: "user:[4026531837]\n", stderr: "") == "unreadable"
+}
+
+// A pid number that is a PREFIX of another's must not be mistaken for it: pid 2 vanished, pid 20 did not.
+test fn a_vanished_pid_is_matched_by_its_whole_path() -> Bool {
+  batch_namespaces_of(
+    pids: [2, 20], exit_code: 1,
+    stdout: "user:[4026532871]\n",
+    stderr: "readlink: /proc/2/ns/user: No such file or directory\n")
+    == "aligned gone=1 20=user:[4026532871]"
+}
+
+// NOTHING BACK for pids still present is a refusal, not a clear.
 test fn an_empty_batch_report_is_refused() -> Bool {
-  match gpu_container_provision_namespace_batch_reading(
-    reference: host_user_namespace(), pids: [10], exit_code: 1, stdout: "") {
-    GpuContainerProvisionNamespaceBatchUnreadable { cause: _ } => true
-    GpuContainerProvisionNamespaceBatchAligned { reference: _, namespaces: _ } => false
-    GpuContainerProvisionNamespaceBatchAllInitial { reference: _, read: _, asked: _ } => false
-    GpuContainerProvisionNamespaceBatchUnattributed { reference: _, read: _, asked: _ } => false
-  }
+  batch_namespaces_of(pids: [10], exit_code: 0, stdout: "", stderr: "") == "unreadable"
 }
 
 // THE ROW BUILDER'S CONTRACT, DIRECTLY, without the plan's guards in the way: survivors keep the order
