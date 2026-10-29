@@ -1,0 +1,61 @@
+module extdeps.gpu.nvidia_t4
+
+import std.types { NonEmptyStr }
+import std.measure { micrometer, watt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.gpu.passive_card_row {
+  CardRow, FromCitedFigure, NeedsReading, CardLength, LengthFromBracketFace, AirflowBidirectional,
+}
+import extdeps.standards.pcie_cem { CemLowProfile, CemLowProfileBracket, CemFullHeightBracket }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.uri { Uri, Https }
+
+// NVIDIA T4 70W Low Profile PCIe GPU Accelerator, product brief PB-09256-001_v05 (April 2020), fetched
+// 2026-10-29 from NVIDIA's own server, sha256
+// 4b94dfc3eb3e94ae06f20d4aa1a4d2d7fbd9115bf5c12d3136f08eec761da698. Read from the PDF text layer and
+// from Figure 2 rendered (the drawing's figures are vector paths, not text):
+//   Overview: "a single-slot, low-profile, 6.6-inch PCI Express Gen3" accelerator, "a 70 W maximum
+//     power limit", "passively cooled ... requires system air flow".
+//   Table 1: total board power 70 W (default); thermal cooling solution Passive; order part numbers
+//     900-2G183-0000-000 (low-profile bracket installed, full-height "ATX" bracket as an accessory) and
+//     -001 (the reverse); a full-height and a half-height bracket are both listed by weight.
+//   Airflow Direction Support: "bi-directional airflow either from left to right, or from right to
+//     left. CFM requirements are identical for both airflow directions." No CFM figure is given.
+//   Figure 2, NVIDIA T4 Board Dimensions: 169.53 from the bracket's inner mounting face to the far end;
+//     height "68.90 MAX" (68.08 +/- 0.52 nominal); edge connector 59.04 +/- 0.40 from the bracket face.
+//   The brief has no power-connector section, Table 1 lists no auxiliary input, and Figure 2 draws
+//     none: the card is powered from the slot, within the 75 W a x16 slot supplies.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/tesla-t4/t4-tensor-core-product-brief.pdf" }
+}
+
+data t4_brief_sha256: NonEmptyStr = "4b94dfc3eb3e94ae06f20d4aa1a4d2d7fbd9115bf5c12d3136f08eec761da698"
+
+data t4_brief_standing: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
+
+// The height is the drawing's MAX, not its nominal: a part fitted around the card has to clear the
+// largest card the drawing admits.
+data t4_card_row: CardRow = CardRow {
+  id: "t4",
+  product: "NVIDIA T4 70W Low Profile (PG183 SKU 200)",
+  height_class: FromCitedFigure { value: CemLowProfile, standing: t4_brief_standing },
+  slot_count: FromCitedFigure { value: 1, standing: t4_brief_standing },
+  length: FromCitedFigure { value: CardLength { length: micrometer(count: 169530), reference: LengthFromBracketFace }, standing: t4_brief_standing },
+  height: FromCitedFigure { value: micrometer(count: 68900), standing: t4_brief_standing },
+  brackets: FromCitedFigure { value: [CemLowProfileBracket, CemFullHeightBracket], standing: t4_brief_standing },
+  auxiliary_power: FromCitedFigure { value: [], standing: t4_brief_standing },
+  board_power: FromCitedFigure { value: watt(count: 70), standing: t4_brief_standing },
+  required_airflow: NeedsReading { read_obligation: "NVIDIA document, not read by this repository: the T4's required airflow. PB-09256-001_v05 states only that CFM requirements are identical in both directions and refers system design to the System Design Guide for NVIDIA Enterprise GPU Products (DG-07562-001). Read the figure (CFM or m3/h, with the inlet temperature and static pressure it is stated at) from that guide and convert to ml/s." },
+  airflow_direction: FromCitedFigure { value: AirflowBidirectional, standing: t4_brief_standing },
+  sources: [
+    "NVIDIA T4 70W Low Profile PCIe GPU Accelerator product brief PB-09256-001_v05 (April 2020), www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/tesla-t4/t4-tensor-core-product-brief.pdf, sha256 4b94dfc3eb3e94ae06f20d4aa1a4d2d7fbd9115bf5c12d3136f08eec761da698, read 2026-10-29: Overview, Table 1, Airflow Direction Support, Figure 2",
+  ],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef { module_path: "extdeps.gpu.nvidia_t4", decl_name: "t4_card_row", field: WholeDeclaration }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

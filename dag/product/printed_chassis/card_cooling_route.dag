@@ -1106,9 +1106,9 @@ fn side_display(s: BlockedSide) -> String {
 // std.checked_arithmetic.checked_int_to_nat, which refuses an impossible count rather than fabricating one:
 // Absent here means the inputs asked for a flow that cannot be named.
 // feature:missing-volume-flow-carrier-in-imperial -- dissolve-on: std.measure gains a cubic-foot-per-minute
-// volume-flow carrier; until then mL/s is the corpus's only volumetric-flow authority (extdeps.gpu
-// nvidia_passive_rows says so in as many words: convert CFM to mL/s when transcribing, never store the raw
-// number under the field's name), and CFM exists below only as a rendering of it.
+// volume-flow carrier; until then mL/s is the corpus's only volumetric-flow authority (each card row's
+// required_airflow obligation in extdeps.gpu says so in as many words: convert CFM to ml/s when
+// transcribing, never store the raw number under the field's name), and CFM exists below only as a rendering of it.
 fn required_flow(heat: Watt, rise: CelsiusDelta) -> MillilitrePerSecond? {
   let rho = gram_per_cubic_metre_count(d: dry_air_at_20c.density)
   let cp = joule_per_kilogram_kelvin_count(c: dry_air_at_20c.specific_heat_cp)

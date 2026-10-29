@@ -1,5 +1,7 @@
 module test.claim.compute.attempt_lifecycle_wet_witness
 
+import std.cache_interface { ReplaceExisting, LeastRecentlyUsed }
+
 import gunbc.durable_cas_file_store { SlotStore }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
@@ -629,7 +631,7 @@ fn a_refused_reservation_closes_the_slot_it_was_taken_under_cell(root: String) -
 // arm is where a collision would be served as a hit.
 test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
-  let root = ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
+  let root = ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
     leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
@@ -740,7 +742,7 @@ test fn a_settlement_that_failed_keeps_the_owned_target_and_refuses_located() ->
 // requires compute_provide_leaf to attach, on a host with a user unit manager (//gunbc/instruments:
 // compute-run-unit-cold). This supplied-outcome half may not stand without it.
 fn reuse_store(root_path: String) -> ComputeStore {
-  ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
+  ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
 }
 
 fn reuse_tree() -> GitObjectId {

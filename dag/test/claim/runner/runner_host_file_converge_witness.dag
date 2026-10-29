@@ -62,7 +62,7 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
-import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, NoValidation, remote_file_mode_octal }
+import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, DestinationUnchangedUntilRename, NoValidation, remote_file_mode_octal }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
 import gunbc.runner.runner_slot_cap_converge { SlotCapUnitStanding, SlotCapsAtDesired }
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
@@ -70,6 +70,7 @@ import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
 import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent }
 import gunbc.runner.runner_host_file_converge {
+  HostHasNoDeploySlot,
   CapPhaseObserved,
   runner_host_cap_phase_not_owed,
   FleetHostFileDesired,
@@ -899,6 +900,8 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
               FleetHostFilesObserveOnly => CapPhaseObserved { readings: [SlotCapUnitStanding { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: SlotCapsAtDesired }] }
               FleetHostFilesApply => runner_host_cap_phase_not_owed
             },
+            deploy_account: HostHasNoDeploySlot,
+            deploy_trees: [],
           })
       }
   }
@@ -1501,6 +1504,8 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
       })
   }
 }
@@ -1659,6 +1664,8 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
       })
       && runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
@@ -1673,6 +1680,8 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
       })
   }
 }
@@ -1698,7 +1707,7 @@ test fn the_sudoers_row_is_the_rendered_body_at_the_sudoers_path_validated_and_0
           f.content == c
             && (f.path as String) == "/etc/sudoers.d/gunbc-ghrunner"
             && remote_file_mode_octal(mode: f.mode) == "440"
-            && (match f.validation { VisudoCheck => true NoValidation => false })
+            && (match f.validation { VisudoCheck => true NoValidation => false DestinationUnchangedUntilRename { expected: _ } => false })
         RunnerHostSudoersBodyRefused { reason: _ } => false
       }
   }
@@ -1710,7 +1719,7 @@ test fn only_the_sudoers_row_is_visudo_validated() -> Bool {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
-      all(fs, f => ((f.subject as String) == "runner-host-sudoers") == (match f.validation { VisudoCheck => true NoValidation => false }))
+      all(fs, f => ((f.subject as String) == "runner-host-sudoers") == (match f.validation { VisudoCheck => true NoValidation => false DestinationUnchangedUntilRename { expected: _ } => false }))
   }
 }
 

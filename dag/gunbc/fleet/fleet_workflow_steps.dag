@@ -20,6 +20,7 @@ module gunbc.fleet.fleet_workflow_steps
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import std.measure { minute_count, second_count }
 import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_step_timeout_minutes }
+import gunbc.live_deploy.service_ready { approval_broker_readback_poll_bound }
 import std.types { Duration }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.github.actions {
@@ -73,6 +74,9 @@ import v2.extdeps.languages.bash_build {
   bash_build_if_from_stmts, bash_build_test_bracket, bash_build_command_with_words,
 }
 import std.types { List, String, Int, NonEmptyStr }
+
+// THE SEED-BUILD ENVIRONMENT, consumed where this file's build steps compose their `run:` text.
+import gunbc.repo.repo_self_build { repo_self_seed_build_step_run }
 
 import gunbc.roadmap.roadmap_execution_contract {
   CargoCapability,
@@ -323,7 +327,7 @@ fn ci_release_build_step() -> Step {
   RunStep {
     name: Present { value: "Build release bins (claim_executor + gunbc)" },
     id: Present { value: "release_build" },
-    run: ci_release_build_script(),
+    run: repo_self_seed_build_step_run(command: ci_release_build_script()),
     shell: none,
     env: none,
     working_directory: none,
@@ -386,7 +390,7 @@ fn ci_release_build_step_for(pair_modes: List<String>) -> Step {
   RunStep {
     name: Present { value: "Build release bins (the dispatched mode's product)" },
     id: Present { value: "release_build" },
-    run: release_bins_build_script_dispatch(pair_modes: pair_modes, fleet_build: ci_release_build_script()),
+    run: repo_self_seed_build_step_run(command: release_bins_build_script_dispatch(pair_modes: pair_modes, fleet_build: ci_release_build_script())),
     shell: none,
     env: Present { value: [release_bins_mode_env_kv()] },
     working_directory: none,
@@ -819,6 +823,16 @@ DISSOLVE-ON: the first successful guest_image_converge on a cold host produces t
 // the aux 5m killed it (workspace discovered 04:11:19, killed 04:16:31), before any Vast call.
 data gunbc_ci_gunbc_run_resolve_step_timeout_minutes: Duration = 15
 
+// THE SITE PXE EDGE CONVERGE STEP PLACES MEDIA, which the runner-host-file budget above was never sized for: in apply
+// mode gunbc.fleet.site_pxe_edge_converge fetches each pinned Ubuntu ISO onto srv4, checks it against Canonical's
+// SHA256SUMS and extracts the chain members. Its first apply (run 40750438900, 2026-10-28) spent the step's 15 minutes
+// resolving and observing (step start to pre-entry about 14 minutes) and was killed 11 seconds into the first ISO
+// fetch. It stays below the Spark serving step, the mode gunbc_ci_fleet_job_backstop_timeout_minutes already
+// budgets as the job's worst case, so the backstop holds unchanged.
+// STATED AS AN ENVELOPE, NOT A MEASUREMENT. DISSOLVE-ON: the first site_pxe_edge_converge run that places both
+// media chains produces the measurement this stands in for -- replace it with that receipt, dated and cited.
+data gunbc_ci_site_pxe_edge_converge_step_timeout_minutes: Duration = 45
+
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
 // v1-compiler-tests retained-kernel execution gate step budget. Originally a compile-contract gate
@@ -1051,6 +1065,71 @@ fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
     + gunbc_ci_aux_step_timeout_minutes
     + (minute_count(srv1_root_mutation_approval_step_timeout_minutes()) as Int)
     + gunbc_ci_artifact_transfer_step_timeout_minutes
+}
+
+// The dark-install step's measured RENDER FOLD, reserved as its own budget term. On run 40630763823
+// the entry rendered the install script/legs through the generic emit path for a silent 696.6 s
+// (job log 04:39:56 -> 04:51:33, zero output between the two shell.Exec.RunArgv calls) -- the step's
+// single largest spend, ahead of the ~200 s broker startup. A step budget that omits it is falsified by
+// the very run it cites: the old inherited 30-minute tier was consumed by boot + this render + the
+// install legs, so the step died at 04:58:17 before the broker finished starting. This term reserves the
+// measured cost so the step can finish; it is NOT the fix for the cost itself -- reducing the generic
+// bash emit path is owned by gunbc.rung_drop live_deploy_dark_install_render_new_witness_eval_step_cost,
+// its own task. The figure is the ceiling of the measured 696.6 s, rounded to whole minutes.
+data gunbc_ci_approval_broker_dark_install_render_allowance: Minute = minute(count: 12)
+
+// THE BROKER DARK-INSTALL STEP'S OWN BUDGET. It is ONE `gunbc run` of the dark-install wet
+// (gunbc.live_deploy.apply approval_broker_dark_install_wet): it boots (resolve + typecheck) the wet's
+// entry closure, runs the access preflight, renders the install script/legs, executes the additive
+// install legs, restarts the broker's OWN unit, and waits on the broker's startup by polling /livez to
+// the readback bound. It must NOT borrow gunbc_ci_live_deploy_step_timeout_minutes -- that 30-minute
+// tier is the roadmap observe-then-cutover deploy's budget, a different shape of work; the measured sum
+// of what THIS step spends already exceeds it (boot 654 s + render 696.6 s + install legs ~283 s +
+// broker startup 200 s > 30 min), which is exactly how run 40630763823 timed out. Each term is a
+// declared authority or a measured, cited figure -- composed, never a bare bump:
+//   - the `gunbc run` boot tier (closure resolve dominates),
+//     gunbc_ci_gunbc_run_resolve_step_timeout_minutes;
+//   - the access preflight (git head + sudo NOPASSWD probes), one run-step allowance;
+//   - the measured render fold above, gunbc_ci_approval_broker_dark_install_render_allowance;
+//   - one aux tier for the additive install legs, gunbc_ci_aux_step_timeout_minutes;
+//   - the BROKER'S OWN STARTUP, given its own declared budget rather than inheriting the step's: the
+//     same figure the readback poll uses, approval_broker_readback_poll_bound, converted to minutes.
+//     Reserving it as its own term is the fix: the broker restarted at 04:56:17 and the step died at
+//     the borrowed 30-minute cap at 04:58:17, ~160 s into its ~200 s boot (journalctl showed it still
+//     typechecking), so it never bound 8085 -- the broker never failed to start, the borrowed budget ran
+//     out before its startup finished.
+// budget (review 57760 finding 1 precedent): the internal sum is the per-step Int allowances, and the
+// public fn carries the std.measure Minute duration rather than a bare scalar.
+fn gunbc_ci_approval_broker_dark_install_step_timeout_minute_count() -> Nat {
+  gunbc_ci_gunbc_run_resolve_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + minute_count(gunbc_ci_approval_broker_dark_install_render_allowance)
+    + gunbc_ci_aux_step_timeout_minutes
+    + ((second_count(s: approval_broker_readback_poll_bound) + 59) / 60)
+}
+
+fn gunbc_ci_approval_broker_dark_install_step_timeout() -> Minute {
+  minute(count: gunbc_ci_approval_broker_dark_install_step_timeout_minute_count())
+}
+
+// The dark-install JOB's own backstop, derived the same way as the dashboard deploy's and kept
+// SEPARATE from both the converge job's (which would wait on the fleet-converge wait-for-reconciliation
+// and reconciliation jobs' budget) and the dashboard deploy's (which would wait on the roadmap
+// live-deploy step, a step this job never runs). It composes the job's REAL steps: the consumer prelude,
+// the release-bins download and unpack-verify, the srv1 root-mutation secret auth + file-and-wait +
+// receipt upload, and the dark-install step's own tier (replacing the dashboard's live-deploy step).
+fn gunbc_ci_approval_broker_dark_install_job_backstop_timeout_minute_count() -> Nat {
+  gunbc_ci_prelude_allowance_minutes
+    + gunbc_ci_artifact_transfer_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + gunbc_ci_approval_broker_dark_install_step_timeout_minute_count()
+    + gunbc_ci_aux_step_timeout_minutes
+    + minute_count(srv1_root_mutation_approval_step_timeout_minutes())
+    + gunbc_ci_artifact_transfer_step_timeout_minutes
+}
+
+fn gunbc_ci_approval_broker_dark_install_job_backstop_timeout() -> Minute {
+  minute(count: gunbc_ci_approval_broker_dark_install_job_backstop_timeout_minute_count())
 }
 
 // The Mt. Collins boot job: checkout prelude, release download (transfer) and unpack (aux), the host

@@ -23,7 +23,7 @@ import gunbc.roadmap.roadmap_publish {
   adjudicate_publication,
 }
 import extdeps.github.github { Repository, github_https_clone_url }
-import extdeps.github.pulls { PullRequestState, Open }
+import extdeps.github.pulls { ListStateOpen }
 import extdeps.github.rate_limits { github_core_rate_limit }
 import extdeps.tools.hostname
 import std.algebra { trim }
@@ -201,7 +201,16 @@ fn observe_worktree_repository_binding(
   )
 }
 
-data open_state_is_supplied_not_defaulted_note: String ="THE STATE IS PASSED, NOT LEFT TO THE OPERATION'S DEFAULT, and the reason is a real failure rather than style. github.Pulls.List declares `state: PullRequestState = Open`, and the interpreter evaluates that default expression in the CALLER'S scope - so a caller whose module does not bind `Open` dies with `undefined variable: Open` at the moment of the call, which is the moment furthest from the declaration that caused it. A live probe hit exactly that.\\n\\nPassing it also states the domain fact rather than inheriting it. Publication asks whether a commit is ON OFFER, and a merged or closed pull request is not an offer, so Open is the answer this module wants and would still want if the operation's default changed."
+// THE STATE IS PASSED, NOT LEFT TO THE OPERATION'S DEFAULT, and the reason is a real failure rather
+// than style. github.Pulls.List declares `state: PullRequestListStateFilter = ListStateOpen`, and the
+// interpreter evaluates that default expression in the CALLER'S scope, so a caller whose module does
+// not bind `ListStateOpen` dies with `undefined variable: ListStateOpen` at the moment of the call,
+// the moment furthest from the declaration that caused it. A live probe hit exactly that (when the
+// parameter was still typed PullRequestState with default Open).
+//
+// Passing it also states the domain fact rather than inheriting it. Publication asks whether a
+// commit is ON OFFER, and a merged or closed pull request is not an offer, so the open filter is the
+// answer this module wants and would still want if the operation's default changed.
 
 // CONFIGURED IS NOT USABLE, AND THE LIVE 401 IS WHY THIS CARRIER IS NAMED FOR PRESENCE RATHER THAN
 // VALIDITY. An earlier cut called this arm Present and its note called the credential usable,
@@ -260,7 +269,7 @@ fn observe_pull_requests(
         auth_token: token,
         owner: repo.owner,
         repo: repo.name,
-        state: Open,
+        state: ListStateOpen,
       )
       match fabric_quota_settle(lease: lease, actual: 1) {
         QuotaSettleRefused { detail: d } => PullRequestsUnreadable { cause: PullRequestQuotaWithheld { repository: repo.full_name, detail: join(["listed, but the settlement refused: ", d], "") } }
