@@ -271,12 +271,12 @@ fn capacity_capture_target_matches(store: CapacityCaptureStore, host: NonEmptySt
 
 fn capacity_capture_generation_consent(approval: CapacityCutoverAuthorization, at: Timestamp) -> Result<Bool, String> {
   if count(approval.intent.generations) == 0 { return Err { value: "no target generation approved" } }
-  fold(approval.intent.generations, init: Ok { value: true }, f: (prior, operation) => match prior {
+  fold(approval.intent.generations, init: Ok { value: true }, f: (prior, operation) => { match prior {
     Err { value: why } => Err { value: why }
     Ok { value: _ } => match capacity_cutover_generation_admission(authorization: approval, operation: operation, at: at) {
       Err { value: why } => Err { value: why } Ok { value: _ } => Ok { value: true }
     }
-  })
+  } })
 }
 
 fn capacity_capture_recorded_address_matches(store: CapacityCaptureStore, host: NonEmptyStr, file: CapacityGenerationFile) -> Bool {
@@ -293,12 +293,12 @@ fn capacity_capture_finish(store: CapacityCaptureStore, provider: LocalStoreCapa
   match capacity_capture_generation_consent(approval: approval, at: at) {
     Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
   }
-  let consent = fold(approval.intent.captures, init: Ok { value: true }, f: (prior, operation) => match prior {
+  let consent = fold(approval.intent.captures, init: Ok { value: true }, f: (prior, operation) => { match prior {
     Err { value: why } => Err { value: why }
     Ok { value: _ } => match capacity_cutover_capture_admission(authorization: approval, operation: operation, at: at) {
       Err { value: why } => Err { value: why } Ok { value: _ } => Ok { value: true }
     }
-  })
+  } })
   match consent {
     Err { value: why } => Err { value: why }
     Ok { value: _ } => Ok { value: local_store_held_session(capability: provider, family: cutover_capture_artifact_kind,
