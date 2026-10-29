@@ -846,25 +846,38 @@ fn plane_on_end_housing_clears_keepout(b: BlowerDuctDesign, f: EndFaceMeasuremen
 // want" -- and then ruled that the duct must ACCOMMODATE the plugged connector and its latch rather than
 // require the latch to be cut. So the material that would press on them is taken out here.
 //
-// WHY RELIEF IS ENOUGH, DERIVED RATHER THAN ASSUMED. The stack behind the end is two wall plates (2 * wall =
-// 4 mm) and then the housing pocket, so whatever sits in front of the housing is 4 mm of printed floor. The
+// WHY RELIEF IS ENOUGH, DERIVED RATHER THAN ASSUMED. What sits in front of the housing pocket across the
+// connector's band is the shoulder floor AND the seat laid on it -- plane_on_end_blower_bottom_standoff, 7.5 mm
+// today -- so the material the plugged head and latch would meet is 7.5 mm of printed plastic, not 2 mm. The
 // latch is 3 mm, read by the operator's eye on 2026-10-27 ("the plug latch is 3mm"), and this repository puts
 // a 1 mm width on a by-eye figure of a small feature (power_connector_latch's own standing), so the latch must
-// be assumed to reach 4 mm. 4 mm of floor against a 4 mm latch is ZERO clearance -- flush contact -- which is
-// why a relief cut is needed even though the latch is small. The cut opens that floor over the connector's own
-// keep-out footprint, with 2 mm of clearance at each end, so the plugged header and its latch sit in a cleared
-// window instead of pressing on plastic.
+// be assumed to reach 4 mm. Buried in 7.5 mm of plastic, a 4 mm latch is flush contact all round, which is
+// why a relief cut is needed even though the latch is small. The cut opens the floor AND the seat over the
+// connector's own keep-out footprint, with 2 mm of clearance at each end, so the plugged header and its latch
+// sit in a cleared window instead of pressing on plastic.
 //
 // AND WHERE IT STOPS BEING ENOUGH: the same arithmetic gives the home a limit, and the limit is a FUNCTION
 // of the rear room rather than a number written here. Feed it the room that governs today -- 59 mm, the
 // operator's 2026-10-29 re-read of the span less the width on a by-eye figure (the 2026-10-26 allowance was
-// 70; see card_end_to_chassis_fan_2026_10_29) -- and the stack spends 37.5 mm, leaving 21.5 mm of headroom
-// under the 4 mm floor: the home admits a head that reaches 25.5 mm behind the end face and refuses past it.
-// The plugged 8-pin reaches 7 mm worst case (6 mm read + 1 mm width), so it clears with 18.5 mm to spare; a
-// cable that stiffened 30 mm back would refuse the home outright. card_cooling_route plugged_head_admits
-// plugs the reading into that boundary and returns the verdict, and it is why this section does not also
-// invent a standoff: at the readings on file the standoff computes to zero millimetres, and printing zero
-// millimetres of standoff is not a design.
+// 70; see card_end_to_chassis_fan_2026_10_29) -- and the stack spends plane_on_end_duct_run_back, 41.0 mm,
+// leaving 18 mm of rear room: the home admits a protrusion of plane_on_end_max_admissible_protrusion, 25.5 mm,
+// and refuses past it. The plugged 8-pin reaches 7 mm worst case (6 mm read + 1 mm width), so it clears with
+// 18.5 mm to spare; a cable that stiffened 30 mm back would refuse the home outright. card_cooling_route
+// plugged_head_admits plugs the reading into that boundary and returns the verdict.
+//
+// THE SEAT IS IN THIS PART, AND THIS IS WHY. The blower's bottom face used to sit 2 mm behind the end face --
+// one printed wall above the 4 mm shoulder floor, because the pocket's own cut ate the other plate -- and the
+// plugged head reaches 7 mm across the same strip, so 5 mm of head sat inside the fan. The relief could not
+// fix that: the relief's depth sets the socket's ceiling, and cutting plastic deeper does not move the fan.
+// plane_on_end_blower_bottom_standoff is what moved instead, and plane_on_end_head_clearance is the margin it
+// leaves. Both numbers are derived; neither is a preference.
+//
+// feature:signed-length-carrier -- dissolve-on: std.measure gains a signed length (affine) carrier. face_z,
+// floor_hi_z and seat_z are BED-FRAME coordinates in micrometres, the same domain product.printed_chassis
+// .assembly_geometry block already takes (w/h/d/x/y/z: Int) and the same marker product.printed_chassis
+// .placed_mass_model carries for its cg_* coordinates. They are positions mirrored about the end face by
+// plane_on_end_flip_z, not design depths: every design depth in this section (wall, flange, seat, keep-out)
+// enters as a Micrometer and is unwrapped once, here, at the CAD boundary.
 fn plane_on_end_connector_relief(f: EndFaceMeasurement, d: GpuDuctDesign, face_z: Int, floor_hi_z: Int, seat_z: Int) -> Primitive {
   let top = um(m: f.face_length) / 2
   let keep_len = connector_keepout_length(f: f, d: d)
@@ -874,8 +887,8 @@ fn plane_on_end_connector_relief(f: EndFaceMeasurement, d: GpuDuctDesign, face_z
   // window's bottom, not merely of the floor under it. Bed coordinates use the same pair of flips every other
   // slab in this part uses.
   plane_on_end_slab(x_lo: top - keep_len, x_hi: top, y_lo: 0, y_hi: band,
-    z_lo: plane_on_end_flip_z(z: seat_z + um(m: plane_on_end_blower_bottom_standoff(d: d)) + um(m: d.wall) + 2000, face_z: face_z),
-    z_hi: plane_on_end_flip_z(z: seat_z - um(m: d.flange_thickness) - 2000, face_z: face_z))
+    z_lo: plane_on_end_flip_z(z: seat_z + um(m: plane_on_end_relief_back_reach(d: d)), face_z: face_z),
+    z_hi: plane_on_end_flip_z(z: seat_z - um(m: plane_on_end_relief_front_reach(d: d)), face_z: face_z))
 }
 
 // Does a protrusion of `reach` behind the card's end face still fit, given the declared rear bound? Relief
@@ -916,16 +929,19 @@ fn plane_on_end_flange_inboard_end_x(f: EndFaceMeasurement, d: GpuDuctDesign) ->
   micrometer(count: um(m: f.face_length) / 2 - connector_keepout_length(f: f, d: d) - um(m: d.band_clearance))
 }
 
-// How far in FRONT of the end face the relief reaches (the cut overshoots the printed floor by 2 mm on each
-// side, so the clearance does not depend on where the plate's faces happen to land).
+// How far in FRONT of the seat's face the relief opens: the socket's flange plus one wall of slack, so the cut
+// runs past the flange's edge instead of stopping under it. One home for the number: the cut below takes its
+// front face from this, so the relief's depth and the slack it leaves cannot disagree.
 fn plane_on_end_relief_front_reach(d: GpuDuctDesign) -> Micrometer {
-  micrometer(count: um(m: d.flange_thickness) + 2000)
+  micrometer(count: um(m: d.flange_thickness) + um(m: d.wall))
 }
 
-// How far BEHIND the end face the relief stays open: the cut overshoots the floor's far side by 2 mm, so the
-// connector band is clear to this depth and no deeper. The number a sideways cable is measured against.
+// How far BEHIND the end face the relief stays open: the seat's full depth plus two walls of slack beyond it,
+// so the connector band is clear to this depth and no deeper, and the clearance does not depend on where the
+// seat's own face happens to land on a printed part. The number a sideways cable is measured against, and the
+// depth card_cooling_route cable_bend_path answers with when it says a run is clear of printed material.
 fn plane_on_end_relief_back_reach(d: GpuDuctDesign) -> Micrometer {
-  micrometer(count: um(m: plane_on_end_blower_bottom_standoff(d: d)) + um(m: d.wall) + 2000)
+  micrometer(count: um(m: plane_on_end_blower_bottom_standoff(d: d)) + 2 * um(m: d.wall))
 }
 
 // Where the shoulder ends beyond the card's top edge, past which there is no printed material at all.
@@ -933,6 +949,11 @@ fn plane_on_end_shoulder_top_x(f: EndFaceMeasurement, d: GpuDuctDesign, b: Blowe
   micrometer(count: smaller_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth)) / 2 + um(m: d.wall))
 }
 
+// feature:signed-length-carrier -- dissolve-on: std.measure gains a signed length (affine) carrier. This is
+// the CAD boundary of this part: the one place a bed coordinate becomes product.printed_chassis.assembly_geometry
+// block's Int micrometres, and the same marker product.printed_chassis.placed_mass_model carries for its cg_*
+// coordinates. Design lengths reach it only through plane_on_end_flip_z and um(), so a millimetre passed where
+// a micrometre was meant has to come through a Micrometer first.
 fn plane_on_end_slab(x_lo: Int, x_hi: Int, y_lo: Int, y_hi: Int, z_lo: Int, z_hi: Int) -> Primitive {
   block(w: x_hi - x_lo, h: y_hi - y_lo, d: z_hi - z_lo, x: (x_lo + x_hi) / 2, y: (y_lo + y_hi) / 2, z: (z_lo + z_hi) / 2)
 }
@@ -943,6 +964,9 @@ fn plane_on_end_slab(x_lo: Int, x_hi: Int, y_lo: Int, y_hi: Int, z_lo: Int, z_hi
 // face_z to face_z + card_length, so an unmirrored stack would be built inside the card). Clamped at the
 // bed: the collector's outer wall would otherwise poke 2 mm under z = 0, and a printed part does not get
 // to occupy space below its own bed.
+// feature:signed-length-carrier -- dissolve-on: std.measure gains a signed length (affine) carrier; this is
+// the affine map itself (mirror about the end-face plane, clamp at the bed), and std.measure's Micrometer
+// inhabits Nat, so it cannot even carry the negative this map computes before the clamp.
 fn plane_on_end_flip_z(z: Int, face_z: Int) -> Int {
   let flipped = 2 * face_z - z
   if flipped < 0 { 0 } else { flipped }
@@ -1027,10 +1051,10 @@ fn plane_on_end_duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuc
       // against, and a clearance here would leave the fan with 2 mm of slop toward the card -- which is the
       // direction the plugged head lives in.
       plane_on_end_slab(x_lo: 0 - housing_x / 2 - sc, x_hi: 0 + housing_x / 2 + sc, y_lo: housing_lo_y - sc, y_hi: housing_hi_y + sc, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: housing_lo_z, face_z: face_z)),
-      plane_on_end_slab(x_lo: 0 - housing_x / 2 + wall, x_hi: 0 + housing_x / 2 - wall, y_lo: housing_lo_y - wall - 2000, y_hi: housing_lo_y + wall, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: floor_hi_z, face_z: face_z) + 2000),
+      plane_on_end_slab(x_lo: 0 - housing_x / 2 + wall, x_hi: 0 + housing_x / 2 - wall, y_lo: housing_lo_y - 2 * wall, y_hi: housing_lo_y + wall, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: floor_hi_z, face_z: face_z) + wall),
       // The passage down to the fins: the window's plug passage, cleared through the shoulder's floor and the
       // collector's floor so the turned air reaches the fins instead of striking a plate.
-      plane_on_end_slab(x_lo: window_x - plug_w / 2, x_hi: window_x + plug_w / 2, y_lo: window_y - plug_h / 2, y_hi: window_y + plug_h / 2, z_lo: plane_on_end_flip_z(z: housing_hi_z + wall + 2000, face_z: face_z), z_hi: plane_on_end_flip_z(z: seat_z - fl - 2000, face_z: face_z)),
+      plane_on_end_slab(x_lo: window_x - plug_w / 2, x_hi: window_x + plug_w / 2, y_lo: window_y - plug_h / 2, y_hi: window_y + plug_h / 2, z_lo: plane_on_end_flip_z(z: housing_hi_z + 2 * wall, face_z: face_z), z_hi: plane_on_end_flip_z(z: seat_z - fl - wall, face_z: face_z)),
       // The connector relief: printed material is taken out of the 8-pin band's own footprint for the whole
       // depth the kernel's POWER-KEEPOUT envelope claims, so the plugged connector and its latch sit in a
       // cleared window instead of pressing against the shoulder's floor. See plane_on_end_connector_relief.
