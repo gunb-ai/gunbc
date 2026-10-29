@@ -1458,12 +1458,15 @@ fn session_placement_settle_pass(instance: HostDashboardInstance, stores: Sessio
 // quiescent must adjudicate descendants themselves; this interface does not, and the residual is
 // stated as such in the PR and on #15300.
 //
-// THE RESIDUAL, STATED AS IT IS (manager ruling, 2026-10-28, with bold-dove-340's correction):
-// aggregate admission is NOT atomic across partitions, and work_provider_local's
-// compute_cold_build_cap leases are uncharged; both stay open until every charged population joins
-// one atomic parent admission with release after quiescence. Patient deferral reduces the exposure
-// but bounds nothing. Per-unit MemoryMax bounds a single job, not the sum. #15300 owns the atomic
-// commit; this change does not claim aggregate safety.
+// THE RESIDUALS, STATED AS THEY ARE (manager ruling, 2026-10-28; corrected 2026-10-29 after
+// bold-dove-340 re-read work_provider_local -- an earlier draft also named work_provider_local's
+// compute_cold_build_cap leases as uncharged, but it is deleted code since gunbc#11962 and
+// compute_reserve_opened charges compute_reserve before compute_run_opened): aggregate admission is
+// NOT atomic across partitions, and release does not prove descendant quiescence -- the pass frees
+// the seat on the terminal leader, per the paragraph above. Both stay open until every charged
+// population joins one atomic parent admission with release after quiescence. Patient deferral
+// reduces the exposure but bounds nothing. Per-unit MemoryMax bounds a single job, not the sum.
+// #15300 owns the atomic commit; this change does not claim aggregate safety.
 // ============================================================================================
 
 // THE COMPOSITE PLACEMENT KEY OF A REVIEWER. The "r" separator is a letter, not a copy of any

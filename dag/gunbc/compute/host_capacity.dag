@@ -727,12 +727,16 @@ fn host_capacity_reserve_reviewer(
 // SEPARATELY still blow it together, so the parent is accounted once, over the whole family of
 // partitions it hosts. ALL MUST RESOLVE or the room is UNESTABLISHED, and an unestablished room
 // defers -- a sibling standing that cannot be read is the very state in which an optimistic sum
-// would oversubscribe the cgroup. Residuals, declared in the manager's words (2026-10-28):
-// AGGREGATE ADMISSION IS NOT ATOMIC ACROSS PARTITIONS -- several concurrent reservations can each
-// pass the same observation and every one commits -- and work_provider_local's compute_cold_build_cap
-// leases are UNCHARGED here; both stay open until every charged population joins one atomic parent
-// admission with release after quiescence (release of a seat waits for the unit's quiescence, which
-// includes its descendants, per the pool's release law -- a terminal leader alone frees nothing).
+// would oversubscribe the cgroup. The residuals, declared in the manager's words (2026-10-28) and
+// corrected 2026-10-29 after bold-dove-340 re-read work_provider_local (an earlier draft also named
+// compute_cold_build_cap leases as uncharged -- it has been deleted code since gunbc#11962, and
+// compute_reserve_opened charges compute_reserve BEFORE compute_run_opened): AGGREGATE ADMISSION IS
+// NOT ATOMIC ACROSS PARTITIONS -- several concurrent reservations can each pass the same observation
+// and every one commits -- and RELEASE DOES NOT PROVE DESCENDANT QUIESCENCE -- the review unit is a
+// single-process transient service (KillMode=process), so the pass frees a seat on the terminal
+// LEADER, while the pool's release law waits for quiescence including descendants (a terminal leader
+// alone frees nothing); both stay open until every charged population joins one atomic parent
+// admission with release after quiescence.
 // Patient deferral reduces the exposure but bounds nothing: a unit's MemoryMax bounds that job, not
 // the sum. Closing the window is the fabric placement executor's aggregate check-in-commit
 // (gunbc.fabric's shared admission, #15300), not a parent lock beside this ledger.
