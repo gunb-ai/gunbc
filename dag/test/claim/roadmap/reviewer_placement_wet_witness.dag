@@ -4,8 +4,6 @@ import extdeps.shell
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs }
 import std.measure { kibibyte, kibibyte_count, ByteSize, byte_size_count, kibibyte_to_byte_size }
 import std.optional { Present, Absent }
-import std.algebra { Empty, FreeSemigroup }
-import v2.std.text { Char }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first, cas_generation_count }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
@@ -61,11 +59,6 @@ data node_b: String = "g5r-node-b"
 data key_b: String = "0123456789abcdef"
 data crit_other: String = "spec-conformance"
 data host: String = "srv2"
-
-// The path separator as the needle carrier: Char is a codepoint value (v2.std.text), and
-// FreeSemigroup { head; tail } is the call shape string_replace evaluates -- the one shape the
-// compiled corpus itself uses (std/compilers/target_model.dag). 47 is the '/' codepoint.
-data path_separator: Char = 47
 
 fn name_a() -> SessionReviewerName { SessionReviewerName { node_id: node_a, attempt_key: key_a, criterion_key: crit_a } }
 fn name_b() -> SessionReviewerName { SessionReviewerName { node_id: node_b, attempt_key: key_b, criterion_key: crit_other } }
@@ -410,8 +403,14 @@ test fn the_reviewer_pass_settles_only_the_slot_whose_identity_names_a_criterion
 // service gone by its own timer.
 test fn the_real_slice_reader_reads_a_unit_the_witness_started() -> Bool {
   let dir = fresh_dir(tag: "c7")
-  let token = string_replace(source: dir, needle: FreeSemigroup { head: path_separator, tail: Empty }, replacement: "-")
-  let unit = join(["gunbc-witness-g5r-", token, ".service"], "") as NonEmptyStr
+  // THE TOKEN IS SLICED IN HOST TEXT, not replaced through the structured carrier: the corpus's
+  // string_replace hands back a code-point sequence, and crossing that back into a host-text join
+  // renders the Cons tree as text (srv1 probe receipt: systemd-run refused
+  // 'gunbc-witness-g5r--Cons { head: 116, ... }'). The mktemp tail after the fixed
+  // '/tmp/gunbc_g5r_c7.' prefix is already the unique part, and it is plain [A-Za-z0-9].
+  let prefix = join(["/tmp/gunbc_g5r_", "c7", "."], "")
+  let token = substring(s: dir, start: length(prefix), end: length(dir))
+  let unit = join(["gunbc-witness-g5r-c7-", token, ".service"], "") as NonEmptyStr
   let started = shell.Exec.RunArgv(program: "systemd-run" as NonEmptyStr, arguments: ["--user", "--unit", unit as String, "-p", "MemoryMax=20971520", "-p", "RuntimeMaxSec=60", "--collect", "/bin/sleep", "60"]).exit_code == 0
   let reading = observe_slice_limit_for(unit: unit)
   let bytes_exact = match reading {
