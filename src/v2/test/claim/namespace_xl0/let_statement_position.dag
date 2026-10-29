@@ -98,7 +98,8 @@ fn lst_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSource
   }
 }
 
-data lst_ingest: SourceRootIngest = Cons {
+fn lst_ingest() -> SourceRootIngest {
+  Cons {
     head: lst_read(source: lst_ctl_body_let_source, id: ^lst_ctl_body_let_artifact, unit: ^lst_ctl_body_let_cu, path: "src/v2/test/fixture/namespace_xl0/lst_ctl_body_let.dag"),
     tail: Cons {
     head: lst_read(source: lst_ctl_arm_expr_source, id: ^lst_ctl_arm_expr_artifact, unit: ^lst_ctl_arm_expr_cu, path: "src/v2/test/fixture/namespace_xl0/lst_ctl_arm_expr.dag"),
@@ -144,6 +145,7 @@ data lst_ingest: SourceRootIngest = Cons {
   }
   }
   }
+}
 
 type LstVerdict
   = LstResolved
@@ -199,7 +201,7 @@ fn lst_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensu
 
 fn lst_verdict_in(context: NativeTestContext, module_name: String, unit: Symbol) -> LstVerdict {
   fold_list(
-    xs: native_census_modules(ingest: lst_ingest),
+    xs: native_census_modules(ingest: lst_ingest()),
     empty: LstAbsent,
     cons: fn(acc, entry) {
       if entry.module == module_name {
@@ -220,7 +222,7 @@ fn lst_verdict_in(context: NativeTestContext, module_name: String, unit: Symbol)
 }
 
 fn lst_outcomes() -> LstOutcomes {
-  match native_test_context_from_ingest(ingest: lst_ingest) {
+  match native_test_context_from_ingest(ingest: lst_ingest()) {
     Rejected { diagnostics: _ } => LstContextRefused
     Accepted { value: context, diagnostics: _ } =>
       LstOutcomesDecided {
