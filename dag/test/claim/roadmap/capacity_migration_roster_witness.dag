@@ -4,18 +4,21 @@ import std.types { Bool, List }
 import std.error_primitives { Ok, Err }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, ServeRootMount }
-import gunbc.compute.capacity_migration { CapacityTransientFamily }
-import gunbc.live_deploy.spec { DeploymentNames }
-import gunbc.roadmap.roadmap_capacity_migration { roadmap_capacity_migration_transients }
+import gunbc.compute.capacity_migration { CapacityTransientFamily, CapacityManagedUnit, CapacityConfirmedWriter, CapacityUnclassified }
+import gunbc.live_deploy.spec { DeploymentNames, deployment_agent_door_unit_name }
+import gunbc.roadmap.roadmap_capacity_migration { roadmap_capacity_migration_transients, roadmap_lab_capacity_installed_writer_reading }
 import gunbc.roadmap.roadmap_attempt_redelivery_wake { attempt_redelivery_wake_family_patterns }
 
+fn migration_roster_names() -> DeploymentNames {
+  DeploymentNames {
+    unit_name: "fixture.service",
+    tailscale_serve_endpoint: TailscaleServeEndpoint { https_port: 443, mount: ServeRootMount, backend: "http://127.0.0.1:1" },
+    tree_sync_unit_name: "fixture-tree-sync.service", tree_sync_env_path: "/fixture/tree.env", publication_principal: "fixture",
+  }
+}
+
 fn migration_roster_fixture() -> List<CapacityTransientFamily> {
-  roadmap_capacity_migration_transients(
-    names: DeploymentNames {
-      unit_name: "fixture.service",
-      tailscale_serve_endpoint: TailscaleServeEndpoint { https_port: 443, mount: ServeRootMount, backend: "http://127.0.0.1:1" },
-      tree_sync_unit_name: "fixture-tree-sync.service", tree_sync_env_path: "/fixture/tree.env", publication_principal: "fixture",
-    }, instance_id: "fixture", operating_uid: 1234)
+  roadmap_capacity_migration_transients(names: migration_roster_names(), instance_id: "fixture", operating_uid: 1234)
 }
 
 // Inhabitance: run the real family producer, including auditor and worker naming homes.
@@ -40,4 +43,17 @@ test fn unresolved_redelivery_is_not_a_successful_parent_requirement() -> Bool {
 
 test fn timer_collection_does_not_remove_its_service_from_the_family() -> Bool {
   attempt_redelivery_wake_family_patterns() == ["gunbc-attempt-redeliver-*-*-*.timer", "gunbc-attempt-redeliver-*-*-*.service"]
+}
+
+// A same-spelled user unit is not the confirmed system-manager writer. Both it
+// and an unknown installed service remain conservative drain candidates.
+test fn installed_classification_has_positive_writers_but_no_invented_negatives() -> Bool {
+  let names = migration_roster_names()
+  let serve = roadmap_lab_capacity_installed_writer_reading(names: names, unit: CapacityManagedUnit { manager: SystemManager, unit: names.unit_name })
+  let door = roadmap_lab_capacity_installed_writer_reading(names: names, unit: CapacityManagedUnit { manager: SystemManager, unit: deployment_agent_door_unit_name(names: names) })
+  let other = roadmap_lab_capacity_installed_writer_reading(names: names, unit: CapacityManagedUnit { manager: SystemManager, unit: "unknown.service" })
+  let user = roadmap_lab_capacity_installed_writer_reading(names: names, unit: CapacityManagedUnit { manager: UserManager { uid: 1234 }, unit: names.unit_name })
+  serve.standing == CapacityConfirmedWriter && door.standing == CapacityConfirmedWriter
+    && match other.standing { CapacityUnclassified { detail: _ } => true _ => false }
+    && match user.standing { CapacityUnclassified { detail: _ } => true _ => false }
 }

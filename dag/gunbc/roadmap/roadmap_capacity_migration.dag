@@ -5,7 +5,7 @@ import std.decl_ref { decl_ref }
 import std.error_primitives { Ok, Err }
 import extdeps.systemd { systemd_service_unit_suffix }
 import extdeps.systemd.manager { SystemManager, UserManager }
-import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityTransientFamily, CapacityMigrationParentRequirement, CapacityConfirmedWriter, CapacityUnclassified, capacity_migration_family_parent_requirements }
+import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityWriterReading, CapacityTransientFamily, CapacityMigrationParentRequirement, CapacityConfirmedWriter, CapacityUnclassified, capacity_migration_family_parent_requirements }
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, attempt_worker_slice_unit_name }
 import gunbc.live_deploy.spec {
   DeploymentNames, deployment_agent_door_unit_name,
@@ -30,6 +30,29 @@ import gunbc.roadmap.roadmap_attempt_redelivery_wake { attempt_redelivery_wake_f
 // from a username. All rows have manager identity, including enumerated timer/service
 // pairs. Whole-parent inhibition covers anonymous self-wrap scopes as well as named
 // units; it needs a quiet window across EVERY session using those parents on the host.
+// Positive readings for the lab's two confirmed direct reserve/settle entries.
+// This is a classification input for the installed projection, not another installed
+// roster. Every other service stays in the drain as Unclassified: no negative is
+// inferred from its name, manager, or an incomplete service-call reachability walk.
+fn roadmap_lab_capacity_installed_writer_reading(names: DeploymentNames, unit: CapacityManagedUnit) -> CapacityWriterReading {
+  if unit.manager == SystemManager && unit.unit == names.unit_name {
+    CapacityWriterReading {
+      source: decl_ref(module_path: "gunbc.roadmap.roadmap_serve", decl_name: "roadmap_serve_handle_srv1_lab"),
+      standing: CapacityConfirmedWriter,
+    }
+  } else if unit.manager == SystemManager && unit.unit == deployment_agent_door_unit_name(names: names) {
+    CapacityWriterReading {
+      source: decl_ref(module_path: "gunbc.roadmap.roadmap_serve", decl_name: "roadmap_serve_handle_srv1_lab_agent_door"),
+      standing: CapacityConfirmedWriter,
+    }
+  } else {
+    CapacityWriterReading {
+      source: decl_ref(module_path: "gunbc.roadmap.roadmap_capacity_migration", decl_name: "roadmap_lab_capacity_installed_writer_reading"),
+      standing: CapacityUnclassified { detail: join(["installed service has no covered negative reachability reading: ", unit.unit as String], "") },
+    }
+  }
+}
+
 fn roadmap_capacity_migration_activators(names: DeploymentNames) -> List<CapacityManagedUnit> {
   map([
     deployment_belt_exit_path_unit_name(names: names),
@@ -87,9 +110,11 @@ fn roadmap_capacity_migration_transients(names: DeploymentNames, instance_id: St
       manager: user_manager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_redelivery_wake", decl_name: "attempt_redelivery_wake_unit_name"),
       patterns: attempt_redelivery_wake_family_patterns(), activators: activators,
-      // No timer has yet been observed on this lab. Do not assume app.slice or
-      // borrow user-work merely because the executable can self-wrap into it.
-      parents: Err { value: "redelivery timer/service initial parent unresolved; its executable may additionally self-wrap into gunbc-user-work.slice as an anonymous run-*.scope; observe and bind both before migration" },
+      // Lab 2611d8c0508b, 2026-10-29 15:47/15:55 UTC: the triggered service
+      // was read in user app.slice. The anonymous self-wrap scope still has no
+      // parent reading: cwd refusal ended it before sampling. Keep the combined
+      // placement unresolved until the working-directory fix permits observation.
+      parents: Err { value: "redelivery service observed in user app.slice; anonymous run-*.scope parent remains unread after workspace-root refusal; observe and bind the scope parent before migration" },
     },
   ]
 }
