@@ -5,15 +5,16 @@ import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { declaration_ref_eq }
 import gunbc.auth.authorization_pattern_selection {
-  WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
+  PrivilegedEffect, WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
+  AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, PatternSelected,
+  select_authorization_pattern, pattern_identity,
 }
 import gunbc.auth.privileged_effect_census {
-  privileged_effect_census, site_verdict, convergence_principal, site,
+  privileged_effect_census, site_verdict, site,
   DivergesWithReason, Diverges, Conforms, SiteNotDecidable, PrivilegedEffectSite,
 }
 import gunbc.cloudflare.zone_authorization {
-  zone_dns_record_copy_effect, zone_r2_custom_domain_bind_effect, zone_effect_route,
-  ZoneEffectRoute, ZoneRouteByWorkloadIdentity, ZoneRouteByOperatorApproval, ZoneRouteNotAutomatable,
+  zone_dns_record_copy_effect, zone_r2_custom_domain_bind_effect,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -26,39 +27,29 @@ fn unbindable() -> WorkloadIdentityStanding {
   WorkloadIdentityUnbindable { cause: "fixture: no member can be bound" as NonEmptyStr }
 }
 
-fn routes_by_workload_identity(r: ZoneEffectRoute) -> Bool {
-  match r {
-    ZoneRouteByWorkloadIdentity { member: _ } => true
-    ZoneRouteByOperatorApproval => false
-    ZoneRouteNotAutomatable { standing: _ } => false
+fn selects_pattern(e: PrivilegedEffect, want: AuthorizationPattern) -> Bool {
+  match select_authorization_pattern(e: e) {
+    PatternSelected { pattern: p, receipt: _ } => declaration_ref_eq(a: pattern_identity(p: p), b: pattern_identity(p: want))
+    _ => false
   }
 }
 
-fn routes_by_operator_approval(r: ZoneEffectRoute) -> Bool {
-  match r {
-    ZoneRouteByWorkloadIdentity { member: _ } => false
-    ZoneRouteByOperatorApproval => true
-    ZoneRouteNotAutomatable { standing: _ } => false
-  }
+// POSITIVE: with a bindable fleet identity the selection sends each zone effect to the federated grant.
+test fn the_dns_record_copy_selects_the_federated_grant() -> Bool {
+  selects_pattern(e: zone_dns_record_copy_effect(identity: bindable()), want: FederatedScopedGrant)
 }
 
-// POSITIVE: with a bindable fleet identity, the selection sends each zone effect to the federated grant.
-test fn the_dns_record_copy_routes_by_workload_identity() -> Bool {
-  routes_by_workload_identity(r: zone_effect_route(e: zone_dns_record_copy_effect(identity: bindable())))
+test fn the_custom_domain_bind_selects_the_federated_grant() -> Bool {
+  selects_pattern(e: zone_r2_custom_domain_bind_effect(identity: bindable()), want: FederatedScopedGrant)
 }
 
-test fn the_custom_domain_bind_routes_by_workload_identity() -> Bool {
-  routes_by_workload_identity(r: zone_effect_route(e: zone_r2_custom_domain_bind_effect(identity: bindable())))
-}
-
-// DISCRIMINATING: the route is derived from the characteristics. An unbindable identity moves the same
-// effect to the operator-approved capability, so the route cannot be a stored assertion.
+// DISCRIMINATING: an unbindable identity moves the same effects to the operator-approved capability.
 test fn an_unbindable_identity_moves_the_dns_copy_to_operator_approval() -> Bool {
-  routes_by_operator_approval(r: zone_effect_route(e: zone_dns_record_copy_effect(identity: unbindable())))
+  selects_pattern(e: zone_dns_record_copy_effect(identity: unbindable()), want: OperatorApprovedCapability)
 }
 
 test fn an_unbindable_identity_moves_the_bind_to_operator_approval() -> Bool {
-  routes_by_operator_approval(r: zone_effect_route(e: zone_r2_custom_domain_bind_effect(identity: unbindable())))
+  selects_pattern(e: zone_r2_custom_domain_bind_effect(identity: unbindable()), want: OperatorApprovedCapability)
 }
 
 // INHABITANCE: the real census rows, through the real fold, with the real fleet principal. The census is
@@ -87,15 +78,4 @@ test fn the_dns_copy_site_is_enrolled_and_diverges_with_a_reason() -> Bool {
 
 test fn the_bind_site_is_enrolled_and_diverges_with_a_reason() -> Bool {
   row_diverges_with_reason(decl_name: "zone_r2_custom_domain_bind_effect")
-}
-
-test fn the_real_fleet_principal_routes_both_zone_effects_by_workload_identity_when_allocated() -> Bool {
-  match convergence_principal() {
-    WorkloadIdentityBindable { member: _ } =>
-      routes_by_workload_identity(r: zone_effect_route(e: zone_dns_record_copy_effect(identity: convergence_principal())))
-        && routes_by_workload_identity(r: zone_effect_route(e: zone_r2_custom_domain_bind_effect(identity: convergence_principal())))
-    WorkloadIdentityUnbindable { cause: _ } =>
-      routes_by_operator_approval(r: zone_effect_route(e: zone_dns_record_copy_effect(identity: convergence_principal())))
-        && routes_by_operator_approval(r: zone_effect_route(e: zone_r2_custom_domain_bind_effect(identity: convergence_principal())))
-  }
 }

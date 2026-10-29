@@ -3,13 +3,8 @@ module gunbc.cloudflare.zone_authorization
 import std.types { NonEmptyStr }
 import std.human_intervention { FleetOnce }
 import gunbc.auth.authorization_pattern_selection {
-  PrivilegedEffect, ApiSurface, WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
+  PrivilegedEffect, ApiSurface, WorkloadIdentityStanding,
   MintsNoCredential, ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
-  AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession,
-  AdministratorEdge, ApprovedConvergenceGrant,
-  AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
-  PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
-  select_authorization_pattern,
 }
 
 // ── THE AUTHORIZATION ROUTE FOR THE TWO PRIVILEGED CLOUDFLARE ZONE EFFECTS ───────────────────
@@ -17,8 +12,8 @@ import gunbc.auth.authorization_pattern_selection {
 // stop at a Cloudflare credential no pattern under gunbc.auth names. This module supplies the
 // missing half that is a MODELING fact: each zone effect is a PrivilegedEffect, the existing
 // selection (gunbc.auth.authorization_pattern_selection select_authorization_pattern) is run over it,
-// and the route is READ OFF whatever pattern that returns. The pattern is never written down here, so
-// a changed characteristic changes the route instead of leaving a stale assertion beside it.
+// and the census (gunbc.auth.privileged_effect_census, which consumes both effects and runs site_verdict
+// over them) carries the returned pattern. No second encoding of the selection lives here.
 //
 // WHAT THE CHARACTERISTICS ARE. Both effects are single-shot (FleetOnce), reversible by reapply (a
 // record or a custom-domain binding is deleted or re-put), reach a provider API, and mint nothing:
@@ -58,41 +53,5 @@ fn zone_r2_custom_domain_bind_effect(identity: WorkloadIdentityStanding) -> Priv
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
     witness_discharge: NoWitnessDischarge,
-  }
-}
-
-// ── The route, as the selection returned it ──────────────────────────────────────────────────
-// ZoneRouteByWorkloadIdentity carries the member the accessor cell must name. The refused arm
-// carries the selection itself, so a refusal stays a typed, located cause and is never read as a
-// route.
-type ZoneEffectRoute
-  = ZoneRouteByWorkloadIdentity { member: NonEmptyStr }
-  | ZoneRouteByOperatorApproval
-  | ZoneRouteNotAutomatable { standing: AuthorizationPatternSelection }
-
-fn route_of_pattern(p: AuthorizationPattern, e: PrivilegedEffect, standing: AuthorizationPatternSelection) -> ZoneEffectRoute {
-  match p {
-    FederatedScopedGrant =>
-      match e.workload_identity {
-        WorkloadIdentityBindable { member: m } => ZoneRouteByWorkloadIdentity { member: m }
-        WorkloadIdentityUnbindable { cause: _ } => ZoneRouteNotAutomatable { standing: standing }
-      }
-    OperatorApprovedCapability => ZoneRouteByOperatorApproval
-    HumanOnlyStep { step: _ } => ZoneRouteNotAutomatable { standing: standing }
-    OperatorOwnSession => ZoneRouteNotAutomatable { standing: standing }
-    AdministratorEdge => ZoneRouteNotAutomatable { standing: standing }
-    ApprovedConvergenceGrant => ZoneRouteNotAutomatable { standing: standing }
-  }
-}
-
-fn zone_effect_route(e: PrivilegedEffect) -> ZoneEffectRoute {
-  let selection = select_authorization_pattern(e: e)
-  match selection {
-    PatternSelected { pattern: p, receipt: _ } => route_of_pattern(p: p, e: e, standing: selection)
-    ManualStepRequired { step: _, receipt: _ } => ZoneRouteNotAutomatable { standing: selection }
-    NoAdmissiblePattern { causes: _, scope: _ } => ZoneRouteNotAutomatable { standing: selection }
-    PatternSelectionNeedsEvidence { needs: _ } => ZoneRouteNotAutomatable { standing: selection }
-    PatternSelectionNeedsPolicy { survivors: _ } => ZoneRouteNotAutomatable { standing: selection }
-    PatternSelectionRefused { defects: _ } => ZoneRouteNotAutomatable { standing: selection }
   }
 }
