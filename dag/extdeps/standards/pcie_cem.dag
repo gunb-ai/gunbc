@@ -4,6 +4,7 @@ import std.types { NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 
@@ -44,10 +45,6 @@ fn cem_class_bracket(class: CemHeightClass) -> CemBracket {
   match class { CemFullHeight => CemFullHeightBracket CemLowProfile => CemLowProfileBracket }
 }
 
-fn cem_height_class_wire(class: CemHeightClass) -> NonEmptyStr {
-  match class { CemFullHeight => "full-height" CemLowProfile => "low-profile" }
-}
-
 // The envelope figures, each with its standing. The slot width is the W of every class: a card that
 // occupies N slots occupies N of these across the slot direction, which is the pitch adjacent slots
 // sit at.
@@ -81,3 +78,10 @@ fn cem_class_max_card_height(class: CemHeightClass) -> CemEnvelopeFigure {
 fn cem_slot_envelope(slot_count: Nat) -> CemEnvelopeFigure {
   CemEnvelopeFigure { value: micrometer(count: micrometer_count(m: cem_slot_width.value) * slot_count), standing: cem_slot_width.standing }
 }
+
+// DESIGN section 3c declared frontier. CemHeightClass and CemBracket are consumed now (every card row
+// types its height class and brackets with them); the envelope functions and figures above are read only
+// by test.claim.duct_card_catalog_witness, which exercises them and is not a consumer.
+data pcie_cem_envelope_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the printed-chassis geometry refactor (product.printed_chassis.duct_card_catalog duct_card_catalog_consumer_frontier, following PR #15243) derives the duct's slot pitch from cem_slot_envelope over the card row's slot_count instead of the A16 blower design's slot_pitch constant, selects the bracket a part is fitted to by cem_class_bracket over the row's height class, and bounds a part's height clearance by cem_class_max_card_height where a card row's height is unread. SUFFICIENT FOR: cem_slot_width, cem_full_height_max_card_height, cem_low_profile_max_card_height, cem_class_bracket, cem_class_max_card_height and cem_slot_envelope have a production consumer." as NonEmptyStr
+)

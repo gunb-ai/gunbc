@@ -110,8 +110,6 @@ data a2_product_brief_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "www.nvidia.com/content/dam/en-zz/solutions/data-center/a2/pdf/a2-product-brief.pdf" }
 }
 
-data a2_brief_sha256: NonEmptyStr = "17c7938109972cde09dc673a70e3e064555d848d4b241bece791a2138a688b78"
-
 data a2_brief_standing: CitedFigureStanding = CitedToAuthority { authority: a2_product_brief_authority }
 
 data a2_card_row: CardRow = CardRow {
