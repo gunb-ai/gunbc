@@ -12,8 +12,15 @@ import gunbc.auth.branch_dispatch_federation {
   branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
   BootCredentialSource, BootCredentialStanding, BootCredentialSourceSelected, ReviewedMainDedicatedFederation,
   RunScopedApprovedGrant, BootCredentialSourceRefused, boot_credential_source_emit_refused_poison,
-  TrustedBranchBootIdentity, boot_grant_required_at_ref, mtcollins1_boot_mode_name,
+  TrustedBranchBootIdentity, boot_grant_required_at_ref, boot_grant_required_at_ref_with, mtcollins1_boot_mode_name,
 }
+// THE READER KEY'S STATE, AS A TYPE. The grant term's ONE exception depends on whether the branch boot route
+// exists, and the route exists exactly when that key is minted (PR #15329). So the ref-aware rules below take
+// the state as an input: the render path reads the world (and today renders NO exception, because the route is
+// closed and every branch boot still waits for its grant), while a witness can stand on the far side of the
+// mint and ask the same function what it would render. Two implementations of "does this ref need a grant" --
+// one honest, one for tests -- is how the workflow and the auth rule drift apart, so there is one.
+import gunbc.host.boot_medium_reader_key { BootMediumReaderKeyState, boot_medium_reader_key_state }
 import gunbc.auth.mtcollins1_branch_boot_trust { mtcollins1_boot_trusted_branches, mtcollins1_boot_trusted_branch_ref, mtcollins1_boot_branch_is_trusted, mtcollins1_boot_branch_provider_resource, mtcollins1_boot_branch_service_account }
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
@@ -5817,10 +5824,19 @@ fn fleet_converge_mode_is_the_approval_free_boot(mode: FleetConvergeWorkflowMode
 // cannot hold the only srv1 runner against the job that must converge its grant. Every other ref, and
 // every other mode at every ref, still requires the grant and still waits for it.
 fn fleet_converge_grant_required_at_ref(mode: FleetConvergeWorkflowMode, branch: String) -> Bool {
+  fleet_converge_grant_required_at_ref_with(state: boot_medium_reader_key_state(), mode: mode, branch: branch)
+}
+
+// THE SAME RULE, ASKED OF A GIVEN READER KEY STATE. See the import above for why this is an input at all.
+// Both sides are asserted by gunbc.test.claim.auth.branch_run_grant_witness: with the key unminted the
+// rostered ref is NOT an exception (a closed route is degraded, never approval-free), and with a minted
+// receipt it is. Today the render path takes the world's answer, which is why the committed workflow text
+// carries no ref exclusion -- it appears, by derivation, when the mint lands.
+fn fleet_converge_grant_required_at_ref_with(state: BootMediumReaderKeyState, mode: FleetConvergeWorkflowMode, branch: String) -> Bool {
   fleet_converge_grant_required(mode: mode, on_reviewed_main: false)
     && !(fleet_converge_mode_is_the_approval_free_boot(mode: mode)
       && mtcollins1_boot_branch_is_trusted(branch: branch)
-      && !boot_grant_required_at_ref(on_reviewed_main: false, branch: branch))
+      && !boot_grant_required_at_ref_with(state: state, on_reviewed_main: false, branch: branch))
 }
 
 fn fleet_converge_on_branch_expression() -> Expression {
@@ -5833,13 +5849,13 @@ fn fleet_converge_on_branch_expression() -> Expression {
 // a rostered ref. For that one case the term drops the rostered refs, so the wait job is SKIPPED there and
 // the boot job's own gate admits the skip. That is also the deadlock fix for the modes that do keep the
 // grant: a boot that never waits cannot hold the only srv1 runner against the grant run queued for it.
-fn fleet_converge_off_main_grant_required_term(mode: FleetConvergeWorkflowMode) -> Expression? {
+fn fleet_converge_off_main_grant_required_term_with(state: BootMediumReaderKeyState, mode: FleetConvergeWorkflowMode) -> Expression? {
   let base = LogicalAnd { left: fleet_converge_dispatch_mode_is(mode: mode), right: fleet_converge_on_branch_expression() }
   if fleet_converge_mode_is_the_approval_free_boot(mode: mode) {
     // ONE TERM PER ROSTER ENTRY, each from its own answer to the ref-aware question. Folded, not
     // represented: an entry's exclusion is dropped exactly when ITS ref still requires a grant, so an
     // entry added to the roster is judged on its own ref and never inherits another's answer.
-    let excluded = filter(mtcollins1_boot_trusted_branches, b => !fleet_converge_grant_required_at_ref(mode: mode, branch: b as String))
+    let excluded = filter(mtcollins1_boot_trusted_branches, b => !fleet_converge_grant_required_at_ref_with(state: state, mode: mode, branch: b as String))
     if excluded.length() == 0 {
       Present { value: base }
     } else {
@@ -5855,6 +5871,11 @@ fn fleet_converge_off_main_grant_required_term(mode: FleetConvergeWorkflowMode) 
   } else {
     Present { value: base }
   }
+}
+
+// THE RENDER PATH: the world's reader key state, read once.
+fn fleet_converge_off_main_grant_required_term(mode: FleetConvergeWorkflowMode) -> Expression? {
+  fleet_converge_off_main_grant_required_term_with(state: boot_medium_reader_key_state(), mode: mode)
 }
 
 fn fleet_converge_grant_required_term(mode: FleetConvergeWorkflowMode) -> Expression? {
@@ -5945,9 +5966,18 @@ fn fleet_converge_grant_wait_admits(mode: FleetConvergeWorkflowMode, on_reviewed
 // model would forbid what the rendered pipeline does: the wait job skips at a rostered boot ref, and only
 // the ref-aware rule says that skip is admitted rather than a missing authorization.
 fn fleet_converge_grant_wait_admits_at_ref(mode: FleetConvergeWorkflowMode, branch: String, result: GrantWaitResult) -> Bool {
+  fleet_converge_grant_wait_admits_at_ref_with(state: boot_medium_reader_key_state(), mode: mode, branch: branch, result: result)
+}
+
+// THE SAME ADMISSION, FOR A GIVEN READER KEY STATE. Closed today, a skip at the rostered boot ref is NOT
+// admitted -- the boot must wait for its grant, and a pipeline that skipped there is a run missing its
+// authorization. Minted, the skip is what the rendered pipeline does and is admitted. Asserting BOTH is the
+// point: a claim that only asserted the minted side would be satisfied by a rule that made skips admitted
+// unconditionally, which is the fail-open this whole gate exists to catch.
+fn fleet_converge_grant_wait_admits_at_ref_with(state: BootMediumReaderKeyState, mode: FleetConvergeWorkflowMode, branch: String, result: GrantWaitResult) -> Bool {
   match result {
     GrantWaitSucceeded => true
-    GrantWaitSkipped => !fleet_converge_grant_required_at_ref(mode: mode, branch: branch)
+    GrantWaitSkipped => !fleet_converge_grant_required_at_ref_with(state: state, mode: mode, branch: branch)
     GrantWaitFailed => false
     GrantWaitCancelled => false
   }

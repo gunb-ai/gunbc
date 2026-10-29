@@ -6,7 +6,7 @@ import extdeps.ssh.keys {
   SshPublicKey, AuthorizedKeyEntry, AuthorizedKeyOption, AuthorizedKeyForcedCommand, authorized_key_forced_command,
   ForcedCommandOption, NoAgentForwardingOption, NoPortForwardingOption, NoPtyOption, NoUserRcOption, NoX11ForwardingOption,
 }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, HashKnown }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { shell_command_render }
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
@@ -82,5 +82,60 @@ fn boot_medium_reader_authorized_entry() -> AuthorizedKeyEntry? {
   match boot_medium_reader_ssh_key {
     Absent => none
     Present { value: k } => boot_medium_reader_entry_for(key: k)
+  }
+}
+
+// IS THIS KEY MINTED? ASKED AS A TYPE, AT THE KEY'S OWN HOME.
+// review 87627 (PR #15287) was right: consumers asked whether `version == "pending"`, in two modules, for a
+// state that was never declared. A version string is an in-band tag -- whatever the mint happens to write
+// ("0", "", an alias the store echoed back) decides a security-relevant branch, and nothing in the type
+// system notices if the convention drifts. The mint lands FOUR things together (this module says so above:
+// "the pin, the public key and its fingerprint then land here together"), so the state has three typed
+// carriers and three states, and the decision is made once, here:
+//   Unminted    -- the store holds no pinned version and no hash: there is no receipt. The route that needs
+//                  this key must refuse by name, not fall back to the fleet key.
+//   Minted      -- a pinned version WITH a hash, the public half, and its fingerprint. All four; this is the
+//                  only state that opens anything.
+//   HalfMinted -- a hash and version arrived but the public half or its fingerprint did not. That is a
+//                  receipt that landed partially, and it is NOT minted: an entry cannot be converged without
+//                  the public half, and a readback cannot be authorized without the fingerprint to check it
+//                  against. Falling back to Unminted would call a broken mint "not yet done" and let the
+//                  route reopen on a key nobody can verify; falling forward would authorize a credential
+//                  whose public half is missing. Both refusals name why, and a witness asserts the state.
+type BootMediumReaderKeyState
+  = Unminted
+  | Minted { reference: SecretRef, public_key: SshPublicKey, fingerprint: NonEmptyStr }
+  | HalfMinted { why: NonEmptyStr }
+
+// THE DECISION OVER THE THREE CARRIERS, AS A FUNCTION OF THEM. Parameters rather than global reads, so the
+// state AFTER the mint converges can be asserted before it happens: the witnesses hand in a receipt of the
+// shape #15329 will land and check what the route does with it. `boot_medium_reader_key_state` below is the
+// only reader of the real standings.
+fn boot_medium_reader_key_state_of(reference: SecretRef, public_key: SshPublicKey?, fingerprint: NonEmptyStr?) -> BootMediumReaderKeyState {
+  match reference.hash_state {
+    HashPending => Unminted
+    HashKnown { content_hash: _ } => match public_key {
+      Absent => HalfMinted { why: "the store has a pinned version but boot_medium_reader_ssh_key is absent, so there is no public half to converge into authorized_keys" as NonEmptyStr }
+      Present { value: k } => match fingerprint {
+        Absent => HalfMinted { why: "the public half landed without boot_medium_reader_ssh_key_fingerprint, so nothing can check the private half against it" as NonEmptyStr }
+        Present { value: fp } => Minted { reference: reference, public_key: k, fingerprint: fp }
+      }
+    }
+  }
+}
+
+fn boot_medium_reader_key_state() -> BootMediumReaderKeyState {
+  boot_medium_reader_key_state_of(
+    reference: boot_medium_reader_ssh_privkey_secret,
+    public_key: boot_medium_reader_ssh_key,
+    fingerprint: boot_medium_reader_ssh_key_fingerprint
+  )
+}
+
+fn boot_medium_reader_key_is_minted() -> Bool {
+  match boot_medium_reader_key_state() {
+    Minted { reference: _, public_key: _, fingerprint: _ } => true
+    Unminted => false
+    HalfMinted { why: _ } => false
   }
 }

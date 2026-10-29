@@ -33,9 +33,16 @@ import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern,
 }
 import gunbc.auth.mtcollins1_branch_boot_trust {
-  mtcollins1_boot_branch_federation, mtcollins1_boot_branch_is_trusted, mtcollins1_boot_branch_reader_grant,
+  mtcollins1_boot_branch_federation, mtcollins1_boot_branch_federation_with, mtcollins1_boot_branch_is_trusted,
   mtcollins1_boot_branch_route_refusal_cause_with,
 }
+// THE READER KEY'S STATE, AS A TYPE, IS WHAT OPENS AND CLOSES THIS ROUTE. Imported rather than re-derived:
+// review 87627 found two consumers comparing the secret's version against the literal "pending", so the
+// question "is the key minted?" now has exactly one home (gunbc.host.boot_medium_reader_key
+// BootMediumReaderKeyState) and every reader below takes it as a parameter. The parameter, not a global read,
+// is the point -- the route is closed until #15329 mints the key, and the only way to assert the law on BOTH
+// sides of a mint that has not happened is to ask the law with the receipt in hand.
+import gunbc.host.boot_medium_reader_key { BootMediumReaderKeyState, boot_medium_reader_key_state }
 
 // ── A FLEET-CONVERGE RUN FROM A BRANCH, ADMITTED ONE RUN AT A TIME ─────────────────────────────
 // The main-only federation (gunbc.auth.fleet_convergence_federation) keeps every account it reaches
@@ -209,12 +216,21 @@ fn run_scoped_mode_named(mode: String) -> RunScopedMode? {
 // route refused it: for such modes fleet_converge_grant_required is false at every ref, main and branch
 // alike, because this is not the authority that decides their admission. Saying less is the honest move.
 fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
+  run_scoped_mode_eligible_with(state: boot_medium_reader_key_state(), mode: mode, branch: branch)
+}
+
+// THE SAME ELIGIBILITY RULE, ASKED OF A GIVEN READER KEY STATE. The ref-aware branch of the table below
+// reaches the boot's selection, and the boot's selection depends on whether the reader key exists -- so a
+// witness that wants to assert the law on both sides of the mint (a rostered boot KEEPS its grant while the
+// route is closed, and drops it after the mint) has to ask eligibility itself, not only the selection under
+// it. Production reads the world through the wrapper above.
+fn run_scoped_mode_eligible_with(state: BootMediumReaderKeyState, mode: String, branch: String) -> RunScopedMode? {
   let on_main = branch == (gunbc_default_branch_name as String)
   match run_scoped_mode_named(mode: mode) {
     Absent => none
     Present { value: m } => match m.main_route {
       MainUsesSelectedSource =>
-        if on_main { none } else if boot_grant_required_at_ref(on_reviewed_main: false, branch: branch) { Present { value: m } } else { none }
+        if on_main { none } else if boot_grant_required_at_ref_with(state: state, on_reviewed_main: false, branch: branch) { Present { value: m } } else { none }
       MainUsesGrantedAccount => run_scoped_mode_eligible_on(mode: mode, on_reviewed_main: on_main)
       MainUsesFleetIdentity => run_scoped_mode_eligible_on(mode: mode, on_reviewed_main: on_main)
     }
@@ -546,13 +562,13 @@ fn select_boot_credential_source(on_reviewed_main: Bool) -> BootCredentialStandi
 // twin), and it mints resource-scoped reads, not host root. So this effect goes through the SAME
 // selection algebra as every other effect here -- no second broker, no second consent object -- and its
 // selection lands on FederatedScopedGrant, the pattern that needs no human action per effect.
-fn branch_boot_credential_effect_approval_free() -> PrivilegedEffect {
+fn branch_boot_credential_effect_approval_free_over(state: BootMediumReaderKeyState) -> PrivilegedEffect {
   PrivilegedEffect {
     subject: "drive the mtcollins1 BMC directly as a same-repository branch dispatch of mtcollins1_boot: power-cycle it and mount its virtual CD, federating as the dedicated branch boot account through the branch boot pool" as NonEmptyStr,
     frequency: EveryOperatorRequest,
     reversibility: ReversibleByReapply,
     surface: ApiSurface,
-    workload_identity: branch_boot_workload_identity(),
+    workload_identity: branch_boot_workload_identity_over(state: state),
     minted_reach: MintsResourceScopedCredential,
     billing: NoBillingConsequence,
     // THE ACT IS NOT NEW, AND NEITHER IS ITS DISCHARGE. This effect is the SAME destructive act the
@@ -571,16 +587,27 @@ fn branch_boot_credential_effect_approval_free() -> PrivilegedEffect {
   }
 }
 
+// THE PRODUCTION READ: the effect as the world actually has it, with the reader key's real standing. The
+// census row carries this one; the _over form above exists so the same row can be asked on the far side of
+// the mint (see boot_credential_source_from_branch_selection_with for why that is a parameter at all).
+fn branch_boot_credential_effect_approval_free() -> PrivilegedEffect {
+  branch_boot_credential_effect_approval_free_over(state: boot_medium_reader_key_state())
+}
+
 // THE BINDING FACT, same shape as dedicated_boot_workload_identity for the other row: the branch account
 // is bindable exactly while its federation is provisioned, and unbindable -- so unselectable -- when it
 // is not. Nothing can be federated that was never admitted.
-fn branch_boot_workload_identity() -> WorkloadIdentityStanding {
-  match mtcollins1_boot_branch_federation() {
+fn branch_boot_workload_identity_over(state: BootMediumReaderKeyState) -> WorkloadIdentityStanding {
+  match mtcollins1_boot_branch_federation_with(state: state) {
     Present { value: f } => WorkloadIdentityBindable { member: f.service_account_member as NonEmptyStr }
     Absent => WorkloadIdentityUnbindable {
       cause: "no provisioned branch boot identity, so no branch boot credential to bind" as NonEmptyStr,
     }
   }
+}
+
+fn branch_boot_workload_identity() -> WorkloadIdentityStanding {
+  branch_boot_workload_identity_over(state: boot_medium_reader_key_state())
 }
 
 // THE RENDER FOR THE BRANCH EFFECT, through the SAME selection algebra (the pattern must be admissible
@@ -589,20 +616,23 @@ fn branch_boot_workload_identity() -> WorkloadIdentityStanding {
 // select_boot_credential_source_at_ref asks the roster first, and every other ref falls through to the
 // per-run grant. So every other row of run_scoped_modes() keeps its grant, at the trusted ref included.
 fn boot_credential_source_from_branch_selection(s: AuthorizationPatternSelection) -> BootCredentialStanding {
-  boot_credential_source_from_branch_selection_with(reader: mtcollins1_boot_branch_reader_grant(), s: s)
+  boot_credential_source_from_branch_selection_with(state: boot_medium_reader_key_state(), s: s)
 }
 
-// THE SAME SELECTION, ASKED OF A GIVEN READER CREDENTIAL. The credential is an input for one reason: the
-// route is closed until the reader keypair is minted (PR #15329), so the ONLY way to test what the
-// selection does on the other side of that mint -- without minting it, and without mutating the world to
-// pretend -- is to ask the law directly. mtcollins1_boot_branch_route_refusal_cause_with is the same
-// function the federation builder consults, so the cause a refusal reports cannot drift from the reason
-// the route is absent, and a witness that passes a minted credential gets the real post-mint answer
-// rather than a paraphrase of it.
-fn boot_credential_source_from_branch_selection_with(reader: SecretAccessGrant?, s: AuthorizationPatternSelection) -> BootCredentialStanding {
+// THE SAME SELECTION, ASKED OF A GIVEN READER KEY STATE. The state is an input for one reason: the route
+// is closed until the reader keypair is minted (PR #15329), so the ONLY way to test what the selection does
+// on the other side of that mint -- without minting it, and without mutating the world to pretend -- is to
+// ask the law directly. mtcollins1_boot_branch_route_refusal_cause_with is the same function the federation
+// builder consults, and the effect handed to the selection algebra is built from the very same state, so the
+// cause a refusal reports cannot drift from the reason the route is absent, and a witness that hands in a
+// minted receipt gets the real post-mint answer rather than a paraphrase of it. (Before review 87627 the
+// state reached this function only partway: the credential was injected while the EFFECT still read the
+// world, so a witness standing post-mint was answered by the closed route and its claims went red for a
+// reason that had nothing to do with what they asserted.)
+fn boot_credential_source_from_branch_selection_with(state: BootMediumReaderKeyState, s: AuthorizationPatternSelection) -> BootCredentialStanding {
   match s {
     PatternSelected { pattern: FederatedScopedGrant, receipt: _ } =>
-      match mtcollins1_boot_branch_route_refusal_cause_with(reader: reader) {
+      match mtcollins1_boot_branch_route_refusal_cause_with(state: state) {
         // THE CAUSE IS THE ROUTE'S OWN WORDS, carried through rather than restated here. Today it names
         // the unminted reader key; it never says "unprovisioned" when the reason is something else.
         Present { value: cause } => BootCredentialSourceRefused { cause: cause }
@@ -647,17 +677,20 @@ fn boot_credential_source_from_branch_selection_with(reader: SecretAccessGrant?,
 // credential and a force-commanded digest reader, not a fleet credential. THAT is the wall, so the
 // narrowing is load-bearing, not incidental: weaken it and the pins do not catch you.
 fn select_boot_credential_source_at_ref(on_reviewed_main: Bool, branch: String) -> BootCredentialStanding {
-  select_boot_credential_source_at_ref_with(reader: mtcollins1_boot_branch_reader_grant(), on_reviewed_main: on_reviewed_main, branch: branch)
+  select_boot_credential_source_at_ref_with(state: boot_medium_reader_key_state(), on_reviewed_main: on_reviewed_main, branch: branch)
 }
 
-// THE SAME LAW, ASKED OF A GIVEN READER CREDENTIAL -- see
-// boot_credential_source_from_branch_selection_with for why the credential is an input rather than a
+// THE SAME LAW, ASKED OF A GIVEN READER KEY STATE -- see
+// boot_credential_source_from_branch_selection_with for why the state is an input rather than a
 // global read here. The default form above is what production calls; this form is what lets a witness
 // stand on the far side of the reader-key mint (PR #15329) and ask what the branch boot selects there,
 // without minting anything and without editing the world to pretend.
-fn select_boot_credential_source_at_ref_with(reader: SecretAccessGrant?, on_reviewed_main: Bool, branch: String) -> BootCredentialStanding {
+fn select_boot_credential_source_at_ref_with(state: BootMediumReaderKeyState, on_reviewed_main: Bool, branch: String) -> BootCredentialStanding {
   if !on_reviewed_main && mtcollins1_boot_branch_is_trusted(branch: branch) {
-    boot_credential_source_from_branch_selection_with(reader: reader, s: select_authorization_pattern(e: branch_boot_credential_effect_approval_free()))
+    boot_credential_source_from_branch_selection_with(
+      state: state,
+      s: select_authorization_pattern(e: branch_boot_credential_effect_approval_free_over(state: state))
+    )
   } else {
     select_boot_credential_source(on_reviewed_main: on_reviewed_main)
   }
@@ -669,13 +702,15 @@ fn select_boot_credential_source_at_ref_with(reader: SecretAccessGrant?, on_revi
 // its own grant run queued behind it for that same runner). Every other ref, and every other mode at
 // every ref, still needs the grant and still waits for it.
 fn boot_grant_required_at_ref(on_reviewed_main: Bool, branch: String) -> Bool {
-  boot_grant_required_at_ref_with(reader: mtcollins1_boot_branch_reader_grant(), on_reviewed_main: on_reviewed_main, branch: branch)
+  boot_grant_required_at_ref_with(state: boot_medium_reader_key_state(), on_reviewed_main: on_reviewed_main, branch: branch)
 }
 
-// THE SAME ANSWER, FOR A GIVEN READER CREDENTIAL. Both sides of the mint are assertable: closed today, and
-// grant-free on a rostered ref once the key exists.
-fn boot_grant_required_at_ref_with(reader: SecretAccessGrant?, on_reviewed_main: Bool, branch: String) -> Bool {
-  match select_boot_credential_source_at_ref_with(reader: reader, on_reviewed_main: on_reviewed_main, branch: branch) {
+// THE SAME ANSWER, FOR A GIVEN READER KEY STATE. Both sides of the mint are assertable: closed today, and
+// grant-free on a rostered ref once the key exists. CLOSED MEANS DEGRADED, NEVER APPROVAL-FREE: a refused
+// selection returns true here, so a rostered branch whose route is shut still waits for its grant rather
+// than booting unattended.
+fn boot_grant_required_at_ref_with(state: BootMediumReaderKeyState, on_reviewed_main: Bool, branch: String) -> Bool {
+  match select_boot_credential_source_at_ref_with(state: state, on_reviewed_main: on_reviewed_main, branch: branch) {
     BootCredentialSourceSelected { source: s } => match s { TrustedBranchBootIdentity => false  _ => true }
     BootCredentialSourceRefused { cause: _ } => true
   }

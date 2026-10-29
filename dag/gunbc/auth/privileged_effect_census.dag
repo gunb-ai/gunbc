@@ -1,6 +1,7 @@
 module gunbc.auth.privileged_effect_census
 
 import gunbc.fleet.printer_federation {printer_service_account}
+import gunbc.design_ruling { mtcollins1_branch_boot_is_approval_free }
 import gunbc.auth.github_gcp_federation {federated_service_account_member}
 import gunbc.auth.standing_operator_grant {
   mtjade1_live_standing_grant,
@@ -1547,12 +1548,14 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   // when a human can ATTEND it, and reserves the administrator edge for a MintsHostRootReach an attended human
   // could not approve in time. Neither half reaches this effect. A BMC power-cycle of a lab unit is not
   // MintsHostRootReach (its reach is MintsResourceScopedCredential -- a token scoped to the boot account, which
-  // mints no host root), and a human HAS attended: the operator consented to this exact effect, by name, out of
-  // band, permanently, in this lane's chat. The 2026-09-23/25 rulings already made the act approval-free on
-  // main; these extend that no-approval selection to same-repository branch dispatches. So this row selects
-  // FederatedScopedGrant, and it is the SAME selection the on-reviewed-main row already makes -- the ruling
-  // widened WHO MAY DISPATCH, not HOW THE EFFECT IS AUTHORIZED. It is a no-approval selection, not an approval
-  // route, and it adds no second route to the broker.
+  // mints no host root), and a human HAS attended: the operator's consent is a typed row,
+  // `gunbc.design_ruling mtcollins1_branch_boot_is_approval_free`, whose provenance carries their words
+  // verbatim — an mtcollins1 boot "is not sensitive", merry-fox-82 holds "permission to boot it endlessly", and
+  // a boot from a non-main integration branch "shouldn't need an approval". The 2026-09-23/25 rulings already
+  // made the act approval-free on main; that row extends the same no-approval selection to same-repository
+  // branch dispatches. So this row selects FederatedScopedGrant, and it is the SAME selection the on-reviewed-main
+  // row already makes — the ruling widened WHO MAY DISPATCH, not HOW THE EFFECT IS AUTHORIZED. It is a
+  // no-approval selection, not an approval route, and it adds no second route to the broker.
   //
   // WHY NO NEW DISCHARGE AND NO NEW INTERLOCK ROW: the destructive ACT and its discharge are unchanged. The
   // irreversibility of a mtcollins1 boot is discharged by mtcollins1_operator_ruling at the boot's own actuation
@@ -2176,6 +2179,47 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
 ]
+
+// THE OPERATOR CONSENT THAT MAKES THE BRANCH BOOT APPROVAL-FREE, AS A READABLE STRING.
+// `gunbc.auth.branch_dispatch_federation`'s TrustedBranchBootIdentity arm cites this datum by name, and
+// review 87627 was right that it cited a symbol that did not exist: the 2026-10-22/23 permission lived
+// only in `//` prose, which DESIGN §4c does not accept as a carrier and DESIGN §3 does not accept as a
+// citation. The words now live in a typed row — `gunbc.design_ruling mtcollins1_branch_boot_is_approval_free`
+// — and this reads them out of it, so the citation resolves and there is one home for the text.
+// `gunbc.test.claim.auth.branch_run_grant_witness` asserts the row is registered AND that these words
+// survive in it: a ruling that gets emptied turns that claim red rather than leaving the trust standing on
+// nothing but a comment.
+fn mtcollins1_branch_boot_operator_ruling_text() -> String {
+  mtcollins1_branch_boot_is_approval_free.provenance
+}
+
+// WHICH CONSENT BACKS WHICH SITE, AS DATA.
+// A PrivilegedEffectSite has no prose field to hold a citation -- subject, frequency, reversibility, surface,
+// workload identity, minted reach, billing, discharge (authorization_pattern_selection.dag:188-197) -- so
+// there is nowhere in the ROW to put one, and inventing a free-text field on every row so that one row could
+// cite its own permission is the annotation-as-evidence DESIGN section 4c refuses. The association is
+// therefore a roster keyed by the very site identity the row already carries. A witness joins this list
+// against gunbc.design_ruling's registry: a site backed by a ruling that does not resolve is red, which is
+// the check the census's other join already performs for cited declarations (CITED-DECLARATION-ABSENT, :123).
+type SiteRulingLinkage {
+  site: DeclarationRef
+  ruling: DeclarationRef
+}
+
+data ruling_backed_privileged_sites: List<SiteRulingLinkage> = [
+  SiteRulingLinkage {
+    site: site(module_path: "gunbc.auth.branch_dispatch_federation", decl_name: "branch_boot_credential_effect_approval_free"),
+    ruling: mtcollins1_branch_boot_is_approval_free.reference,
+  },
+]
+
+fn site_ruling_linkage(target: DeclarationRef) -> SiteRulingLinkage? {
+  let hits = filter(ruling_backed_privileged_sites, l => declaration_ref_eq(a: l.site, b: target))
+  match hits.first() {
+    Present { value: l } => Present { value: l }
+    Absent => none
+  }
+}
 
 // ── THE FOLLOW-UPS, RANKED, AS A MONOTONE DEBT CONTRACT AT IDENTITY GRAIN ────────────────────
 // The unreasoned divergences the census finds today are rostered here BY SITE IDENTITY and in the
