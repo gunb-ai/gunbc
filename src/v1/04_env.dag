@@ -2654,8 +2654,7 @@ fn declaration_named_by_type_name(name: String, env: TypeEnv) -> DeclarationRef?
       if qualified_all_but_last(name: name) != "" { none }
       else {
         match map_get(env.symbol_index.global_bare, name) {
-          Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } =>
-            if global_bare_declarer_in_scope(env_module_path: env.module_path, declarer: mp) { Present { value: decl_ref(module_path: mp, decl_name: name) } } else { none }
+          Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } => Present { value: decl_ref(module_path: mp, decl_name: name) }
           _ => none
         }
       }

@@ -4592,11 +4592,7 @@ pub fn declaration_named_by_type_name(
                             module_path: mp,
                             ..
                         }) => {
-                            if global_bare_declarer_in_scope(env.module_path.clone(), mp.clone()) {
-                                Some(crate::std_decl_ref::decl_ref(mp.clone(), name.clone()))
-                            } else {
-                                std::option::Option::None
-                            }
+                            Some(crate::std_decl_ref::decl_ref(mp.clone(), name.clone()))
                         }
                         _ => std::option::Option::None,
                     }
