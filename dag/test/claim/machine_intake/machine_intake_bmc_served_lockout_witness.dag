@@ -32,7 +32,7 @@ module test.claim.machine_intake.machine_intake_bmc_served_lockout_witness
 // fixture's served reading; the live read that would replace the fixture is
 // gunbc.machine_intake.bmc_secure::bmc_served_lockout_live_read_frontier.
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, split }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Absent, Present }
 import std.algebra { length, list_head }
@@ -61,6 +61,7 @@ import gunbc.machine_intake.bmc_secure {
   RedfishAccountServiceLogin, IpmiLanPlusLogin,
   BmcDeclaredLoginRetry, SurfaceOfThePlannedWriteUndetermined, DeclaredRetryLogin,
   bmc_plan_failing_logins, bmc_failed_login_budget_verdict, bmc_known_failed_logins_of,
+  BmcKnownFailedLogin,
   bmc_spend_count, bmc_lockout_threshold, bmc_lockout_reading_not_read,
   dry_read_bmc_account_state, plan_bmc_account_action, dry_bmc_account_instant,}
 import test.fixture.machine_intake.bmc_lockout {
@@ -541,6 +542,11 @@ test fn a_login_the_plan_cannot_name_a_surface_for_is_bounded_by_what_was_actual
   skewed_refuses && generous_admits && half_a_reading_refuses_by_cause && named_surface_keeps_its_own_policy
 }
 
+// Root's counter on the surface the root rotation authenticates on.
+fn root_redfish_key() -> BmcFailedLoginBudgetKey {
+  BmcFailedLoginBudgetKey { account: root_user, surface: RedfishAccountServiceLogin }
+}
+
 // A ROSTER OF `count` LOGINS ON THE SURFACE A WRITE WITH NO NAMED REQUEST GETS.
 // DeclaredRetryLogin is the one arm that carries a surface without implying which
 // transport authenticated, which is exactly the shape of the undetermined write.
@@ -593,6 +599,45 @@ fn refused_verdict(verdict: BmcFailedLoginBudgetVerdict) -> Bool {
     FailedLoginBudgetAdmitted { spends: _, exempt: _ } => false
     FailedLoginBudgetRefused { blocked: _, spends: _, exempt: _ } => true
   }
+}
+
+// RUNG: the counted-failure subtraction under a clock that went backwards — the
+// known failure stamped AFTER the plan's own instant, at function level on
+// bmc_failed_login_budget_verdict. The controller counts every failed attempt
+// until the served AccountLockoutCounterResetAfter window passes it away, so a
+// failure the operator cannot show to be old is a failure still counted; a rejection
+// stamped ahead of the plan instant (the observer clock skewed between the rejection
+// and the plan, or a plan minted from an instant earlier than its reading) cannot be
+// shown to be old either, and leaving it out was the ONE arm of that subtraction
+// that went the other way — every other arm (unread window, never-reset window, a
+// served 0-second window) counts everything, deliberately. It is also the one
+// arithmetic slip that RAISES the headroom instead of lowering it: at threshold 3
+// with two such failures the plan was told it may fail twice more, which is exactly
+// the two that reach 3 and lock the account.
+// THE RED is the pair stamped ahead of `now` (a gate that ignores them admits the
+// plan, and the typed block reports the window count it saw). THE POSITIVE CONTROL
+// is the same pair stamped well outside the served 300-second window: genuinely
+// old, not counted, and the same plan admits on the same reading.
+test fn a_failure_stamped_after_the_plan_instant_is_still_counted() -> Bool {
+  let served_window = lockout_redfish_window(read_at: t_read, redfish_threshold: 3, reset_after_secs: 300)
+  let ahead = [
+    BmcKnownFailedLogin { key: root_redfish_key(), at: t_plan + 1 },
+    BmcKnownFailedLogin { key: root_redfish_key(), at: t_plan + 2 },
+  ]
+  let long_ago = [
+    BmcKnownFailedLogin { key: root_redfish_key(), at: t_plan - 300001 },
+    BmcKnownFailedLogin { key: root_redfish_key(), at: t_plan - 300002 },
+  ]
+  let one_more = named_redfish_roster(count: 1)
+  let ahead_refuses = match list_head(blocks_of(bmc_failed_login_budget_verdict(roster: one_more, reading: served_window, known: ahead, now: t_plan))) {
+    Absent => false
+    Present { value: b } => match b.block {
+      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: _, known_failures_in_window: used } => c == 1 && m == 0 && used == 2
+      FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
+    }
+  }
+  let aged_admits = admitted_verdict(bmc_failed_login_budget_verdict(roster: one_more, reading: served_window, known: long_ago, now: t_plan))
+  ahead_refuses && aged_admits
 }
 
 fn blocks_of(verdict: BmcFailedLoginBudgetVerdict) -> List<BmcFailedLoginBudgetBlockReading> {

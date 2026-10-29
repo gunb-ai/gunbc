@@ -3773,7 +3773,16 @@ fn bmc_known_failures_in_window(known: List<BmcKnownFailedLogin>, key: BmcFailed
       if window_ms <= 0 {
         list_length(mine)
       } else {
-        list_length(filter(mine, k => now >= k.at && (now - k.at) <= window_ms))
+        // Only a failure the operator CAN show to be older than the served window
+        // stops counting. A failure stamped AFTER `now` — the observer clock skewed
+        // between the rejection and the plan instant, or a plan minted from an
+        // instant earlier than its own reading — cannot be shown to be old any more
+        // than one inside the window can, so it counts. Every other arm of this
+        // match counts everything for exactly that reason, and this arm is no
+        // exception: dropping such a failure is the one place the arithmetic could
+        // RAISE the headroom by not noticing something, which is an uncounted
+        // degradation with a lockout on the other side of it (DESIGN.md §5).
+        list_length(filter(mine, k => k.at > now || (now - k.at) <= window_ms))
       }
     }
   }
