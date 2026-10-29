@@ -14,8 +14,8 @@ import gunbc.runner.runner_microvm_lifecycle { AttemptIdentity }
 import gunbc.runner.runner_microvm_lifecycle_realize { AttemptLaunch, bind_attempt_console, AttemptConsoleBound }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_controller_slice_unit_name }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
-import gunbc.workspace_allocation_milestones { workspace_first_ready_at, workspace_observed_duration }
-import gunbc.workspace_allocation_store { workspace_read_owner, WorkspaceStoreReadOk }
+import gunbc.workspace_allocation_milestones { workspace_first_ready_at, workspace_observed_duration, workspace_milestone_store }
+import gunbc.workspace_allocation_store { workspace_read_owner, WorkspaceStoreReadOk, workspace_allocation_store }
 import gunbc.clock_read { clock_now_probed_at }
 import extdeps.systemd { SystemdUnitProperty, MemoryPeak, MemoryMax, MemorySwapMax, InvocationIDProperty, systemd_unit_property_wire }
 import extdeps.languages.json.emit { JsonValue, json_null, json_object, json_kv, json_string, json_int, serialize_json }
@@ -37,9 +37,21 @@ fn workspace_metric_unit(unit: NonEmptyStr) -> JsonValue {
   ])
 }
 
+// THE ONE DECLARATION OF THE RUNTIME-METRICS SLOT FAMILY (see WorkspaceAllocationSlotsDeclaration for the shape).
+type WorkspaceMetricsSlotsDeclaration { member: NonEmptyStr }
+
+data workspace_metrics_slots: WorkspaceMetricsSlotsDeclaration = WorkspaceMetricsSlotsDeclaration { member: "workspace-metrics" as NonEmptyStr }
+
+// THE METRICS STORE, SEALED: workspace_metrics_store is the one mint (binding in, member from the declaration, no path).
+type WorkspaceMetricsStore sole_constructor { binding: FabricStorageBinding, member: NonEmptyStr }
+
+fn workspace_metrics_store(binding: FabricStorageBinding) -> WorkspaceMetricsStore {
+  WorkspaceMetricsStore { binding: binding, member: workspace_metrics_slots.member }
+}
+
 // Called before shared teardown removes the attempt unit. The two invocation reads fence a
 // unit-name reuse during measurement. This is a before-teardown sample, not a final exit peak.
-fn workspace_capture_runtime_metrics(store: FabricStorageBinding, reservation: WorkspaceReservation, identity: AttemptIdentity, launch: AttemptLaunch) -> Bool {
+fn workspace_capture_runtime_metrics(store: WorkspaceMetricsStore, reservation: WorkspaceReservation, identity: AttemptIdentity, launch: AttemptLaunch) -> Bool {
   if identity.allocation_generation != reservation.generation || identity.attempt.slot != reservation.slot { false }
   else { match bind_attempt_console(identity: identity, launch: launch) {
     AttemptConsoleBound { unit: attempt_unit, systemd_invocation: before } => match clock_now_probed_at() {
@@ -55,14 +67,14 @@ fn workspace_capture_runtime_metrics(store: FabricStorageBinding, reservation: W
           AttemptConsoleBound { unit: after_unit, systemd_invocation: after } => if after_unit != attempt_unit || after != before || serialize_json(v: controller_before) != serialize_json(v: controller_after) || serialize_json(v: controller_before) != serialize_json(v: json_string(s: identity.invocation_id as String)) {
             false
           } else {
-            let requested_at = match workspace_read_owner(store: store, owner: reservation.request.owner) {
+            let requested_at = match workspace_read_owner(store: workspace_allocation_store(binding: store.binding), owner: reservation.request.owner) {
               WorkspaceStoreReadOk { snapshot: owner_state } => match filter(owner_state.allocations, a => a.request.idempotency_key == reservation.request.idempotency_key).first() {
                 Present { value: allocation } => allocation.recorded_at
                 Absent => ""
               }
               other => ""
             }
-            let ready_at = workspace_first_ready_at(store: store, reservation: reservation)
+            let ready_at = workspace_first_ready_at(store: workspace_milestone_store(binding: store.binding), reservation: reservation)
             let wire = serialize_json(v: json_object(members: [
               json_kv(key: "schema", value: json_string(s: "workspace-runtime-metrics/1")),
               json_kv(key: "reservation", value: workspace_reservation_json(reservation: reservation)),
@@ -78,9 +90,9 @@ fn workspace_capture_runtime_metrics(store: FabricStorageBinding, reservation: W
               json_kv(key: "controller", value: controller_sample),
               json_kv(key: "controller_ancestor_slice", value: controller_slice),
             ])) as NonEmptyStr
-            let key = concat("workspace-metrics-", serialize_content_hash(hash: content_hash_of_value(value: concat(serialize_json(v: workspace_reservation_json(reservation: reservation)), identity.invocation_id as String) as NonEmptyStr)) as String) as NonEmptyStr
+            let key = concat(concat(store.member as String, "-"), serialize_content_hash(hash: content_hash_of_value(value: concat(serialize_json(v: workspace_reservation_json(reservation: reservation)), identity.invocation_id as String) as NonEmptyStr)) as String) as NonEmptyStr
             match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: wire) {
-              DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+              DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store.binding, verified: proposed) {
                 CasCommitted { committed: _ } => true
                 other => false
               }

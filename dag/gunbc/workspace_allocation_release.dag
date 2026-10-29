@@ -27,8 +27,20 @@ type WorkspaceReleasePreparation
 
 data workspace_release_reason: NonEmptyStr = "workspace sanitation observed" as NonEmptyStr
 
-fn workspace_release_key(reservation: WorkspaceReservation) -> NonEmptyStr {
-  concat("workspace-release-", serialize_content_hash(hash: content_hash_of_value(value: serialize_json(v: workspace_reservation_json(reservation: reservation)) as NonEmptyStr)) as String) as NonEmptyStr
+// THE ONE DECLARATION OF THE RELEASE-PLAN SLOT FAMILY (see WorkspaceAllocationSlotsDeclaration for the shape).
+type WorkspaceReleaseSlotsDeclaration { member: NonEmptyStr }
+
+data workspace_release_slots: WorkspaceReleaseSlotsDeclaration = WorkspaceReleaseSlotsDeclaration { member: "workspace-release" as NonEmptyStr }
+
+// THE RELEASE STORE, SEALED: workspace_release_store is the one mint (binding in, member from the declaration, no path).
+type WorkspaceReleaseStore sole_constructor { binding: FabricStorageBinding, member: NonEmptyStr }
+
+fn workspace_release_store(binding: FabricStorageBinding) -> WorkspaceReleaseStore {
+  WorkspaceReleaseStore { binding: binding, member: workspace_release_slots.member }
+}
+
+fn workspace_release_key(store: WorkspaceReleaseStore, reservation: WorkspaceReservation) -> NonEmptyStr {
+  concat(concat(store.member as String, "-"), serialize_content_hash(hash: content_hash_of_value(value: serialize_json(v: workspace_reservation_json(reservation: reservation)) as NonEmptyStr)) as String) as NonEmptyStr
 }
 
 fn workspace_release_derive(reservation: WorkspaceReservation, released_at: Timestamp) -> WorkspaceReleasePreparation {
@@ -67,23 +79,23 @@ fn workspace_release_decode(reservation: WorkspaceReservation, wire: NonEmptyStr
   }
 }
 
-fn workspace_release_read(store: FabricStorageBinding, reservation: WorkspaceReservation) -> WorkspaceReleasePreparation {
-  match fabric_storage_observe_cas_slot(store: store, key: workspace_release_key(reservation: reservation)) {
+fn workspace_release_read(store: WorkspaceReleaseStore, reservation: WorkspaceReservation) -> WorkspaceReleasePreparation {
+  match fabric_storage_observe_cas_slot(store: store.binding, key: workspace_release_key(store: store, reservation: reservation)) {
     CasObservedReadable { readable: CasReadablePresent { version: stored } } => workspace_release_decode(reservation: reservation, wire: stored.value)
     other => WorkspaceReleaseRefused { reason: "durable release intent is absent or unreadable" }
   }
 }
 
-fn workspace_release_prepare(store: FabricStorageBinding, reservation: WorkspaceReservation, released_at: Timestamp) -> WorkspaceReleasePreparation {
-  match fabric_storage_observe_cas_slot(store: store, key: workspace_release_key(reservation: reservation)) {
+fn workspace_release_prepare(store: WorkspaceReleaseStore, reservation: WorkspaceReservation, released_at: Timestamp) -> WorkspaceReleasePreparation {
+  match fabric_storage_observe_cas_slot(store: store.binding, key: workspace_release_key(store: store, reservation: reservation)) {
     CasObservedUnreadable { cause: _ } => WorkspaceReleaseRefused { reason: "release intent store is unreadable" }
     CasObservedReadable { readable: CasReadablePresent { version: prior } } => workspace_release_decode(reservation: reservation, wire: prior.value)
     CasObservedReadable { readable: CasReadableAbsent } => match workspace_release_derive(reservation: reservation, released_at: released_at) {
       WorkspaceReleasePrepared { plan: prepared } => match admit_cas_attempt_for_derived_payload(
-        key: workspace_release_key(reservation: reservation), expected: ExpectSlotAbsent, proposed: workspace_release_wire(plan: prepared),
+        key: workspace_release_key(store: store, reservation: reservation), expected: ExpectSlotAbsent, proposed: workspace_release_wire(plan: prepared),
       ) {
         DerivedPayloadKeyNotSlotAddressable { key: _ } => WorkspaceReleaseRefused { reason: "release intent key is not addressable" }
-        DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+        DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store.binding, verified: proposed) {
           CasCommitted { committed: _ } => WorkspaceReleasePrepared { plan: prepared }
           CasPreconditionFailed { expected: _, observed: _ } => workspace_release_read(store: store, reservation: reservation)
           CasStoreRefused { cause: _ } => WorkspaceReleaseRefused { reason: "release intent could not be durably published" }

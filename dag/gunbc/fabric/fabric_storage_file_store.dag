@@ -55,7 +55,13 @@ import extdeps.filesystem.filesystem_io {
 // (gunbc.fabric.fabric_storage_placement fabric_storage_placed_store); a root built with no declared
 // mode publishes at the writing process's umask, which is what a single-principal fixture wants and
 // what a store with two principals must not rely on.
-type FabricStorageFileRoot {
+// SEALED CONSTRUCTION: only this module builds the record, through the two path mints below. A forged
+// record literal or cast elsewhere is a SoleConstructorViolation. The path mints stay exported, so a
+// caller-chosen path is still a route to a FileRoot and to FabricStorageLocalFiles { root }: the declared
+// residual gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module. No rung is
+// claimed for it. LocalFiles carrying FabricStorageOperations instead waits on C-compute sealing the capacity
+// store (gunbc.compute.host_capacity, which builds this arm over its own root).
+type FabricStorageFileRoot sole_constructor {
   objects: NonEmptyStr
   heads: NonEmptyStr
   entry_mode: FileMode?
