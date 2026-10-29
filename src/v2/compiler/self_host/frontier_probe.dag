@@ -2,24 +2,16 @@ module v2.compiler.self_host.frontier_probe
 
 import std.types { List }
 import v2.std.node { symbol_intern_lexeme, symbol_lexeme, Symbol }
-import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest
 }
 import v2.compiler.name_resolve {
   Admission,
-  Import,
-  ModuleRootMissing,
   ResolutionSubject,
-  module_root_lookup,
-  resolve_diagnostics,
-  validate_module_roots
+  resolve_diagnostics
 }
 import v2.compiler.program_assembly {
-  assemble_program_from_ingest,
-  program_assembly_fold_ingest,
-  ProgramAssemblyFoldFailed,
-  ProgramAssemblyFoldOk
+  assemble_program_from_ingest
 }
 import v2.compiler.self_host.frontier_probe_assemble_detail {
   frontier_probe_receipt_from_assemble_rejection
@@ -86,6 +78,7 @@ import v2.std.diagnostic {
   diagnostics_fatal,
   diagnostics_fatal_reason,
   Correction,
+  DeclarationLocus,
   Diagnostic,
   LocusAnchor,
   NonEmptyDiagnostics,
@@ -291,65 +284,30 @@ fn frontier_probe_read_failure_reason(result: SourceRefReadResult) -> Symbol {
   }
 }
 
-fn frontier_probe_first_missing_import_lookup(
-  roots: FreeMonoid<NormalizedTree>,
-  imports: FreeMonoid<Import>
-) -> Optional<QualifiedName> {
-  fold_list(
-    xs: imports,
-    empty: optional_absent(),
-    cons: fn(acc, import_edge) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match module_root_lookup(roots: roots, name: import_edge.target) {
-            ModuleRootMissing { requested: qn } => optional_present(value: qn)
-            ModuleRootFound { root: _ } => optional_absent()
-            ModuleRootAmbiguous { requested: _ } => optional_absent()
-            ModuleRootLookupRejected { diagnostics: _ } => optional_absent()
-          }
-      }
-    }
-  )
-}
-
-fn frontier_probe_missing_module_from_assemble_context(
-  ingest: SourceRootIngest,
-  admission: Admission,
-  d: NonEmptyDiagnostics,
-  reason: Symbol
-) -> Optional<QualifiedName> {
-  if reason != ^resolve_module_not_found {
-    optional_absent()
-  } else {
-    match program_assembly_fold_ingest(ingest: ingest, lm: dag_language_model()) {
-      ProgramAssemblyFoldFailed { diagnostics: _ } => optional_absent()
-      ProgramAssemblyFoldOk { roots: roots, index: _ } =>
-        match validate_module_roots(roots: roots) {
-          Rejected { diagnostics: _ } => optional_absent()
-          Accepted { value: validated_roots, diagnostics: _ } =>
-            frontier_probe_first_missing_import_lookup(
-              roots: validated_roots.roots,
-              imports: admission.imports
-            )
-        }
-    }
+// WHY THE MISSING NAME IS READ OFF THE DIAGNOSTIC RATHER THAN RE-FOUNDED. This used to fold the whole
+// ingest again -- program_assembly_fold_ingest, then validate_module_roots, then module_root_lookup over
+// admission.imports -- to rediscover which import had no root. That was a SECOND derivation of a fact the
+// refusal itself already states, able to disagree with the refusal it was reporting (DESIGN section 3: each
+// fact lives in exactly one place), and it re-derived the answer only for the one reason the caller had
+// already named. v2.compiler.name_resolve's `resolve_module_not_found` mint now cites the requested name as
+// the typed `Locus::DeclarationLocus` std.diagnostic sanctions for a qualified name, so the probe reads
+// that citation. A not_found reached from a route that cites no declaration yields Absent -- the receipt
+// then says the identity is unavailable instead of inventing one by re-folding.
+fn frontier_probe_missing_module_from_diagnostic(d: NonEmptyDiagnostics) -> Optional<QualifiedName> {
+  let fatal = diagnostics_fatal(d: d)
+  match fatal {
+    Diagnostic { reason: _, at: DeclarationLocus { declaration: declaration }, correction: _ } =>
+      optional_present(value: declaration)
+    _ => optional_absent()
   }
 }
 
 fn frontier_probe_detail_from_diagnostic(
   reason: Symbol,
-  d: NonEmptyDiagnostics,
-  ingest: SourceRootIngest,
-  admission: Admission
+  d: NonEmptyDiagnostics
 ) -> FrontierProbeDetail {
   if reason == ^resolve_module_not_found {
-    match frontier_probe_missing_module_from_assemble_context(
-      ingest: ingest,
-      admission: admission,
-      d: d,
-      reason: reason
-    ) {
+    match frontier_probe_missing_module_from_diagnostic(d: d) {
       Present { value: qn } => MissingModule { requested: qn }
       Absent => FrontierProbeDetailAbsent
     }
@@ -597,12 +555,7 @@ fn frontier_probe_receipt_from_admission_diagnostic_rejected(
     blocker_class: blocker,
     located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
     located_reason: reason,
-    detail: frontier_probe_detail_from_diagnostic(
-      reason: reason,
-      d: d,
-      ingest: ingest,
-      admission: admission
-    ),
+    detail: frontier_probe_detail_from_diagnostic(reason: reason, d: d),
     assemble_detail: NoFrontierProbeDetail
   }
 }
@@ -705,9 +658,7 @@ fn frontier_probe_emit_from_populated_ingest(
         diagnostics: d,
         detail: frontier_probe_detail_from_diagnostic(
           reason: diagnostics_fatal_reason(d: d),
-          d: d,
-          ingest: ingest,
-          admission: admission
+          d: d
         )
       )
     Accepted { value: _, diagnostics: _ } =>
