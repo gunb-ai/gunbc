@@ -253,9 +253,10 @@ fn render_subordinate_file(reading: SubordinateFileReading, rs: List<Subordinate
 }
 
 // WHAT CONVERGE OWES THE FILE. None is a real answer, not a placeholder: a host that already declares
-// exactly the wanted range needs no usermod, and a step that no-ops by running usermod anyway would be
-// a write to a file nobody needed changed. Blocked is NOT a refusal to do the work — it is this module
-// saying it will not move a range it cannot prove is safe, with the reason naming the owner.
+// exactly the wanted range needs no write at all, and publishing the file unchanged because the render
+// happens to equal it would take the fleet lock to change nothing -- which is the same mistake the
+// no-op `usermod` step was, in a different costume. Blocked is NOT a refusal to do the work — it is this
+// module saying it will not move a range it cannot prove is safe, with the reason naming the owner.
 type SubordinateReconcile
   = SubordinateReconcileNone
   | SubordinateReconcileGrant { account: NonEmptyStr, first: Int, count: Int }
