@@ -145,6 +145,7 @@ import gunbc.fleet.organization_runner_roster_read_credential { organization_run
 import gunbc.ci.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
+import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
 import gunbc.merge_admission_produce {
   ci_repo_root_shell,
 }
@@ -886,9 +887,28 @@ data gunbc_ci_export_host_reader_converge_target: GunbcRunStepTarget = GunbcRunS
   function: "export_host_reader_converge_wet",
 }
 
-data gunbc_ci_boot_medium_reader_key_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/host/boot_medium_reader_key_mint.dag",
-  function: "boot_medium_reader_key_mint_wet",
+// THE MINT RUNS THE ENTRY ITS SUBJECT NAMES, not one entry per key. One policy with a row per keypair
+// (gunbc.host.fleet_keypair_mint) means one dispatch mode, and a dispatch mode whose step ran a fixed entry
+// would defeat it: the row a step was built from could disagree with the module that actually ran, which is
+// exactly the shape of "I minted the host key" printed by a run that minted the reader key. So the entry and
+// function are taken FROM the subject row, and
+// gunbc.fleet.fleet_converge_workflow builds each step from the row whose receipt it also uploads.
+fn gunbc_ci_fleet_keypair_mint_target(subject: FleetKeypairMintSubject) -> GunbcRunStepTarget {
+  GunbcRunStepTarget {
+    entry: subject.mint_entry,
+    function: subject.mint_function,
+  }
+}
+
+fn gunbc_ci_fleet_keypair_mint_invoke(subject: FleetKeypairMintSubject) -> String {
+  let target = gunbc_ci_fleet_keypair_mint_target(subject: subject)
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: target.entry,
+    function: target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
 }
 
 data gunbc_ci_flex_pass_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1486,7 +1506,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_r2_cache_object_read_mint_target,
     gunbc_ci_hetzner_cloud_server_read_target,
     gunbc_ci_export_host_reader_converge_target,
-    gunbc_ci_boot_medium_reader_key_mint_target,
     gunbc_ci_flex_pass_target,
     gunbc_ci_flex_template_ensure_target,
     gunbc_ci_branch_run_grant_request_target,
@@ -3014,16 +3033,6 @@ fn gunbc_ci_export_host_reader_converge_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_export_host_reader_converge_target.entry,
     function: gunbc_ci_export_host_reader_converge_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-fn gunbc_ci_boot_medium_reader_key_mint_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_boot_medium_reader_key_mint_target.entry,
-    function: gunbc_ci_boot_medium_reader_key_mint_target.function,
     claim_run: false,
     receipt_rel: none
   )

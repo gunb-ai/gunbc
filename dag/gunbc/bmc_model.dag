@@ -5,6 +5,8 @@ import std.measure { Second, second, second_count }
 import std.optional { Present, Absent }
 import std.algebra { list_snoc_item }
 import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId, IpmiUserChannelAccess, IpmiChannelPrivilegeLimit }
+import extdeps.bmc.types { RedfishAccountRole }
+import extdeps.bmc.redfish { redfish_password_change_required_body }
 import extdeps.bmc.redfish_telemetry { RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaObservation }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine }
@@ -124,13 +126,22 @@ type BmcWorld {
   ipmi_users: List<BmcIpmiUser>
   ipmi_user_access: List<IpmiUserChannelAccess>
   record_surfaces: BmcRecordSurfaces
+  // The Redfish account service this controller serves (the AccountService/ManagerAccountCollection
+  // surface). One entry per account the Redfish surface lists; the forced-change flag and failed-login
+  // counter live here. See the Redfish account section below for the shared-vs-own-credential store.
+  // A typed surface read, NOT a defaulted collection (DESIGN 5): `none` means the Redfish surface was
+  // never modeled for this scenario (an unreadable surface, which the dry read reports as absence, never
+  // as an empty census); `Present { [] }` means the surface is modeled and serves zero accounts. The two
+  // are distinct facts and the dry read must not collapse them. Every literal names it (explicit-present
+  // authoring policy): an IPMI-only world writes `none`.
+  redfish_accounts: List<BmcRedfishAccount>?
 }
 
 fn bmc_world(power: BmcPower) -> BmcWorld {
   BmcWorld {
     power: power, pending: [], fired: [], boot_override: BootOverrideNone, sel: [],
     sol_session_open: false, cycle_off_interval: second(count: 5), host_booted_at: none, booted_via_override: false, sol_drop_after_boot: none,
-    web: bmc_web_world_untouched, ipmi_users: [], ipmi_user_access: [], record_surfaces: bmc_record_surfaces_unmodeled,
+    web: bmc_web_world_untouched, ipmi_users: [], ipmi_user_access: [], record_surfaces: bmc_record_surfaces_unmodeled, redfish_accounts: none,
   }
 }
 
@@ -198,7 +209,7 @@ fn bmc_with_power(world: BmcWorld, power: BmcPower) -> BmcWorld {
     power: power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces, redfish_accounts: world.redfish_accounts,
   }
 }
 
@@ -207,7 +218,7 @@ fn bmc_with_web(world: BmcWorld, web: BmcWebWorld) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
+    web: web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces, redfish_accounts: world.redfish_accounts,
   }
 }
 
@@ -216,7 +227,7 @@ fn bmc_with_record_surfaces(world: BmcWorld, surfaces: BmcRecordSurfaces) -> Bmc
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: surfaces, redfish_accounts: world.redfish_accounts,
   }
 }
 
@@ -324,7 +335,7 @@ fn bmc_with_override(world: BmcWorld, over: BmcBootOverride) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: over, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces, redfish_accounts: world.redfish_accounts,
   }
 }
 
@@ -333,7 +344,7 @@ fn bmc_with_sol_session(world: BmcWorld, open: Bool) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces, redfish_accounts: world.redfish_accounts,
   }
 }
 
@@ -342,7 +353,7 @@ fn bmc_with_pending(world: BmcWorld, pending: List<BmcScheduledEvent>, fired: Li
     power: world.power, pending: pending, fired: fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces, redfish_accounts: world.redfish_accounts,
   }
 }
 
@@ -358,7 +369,7 @@ fn bmc_host_boots(world: BmcWorld, now: Second) -> BmcWorld {
     power: BmcPowerOn, pending: pending, fired: world.fired, boot_override: BootOverrideNone, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: Present { value: now }, booted_via_override: via, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces, redfish_accounts: world.redfish_accounts,
   }
 }
 
@@ -450,7 +461,7 @@ fn bmc_with_sol_drop_after_boot(world: BmcWorld, after: Second) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: Present { value: after },
-    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces, redfish_accounts: world.redfish_accounts,
   }
 }
 
@@ -481,7 +492,7 @@ fn bmc_with_ipmi_users(world: BmcWorld, users: List<BmcIpmiUser>) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces, redfish_accounts: world.redfish_accounts,
   }
 }
 
@@ -523,7 +534,7 @@ fn bmc_with_ipmi_user_access(world: BmcWorld, rows: List<IpmiUserChannelAccess>)
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: rows, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: rows, record_surfaces: world.record_surfaces, redfish_accounts: world.redfish_accounts,
   }
 }
 
@@ -547,3 +558,307 @@ fn bmc_ipmi_get_user_access(world: BmcWorld, user: IpmiUserId, channel: IpmiChan
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "bmc_sol_drop_fired" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]
+
+// ── REDFISH ACCOUNT SERVICE ───────────────────────────────────────────────────────────────────
+//
+// THE REDFISH SURFACE OF THE SAME MANAGEMENT CONTROLLER this world already models over IPMI and the web:
+// the AccountService/ManagerAccountCollection surface the O1b BmcSecure dry fold drives. It carries an
+// account whose password must change on first login (the 03.22.00 factory build answers every authenticated
+// request but the one Password PATCH with 403 while that stands), the credential itself, and the
+// failed-login counter that may lock the account. The IPMI user table above is KEPT unchanged -- the
+// Redfish accounts are the Redfish view of the controller's accounts, not a replacement, and the two
+// surfaces share a credential only where the build's policy row grounds that.
+//
+// ONE STORE, NOT TWO COPIES. On an OpenBMC build whose credential-policy row (gunbc.machine_intake.
+// bmc_credential_policy, shared_store_surfaces) grounds one password per account across Redfish and IPMI,
+// root is ONE account holding ONE password: the shared variant stores that password in its one home, the
+// IPMI user table, and references the user id here -- so the Redfish view reads the SAME credential
+// bmc_ipmi_user_accepts reads and a password write through Redfish changes the one stored secret, never a
+// second copy. Where a surface's sharing is NOT grounded by the policy row -- 03.22.00 grounds the Redfish
+// surface alone (IPMI lanplus is explicitly not grounded), so its root Redfish account is a single
+// credential in its own right -- the dedicated variant carries its own password. WHICH variant a build's
+// root uses is the caller's decision from the policy row (made in gunbc.machine_intake.bmc_secure, the
+// consumer of these transitions), never the world's guess: the world offers both shapes and reads each
+// honestly, so it can neither silently duplicate a shared secret nor silently claim a shared secret that
+// the build does not ground.
+
+// The credential is the ONLY thing that differs between the two account kinds; everything else is modeled
+// once (DESIGN §2). A shared account references the ONE credential's home -- the IPMI user id, whose password
+// the IPMI user table stores -- so there is never a second copy of a secret the world did not earn.
+type BmcRedfishCredential
+  = BmcRedfishCredentialSharesIpmi { ipmi_user: IpmiUserId }
+  | BmcRedfishCredentialOwn { password: String }
+
+// One account the Redfish surface serves. The credential sum above is the only branch; the rest are plain
+// fields read directly. The forced-change flag and the failed-login counter drive the 03.22.00 first-login flow.
+type BmcRedfishAccount {
+  name: String
+  credential: BmcRedfishCredential
+  role: RedfishAccountRole
+  enabled: Bool
+  locked: Bool
+  forced_password_change: Bool
+  failed_logins: Int
+}
+
+// Which accounts the Redfish surface serves. This builder installs a MODELED census (Present): calling it with
+// [] means "the surface is modeled and serves zero accounts." The UNMODELED state (the field default `none`) is
+// reached by NOT calling this builder, and there bmc_redfish_authorize / bmc_redfish_change_password refuse with
+// a typed unmodeled answer -- NOT "serves no account", and not a fabricated 401. The declared consumer is item
+// 3's dry Redfish account read in gunbc.machine_intake.bmc_secure (the frontier rows in
+// gunbc.machine_intake.bmc_secure_redfish_frontier bind that realization -- it does not exist until PR 1b-i lands).
+fn bmc_with_redfish_accounts(world: BmcWorld, accounts: List<BmcRedfishAccount>) -> BmcWorld {
+  BmcWorld {
+    power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
+    sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
+    redfish_accounts: Present { value: accounts },
+  }
+}
+
+// The account's `@odata.id`, the form srv13's ManagerAccountCollection published ("/redfish/v1/AccountService/
+// Accounts/<name>"). This is what the build embeds as the target URI of its forced-change 403, so it is a
+// served-shape fact -- but it is derived here from the name the collection grounds, not carried per account,
+// so a world cannot disagree with itself about where an account lives.
+fn bmc_redfish_account_odata_id(name: String) -> String {
+  concat("/redfish/v1/AccountService/Accounts/", name)
+}
+
+// The census the Redfish surface serves, as a plain list for lookups on an ALREADY-MODELED surface. The
+// authority and write paths (bmc_redfish_authorize, bmc_redfish_change_password) gate on bmc_redfish_surface
+// FIRST and refuse with a typed unmodeled answer, so they never reach the absent case here. An UNMODELED surface
+// (none) yields the empty list only as a lookup convenience -- it is NOT a reported answer: bmc_redfish_surface
+// exposes the raw typed absence so a caller can tell "unmodeled" from "serves zero." Nothing turns an unmodeled
+// surface into a claim that the controller has no accounts; only a lookup returns nothing.
+fn bmc_redfish_census(world: BmcWorld) -> List<BmcRedfishAccount> {
+  match world.redfish_accounts {
+    Absent => []
+    Present { value: accounts } => accounts
+  }
+}
+
+// THE TYPED SURFACE READ. `Absent` = the Redfish surface was never modeled (report the reading as absence, not as an
+// empty census); `Present { [] }` = the surface is modeled and genuinely serves zero accounts. Never collapse the two.
+// Its declared consumer is item 3's dry Redfish account read (frontier: gunbc.machine_intake.bmc_secure_redfish_frontier),
+// which is also what keeps this distinction from being decoration -- the witness reads it on both a none world and a
+// Present { [] } world until that realization lands.
+fn bmc_redfish_surface(world: BmcWorld) -> List<BmcRedfishAccount>? {
+  world.redfish_accounts
+}
+
+fn bmc_redfish_account(world: BmcWorld, name: String) -> BmcRedfishAccount? {
+  let wanted: BmcRedfishAccount? = none
+  filter(bmc_redfish_census(world: world), a => a.name == name)
+    |> fold(init: wanted, f: (acc, a) => match acc { Absent => Present { value: a }  Present { value: _ } => acc })
+}
+
+// THE PASSWORD, read through to its one home. A shared account's password lives in the IPMI user table
+// (read from there, never copied); a dedicated account's lives in its own record. `Absent` is a real answer:
+// a shared account whose IPMI user the table no longer holds has no credential to authenticate -- fail closed
+// rather than assume one.
+fn bmc_ipmi_user_password(world: BmcWorld, user: IpmiUserId) -> String? {
+  let wanted: String? = none
+  filter(world.ipmi_users, u => (u.id as Int) == (user as Int))
+    |> fold(init: wanted, f: (acc, u) => match acc { Absent => Present { value: u.password }  Present { value: _ } => acc })
+}
+
+fn bmc_redfish_account_password(world: BmcWorld, account: BmcRedfishAccount) -> String? {
+  match account.credential {
+    BmcRedfishCredentialSharesIpmi { ipmi_user: ipmi_user } => bmc_ipmi_user_password(world: world, user: ipmi_user)
+    BmcRedfishCredentialOwn { password: password } => Present { value: password }
+  }
+}
+
+// THE CREDENTIAL IS PRESENTED two ways and both must meet the same gate: HTTP Basic, and a Redfish session
+// token (the world's session authority is the web-session model above; the credential check below is the
+// account check both transports bottom out in). The transport is carried so a check can assert the forced
+// gate does not depend on it.
+type RedfishAuthTransport
+  = RedfishBasicAuth {}
+  | RedfishSessionAuth {}
+
+// Whether the request is the one Password PATCH the build admits while a change is forced. Any other
+// authenticated request -- even with the correct current credential -- is refused with 403 while the forced
+// change stands.
+type RedfishRequestKind
+  = RedfishOrdinaryRequest {}
+  | RedfishPasswordPatch {}
+
+// THE THREE AUTHENTICATED OUTCOMES the dry Redfish surface answers with, and nothing else: 200 (access
+// granted), 401 (the credential did not authenticate -- wrong password, disabled, locked, or no such
+// account, all reported the same way so the reply leaks nothing), and the 403 forced-change refusal whose
+// body the build serves (emitted through extdeps.bmc.redfish redfish_password_change_required_body, which
+// the witness inhabits against the committed srv13 capture). A `String` credential is the dry model's
+// representation, matching BmcIpmiUser.password; the real route materialises the secret at the Redfish
+// boundary, not in the world.
+type RedfishAuthOutcome
+  = RedfishAuthAccepted { via: RedfishAuthTransport }
+  | RedfishAuthUnauthorized {}
+  | RedfishAuthForcedPasswordChange { body: String }
+  | RedfishAuthSurfaceUnmodeled {}
+
+// Authenticate a request to the Redfish surface. `forced_message_id` is the build's message id
+// ("Base.1.16.0.PasswordChangeRequired" for 03.22.00), supplied by the caller from its policy row -- the
+// world does not hardcode a build's message registry version. The surface is read TYPED first: an UNMODELED
+// surface answers RedfishAuthSurfaceUnmodeled, never 401 -- inventing "bad credentials" for a controller that
+// serves no Redfish account service is a fabricated answer (DESIGN 5). On a modeled surface the fail-closed
+// order is: an unknown account, a disabled account, a locked account, or a mismatched credential is 401; a
+// correct credential is 403-forced while the flag stands UNLESS the request is the admitted PATCH, and 200
+// otherwise.
+fn bmc_redfish_authorize(
+  world: BmcWorld, name: String, password: String, transport: RedfishAuthTransport, request: RedfishRequestKind, forced_message_id: String
+) -> RedfishAuthOutcome {
+  match bmc_redfish_surface(world: world) {
+    Absent => RedfishAuthSurfaceUnmodeled {}
+    Present { value: _ } => match bmc_redfish_account(world: world, name: name) {
+      Absent => RedfishAuthUnauthorized {}
+      Present { value: account } =>
+        if !account.enabled || account.locked {
+          RedfishAuthUnauthorized {}
+        } else {
+          match bmc_redfish_account_password(world: world, account: account) {
+            Absent => RedfishAuthUnauthorized {}
+            Present { value: secret } =>
+              if secret != password {
+                RedfishAuthUnauthorized {}
+              } else if account.forced_password_change {
+                match request {
+                  RedfishPasswordPatch {} => RedfishAuthAccepted { via: transport }
+                  RedfishOrdinaryRequest {} => RedfishAuthForcedPasswordChange {
+                    body: redfish_password_change_required_body(account_odata_id: bmc_redfish_account_odata_id(name: name), message_id: forced_message_id)
+                  }
+                }
+              } else {
+                RedfishAuthAccepted { via: transport }
+              }
+          }
+        }
+    }
+  }
+}
+
+// THE ONE PASSWORD WRITE, all-or-nothing. Applying the admitted Password PATCH writes the account's credential
+// and clears the forced flag -- the two effects the change is made of, and both only on a completed change. For a
+// shared account the credential is written to its ONE home via bmc_ipmi_set_user_password (the shared write goes
+// through the IPMI user, so there is still a single stored password); for a dedicated account it is written in the
+// record. A change that cannot fully apply -- the surface unmodeled, the account not in the census, or a shared
+// account whose IPMI user is not in the table -- returns the world UNCHANGED (flag still set, counter untouched)
+// refused with its typed reason (BmcRedfishChangeRefused); a half-applied "cleared flag, no credential written" is the
+// fabricated default DESIGN 5 refuses. The failed-login counter resets only on a completed change. The caller's
+// re-read, not this reply, decides whether the account is secured (DESIGN 4b rung discipline).
+// Why a password change did not complete -- typed, so an UNMODELED surface is never reported as "no such
+// account" and a missing shared user is never confused with either (DESIGN 5: a located reason, never a
+// widened plausible answer).
+type BmcRedfishChangeBlocked
+  = BmcRedfishChangeSurfaceUnmodeled {}
+  | BmcRedfishChangeNoSuchAccount {}
+  | BmcRedfishChangeSharedUserAbsent {}
+
+// A change either completed or was refused with its reason; "completed with a reason" and "not completed with no
+// reason" have no constructor (review 87967: a sum, not a Bool beside an optional).
+type BmcRedfishPasswordChangeStep
+  = BmcRedfishChangeCompleted { world: BmcWorld }
+  | BmcRedfishChangeRefused { world: BmcWorld, reason: BmcRedfishChangeBlocked }
+
+// Replace ONE account record in the world's Redfish census by name -- the SINGLE record-replace every Redfish
+// world writer performs (both bmc_redfish_change_password arms and bmc_redfish_note_failed_login), so a future
+// change to how a record is matched (say, by @odata.id) reaches all of them at once (DESIGN 6b: one rule, no second leaf).
+fn bmc_redfish_set_record(world: BmcWorld, name: String, cleared: BmcRedfishAccount) -> BmcWorld {
+  bmc_with_redfish_accounts(
+    world: world,
+    accounts: map(bmc_redfish_census(world: world), a => if a.name == name { cleared } else { a }),
+  )
+}
+
+fn bmc_redfish_change_step_world(step: BmcRedfishPasswordChangeStep) -> BmcWorld {
+  match step {
+    BmcRedfishChangeCompleted { world: w } => w
+    BmcRedfishChangeRefused { world: w, reason: _ } => w
+  }
+}
+
+fn bmc_redfish_failed_login_step_world(step: BmcRedfishFailedLoginStep) -> BmcWorld {
+  match step {
+    BmcRedfishFailedLoginCounted { world: w, locked_now: _ } => w
+    BmcRedfishFailedLoginRefused { world: w, reason: _ } => w
+  }
+}
+
+fn bmc_redfish_change_password(world: BmcWorld, name: String, new_password: String) -> BmcRedfishPasswordChangeStep {
+  match bmc_redfish_surface(world: world) {
+    // Unmodeled surface: there is no account service to write, which is NOT the same answer as a modeled
+    // surface that lacks the account. Refuse with the located reason and change nothing.
+    Absent => BmcRedfishChangeRefused { world: world, reason: BmcRedfishChangeSurfaceUnmodeled {} }
+    Present { value: _ } => match bmc_redfish_account(world: world, name: name) {
+      Absent => BmcRedfishChangeRefused { world: world, reason: BmcRedfishChangeNoSuchAccount {} }
+      Present { value: account } =>
+        // The record update: the forced flag clears and the counter resets on a completed change. A dedicated
+        // credential writes the new password here; a shared credential keeps referencing the IPMI user (written
+        // below), so the one stored password is the one that moves.
+        let new_credential = match account.credential {
+          BmcRedfishCredentialOwn { password: _ } => BmcRedfishCredentialOwn { password: new_password }
+          BmcRedfishCredentialSharesIpmi { ipmi_user: i } => BmcRedfishCredentialSharesIpmi { ipmi_user: i }
+        }
+        let cleared = BmcRedfishAccount { name: account.name, credential: new_credential, role: account.role, enabled: account.enabled, locked: account.locked, forced_password_change: false, failed_logins: 0 }
+        match account.credential {
+          // A shared account moves ONE credential: the password is written to the IPMI user, and the Redfish
+          // record's flag clears and its counter resets ONLY on a completed write. If the user is not in the
+          // table the write is not completed and NOTHING changes -- no fabricated cleared flag, no reset counter
+          // (DESIGN 5: fully succeed, or fail with the world untouched, never a half-applied change).
+          BmcRedfishCredentialSharesIpmi { ipmi_user: i } =>
+            let wrote = bmc_ipmi_set_user_password(world: world, user: i, password: new_password)
+            if wrote.completed {
+              BmcRedfishChangeCompleted { world: bmc_redfish_set_record(world: wrote.world, name: name, cleared: cleared) }
+            } else {
+              BmcRedfishChangeRefused { world: wrote.world, reason: BmcRedfishChangeSharedUserAbsent {} }
+            }
+          BmcRedfishCredentialOwn { password: _ } =>
+            BmcRedfishChangeCompleted { world: bmc_redfish_set_record(world: world, name: name, cleared: cleared) }
+        }
+    }
+  }
+}
+
+// The failed-login COUNTER and its lock transition are the world's. The threshold is a TYPED
+// BmcRedfishLockoutThreshold, never a magic number: `Never` models a build that serves no lockout without
+// inventing a count, and `After { count }` locks when the counter reaches it -- no `0` sentinel, no
+// `!= 0` test. Where the served value comes from -- the lockout lane's extdeps.bmc.redfish
+// RedfishAccountServiceLockoutServed -- is a DECLARED frontier (see gunbc.machine_intake.bmc_secure_redfish_frontier,
+// subject gunbc.bmc_model::bmc_redfish_note_failed_login); the 0-means-Never conversion belongs at that extdeps wire
+// boundary, not here.
+type BmcRedfishLockoutThreshold
+  = BmcRedfishLockoutNever
+  | BmcRedfishLockoutAfter { count: Int }
+
+// A failed login against an unmodeled surface, or against an account the census does not hold, is NOT "counted,
+// not locked": nothing was counted, so the step refuses with the same located reason bmc_redfish_change_password
+// gives (it gates on bmc_redfish_surface first, as every writer here does) and returns the world unchanged. It
+// never yields SharedUserAbsent: counting a failure writes no credential. locked_now exists only on a count.
+type BmcRedfishFailedLoginStep
+  = BmcRedfishFailedLoginCounted { world: BmcWorld, locked_now: Bool }
+  | BmcRedfishFailedLoginRefused { world: BmcWorld, reason: BmcRedfishChangeBlocked }
+
+fn bmc_redfish_note_failed_login(world: BmcWorld, name: String, at_lockout_threshold: BmcRedfishLockoutThreshold) -> BmcRedfishFailedLoginStep {
+  match bmc_redfish_surface(world: world) {
+    Absent => BmcRedfishFailedLoginRefused { world: world, reason: BmcRedfishChangeSurfaceUnmodeled {} }
+    Present { value: _ } => bmc_redfish_count_failed_login(world: world, name: name, at_lockout_threshold: at_lockout_threshold)
+  }
+}
+
+fn bmc_redfish_count_failed_login(world: BmcWorld, name: String, at_lockout_threshold: BmcRedfishLockoutThreshold) -> BmcRedfishFailedLoginStep {
+  match bmc_redfish_account(world: world, name: name) {
+    Absent => BmcRedfishFailedLoginRefused { world: world, reason: BmcRedfishChangeNoSuchAccount {} }
+    Present { value: account } =>
+      let count = account.failed_logins + 1
+      let should_lock = match at_lockout_threshold {
+        BmcRedfishLockoutNever => false
+        BmcRedfishLockoutAfter { count: threshold } => count >= threshold
+      }
+      let bumped = BmcRedfishAccount { name: account.name, credential: account.credential, role: account.role, enabled: account.enabled, locked: account.locked || should_lock, forced_password_change: account.forced_password_change, failed_logins: count }
+      BmcRedfishFailedLoginCounted {
+        world: bmc_redfish_set_record(world: world, name: name, cleared: bumped),
+        locked_now: should_lock,
+      }
+  }
+}

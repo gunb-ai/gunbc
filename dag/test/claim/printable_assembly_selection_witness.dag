@@ -5,7 +5,7 @@ import extdeps.languages.json.emit { serialize_json }
 import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased, Metal }
 import product.printed_chassis.cassette { rear_socket_bolt_clearances }
 import product.printed_chassis.printable_assembly {
-  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct, PrintableAssembly,
+  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct, A16BlowerFlatOnEndDuct, PrintableAssembly,
   PrintableAssemblyReady, PrintableAssemblyRefused, printable_manifest, printed_assembly_root_wire, printed_assembly_root_from_wire, printed_assembly_roots,
 }
 import product.printed_chassis.printable_assembly_selection { select_printable_assembly }
@@ -55,6 +55,7 @@ test fn w_a16_duct_selects_exactly_its_parts_and_power_keepout() -> Bool {
     && a16_selects(root: A16PlugFitRing, printed: "FIT-RING", with_fan: false)
     && a16_selects(root: A16SleeveFitRing, printed: "FIT-RING", with_fan: false)
     && a16_selects(root: A16BlowerDuct, printed: "DUCT", with_fan: true)
+    && a16_selects(root: A16BlowerFlatOnEndDuct, printed: "DUCT", with_fan: true)
 }
 
 // RED: the duct and the residential cassette share no part id. This is a claim about that pair only;

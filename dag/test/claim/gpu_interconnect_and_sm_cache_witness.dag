@@ -27,6 +27,8 @@ test fn w_rtx_5090_interconnect_is_the_shared_pcie_authority() -> Bool {
   let link: PcieLink? = match gpu_board_admission_facts(admission: nvidia_rtx_5090_board_catalog).attachment {
     PcieAddInBoard { link: l } => l
     SxmModule => none
+    MxmModule { variant: _, link: l } => l
+    SolderedBga => none
   }
   match link {
     Present { value: link } =>

@@ -240,6 +240,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_versions_add_stdin_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "tee_append_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_links_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_one_per_line_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_almost_all_one_per_line_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_target_glob_command"),

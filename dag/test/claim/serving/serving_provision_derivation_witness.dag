@@ -22,6 +22,7 @@ import product.fabric.serving_recipe {
   SettingOperatorPolicy, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm,
 }
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
+import gunbc.serving.srv1_serving_launch { srv1_serving_image }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, qwen3_8_flash_next_pins_cohere }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -125,7 +126,12 @@ test fn the_launch_model_id_follows_the_recipe() -> Bool {
 test fn a_vllm_recipe_derives_from_the_modeled_launch_and_never_falls_back() -> Bool {
   match serving_provision_derive(recipe: serving_recipe_flash_next_lab_vllm) {
     ServingProvisionDerivedVllm { inputs: i } =>
-      (i.image.digest_sha256 as String) == (local_inference_lab_vllm_image.digest_sha256 as String)
+      // The provision installs the DEPLOYMENT's image (the delete-repaired derivation), and the recipe
+      // build's own pin survives only as that derivation's base. A provision naming the build's pin is
+      // the 2026-10-29 regression (srv1 relaunched on the unpatched base) and fails here.
+      (i.image.digest_sha256 as String) == (srv1_serving_image().digest_sha256 as String)
+        && (i.image.digest_sha256 as String) != (local_inference_lab_vllm_image.digest_sha256 as String)
+        && (i.image.base.digest_sha256 as String) == (i.build.image.digest_sha256 as String)
         && (i.weights.revision as String) == (qwen3_8_flash_next_manifest.revision as String)
         && i.listen_port == serving_recipe_flash_next_lab_vllm.published_tcp_port
         && (match i.launch.engine.max_model_len { Absent => true, _ => false })
@@ -150,7 +156,7 @@ test fn a_second_vllm_recipe_does_not_borrow_srv1_s_launch() -> Bool {
     id: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_a_second_vllm_deployment"),
     model: flash.model, engine: flash.engine, catalog_unit: flash.catalog_unit,
     published_tcp_port: flash.published_tcp_port, cards: flash.cards, driver_floor: flash.driver_floor,
-    disk: flash.disk, cache: flash.cache,
+    disk: flash.disk, cache: flash.cache, settings: flash.settings,
     start: flash.start, throughput: flash.throughput,
   }
   match serving_provision_derive(recipe: other_host) {
@@ -166,7 +172,7 @@ test fn a_vllm_recipe_on_an_unread_or_observed_start_refuses_with_its_cause() ->
   let observed = ServingRecipe {
     id: flash.id, model: flash.model, engine: flash.engine, catalog_unit: flash.catalog_unit,
     published_tcp_port: flash.published_tcp_port, cards: flash.cards, driver_floor: flash.driver_floor,
-    disk: flash.disk, cache: flash.cache,
+    disk: flash.disk, cache: flash.cache, settings: flash.settings,
     start: StartFromObjectStoreObserved { store: "r2://weights" as NonEmptyStr, hub_fallback: true, standing: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_first_recipe_is_flash_next") } },
     throughput: flash.throughput,
   }
@@ -175,7 +181,7 @@ test fn a_vllm_recipe_on_an_unread_or_observed_start_refuses_with_its_cause() ->
     model: ServingModelArtifact { source: WeightsNamedUnpinned { weights: "unpinned" as NonEmptyStr, quantization: Absent }, served_model_id: flash.model.served_model_id },
     engine: flash.engine, catalog_unit: flash.catalog_unit,
     published_tcp_port: flash.published_tcp_port, cards: flash.cards, driver_floor: flash.driver_floor,
-    disk: flash.disk, cache: flash.cache,
+    disk: flash.disk, cache: flash.cache, settings: flash.settings,
     start: flash.start, throughput: flash.throughput,
   }
   (match serving_provision_derive(recipe: observed) {
