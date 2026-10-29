@@ -1,5 +1,6 @@
 module std.fabric_blob
 
+import std.decl_ref { decl_ref }
 import std.types { String, NonEmptyStr, Bool, List }
 import std.optional { Present, Absent }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic, sha256_hex_digest }
@@ -112,7 +113,14 @@ fn read_staged_fabric_blob(path: NonEmptyStr) -> FabricBlobReadingOutcome {
 // route above supplies the existing SHA-256/stat handlers; witnesses supply the
 // same boundary values. This is not a second reading constructor or a mock change.
 fn read_staged_fabric_blob_observed(path: NonEmptyStr, digest_observed: Bool, digest_line: String,
-  size_observed: Bool, size_text: String) -> FabricBlobReadingOutcome {
+  size_observed: Bool, size_text: String) -> FabricBlobReadingOutcome
+  admit_callers: [
+    decl_ref(module_path: "std.fabric_blob", decl_name: "read_staged_fabric_blob"),
+    decl_ref(module_path: "test.claim.std_fabric_blob", decl_name: "supplied_observations_cannot_mint_a_failed_or_negative_size_reading"),
+    decl_ref(module_path: "test.claim.std_fabric_blob", decl_name: "supplied_nonempty_observation_preserves_digest_path_and_size"),
+    decl_ref(module_path: "test.claim.live_deploy.capacity_generation_publish_witness", decl_name: "a_verified_published_target_binds_the_closed_controller"),
+  ]
+{
   if digest_observed == false {
     FabricBlobReadRefused { fault: FabricBlobReadingUnavailable { cause: concat("sha256sum could not read ", path as String) as NonEmptyStr } }
   } else {

@@ -81,7 +81,13 @@ type CapacityPublishedGeneration sole_constructor {
 // A supplied provider reading makes the refusal controls hermetic. Production
 // calls this only after the existing provider's verified part lookup.
 fn capacity_generation_target_admit(plan: CapacityPlannedGeneration, approval: CapacityCutoverAuthorization,
-  at: Timestamp, published: Result<CapturedUnitBlob, String>) -> Result<CapacityPublishedGeneration, String> {
+  at: Timestamp, published: Result<CapturedUnitBlob, String>) -> Result<CapacityPublishedGeneration, String>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.live_deploy.capacity_generation_publish", decl_name: "capacity_generation_publish_held"),
+    decl_ref(module_path: "test.claim.live_deploy.capacity_generation_publish_witness", decl_name: "an_unpublished_target_cannot_become_an_installable_generation"),
+    decl_ref(module_path: "test.claim.live_deploy.capacity_generation_publish_witness", decl_name: "a_verified_published_target_binds_the_closed_controller"),
+  ]
+{
   if plan.store.attempt != approval.intent.attempt { return Err { value: "target approval belongs to another apply" } }
   match capacity_cutover_generation_admission(authorization: approval, operation: plan.operation, at: at) {
     Err { value: why } => Err { value: why }
