@@ -123,7 +123,7 @@ test fn a_lookalike_record_named_finitely_supported_function_aliased_as_map_is_n
 
 // THE FAIL-OPEN FIX (review 87351 finding 2) AND ITS EXECUTABLE CONSUMER. The unbound-container
 // refusal in v1.compiler.resolve (src/v1/04_resolve.dag, unbound_container_diagnostics) once read
-// `declaration_resolved_container(name: name) && map_is_empty(m: env.source_visible_names) == false
+// `unresolved_map_spelling_refusal(name: name) && map_is_empty(m: env.source_visible_names) == false
 // && map_has(m: env.source_visible_names, key: name) == false`. The middle conjunct switched the
 // refusal OFF in exactly the context where NOTHING is visible -- an empty visible set -- which is the
 // strongest case for refusing, not an escape. Absence is now judged by `map_has == false` alone:
