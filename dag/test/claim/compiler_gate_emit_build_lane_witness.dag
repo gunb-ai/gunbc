@@ -614,4 +614,6 @@ test fn the_seed_build_step_run_block_is_the_folded_preamble_not_a_refusal_marke
     && string_contains(s: run, pattern: "--remap-path-prefix=")
     && string_contains(s: run, pattern: "GUNBC_MATERIALIZED_TREE_IDENTITY")
     && (string_contains(s: run, pattern: "__GUNBC_BASH_EMIT_REFUSED__") == false)
+    && string_contains(s: run, pattern: "'-z' \"$GUNBC_SEED_TRACKED_STATUS\" ']'")
+    && (string_contains(s: run, pattern: "'-z' $(") == false)
 }

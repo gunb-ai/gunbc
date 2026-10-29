@@ -385,6 +385,7 @@ fn repo_self_build_env_stmts() -> List<Node> {
       command(argv: ["export", "GUNBC_SEED_TARGET"]),
       command(argv: ["export", "GUNBC_SEED_CARGO_HOME"]),
       command(argv: ["export", "GUNBC_SEED_SYSROOT"]),
+      assign_cmd(name: "GUNBC_SEED_TRACKED_STATUS", argv: ["git", "status", "--porcelain=1", "--untracked-files=no"]),
       tracked_tree_identity_stmt(),
     ],
     []
@@ -483,7 +484,10 @@ fn tracked_tree_identity_stmt() -> Node {
       ]),
       right: bash_build_test_bracket(words: [
         bash_build_word_lit(text: "-z"),
-        bash_build_word_cmdsubst(body: command(argv: ["git", "status", "--porcelain=1", "--untracked-files=no"])),
+        // read into a variable first: an assignment's right side is not word-split, whereas an
+        // unquoted `$(git status ...)` splits a dirty tree's one-line-per-file output into many
+        // `[` operands and the pin would be decided by a `[` arity error.
+        bash_build_word_var(name: "GUNBC_SEED_TRACKED_STATUS"),
       ])
     ),
     body: bash_build_stmt_list_from_nodes(stmts: [
