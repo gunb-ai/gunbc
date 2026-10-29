@@ -13,7 +13,9 @@ import gunbc.roadmap.roadmap_attempt_worktree_claim {
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits,
   ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
   LineageStanding, LineageEnded, LineageNotEnded, LineageUnknown,
+  worktree_claim_classify_open, ClaimWorkerEnded,
 }
+import std.upsert_decision { Noop, Apply, Refuse }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import test.claim.roadmap.session_placement_wet_witness { node_a, key_a, node_b, key_b, host, fresh_dir, stores_at, lifecycle_absent }
 
@@ -193,47 +195,39 @@ test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && only(os: outcomes, check: is_red) && tree_there(td: td, n: node_a, k: key_a))
 }
 
-// THE LIVE LINEAGE IS NOT ENDED (the wedge fix): a request-pending worker legitimately EXITED (unit gone past
-// its deadline => ClaimWorkerEnded) with its capture settled, but its lineage is resumable -- so the settlement
-// reads the ONE 'ended' derivation (the continuation's, injected as ended_of) and keeps the claim + tree. This
-// is the discriminating case: the SAME state with ended_of true (the old unit-standing shortcut) releases it.
-test fn a_request_pending_worker_keeps_its_claim_until_the_lineage_ends() -> Bool {
-  // pending (ended_of false): worker exited, capture settled, clean+pushed tree -- the tree must SURVIVE.
-  let dir = fresh_dir(tag: "w11")
-  let cd = fresh_dir(tag: "w11c")
-  let td = fresh_dir(tag: "w11t")
-  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
-  let planted = plant(td: td, n: node_a, k: key_a)
-  let pending = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: LineageNotEnded), check: is_noop)
-  let kept = tree_there(td: td, n: node_a, k: key_a)
-  // positive control: identical state, but the lineage HAS ended -- exactly the tree is released.
-  let dir2 = fresh_dir(tag: "w11d")
-  let cd2 = fresh_dir(tag: "w11c2")
-  let td2 = fresh_dir(tag: "w11t2")
-  let opened2 = open_claim(cd: cd2, td: td2, n: node_a, k: key_a, opened: 1000)
-  let planted2 = plant(td: td2, n: node_a, k: key_a)
-  let ended_release = only(os: pass(dir: dir2, cd: cd2, td: td2, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: LineageEnded), check: is_removed)
-  let gone2 = !tree_there(td: td2, n: node_a, k: key_a)
-  cleaned(dirs: [dir, cd, td, dir2, cd2, td2], verdict: opened && planted && pending && kept && opened2 && planted2 && ended_release && gone2)
+
+// ── THE ONE 'ENDED' GATE, TESTED AT THE PURE DECISION ──────────────────────────────────────────
+// The settlement must release a worker-ended, capture-settled worktree claim ONLY when the ONE 'ended'
+// derivation (the continuation's) says that ATTEMPT's lineage has ended -- never merely because the worker
+// unit is terminal. ClaimWorkerEnded is reachable only through a placement observation the hermetic pass
+// cannot seed (it lands on ClaimWorkerNeverStarted, which correctly releases a never-started claim), so the
+// gate is exercised directly on the pure classifier: supply worker=ClaimWorkerEnded and vary the standing.
+// This is the discriminating witness for the live wedge (e5a42384c6a5e13d, whose tree was reclaimed under the
+// OLD unit-standing shortcut while its request-pending lineage was still resumable).
+
+// NOT ENDED => the tree is KEPT (noop), never released. This is the fix.
+test fn a_ended_worker_with_a_lineage_still_open_keeps_its_tree() -> Bool {
+  let d = worktree_claim_classify_open(path: "wt", tree: ClaimTreePresent, worker: ClaimWorkerEnded, content: ClaimContentPushed, capture: ClaimCaptureSettled, lineage_ended: LineageNotEnded)
+  match d.decision { Noop => true  _ => false }
 }
 
-// A reaped-worktree pending lineage (tree already gone, from the OLD wrong settlement) whose lineage is still
-// resumable must keep the CLAIM RECORD OPEN (noop), not close it -- so the spawn-route restore can re-materialize
-// the tree. Same state with the lineage ended closes the record (control).
-test fn a_tree_already_gone_and_a_pending_worker_keeps_the_record_open() -> Bool {
-  // tree NOT planted => ClaimTreeAbsent; worker ended past deadline; capture settled.
-  let dir = fresh_dir(tag: "w12")
-  let cd = fresh_dir(tag: "w12c")
-  let td = fresh_dir(tag: "w12t")
-  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
-  let pending = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: LineageNotEnded), check: is_noop)
-  // control: the same tree-absent, worker-ended, capture-settled state, lineage ended -- the record closes.
-  let dir2 = fresh_dir(tag: "w12d")
-  let cd2 = fresh_dir(tag: "w12c2")
-  let td2 = fresh_dir(tag: "w12t2")
-  let opened2 = open_claim(cd: cd2, td: td2, n: node_a, k: key_a, opened: 1000)
-  let ended_close = only(os: pass(dir: dir2, cd: cd2, td: td2, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: LineageEnded), check: is_closed)
-  cleaned(dirs: [dir, cd, td, dir2, cd2, td2], verdict: opened && pending && opened2 && ended_close)
+// POSITIVE CONTROL: identical state, but the lineage HAS ended -- exactly the tree is released (an Apply plan).
+test fn a_ended_worker_with_a_ended_lineage_releases_its_tree() -> Bool {
+  let d = worktree_claim_classify_open(path: "wt", tree: ClaimTreePresent, worker: ClaimWorkerEnded, content: ClaimContentPushed, capture: ClaimCaptureSettled, lineage_ended: LineageEnded)
+  match d.decision { Apply { plan: _ } => true  _ => false }
+}
+
+// A reaped-worktree lineage still open (tree already gone) must keep the CLAIM RECORD OPEN (noop) so the
+// spawn-route restore can re-materialize the tree; the classifier must not close it on worker-standing alone.
+test fn an_ended_worker_with_a_lineage_still_open_keeps_the_record_open_when_the_tree_is_gone() -> Bool {
+  let d = worktree_claim_classify_open(path: "wt", tree: ClaimTreeAbsent, worker: ClaimWorkerEnded, content: ClaimContentPushed, capture: ClaimCaptureSettled, lineage_ended: LineageNotEnded)
+  match d.decision { Noop => true  _ => false }
+}
+
+// CONTROL: the same tree-absent, worker-ended, capture-settled state with the lineage ended closes the record.
+test fn an_ended_worker_with_a_ended_lineage_closes_the_record_when_the_tree_is_gone() -> Bool {
+  let d = worktree_claim_classify_open(path: "wt", tree: ClaimTreeAbsent, worker: ClaimWorkerEnded, content: ClaimContentPushed, capture: ClaimCaptureSettled, lineage_ended: LineageEnded)
+  match d.decision { Apply { plan: _ } => true  _ => false }
 }
 
 // THE REOPEN (the restore's durable half): a reclaimed claim (terminal:recovered, generation line kept) is
@@ -277,64 +271,27 @@ test fn a_reclaimed_claim_reopens_on_the_same_slot_at_the_next_generation() -> B
   cleaned(dirs: [cd, td], verdict: opened && closed_ok && reopened_ok && refused)
 }
 
-// A pass whose 'ended' is a function of the claim's OWN (node_id, attempt_key) -- not a constant. The release
-// decision must be made per claim from that claim's key; a constant here (as pass() uses) cannot catch a caller
-// that hands one claim's verdict to another. ended_of returns true only for the attempt_key named by ended_key.
-fn pass_keyed(
-  dir: String, cd: String, td: String, others: AttemptUnitObservation, content: ClaimContent, capture: ClaimCapture, now: EpochSecs, ended_key: String,
-) -> List<WorktreeClaimOutcome> {
-  match worktree_claim_ensure_pass_at(
-    stores: stores_at(dir: dir), claims_root: cd as NonEmptyStr, host: host,
-    path_of: (n, k) => tree_path(td: td, n: n, k: k),
-    loaded_of: u => others, lifecycle_of: lifecycle_absent, now: now,
-    tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
-    content_of: p => content,
-    remove_tree: p => if shell.Remove.RecursiveForce(path: p).success { ClaimRemoved } else { ClaimRemoveDeclined { detail: "rm failed" } },
-    capture_of: (n, k) => capture,
-    ended_of: (n, k) => if k == ended_key { LineageEnded } else { LineageNotEnded }) {
-    WorktreeClaimPassRan { outcomes } => outcomes
-    WorktreeClaimPassRefused { detail: _ } => []
-  }
+// PER-CLAIM STANDING, NOT PER-NODE (the sibling-decides-fate fork): two claims on one node, identical
+// worker/tree/content/capture, differ only in their OWN lineage standing; each must be fated by its own
+// standing -- an open one kept, an ended one released. If a caller collapsed them to one node-level answer,
+// the open tree would be reclaimed by its ended sibling (the leak this PR closes); these two decisions
+// computed from separate standings prove the classifier honours the per-attempt fact.
+test fn two_siblings_are_fated_by_their_own_lineage_standings() -> Bool {
+  let open_d = worktree_claim_classify_open(path: "wt", tree: ClaimTreePresent, worker: ClaimWorkerEnded, content: ClaimContentPushed, capture: ClaimCaptureSettled, lineage_ended: LineageNotEnded)
+  let ended_d = worktree_claim_classify_open(path: "wt", tree: ClaimTreePresent, worker: ClaimWorkerEnded, content: ClaimContentPushed, capture: ClaimCaptureSettled, lineage_ended: LineageEnded)
+  let open_kept = match open_d.decision { Noop => true  _ => false }
+  let ended_released = match ended_d.decision { Apply { plan: _ } => true  _ => false }
+  open_kept && ended_released
 }
 
-// PER-CLAIM KEYING (the belt must ask the continuation about EACH claim's own attempt, never the node's collapsed
-// first-per-node row). Two claims on the SAME node, identical state (worker ended, tree present, capture settled),
-// differ only in that one lineage has ended. Both must be seen in one pass; only the ended one releases. If the fold
-// handed one claim's verdict to both (the meaning fork this guards), both trees would share a fate -- this fails.
-test fn two_claims_on_one_node_are_released_by_their_own_keys() -> Bool {
-  let dir = fresh_dir(tag: "w14")
-  let cd = fresh_dir(tag: "w14c")
-  let td = fresh_dir(tag: "w14t")
-  let opened_live = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
-  let opened_dead = open_claim(cd: cd, td: td, n: node_a, k: key_b, opened: 1000)
-  let planted = plant(td: td, n: node_a, k: key_a) && plant(td: td, n: node_a, k: key_b)
-  // key_b's lineage has ended; key_a's is still open (request-pending).
-  let os = pass_keyed(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended_key: key_b)
-  let both_seen = os.length() == 2
-  let each_fated = all(os, o => is_removed(o) || is_noop(o))
-  // the discriminating proof: the live-keyed tree survives, the ended-keyed tree is gone.
-  let live_kept = tree_there(td: td, n: node_a, k: key_a)
-  let dead_gone = !tree_there(td: td, n: node_a, k: key_b)
-  cleaned(dirs: [dir, cd, td], verdict: opened_live && opened_dead && planted && both_seen && each_fated && live_kept && dead_gone)
-}
-
-// 'CAN'T TELL' IS NOT 'CONVERGED' (§5). When the lineage standing is unknown (an unreadable ledger, or a row that
-// is not this attempt's), a worker-ended, capture-settled claim must REFUSE with a typed, located reason -- the
-// distinct WorktreeClaimKept outcome (same refusal shape as ClaimWorkerUnknown), never the WorktreeClaimNoop
-// 'converged' it was wrongly reported as -- and keep its tree. Control: the identical claim with LineageEnded is released.
-test fn an_unknown_lineage_standing_refuses_and_keeps_the_worktree() -> Bool {
-  let dir = fresh_dir(tag: "w15")
-  let cd = fresh_dir(tag: "w15c")
-  let td = fresh_dir(tag: "w15t")
-  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
-  let planted = plant(td: td, n: node_a, k: key_a)
-  let os = pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: LineageUnknown { detail: "the ledger could not be read" })
-  let refused_not_converged = only(os: os, check: is_kept) && tree_there(td: td, n: node_a, k: key_a)
-  let dir2 = fresh_dir(tag: "w15d")
-  let cd2 = fresh_dir(tag: "w15e")
-  let td2 = fresh_dir(tag: "w15f")
-  let opened2 = open_claim(cd: cd2, td: td2, n: node_a, k: key_a, opened: 1000)
-  let planted2 = plant(td: td2, n: node_a, k: key_a)
-  let ctl = only(os: pass(dir: dir2, cd: cd2, td: td2, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: LineageEnded), check: is_removed) && !tree_there(td: td2, n: node_a, k: key_a)
-  cleaned(dirs: [dir, cd, td, dir2, cd2, td2], verdict: opened && planted && refused_not_converged && opened2 && planted2 && ctl)
+// 'CAN'T TELL' IS NOT 'CONVERGED' (§5). An unknown lineage standing (an unreadable ledger, or a row that is
+// not this attempt's) must REFUSE with a typed, located reason -- never the WorktreeClaimNoop 'converged' it
+// was wrongly reported as. Control: the identical claim with LineageEnded is released.
+test fn an_unknown_lineage_standing_refuses_never_reports_converged() -> Bool {
+  let d = worktree_claim_classify_open(path: "wt", tree: ClaimTreePresent, worker: ClaimWorkerEnded, content: ClaimContentPushed, capture: ClaimCaptureSettled, lineage_ended: LineageUnknown { detail: "the ledger could not be read" })
+  let refused = match d.decision { Refuse { reason: _ } => true  _ => false }
+  let not_noop = match d.decision { Noop => false  _ => true }
+  let ctl = worktree_claim_classify_open(path: "wt", tree: ClaimTreePresent, worker: ClaimWorkerEnded, content: ClaimContentPushed, capture: ClaimCaptureSettled, lineage_ended: LineageEnded)
+  let ctl_released = match ctl.decision { Apply { plan: _ } => true  _ => false }
+  refused && not_noop && ctl_released
 }
