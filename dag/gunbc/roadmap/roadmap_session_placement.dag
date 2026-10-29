@@ -1366,6 +1366,13 @@ fn session_placement_settle_pass(instance: HostDashboardInstance, stores: Sessio
 // before slot close: each ordering leaves either an idempotent NothingToRelease or a later pass
 // that sees both sides and settles them.
 //
+// A FENCED DURABLE RELEASE PROVES ATTRIBUTION, NOT QUIESCENCE (bold-dove-340, #15300): the review
+// unit is a single-process transient service (KillMode=process, the worker's confinement law); the
+// pass releases when the LEADER is terminal -- observation or the exit record -- and does NOT
+// observe descendant quiescence. Consumers that must withhold seat reuse until descendants are
+// quiescent must adjudicate descendants themselves; this interface does not, and the residual is
+// stated as such in the PR and on #15300.
+//
 // THE RESIDUAL, STATED AS IT IS (manager ruling, 2026-10-28, with bold-dove-340's correction):
 // aggregate admission is NOT atomic across partitions, and work_provider_local's
 // compute_cold_build_cap leases are uncharged; both stay open until every charged population joins
