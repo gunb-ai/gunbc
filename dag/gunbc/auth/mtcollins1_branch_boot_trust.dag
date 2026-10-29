@@ -266,16 +266,27 @@ fn mtcollins1_boot_branch_is_trusted(branch: String) -> Bool {
   any(mtcollins1_boot_trusted_branches, b => (b as String) == branch)
 }
 
-// THE PRINCIPAL SET OF THIS PROVIDER ALONE -- not `pool/*`. Naming the provider is what makes the
-// standing binding cover tokens THIS condition minted and nothing any other provider might mint; and
-// unlike a pool-wide set it cannot be widened by someone else adding a provider here.
+// THE PRINCIPAL SET, IN THE FORM GCP ACTUALLY ACCEPTS. A `principalSet://` member is scoped to a whole
+// pool, to a group, or to an attribute -- there is no provider-scoped principalSet, and an invented
+// `.../provider/<provider>/*` would be rejected or match nothing, leaving the branch account with no
+// grant and this whole route dead (review 87964). So this is the shape the rest of the repository already
+// builds -- gunbc.auth.managed_host_boot_federation boot_federation_principal_set and
+// dag/extdeps/cloud/gcp/gcp.dag wif_pool_resource both produce `pool/*`, and a claim asserts this one
+// equals that shape.
+//
+// The pool-wide form is NOT a widening here, and the reason is the pool's own dedication rather than the
+// member string: this route was given a workload identity pool of its own,
+// mtcollins1_boot_branch_wif_pool_id, into which mtcollins1_boot_branch_provider is the only provider
+// converged. So "every identity in the pool" is exactly "the identities this provider's attribute_condition
+// admitted" -- which is what the sibling pool earns by the same argument. The narrowing lives in that
+// condition (ref + environment conjuncts), not here; and dedication is checked, not assumed: a claim
+// asserts this member differs from the main boot's, so the branch account can never be reached by a token
+// minted into the boot federation's pool.
 fn mtcollins1_boot_branch_principal_set() -> String {
   join([
     "principalSet://iam.googleapis.com/",
     wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: mtcollins1_boot_branch_wif_pool_id as String),
-    "/provider/",
-    mtcollins1_boot_branch_wif_provider_id as String,
-    "/*",
+    "/*"
   ], "")
 }
 

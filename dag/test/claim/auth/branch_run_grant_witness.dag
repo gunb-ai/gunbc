@@ -57,6 +57,7 @@ import gunbc.auth.mtcollins1_branch_boot_trust {
   mtcollins1_boot_branch_bmc_grant, mtcollins1_boot_branch_reader_grant,
   mtcollins1_boot_branch_route_refusal_cause, mtcollins1_boot_branch_route_refusal_cause_with,
   mtcollins1_boot_branch_bmc_secret_id, mtcollins1_boot_branch_bmc_grants,
+  mtcollins1_boot_branch_principal_set, mtcollins1_boot_branch_wif_pool_id,
 }
 import gunbc.host.boot_medium_reader_key {
   BootMediumReaderKeyState, Unminted, Minted, HalfMinted, boot_medium_reader_key_state,
@@ -93,7 +94,11 @@ import gunbc.auth.branch_run_grant {
 import gunbc.auth.branch_dispatch_federation { BranchRunFacts, BranchRunAdmitted, BranchRunRefused, judge_branch_run }
 import gunbc.auth.oidc_claim_pins { with_presented_value, without_presented_claim, OidcClaimPin }
 import std.algebra { string_contains }
-import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of }
+import gunbc.auth.managed_host_boot_federation {
+  boot_federation_for, provisioned_federation_of, boot_federation_principal_set,
+}
+import extdeps.cloud.gcp.gcp { wif_pool_resource }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
@@ -866,6 +871,42 @@ test fn the_environment_conjunct_is_never_droppable() -> Bool {
     }
     }
   }
+}
+
+// WHAT GCP IS ACTUALLY ASKED TO BIND (review 87964). A `principalSet://` member is scoped to a whole pool,
+// to a group, or to an attribute -- there is no provider-scoped principalSet. The form this module first
+// invented (`.../provider/<provider>/*`) is not one Cloud IAM accepts: applied, it is rejected or stored as a
+// member no token ever matches, and the branch account gets no grant -- which would leave the approval-free
+// boot this PR exists for silently dead rather than visibly refused. So this asserts the member is the shape
+// the rest of the repository builds, through the shared constructor rather than by repeating a string:
+// dag/extdeps/cloud/gcp/gcp.dag wif_pool_resource + "/*", the shape
+// gunbc.auth.managed_host_boot_federation boot_federation_principal_set uses.
+//
+// The pool-wide form is only safe because the pool is DEDICATED, so that fact is checked here and not
+// assumed: the member must name this route's own pool, and must differ from the main boot's member, so a
+// token minted into the boot federation's pool can never reach the branch account.
+test fn the_iam_member_is_the_pool_scoped_form_gcp_accepts() -> Bool {
+  let member = mtcollins1_boot_branch_principal_set()
+  let pool_wide_shape = join(
+    [
+      "principalSet://iam.googleapis.com/",
+      wif_pool_resource(
+        project_number: fleet_secrets_project_number,
+        pool_id: mtcollins1_boot_branch_wif_pool_id as String
+      ),
+      "/*"
+    ],
+    ""
+  )
+  let pool_is_dedicated = match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+    Absent => false
+    Present { value: boot } => member != boot_federation_principal_set(f: boot)
+  }
+  member == pool_wide_shape
+    // the form GCP does not accept must not reappear, even as a suffix
+    && !string_contains(s: member, pattern: "/provider/")
+    && string_contains(s: member, pattern: mtcollins1_boot_branch_wif_pool_id as String)
+    && pool_is_dedicated
 }
 
 // THE MUTANT PROOF FOR THE FAIL-OPEN, made observable. In the live world the boot federation names its
