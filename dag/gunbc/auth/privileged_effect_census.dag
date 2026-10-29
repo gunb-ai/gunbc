@@ -32,7 +32,7 @@ import gunbc.review_sheet_operator { shared_drive_create_intervention, spreadshe
 import gunbc.review_sheet_federation { review_sheet_writer_token_creator_intervention, review_sheet_converge_principal_set }
 import gunbc.spark.dgx_pxe_boot { spark_pxe_firmware_enablement_intervention }
 import gunbc.fleet.mtcollins_firmware_converge { mtcollins1_ac_power_cycle_effect }
-import gunbc.host.anchored_host_transport { anchored_host_key_scan_effect, anchored_host_key_mint_effect }
+import gunbc.host.anchored_host_transport { anchored_host_key_scan_effect }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.approval_ntfy_deployment {
   approval_ntfy_account_intervention, approval_ntfy_server_install_intervention,
@@ -315,6 +315,43 @@ fn export_host_reader_rows_effect() -> PrivilegedEffect {
 fn boot_medium_reader_key_mint_effect() -> PrivilegedEffect {
   PrivilegedEffect {
     subject: "as the fleet identity at main, generate an ed25519 keypair in the run and add its private half as a version of boot-medium-reader-ssh-key; the receipt names only the public key, its fingerprint and the version" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: convergence_principal(),
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// MTCOLLINS1'S SSH HOST KEY MINT (gunbc.host.mtcollins1_ssh_host_key_mint), WHICH REPLACED A HUMAN SHELL
+// STEP (gunbc.design_ruling the_mint_of_a_fleet_ssh_keypair_is_account_creation). THIS ROW IS THE RECORD OF
+// THAT CHANGE, which is why it is written against the new site rather than edited in place: the census is
+// what an auditor reads to ask "who can mint a fleet credential, and how", and a row that had quietly been a
+// human step last quarter and now reads as a federated grant would be a census that cannot be audited.
+//
+// WHAT THE RETIRED ROW SAID, AND WHY THE SELECTION FLIPPED. The scaffold (anchored_host_key_mint_effect,
+// retired with the runbook's Step 1) was IRREVERSIBLE with a loss named, and irreversibility is what made
+// select_authorization_pattern pick OperatorApprovedCapability: an irreversible effect with no witness
+// discharge demands a human who consented to THIS effect. The irreversibility was a property of the HUMAN
+// PROCESS, not of the key. A person holding the only copy in RAM, with no model, no receipt and no way to
+// know whether the upload landed, really can lose a key nobody else can reproduce -- so a human had to be the
+// one who agreed to the risk. Under the mint, that ignorance is gone: the run either NAMED A VERSION (then the
+// version exists in Secret Manager and is recoverable by reading it) or NAMED NONE (then nothing was ever
+// created, and a re-dispatch mints a fresh pair into a fresh create-only tmpfs directory). Either way the
+// anchor row is simply re-pinned from the receipt, so the effect is FleetOnce and ReversibleByReapply, the
+// same shape the reader key's mint has -- and with the workload identity bindable and no witness owed, the
+// selection computes to the federated grant rather than being asserted as one.
+//
+// THE REACH IS ONE RESOURCE, and it is worth being precise because this is a HOST key: the private half
+// impersonates mtcollins1's sshd to anything that has pinned its anchor, which is a fleet of clients this
+// repository owns and no one else's. It reaches no user account, no other host and no other secret --
+// AddVersion on exactly this row, granted by a row of gunbc.auth.fleet_secret_accessor_roster and converged by
+// gunbc.auth.gcp_iam_converge, never by a console edit.
+fn mtcollins1_host_key_mint_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "as the fleet identity at main, generate the stable ed25519 host keypair for mtcollins1 in a create-only tmpfs directory and add its private half as a version of mtcollins1-ssh-host-key; the receipt names only the public key, its fingerprint and the version" as NonEmptyStr,
     frequency: FleetOnce,
     reversibility: ReversibleByReapply,
     surface: ApiSurface,
@@ -2081,20 +2118,26 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedHumanStep,
     divergence_reason: none,
   },
-  // THE MINT of the stable host key (review 85232: "the one step that actually creates the secret ...
-  // its privileged effect is missing from the census"). Built as the ntfy publisher-token mint row is
-  // built -- an ApiSurface gcloud effect no fleet principal can perform, so the fold (executed over
-  // anchored_host_key_mint_effect, not hand-picked) selects the approval pattern while the
-  // realization is the named human step, and the row carries the SAME stated reason: the broker has
-  // no authority adapter that performs Secret Manager create/addVersion, so the operator acts by hand
-  // under their own gcloud session. The witness gate fires here (IrreversibleEffect with
-  // NoWitnessDischarge), which is what excludes the unattended candidates and leaves the approval
-  // pattern the sole survivor -- the reason text's claim is what the fold computes.
+  // MTCOLLINS1'S SSH HOST KEY MINT, WHICH WAS A HUMAN STEP UNTIL 2026-10-28. The row beside it read
+  // (gunbc.host.anchored_host_transport, anchored_host_key_mint_intervention) with RealizedHumanStep and the
+  // divergence reason manual_api_effect_beside_unlanded_approval_adapter, and that reason named the capability
+  // whose arrival would retire it: orchestration-to-shell emission, so the mint could become a dispatch
+  // instead of a paste. It landed -- as something better than the reason anticipated, a mint (
+  // gunbc.host.fleet_keypair_mint, this key and the boot medium reader key as its two rows) rather than a
+  // rendered script -- so the effect is no longer realized by a person following an instruction but by the
+  // run's own federated identity under a converged versionAdder cell.
+  //
+  // THE ROW IS WRITTEN AGAINST THE NEW SITE AND NOT EDITED IN PLACE, because the census is the audit record of
+  // who can mint a fleet credential and how; a row that was a human step last quarter and now reads as a
+  // federated grant, with nothing saying so, is a census that cannot be audited. Why the SELECTION flipped
+  // (OperatorApprovedCapability -> the federated grant) is argued once, at mtcollins1_host_key_mint_effect: the
+  // irreversibility that forced a human's consent was a property of the human process, not of the key. See
+  // also gunbc.design_ruling the_mint_of_a_fleet_ssh_keypair_is_account_creation.
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_intervention"),
-    effect: anchored_host_key_mint_effect(),
-    realized: RealizedHumanStep,
-    divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
+    site: site(module_path: "gunbc.host.mtcollins1_ssh_host_key_mint", decl_name: "mtcollins1_host_key_mint_wet"),
+    effect: mtcollins1_host_key_mint_effect(),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
   },
 ]
 

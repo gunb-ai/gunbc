@@ -20,7 +20,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_build_job_own_steps,
   fleet_converge_job_edges, fleet_converge_release_bins_job_id, fleet_converge_plan_revision_job_id, FleetConvergeJobEdge, fleet_converge_mode_job_id,
   fleet_converge_in_job_compiler_pair_jobs, fleet_converge_mtcollins1_boot_pair_build_step,
-  fleet_converge_branch_run_grant_await_job_id, BootMediumReaderKeyMint, QualificationFloor,
+  fleet_converge_branch_run_grant_await_job_id, FleetKeypairMint, QualificationFloor,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
   FleetApply, WorkspaceImageBuild, RevisionJobImageBuild, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
@@ -276,10 +276,10 @@ fn fleet_converge_job_roster_duplicated(edges: List<FleetConvergeJobEdge>) -> Li
 }
 
 // THE JOBS THAT RUN NO RELEASE PACK AND BUILD NO PAIR (gunbc.fleet.fleet_converge_workflow fleet_converge_job_edges): the
-// grant wait and the reader key mint touch no host and build the one binary they run (#15001, #15036); the qualification
+// grant wait and the fleet keypair mint touch no host and build the one binary they run (#15001, #15036); the qualification
 // floor builds the seed it runs from the pinned checkout (#15256). Each waits on nothing.
 fn fleet_converge_jobs_without_a_release_pack() -> List<String> {
-  [fleet_converge_branch_run_grant_await_job_id as String, fleet_converge_mode_job_id(mode: BootMediumReaderKeyMint) as String, fleet_converge_mode_job_id(mode: QualificationFloor) as String]
+  [fleet_converge_branch_run_grant_await_job_id as String, fleet_converge_mode_job_id(mode: FleetKeypairMint) as String, fleet_converge_mode_job_id(mode: QualificationFloor) as String]
 }
 
 // A ROSTERED PAIR JOB'S ONE BINARY SOURCE IS ITS OWN BUILD: it never waits on `build`, and it may wait only on another

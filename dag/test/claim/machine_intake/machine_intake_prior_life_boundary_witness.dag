@@ -96,7 +96,7 @@ fn sel_world() -> BmcWorld {
     power: w.power, pending: w.pending, fired: w.fired, boot_override: w.boot_override, sel: sel_records,
     sol_session_open: w.sol_session_open, cycle_off_interval: w.cycle_off_interval,
     host_booted_at: w.host_booted_at, booted_via_override: w.booted_via_override, sol_drop_after_boot: w.sol_drop_after_boot,
-    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: bmc_record_surfaces_unmodeled,
+    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: bmc_record_surfaces_unmodeled, redfish_accounts: w.redfish_accounts,
   }
 }
 
@@ -139,7 +139,7 @@ fn prior_life_minimal_dry_world() -> DryPriorLifeWorld {
     power: w.power, pending: w.pending, fired: w.fired, boot_override: w.boot_override, sel: one_sel_record,
     sol_session_open: w.sol_session_open, cycle_off_interval: w.cycle_off_interval,
     host_booted_at: w.host_booted_at, booted_via_override: w.booted_via_override, sol_drop_after_boot: w.sol_drop_after_boot,
-    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: empty_surfaces,
+    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: empty_surfaces, redfish_accounts: w.redfish_accounts,
   }
   dry_world(bmc: with_sel, store: empty_store)
 }

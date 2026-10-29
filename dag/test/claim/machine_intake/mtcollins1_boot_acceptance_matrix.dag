@@ -224,7 +224,7 @@ fn bmc_world_cycled(power: BmcPower, off: Second) -> BmcWorld {
     power: w.power, pending: w.pending, fired: w.fired, boot_override: w.boot_override, sel: w.sel,
     sol_session_open: w.sol_session_open, cycle_off_interval: off,
     host_booted_at: w.host_booted_at, booted_via_override: w.booted_via_override, sol_drop_after_boot: w.sol_drop_after_boot,
-    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: w.record_surfaces,
+    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: w.record_surfaces, redfish_accounts: w.redfish_accounts,
   }
 }
 

@@ -14,6 +14,7 @@ import gunbc.runner.runner_slot_cap_converge {
   UnitPendingReload,
   PendingReloadOwed,
   PendingReloadUnobserved,
+  PendingReloadOwedInertUntilActivated,
   PendingReloadKind,
   SlotCapLive,
   SlotCapStanding,
@@ -350,9 +351,17 @@ fn owed_01() -> HostPendingReloads { HostReloadsPending { units: non_empty_singl
 
 fn pending_is(got: HostPendingReloads, kind: PendingReloadKind) -> Bool {
   match got {
-    HostReloadsPending { units: xs } => length(non_empty_to_list(xs: xs)) == 1 && any(non_empty_to_list(xs: xs), u => (u.unit as String) == "actions-runner@srv3-01.service" && match u.kind { PendingReloadOwed => match kind { PendingReloadOwed => true PendingReloadUnobserved => false } PendingReloadUnobserved => match kind { PendingReloadUnobserved => true PendingReloadOwed => false } })
+    HostReloadsPending { units: xs } => length(non_empty_to_list(xs: xs)) == 1 && any(non_empty_to_list(xs: xs), u => (u.unit as String) == "actions-runner@srv3-01.service" && pending_kind_same(a: u.kind, b: kind))
     HostNoReloadPending => false
     HostPopulationUnobserved { reason: _ } => false
+  }
+}
+
+fn pending_kind_same(a: PendingReloadKind, b: PendingReloadKind) -> Bool {
+  match a {
+    PendingReloadOwed => match b { PendingReloadOwed => true PendingReloadUnobserved => false PendingReloadOwedInertUntilActivated => false }
+    PendingReloadUnobserved => match b { PendingReloadUnobserved => true PendingReloadOwed => false PendingReloadOwedInertUntilActivated => false }
+    PendingReloadOwedInertUntilActivated => match b { PendingReloadOwedInertUntilActivated => true PendingReloadOwed => false PendingReloadUnobserved => false }
   }
 }
 
@@ -465,10 +474,54 @@ test fn an_unmasked_inactive_owed_unit_still_withholds() -> Bool {
   plan_withheld_naming(p: masked_plan_for(show: masked_show(load: "loaded", active: "inactive", cgroup: "")), needle: "actions-runner@srv3-06.service reload=owed")
 }
 
-// RED: a masked inactive unit that is IN the bracket's set is not excluded -- activation unmasks it.
-test fn an_inert_owed_unit_inside_the_bracket_set_still_withholds() -> Bool {
+// RED: a masked inactive unit that is IN the bracket's set is not excluded -- activation unmasks it. It is
+// kept, typed as inert until activated, never dropped and never read as reaching a running slot.
+test fn an_inert_owed_unit_inside_the_bracket_set_is_kept_as_inert() -> Bool {
   let u = "actions-runner@srv3-06.service" as NonEmptyStr
-  !pending_none(got: runner_host_cap_pending_reloads(population: fabric_population_of(show: masked_show(load: "masked", active: "inactive", cgroup: "")), bracket_units: [u]))
+  let got = runner_host_cap_pending_reloads(population: fabric_population_of(show: masked_show(load: "masked", active: "inactive", cgroup: "")), bracket_units: [u])
+  match got {
+    HostReloadsPending { units: xs } => all(non_empty_to_list(xs: xs), p => (p.unit as String) == (u as String) && pending_kind_same(a: p.kind, b: PendingReloadOwedInertUntilActivated))
+    HostNoReloadPending => false
+    HostPopulationUnobserved { reason: _ } => false
+  }
+}
+
+// THE DEPLOY-SLOT SHAPE (the srv1-02 receipt of run 40882448080): a declared slot, drained and masked, owes
+// a reload; every running slot reads NeedDaemonReload=no. Same one declared running slot (srv3-01) and one
+// declared masked slot (srv3-06), both in the bracket's set, from real show text. `inert_show` varies
+// whether the masked slot is inert; `running_reload` whether the running slot owes a reload too.
+fn deploy_slot_population(inert_show: String, running_reload: String) -> RunnerSlotPopulation {
+  let d = unit(n: "01")
+  let x = "actions-runner@srv3-06.service" as NonEmptyStr
+  let running = join(["Id=actions-runner@srv3-01.service\nLoadState=loaded\nNeedDaemonReload=", running_reload, "\nExitType=main\nKillMode=control-group\nActiveState=active\nControlGroup=/system.slice/y\nCPUQuotaPerSecUSec=7s\nEnvironment="], "")
+  SlotPopulationObserved { units: classify_runner_slot_population_with_fabric(units: [d, x], fabric: [], retirements: [], show_stdout: join([running, inert_show], "\n\n"), expect: runner_slot_expectation(per_slot: hardware_thread_count(count: 7), fragment_delivered: false, residue_absent: false)) }
+}
+fn deploy_slot_plan(standings: List<SlotCapUnitStanding>, inert_show: String, running_reload: String) -> HostCapPlan {
+  let x = "actions-runner@srv3-06.service" as NonEmptyStr
+  host_cap_plan(standings: standings, files: CapFilesSettled, pending_reloads: runner_host_cap_pending_reloads(population: deploy_slot_population(inert_show: inert_show, running_reload: running_reload), bracket_units: [unit(n: "01"), x]), retirement_cause: none, extras: [])
+}
+
+// Positive: caps settled, the only pending unit inert inside the bracket set -> left in place, so the
+// reload sites stay open (a reload loads nothing onto the masked, cgroupless unit).
+test fn an_inert_owed_bracket_unit_leaves_settled_caps_in_place() -> Bool {
+  let p = deploy_slot_plan(standings: one_at(), inert_show: masked_show(load: "masked", active: "inactive", cgroup: ""), running_reload: "no")
+  plan_leaves(p: p)
+}
+
+// RED: the same population with a differing cap -> the bracket would unmask and start the inert unit, so it withholds, naming it.
+test fn an_inert_owed_bracket_unit_withholds_a_differing_cap() -> Bool {
+  plan_withheld_naming(p: deploy_slot_plan(standings: one_old(), inert_show: masked_show(load: "masked", active: "inactive", cgroup: ""), running_reload: "no"), needle: "actions-runner@srv3-06.service reload=owed-inert")
+}
+
+// RED: a RUNNING slot with a pending source beside the inert one still withholds settled caps, naming the running slot.
+test fn a_running_slot_owing_a_reload_beside_an_inert_one_still_withholds() -> Bool {
+  plan_withheld_naming(p: deploy_slot_plan(standings: one_at(), inert_show: masked_show(load: "masked", active: "inactive", cgroup: ""), running_reload: "yes"), needle: "actions-runner@srv3-01.service reload=owed (")
+}
+
+// RED: the masked slot no longer inert (a cgroup, or not masked) withholds settled caps as reaching a running slot.
+test fn a_non_inert_owed_bracket_unit_still_withholds_settled_caps() -> Bool {
+  plan_withheld_naming(p: deploy_slot_plan(standings: one_at(), inert_show: masked_show(load: "masked", active: "active", cgroup: "/system.slice/x"), running_reload: "no"), needle: "actions-runner@srv3-06.service reload=owed (")
+    && plan_withheld_naming(p: deploy_slot_plan(standings: one_at(), inert_show: masked_show(load: "loaded", active: "inactive", cgroup: ""), running_reload: "no"), needle: "actions-runner@srv3-06.service reload=owed (")
 }
 
 // RED: a masked unit with a missing ActiveState/ControlGroup key is not proven inert.
