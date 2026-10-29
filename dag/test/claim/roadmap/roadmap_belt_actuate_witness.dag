@@ -3,8 +3,8 @@ module test.claim.roadmap.roadmap_belt_actuate_witness
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_session_placement { SessionSettlePassRan, SessionSettlePassRefused }
 import gunbc.roadmap.roadmap_belt_actuate { belt_settlement_spawn_gate }
-import gunbc.roadmap.roadmap_belt_actuate { belt_lineage_standing, AttemptsObserved, AttemptsRefused }
-import gunbc.roadmap.roadmap_attempt_worktree_claim { LineageUnknown }
+import gunbc.roadmap.roadmap_belt_actuate { belt_lineage_standing, belt_lineage_standing_of_decision, AttemptsObserved, AttemptsRefused }
+import gunbc.roadmap.roadmap_attempt_worktree_claim { LineageUnknown, LineageEnded, LineageNotEnded }
 import gunbc.roadmap.roadmap_launch_admission { LaunchNoPlacementGrant }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
@@ -2757,23 +2757,37 @@ test fn a_not_due_request_pending_hold_maps_to_a_wake_route() -> Bool {
   }
 }
 
-// belt_lineage_standing is the ONE 'ended' derivation both the worktree-claim settlement and the worktree
-// restore read (roadmap_attempt_worktree_claim LineageStanding). DESIGN §5: 'can't tell' must not collapse
-// into 'converged', so a state we cannot decide must come back LineageUnknown (which the classifier REFUSES,
-// countably) and never LineageNotEnded (which it reads as a settled keep). The two ledger states decidable
-// without touching the filesystem -- an unobservable ledger, and a present ledger with no row for this attempt
-// (reaped, or an inconsistent ledger) -- are pinned here. The decision-Refused arm of the same function (an
-// unreadable retire record) is wet: belt_continuation_decision_for_progress returns Refused only via
-// LineageRetireUnreadable, which needs a seeded corrupt retire file; that arm is exercised end to end by the
-// live replay, while the Unknown posture is pinned here where it is deterministically observable.
-test fn belt_lineage_standing_reports_unknown_for_an_unreadable_ledger_or_a_missing_row() -> Bool {
+// belt_lineage_standing (the ONE 'ended' derivation the worktree-claim settlement reads) has three ledger-level
+// postures, the two filesystem-free ones pinned here: an UNREADABLE ledger is 'can't tell' => LineageUnknown (the
+// classifier REFUSES it, countably -- never 'converged', §5); a SUCCESSFULLY-READ ledger with no row for this
+// attempt is the reaped, finished case => LineageEnded, so an ended worker's claim CLOSES (the pre-settlement
+// behaviour) rather than staying permanently red/uncloseable on every pass (§4b meta-obligation 3). The
+// decision-Refused arm (a corrupt retire record) is wet -- belt_continuation_decision_for_progress returns Refused
+// only via LineageRetireUnreadable, which needs a seeded corrupt retire file -- and is exercised by the live replay.
+test fn belt_lineage_standing_is_unknown_for_an_unreadable_ledger_and_ends_a_reaped_row() -> Bool {
   let inst = srv1_live_dashboard_instance()
   let nid = roadmap_belt_actuate_nid("shell-dag-lineage-standing-unknown")
   let unreadable = belt_lineage_standing(instance: inst, ledger: AttemptsRefused { reason: "the prior-attempt ledger is unobservable" }, panes: BeltAttemptPanesObserved { panes: [] }, node_id: nid, attempt_key: "a1")
-  let missing = belt_lineage_standing(instance: inst, ledger: AttemptsObserved { attempts: [] }, panes: BeltAttemptPanesObserved { panes: [] }, node_id: nid, attempt_key: "a1")
+  let reaped = belt_lineage_standing(instance: inst, ledger: AttemptsObserved { attempts: [] }, panes: BeltAttemptPanesObserved { panes: [] }, node_id: nid, attempt_key: "a1")
   let u_ok = match unreadable { LineageUnknown { detail: _ } => true  _ => false }
-  let m_ok = match missing { LineageUnknown { detail: _ } => true  _ => false }
-  u_ok && m_ok
+  let r_ok = match reaped { LineageEnded => true  _ => false }
+  u_ok && r_ok
+}
+
+// THE DECISION -> STANDING PROJECTION, pinned on every arm (the pure half of belt_lineage_standing, split out so
+// it is testable without the filesystem). ENDED arms release, NOT-ENDED arms keep, REFUSED refuses countably.
+// This is what review 88212 turned on: ContinuationComplete ("the lineage is complete and nothing spawns") and
+// ContinuationSpawnFresh (abandoned for a fresh dispatch) mean the lineage is DONE and must release -- keeping them
+// silently leaked a finished attempt's worktree; ContinuationRefused is 'can't tell' (Unknown), never 'converged'.
+test fn belt_lineage_standing_of_decision_releases_completed_and_fresh_keeps_open_and_refuses_undecided() -> Bool {
+  let ended = match belt_lineage_standing_of_decision(decision: ContinuationEnded { reason: "review requested changes" }) { LineageEnded => true  _ => false }
+  let complete = match belt_lineage_standing_of_decision(decision: ContinuationComplete { reason: "the lineage is complete and nothing spawns" }) { LineageEnded => true  _ => false }
+  let fresh = match belt_lineage_standing_of_decision(decision: ContinuationSpawnFresh { reason: "no prior attempt of this node" }) { LineageEnded => true  _ => false }
+  let refused = match belt_lineage_standing_of_decision(decision: ContinuationRefused { reason: "the retire record is unreadable" }) { LineageUnknown { detail: _ } => true  _ => false }
+  let hold = match belt_lineage_standing_of_decision(decision: ContinuationHold { reason: "the belt owes it" }) { LineageNotEnded => true  _ => false }
+  let hold_until = match belt_lineage_standing_of_decision(decision: ContinuationHoldUntil { reason: "request-pending, not due", attempt_key: "a1", redeliver_at: 1700000060 }) { LineageNotEnded => true  _ => false }
+  let resume = match belt_lineage_standing_of_decision(decision: ContinuationResume { reason: "recovery-needed and resumable", attempt_key: "a1", ordinal: 2, causes: ["c"] }) { LineageNotEnded => true  _ => false }
+  ended && complete && fresh && refused && hold && hold_until && resume
 }
 
 // THE COMPOSITION, END TO END OVER THE REAL PRODUCER: an active systemd attempt unit for node-a

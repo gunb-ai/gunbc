@@ -3143,6 +3143,32 @@ fn belt_continuation_decision_for_node(instance: HostDashboardInstance, node_id:
 // Ended -> LineageEnded (release); Resume / Hold-Until / Refused -> LineageNotEnded (keep); a ledger we could not
 // read, or a row we cannot find (reaped, or not this attempt's), -> LineageUnknown, which makes the claim REFUSE
 // (typed, located, countable) rather than report it converged while it silently leaks.
+// THE PURE DECISION -> STANDING PROJECTION: what the claim settlement may do given one attempt's OWN continuation
+// decision. Split out so the mapping is testable in isolation (belt_actuate_witness drives every ContinuationDecision
+// arm) and lives in exactly one place (§3). ENDED => the claim may be released/closed; NOT ENDED => keep it; UNKNOWN
+// => refuse it, countably -- a 'can't tell' never reports converged (§5).
+//   ENDED:     ContinuationEnded (the lineage ended); ContinuationComplete (verified green, reviewed and audited,
+//              "nothing spawns" -- definitively finished); ContinuationSpawnFresh (this attempt is abandoned for a
+//              fresh dispatch -- its lineage is not continuing). NONE is reachable for a live request-pending
+//              lineage, which decides Hold / HoldUntil / Resume, so releasing on these never touches a pending
+//              attempt's tree (review 88212: these were silently kept, leaking a finished attempt's worktree).
+//   NOT ENDED: ContinuationHold / ContinuationHoldUntil (awaiting the belt, an armed wake, or an operator) and
+//              ContinuationResume (recovery-needed and resumable) -- all still open; keep the claim.
+//   UNKNOWN:   ContinuationRefused -- the decision could not be made (unobservable ledger, unreadable retire record,
+//              or a damaged segment record only the operator may decide). 'Can't tell' REFUSES; never kept as if it
+//              converged, never released.
+fn belt_lineage_standing_of_decision(decision: ContinuationDecision) -> LineageStanding {
+  match decision {
+    ContinuationEnded { reason: _ } => LineageEnded
+    ContinuationComplete { reason: _ } => LineageEnded
+    ContinuationSpawnFresh { reason: _ } => LineageEnded
+    ContinuationRefused { reason } => LineageUnknown { detail: join(["the continuation could not decide: ", reason], "") }
+    ContinuationHold { reason: _ } => LineageNotEnded
+    ContinuationHoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => LineageNotEnded
+    ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageNotEnded
+  }
+}
+
 fn belt_lineage_standing(
   instance: HostDashboardInstance,
   ledger: BeltAttempts,
@@ -3154,28 +3180,22 @@ fn belt_lineage_standing(
     AttemptsRefused { reason } => LineageUnknown { detail: join(["the prior-attempt ledger could not be read: ", reason], "") }
     AttemptsObserved { attempts } =>
       match (attempts |> filter(a => a.node_id as String == node_id as String && a.attempt_key == attempt_key)).first() {
-        Absent => LineageUnknown { detail: join(["attempt ", attempt_key, " has no row in the prior-attempt ledger (reaped, or the ledger is inconsistent); its standing cannot be confirmed"], "") }
+        // A SUCCESSFULLY-READ ledger that carries no row for this attempt is NOT 'can't tell' -- it is the reaped,
+        // finished case. The workflow-attempts row exists while an attempt is active and is removed once it is done
+        // and reaped; a live request-pending lineage always carries its row. So a missing row for a claim whose worker
+        // has ended means the lineage is FINISHED: CLOSE it (LineageEnded), restoring the pre-settlement behaviour
+        // where an ended worker closed its own claim. Reporting this Unknown instead would leave a permanently-red,
+        // uncloseable claim on every settlement pass -- a rung lowered without declaration (DESIGN §4b meta-obligation
+        // 3). Only an UNREADABLE ledger (AttemptsRefused, above) is genuinely 'can't tell' and comes back Unknown.
+        Absent => LineageEnded
         Present { value: a } =>
-          match belt_continuation_decision_for_progress(
-            instance: instance,
-            node_id: node_id,
-            progress: belt_workflow_progress_for_attempt_ref(instance: instance, panes: panes, attempt: a),
-          ) {
-            // The ONE arm that means "this attempt's lineage has ENDED": release/close is allowed only here.
-            ContinuationEnded { reason: _ } => LineageEnded
-            // A REFUSED decision is 'can't tell' -- the ledger was unobservable or the retire record unreadable --
-            // NOT 'not ended'. It must come back Unknown so the claim pass refuses/counted and the restore skips,
-            // never reporting the claim converged on an undecided standing (§5: every degradation typed and countable).
-            ContinuationRefused { reason } => LineageUnknown { detail: join(["the continuation could not decide: ", reason], "") }
-            // The decided-but-still-open arms (explicit, no wildcard: a new ContinuationDecision arm must be
-            // reconsidered here, not silently swept into a standing). None of these means the lineage ended, so
-            // the claim is KEPT -- the fail-safe direction: only ContinuationEnded above may release it.
-            ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageNotEnded
-            ContinuationHoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => LineageNotEnded
-            ContinuationHold { reason: _ } => LineageNotEnded
-            ContinuationSpawnFresh { reason: _ } => LineageNotEnded
-            ContinuationComplete { reason: _ } => LineageNotEnded
-          }
+          belt_lineage_standing_of_decision(
+            belt_continuation_decision_for_progress(
+              instance: instance,
+              node_id: node_id,
+              progress: belt_workflow_progress_for_attempt_ref(instance: instance, panes: panes, attempt: a),
+            ),
+          )
       }
   }
 }
