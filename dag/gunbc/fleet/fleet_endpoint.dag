@@ -18,16 +18,32 @@ module gunbc.fleet.fleet_endpoint
 // THE DFS, AND WHY NOTHING NEW IS INVENTED HERE (the plan's section 6).
 //   HostName            -- extdeps.dns.domain_name: a host name, its labels, its qualification.
 //   Port                -- std.types: one bounded integer, range-checked by the brand.
-//   Scheme              -- extdeps.network.endpoint: the transport a URL names.
+//   UriScheme           -- extdeps.uri: the scheme a URL names. It is the corpus's only scheme carrier,
+//                         and this module's URL projection is the consumer that decides which of its arms
+//                         a fleet service can be reached on.
 //   ServiceEndpointAuthority -- the NEW atom: which authority says this host:port is that service. It is
 //                              not a fourth piece of an address -- it is the fact the corpus never
 //                              modelled, and the one whose absence the plan's Decision D5 is about. The
 //                              corpus already knows authorities are modeled, not remembered: an
 //                              ExternalAuthority rides on every extdeps module and a WitnessAuthority on
 //                              every witness. A service endpoint's authority was the gap.
-// So a service endpoint is (authority, service, host, port, transport) and every slot but the authority
-// is an existing type. That is also why a bare string cannot be promoted to one by a cast: the authority
-// has to be supplied, and the supply is the assertion.
+// So a service endpoint is (authority, service, member, host, port) and every slot but the authority is an
+// existing type. That is also why a bare string cannot be promoted to one by a cast: the authority has to
+// be supplied, and the supply is the assertion.
+//
+// THE TRANSPORT IS HTTPS, AND IT IS A CONTRACT RATHER THAN A FIELD -- stated here because a comment that
+// called transport a slot of this identity was review 87570's first finding: the type did not carry it, so
+// the model claimed an invariant it did not encode. Every role that publishes a URL publishes it over
+// HTTPS (the approval broker, the risk API, live-deploy health, ntfy, the workspace gateway), so the scheme
+// is one value fleet-wide and `service_endpoint_https_url` says so in its name. It stays out of the
+// identity because of the sixth role: FabricStorageShare is an export, which has a host and a port and no
+// URL form at all, and extdeps.uri's UriScheme is the RFC 3986 URL-scheme set (Http, Https, Tftp, File,
+// Ftp, Javascript, Data, Vbscript, Mailto) with no arm for an export protocol. Carrying a scheme on the
+// identity would push that share into `Https` -- a URL it does not serve -- or into inventing an `nfs://`,
+// and both are the laundering this module refuses on the authority axis. The share keeps
+// `service_endpoint_address`, which is all a mount line needs, and is refused a URL by a typed decision
+// (`service_role_publishes_url`) rather than by a caller's discretion. The day a second transport ships is
+// the frontier at the foot of this module, and it is the day the slot gets added.
 //
 // WHY THE AUTHORITY IS A SUM AND NOT A STRING. "Where did this endpoint come from" has exactly three
 // answers in this fleet, and they differ in what they license a consumer to do with the value: a name the
@@ -57,7 +73,7 @@ import extdeps.dns.domain_name {
 import extdeps.network.endpoint {
   SocketAddress,
   host_by_name,
-  render_network_host,
+  render_uri_host,
   socket_address,
 }
 import extdeps.uri { uri_https, uri_wire }
@@ -115,21 +131,26 @@ type ServiceEndpointIdentity sole_constructor {
 // WHY AN ENDPOINT CANNOT BE FORMED. Each names the part that failed, so the fix is visible:
 //   HostUnparsable        -- the host text is not a host name. The common cause is a raw string that was
 //                            never a name, which is the defect this type exists to catch.
-//   PortOutOfRange        -- the port is outside what the Port brand admits. A refusal, not a clamp: a
-//                            silently narrowed port would produce a working-looking endpoint for the
-//                            wrong service.
 //   AuthorityWithoutProof -- the claimed authority is not the authority the member's name came from, e.g.
 //                            a fleet-DNS endpoint built from a literal. The one refusal that stops a
 //                            value being laundered from one authority into another.
 // No arm yields an endpoint. A caller that cannot build one has to say why, in a name.
 type ServiceEndpointRefusal
   = HostUnparsable { service: FleetServiceRole, raw: NonEmptyStr }
-  | PortOutOfRange { service: FleetServiceRole, port: Int }
   | AuthorityWithoutProof { service: FleetServiceRole, claimed: ServiceEndpointAuthority, source: HostIdentity }
 
-// THE ONE CONSTRUCTION PATH FOR A SERVICE ENDPOINT. The host is parsed rather than accepted, the port is
-// checked against the Port brand's range rather than trusted, and the authority is checked for whether
-// this model can carry it at all.
+// WHY THE URL PROJECTION HAS ITS OWN REFUSAL AND NOT AN ARM OF THE ONE ABOVE. The refusals above are about
+// whether an address may be called a service endpoint; this one is about whether a role has a URL form at
+// all. Merging them would let a caller match on "endpoint bad" where the two questions have different
+// fixes: one is a bad argument, the other is a role that is not served over a URL. One arm, because one
+// cause exists: an export-served role.
+type ServiceEndpointUrlRefusal = UrlFormAbsent { service: FleetServiceRole }
+
+// THE ONE CONSTRUCTION PATH FOR A SERVICE ENDPOINT. The host is parsed rather than accepted, and the
+// authority is checked for whether this model can carry it at all. The port arrives already bounded: it is
+// a `Port`, which std.types range-checks at its own brand, so this function does not re-check it and no
+// refusal here claims to (a check restating a constraint the input type already carries is a second
+// representation of it -- DESIGN section 5).
 //
 // WHAT THIS GATE DOES CHECK. `member` cannot be a string, an address, or a self-described endpoint: it is a
 // ProviderEndpoint, and the only way to hold one is to have had an allocation read through gunbc.fleet's
@@ -259,19 +280,58 @@ fn service_endpoint_address(endpoint: ServiceEndpointIdentity) -> SocketAddress 
   socket_address(host: host_by_name(name: endpoint.host), port: endpoint.port)
 }
 
-// THE URL FORM, for the transport that needs one: the scheme and the locator are extdeps.uri's own
-// rendering, and the port is appended by the host renderer rather than by a string habit here. The
-// function exists so the URL of a service endpoint is ONE fact of the fleet rather than something each
+// WHICH ROLES HAVE A URL FORM AT ALL, as a typed decision rather than a caller's guess. The five console
+// and API roles are served over HTTPS; FabricStorageShare is an export, and an export is addressed by host
+// and port (`service_endpoint_address`), not by a URL. This is the whole reason
+// `service_endpoint_https_url` below can be partial: the model knows which roles answer a URL, so a caller
+// cannot ask for the URL of something that has none and get a plausible string back. Every arm is named --
+// a new role has to be classified here, which is the review that makes the classification happen.
+fn service_role_publishes_url(role: FleetServiceRole) -> Bool {
+  match role {
+    ApprovalBroker => true
+    DeploymentRiskApi => true
+    FabricStorageShare => false
+    LiveDeployHealth => true
+    NtfyNotifier => true
+    WorkspaceGateway => true
+  }
+}
+
+// THE URL FORM, for the roles that have one -- and it is partial for the reason above, refusing a role
+// with no URL rather than rendering one for it. WHAT ASSEMBLES WHERE: the host half is
+// extdeps.network.endpoint's `render_uri_host`, which is the module's own authority rendering (RFC 3986
+// §3.2.2, IPv6 bracketed); the scheme is extdeps.uri's, named once, in `uri_https`; and the `:` and the
+// port are appended HERE, because no renderer in the corpus composes an authority from a host and a port
+// -- the comment that previously claimed the host renderer did this was describing a helper that does not
+// exist, and the port was in fact being appended by this function all along (review 87570's third finding).
+// The function exists so the URL of a service endpoint is ONE fact of the fleet rather than something each
 // caller assembles, which is how a "display string" ends up being a URL by accident.
-fn service_endpoint_https_url(endpoint: ServiceEndpointIdentity) -> NonEmptyStr {
-  let host_text = render_network_host(host: host_by_name(name: endpoint.host))
-  uri_wire(uri: uri_https(locator: join([host_text, ":", endpoint.port as String], "")))
+fn service_endpoint_https_url(
+  endpoint: ServiceEndpointIdentity,
+) -> Result<NonEmptyStr, ServiceEndpointUrlRefusal> {
+  if !service_role_publishes_url(role: endpoint.service) {
+    Err { value: UrlFormAbsent { service: endpoint.service } }
+  } else {
+    let host_text = render_uri_host(host: host_by_name(name: endpoint.host))
+    Ok {
+      value: uri_wire(
+        uri: uri_https(locator: join([host_text, ":", to_string(endpoint.port as Int)], "") as NonEmptyStr),
+      ),
+    }
+  }
 }
 
 // Whether two identities address the same service at the same place -- the equality the plan needs to
 // decide when two producers name one service, and the replacement for comparing endpoint strings
-// (which says "different" for http-vs-https and for a trailing dot, and "same" for two hosts that only
-// look alike).
+// (which says "different" for a trailing dot and for two spellings of one name, and "same" for two hosts
+// that only look alike). WHAT IT COMPARES is every slot of the identity except the member, and the two
+// exclusions are decisions rather than oversights: `member` is left out because the plan's Decision D3 says
+// a service keeps its identity as it moves between hosts, so a member change is the same service at a new
+// place and not a new service; and no transport is compared because this model serves one transport, HTTPS
+// by the contract at the head of the module, so there is no second scheme for the comparison to be blind
+// to. Adding a transport slot to the identity (the frontier below) means adding it here in the same commit,
+// and the frontier's witness will not stay green if that is forgotten -- a pair differing only in a slot
+// the equality ignores is exactly the discriminating input that claim refuses to accept.
 fn service_endpoint_identity_eq(a: ServiceEndpointIdentity, b: ServiceEndpointIdentity) -> Bool {
   a.service == b.service
     && a.authority == b.authority
@@ -350,6 +410,52 @@ fn deployment_risk_seam_does_not_dissolve_on_its_own_subject() -> Bool {
         BoundDissolution { trigger: t } => dissolution_trigger_ref(trigger: t) != subject
         UnboundDissolution { description: _ } => false
       }
+      _ => false
+    },
+  )
+}
+
+// THE TRANSPORT SLOT THIS MODEL DOES NOT HAVE, AS A DECLARED FRONTIER. The contract at the head of the
+// module is HTTPS-only, and the typed decision that makes it safe is `service_role_publishes_url`: a role
+// with no URL form is refused one instead of being rendered one. What that contract cannot do is name a
+// service served over any other transport -- no second scheme, no per-endpoint scheme, nothing to compare
+// in `service_endpoint_identity_eq` because there is only one value. This row says so as a declaration the
+// dissolution census can watch, rather than as a paragraph.
+//
+// WHY THE TRIGGER IS A FUTURE DECLARATION IN THIS MODULE. The row dissolves when a transport carrier is
+// actually declared here (and carried on the identity, in `service_endpoint_identity`, in
+// `service_endpoint_identity_eq`, and in the URL projection, all in the same commit -- a slot added to a
+// sealed record but left out of its equality is the laundering this whole module is built to refuse). A
+// trigger bound to some other module's scheme type would let the row retire while the fleet still cannot
+// name a second transport, which is a description of closing rather than a closing.
+data fleet_endpoint_transport_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.fleet_endpoint", decl_name: "ServiceEndpointIdentity"),
+    reason: "the identity carries no transport slot: this phase serves HTTPS only, so the scheme is a contract of the module rather than a fact of an endpoint, and a service served over any other transport cannot be named here at all. The share role is refused a URL by service_role_publishes_url rather than being dressed in https://.",
+    dissolution: bound_dissolution(
+      ref: decl_ref(module_path: "gunbc.fleet.fleet_endpoint", decl_name: "ServiceEndpointTransport"),
+    ),
+  ),
+]
+
+// THE TRANSPORT GAP IS RECORDED ON THE THING THAT WOULD GROW THE SLOT, and not on its own future
+// carrier: the subject is the identity and the trigger is the carrier, so the row cannot be about one
+// declaration and dissolve on the other, and cannot be about a declaration and dissolve on itself.
+fn transport_gap_frontier_names_the_identity_it_gates() -> Bool {
+  fleet_endpoint_transport_frontier.all(
+    r => match r.subject {
+      DeclSubject { ref: subject } =>
+        subject.module_path == "gunbc.fleet.fleet_endpoint"
+          && subject.decl_name == "ServiceEndpointIdentity"
+          && match r.dissolution {
+            BoundDissolution { trigger: t } => {
+              let trigger = dissolution_trigger_ref(trigger: t)
+              trigger != subject
+                && trigger.module_path == "gunbc.fleet.fleet_endpoint"
+                && trigger.decl_name == "ServiceEndpointTransport"
+            }
+            UnboundDissolution { description: _ } => false
+          }
       _ => false
     },
   )

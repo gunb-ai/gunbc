@@ -52,6 +52,8 @@ import gunbc.fleet.fleet_enrollment {
 }
 import gunbc.fleet.fleet_overlay {
   AttachmentSelection,
+  Named,
+  ProviderHasNotAnswered,
   overlay_frontier_rows_do_not_dissolve_on_their_own_subject,
   BindingForAnotherSubject,
   BindingIncarnationHasEnded,
@@ -116,6 +118,15 @@ import gunbc.fleet.fleet_naming {
 }
 import gunbc.fleet.fleet_endpoint {
   AdministerMember,
+  ApprovalBroker,
+  DeploymentRiskApi,
+  FabricStorageShare,
+  LiveDeployHealth,
+  WorkspaceGateway,
+  UrlFormAbsent,
+  fleet_endpoint_transport_frontier,
+  service_role_publishes_url,
+  transport_gap_frontier_names_the_identity_it_gates,
   deployment_risk_seam_does_not_dissolve_on_its_own_subject,
   fleet_endpoint_authority_frontier,
   fleet_endpoint_deployment_risk_frontier,
@@ -124,6 +135,7 @@ import gunbc.fleet.fleet_endpoint {
   ExternalConsumer,
   Fabric,
   FleetDns,
+  FleetServiceRole,
   ForSession,
   ForWindow,
   GrantToAnother,
@@ -147,6 +159,7 @@ import gunbc.fleet.fleet_endpoint {
   reach_duration_is_meaningful,
   reach_intent_is_administrative,
   service_endpoint_authority_is_supported,
+  service_endpoint_address,
   service_endpoint_identity,
   service_endpoint_identity_eq,
 }
@@ -634,7 +647,7 @@ test fn witness_unnamed_attachment_refuses() -> Bool {
       subject: srv1.fleet_slot,
       // A REALIZATION THAT NAMES NOTHING. Not "": a branded NonEmptyStr cannot be minted empty, so the
       // shape a caller can really hand in is a name made of nothing but space.
-      realization: "   " as OverlayRealization,
+      realization: Named { realization: ("   " as OverlayRealization) },
       kind: ManagedOverlay,
       selection: srv1_selection(),
     ) {
@@ -808,7 +821,7 @@ test fn witness_binding_cannot_cite_an_ended_life() -> Bool {
 fn attachment_of(subject: HostIdentity) -> Optional<FleetOverlayAttachment> {
   match fleet_overlay_attachment(
     subject: subject,
-    realization: "tailnet-fleet-managed" as OverlayRealization,
+    realization: Named { realization: ("tailnet-fleet-managed" as OverlayRealization) },
     kind: ManagedOverlay,
     selection: srv1_selection(),
   ) {
@@ -964,11 +977,17 @@ fn url_agrees_with_the_socket(
   host: NetworkHost,
   port: Port,
 ) -> Bool {
-  let text = service_endpoint_https_url(endpoint: endpoint) as String
-  let expected = render_uri_host(host: host) as String
-  string_contains(s: text, pattern: "https://")
-    && string_contains(s: text, pattern: expected)
-    && string_contains(s: text, pattern: to_string(port as Int))
+  match service_endpoint_https_url(endpoint: endpoint) {
+    // THE URL READER REFUSED A ROLE THAT PUBLISHES NO URL -- this fixture's role does publish one, so a
+    // refusal here is a defect in the reader, not an answer.
+    Err { value: _ } => false
+    Ok { value: text } => {
+      let expected = render_uri_host(host: host) as String
+      string_contains(s: text, pattern: "https://")
+        && string_contains(s: text, pattern: expected)
+        && string_contains(s: text, pattern: to_string(port as Int))
+    }
+  }
 }
 
 fn row_for(slot: HostIdentity) -> Optional<HostnameAllocation> {
@@ -1117,7 +1136,7 @@ test fn witness_the_managed_overlay_filter_selects_on_kind_alone() -> Bool {
       Present { value: managed } => match fleet_overlay_attachment(
         subject: srv1.fleet_slot,
         kind: SiteLan,
-        realization: "site-lan-vlan180" as OverlayRealization,
+        realization: Named { realization: ("site-lan-vlan180" as OverlayRealization) },
         selection: srv1_selection(),
       ) {
         Err { value: _ } => false
@@ -1290,11 +1309,14 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // that does not exist, or holds no .dag, refuses the read outright rather than contributing nothing.
 data frontier_census_pool_roots: List<String> = ["dag/gunbc", "dag/extdeps/tailscale"]
 
-// The whole population: three provider-identity rows, the authority gap, the deployment-risk seam --
-// read from the model's own data, never re-listed here.
+// The whole population: three provider-identity rows, the authority gap, the deployment-risk seam, and
+// the transport gap -- read from the model's own data, never re-listed here.
 data frontier_census_rows: List<FrontierRow> = list_append(
-  left: list_append(left: fleet_overlay_provider_identity_frontier, right: fleet_endpoint_authority_frontier),
-  right: fleet_endpoint_deployment_risk_frontier,
+  left: list_append(
+    left: list_append(left: fleet_overlay_provider_identity_frontier, right: fleet_endpoint_authority_frontier),
+    right: fleet_endpoint_deployment_risk_frontier,
+  ),
+  right: fleet_endpoint_transport_frontier,
 )
 
 fn frontier_census_subject_refs(rows: List<FrontierRow>) -> List<DeclarationRef> {
@@ -1328,6 +1350,9 @@ data frontier_census_misspellings: List<DeclarationRef> = [
   decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "OverlayMemberBinding.provider_device_identity"),
   decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "overlay_member_binding.provider_device_identity"),
   decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "FleetOverlayAttachment.provider_device_identity"),
+  // The transport frontier's subject, spelled against the folder instead of the module -- the exact
+  // misspelling a new subject invites, since ServiceEndpointIdentity now sits in a census subject list.
+  decl_ref(module_path: "gunbc.fleet", decl_name: "ServiceEndpointIdentity"),
 ]
 
 // ONE LIVE DECLARATION PER ROOT, as the vacuity guard: if a root were mistyped or unreadable, every
@@ -1385,8 +1410,8 @@ fn frontier_census_is_absent_today(ref: DeclarationRef) -> Bool {
 test fn witness_frontier_subjects_are_declarations_the_live_tree_has() -> Bool {
   // Population counted first: a row dropped from the fold would take its subject and its trigger out
   // of the census together, and the two claims below would each lose a branch to silence.
-  frontier_census_rows.count() == 5
-    && frontier_census_subject_refs(rows: frontier_census_rows).count() == 5
+  frontier_census_rows.count() == 6
+    && frontier_census_subject_refs(rows: frontier_census_rows).count() == 6
     // EVERY SUBJECT RESOLVES against the tree. This is the claim review 87158's first finding needed:
     // a subject naming no declaration -- wrong module, or a field spelled with a dot -- makes it red.
     && frontier_census_subject_refs(rows: frontier_census_rows).all(fn(r) { frontier_census_resolves(ref: r) })
@@ -1395,7 +1420,7 @@ test fn witness_frontier_subjects_are_declarations_the_live_tree_has() -> Bool {
 }
 
 test fn witness_frontier_triggers_describe_gaps_the_tree_still_has() -> Bool {
-  frontier_census_trigger_refs(rows: frontier_census_rows).count() == 5
+  frontier_census_trigger_refs(rows: frontier_census_rows).count() == 6
     // EVERY TRIGGER IS ABSENT TODAY: each row describes a capability that does not exist yet, so the
     // row is pending rather than fired at birth -- the shape review 87158's second finding had, where
     // the deployment-risk seam's trigger was the row's own subject, present the moment it was written.
@@ -1406,6 +1431,12 @@ test fn witness_frontier_triggers_describe_gaps_the_tree_still_has() -> Bool {
     // AND NO ROW RETIRES ON THE DECLARATION IT IS ABOUT.
     && overlay_frontier_rows_do_not_dissolve_on_their_own_subject()
     && deployment_risk_seam_does_not_dissolve_on_its_own_subject()
+    // ...including the transport gap: its subject is the identity that would grow the slot, and its
+    // trigger is the carrier, which the tree does not have yet (so the claim is not vacuous).
+    && transport_gap_frontier_names_the_identity_it_gates()
+    && frontier_census_is_absent_today(
+         ref: decl_ref(module_path: "gunbc.fleet.fleet_endpoint", decl_name: "ServiceEndpointTransport"),
+       )
 }
 
 // THE ONE-HOME RULE, CHECKED WHERE A FORK WOULD BE: P1 owns provider device/node identity in
@@ -1420,4 +1451,148 @@ test fn witness_provider_device_identity_is_not_forked_into_the_fleet_namespace(
     // The overlay's triggers point at P1's home, not at a fleet-local name.
     && frontier_census_trigger_refs(rows: fleet_overlay_provider_identity_frontier)
          .all(fn(t) { t.module_path == "extdeps.tailscale.devices" || t.module_path == "gunbc.fleet.fleet_overlay" })
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ROLE THAT PUBLISHES NO URL IS REFUSED ONE, BY A TYPED DECISION RATHER THAN BY SILENCE
+// ---------------------------------------------------------------------------------------------
+//
+// FabricStorageShare is the sixth service role and the odd one out: it is an EXPORT, addressed by host and
+// port -- which is exactly what makes the BMC's NFS share server nameable (adhoc-37e2c372-ad5) -- and it
+// serves no URL. Review 87570 and the side chat both landed on the same defect from two sides: the model
+// said transport was part of a service endpoint's identity while the type carried no transport, so the one
+// place a URL is assembled hardcoded HTTPS and equality could not tell two transports apart. Two fixes were
+// offered: carry a scheme, or narrow the claim. Inflating the rung was refused (DESIGN section 4b: rung
+// inflation is worse than sitting low), because extdeps.uri.UriScheme is the RFC 3986 set -- Http, Https,
+// Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto -- with no export arm: a scheme slot here would be
+// filled with Https for a share (a lie that launders an NFS export into an HTTPS service) or with an
+// invented nfs:// (a net concept grown by re-invention, DESIGN section 2). So HTTPS is named where it is
+// used, as a CONTRACT of `service_endpoint_https_url`, and the roles that do not serve it are refused by
+// `service_role_publishes_url` -- which is the reader's own partition rather than a second answer beside it.
+// The day a second transport ships, the frontier at the foot of that module names the carrier that has to
+// exist and the identity whose slot it fills.
+
+fn endpoint_for_service(
+  member: ProviderEndpoint,
+  role: FleetServiceRole,
+) -> Optional<ServiceEndpointIdentity> {
+  match service_endpoint_identity(
+    authority: FleetDns,
+    service: role,
+    member: member,
+    port: ntfy_port(),
+  ) {
+    Err { value: _ } => Absent
+    Ok { value: endpoint } => Present { value: endpoint }
+  }
+}
+
+// THE SHARE IS STILL ADDRESSABLE, and by the member's own resolved name and the endpoint's own port: the
+// mount line names a server, and that server is typed here rather than written as a string.
+fn share_socket_is_the_members_own_address(share: ServiceEndpointIdentity) -> Bool {
+  let socket = service_endpoint_address(endpoint: share)
+  match socket.host {
+    HostByName { name: n } => host_name_eq(a: n, b: share.host) && socket.port == share.port
+    HostByAddress { address: _ } => false
+  }
+}
+
+// THE READER REFUSES THE SHARE, with the reason that names the role rather than a generic failure.
+fn share_url_is_refused_because_a_share_publishes_none(share: ServiceEndpointIdentity) -> Bool {
+  match service_endpoint_https_url(endpoint: share) {
+    Ok { value: _ } => false
+    Err { value: UrlFormAbsent { service: s } } => s == FabricStorageShare
+    Err { value: _ } => false
+  }
+}
+
+// AND IT DOES NOT REFUSE EVERYTHING: the notifier, which does publish a URL, still gets one -- so the
+// refusal above is about the role and not about the reader failing.
+fn notifier_url_is_https(member: ProviderEndpoint) -> Bool {
+  match endpoint_for_service(member: member, role: NtfyNotifier) {
+    Absent => false
+    Present { value: notifier } => match service_endpoint_https_url(endpoint: notifier) {
+      Err { value: _ } => false
+      Ok { value: text } => string_contains(s: text, pattern: "https://")
+    }
+  }
+}
+
+test fn witness_a_share_has_a_socket_and_is_refused_a_url() -> Bool {
+  match member_endpoint_for(slot: operator_host_srv9) {
+    Err { value: _ } => false
+    Ok { value: member } => match endpoint_for_service(member: member, role: FabricStorageShare) {
+      Absent => false
+      Present { value: share } => share_socket_is_the_members_own_address(share: share)
+        && share_url_is_refused_because_a_share_publishes_none(share: share)
+        && notifier_url_is_https(member: member)
+        // THE GATE IS THE PARTITION THE READER ALREADY USES, role by role over the whole role set: a caller
+        // consulting it and a caller calling the reader cannot get different verdicts.
+        && !service_role_publishes_url(role: FabricStorageShare)
+        && [
+          ApprovalBroker,
+          DeploymentRiskApi,
+          LiveDeployHealth,
+          NtfyNotifier,
+          WorkspaceGateway,
+        ].all(fn(r) { service_role_publishes_url(role: r) })
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE PROVIDER'S SILENCE IS A VARIANT, NOT A STRING COMPARED AGAINST A LIST
+// ---------------------------------------------------------------------------------------------
+//
+// Review 87570's second finding: `overlay_realization_is_unnamed` decided "this names nothing" by matching
+// a hand-picked list of words ("unknown", "none", "TODO"). Any word the list did not contain -- "n/a",
+// "Unknown", "tbd" -- passed as a real realization name, and no list could be complete because the question
+// it was answering ("is this string a real overlay name?") has no closed answer at this rung. DESIGN section
+// 4: in a closed system a heuristic is never necessary -- the richer source always exists or can be written.
+// The richer source is the provider's own field, which P4's census reads; so the gap between asking and
+// being answered became `OverlayRealizationAnswer.ProviderHasNotAnswered`, and what remains in the mint is
+// the judgment it really holds: an attachment may only be minted from an answer, and a name made entirely of
+// whitespace names nothing. The four calls below assert the OTHER half -- that placeholder-looking words are
+// no longer refused here -- because the cheapest way to "fix" the finding again is to rebuild the word list.
+
+fn attachment_builds_from_a_named_realization(text: String) -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: srv1 } => match fleet_overlay_attachment(
+      subject: srv1.fleet_slot,
+      realization: Named { realization: text as OverlayRealization },
+      kind: ManagedOverlay,
+      selection: srv1_selection(),
+    ) {
+      Ok { value: _ } => true
+      Err { value: _ } => false
+    }
+  }
+}
+
+// ASKED, NOT ANSWERED: the silence variant refuses, by the reason that says the realization names nothing,
+// and it names the subject the census would have to come back about.
+fn providers_silence_is_refused() -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: srv1 } => match fleet_overlay_attachment(
+      subject: srv1.fleet_slot,
+      realization: ProviderHasNotAnswered,
+      kind: ManagedOverlay,
+      selection: srv1_selection(),
+    ) {
+      Ok { value: _ } => false
+      Err { value: r } => match r {
+        RealizationUnnamed { subject: s, kind: _ } => s == srv1.fleet_slot
+        _ => false
+      }
+    }
+  }
+}
+
+test fn witness_the_providers_silence_is_a_variant_and_a_word_is_not_the_gap() -> Bool {
+  providers_silence_is_refused()
+    // AND NO WORD IS THE GAP EITHER. These four all build, which is the claim's other half: if a word list
+    // ever returns to the mint -- the cheapest way to "re-fix" the finding -- this goes red.
+    && ["n/a", "Unknown", "tbd", "TODO"].all(fn(w) { attachment_builds_from_a_named_realization(text: w) })
 }

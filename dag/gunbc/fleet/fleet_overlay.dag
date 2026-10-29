@@ -66,6 +66,20 @@ import product.host_identity { HostIdentity }
 // registry of providers inside provider-neutral code -- the leak this module exists to remove.
 type OverlayRealization = NonEmptyStr where brand("OverlayRealization")
 
+// WHETHER THE PROVIDER ANSWERED AT ALL, as a variant rather than as text that happens to look empty. This
+// used to be a hand-picked list of placeholder words ("unknown", "none", "TODO") compared against the
+// brand: a guess sitting where a decision belongs (DESIGN section 4: in a closed system a heuristic is
+// never necessary, and the tell that validation stood where construction was available is exactly this
+// shape), and one that let every placeholder the list did not contain -- "n/a", "Unknown", "tbd" -- through
+// as a real realization name. The provider's silence is now its own arm, so "no answer" is expressible
+// without pretending to be a name, and what is left inside `Named` is the only judgment this model can
+// actually make: a name made entirely of whitespace names nothing. Deciding whether placeholder-ish text is
+// a real overlay's name belongs to whoever reads the provider's field -- P4's census, the source that can
+// answer it -- not to a word list in the model.
+type OverlayRealizationAnswer
+  = Named { realization: OverlayRealization }
+  | ProviderHasNotAnswered
+
 // THE ATTACHMENT'S KIND. The plan names three, and they differ in what they PROVE about reachability:
 //   ManagedOverlay     -- the member is attached to a managed overlay network. Today's realization is
 //                         Tailscale; that is a selection fact, not a type fact, which is why the word is not
@@ -161,23 +175,30 @@ type OverlayRefusal
 fn fleet_overlay_attachment(
   subject: HostIdentity,
   kind: AttachmentKind,
-  realization: OverlayRealization,
+  realization: OverlayRealizationAnswer,
   selection: AttachmentSelection,
 ) -> Result<FleetOverlayAttachment, OverlayRefusal> {
   let version = (selection.policy_version as String).trim()
-  if overlay_realization_is_unnamed(realization: realization) {
-    Err { value: RealizationUnnamed { subject: subject, kind: kind } }
-  } else if version.length() == 0 {
-    Err { value: SelectionPolicyUnnamed { subject: subject, kind: kind } }
-  } else {
-    Ok {
-      value: FleetOverlayAttachment {
-        subject: subject,
-        kind: kind,
-        realization: realization,
-        selection: selection,
-      },
-    }
+  match realization {
+    // The provider has not answered: there is no name to store, and this refuses rather than storing a
+    // stand-in, because an attachment whose realization is a placeholder would let the binding below mint
+    // a member name the provider never published.
+    ProviderHasNotAnswered => Err { value: RealizationUnnamed { subject: subject, kind: kind } }
+    Named { realization: text } =>
+      if (text as String).trim().length() == 0 {
+        Err { value: RealizationUnnamed { subject: subject, kind: kind } }
+      } else if version.length() == 0 {
+        Err { value: SelectionPolicyUnnamed { subject: subject, kind: kind } }
+      } else {
+        Ok {
+          value: FleetOverlayAttachment {
+            subject: subject,
+            kind: kind,
+            realization: text,
+            selection: selection,
+          },
+        }
+      }
   }
 }
 
@@ -277,20 +298,6 @@ fn undeclared_role(
 // failure.
 fn first_of(items: List<FleetParticipation>) -> Optional<FleetParticipation> {
   items.first()
-}
-
-// Whether a realization label actually names something. An empty realization is a claim with no carrier.
-// AN UNNAMED REALIZATION IS A NAME THAT CARRIES NOTHING. Emptiness alone was not enough to test: a
-// branded NonEmptyStr cannot be minted empty, so the only shape a caller can actually hand in is text that
-// NAMES NOTHING -- whitespace, or the placeholder sentinels an operator reaches for when the provider has
-// not answered. All three are unnamed, and the check refuses rather than trimming the name into shape: a
-// name that has to be repaired before it can be stored is a name that was never there.
-fn overlay_realization_is_unnamed(realization: OverlayRealization) -> Bool {
-  let text = (realization as String).trim()
-  text.length() == 0
-    || text == "unknown"
-    || text == "none"
-    || text == "TODO"
 }
 
 // THE DECLARED ROLES FOR A SUBJECT, read from the enrollment record rather than typed at a call site, so a
