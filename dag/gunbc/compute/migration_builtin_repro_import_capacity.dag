@@ -1,0 +1,17 @@
+module gunbc.compute.migration_builtin_repro_import_capacity
+
+import std.types { String, List, Bool }
+import std.error_primitives { Result, Ok, Err }
+
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+
+fn selected(read: fn() -> Result<List<String>, String>) -> Result<List<String>, String> {
+  match read() {
+    Err { value: why } => Err { value: why }
+    Ok { value: included } => match read() {
+      Err { value: why } => Err { value: why }
+      Ok { value: excluded } => Ok { value: filter(included, unit => fold(excluded, init: true, f: (keep, other) => keep && other != unit)) }
+    }
+  }
+}
+

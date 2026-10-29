@@ -1,0 +1,10 @@
+module test.claim.compute.migration_builtin_repro_import_manager
+
+import std.types { Bool }
+import std.error_primitives { Ok }
+import gunbc.compute.migration_builtin_repro_import_manager { selected }
+
+// Same production function as the passing imported baseline; only imports vary.
+test fn imported_builtin_probe() -> Bool {
+  selected(read: fn() { Ok { value: ["x"] } }) == Ok { value: [] }
+}
