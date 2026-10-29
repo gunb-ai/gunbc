@@ -1,0 +1,37 @@
+module v2.test.claim.namespace_xl0.probe_22_fn_lst_verdict_in
+import v2.compiler.source_root_eval {
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, fold_list }
+import extdeps.communication.medium { Lossless, Medium }
+
+fn lst_verdict_in(context: NativeTestContext, module_name: String, unit: Symbol) -> LstVerdict {
+  fold_list(
+    xs: native_census_modules(ingest: lst_ingest()),
+    empty: LstAbsent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        lst_verdict_of(
+          context: context,
+          unit: unit,
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          ).outcome
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}

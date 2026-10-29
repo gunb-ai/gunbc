@@ -1,9 +1,0 @@
-module v2.test.fixture.namespace_xl0.lst_probe_33_test_a_tail_statement_let_bound_to_a_match_is
-import v2.compiler.source_root_eval {
-
-test fn a_tail_statement_let_bound_to_a_match_is_accepted() -> Bool {
-  match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: v, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_is_resolved(v: v)
-    LstContextRefused => false
-  }
-}

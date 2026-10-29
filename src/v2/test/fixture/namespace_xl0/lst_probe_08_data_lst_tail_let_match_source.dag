@@ -1,5 +1,0 @@
-module v2.test.fixture.namespace_xl0.lst_probe_08_data_lst_tail_let_match_source
-import v2.compiler.source_root_eval {
-
-data lst_tail_let_match_source: String = "module v2.test.fixture.namespace_xl0.lst_tail_let_match\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int {\n  let j = i\n  let d = match s {\n    LstA { v: v } => v\n    LstB => j\n  }\n}\n"
-

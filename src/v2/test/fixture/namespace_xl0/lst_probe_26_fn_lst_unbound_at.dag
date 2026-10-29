@@ -1,9 +1,0 @@
-module v2.test.fixture.namespace_xl0.lst_probe_26_fn_lst_unbound_at
-import v2.compiler.source_root_eval {
-
-fn lst_unbound_at(v: LstVerdict, atom: Symbol) -> Bool {
-  match v {
-    LstRefused { reason: r, at_atom: Present { value: id } } => (r == ^resolve_reason_unbound_symbol) && (id == atom)
-    _ => false
-  }
-}

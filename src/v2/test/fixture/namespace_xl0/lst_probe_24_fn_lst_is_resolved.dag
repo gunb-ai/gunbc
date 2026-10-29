@@ -1,9 +1,0 @@
-module v2.test.fixture.namespace_xl0.lst_probe_24_fn_lst_is_resolved
-import v2.compiler.source_root_eval {
-
-fn lst_is_resolved(v: LstVerdict) -> Bool {
-  match v {
-    LstResolved => true
-    _ => false
-  }
-}

@@ -1,0 +1,52 @@
+module v2.test.claim.namespace_xl0.probe_00_data_live_tree_disposition
+import v2.compiler.source_root_eval {
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, fold_list }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A STATEMENT LET REACHED AS A VALUE REFUSES AT THE DOOR-HOLDER RATHER THAN LOWERING.
+//
+// THE SUBJECT IS THE NATIVE LANE'S NORMALIZE, as in
+// v2.test.claim.namespace_xl0.return_tail_position and
+// v2.test.claim.namespace_xl0.let_match_early_return.
+//
+// v2.compiler.body_lowering_fold reads a STATEMENT let in exactly one place: body_lower_stmt_spine,
+// which binds the let's key to its lowered value and the lowered REST of the spine as its body, and
+// body_lower_let_expr is the door-holder for the `in` form the grammar dropped — every arm of it
+// refuses, and its Present arm answers body_lowering_reason_let_body_not_reachable_from_node. So a
+// let-shaped node that reaches the term dispatcher (body_lower_fold_dispatch, whose let arm calls that
+// door-holder) cannot lower, whatever the source said.
+//
+// Two positions in the corpus hand a statement let to the VALUE reader, and both sit in the whole-corpus
+// census on plain main, each keeping its file on the wave's fallback:
+//
+//   dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1053 — the LAST statement of
+//     fci1_canonical_cleanup_disposition's body is a statement let (`let disposition = match ...`, with
+//     no following expression). A spine with no following statement leaves body_lower_stmt_spine through
+//     its Absent arm to body_lower_tail_statement_read, which reads the statement as a VALUE: the let
+//     reaches the dispatcher and refuses.
+//   dag/gunbc/instruments/compute_run_unit_cold.dag:97 — the braced arm block of
+//     path_is_under_production_instance_root's `ProdRoleRealizedBy { holder }` arm begins with a
+//     statement let (`let root = holder.instance.instance_root`) and ends with the arm's value
+//     expression, which READS that binding. The arm's body reaches the same value reader and refuses at
+//     the let, before its rest is ever read.
+//
+// THE REDS are the two positions and their siblings, each varying one thing; THE CONTROLS are the same
+// shapes that the spine already owns — a body-top-level let with a following statement, a braced arm with
+// one expression, a let in an if-branch — and must resolve. The `_und` fixtures put an undeclared name in
+// the position the lowering must not skip: a tail let's VALUE and an arm block's REST must both be read,
+// and refuse unbound at their own atoms; and the arm-block let's binder must stay readable from its rest,
+// which is what the plain `is_accepted` claim for that shape checks. A fix that dropped the binding, or
+// dropped either half, would flip one of these four.

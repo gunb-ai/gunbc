@@ -1,5 +1,0 @@
-module v2.test.fixture.namespace_xl0.lst_probe_01_data_lst_ctl_body_let_source
-import v2.compiler.source_root_eval {
-
-data lst_ctl_body_let_source: String = "module v2.test.fixture.namespace_xl0.lst_ctl_body_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = i\n  x\n}\n"
-

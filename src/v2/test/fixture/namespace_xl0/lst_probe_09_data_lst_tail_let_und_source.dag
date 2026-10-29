@@ -1,5 +1,0 @@
-module v2.test.fixture.namespace_xl0.lst_probe_09_data_lst_tail_let_und_source
-import v2.compiler.source_root_eval {
-
-data lst_tail_let_und_source: String = "module v2.test.fixture.namespace_xl0.lst_tail_let_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = lst_undeclared_tail_value\n}\n"
-

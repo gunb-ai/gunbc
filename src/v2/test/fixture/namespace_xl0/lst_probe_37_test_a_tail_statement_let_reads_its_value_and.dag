@@ -1,9 +1,0 @@
-module v2.test.fixture.namespace_xl0.lst_probe_37_test_a_tail_statement_let_reads_its_value_and
-import v2.compiler.source_root_eval {
-
-test fn a_tail_statement_let_reads_its_value_and_refuses_unbound_at_its_atom() -> Bool {
-  match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: v, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_unbound_at(v: v, atom: ^lst_undeclared_tail_value)
-    LstContextRefused => false
-  }
-}
