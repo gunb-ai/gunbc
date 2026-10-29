@@ -31,7 +31,8 @@ import gunbc.auth.authorization_pattern_selection {
 }
 import gunbc.auth.privileged_effect_census {
   privileged_effect_census, site_verdict, site_conformance, Conforms, SiteNotDecidable, Diverges,
-  DivergesWithReason, RealizedFederatedGrant, site_ruling_linkage, ruling_backed_privileged_sites, PrivilegedEffectSite,
+  DivergesWithReason, RealizedFederatedGrant, RealizedApprovalCapability,
+  site_ruling_linkage, ruling_backed_privileged_sites, PrivilegedEffectSite,
   site,
 }
 import std.decl_ref { declaration_ref_eq, declaration_ref_in_list }
@@ -75,7 +76,14 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_grant_required_at_ref, fleet_converge_grant_wait_admits_at_ref,
   fleet_converge_grant_wait_admits_at_ref_with, GrantWaitSkipped, GrantWaitSucceeded, GrantWaitFailed, GrantWaitCancelled,
   MtCollins1Boot, HostResetReturn, GcpIamConverge,
+  // THE RUNTIME FACE OF THE ROUTE: the wait job's own condition, and the job's step list. A branch boot
+  // is approval-free only if the wait job is SKIPPED for it and the boot still runs; and a narrowed
+  // account is only a wall if the job dies before it can touch the BMC.
+  fleet_converge_off_main_grant_required_term_with, fleet_converge_branch_run_grant_wait_if,
+  fleet_converge_jobs, fleet_converge_mode_job_id,
 }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import extdeps.github.expressions { serialize_expression, LogicalAnd, LogicalNot }
 import gunbc.auth.branch_run_grant {
   BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused,
   plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
@@ -442,6 +450,17 @@ test fn every_roster_entry_is_answered_on_its_own_ref() -> Bool {
         && fleet_converge_grant_required_at_ref(mode: FleetApply, branch: b as String))
 }
 
+// THE CLAIM SET A ROSTERED BRANCH BOOT ACTUALLY PRESENTS. Optional at the source now (review 87673): with
+// an empty roster or an unnameable environment there is NO pin set, so there is nothing to present -- and
+// [] admits nothing, which keeps every claim below honest: a claim that needs a real claim set goes red
+// rather than passing vacuously over an empty list.
+fn branch_real_claims() -> List<OidcPresentedClaim> {
+  match mtcollins1_boot_branch_presented_claims(branch: trusted_boot_branch(), environment: boot_environment()) {
+    Absent => []
+    Present { value: c } => c
+  }
+}
+
 fn boot_environment() -> String {
   match mtcollins1_boot_trusted_environment() {
     Present { value: e } => e as String
@@ -490,7 +509,12 @@ test fn branch_boot_selects_the_approval_free_identity() -> Bool {
 // label: the account and provider this route federates are the branch route's own.
 test fn branch_boot_identity_is_a_distinct_principal() -> Bool {
   (mtcollins1_boot_branch_service_account as String) != (mtcollins1_boot_run_scoped_service_account as String)
-    && mtcollins1_boot_branch_provider_resource() != branch_dispatch_provider_resource()
+    && match mtcollins1_boot_branch_provider_resource() {
+      // NO PROVIDER IS NOT "DIFFERENT ENOUGH": an absent resource would satisfy != on nothing, so the
+      // distinct-principal property is asserted over a resource that exists.
+      Absent => false
+      Present { value: resource } => resource != branch_dispatch_provider_resource()
+    }
     && match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
       // not the reviewed-main boot's account under a new label, either
       Present { value: f } => (mtcollins1_boot_branch_service_account as String) != (f.names.service_account as String)
@@ -548,7 +572,7 @@ test fn another_mode_at_the_rostered_ref_still_needs_its_grant() -> Bool {
 // NUMERIC repository identity, so the claim set it presents fails the condition before any job runs; and
 // no roster entry can rescue it, because the pins are conjunctive.
 test fn a_fork_dispatch_cannot_present_admissible_claims() -> Bool {
-  let real = mtcollins1_boot_branch_presented_claims(branch: trusted_boot_branch(), environment: boot_environment())
+  let real = branch_real_claims()
   mtcollins1_boot_branch_admits(claims: real)
     && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "repository_id", value: "999999999"))
     && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "repository_owner_id", value: "999999999"))
@@ -559,7 +583,7 @@ test fn a_fork_dispatch_cannot_present_admissible_claims() -> Bool {
 // the boot federation's NAME, which comes from code -- so editing the workflow file to drop or rename the
 // environment is refused by GCP, not by a step that could be deleted.
 test fn a_renamed_environment_is_refused() -> Bool {
-  let real = mtcollins1_boot_branch_presented_claims(branch: trusted_boot_branch(), environment: boot_environment())
+  let real = branch_real_claims()
   !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: "mtcollins1-boot-but-not"))
     && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: ""))
 }
@@ -567,7 +591,7 @@ test fn a_renamed_environment_is_refused() -> Bool {
 // RED: A BRANCH THAT IS NOT THE ROSTERED ONE PRESENTS NOTHING ADMISSIBLE, even carrying every other
 // claim correctly -- the ref pin alone refuses. This is what makes the roster the permission.
 test fn an_unrostered_ref_presents_nothing_admissible() -> Bool {
-  let real = mtcollins1_boot_branch_presented_claims(branch: trusted_boot_branch(), environment: boot_environment())
+  let real = branch_real_claims()
   !mtcollins1_boot_branch_admits(claims: with_presented_value(
     claims: real,
     claim: "ref",
@@ -578,63 +602,88 @@ test fn an_unrostered_ref_presents_nothing_admissible() -> Bool {
 // RED: A JOB THAT IS NOT THE FLEET-CONVERGE WORKFLOW IS REFUSED, whatever ref it sits on. The condition
 // pins the workflow file itself, so a new workflow on the rostered branch cannot borrow this identity.
 test fn a_different_workflow_file_is_refused() -> Bool {
-  let real = mtcollins1_boot_branch_presented_claims(branch: trusted_boot_branch(), environment: boot_environment())
+  let real = branch_real_claims()
   !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "workflow_ref", value: ".github/workflows/anything-else.yml"))
 }
 
-// RED: THE APPROVAL-FREE ROUTE IS COUNTED IN THE CENSUS, and counted as CONFORMING. A credential seam
-// that no census row names is the shape of every bypass this repo has been burned by; the row also
-// carries the classification against one_approval_route_for_every_privileged_action.
-// THE CENSUS ROW, ON BOTH SIDES OF THE MINT -- and this is where the first version was simply wrong. It
-// demanded Conforms today, and today the row CANNOT conform: the route is closed (the reader key is
-// unminted), so its workload identity is unbindable and the selection algebra returns
-// PatternSelectionNeedsEvidence, which site_conformance reports as SiteNotDecidable. Demanding Conforms was
-// demanding that the census bless a route that does not exist -- the mirror image of the rung inflation this
-// PR exists to remove.
+// RED: THE APPROVAL-FREE ROUTE IS COUNTED IN THE CENSUS, on both sides of the mint, and counted honestly
+// in each. A credential seam that no census row names is the shape of every bypass this repo has been
+// burned by, and the row also carries the classification against
+// gunbc.design_ruling one_approval_route_for_every_privileged_action.
 //
-// WHAT IS TRUE INSTEAD, AND ASSERTED IN BOTH DIRECTIONS: the row is not decidable exactly while the route is
-// closed, and it conforms once the mint lands. NEVER Diverges, in either state: a divergence would mean the
-// realized credential is not what the selected pattern authorizes. The post-mint half asks the selection
-// algebra directly (select_authorization_pattern over the effect built with the minted state, then
-// site_conformance against the row's own realized field) rather than pretending site_verdict can see a
-// world it cannot.
+// WHAT THE TWO EARLIER VERSIONS OF THESE CLAIMS GOT WRONG, AND WHAT WAS MEASURED TO SETTLE IT. Both asked
+// site_verdict for an arm it cannot produce. SiteNotDecidable comes from the SELECTION -- NeedsEvidence,
+// NeedsPolicy, Refused -- never from a provisioning state, and its `standing` carries a selection, not the
+// refusal cause an earlier comment here claimed. So "not decidable while the route is closed" was
+// unsatisfiable; and the minted-side version asked the algebra about the minted world while handing it the
+// row's own `realized`, which describes today. The answer was measured rather than argued (a temporary
+// diagnostic module, run through the interpreter and since deleted): today
+// gunbc.auth.authorization_pattern_selection select_authorization_pattern returns
+// OperatorApprovedCapability for this site's effect, and with the reader key minted it returns
+// FederatedScopedGrant. That is not a wording accident -- with no reader key, the only credential that can
+// still drive this BMC from a branch IS the run-scoped grant an operator approves -- and it is why the
+// census row declares RealizedApprovalCapability now instead of the RealizedFederatedGrant an earlier draft
+// claimed. Writing the far side into `realized` today would have been rung inflation on the one field whose
+// whole job is to say what runs today.
 fn branch_boot_census_rows() -> List<PrivilegedEffectSite> {
   filter(privileged_effect_census, candidate => (candidate.site.decl_name as String) == "branch_boot_credential_effect_approval_free")
 }
 
-// TODAY'S VERDICT: not decidable, and only for the reason the route is shut.
-fn branch_boot_verdict_today_is_honest() -> Bool {
+// TODAY: the verdict is Conforms, because the row's own `realized` arm is what the selection demands of it.
+// Any other arm is a census whose record disagrees with the standing it cites -- a bare Diverges is the
+// review's defect outright, a DivergesWithReason here would mean today's binding is being explained away
+// rather than simply stated, and SiteNotDecidable would mean the selection will not classify an effect it
+// can classify. Then the closure the row leans on must be the ROUTE'S OWN WORDS naming the change that
+// lifts it, and the row must carry that transition in its own divergence_reason, where whoever mints the
+// key will read it instead of rediscovering it as a red corpus the morning after.
+fn branch_boot_verdict_matches_todays_binding() -> Bool {
   match branch_boot_census_rows().first() {
     Absent => false
-    Present { value: row } => match site_verdict(row: row).conformance {
-      SiteNotDecidable { standing: _ } => mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted()
-      Conforms => !mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted()
-      Diverges => false
-      DivergesWithReason { reason: _ } => false
-    }
+    Present { value: row } =>
+      match row.realized {
+        RealizedApprovalCapability =>
+          match site_verdict(row: row).conformance {
+            Conforms => true
+            Diverges => false
+            DivergesWithReason { reason: _ } => false
+            SiteNotDecidable { standing: _ } => false
+          }
+        _ => false
+      }
+      && match mtcollins1_boot_branch_route_refusal_cause_with(state: Unminted) {
+        Absent => false
+        Present { value: cause } => string_contains(s: cause, pattern: "#15329")
+      }
+      && match branch_boot_census_rows().first() {
+        Absent => false
+        Present { value: r } => match r.divergence_reason {
+          Absent => false
+          Present { value: reason } => string_contains(s: reason.statement, pattern: "#15329")
+        }
+      }
   }
 }
 
-// POST-MINT VERDICT: the same row and the same realized field, now conforming.
-fn branch_boot_verdict_post_mint_conforms() -> Bool {
-  match branch_boot_census_rows().first() {
-    Absent => false
-    Present { value: row } => match site_conformance(
-      row: row,
-      selection: select_authorization_pattern(e: branch_boot_credential_effect_approval_free_over(state: minted_reader_state()))
-    ) {
-      Conforms => true
-      SiteNotDecidable { standing: _ } => false
-      Diverges => false
-      DivergesWithReason { reason: _ } => false
-    }
+// WHAT THE MINT CHANGES IS THE SELECTION, AND THAT IS WHERE IT IS ASSERTED. One effect, two worlds, each
+// demanded BY NAME -- which also settles the conformance question the operator's ruling raises: neither
+// world may be the administrator edge, and neither can be, because any pattern other than these two is a
+// false here. The census's `realized` arm is deliberately not asked about the minted world: it is a record
+// of today, and its divergence_reason is what speaks for the day it stops matching.
+fn branch_boot_selection_opens_with_the_mint() -> Bool {
+  match select_authorization_pattern(e: branch_boot_credential_effect_approval_free()) {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } =>
+      match select_authorization_pattern(e: branch_boot_credential_effect_approval_free_over(state: minted_reader_state())) {
+        PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
+        _ => false
+      }
+    _ => false
   }
 }
 
 test fn the_branch_boot_credential_is_censused_and_conforms() -> Bool {
   branch_boot_census_rows().length() == 1
-    && branch_boot_verdict_today_is_honest()
-    && branch_boot_verdict_post_mint_conforms()
+    && branch_boot_verdict_matches_todays_binding()
+    && branch_boot_selection_opens_with_the_mint()
 }
 
 // ...AND IT CHANGES NO EXISTING VERDICT: the two boot-credential rows and the actuation row keep their
@@ -694,37 +743,46 @@ test fn the_approval_free_boot_admits_a_skipped_wait() -> Bool {
 // THE ENVIRONMENT CONJUNCT IS PRESENT, in both projections, unconditionally. Counted rather than
 // illustrated: the pins are the membership rule and the CEL is a fold over them.
 test fn the_environment_conjunct_is_never_droppable() -> Bool {
-  let pins = mtcollins1_boot_branch_claim_pins()
-  let named_environment: List<OidcClaimPin> = filter(pins, pin => (pin.claim as String) == "environment")
-  // THE BODY MUST START WITH A PRIMARY EXPRESSION: a leading '&&' here is parsed as a continuation of
-  // the let's own initializer, which makes named_environment undefined inside its own definition.
-  // exactly one, and it is the poisoned-by-default pin
-  named_environment.length() == 1
-  && match named_environment.first() {
-    Present { value: p } => p.value == mtcollins1_boot_trusted_environment_pin().value
+  match mtcollins1_boot_branch_claim_pins() {
+    // NO PIN SET IS NOT A PASS: this claim is about the conjunct being undroppable from a rule that
+    // exists, and the rule exists exactly when the roster and the boot's environment both name
+    // themselves. mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted and
+    // branch_boot_environment_pin_tracks_the_standing cover the absent side; here, absence is red.
     Absent => false
-  }
-  && string_contains(s: mtcollins1_boot_branch_attribute_condition(), pattern: "assertion.environment")
-  // THE CONDITION GCP STORES, not just the list it is folded from: dropping the pin would remove this
-  // conjunct from the CEL itself, which is the fail-open the review named. Asserted on the stored
-  // provider, because that is the object converge creates -- and asserted as an EQUALITY ON THE
-  // ENVIRONMENT CONJUNCT (the whole 'assertion.environment == ...' term), not on the condition's
-  // equality to itself through the same function, which would be tautological.
-  && match mtcollins1_boot_branch_provider().attribute_condition {
-    Present { value: c } =>
-      string_contains(s: c, pattern: mtcollins1_boot_environment_conjunct())
-      // every other conjunct survives too: the condition is a fold, so one term per pin
-      && pins.length() == split(s: c, delimiter: " && ").length()
-    Absent => false
+    Present { value: pins } =>
+      // exactly one environment conjunct, and it is the pin the trust module derives -- not a copy of it
+      match filter(pins, pin => (pin.claim as String) == "environment").first() {
+        Absent => false
+        Present { value: p } =>
+          p.value == boot_environment()
+            // THE CONDITION GCP STORES, not just the list it is folded from: dropping the pin would
+            // remove this conjunct from the CEL itself, which is the fail-open the review named.
+            && match mtcollins1_boot_branch_attribute_condition() {
+              Absent => false
+              Present { value: c } =>
+                string_contains(s: c, pattern: mtcollins1_boot_environment_conjunct(pin: p))
+                  // every conjunct survives: the condition is a fold, so one term per pin
+                  && pins.length() == split(s: c, delimiter: " && ").length()
+            }
+            // AND on the provisioned provider, the object converge actually creates. Optional since
+            // review 87673 -- no pins, no provider -- so its absence here is red rather than silent.
+            && match mtcollins1_boot_branch_provider() {
+              Absent => false
+              Present { value: provider } => match provider.attribute_condition {
+                Absent => false
+                Present { value: stored } => string_contains(s: stored, pattern: mtcollins1_boot_environment_conjunct(pin: p))
+              }
+            }
+      }
   }
 }
 
-// THE ENVIRONMENT CONJUNCT, spelled the way claim_pin_cel spells it (oidc_claim_pins:70-77):
-// `assertion.<claim> == '<value>'`. Derived from the pin rather than hardcoded, so it tracks a relation
-// change instead of going stale.
-fn mtcollins1_boot_environment_conjunct() -> String {
-  let p = mtcollins1_boot_trusted_environment_pin()
-  concat("assertion.", p.claim as String, " == '", p.value, "'")
+// THE ENVIRONMENT CONJUNCT, spelled the way gunbc.auth.oidc_claim_pins claim_pin_cel spells it:
+// `assertion.<claim> == '<value>'`. Taken as a PARAMETER -- the pin the claim just found in the list --
+// rather than re-read from the module, so the assertion compares the fold's input to the fold's output
+// instead of comparing a function to itself.
+fn mtcollins1_boot_environment_conjunct(pin: OidcClaimPin) -> String {
+  concat("assertion.", pin.claim as String, " == '", pin.value, "'")
 }
 
 // THE RED THE REVIEW REQUIRED: removing the environment standing CANNOT produce a provider that admits a
@@ -732,13 +790,15 @@ fn mtcollins1_boot_environment_conjunct() -> String {
 // outright. That is precisely the claim set the old `Absent => base` arm admitted, because a pin list
 // without an environment conjunct is satisfied by a token that never mentions one.
 test fn a_boot_presenting_no_environment_is_refused() -> Bool {
-  let real = mtcollins1_boot_branch_presented_claims(branch: trusted_boot_branch(), environment: boot_environment())
+  let real = branch_real_claims()
   mtcollins1_boot_branch_admits(claims: real)
     // the exact fail-open: same claims, environment standing removed
     && !mtcollins1_boot_branch_admits(claims: without_presented_claim(claims: real, claim: "environment"))
     // and the same for every other environment-shaped value: nothing but the pinned name admits
     && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: ""))
-    && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__"))
+    // a value no dispatch can carry, named as the fixture it is: the route no longer relies on any
+    // sentinel value to mean absence (review 87673), so the witness supplies its own impossible value
+    && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: "witness-environment-nobody-declared"))
     // and the pinned name itself ADMITS, so the refusals above are about the pin and not about a
     // broken comparison: the environment the boot federation declares (managed_host_boot_federation's
     // own names.environment) is the one value that passes
@@ -774,41 +834,65 @@ fn branch_boot_environment_is_nameable() -> Bool {
 }
 
 // (1) the pin tracks the standing, in BOTH directions
+// THE EQUIVALENCE, AND NOW WITHOUT A SENTINEL: the environment pin EXISTS exactly when the boot identity
+// can name its environment. The first version of this claim compared the pin against the fabricated value
+// "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__"; review 87673 was right that a made-up value carrying the
+// meaning of absence is the wrong shape -- its safety was a fact about GitHub never sending that string.
+// Absence is now typed, so the claim asks whether the pin is there.
 fn branch_boot_environment_pin_tracks_the_standing() -> Bool {
-  (mtcollins1_boot_trusted_environment_pin().value == "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__")
-    == !branch_boot_environment_is_nameable()
+  (match mtcollins1_boot_trusted_environment_pin() {
+    Present { value: _ } => true
+    Absent => false
+  }) == branch_boot_environment_is_nameable()
 }
 
 // (2) the stored provider condition carries the environment term exactly when the standing exists
 fn branch_boot_provider_condition_tracks_the_standing() -> Bool {
-  match mtcollins1_boot_branch_provider().attribute_condition {
-    Present { value: c } =>
-      branch_boot_environment_is_nameable() == string_contains(s: c, pattern: boot_environment())
-        && string_contains(s: c, pattern: "environment")
-    Absent => false
+  match mtcollins1_boot_branch_provider() {
+    // NO PROVIDER IS THE HONEST ANSWER WHEN THERE IS NO RULE: no cloud object exists to admit a branch
+    // boot, which is the property the review asked for -- not a provider whose condition happens to match
+    // nothing. So: a provider exists exactly when the environment can be named.
+    Absent => !branch_boot_environment_is_nameable()
+    Present { value: provider } => match provider.attribute_condition {
+      Absent => false
+      Present { value: c } =>
+        branch_boot_environment_is_nameable() == string_contains(s: c, pattern: boot_environment())
+          && string_contains(s: c, pattern: "environment")
+    }
   }
 }
 
 // (3) and a federation that DOES exist says the same thing about its own condition
 fn branch_boot_federation_condition_tracks_the_standing() -> Bool {
   match mtcollins1_boot_branch_federation() {
-    Present { value: f } =>
-      f.attribute_condition == mtcollins1_boot_branch_attribute_condition()
-        && string_contains(s: f.attribute_condition, pattern: boot_environment())
-        && branch_boot_environment_is_nameable()
+    Present { value: f } => match mtcollins1_boot_branch_attribute_condition() {
+      Absent => false
+      Present { value: condition } =>
+        f.attribute_condition == condition
+          && string_contains(s: f.attribute_condition, pattern: boot_environment())
+          && branch_boot_environment_is_nameable()
+    }
     Absent => true
   }
 }
 
-test fn an_unnameable_environment_leaves_no_federation_and_a_poisoned_pin() -> Bool {
+test fn an_unnameable_environment_leaves_no_federation_and_no_admissible_rule() -> Bool {
   branch_boot_environment_pin_tracks_the_standing()
     && branch_boot_provider_condition_tracks_the_standing()
     && branch_boot_federation_condition_tracks_the_standing()
-  // (4) THE POINT OF IT ALL, INDEPENDENT OF WHAT ELSE IS CLOSED: with the environment conjunct poisoned,
-  // no presented claim set admits -- including one that presents the real environment name.
-  && !mtcollins1_boot_branch_admits(claims: mtcollins1_boot_branch_presented_claims(
-    branch: trusted_boot_branch(), environment: "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__"))
+  // (4) THE POINT OF IT ALL, INDEPENDENT OF WHAT ELSE IS CLOSED: with the environment claim carrying
+  // some value no dispatch can carry, no presented claim set admits -- and neither does one that
+  && !mtcollins1_boot_branch_admits(claims: with_presented_value(
+    claims: branch_real_claims(),
+    claim: "environment",
+    // a fixture value, not a sentinel the route depends on: the pin is the only name that admits
+    value: "witness-environment-nobody-declared",
+  ))
 }
+
+// THE CLAIM THAT PRESENTS THE REAL ENVIRONMENT NAME STILL ADMITS (asserted above, in
+// the_environment_conjunct_is_never_droppable), so the refusal in (4) is the value's fault and not
+// an empty-list artifact.
 
 // ── THE BRANCH ACCOUNT HOLDS NO FLEET-WIDE CREDENTIAL (review 87197) ──────────────────────────
 // WHAT THE POLICY LOOKS LIKE ON THE FAR SIDE OF THE MINT. The reader secret at a concrete version is the
@@ -1052,4 +1136,120 @@ test fn branch_boot_selects_the_approval_free_identity_once_the_key_is_minted() 
   // today (route closed): the same ref still requires the grant -- closed means degraded to the old route,
   // never means approved-free by accident
   && boot_grant_required_at_ref_with(state: Unminted, on_reviewed_main: false, branch: b)
+}
+
+// ══ THE RUNTIME FACE: WHAT THE RENDERED PIPELINE ACTUALLY DOES ════════════════════════════
+// Everything above decides the CREDENTIAL. What decides whether an approval-free boot is approval-free
+// in practice is one more step: the separate wait job (gunbc.fleet.fleet_converge_workflow
+// fleet_converge_branch_run_grant_await_job, moved off the host-mutation runner by #15001) runs only under
+// fleet_converge_branch_run_grant_wait_if, and the boot job needs it -- admitting a skipped wait only
+// where no grant is owed. So the route is approval-free exactly when that condition stops naming the
+// rostered ref, and it is shut exactly while it still does.
+// OPTIONAL, AND THE CLAIM MATCHES ON IT: the absence of a term IS an answer ("nothing about this mode
+// owes a wait"), and rendering it as some sentinel string -- the mistake review 87673 was about, in a
+// witness rather than in the authority -- would let a claim read "the term does not name the rostered
+// ref" out of a term that does not exist at all.
+fn boot_job_off_main_grant_term(state: BootMediumReaderKeyState) -> String? {
+  match fleet_converge_off_main_grant_required_term_with(state: state, mode: MtCollins1Boot) {
+    Absent => none
+    Present { value: e } => Present { value: serialize_expression(expression: e) }
+  }
+}
+
+// CLOSED TODAY, OPEN ON THE FAR SIDE OF THE MINT -- AND NOT ONE DAY EARLIER. This is the conjunct that
+// turns "the IAM side admits it" into "the pipeline lets it through", and it is the one that keeps the
+// first branch attempt's failure from coming back: while the reader key is unminted the rostered ref is
+// NOT exempted, so the wait job still runs for it. Read off the EXPRESSED TERM, not the rendered string
+// alone: today the term is the bare mode test with no exemption anywhere in it; minted, it is the mode
+// test ANDED WITH A NEGATION of the rostered ref -- an exclusion, which is what "the wait job is skipped
+// for that ref" means when GitHub evaluates it. A positive equality there would be the opposite rule.
+test fn the_wait_job_condition_opens_only_with_the_mint() -> Bool {
+  let rostered = mtcollins1_boot_trusted_branch_ref(branch: trusted_boot_branch())
+  let rendered_wait_if = fleet_converge_branch_run_grant_wait_if()
+  match boot_job_off_main_grant_term(state: Unminted) {
+    // A TERM MUST EXIST ON BOTH SIDES. Its absence would mean the wait job never gates on this mode --
+    // which is the open route wearing the closed route's clothes, so it is red and not "vacuously fine".
+    Absent => false
+    Present { value: today } => match boot_job_off_main_grant_term(state: minted_reader_state()) {
+      Absent => false
+      Present { value: minted } =>
+    string_contains(s: today, pattern: mtcollins1_boot_mode_name)
+    && string_contains(s: minted, pattern: mtcollins1_boot_mode_name)
+    // CLOSED TODAY: no exemption for the rostered ref appears anywhere in the term
+    && !string_contains(s: today, pattern: rostered)
+    // OPEN AFTER THE MINT: the ref appears, and only inside the negation
+    && string_contains(s: minted, pattern: rostered)
+    // NOTHING FABRICATED REACHES THE RENDERED TEXT (review 87673): the placeholder pins this PR replaced
+    // were well-formed comparisons against strings no dispatch could carry. No such value may survive
+    // into the condition the wait job is gated on -- not the two that were removed, nor a future one.
+    && !string_contains(s: today, pattern: "__GUNBC")
+    && !string_contains(s: minted, pattern: "__GUNBC")
+    // THE SHAPE IS AN EXCLUSION, not an inclusion: base AND NOT(ref == <rostered>)
+    && match fleet_converge_off_main_grant_required_term_with(state: minted_reader_state(), mode: MtCollins1Boot) {
+      Absent => false
+      // matched STRUCTURALLY as an AND whose right operand is a negation -- not by looking for a "!" in
+      // some serializer's spelling of one, which would make the claim's truth depend on punctuation
+      Present { value: LogicalAnd { left: l, right: LogicalNot { operand: o } } } =>
+        string_contains(s: serialize_expression(expression: l), pattern: mtcollins1_boot_mode_name)
+          && string_contains(s: serialize_expression(expression: o), pattern: rostered)
+      Present { value: _ } => false
+    }
+    // AND THE WAIT JOB'S OWN RENDERED CONDITION, read from the world (so: today), still gates on
+    // something -- an empty condition would run the job unconditionally and hide the closed route.
+    && rendered_wait_if.length() > 0
+    }
+  }
+}
+
+// WHY THE NARROWED POLICY IS A WALL AND NOT AN INCONVENIENCE. The branch account holds the BMC credential
+// and the reader key, and NOT the fleet automation key -- but the argument "so a branch cannot read
+// fleet-wide material" rests on what the job does with a missing read. It fails CLOSED, and it fails
+// CLOSED BEFORE ANY HOST MUTATION: the boot job materializes the fleet key (a pinned SM version read,
+// `curl -sSf` under `set -euo pipefail`) earlier in the step list than the step that talks to the BMC at
+// all. So an account that cannot read the key ends the job before hold, SOL, attach, CD handoff or
+// release -- no power change, no media change, nothing to roll back. Asserted as ordering, because
+// ordering is the model's fact; that a denied read fails the step is the script's, recorded in
+// gunbc.fleet.fleet_workflow_steps ci_fleet_key_agent_step_when.
+fn step_named_index(steps: List<Step>, prefix: String) -> Int {
+  step_named_index_from(steps: steps, prefix: prefix, i: 0)
+}
+
+fn step_named_index_from(steps: List<Step>, prefix: String, i: Int) -> Int {
+  if i >= steps.length() {
+    0 - 1
+  } else {
+    // INDEXING YIELDS AN OPTIONAL here, so an out-of-range read walks on instead of panicking -- which is
+    // why the claim below checks the index it gets back rather than trusting a hit.
+    match steps[i] {
+      Absent => step_named_index_from(steps: steps, prefix: prefix, i: i + 1)
+      Present { value: st } =>
+        if string_contains(s: step_name_text(step: st), pattern: prefix) {
+          i
+        } else {
+          step_named_index_from(steps: steps, prefix: prefix, i: i + 1)
+        }
+    }
+  }
+}
+
+fn step_name_text(step: Step) -> String {
+  match step {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+  }
+}
+
+test fn the_branch_account_meets_the_bmc_only_after_the_fleet_key_step() -> Bool {
+  match filter(fleet_converge_jobs(), j => j.id == (fleet_converge_mode_job_id(mode: MtCollins1Boot) as String)).first() {
+    // THE BOOT JOB MUST EXIST: its absence is red, not a pass.
+    Absent => false
+    Present { value: j } => {
+      let key = step_named_index(steps: j.steps, prefix: "Materialize fleet key in-run")
+      let boot = step_named_index(steps: j.steps, prefix: "Mt. Collins unit 1 diskless boot")
+      // BOTH STEPS PRESENT (index >= 0) and the key read strictly earlier
+      key >= 0 && boot >= 0 && key < boot
+    }
+  }
 }

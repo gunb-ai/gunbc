@@ -99,17 +99,25 @@ fn mtcollins1_boot_trusted_branch_ref(branch: String) -> String {
 
 // THE CLOSED LIST OF ADMITTED REFS. EqualsAny, never a starts_with: an unlisted branch is refused
 // exactly as an unequal claim is, and the alternative -- a prefix -- is the widening the 2026-10-10
-// split-identity ruling in gunbc.auth.oidc_claim_pins refuses for privileged identities. An empty
-// roster admits nothing: the poison value is not a branch name any run can present.
-fn mtcollins1_boot_trusted_ref_pin() -> OidcClaimPin {
+// split-identity ruling in gunbc.auth.oidc_claim_pins refuses for privileged identities.
+//
+// OPTIONAL, BECAUSE AN EMPTY ROSTER IS ABSENCE, NOT A VALUE (review 87673; DESIGN section 5: every path
+// succeeds fully or fails with a typed, located diagnostic, and no plausible output is fabricated). An
+// earlier draft answered an empty roster with a real pin on the made-up value
+// "__GUNBC_MTCOLLINS1_BOOT_NO_TRUSTED_BRANCH__". It admitted nothing, so it looked safe -- but the safety
+// of that design lived in GitHub never sending a string, which is a property of the outside world rather
+// than of this code, and it put a well-formed provider condition in GCP whose emptiness was legible only
+// to someone who had read this function. Now there is no pin, so there is no condition to converge: the
+// refusal that explains WHY is mtcollins1_boot_branch_route_refusal_cause, which names the empty roster.
+fn mtcollins1_boot_trusted_ref_pin() -> OidcClaimPin? {
   match mtcollins1_boot_trusted_branches.first() {
     Present { value: b } =>
-      oidc_equals_any(
+      Present { value: oidc_equals_any(
         claim: "ref",
         value: mtcollins1_boot_trusted_branch_ref(branch: b as String),
         alternatives: map(mtcollins1_boot_trusted_branches.skip(n: 1), x => mtcollins1_boot_trusted_branch_ref(branch: x as String)),
-      )
-    Absent => oidc_equals(claim: "ref", value: "__GUNBC_MTCOLLINS1_BOOT_NO_TRUSTED_BRANCH__")
+      ) }
+    Absent => none
   }
 }
 
@@ -133,14 +141,19 @@ fn mtcollins1_boot_trusted_environment() -> String? {
 // anything that guarded this only in mtcollins1_boot_branch_federation() would leave the converged
 // PROVIDER admitting more than the federation describes.
 //
-// So an unknown environment is not "no environment pin" -- that would make the provider LESS restrictive
-// than the route it stands for, which is fail-open in the one place the brief said the wall must be. It
-// is a value no dispatch can present, exactly as an empty roster poisons the ref pin: the condition keeps
-// its environment conjunct and matches nothing.
-fn mtcollins1_boot_trusted_environment_pin() -> OidcClaimPin {
+// So an unknown environment is NOT "no environment pin" -- a condition with the conjunct silently dropped
+// would make the provider LESS restrictive than the route it stands for, which is fail-open in the one
+// place the brief said the wall must be (that was merry-fox-82's REQUEST_CHANGES at 18c3e1d0, and the Absent
+// arm of the old match returning `base` is exactly how it happened). Nor is it a made-up value pinned into
+// GCP and left to be never matched (review 87673). It is ABSENCE, typed: no environment pin, therefore no
+// pin set, therefore no provider, therefore no route -- and mtcollins1_boot_branch_route_refusal_cause
+// names the unnameable environment as the reason. The fail-closed half of this design is that the absence
+// is carried up through every projection of the pin list (the stored CEL, the evaluated admission, the
+// converged provider and the workflow renderer), so no caller can obtain a pin list with a conjunct missing.
+fn mtcollins1_boot_trusted_environment_pin() -> OidcClaimPin? {
   match mtcollins1_boot_trusted_environment() {
-    Present { value: e } => oidc_equals(claim: "environment", value: e)
-    Absent => oidc_equals(claim: "environment", value: "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__")
+    Present { value: e } => Present { value: oidc_equals(claim: "environment", value: e) }
+    Absent => none
   }
 }
 
@@ -174,40 +187,58 @@ data mtcollins1_boot_branch_attribute_mapping: Map<String, String> = {
 // ruling in gunbc.auth.oidc_claim_pins makes a fork's refusal turn on the number for exactly that
 // reason. workflow_ref pins the fleet-converge file on any heads ref; the ref pin then closes the set
 // to the roster.
-fn mtcollins1_boot_branch_claim_pins() -> List<OidcClaimPin> {
+// OPTIONAL, AND ALL-OR-NOTHING. Both membership pins above are optional, and this function refuses if
+// EITHER is absent -- it never drops one conjunct and returns the rest, which is the exact defect
+// merry-fox-82 caught at 18c3e1d0 (an Absent arm returning `base`). A caller therefore cannot get a pin
+// list that is missing the ref roster or the environment: the answer to "what does this provider admit"
+// is either the whole rule or nothing.
+fn mtcollins1_boot_branch_claim_pins() -> List<OidcClaimPin>? {
   let base = [
     oidc_equals(claim: "repository_id", value: to_string(gunbc_repository_numeric_identity.repository_id)),
     oidc_equals(claim: "repository_owner_id", value: to_string(gunbc_repository_numeric_identity.owner_id)),
     oidc_starts_with(claim: "workflow_ref", value: fleet_converge_workflow_ref_heads_prefix()),
     oidc_equals(claim: "event_name", value: workflow_dispatch_event_name),
-    mtcollins1_boot_trusted_ref_pin(),
   ]
-  // UNCONDITIONAL. There is deliberately no match over the option here: a match is what let the absent
-  // case return `base`, and a branch of a membership rule that returns the rule minus one conjunct is
-  // how a provider ends up admitting a job in no environment at all.
-  concat(base, [mtcollins1_boot_trusted_environment_pin()])
+  match mtcollins1_boot_trusted_ref_pin() {
+    Absent => none
+    Present { value: ref_pin } => match mtcollins1_boot_trusted_environment_pin() {
+      Absent => none
+      Present { value: env_pin } => Present { value: concat(concat(base, [ref_pin]), [env_pin]) }
+    }
+  }
 }
 
-fn mtcollins1_boot_branch_attribute_condition() -> String {
-  claim_pins_attribute_condition(pins: mtcollins1_boot_branch_claim_pins())
+fn mtcollins1_boot_branch_attribute_condition() -> String? {
+  match mtcollins1_boot_branch_claim_pins() {
+    Absent => none
+    Present { value: pins } => Present { value: claim_pins_attribute_condition(pins: pins) }
+  }
 }
 
 // THE ADMISSION THIS CORPUS CAN EVALUATE, over presented claims: the same pin list read as a predicate
 // rather than as CEL, so a RED can ask "does THIS run's claim set reach the approval-free boot" and be
 // answered against the provisioned condition itself.
 fn mtcollins1_boot_branch_admits(claims: List<OidcPresentedClaim>) -> Bool {
-  claim_pins_admit(pins: mtcollins1_boot_branch_claim_pins(), claims: claims)
+  match mtcollins1_boot_branch_claim_pins() {
+    // NO PIN LIST IS THE STRICTEST ANSWER: with no rule there is nothing a token can satisfy, so the
+    // route admits nothing -- which is the same direction the missing pin refuses in.
+    Absent => false
+    Present { value: pins } => claim_pins_admit(pins: pins, claims: claims)
+  }
 }
 
 // THE CLAIMS A DISPATCH OF THIS BRANCH, IN THIS ENVIRONMENT, PRESENTS -- everything the pins name, at
 // the values a real dispatch signs, so a RED states a scenario instead of a fixture.
-fn mtcollins1_boot_branch_presented_claims(branch: String, environment: String) -> List<OidcPresentedClaim> {
-  let base = presented_from_pins(pins: mtcollins1_boot_branch_claim_pins())
-  with_presented_value(
-    claims: with_presented_value(claims: base, claim: "ref", value: mtcollins1_boot_trusted_branch_ref(branch: branch)),
-    claim: "environment",
-    value: environment,
-  )
+fn mtcollins1_boot_branch_presented_claims(branch: String, environment: String) -> List<OidcPresentedClaim>? {
+  match mtcollins1_boot_branch_claim_pins() {
+    Absent => none
+    Present { value: pins } =>
+      Present { value: with_presented_value(
+        claims: with_presented_value(claims: presented_from_pins(pins: pins), claim: "ref", value: mtcollins1_boot_trusted_branch_ref(branch: branch)),
+        claim: "environment",
+        value: environment,
+      ) }
+  }
 }
 
 // IS THIS BRANCH HELD TO CARRY THE APPROVAL-FREE BOOT? The selection authority asks this; the provider's
@@ -229,18 +260,29 @@ fn mtcollins1_boot_branch_principal_set() -> String {
   ], "")
 }
 
-fn mtcollins1_boot_branch_provider() -> WifProvider {
-  WifProvider {
-    name: mtcollins1_boot_branch_wif_provider_id,
-    pool: mtcollins1_boot_branch_wif_pool_id,
-    issuer_uri: github_wif_issuer_uri,
-    attribute_mapping: Present { value: mtcollins1_boot_branch_attribute_mapping },
-    attribute_condition: Present { value: mtcollins1_boot_branch_attribute_condition() },
+// OPTIONAL, LIKE ITS CONDITION. A WIF provider whose attribute_condition admits nothing is still a real
+// cloud object: it exists, it is nameable, and someone auditing the project has to reason about it. With
+// no pin set there is no rule to store, so there is no provider -- which is also what keeps a half-built
+// route from being convergable by a caller that reaches past mtcollins1_boot_branch_federation_with.
+fn mtcollins1_boot_branch_provider() -> WifProvider? {
+  match mtcollins1_boot_branch_attribute_condition() {
+    Absent => none
+    Present { value: condition } =>
+      Present { value: WifProvider {
+        name: mtcollins1_boot_branch_wif_provider_id,
+        pool: mtcollins1_boot_branch_wif_pool_id,
+        issuer_uri: github_wif_issuer_uri,
+        attribute_mapping: Present { value: mtcollins1_boot_branch_attribute_mapping },
+        attribute_condition: Present { value: condition },
+      } }
   }
 }
 
-fn mtcollins1_boot_branch_provider_resource() -> String {
-  wif_provider_resource(project_number: fleet_secrets_project_number, provider: mtcollins1_boot_branch_provider())
+fn mtcollins1_boot_branch_provider_resource() -> String? {
+  match mtcollins1_boot_branch_provider() {
+    Absent => none
+    Present { value: p } => Present { value: wif_provider_resource(project_number: fleet_secrets_project_number, provider: p) }
+  }
 }
 
 // THE FEDERATION, or none. Four states refuse it, each named so a witness can ask about the one it
@@ -289,7 +331,10 @@ fn mtcollins1_boot_branch_route_refusal_cause_with(state: BootMediumReaderKeySta
           Unminted =>
             Present { value: "the boot medium reader key is not minted, so the branch account could only be given an incomplete policy (the BMC credential without the key the served-medium readback runs over); mint it through the FleetKeypairMint converge mode (PR #15329) to open this route" as NonEmptyStr }
           HalfMinted { why: w } =>
-            Present { value: concat("the boot medium reader key's mint landed only part of its receipt, so the branch route stays closed: ", w) as NonEmptyStr }
+            // THE SAME ROUTE OUT, AND THE STATE'S OWN REASON INSIDE IT: "not yet minted" and "minted
+            // without its public half" are different faults that a single generic sentence would flatten,
+            // so the why is carried verbatim -- but both point the operator at one place to act.
+            Present { value: concat("the boot medium reader key's mint landed only part of its receipt, so the branch route stays closed; finish the mint through the FleetKeypairMint converge mode (PR #15329): ", w) as NonEmptyStr }
           Minted { reference: _, public_key: _, fingerprint: _ } => none
         }
       } else if mtcollins1_boot_branch_secret_grants_with(f: f, state: state).length() == 0 {
@@ -321,14 +366,22 @@ fn mtcollins1_boot_branch_federation_with(state: BootMediumReaderKeyState) -> De
     // disagreed. It answers none rather than panicking, so a disagreement cannot manufacture a federation.
     Absent => match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
       Absent => none
-      Present { value: boot } =>
+      Present { value: boot } => match mtcollins1_boot_branch_attribute_condition() {
+      // TYPED, NOT FABRICATED, AND UNREACHABLE BY CONSTRUCTION: the refusal function above returns a cause
+      // for an empty roster and for an unnameable environment, which are exactly the two states that make
+      // the pin list -- and so the condition -- absent. Reaching this arm with no condition would mean the
+      // two reads disagreed, and the answer to that is no federation. The alternative, keeping a
+      // placeholder condition so the record could always be built, is the fabricated output DESIGN section 5
+      // refuses: a cloud object whose emptiness only this file knows about.
+      Absent => none
+      Present { value: branch_condition } =>
       Present { value: DedicatedFederation {
           label: "mtcollins1 boot from a trusted gunbc branch (approval-free, per the operator rulings 2026-10-22/23)",
           pool_id: mtcollins1_boot_branch_wif_pool_id,
           pool_display_name: mtcollins1_boot_branch_wif_pool_display_name,
           provider_id: mtcollins1_boot_branch_wif_provider_id,
           attribute_mapping: mtcollins1_boot_branch_attribute_mapping,
-          attribute_condition: mtcollins1_boot_branch_attribute_condition(),
+          attribute_condition: branch_condition,
           // THE ARM'S ONLY FIELD, and that is the whole point of it: the binding's ROLE is fixed by
           // standing_impersonation_cell, so a federation cannot widen what its pool may impersonate.
           impersonation: StandingPoolImpersonation {
@@ -338,12 +391,14 @@ fn mtcollins1_boot_branch_federation_with(state: BootMediumReaderKeyState) -> De
           service_account_id: mtcollins1_boot_branch_service_account_id,
           service_account_display_name: "Mt. Collins boot from a trusted branch (WIF-only, no keys)",
           service_account_member: federated_service_account_member(email: mtcollins1_boot_branch_service_account),
-          // NOT f.secret_grants. The boot federation carries TWO cells (managed_host_boot_federation
-          // admit_boot_federation:171-174): this host's pinned BMC credential AND
-          // fleet_automation_ssh_privkey_secret. The fleet key is FLEET-WIDE -- one private key that
-          // authenticates to every enrolled host -- and the main boot identity earns it because the
-          // reviewed main job uses it for the census served-medium readback (mtcollins1_boot_run:2577,
-          // 3231 -> boot_medium_served_readback, over ssh to the store host). This route has no reviewed
+          // NOT f.secret_grants. The boot federation carries TWO cells, built together in
+          // gunbc.auth.managed_host_boot_federation admit_boot_federation: this host's pinned BMC credential
+          // (from the host's BMC standing, `target: r.secret`) AND fleet_automation_ssh_privkey_secret. The
+          // fleet key is FLEET-WIDE -- one private key that authenticates to every enrolled host -- and the
+          // main boot identity earns it because the reviewed main job uses it for the census served-medium
+          // readback: gunbc.machine_intake.mtcollins1_boot_run calls boot_medium_served_readback from both
+          // mtcollins1_boot_actuate and mtcollins1_boot_on_srv1_resolving_toolchain, over ssh to the store
+          // host. This route has no reviewed
           // job text behind it: a rostered branch is the author of its own fleet-converge.yml. Handing
           // the same key to an identity that unreviewed code can federate at will converts "anyone with
           // branch push can cycle mtcollins1's power" (which the operator ruled) into "anyone with branch
@@ -352,12 +407,11 @@ fn mtcollins1_boot_branch_federation_with(state: BootMediumReaderKeyState) -> De
           // So the account holds EXACTLY what a boot of this one host needs, and the readback that needs
           // ssh goes over the forced-command reader key instead -- see
           // mtcollins1_boot_branch_secret_grants.
-          // THE SAME LIST THE GUARD ABOVE TESTED: one computation decides both whether the route exists and
-          // what it holds, so the guard cannot be satisfied by a different set than the one converged.
           // THE SAME LIST THE REFUSAL ABOVE TESTED: one computation decides both whether the route exists
           // and what it holds, so the guard cannot be satisfied by a set other than the one converged.
           secret_grants: mtcollins1_boot_branch_secret_grants_with(f: boot, state: state),
         } }
+      }
     }
   }
 }

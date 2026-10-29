@@ -4993,7 +4993,19 @@ fn fleet_converge_boot_credential_source_provider(source: BootCredentialSource) 
   match source {
     ReviewedMainDedicatedFederation => fleet_converge_mtcollins1_boot_provider_resource()
     RunScopedApprovedGrant => branch_dispatch_provider_resource()
-    TrustedBranchBootIdentity => mtcollins1_boot_branch_provider_resource()
+    TrustedBranchBootIdentity =>
+      // THE BRANCH PROVIDER IS OPTIONAL, because the rule it federates under is: with an empty roster or a
+      // boot identity that cannot name its environment there is no provider at all (review 87673 -- the
+      // alternative was a well-formed condition comparing claims to a string nobody could send). The
+      // selection cannot hand this arm to us in that state -- it refuses the route first, in
+      // gunbc.auth.mtcollins1_branch_boot_trust mtcollins1_boot_branch_route_refusal_cause_with -- so this
+      // is the total-match obligation, and it answers with the token BootCredentialSourceRefused already
+      // emits below. A match arm that ever became reachable by accident then fails the auth step, instead
+      // of naming some pool that exists.
+      match mtcollins1_boot_branch_provider_resource() {
+        Absent => boot_credential_source_emit_refused_poison
+        Present { value: resource } => resource
+      }
   }
 }
 
@@ -5005,16 +5017,20 @@ fn fleet_converge_boot_credential_source_account(source: BootCredentialSource) -
   }
 }
 
-// THE FALSE ELEMENT OF A GITHUB CONDITION, SPOOLED AS A REF. extdeps.github.expressions Expression has
-// NO boolean arm -- there is no way to write `false` -- so an empty roster cannot be rendered as
-// "never admits". It is rendered as the ref that no dispatch can ever carry: the same poisoned-sentinel
-// convention this lane already uses for an unnameable pin (gunbc.auth.mtcollins1_branch_boot_trust
-// mtcollins1_boot_trusted_ref_pin) and for a refused emission (boot_credential_source_emit_refused_poison
-// just below). It admits nothing, and it reads as a sentinel rather than as a ref someone might create.
-fn fleet_converge_ref_matches_no_branch() -> Expression {
-  Equals {
-    left: ContextAccess { context: Github, path: ["ref"] },
-    right: StringLiteral { value: "__GUNBC_MTCOLLINS1_BOOT_NO_TRUSTED_BRANCH__" },
+// THREE ALTERNATIVES OF A CREDENTIAL EXPRESSION, THE MIDDLE ONE OPTIONAL. The boot's WIF source renders as
+//   (reviewed main -> main source) OR (a rostered branch ref -> the branch identity) OR (otherwise ->
+// run-scoped source). The middle arm exists only while the branch route exists; when no ref may federate
+// that identity the arm is DROPPED, not guarded by an expression that can never match. An earlier draft
+// filled such a slot with `github.ref == '__GUNBC_MTCOLLINS1_BOOT_NO_TRUSTED_BRANCH__'` (review 87673): it
+// admitted nothing, so it looked safe, but that safety was a fact about what GitHub never sends rather than
+// about this code, and it left a sentinel in generated workflow text that only this file explains. Dropping
+// the arm gives the same admitted set with nothing fabricated in it -- DESIGN section 5: no plausible output
+// is fabricated. (The algebra has no boolean arm, which is why "drop the alternative" is the honest move
+// rather than "write false".)
+fn fleet_converge_credential_source_alternatives(main_arm: Expression, branch_arm: Expression?, other_arm: Expression) -> Expression {
+  match branch_arm {
+    Absent => LogicalOr { left: main_arm, right: other_arm }
+    Present { value: b } => LogicalOr { left: main_arm, right: LogicalOr { left: b, right: other_arm } }
   }
 }
 
@@ -5042,7 +5058,10 @@ fn fleet_converge_mtcollins1_boot_source_account(standing: BootCredentialStandin
 // trusted, and does the selection at THIS ref name the approval-free source. Never one entry's answer
 // applied to the whole roster: a second entry added later is judged on its own ref, and an entry the
 // selection refuses drops out of the expression instead of borrowing its neighbour's approval.
-fn fleet_converge_mtcollins1_boot_ref_is_trusted_branch() -> Expression {
+// WHICH REFS MAY ASK FOR THE BRANCH IDENTITY, OR NONE -- optional for the same reason the trust module's
+// pins are optional (mtcollins1_boot_trusted_ref_pin): an empty set is ABSENCE, not a value no one will
+// ever present. Each entry is judged on its own ref, never one representative standing in for the roster.
+fn fleet_converge_mtcollins1_boot_ref_is_trusted_branch() -> Expression? {
   let allowed = filter(mtcollins1_boot_trusted_branches, b =>
     mtcollins1_boot_branch_is_trusted(branch: b as String)
       && !boot_grant_required_at_ref(on_reviewed_main: false, branch: b as String))
@@ -5051,44 +5070,49 @@ fn fleet_converge_mtcollins1_boot_ref_is_trusted_branch() -> Expression {
     right: StringLiteral { value: mtcollins1_boot_trusted_branch_ref(branch: b as String) },
   })
   match terms.first() {
-    Absent => fleet_converge_ref_matches_no_branch()
-    Present { value: t } => fold(terms.skip(n: 1), init: t, f: (acc, x) => LogicalOr { left: acc, right: x })
+    Absent => none
+    Present { value: t } => Present { value: fold(terms.skip(n: 1), init: t, f: (acc, x) => LogicalOr { left: acc, right: x }) }
   }
 }
 
 fn fleet_converge_mtcollins1_boot_wif_provider_resource() -> String {
-  interpolate(expression: LogicalOr {
-    left: LogicalAnd {
+  interpolate(expression: fleet_converge_credential_source_alternatives(
+    main_arm: LogicalAnd {
       left: fleet_converge_github_ref_is_reviewed_main(),
       right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: select_boot_credential_source(on_reviewed_main: true)) },
     },
-    right: LogicalOr {
-      left: LogicalAnd {
-        left: fleet_converge_mtcollins1_boot_ref_is_trusted_branch(),
-        // THE ROUTE'S OWN IDENTITY, named by the trust module: one pool, provider and account are declared
-        // for this route, so this is not a credential computed from a representative branch. WHICH refs may
-        // ask for it is the ref guard beside it, decided per entry.
-        right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: BootCredentialSourceSelected { source: TrustedBranchBootIdentity }) },
-      },
-      right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: select_boot_credential_source(on_reviewed_main: false)) },
+    // THE ROUTE'S OWN IDENTITY, named by the trust module: one pool, provider and account are declared for
+    // this route, so this is not a credential computed from a representative branch. WHICH refs may ask for
+    // it is the ref guard beside it, decided per entry; when none may, the arm is absent and dispatches take
+    // the run-scoped source.
+    branch_arm: match fleet_converge_mtcollins1_boot_ref_is_trusted_branch() {
+      Absent => none
+      Present { value: guard } =>
+        Present { value: LogicalAnd {
+          left: guard,
+          right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: BootCredentialSourceSelected { source: TrustedBranchBootIdentity }) },
+        } }
     },
-  })
+    other_arm: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: select_boot_credential_source(on_reviewed_main: false)) },
+  ))
 }
 
 fn fleet_converge_mtcollins1_boot_wif_service_account() -> String {
-  interpolate(expression: LogicalOr {
-    left: LogicalAnd {
+  interpolate(expression: fleet_converge_credential_source_alternatives(
+    main_arm: LogicalAnd {
       left: fleet_converge_github_ref_is_reviewed_main(),
       right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: select_boot_credential_source(on_reviewed_main: true)) },
     },
-    right: LogicalOr {
-      left: LogicalAnd {
-        left: fleet_converge_mtcollins1_boot_ref_is_trusted_branch(),
-        right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: BootCredentialSourceSelected { source: TrustedBranchBootIdentity }) },
-      },
-      right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: select_boot_credential_source(on_reviewed_main: false)) },
+    branch_arm: match fleet_converge_mtcollins1_boot_ref_is_trusted_branch() {
+      Absent => none
+      Present { value: guard } =>
+        Present { value: LogicalAnd {
+          left: guard,
+          right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: BootCredentialSourceSelected { source: TrustedBranchBootIdentity }) },
+        } }
     },
-  })
+    other_arm: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: select_boot_credential_source(on_reviewed_main: false)) },
+  ))
 }
 
 fn fleet_converge_mtcollins1_boot_wif_auth_step() -> Step {
@@ -5863,10 +5887,18 @@ fn fleet_converge_off_main_grant_required_term_with(state: BootMediumReaderKeySt
         left: ContextAccess { context: Github, path: ["ref"] },
         right: StringLiteral { value: mtcollins1_boot_trusted_branch_ref(branch: b as String) },
       })
-      Present { value: LogicalAnd {
-        left: base,
-        right: LogicalNot { operand: fold(terms.skip(n: 1), init: match terms.first() { Present { value: t } => t  Absent => fleet_converge_ref_matches_no_branch() }, f: (acc, x) => LogicalOr { left: acc, right: x }) },
-      } }
+      // terms is non-empty here (excluded.length() != 0 above), so the Absent arm is unreachable; it
+      // answers base -- grant required for every branch, rostered ones included -- rather than filling the
+      // fold with a ref no dispatch can carry. Same meaning if the guard above and this fold ever disagree,
+      // and nothing fabricated reaches the rendered text.
+      match terms.first() {
+        Absent => Present { value: base }
+        Present { value: t } =>
+          Present { value: LogicalAnd {
+            left: base,
+            right: LogicalNot { operand: fold(terms.skip(n: 1), init: t, f: (acc, x) => LogicalOr { left: acc, right: x }) },
+          } }
+      }
     }
   } else {
     Present { value: base }

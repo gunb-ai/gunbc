@@ -1119,6 +1119,18 @@ fn manual_srv1_root_effect(subject: NonEmptyStr, step: HumanIntervention) -> Pri
 // 2026-10-22 (gunbc.design_ruling one_approval_route_for_every_privileged_action): host-root reach that a
 // human can attend is approved through the broker route alone, so each row selects
 // OperatorApprovedCapability and diverges because the realization is a person or a GitHub click.
+// THE ONE THING STANDING BETWEEN THIS SITE AND ITS AUTHORIZED SHAPE: the boot-medium-reader key. Named
+// here so the census row that has to change when it lands carries the reason it is not that shape today,
+// and the day it lands the verdict is DivergesWithReason(this) rather than the bare Diverges the census
+// makes red. The two readings it names are not remembered folklore: they are what
+// gunbc.auth.authorization_pattern_selection select_authorization_pattern returns for this effect with the
+// key unminted and minted, and both sides are claimed in
+// test.claim.auth.branch_run_grant_witness the_branch_boot_credential_is_censused_and_conforms.
+data branch_boot_reader_key_mint_outstanding: DivergenceReason = DivergenceReason {
+  statement: "the branch boot's authorized shape is the resource-scoped federated grant this PR declares -- a dedicated pool, provider and account whose IAM-side condition admits only a rostered same-repository ref, the pinned boot environment, the dispatch event and this repository under GitHub's numeric ids (gunbc.auth.mtcollins1_branch_boot_trust). What is REALIZED today at this site is instead the operator's approval: the boot medium reader key is unminted (gunbc.host.boot_medium_reader_key boot_medium_reader_key_state -- the FleetKeypairMint converge mode that mints it is PR #15329, gunbc.machine_intake.fleet_keypair_mint), so the branch account could only be given a policy whose served-medium readback credential is missing, the route refuses by name, and a branch boot still reaches the BMC solely through the run-scoped grant the broker dispatches after an operator approves it. That is why the selection reads OperatorApprovedCapability for this effect today and FederatedScopedGrant for it with the key minted." as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "MINTED KEY, THEN MOVE THIS ARM: the FleetKeypairMint converge mode (PR #15329, gunbc.machine_intake.fleet_keypair_mint) stands up gunbc.host.boot_medium_reader_key's key pair and pins it to the boot's standing, so boot_medium_reader_key_state answers Minted. At that point the branch account holds its two cells (the host's BMC credential and this key), the route opens, and this row's realized arm moves to RealizedFederatedGrant -- which the selection already demands of it. NOT satisfied by declaring the account, minting a BMC-only policy, or the operator's standing permission, any of which leaves the readback credential missing and the route refusing" as NonEmptyStr),
+}
+
 data srv1_root_step_by_hand_beside_the_broker_route: DivergenceReason = DivergenceReason {
   statement: "the effect is a host-root write on srv1 that the operator performs by hand over ssh from rendered instructions; the operator ruling of 2026-10-22 names the approval broker route as its only approval, and no authority adapter requests a capability for it, so the instruction text is the only record that it happened" as NonEmptyStr,
   dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the step's entry point files an access_request (gunbc.auth.access_request) for its re-derived effect and the host-root write executes only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability) delivered by the iOS approval app, with post-apply readback. NOT satisfied by modeling the instruction or by the administrator edge" as NonEmptyStr),
@@ -1553,9 +1565,23 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   // verbatim — an mtcollins1 boot "is not sensitive", merry-fox-82 holds "permission to boot it endlessly", and
   // a boot from a non-main integration branch "shouldn't need an approval". The 2026-09-23/25 rulings already
   // made the act approval-free on main; that row extends the same no-approval selection to same-repository
-  // branch dispatches. So this row selects FederatedScopedGrant, and it is the SAME selection the on-reviewed-main
-  // row already makes — the ruling widened WHO MAY DISPATCH, not HOW THE EFFECT IS AUTHORIZED. It is a
+  // branch dispatches. The AUTHORIZED SHAPE of the effect is therefore the same one the on-reviewed-main row
+  // already carries -- gunbc.auth.authorization_pattern_selection selects FederatedScopedGrant for it the
+  // moment the reader key exists (measured: branch_boot_reader_key_mint_outstanding's statement names both
+  // readings) -- and the ruling widened WHO MAY DISPATCH, not HOW THE EFFECT IS AUTHORIZED. It is a
   // no-approval selection, not an approval route, and it adds no second route to the broker.
+  //
+  // BUT THE ROW DOES NOT CLAIM THAT SHAPE AS TODAY'S REALITY. What `realized` asks for is the site's
+  // token-source binding as it stands, and today there is no boot-medium-reader key, so the branch account
+  // cannot be given the readback credential the served-medium readback runs over: the route refuses
+  // (gunbc.auth.mtcollins1_branch_boot_trust mtcollins1_boot_branch_route_refusal_cause_with, naming
+  // PR #15329), and the only credential that can still drive this BMC from a branch is the run-scoped one
+  // the broker grants AFTER an operator approves it. The selection function says the same thing on its own,
+  // unasked: this effect today selects OperatorApprovedCapability; the same effect with the key minted
+  // selects FederatedScopedGrant. Both readings are claimed, in
+  // test.claim.auth.branch_run_grant_witness the_branch_boot_credential_is_censused_and_conforms; writing
+  // the far side into `realized` today would be rung inflation on the one field whose whole job is to say
+  // what runs today.
   //
   // WHY NO NEW DISCHARGE AND NO NEW INTERLOCK ROW: the destructive ACT and its discharge are unchanged. The
   // irreversibility of a mtcollins1 boot is discharged by mtcollins1_operator_ruling at the boot's own actuation
@@ -1571,8 +1597,15 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.branch_dispatch_federation", decl_name: "branch_boot_credential_effect_approval_free"),
     effect: branch_boot_credential_effect_approval_free(),
-    realized: RealizedFederatedGrant,
-    divergence_reason: none,
+    // THE OPERATOR'S APPROVAL, TODAY: see the paragraph above. The broker route is the live one for a
+    // branch boot until the reader key is minted, and this field is the census's record of that.
+    realized: RealizedApprovalCapability,
+    // INERT WHILE THE ROW MATCHES -- AND IT MATCHES TODAY. This reason exists for the day the key lands:
+    // the effect then selects FederatedScopedGrant, this arm no longer matches, and the verdict arrives as
+    // DivergesWithReason carrying this text rather than the bare Diverges the census makes red. The
+    // transition is written into the row that has to change, where whoever mints the key will read it,
+    // instead of being rediscovered as a red corpus the day after the mint.
+    divergence_reason: Present { value: branch_boot_reader_key_mint_outstanding },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "host_credential_custody_converge_ci_wet"),
