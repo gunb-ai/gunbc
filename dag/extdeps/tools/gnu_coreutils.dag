@@ -325,6 +325,17 @@ fn readlink_command(path: String) -> ArgvCommand {
   argv_command(program: readlink_program(), arguments: [path])
 }
 
+// readlink OVER MANY PATHS, IN ONE INVOCATION. MEASURED on coreutils 9.7 (the version this repository's
+// toolchain pins): readlink accepts one operand per path and prints one line per operand it COULD read, in
+// operand order, with no separator and no label naming which path a line belongs to; an operand it could not
+// read produces NO output at all — stderr stays empty — and the exit status becomes 1. So a batch report
+// identifies namespaces in order while the operands line up, and stops identifying them the moment one is
+// missing. A caller that needs to know WHICH operand failed cannot learn it from this tool, and
+// `--` guards a leading dash rather than changing any of that.
+fn readlink_links_command(paths: List<String>) -> ArgvCommand {
+  argv_command(program: readlink_program(), arguments: concat(["--"], paths))
+}
+
 // install(1) — GNU coreutils, "Setting file attributes" / install invocation. The flags used
 // here are the ones that manual defines: -d creates each named directory, -m sets the mode,
 // -o and -g set owner and group at creation. Owner-at-creation is why this repository installs

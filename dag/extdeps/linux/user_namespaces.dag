@@ -1,0 +1,79 @@
+module extdeps.linux.user_namespaces
+
+// THE KERNEL'S USER-NAMESPACE MAPPING CONTRACT: what a line of /proc/<pid>/uid_map or gid_map MEANS, and
+// how the namespace a process belongs to is IDENTIFIED. The authority is the kernel's user_namespaces(7);
+// namespaces(7) carries the /proc/<pid>/ns/<name> link, which is a separate document because it covers all
+// namespace classes and not user namespaces only. WHAT LIVES HERE IS THE MEANING OF THOSE ROWS AND LINKS --
+// never whether some host has some range mapped somewhere. That is a reading, and it belongs to the
+// instrument that takes it: gunbc.runner.runner_gpu_container_toolchain gpu_container_provision_displaced_maps.
+//
+// WHY THIS MODULE EXISTS, AND THE RUN THAT FORCED IT. The GPU container converge's namespace precheck
+// compared the OUTSIDE column of every process of a displacee account against the subordinate range being
+// moved, and on srv3 (fleet-converge run 40843061056) that refused the move on ubuntu pid 4116 -- its
+// systemd --user -- whose /proc/4116/uid_map reads `0 0 4294967295`. That row is not a namespace drawing
+// ids out of a subordinate range; it is what the kernel puts in the map of EVERY process that has created
+// or joined no user namespace, because the initial user namespace maps each id to itself. Reading it as an
+// overlap means no live host can ever have a clear displacee. The error was answering "does this row overlap
+// the range?" without first answering "which namespace is this row's outside column relative to?" -- the
+// question this module exists to answer.
+
+import std.types { Int, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "man7.org/linux/man-pages/man7/user_namespaces.7.html" }
+}
+
+// NAMESPACES(7) IS CITED APART, NOT AS A COURTESY. The /proc/<pid>/ns/<name> symbolic link and the rule that
+// equal link targets mean the same namespace are stated there for every namespace class; user_namespaces(7)
+// does not define them.
+data namespaces_link_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "man7.org/linux/man-pages/man7/namespaces.7.html" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.user_namespaces",
+      decl_name: "user_namespace_map_row_column_count",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [namespaces_link_authority]
+}
+
+// THE SHAPE OF ONE MAPPING LINE. user_namespaces(7): each of /proc/[pid]/uid_map and /proc/[pid]/gid_map
+// consists of a THREE-COLUMN table, each line specifying the mapping for a contiguous range of ids: the
+// start of the range INSIDE the user namespace of <pid>, the start of the corresponding range IN THE PARENT
+// USER NAMESPACE, and the LENGTH of the range. The three indices below are that order, and a reader that
+// names them takes the column choice off the caller.
+data user_namespace_map_row_column_count: Int = 3
+
+data user_namespace_map_inside_column: Int = 0
+
+data user_namespace_map_outside_column: Int = 1
+
+data user_namespace_map_length_column: Int = 2
+
+// WHICH NAMESPACE THE OUTSIDE COLUMN IS RELATIVE TO. It is the PARENT of the namespace of the process whose
+// file is read -- not the namespace of whoever reads the file, and not the initial namespace. The consequence
+// that srv3 paid for: a process in the INITIAL user namespace has no parent to be relative to, and its row
+// covers the whole id space to itself; the range in that column is therefore nobody's subordinate range, and
+// comparing it against one answers no question. The second consequence, stated so a reader does not assume
+// more than the contract gives: for a namespace nested two levels deep the outside column is relative to its
+// IMMEDIATE parent, so relating that namespace to the host's ids needs the maps of the namespaces between
+// them COMPOSED, which no single read of one /proc/<pid>/uid_map supplies.
+data user_namespace_map_outside_is_parent_relative: NonEmptyStr =
+  "the second column of /proc/<pid>/uid_map and /proc/<pid>/gid_map is a range of ids in the PARENT user namespace of the namespace of <pid>, not in the namespace of the process reading the file and not in the initial user namespace (user_namespaces(7))"
+
+// THE NAMESPACE ITSELF IS NAMED BY A LINK, NOT BY A ROW (namespaces(7)). /proc/<pid>/ns/user is a symbolic
+// link whose target is `user:[<inode>]`, and that target identifies the namespace: two processes are in the
+// same user namespace exactly when their targets are equal. It is read with readlink(1), because a namespace
+// link is not a readable file. A process that has created or joined no user namespace is in the INITIAL one,
+// so its target equals the target of /proc/1/ns/user -- which is what makes "is this process in a namespace
+// at all" a decidable question about identity rather than a guess from the shape of a map row.
+data user_namespace_link_target_identifies_namespace: NonEmptyStr =
+  "/proc/<pid>/ns/user is a symbolic link whose target `user:[<inode>]` identifies the user namespace of <pid>; equal targets are the same namespace, and a process in no user namespace is in the initial one (namespaces(7))"
