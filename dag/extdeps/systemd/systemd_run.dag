@@ -801,6 +801,18 @@ fn systemd_formatted_bytes_upper(b: SystemdFormattedBytes) -> ByteSize {
   }
 }
 
+// THE LOWER READING: what a printed figure CONSERVATIVELY guarantees. For a CAPACITY -- a cgroup
+// limit admission is checked against -- this is the safe direction: a budget must never be wider
+// than what was measured, or admission passes the byte the kernel stops at (review 87534). For a
+// CHARGE (a unit's peak, a request) the upper reading is the safe direction; the bounded form
+// carries both precisely so each use picks its own direction instead of trusting a print.
+fn systemd_formatted_bytes_lower(b: SystemdFormattedBytes) -> ByteSize {
+  match b {
+    FormattedBytesExact { bytes } => bytes
+    FormattedBytesBounded { printed: _, lower, upper: _ } => lower
+  }
+}
+
 type SystemdMemoryPeakReading
   = MemoryPeakRead { peak: SystemdFormattedBytes }
   | MemoryPeakUnparseable { text: String }

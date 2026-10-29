@@ -32,7 +32,7 @@ import gunbc.compute.host_capacity {
   SliceLimitReading, SliceLimitObserved, SliceLimitUnbounded, SliceLimitAbsent, SliceLimitUnreadable,
   ReviewerSliceBudget, SliceBudgetObserved, SliceBudgetDeclared, SliceBudgetZero,
   ComputeSliceLeg, ComputeSliceRoom, ComputeSliceRefusedForRoom, compute_slice_arithmetic,
-  reviewer_slice_budget_from_reading, kibibyte_from_byte_size_ceiling,
+  reviewer_slice_budget_from_reading, kibibyte_from_byte_size_ceiling, slice_limit_from_shell,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_name, dispatch_review_unit_properties }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
@@ -323,4 +323,39 @@ fn reviewer_row_samples(count: Int) -> List<WorkClassPeakSample> {
     0 => [] as List<WorkClassPeakSample>
     _ => Cons { head: reviewer_sample(i: count), tail: reviewer_row_samples(count: count - 1) }
   }
+}
+
+// A BUDGET IS NEVER WIDER THAN WHAT WAS MEASURED (review 87534). The slice's MemoryMax is a
+// capacity admission is checked against, so it converts DOWN -- a plain-bytes limit one byte past
+// a KiB boundary yields the floor budget, never the ceiling one that would admit past the byte the
+// cgroup kills at; a bounded fractional print yields its LOWER bound; an unparseable print falls to
+// the declared row with provenance, never a widened figure. The peak fold keeps the opposite
+// direction: a CHARGE is never understated. The old ceiling-rounded budget fails this control.
+test fn the_slice_budget_is_never_wider_than_what_the_cgroup_reports() -> Bool {
+  let plain_bytes = match reviewer_slice_budget_from_reading(observed: slice_limit_from_shell(outcome: ShellExited, success: true, value: "47244640001"), declared: kibibyte(count: 46137344)) {
+    SliceBudgetObserved { budget: b, detail: _ } => kibibyte_count(k: b) == 46137343
+    SliceBudgetDeclared { budget: _, detail: _ } => false
+    SliceBudgetZero { detail: _ } => false
+  }
+  let sub_kib_refuses = match reviewer_slice_budget_from_reading(observed: slice_limit_from_shell(outcome: ShellExited, success: true, value: "512"), declared: kibibyte(count: 46137344)) {
+    SliceBudgetObserved { budget: b, detail: _ } => match compute_slice_arithmetic(b: b, sibling_committed: kibibyte(count: 0), own_committed: kibibyte(count: 0), request: kibibyte(count: 1)) {
+      ComputeSliceRefusedForRoom { detail: _ } => true
+      ComputeSliceRoom { budget: _ } => false
+    }
+    SliceBudgetZero { detail: _ } => true
+    _ => false
+  }
+  let fractional_lower = match reviewer_slice_budget_from_reading(observed: slice_limit_from_shell(outcome: ShellExited, success: true, value: "1.5K"), declared: kibibyte(count: 46137344)) {
+    SliceBudgetObserved { budget: b, detail: _ } => kibibyte_count(k: b) == 1
+    _ => false
+  }
+  let unparseable_falls_declared = match reviewer_slice_budget_from_reading(observed: slice_limit_from_shell(outcome: ShellExited, success: true, value: "forty-four gigabytes"), declared: kibibyte(count: 46137344)) {
+    SliceBudgetDeclared { budget: b, detail: d } => kibibyte_count(k: b) == 46137344 && string_contains(s: d, pattern: "could not be read")
+    _ => false
+  }
+  let charge_stays_up = match session_reviewer_peak_from_show(outcome: ShellExited, success: true, value: "1.5K") {
+    SessionReviewerPeakObserved { peak } => kibibyte_count(k: peak) == 2
+    SessionReviewerPeakUnobserved { reason: _ } => false
+  }
+  plain_bytes && sub_kib_refuses && fractional_lower && unparseable_falls_declared && charge_stays_up
 }

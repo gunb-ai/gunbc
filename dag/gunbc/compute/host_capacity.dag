@@ -3,7 +3,7 @@ module gunbc.compute.host_capacity
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
 import std.algebra { Cons, Empty }
-import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size_count }
+import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size, byte_size_count }
 import extdeps.linux.procfs
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
 import extdeps.transports.shell { ShellOutcome, ShellExited, ShellSpawnRefused }
@@ -11,7 +11,7 @@ import extdeps.systemd { systemd_memory_max_property }
 import extdeps.systemd.systemctl
 import extdeps.systemd.systemd_run {
   SystemdFormattedBytes, SystemdFormattedBytesReading, FormattedBytesRead, FormattedBytesUnparseable,
-  systemd_formatted_bytes_parse, systemd_formatted_bytes_upper,
+  systemd_formatted_bytes_parse, systemd_formatted_bytes_upper, systemd_formatted_bytes_lower,
 }
 import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
 import product.capacity.event_chain { PartitionId }
@@ -304,18 +304,34 @@ fn slice_limit_from_shell(outcome: ShellOutcome, success: Bool, value: String) -
         } else if text == "infinity" || text == "max" {
           SliceLimitUnbounded
         } else {
-          match systemd_formatted_bytes_parse(text: text) {
-            FormattedBytesUnparseable { text: t } => SliceLimitUnreadable { detail: join(["MemoryMax is not a bytes figure: ", t], "") }
-            FormattedBytesRead { value: b } => SliceLimitObserved { limit: systemd_formatted_bytes_upper(b: b) }
+          match parse_int(s: text) {
+            // THE PLAIN-BYTES FORM IS WHAT 'systemctl show -p MemoryMax' PRINTS (the operator's
+            // srv1 receipt read 47244640256, not "44G"): read it as exact bytes, and let the
+            // budget conversion round DOWN from there -- a limit like 47244640001 must yield a
+            // budget of floor bytes/1024, never the ceiling one, or admission passes the byte
+            // the cgroup stops at (review 87534's failure case, now a control).
+            Present { value: v } =>
+              if v < 0 {
+                SliceLimitUnreadable { detail: join(["MemoryMax is negative: ", text], "") }
+              } else {
+                SliceLimitObserved { limit: byte_size(count: v) }
+              }
+            Absent => match systemd_formatted_bytes_parse(text: text) {
+              FormattedBytesUnparseable { text: t } => SliceLimitUnreadable { detail: join(["MemoryMax is not a bytes figure: ", t], "") }
+              FormattedBytesRead { value: b } => SliceLimitObserved { limit: systemd_formatted_bytes_lower(b: b) }
+            }
           }
         }
       }
   }
 }
 
-// A REFUSAL IS NOT A FLOOR: the upper reading of a formatted figure is what sizes admission,
-// because the printed form truncates and a grant sized from the truncated figure would admit past
-// the byte the cgroup stops at (extdeps.systemd.systemd_run states the law; this consumes it).
+// A REFUSAL IS NOT A FLOOR, AND A CAPACITY IS NOT A CHARGE (review 87534): a slice limit is the
+// byte the kernel stops AT, so the reading that sizes admission is the LOWER bound of the printed
+// figure -- a truncated print may overstate what is enforced, and an overstated budget is a silent
+// widen on the exact path this leg exists to close. The UPPER bound stays the safe direction for
+// CHARGES (a unit's observed peak: never understate what a unit used). extdeps.systemd.systemd_run
+// carries both bounds precisely so each side picks its own direction.
 
 // WHAT THE FILE SAYS, IN THE STATES ADMISSION NEEDS DISTINGUISHED. (Kept adjacent to the fold so
 // the arms and their reading are one fact, not a type in one file and an interpretation in another.)
@@ -331,9 +347,11 @@ type ReviewerSliceBudget
   | SliceBudgetDeclared { budget: Kibibyte, detail: String }
   | SliceBudgetZero { detail: String }
 
-// KI-B, CEILING: a budget must never be rounded DOWN, or the leg admits past the byte the cgroup
-// stops at. (kibibyte_from_byte_size_floor truncates by law; this is the same conversion the
-// sibling charge in gunbc.recurring_failure_mode uses for a limit being CONSUMED.)
+// KI-B, CEILING -- FOR A CHARGE ONLY (review 87534): never understate what a unit consumed, so an
+// observed MemoryPeak converts with the CEILING (its sole user is session_reviewer_peak_from_show,
+// recording a class sample). BUDGETS must never be rounded this way -- a budget is a capacity and
+// rounds DOWN via the existing std.measure kibibyte_from_byte_size_floor; the reviewer slice legs
+// below use the floor, never this function.
 fn kibibyte_from_byte_size_ceiling(b: ByteSize) -> Kibibyte {
   let bytes = byte_size_count(b: b)
   let q = bytes / 1024
@@ -344,7 +362,7 @@ fn kibibyte_from_byte_size_ceiling(b: ByteSize) -> Kibibyte {
 // THE DECLARED FIGURE THIS DEPLOYMENT INSTALLS, derived -- never transcribed (DESIGN 6): slots and
 // per-slot bytes are gunbc.live_deploy's own rows, the ones the emitter writes the slice with.
 fn reviewer_slice_declared_budget(slots: Nat) -> Kibibyte {
-  kibibyte_from_byte_size_ceiling(b: user_work_slice_memory_max_of(slots: slots))
+  kibibyte_from_byte_size_floor(b: user_work_slice_memory_max_of(slots: slots))
 }
 
 // THE PURE RESOLUTION: observed reading, plus the DECLARED row. Absent, unbounded and unreadable
@@ -357,7 +375,7 @@ fn reviewer_slice_budget_from_reading(observed: SliceLimitReading, declared: Kib
       if byte_size_count(b: limit) == 0 {
         SliceBudgetZero { detail: join([user_work_slice_unit_name as String, " reports MemoryMax of zero, which can hold no unit"], "") }
       } else {
-        let observed_kib = kibibyte_from_byte_size_ceiling(b: limit)
+        let observed_kib = kibibyte_from_byte_size_floor(b: limit)
         if kibibyte_count(k: observed_kib) < kibibyte_count(k: declared) {
           SliceBudgetObserved { budget: observed_kib, detail: "the slice's own MemoryMax, below the declared row" }
         } else {
