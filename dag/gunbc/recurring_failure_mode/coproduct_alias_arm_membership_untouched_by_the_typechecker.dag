@@ -37,8 +37,8 @@ data coproduct_alias_arm_membership_untouched_by_the_typechecker: RecurringFailu
 
   evidence: [
     decl_ref(module_path: "gunbc.host.fleet_keypair_mint", decl_name: "fleet_keypair_mint_verdict"),
-    decl_ref(module_path: "gunbc.host.boot_medium_reader_key_mint", decl_name: "reader_key_mint_with"),
-    decl_ref(module_path: "gunbc.host.mtcollins1_ssh_host_key_mint", decl_name: "host_key_mint_with"),
+    decl_ref(module_path: "gunbc.host.boot_medium_reader_key_mint", decl_name: "boot_medium_reader_key_pinned_line"),
+    decl_ref(module_path: "gunbc.host.mtcollins1_ssh_host_key_mint", decl_name: "mtcollins1_host_key_mint_wet"),
     decl_ref(module_path: "test.claim.host.fleet_keypair_mint_witness", decl_name: "an_unknown_add_outcome_never_holds_and_a_pinned_key_always_does"),
   ],
 }

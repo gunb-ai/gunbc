@@ -1,20 +1,15 @@
 module gunbc.host.boot_medium_reader_key_mint
 
-import std.types { Bool, NonEmptyStr, Secret, String }
+import std.types { Secret, String }
 import std.optional { Present, Absent }
-import extdeps.ssh.keys { SshPublicKey, ssh_public_key_line }
+import extdeps.ssh.keys { ssh_public_key_line }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.host_command_binding { HostCommandOutcome }
 import gunbc.host.fleet_keypair_mint {
-  FleetKeypairGeneration, FleetKeypairPairData, GenerationYielded, GenerationRefusedWith,
-  FleetAddVerdict, FleetAddVersionNamed, FleetAddRefusedWith, FleetAddMayHaveLanded, FleetAddContainerUnestablishable,
-  FleetKeypairMintVerdict, MintVerdictMinted, MintVerdictAlreadyPinned, MintVerdictRefused, MintVerdictOutcomeUnknown,
-  MintDirOnTmpfs, MintDirRefusedAt,
-  boot_medium_reader_keypair_mint_subject, fleet_keypair_generate_pair, fleet_keypair_generation_verdict,
-  fleet_keypair_mint_dir_verdict, fleet_keypair_store_verdict, fleet_keypair_mint_verdict,
-  fleet_keypair_privkey_resource, redact_fleet_keypair_private, fleet_keypair_receipt_line,
-  fleet_keypair_mint_word_holds,
+  FleetKeypairGeneration, FleetAddVerdict,
+  boot_medium_reader_keypair_mint_subject, fleet_keypair_generate_pair, fleet_keypair_store_verdict,
+  fleet_keypair_privkey_resource, fleet_keypair_mint_verdict, fleet_keypair_mint_verdict_holds,
+  fleet_keypair_mint_receipt_text,
 }
 import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_key }
 
@@ -39,10 +34,11 @@ import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_key }
 // treats any version it may have added as exposed and rotates it by minting again.
 //
 // IT IS NEVER RENDERED. No receipt arm can carry it, and every diagnostic the mint carries -- the store's
-// refusal body, a transport cause, ssh-keygen's stderr -- passes through redact_private_material against
-// the private half and its wire encoding before any receipt is built, so a diagnostic that happened to
-// echo it is replaced, not printed. The payload itself travels only in the AddVersion request body: the
-// REST transport is in-process (the seed's ureq client, send_string over TLS), with no subprocess argv
+// refusal body, a transport cause, ssh-keygen's stderr -- passes through the core's
+// redact_fleet_keypair_private against the private half and its wire encoding before any receipt is built,
+// so a diagnostic that happened to echo it is replaced, not printed. The payload itself travels only in the
+// AddVersion request body: the REST transport is in-process (the seed's ureq client, send_string over TLS),
+// with no subprocess argv
 // and no environment variable carrying it. The receipt names the public key, its fingerprint and the
 // version the store assigned, which is what the pin commit lands in gunbc.host.boot_medium_reader_key.
 //
@@ -51,211 +47,50 @@ import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_key }
 // list versions, so a second run before the pin lands adds a second version; its receipt names it, and
 // the pin names the one whose public key it lands.
 
-type ReaderKeypair {
-  private_half: Secret
-  public_line: NonEmptyStr
-  fingerprint: NonEmptyStr
-}
-
-type ReaderKeypairGeneration
-  = ReaderKeypairGenerated { pair: ReaderKeypair }
-  | ReaderKeypairRefused { cause: NonEmptyStr }
-
-type ReaderKeyAddition
-  = ReaderKeyVersionAdded { version_name: NonEmptyStr }
-  | ReaderKeyAddRefused { detail: String }
-  | ReaderKeyAddAmbiguous { detail: String }
-
-type ReaderKeyMintReceipt
-  = ReaderKeyMinted { version_name: NonEmptyStr, public_line: NonEmptyStr, fingerprint: NonEmptyStr }
-  | ReaderKeyAlreadyPinned { public_line: NonEmptyStr }
-  | ReaderKeyMintRefused { cause: NonEmptyStr }
-  | ReaderKeyMintOutcomeUnknown { cause: NonEmptyStr, public_line: NonEmptyStr, fingerprint: NonEmptyStr }
-
-// REDACTION BY CONSTRUCTION, and not a second copy of it: what a diagnostic may contain is
-// gunbc.host.fleet_keypair_mint redact_fleet_keypair_private -- a diagnostic carrying the private half, any
-// SUBSTANTIVE LINE of it (the armor's long base64 bodies, which are what a store that rejects a payload
-// echoes), or its Secret Manager wire encoding is replaced whole; a diagnostic carrying none of the material
-// comes back VERBATIM, because redaction that ate every message would hide why the mint failed. This name is
-// what B1's witnesses and the fold below call; the RULE lives beside the host key's copy of it, so the two
-// mints cannot acquire different diagnostic policies.
-
-fn redact_private_material(text: String, private_half: String) -> String {
-  redact_fleet_keypair_private(text: text, private_half: private_half)
-}
-
-// THE MINT DIRECTORY, fixed so a dead earlier mint is visible: create-only refuses over it.
-type ReaderMintDirAdmission
-  = ReaderMintDirOnTmpfs
-  | ReaderMintDirRefused { cause: NonEmptyStr, created: Bool }
-
-// PURE OVER THE TWO ANSWERS: the create-only mkdir, then findmnt's FSTYPE for the directory. Anything but
-// a created directory on tmpfs refuses, and says whether this run created the directory it must remove.
-//
-// THE RULE IS NOT REPEATED HERE -- it is gunbc.host.fleet_keypair_mint fleet_keypair_mint_dir_verdict, which
-// the host-key mint shares, so the host key cannot acquire a weaker copy of the gate. What stays here is the
-// reader key's own vocabulary: the arms its witness matches, and the projection from the core's verdict.
-fn reader_mint_dir_admission(made: HostCommandOutcome, fstype: HostCommandOutcome) -> ReaderMintDirAdmission {
-  match fleet_keypair_mint_dir_verdict(made: made, fstype: fstype) {
-    MintDirOnTmpfs => ReaderMintDirOnTmpfs
-    MintDirRefusedAt { cause: c, created: created } => ReaderMintDirRefused { cause: c as NonEmptyStr, created: created }
+// THE PIN, READ AS A LINE, IN THE ONE PLACE THAT PROJECTS IT. A reader key is pinned by the authorized_keys
+// value gunbc.host.boot_medium_reader_key holds; the core fold's pin question takes a line, and the fold's
+// arms -- minted, already pinned, refused, outcome unknown -- are the core's own vocabulary, imported and
+// used directly. There is no reader-named twin of any core type: what this module owns is the pin, the
+// receipt path projection, and the wet entry. (Review 88082 removed a parallel Reader* vocabulary whose
+// functions only converted to and from the core's; the reason it once existed -- aliased coproduct arms
+// typecheck and die at run -- is recorded as gunbc.recurring_failure_mode
+// coproduct_alias_arm_membership_untouched_by_the_typechecker, and the answer is to speak the core's
+// vocabulary, not to duplicate it.)
+fn boot_medium_reader_key_pinned_line() -> String? {
+  match boot_medium_reader_ssh_key {
+    Present { value: k } => Present { value: ssh_public_key_line(k: k) }
+    Absent => none
   }
 }
 
-// THE JUDGMENT OVER WHAT THE GENERATION READ, after the directory is gone. Pure: every input is a value
-// the producer below already holds, so a witness supplies them.
-//
-// THE RULE IS NOT REPEATED HERE. The five conditions and the order between them are
-// gunbc.host.fleet_keypair_mint fleet_keypair_generation_verdict, shared with the host-key mint so the host
-// key cannot acquire a subtly weaker copy of the rule that keeps a private half out of a cause -- the reason
-// this lane generalizes rather than duplicates. What stays here is the reader key's own vocabulary: the arms
-// its witnesses match, and the one projection into them.
-fn reader_keypair_from(removed: Bool, generated: HostCommandOutcome, private_read: Bool, private_text: String, public_text: String, fingerprint: HostCommandOutcome) -> ReaderKeypairGeneration {
-  match fleet_keypair_generation_verdict(removed: removed, generated: generated, private_read: private_read, private_text: private_text, public_text: public_text, fingerprint: fingerprint) {
-    GenerationYielded { pair: p } => ReaderKeypairGenerated { pair: ReaderKeypair { private_half: p.private_half as Secret, public_line: p.public_line, fingerprint: p.fingerprint } }
-    GenerationRefusedWith { cause: c } => ReaderKeypairRefused { cause: c as NonEmptyStr }
-  }
-}
-
-
-// THE ONE PRODUCER OF A KEYPAIR, delegated: create the directory, read its filesystem, and only then
-// generate -- read both halves and the fingerprint, remove the directory, judge. Every step of that is
-// gunbc.host.fleet_keypair_mint fleet_keypair_generate_pair run against THIS subject row, so the host key
-// and the reader key cannot drift apart in how they ask for a key (the commands come from the same row) and
-// cannot drift apart in what they refuse (the judgement is the same code). What remains here is the cast
-// from the core's pair data into the reader key's own generation arms -- total, every arm named.
-fn generate_reader_keypair() -> ReaderKeypairGeneration {
-  from_fleet_generation(g: fleet_keypair_generate_pair(subject: boot_medium_reader_keypair_mint_subject))
-}
-
-fn from_fleet_generation(g: FleetKeypairGeneration) -> ReaderKeypairGeneration {
-  match g {
-    GenerationYielded { pair: p } => ReaderKeypairGenerated { pair: ReaderKeypair { private_half: p.private_half as Secret, public_line: p.public_line, fingerprint: p.fingerprint } }
-    GenerationRefusedWith { cause: c } => ReaderKeypairRefused { cause: c as NonEmptyStr }
-  }
-}
-
-// THE ADD, under the run's federated identity, against the reader key's own secret row. The token, the
-// container established ahead of the version, the payload's journey onto request STDIN, and the
-// classification of a refusal into definite versus may-have-landed are all
-// gunbc.host.fleet_keypair_mint fleet_keypair_store_verdict -- the same code path the host-key mint takes, so
-// neither key can acquire a store rule the other does not have. THE PAYLOAD TRAVELS ON REQUEST STDIN:
-// AddVersion's rest transport carries it in the body, base64'd, never in argv (which every other process on
-// the runner can read) and never in a path.
-//
-// THE ONE ARM THAT IS THE READER KEY'S OWN: an unestablishable container. The reader key's row exists (the
-// bootstrap delta created it), so this arm means the delta was not applied, and the remedy is that apply --
-// named, because "the store refused" would send an operator looking at a policy they did not write.
-fn add_reader_key_version(payload: Secret) -> ReaderKeyAddition {
-  match fleet_keypair_store_verdict(
-    project: boot_medium_reader_keypair_mint_subject.privkey_secret.project,
-    secret_id: boot_medium_reader_keypair_mint_subject.privkey_secret.secret,
-    resource: fleet_keypair_privkey_resource(subject: boot_medium_reader_keypair_mint_subject),
-    payload: payload,
-  ) {
-    FleetAddVersionNamed { version_name: v } => ReaderKeyVersionAdded { version_name: v as NonEmptyStr }
-    FleetAddRefusedWith { detail: d } => ReaderKeyAddRefused { detail: d }
-    FleetAddMayHaveLanded { detail: d } => ReaderKeyAddAmbiguous { detail: d }
-    FleetAddContainerUnestablishable { detail: d } => ReaderKeyAddRefused { detail: d }
-  }
-}
-
-// THE MINT AS ONE FOLD over its two effects, so a witness supplies both.
-//
-// THE ORDERING IS NOT REPEATED HERE -- it is gunbc.host.fleet_keypair_mint fleet_keypair_mint_verdict, the
-// same fold the host-key mint runs: the pin is consulted before anything is dispatched (so re-dispatching the
-// mode against a key that exists is a no-op and not a second version), a refused generation never reaches the
-// store, and a may-have-landed add is reported as unknown rather than as a failure. What lives here is the
-// reader key's vocabulary and nothing else: its generation and addition arms in, its receipt arms out. The
-// two small projections below are the price of this language's coproducts not crossing module boundaries
-// (see this module's header for why the rule could not simply be shared as a type), and they are total --
-// every arm of every coproduct is named -- so the only thing they can encode is which arm means what.
-fn reader_key_mint_with(pinned: SshPublicKey?, generate: fn() -> ReaderKeypairGeneration, add: fn(Secret) -> ReaderKeyAddition) -> ReaderKeyMintReceipt {
-  project_reader_key_mint_receipt(
-    v: fleet_keypair_mint_verdict(
-      pinned: match pinned {
-        Present { value: k } => Present { value: ssh_public_key_line(k: k) }
-        Absent => none
-      },
-      generate: fn() { into_fleet_generation(g: generate()) },
-      add: fn(half) { into_fleet_addition(a: add(half as Secret)) },
-    ),
-  )
-}
-
-fn into_fleet_generation(g: ReaderKeypairGeneration) -> FleetKeypairGeneration {
-  match g {
-    ReaderKeypairGenerated { pair: p } => GenerationYielded { pair: FleetKeypairPairData { private_half: p.private_half as String, public_line: p.public_line, fingerprint: p.fingerprint } }
-    ReaderKeypairRefused { cause: c } => GenerationRefusedWith { cause: c as String }
-  }
-}
-
-fn into_fleet_addition(a: ReaderKeyAddition) -> FleetAddVerdict {
-  match a {
-    ReaderKeyVersionAdded { version_name: v } => FleetAddVersionNamed { version_name: v as String }
-    ReaderKeyAddRefused { detail: d } => FleetAddRefusedWith { detail: d }
-    ReaderKeyAddAmbiguous { detail: d } => FleetAddMayHaveLanded { detail: d }
-  }
-}
-
-fn project_reader_key_mint_receipt(v: FleetKeypairMintVerdict) -> ReaderKeyMintReceipt {
-  match v {
-    MintVerdictAlreadyPinned { public_line: l } => ReaderKeyAlreadyPinned { public_line: l as NonEmptyStr }
-    MintVerdictMinted { version_name: v, public_line: l, fingerprint: f } => ReaderKeyMinted { version_name: v as NonEmptyStr, public_line: l, fingerprint: f }
-    MintVerdictRefused { cause: c } => ReaderKeyMintRefused { cause: c as NonEmptyStr }
-    MintVerdictOutcomeUnknown { cause: c, public_line: l, fingerprint: f } => ReaderKeyMintOutcomeUnknown { cause: c as NonEmptyStr, public_line: l, fingerprint: f }
-  }
-}
-
-// THE RECEIPT: public key, fingerprint, version. No arm holds the private half, so none can render it. The
-// FIELD SPELLING comes from gunbc.host.fleet_keypair_mint fleet_keypair_receipt_line, so a receipt for either
-// fleet key names its version, its public half and its fingerprint the same way and one log can be read
-// without learning two formats; only the leading word, which says which key this is, is the reader key's.
-fn render_reader_key_mint_receipt(r: ReaderKeyMintReceipt) -> String {
-  match r {
-    ReaderKeyMinted { version_name: v, public_line: l, fingerprint: f } =>
-      fleet_keypair_receipt_line(word: "reader_key=minted", version_name: v as String, public_line: l as String, fingerprint: f as String, cause: "")
-    ReaderKeyAlreadyPinned { public_line: l } =>
-      fleet_keypair_receipt_line(word: "reader_key=already pinned", version_name: "", public_line: l as String, fingerprint: "", cause: "")
-    ReaderKeyMintRefused { cause: c } =>
-      fleet_keypair_receipt_line(word: "reader_key=refused", version_name: "", public_line: "", fingerprint: "", cause: c as String)
-    ReaderKeyMintOutcomeUnknown { cause: c, public_line: l, fingerprint: f } =>
-      fleet_keypair_receipt_line(word: "reader_key=outcome unknown", version_name: "", public_line: l as String, fingerprint: f as String, cause: c as String)
-  }
-}
-
-// WHAT MAKES THE STEP PASS: a key that is in the store, or one that was already pinned. An UNKNOWN outcome
-// does not hold -- a run that may have created a credential nothing can prove it holds must not be able to
-// report success, which is how a fleet acquires a key nobody can account for. The rule is the core's, so the
-// host-key mint cannot quietly adopt a softer one.
-fn reader_key_mint_holds(r: ReaderKeyMintReceipt) -> Bool {
-  match r {
-    ReaderKeyMinted { version_name: _, public_line: _, fingerprint: _ } => fleet_keypair_mint_word_holds(word: "minted")
-    ReaderKeyAlreadyPinned { public_line: _ } => fleet_keypair_mint_word_holds(word: "pinned")
-    ReaderKeyMintRefused { cause: _ } => fleet_keypair_mint_word_holds(word: "refused")
-    ReaderKeyMintOutcomeUnknown { cause: _, public_line: _, fingerprint: _ } => fleet_keypair_mint_word_holds(word: "unknown")
-  }
-}
-
-// ONE SOURCE, the subject row -- see gunbc.host.mtcollins1_ssh_host_key_mint's row of the same name for the
-// reason: the step that writes the receipt and the step that uploads it must not carry separate literals.
+// WHERE THE RECEIPT GOES: a projection of the subject row's receipt_path, so the row stays the one home of
+// the fact and the wet entry reads it without spelling the field.
 data boot_medium_reader_key_mint_receipt_path: String = boot_medium_reader_keypair_mint_subject.receipt_path
 
 // `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/boot_medium_reader_key_mint.dag --function boot_medium_reader_key_mint_wet`
 // CONSUMPTION (DESIGN section 3c): invoked by the fleet-converge mode BootMediumReaderKeyMint
 // (gunbc.fleet.fleet_converge_workflow), which signs in as the fleet identity at main and holds no fleet SSH
-// key. The receipt is written whatever the outcome and uploaded by the step that follows.
+// key. The receipt is written whatever the outcome and uploaded by the step that follows -- the receipt
+// renderer is the core's, keyed on this key's subject row, so a successful mint's receipt reaches the
+// artifact no differently than the host key's does.
 fn boot_medium_reader_key_mint_wet() -> ProcessExit {
-  let receipt = reader_key_mint_with(
-    pinned: boot_medium_reader_ssh_key,
-    generate: fn() { generate_reader_keypair() },
-    add: fn(payload) { add_reader_key_version(payload: payload) },
+  let verdict = fleet_keypair_mint_verdict(
+    pinned: boot_medium_reader_key_pinned_line(),
+    generate: fn() { fleet_keypair_generate_pair(subject: boot_medium_reader_keypair_mint_subject) },
+    add: fn(payload) {
+      fleet_keypair_store_verdict(
+        project: boot_medium_reader_keypair_mint_subject.privkey_secret.project,
+        secret_id: boot_medium_reader_keypair_mint_subject.privkey_secret.secret,
+        resource: fleet_keypair_privkey_resource(subject: boot_medium_reader_keypair_mint_subject),
+        payload: payload as Secret,
+      )
+    },
   )
-  let rendered = render_reader_key_mint_receipt(r: receipt)
+  let rendered = fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: verdict)
   let written = Filesystem.Write(path: boot_medium_reader_key_mint_receipt_path, content: rendered)
   if written.success == false {
     exit_failure(reason: concat("boot medium reader key: the receipt could not be written: ", rendered))
-  } else if reader_key_mint_holds(r: receipt) {
+  } else if fleet_keypair_mint_verdict_holds(v: verdict) {
     ExitSuccess
   } else {
     exit_failure(reason: concat("boot medium reader key mint did not hold:\n", rendered))

@@ -13,7 +13,8 @@ import gunbc.host.fleet_keypair_mint {
   MintVerdictMinted, MintVerdictAlreadyPinned, MintVerdictRefused, MintVerdictOutcomeUnknown,
   fleet_keypair_mint_verdict, fleet_keypair_mint_verdict_holds,
   redact_fleet_keypair_private, fleet_keypair_public_line_admitted, fleet_keypair_fingerprint_admitted,
-  fleet_keypair_receipt_line, fleet_keypair_mint_word_holds, fleet_keypair_mint_argv,
+  fleet_keypair_receipt_line, fleet_keypair_mint_receipt_text, fleet_keypair_mint_argv,
+  FleetKeypairPairData,
   fleet_keypair_mint_key_file, fleet_keypair_mint_public_file, fleet_keypair_privkey_resource,
   fleet_keypair_unknown_outcome_guidance, fleet_keypair_pin_commit_rule,
 }
@@ -29,12 +30,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_hosted_gunbc_build_step,
 }
 import gunbc.host.mtcollins1_ssh_host_key_mint {
-  HostKeypair, HostKeypairGeneration, HostKeypairGenerated, HostKeypairRefused,
-  HostKeyAddition, HostKeyVersionAdded, HostKeyAddRefused, HostKeyAddAmbiguous,
-  HostKeyMintReceipt, HostKeyMinted, HostKeyAlreadyPinned, HostKeyMintRefused, HostKeyMintOutcomeUnknown,
-  HostMintDirAdmission, HostMintDirOnTmpfs, HostMintDirRefused, host_mint_dir_admission,
-  host_keypair_from, host_key_mint_with, render_host_key_mint_receipt, host_key_mint_holds,
-  redact_host_private_material, mtcollins1_host_key_pinned_line, mtcollins1_host_key_mint_receipt_path,
+  mtcollins1_host_key_pinned_line, mtcollins1_host_key_mint_receipt_path,
   mtcollins1_host_key_pin_commit_rule, mtcollins1_host_key_mint_ruling,
 }
 
@@ -237,10 +233,6 @@ test fn an_unknown_add_outcome_never_holds_and_a_pinned_key_always_does() -> Boo
     && fleet_keypair_mint_verdict_holds(v: MintVerdictRefused { cause: "no" }) == false
     && fleet_keypair_mint_verdict_holds(v: MintVerdictMinted { version_name: "versions/1", public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr }) == true
     && fleet_keypair_mint_verdict_holds(v: MintVerdictAlreadyPinned { public_line: public_line }) == true
-    && fleet_keypair_mint_word_holds(word: "unknown") == false
-    && fleet_keypair_mint_word_holds(word: "refused") == false
-    && fleet_keypair_mint_word_holds(word: "minted") == true
-    && fleet_keypair_mint_word_holds(word: "pinned") == true
 }
 
 // THE ARGV CARRIES NO KEY MATERIAL, FOR EITHER KEY (RED). Not "the mint promises not to" -- the four command
@@ -328,14 +320,21 @@ test fn a_receipt_names_version_public_key_and_fingerprint_and_never_the_private
 // operator sees -- it is a connection that refuses forever, or (worse, if the anchor is then "fixed" by
 // copying what the host presented) the pin this row exists to prevent.
 test fn the_host_key_receipt_names_the_fingerprint_because_the_anchor_is_verified_on_every_connect() -> Bool {
-  let rendered = render_host_key_mint_receipt(r: HostKeyMinted { version_name: "versions/3" as NonEmptyStr, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_token as NonEmptyStr })
+  // THE CORE RENDERS, THE ROW NAMES THE WORD (review 88082): the receipt is built from the verdict's arms and
+  // the subject row's receipt_prefix, so "which word opens which key's receipt" is row data, not module code.
+  let rendered = fleet_keypair_mint_receipt_text(subject: mtcollins1_host_keypair_mint_subject, v: MintVerdictMinted { version_name: "versions/3" as NonEmptyStr, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_token as NonEmptyStr })
   starts_with(s: rendered, prefix: "host_key=minted")
     && string_contains(s: rendered, pattern: "fingerprint=SHA256:")
     && string_contains(s: rendered, pattern: "public_key=ssh-ed25519")
     && string_contains(s: rendered, pattern: "version_name=versions/3")
     && !string_contains(s: rendered, pattern: "BEGIN OPENSSH")
-    && host_key_mint_holds(r: HostKeyMinted { version_name: "versions/3" as NonEmptyStr, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr }) == true
-    && host_key_mint_holds(r: HostKeyMintOutcomeUnknown { cause: "the add may have landed" as NonEmptyStr, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr }) == false
+    && fleet_keypair_mint_verdict_holds(v: MintVerdictMinted { version_name: "versions/3" as NonEmptyStr, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr }) == true
+    && fleet_keypair_mint_verdict_holds(v: MintVerdictOutcomeUnknown { cause: "the add may have landed", public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr }) == false
+    // THE OTHER ROW OPENS WITH THE OTHER WORD -- one renderer, two rows, no second module.
+    && starts_with(
+      s: fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: MintVerdictMinted { version_name: "versions/1" as NonEmptyStr, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_token as NonEmptyStr }),
+      prefix: "reader_key=minted"
+    )
     // THE RECEIPT LANDS WHERE THE UPLOAD STEP LOOKS FOR IT.
     && mtcollins1_host_key_mint_receipt_path == "target/mtcollins1-ssh-host-key-mint.txt"
     // AND THE COMMIT RULE TRAVELS WITH THE MINT, in both places it is stated, because a mint that succeeds
@@ -355,24 +354,36 @@ test fn an_empty_anchor_is_not_a_pin_so_the_mint_can_still_run() -> Bool {
     Present { value: l } => !string_contains(s: l, pattern: "BEGIN OPENSSH") && l != "" && starts_with(s: l, prefix: "ssh-ed25519 ")
   }
     // THE FOLD HONOURS WHATEVER THE PIN LOOKS LIKE, without re-reading the anchor: a present pin is a no-op.
-    && match host_key_mint_with(
+    && match fleet_keypair_mint_verdict(
       pinned: Present { value: public_line },
-      generate: fn() { HostKeypairRefused { cause: "generation must not be reached" as NonEmptyStr } },
-      add: fn(half) { HostKeyAddRefused { detail: "add must not be reached" } },
+      generate: fn() { GenerationRefusedWith { cause: "generation must not be reached" } },
+      add: fn(half) { FleetAddRefusedWith { detail: "add must not be reached" } },
     ) {
-      HostKeyAlreadyPinned { public_line: l } => (l as String) == public_line
+      MintVerdictAlreadyPinned { public_line: l } => l == public_line
       _ => false
     }
 }
 
-// THE REDACTION IS ATTACHED TO THE HOST MINT BY NAME, not merely present in the core: the module the step
-// actually calls is this one, and a mint that forgot to use the core's redaction would still pass a test that
-// only exercised the core.
-test fn the_host_mint_s_redaction_is_the_core_s_and_refuses_to_echo_the_key() -> Bool {
-  redact_host_private_material(text: concat("AddVersion rejected payload: ", planted_private), private_half: planted_private)
-    == redact_fleet_keypair_private(text: concat("AddVersion rejected payload: ", planted_private), private_half: planted_private)
-    && !string_contains(s: redact_host_private_material(text: planted_private, private_half: planted_private), pattern: "BEGIN OPENSSH")
-    && string_contains(s: redact_host_private_material(text: "no key material here", private_half: planted_private), pattern: "no key material here")
+// THE REDACTION RUNS END TO END THROUGH THE HOST MINT: the stubbed store echoes the planted half into its
+// refusal body, and the material must be gone from both the verdict's cause and the receipt the step would
+// upload -- the claim a core-only redaction test could not make.
+test fn the_host_mint_s_refusal_diagnostics_come_back_redacted_through_the_core_fold() -> Bool {
+  // WHAT THIS REPLACES (review 88082): a test that the HOST module had its own redactor aliasing the core's.
+  // There is no host redactor any more -- the host mint IS the core fold keyed on the host row -- so the
+  // claim that matters is the end-to-end one: a store refusal whose body echoes the private half comes back
+  // through the fold's verdict, and into the receipt, with the material replaced.
+  let v = fleet_keypair_mint_verdict(
+    pinned: none,
+    generate: fn() { GenerationYielded { pair: FleetKeypairPairData { private_half: planted_private, public_line: public_line, fingerprint: fingerprint_line } } },
+    add: fn(half) { FleetAddRefusedWith { detail: concat("AddVersion rejected payload: ", planted_private) } },
+  )
+  let rendered = fleet_keypair_mint_receipt_text(subject: mtcollins1_host_keypair_mint_subject, v: v)
+  match v {
+    MintVerdictRefused { cause: c } => !string_contains(s: c, pattern: "BEGIN OPENSSH") && !string_contains(s: c, pattern: planted_private)
+    _ => false
+  }
+    && !string_contains(s: rendered, pattern: planted_private)
+    && string_contains(s: rendered, pattern: "host_key=refused")
 }
 
 // THE UNKNOWABLE ADD TELLS AN OPERATOR WHAT TO DO. The guidance is shared because the property is the store's,

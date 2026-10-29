@@ -115,6 +115,10 @@ type FleetKeypairMintSubject {
   mint_entry: String,
   mint_function: String,
   receipt_path: String,
+  // THE WORD THE RECEIPT OPENS WITH ("reader_key=minted", "host_key=outcome unknown"), so the receipt
+  // renderer is core code over row data: a second key brings a row, not a module with its own receipt arms.
+  // The prefix is the only per-key WORD the policy ever renders.
+  receipt_prefix: NonEmptyStr,
 }
 
 // THE TWO ROWS. Both mints are this module's policy with a different row; neither is special.
@@ -127,6 +131,7 @@ data boot_medium_reader_keypair_mint_subject: FleetKeypairMintSubject = FleetKey
   mint_entry: "dag/gunbc/host/boot_medium_reader_key_mint.dag",
   mint_function: "boot_medium_reader_key_mint_wet",
   receipt_path: "target/boot-medium-reader-key-mint.txt",
+  receipt_prefix: "reader_key" as NonEmptyStr,
 }
 
 data mtcollins1_host_keypair_mint_subject: FleetKeypairMintSubject = FleetKeypairMintSubject {
@@ -138,6 +143,7 @@ data mtcollins1_host_keypair_mint_subject: FleetKeypairMintSubject = FleetKeypai
   mint_entry: "dag/gunbc/host/mtcollins1_ssh_host_key_mint.dag",
   mint_function: "mtcollins1_host_key_mint_wet",
   receipt_path: "target/mtcollins1-ssh-host-key-mint.txt",
+  receipt_prefix: "host_key" as NonEmptyStr,
 }
 
 // THE MINTS ARE SELECTED BY ROW, so a workflow that means "mint a fleet keypair" has one list of what it can
@@ -534,10 +540,10 @@ fn fleet_keypair_mint_verdict(
 // nobody can account for. Stated once, so a second mint cannot quietly adopt a softer rule.
 fn fleet_keypair_mint_verdict_holds(v: FleetKeypairMintVerdict) -> Bool {
   match v {
-    MintVerdictMinted { version_name: _, public_line: _, fingerprint: _ } => fleet_keypair_mint_word_holds(word: "minted")
-    MintVerdictAlreadyPinned { public_line: _ } => fleet_keypair_mint_word_holds(word: "pinned")
-    MintVerdictRefused { cause: _ } => fleet_keypair_mint_word_holds(word: "refused")
-    MintVerdictOutcomeUnknown { cause: _, public_line: _, fingerprint: _ } => fleet_keypair_mint_word_holds(word: "unknown")
+    MintVerdictMinted { version_name: _, public_line: _, fingerprint: _ } => true
+    MintVerdictAlreadyPinned { public_line: _ } => true
+    MintVerdictRefused { cause: _ } => false
+    MintVerdictOutcomeUnknown { cause: _, public_line: _, fingerprint: _ } => false
   }
 }
 
@@ -553,11 +559,22 @@ fn fleet_keypair_receipt_line(word: String, version_name: String, public_line: S
   join([word, "\n", v, p, f, c], "")
 }
 
-// WHAT THE STEP CHECKS. An already-pinned key holds (that is the no-op the mode promises, and the reason a
-// re-dispatch is safe); an unknown outcome does NOT, because a run that may have created an unprovable
-// credential must not report success -- that is how a fleet acquires a key nobody can account for.
-fn fleet_keypair_mint_word_holds(word: String) -> Bool {
-  word == "minted" || word == "pinned"
+// THE RECEIPT, RENDERED BY THE CORE FROM THE VERDICT'S OWN ARMS AND THE ROW'S PREFIX. There is no word to
+// re-parse anywhere in this policy: pass/fail is `fleet_keypair_mint_verdict_holds` over the verdict's arms,
+// and the words a person reads are OUTPUT built from those same arms -- the per-key part is one row field
+// (`receipt_prefix`), so a second key adds a row, not a module with its own receipt matching. No arm carries
+// a private half, so no arm can render one.
+fn fleet_keypair_mint_receipt_text(subject: FleetKeypairMintSubject, v: FleetKeypairMintVerdict) -> String {
+  match v {
+    MintVerdictMinted { version_name: vn, public_line: l, fingerprint: f } =>
+      fleet_keypair_receipt_line(word: concat(subject.receipt_prefix as String, "=minted"), version_name: vn, public_line: l as String, fingerprint: f as String, cause: "")
+    MintVerdictAlreadyPinned { public_line: l } =>
+      fleet_keypair_receipt_line(word: concat(subject.receipt_prefix as String, "=already pinned"), version_name: "", public_line: l, fingerprint: "", cause: "")
+    MintVerdictRefused { cause: c } =>
+      fleet_keypair_receipt_line(word: concat(subject.receipt_prefix as String, "=refused"), version_name: "", public_line: "", fingerprint: "", cause: c)
+    MintVerdictOutcomeUnknown { cause: c, public_line: l, fingerprint: f } =>
+      fleet_keypair_receipt_line(word: concat(subject.receipt_prefix as String, "=outcome unknown"), version_name: "", public_line: l as String, fingerprint: f as String, cause: c)
+  }
 }
 
 // THE URGENCY AN UNKNOWN OUTCOME CARRIES, shared because it is a property of the store rather than of the
