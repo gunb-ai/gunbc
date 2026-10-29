@@ -324,6 +324,9 @@ type RemoteFileValidation
   // window shut.
   | DestinationUnchangedUntilRename { expected: String }
 
+// The step's one spelling: the step list and the exit-code reasons both read it.
+data typed_remote_file_re_read_compare_step: String = "re-read-compare"
+
 fn typed_remote_file_re_read_compare_argv(write: TypedRemoteFileWrite) -> List<String> {
   // The same argv as the post-rename read-back: cmp -s - <path>, fed the expected bytes on stdin. The
   // two purposes differ (one protects a rename, one confirms it), the shape is the same, and reusing it
@@ -349,7 +352,7 @@ fn typed_remote_file_validation_steps(write: TypedRemoteFileWrite, validation: R
           // a check of the DESTINATION against the bytes the render was made against, and it is the last
           // thing that runs before the rename. cmp exits 1 on a difference and 2 when the destination
           // cannot be read at all (deleted under us): both are non-zero, both refuse the write.
-          step: "re-read-compare",
+          step: typed_remote_file_re_read_compare_step,
           argv: typed_remote_file_re_read_compare_argv(write: write),
           stdin_payload: e,
         },
@@ -652,9 +655,9 @@ fn typed_remote_file_step(
 // destination that differed refused with an EMPTY reason. For that step the exit code is the evidence and
 // is named in the reason; any other step with an empty stderr still carries its exit code.
 fn typed_remote_file_step_failure_reason(step: String, exit_code: Int, stderr: String) -> String {
-  if step == "re-read-compare" && exit_code == 1 {
+  if step == typed_remote_file_re_read_compare_step && exit_code == 1 {
     "destination differs from the bytes read (cmp exit 1)"
-  } else if step == "re-read-compare" && exit_code == 2 {
+  } else if step == typed_remote_file_re_read_compare_step && exit_code == 2 {
     "destination unreadable (cmp exit 2)"
   } else if trim(s: stderr) == "" {
     join(["remote step failed: exit=", to_string(exit_code), " with no stderr"], "")
