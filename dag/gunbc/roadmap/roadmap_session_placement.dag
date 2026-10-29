@@ -1638,7 +1638,7 @@ fn session_reviewer_placement_release_write(stores: SessionPlacementStores, name
       json_kv(key: "grant_identity", value: json_string(s: b.grant_identity)),
       json_kv(key: "fence_generation", value: json_int(n: cas_generation_count(g: b.fence_generation))),
     ]))]
-  })))))
+  }))))
   if w.success { SessionPlacementWritten { path: path } } else { SessionPlacementWriteFailed { path: path, error: w.error } }
 }
 
