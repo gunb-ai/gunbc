@@ -2899,7 +2899,7 @@ fn belt_actuate_spawn_exec_modeled(
             SystemdSetenvBinding { name: belt_redeliver_attempt_key_env_var, value: attempt_key as NonEmptyStr },
           ]
           let dispatch_argv = belt_function_run_argv(program: instance.serve_binary as String, repo_root: repo, entry: belt_redeliver_cli_entry, function: belt_redeliver_cli_function as String, args: [])
-          match attempt_redelivery_wake_command(node_id: node.node as String, attempt_key: attempt_key, next_delivery: at, setenv_bindings: dispatch_env, command_argv: dispatch_argv) {
+          match attempt_redelivery_wake_command(node_id: node.node as String, attempt_key: attempt_key, next_delivery: at, working_directory: repo as NonEmptyStr, setenv_bindings: dispatch_env, command_argv: dispatch_argv) {
           SystemdRunCommandRefused { cause } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["the request-pending attempt ", attempt_key, " could not arm its re-delivery wake: ", systemd_run_option_words_refused_cause_detail(cause: cause)], ""), provider: provider_wire_label, launch: launch }
           SystemdRunCommandReady { command } => {
             let wake_stem = attempt_redelivery_wake_unit_stem(node_id: node.node as String, attempt_key: attempt_key, instant: at)

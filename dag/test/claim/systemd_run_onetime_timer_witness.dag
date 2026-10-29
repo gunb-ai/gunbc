@@ -11,8 +11,10 @@ import extdeps.systemd.systemd_run {
   SystemdRunOptionWordsReading, SystemdRunOptionWordsProjected, SystemdRunOptionWordsRefused,
   systemd_run_option_words, RunUserManager, RunUnit, Collect, EndOfOptions, OnCalendar,
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  NamedUnitSetting,
   systemd_onetime_calendar_expression, systemd_run_user_oneshot_timer_command,
 }
+import extdeps.systemd { WorkingDirectoryProperty }
 
 // systemd-run(1) --on-calendar=EXPR projects the exact man-page word. One wake, no cadence.
 test fn on_calendar_projects_the_man_page_word() -> Bool {
@@ -57,6 +59,7 @@ test fn the_transient_oneshot_timer_projects_a_ready_command() -> Bool {
   match systemd_run_user_oneshot_timer_command(
     unit: "gunbc-attempt-redeliver-n1-e5a42384c6a5e13d" as NonEmptyStr,
     on_calendar: "2023-11-14 22:13:20 UTC" as NonEmptyStr,
+    properties: [],
     setenv_bindings: [],
     command_argv: ["gunbc", "run", "--function", "belt_dispatch_node_cli"],
   ) {
@@ -67,5 +70,25 @@ test fn the_transient_oneshot_timer_projects_a_ready_command() -> Bool {
         && string_contains(s: line, pattern: "--unit=gunbc-attempt-redeliver-n1-e5a42384c6a5e13d")
         && string_contains(s: line, pattern: "--collect")
         && string_contains(s: line, pattern: "--timer-property=RemainAfterElapse=no")
+  }
+}
+
+// THE WORKING-DIRECTORY IS ON THE TIMER'S SERVICE, NOT THE INVOCATION. A systemd-run --user transient
+// SERVICE starts in the user manager's default cwd (where the serve binary refuses 'no workspace root',
+// exit 2), so the wake carries the repo root as the real systemd-run(1) property --property=WorkingDirectory=<path>
+// (systemd-run(1); systemd.exec(5) WorkingDirectory=). Discriminates the live wake-armed-but-nonfunctional
+// bug: the armed argv MUST carry the working-directory property or the fired service dies at startup.
+test fn the_oneshot_timer_carries_the_working_directory_as_a_service_property() -> Bool {
+  match systemd_run_user_oneshot_timer_command(
+    unit: "gunbc-attempt-redeliver-n1-e5a42384c6a5e13d" as NonEmptyStr,
+    on_calendar: "2023-11-14 22:13:20 UTC" as NonEmptyStr,
+    properties: [NamedUnitSetting { property: WorkingDirectoryProperty, value: "/opt/gunbc-lab/codex-provider-feedback-v0" as NonEmptyStr }],
+    setenv_bindings: [],
+    command_argv: ["gunbc", "run", "--function", "belt_dispatch_node_cli"],
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command } =>
+      let line = join(argv_words(command: command), separator: " ")
+      string_contains(s: line, pattern: "--property=WorkingDirectory=/opt/gunbc-lab/codex-provider-feedback-v0")
   }
 }

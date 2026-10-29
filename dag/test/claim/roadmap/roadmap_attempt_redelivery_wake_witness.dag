@@ -114,7 +114,7 @@ test fn the_wedged_pending_attempt_holds_until_an_instant_and_arms_a_wake() -> B
     "--function", "belt_redeliver_attempt_cli",
   ]
   let armed = match route {
-    SpawnRouteWake { attempt_key, at } => match attempt_redelivery_wake_command(node_id: wake_node, attempt_key: attempt_key, next_delivery: at, setenv_bindings: dispatch_env, command_argv: dispatch_argv) {
+    SpawnRouteWake { attempt_key, at } => match attempt_redelivery_wake_command(node_id: wake_node, attempt_key: attempt_key, next_delivery: at, working_directory: "/opt/gunbc-lab/codex-provider-feedback-v0/source" as NonEmptyStr, setenv_bindings: dispatch_env, command_argv: dispatch_argv) {
       SystemdRunCommandReady { command } =>
         let line = join(argv_words(command: command), separator: " ")
         string_contains(s: line, pattern: "--user")
@@ -122,6 +122,7 @@ test fn the_wedged_pending_attempt_holds_until_an_instant_and_arms_a_wake() -> B
           && string_contains(s: line, pattern: "gunbc-attempt-redeliver-roadmap-belt-e5a42384c6a5e13d-")
           && string_contains(s: line, pattern: ".timer")
           && string_contains(s: line, pattern: "--timer-property=RemainAfterElapse=no")
+          && string_contains(s: line, pattern: "--property=WorkingDirectory=/opt/gunbc-lab/codex-provider-feedback-v0/source")
           && string_contains(s: line, pattern: "--setenv=GUNBC_BELT_NODE_ID=roadmap-belt")
           && string_contains(s: line, pattern: "--setenv=GUNBC_BELT_REDELIVER_INSTANCE_ID=srv1-lab-codex-feedback-v0")
           && string_contains(s: line, pattern: "--entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag")

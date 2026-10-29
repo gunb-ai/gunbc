@@ -439,7 +439,7 @@ fn systemd_run_setenv_options(bindings: List<SystemdSetenvBinding>) -> List<Syst
   fold(bindings, init: [], f: (acc, b) => list_append(left: acc, right: [SetEnv { binding: b }]))
 }
 
-// THE USER-MANAGER TRANSIENT START: `systemd-run --user --unit=NAME -p NAME=VALUE ... --setenv=K=V
+// THE USER-MANAGER TRANSIENT START: `systemd-run --user --unit=NAME --property=NAME=VALUE ... --setenv=K=V
 // ... -- CMD`. The property words travel as two words (-p, then NAME=VALUE) and the projected
 // order here is the order the string-built form this replaces happened to emit, so the projected
 // words for existing callers are byte-identical to what they rendered before the cutover.
@@ -479,10 +479,16 @@ fn systemd_onetime_calendar_expression(instant: EpochSecs) -> String {
 // name that is ALREADY loaded is refused ('Unit ... already exists', read by
 // systemd_run_reported_unit_already_exists), NOT a re-apply. So a same-name start is idempotent only
 // because the belt keys the name on the exact instant (same name == same wake), and a genuinely new
-// instant is a new name. This builder does NOT claim a re-arm replaces a pending timer.
-fn systemd_run_user_oneshot_timer_command(unit: NonEmptyStr, on_calendar: NonEmptyStr, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
+// instant is a new name. This builder does NOT claim a re-arm replaces a pending timer. `properties` are
+// projected as systemd-run(1) `--property=NAME=VALUE` service properties (the long spelling, matching the
+// sibling transient wait/scope builders); the re-delivery wake carries the repo root as
+// --property=WorkingDirectory=<repo root> so the transient SERVICE starts in the instance's git checkout (a
+// systemd-run --user service otherwise runs in the user manager's default cwd, where the serve binary
+// refuses at startup with 'no workspace root' -- exit 2). The real option (systemd-run(1); systemd.exec(5)
+// WorkingDirectory=), not a `cd` in argv.
+fn systemd_run_user_oneshot_timer_command(unit: NonEmptyStr, on_calendar: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_command_of(
-    options: list_append(left: [RunUserManager, OnCalendar { expression: on_calendar }, RunUnit { unit: unit }, Collect, TimerProperty { binding: SystemdTimerPropertyBinding { name: "RemainAfterElapse", value: "no" } }], right: systemd_run_setenv_options(bindings: setenv_bindings)),
+    options: list_append(left: list_append(left: list_append(left: [RunUserManager, OnCalendar { expression: on_calendar }, RunUnit { unit: unit }], right: systemd_run_property_options_long(properties: properties)), right: [Collect, TimerProperty { binding: SystemdTimerPropertyBinding { name: "RemainAfterElapse", value: "no" } }]), right: systemd_run_setenv_options(bindings: setenv_bindings)),
     command_argv: list_append(left: [EndOfOptions], right: command_argv),
   )
 }
