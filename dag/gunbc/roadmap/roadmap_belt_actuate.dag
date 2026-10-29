@@ -744,7 +744,7 @@ import gunbc.roadmap.roadmap_attempt_worktree_claim {
   ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits, ClaimContentUnobserved,
   ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimCaptureUnknown, ClaimRemoval, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_pass_wire, worktree_claim_outcome_is_red,
-  worktree_claim_read, WorktreeClaimReading, WorktreeClaimHeld, WorktreeClaimAbsent, WorktreeClaimUnreadable, worktree_claim_reference, worktree_claim_reopen_settled, worktree_claim_open,
+  worktree_claim_read, WorktreeClaimReading, WorktreeClaimHeld, WorktreeClaimAbsent, WorktreeClaimUnreadable, worktree_claim_reference, worktree_claim_reopen_settled, worktree_claim_open, LineageStanding, LineageEnded, LineageNotEnded, LineageUnknown,
 }
 import gunbc.roadmap.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
@@ -2052,7 +2052,11 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
     SessionSettlePassRan { settlements } =>
       match now_epoch_seconds() {
         Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the worktree claim ensure compares against the launch deadline" }
-        Present { value: now } =>
+        Present { value: now } => {
+          // Observe the raw ledger and the pane snapshot ONCE for the whole pass; each claim's lineage standing is a
+          // pure lookup over these, so a pass over n claims costs one ledger read and one pane read, not n of each.
+          let ledger = belt_attempts_observe_for_instance(instance: instance)
+          let panes = belt_attempt_panes_observe_for_instance(instance: instance)
           match worktree_claim_ensure_pass_at(
             stores: stores,
             claims_root: worktree_claim_slots_root_of(instance: instance),
@@ -2065,13 +2069,12 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
             content_of: p => belt_claim_content_of(instance: instance, worktree: p),
             remove_tree: p => belt_claim_remove_tree(instance: instance, repo_workdir: instance.repo_root as String, path: p),
             capture_of: (n, k) => belt_claim_capture_of(instance: instance, node_id: n, attempt_key: k),
-            // THE ONE 'ENDED' DERIVATION, keyed by THIS claim's (node_id, attempt_key) and read from the
-            // continuation -- not re-derived from the worker's unit standing, and NOT from the node's collapsed
-            // first-per-node row (that would let a sibling attempt decide this claim's fate). A request-pending
-            // worker legitimately exited (its unit is finished), yet its OWN lineage is resumable -- its decision is
-            // Hold-Until/Resume, not Ended -- so the claim must NOT release the worktree. Only this attempt's own
-            // ContinuationEnded releases it; every other standing keeps the claim so the lineage can still continue.
-            ended_of: (n, k) => belt_attempt_lineage_ended_for_attempt(instance: instance, node_id: nid(s: n), attempt_key: k),
+            // THE ONE 'ENDED' DERIVATION, keyed by THIS claim's (node_id, attempt_key) and read from the continuation
+            // over the shared snapshot -- never the node's collapsed first-per-node row (that lets a sibling attempt
+            // decide this claim's fate), never the worker's unit standing. A request-pending worker legitimately
+            // exited yet its OWN lineage is resumable, so its standing is NotEnded and the claim is kept; an unreadable
+            // ledger or a missing row is Unknown, which REFUSES the claim rather than reporting it converged.
+            ended_of: (n, k) => belt_lineage_standing(instance: instance, ledger: ledger, panes: panes, node_id: nid(s: n), attempt_key: k),
           ) {
             WorktreeClaimPassRan { outcomes } =>
               if any(outcomes, o => worktree_claim_outcome_is_red(o: o)) {
@@ -2081,6 +2084,7 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
               }
             WorktreeClaimPassRefused { detail } => SessionSettlePassRefused { detail: detail }
           }
+        }
       }
   }
 }
@@ -3129,36 +3133,35 @@ fn belt_continuation_decision_for_node(instance: HostDashboardInstance, node_id:
   }
 }
 
-// THE 'ENDED' VERDICT FOR ONE ATTEMPT, keyed by (node_id, attempt_key). The node-wide observer above collapses the
-// ledger to the first row PER NODE (dispatch_attempt_ref_first_per_node), so it cannot answer the settlement's
-// question -- "has THIS attempt's lineage ended?" -- without a meaning fork: a live newer attempt would hold an
-// ended older claim open forever (a leak), and an ended older attempt would release a live newer claim (destroying
-// resumable state). So this reads the attempt's OWN row from the raw (uncollapsed) ledger and routes it through the
-// SAME decision the spawn route uses (belt_continuation_decision_for_progress): one derivation, keyed. When the raw
-// ledger cannot be read, or this attempt has no row (fully reaped), the verdict is 'not ended' -- fail closed, never
-// destroy a worktree whose lineage we cannot prove has ended (§5).
-fn belt_attempt_lineage_ended_for_attempt(
+// THE 'ENDED' STANDING FOR ONE ATTEMPT, keyed by (node_id, attempt_key), computed from a PRE-OBSERVED ledger and
+// pane snapshot (so a pass over n claims costs ONE ledger read and ONE pane read, not n of each). The node-wide
+// observer collapses the ledger to the first row PER NODE (dispatch_attempt_ref_first_per_node), so it cannot answer
+// "has THIS attempt's lineage ended?" without a meaning fork; this reads the attempt's OWN row and routes it through
+// the SAME decision the spawn route uses (belt_continuation_decision_for_progress): one derivation, keyed. The
+// verdict is THREE-valued -- 'can't tell' is never collapsed into 'converged' (§5): the attempt's own row says
+// Ended -> LineageEnded (release); Resume / Hold-Until / Refused -> LineageNotEnded (keep); a ledger we could not
+// read, or a row we cannot find (reaped, or not this attempt's), -> LineageUnknown, which makes the claim REFUSE
+// (typed, located, countable) rather than report it converged while it silently leaks.
+fn belt_lineage_standing(
   instance: HostDashboardInstance,
+  ledger: BeltAttempts,
+  panes: BeltAttemptPanes,
   node_id: RoadmapNodeId,
   attempt_key: String,
-) -> Bool {
-  match belt_attempts_observe_for_instance(instance: instance) {
-    AttemptsRefused { reason: _ } => false
+) -> LineageStanding {
+  match ledger {
+    AttemptsRefused { reason } => LineageUnknown { detail: join(["the prior-attempt ledger could not be read: ", reason], "") }
     AttemptsObserved { attempts } =>
       match (attempts |> filter(a => a.node_id as String == node_id as String && a.attempt_key == attempt_key)).first() {
-        Absent => false
+        Absent => LineageUnknown { detail: join(["attempt ", attempt_key, " has no row in the prior-attempt ledger (reaped, or the ledger is inconsistent); its standing cannot be confirmed"], "") }
         Present { value: a } =>
           match belt_continuation_decision_for_progress(
             instance: instance,
             node_id: node_id,
-            progress: belt_workflow_progress_for_attempt_ref(
-              instance: instance,
-              panes: belt_attempt_panes_observe_for_instance(instance: instance),
-              attempt: a,
-            ),
+            progress: belt_workflow_progress_for_attempt_ref(instance: instance, panes: panes, attempt: a),
           ) {
-            ContinuationEnded { reason: _ } => true
-            _ => false
+            ContinuationEnded { reason: _ } => LineageEnded
+            _ => LineageNotEnded
           }
       }
   }

@@ -328,6 +328,15 @@ type WorktreeClaimPlan
   = ClaimRemoveTree { path: String, reason: String }
   | ClaimCloseRecord { reason: String }
 
+// THE LINEAGE STANDING, handed in by the belt from the continuation -- the ONE derivation of "has THIS attempt's
+// lineage ended". It is three-valued on purpose: 'can't tell' must not collapse into 'converged' (DESIGN §5, a
+// silent widen is a hard reject), so an unreadable ledger or a row we cannot find comes back Unknown and REFUSES
+// the claim (countable, located) rather than reporting it converged while it silently leaks.
+type LineageStanding
+  = LineageEnded
+  | LineageNotEnded
+  | LineageUnknown { detail: String }
+
 fn claim_refuse(verdict: ObservationVerdict, reason: String) -> UpsertClassification<WorktreeClaimPlan> {
   UpsertClassification { verdict: verdict, decision: Refuse { reason: reason as NonEmptyStr } }
 }
@@ -357,7 +366,7 @@ fn worktree_claim_classify(
   worker: ClaimWorker,
   content: ClaimContent,
   capture: ClaimCapture,
-  lineage_ended: Bool,
+  lineage_ended: LineageStanding,
 ) -> UpsertClassification<WorktreeClaimPlan> {
   match reading {
     WorktreeClaimUnreadable { detail } => claim_refuse(verdict: Inaccessible, reason: join(["the claim could not be read (", detail, "); nothing is changed"], ""))
@@ -390,7 +399,7 @@ fn worktree_claim_classify_open(
   worker: ClaimWorker,
   content: ClaimContent,
   capture: ClaimCapture,
-  lineage_ended: Bool,
+  lineage_ended: LineageStanding,
 ) -> UpsertClassification<WorktreeClaimPlan> {
   match tree {
     ClaimTreeUnobserved { detail } => claim_refuse(verdict: Inaccessible, reason: join(["the worktree could not be observed (", detail, "); nothing is changed"], ""))
@@ -401,10 +410,10 @@ fn worktree_claim_classify_open(
         ClaimWorkerUnknown { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["the worker's standing is unknown (", detail, "); the record stays open"], ""))
         ClaimWorkerNeverStarted => claim_apply(plan: ClaimCloseRecord { reason: "the worktree was never created and the attempt never started" })
         ClaimWorkerEnded =>
-          if lineage_ended {
-            claim_apply(plan: ClaimCloseRecord { reason: "the worktree is already gone and the attempt ended" })
-          } else {
-            claim_noop()
+          match lineage_ended {
+            LineageEnded => claim_apply(plan: ClaimCloseRecord { reason: "the worktree is already gone and the attempt ended" })
+            LineageNotEnded => claim_noop()
+            LineageUnknown { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["the worker ended but this attempt's lineage standing is unknown (", detail, "); the record stays open"], ""))
           }
       }
     ClaimTreePresent =>
@@ -414,10 +423,10 @@ fn worktree_claim_classify_open(
         ClaimWorkerUnknown { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["the worker's standing is unknown (", detail, "); the worktree is kept"], ""))
         ClaimWorkerNeverStarted => worktree_claim_classify_captured(path: path, content: content, capture: capture, reason: "the worktree was created and the attempt never started")
         ClaimWorkerEnded =>
-          if lineage_ended {
-            worktree_claim_classify_captured(path: path, content: content, capture: capture, reason: "the attempt ended and its capture is committed")
-          } else {
-            claim_noop()
+          match lineage_ended {
+            LineageEnded => worktree_claim_classify_captured(path: path, content: content, capture: capture, reason: "the attempt ended and its capture is committed")
+            LineageNotEnded => claim_noop()
+            LineageUnknown { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["the worker ended but this attempt's lineage standing is unknown (", detail, "); the worktree is kept"], ""))
           }
       }
   }
@@ -472,7 +481,7 @@ fn worktree_claim_ensure_one(
   content_of: fn(String) -> ClaimContent,
   remove_tree: fn(String) -> ClaimRemoval,
   capture_of: fn(String, String) -> ClaimCapture,
-  ended_of: fn(String, String) -> Bool,
+  ended_of: fn(String, String) -> LineageStanding,
 ) -> WorktreeClaimOutcome {
   let reference = worktree_claim_reference(node_id: node_id, attempt_key: attempt_key)
   let reading = worktree_claim_read(root: root, reference: reference as NonEmptyStr)
@@ -535,7 +544,7 @@ fn worktree_claim_ensure_pass_at(
   content_of: fn(String) -> ClaimContent,
   remove_tree: fn(String) -> ClaimRemoval,
   capture_of: fn(String, String) -> ClaimCapture,
-  ended_of: fn(String, String) -> Bool,
+  ended_of: fn(String, String) -> LineageStanding,
 ) -> WorktreeClaimPass {
   match cas_slot_keys(root: claims_root) {
     CasSlotKeysListed { keys } =>
