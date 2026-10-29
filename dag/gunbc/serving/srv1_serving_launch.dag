@@ -8,7 +8,7 @@ import std.dissolution { unbound_dissolution, bound_dissolution }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
-import extdeps.external_authority { CitedFigureStanding }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { UriScheme, Https }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import extdeps.huggingface.hub { HubCheckpointManifest }
@@ -47,8 +47,8 @@ import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading, s
 // contrast, IS modeled (srv1_serving_launch below), and this script's own value is decidable: its body
 // hashes to the wrapper_sha256_hex the startup receipt read off the host.
 data srv1_serving_wrapper: RetainedShellScript = RetainedShellScript {
-  body: "#!/bin/bash\n# srv1: serve Qwen3.8-Flash-Next (NVFP4 weights, FP8 K/V) with the lil vLLM image, as the Vast \"flash-next lil v2\" template does:\n# lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie, LMCache ram-disk session cache, HTTPS with a\n# self-signed key kept across restarts, an API key, restart on crash. Differences from Vast: the linux/arm64 (DGX Spark)\n# build of the image (no arm64 build of the Vast digest exists), GPU through CDI, and the container in srv1-inference.slice\n# (cores 96-127, hard cap 130 GiB, no swap; LMCache RAM tier 100 GiB, which lives in /dev/shm, so 110 GiB shm; no host IPC) so it cannot squeeze the sessions;\n# no automatic restart, so a reboot does not bring it back unattended. /cache/jit (the b12x / FlashInfer kernel\n# tuning, hours for a new batch-shape set) is on the host so a container restart keeps it.\nset -eu\n# EXTRA: more lil / vLLM options after \"--\" (e.g. \"--max-num-seqs 64 --mode off\"); they override the profile.\nEXTRA=\x24\{EXTRA:-}\nIMG=ghcr.io/local-inference-lab/vllm:karmic-kraken-beta-spark-20261007-d071fb3dde0ba979\nB=\x24HOME/lil; mkdir -p \x24B/hf \x24B/kv \x24B/serve \x24B/jit; umask 077\n[ -s \x24B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d '/+=' > \x24B/pool_key\numask 022\ndocker rm -f lil-flash-next >/dev/null 2>&1 || true\n# Removal is asynchronous; a run issued before the name frees fails with \"Conflict\".\nfor i in \x24(seq 1 60); do docker container inspect lil-flash-next >/dev/null 2>&1 || break; sleep 2; done\ndocker run -d --name lil-flash-next --restart no --device nvidia.com/gpu=all --cgroup-parent=srv1-inference.slice --memory=130g --memory-swap=130g \\\n  --shm-size 110g -p 18000:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v \x24B/hf:/root/.cache/huggingface -v \x24B/kv:/cache/kv -v \x24B/jit:/cache/jit -v \x24B/serve:/root/serve -v \x24B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash \x24IMG -lc '\nD=/root/serve; ev(){ echo \"\x24(date -u +%FT%TZ) \x24*\" >> \x24D/events.log; }\n[ -s \x24D/tls.key ] && [ -s \x24D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj \"/CN=pool-card\" -keyout \x24D/tls.key -out \x24D/tls.crt >> \x24D/events.log 2>&1\nev \"START srv1 (driver \x24(nvidia-smi --query-gpu=driver_version --format=csv,noheader), cache ram-disk, L1 100G, L2 200G, L2 16 workers O_DIRECT, TLS)\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=100 --env LMCACHE_L2_GB=200 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 \\\n  -- --port 18000 '\"\x24EXTRA\"' --ssl-keyfile \x24D/tls.key --ssl-certfile \x24D/tls.crt --api-key \"\x24(cat /root/.pool_key)\" >> \x24D/serve.log 2>&1'\necho started; docker ps --filter name=lil-flash-next --format \"{{.Status}}\"",
-  reason: "srv1's serving container entrypoint, retained verbatim from /home/briansrls/strata-test/srv1_lil_serve.sh (re-read off the host 2026-10-29 after the LMCache tier relaunch, while the container ran from it; sha256 f7172c3fded03668007f025b2af42a206d430841c280c5e606803b5d9e53b456, pinned in gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading). THE CLAIM OF THIS ROW, narrowed to match its single dissolves_to (DESIGN 4b: the trigger names the capability this row loses): the container launch itself — image by digest, restart no, srv1-inference.slice cgroup, 130g/130g memory-and-swap, 110g shm, device/env/mount flags, published port — retires into extdeps.docker.cli DockerCreateSpec rendered by docker_run_foreground_argv, the dissolves_to ref, together with the launch tail srv1_serving_launch already models. The OTHER effects the script still performs (the TLS self-mint at CN=pool-card, the events.log START record, the key generation, the key read at exec time) are NOT claimed by this row's trigger; each carries its own keyed trigger row in srv1_serving_unmodeled_frontier_rows below. No secret value appears in this text." as NonEmptyStr,
+  body: "#!/bin/bash\n# srv1: serve Qwen3.8-Flash-Next (NVFP4 weights, FP8 K/V) with the lil vLLM image, as the Vast \"flash-next lil v2\" template does:\n# lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie, LMCache ram-disk session cache, HTTPS with a\n# self-signed key kept across restarts, an API key, restart on crash. Differences from Vast: the linux/arm64 (DGX Spark)\n# build of the image (no arm64 build of the Vast digest exists), GPU through CDI, and the container in srv1-inference.slice\n# (cores 96-127, hard cap 130 GiB, no swap; LMCache RAM tier 100 GiB, which lives in /dev/shm, so 110 GiB shm; no host IPC) so it cannot squeeze the sessions;\n# no automatic restart, so a reboot does not bring it back unattended. /cache/jit (the b12x / FlashInfer kernel\n# tuning, hours for a new batch-shape set) is on the host so a container restart keeps it.\nset -eu\n# EXTRA: more lil / vLLM options after \"--\" (e.g. \"--max-num-seqs 64 --mode off\"); they override the profile.\nEXTRA=\x24\{EXTRA:-}\nIMG=sha256:da08aaf9d967bebc0fa053f59b087249cd0fd4719cd6e0ae76e7c1b432c2cd8b  # local/eager-lynx-lmcache:late-delete-completion: base af14f1a9 + the LMCache delete-accounting repair (gunbc-private#255)\nB=\x24HOME/lil; mkdir -p \x24B/hf \x24B/kv \x24B/serve \x24B/jit; umask 077\n[ -s \x24B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d '/+=' > \x24B/pool_key\numask 022\ndocker rm -f lil-flash-next >/dev/null 2>&1 || true\n# Removal is asynchronous; a run issued before the name frees fails with \"Conflict\".\nfor i in \x24(seq 1 60); do docker container inspect lil-flash-next >/dev/null 2>&1 || break; sleep 2; done\ndocker run -d --name lil-flash-next --restart no --device nvidia.com/gpu=all --cgroup-parent=srv1-inference.slice --memory=130g --memory-swap=130g \\\n  --shm-size 110g -p 18000:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v \x24B/hf:/root/.cache/huggingface -v \x24B/kv:/cache/kv -v \x24B/jit:/cache/jit -v \x24B/serve:/root/serve -v \x24B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash \x24IMG -lc '\nD=/root/serve; ev(){ echo \"\x24(date -u +%FT%TZ) \x24*\" >> \x24D/events.log; }\n[ -s \x24D/tls.key ] && [ -s \x24D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj \"/CN=pool-card\" -keyout \x24D/tls.key -out \x24D/tls.crt >> \x24D/events.log 2>&1\nev \"START srv1 (driver \x24(nvidia-smi --query-gpu=driver_version --format=csv,noheader), cache ram-disk, L1 100G, L2 200G, L2 16 workers O_DIRECT, TLS)\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=100 --env LMCACHE_L2_GB=200 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 \\\n  -- --port 18000 '\"\x24EXTRA\"' --ssl-keyfile \x24D/tls.key --ssl-certfile \x24D/tls.crt --api-key \"\x24(cat /root/.pool_key)\" >> \x24D/serve.log 2>&1'\necho started; docker ps --filter name=lil-flash-next --format \"{{.Status}}\"",
+  reason: "srv1's serving container entrypoint, retained verbatim from /home/briansrls/strata-test/srv1_lil_serve.sh (re-read off the host 2026-10-29 after the LMCache tier relaunch, while the container ran from it; sha256 9df0384f3b92d46443bb1a8cf0862d9c911c58341b30074e4b990bd38c71eca8, pinned in gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading). THE CLAIM OF THIS ROW, narrowed to match its single dissolves_to (DESIGN 4b: the trigger names the capability this row loses): the container launch itself — image by digest, restart no, srv1-inference.slice cgroup, 130g/130g memory-and-swap, 110g shm, device/env/mount flags, published port — retires into extdeps.docker.cli DockerCreateSpec rendered by docker_run_foreground_argv, the dissolves_to ref, together with the launch tail srv1_serving_launch already models. The OTHER effects the script still performs (the TLS self-mint at CN=pool-card, the events.log START record, the key generation, the key read at exec time) are NOT claimed by this row's trigger; each carries its own keyed trigger row in srv1_serving_unmodeled_frontier_rows below. No secret value appears in this text." as NonEmptyStr,
   dissolves_to: decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_foreground_argv"),
 }
 
@@ -131,10 +131,46 @@ fn srv1_serving_launch_argv(api_key_wire: NonEmptyStr) -> List<String> {
   lil_serve_launch_argv(launch: srv1_serving_launch, api_key_wire: api_key_wire)
 }
 
+// THE IMAGE srv1 RUNS IS NOT THE UPSTREAM BUILD: it is the upstream image with ONE file replaced, the
+// LMCache native L2 adapter's delete accounting (a delete caller timing out must not discard the native
+// operation's eventual completion). Built on srv1 2026-10-28 by eager-lynx-183; the Dockerfile, the
+// patch and the drain/switch receipt are retained in gunbc-private#255. This is OUR artifact, not a fact
+// of the upstream (DESIGN 3, external upstream decomposition), so it lives here and not in
+// extdeps.vllm.local_inference_lab_build, whose row stays the base. The relation is carried as the
+// observed facts below; the build itself is not a modeled realization yet (its home is the derived-key
+// pattern of gunbc.spark.vllm_image_identity, glm53_kvplan_key: base key + patch digest), and the
+// standing says so (DESIGN 4d).
+type Srv1ServingImageDerivation {
+  image: VllmServingImage
+  base: VllmServingImage
+  replaced_path: NonEmptyStr
+  base_file_sha256_hex: NonEmptyStr
+  replaced_file_sha256_hex: NonEmptyStr
+}
+
+data srv1_serving_image_derivation: Srv1ServingImageDerivation = Srv1ServingImageDerivation {
+  image: VllmServingImage {
+    repository: "local/eager-lynx-lmcache" as NonEmptyStr,
+    tag: "late-delete-completion" as NonEmptyStr,
+    // `docker inspect --format {{.Image}} lil-flash-next` on srv1, 2026-10-29 12:55, after the relaunch
+    // that restored it; the wrapper runs it BY THIS ID, so the mutable local tag is not the identity.
+    digest_sha256: "da08aaf9d967bebc0fa053f59b087249cd0fd4719cd6e0ae76e7c1b432c2cd8b" as NonEmptyStr,
+    standing: TranscribedUncited {
+      read_obligation: "A local build with no registry manifest: this repository read the running container's image ID and, inside it, the replaced file's sha256 (2026-10-29). The build recipe (FROM the base by digest, a sha256 -c guard on the base file, one COPY) is read from gunbc-private#255's Dockerfile, not from a modeled realization; retiring this needs the build as a keyed realization under gunbc.spark.vllm_image_identity's derived-key pattern." as NonEmptyStr,
+    },
+  },
+  base: local_inference_lab_vllm_image,
+  replaced_path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/l2_adapters/native_connector_l2_adapter.py" as NonEmptyStr,
+  // The base file's digest is the Dockerfile's own `sha256sum -c` guard, and the replaced one was read
+  // with `docker exec lil-flash-next sha256sum` on the running container.
+  base_file_sha256_hex: "b6e87817a179a58b239e5dfecf8df4280ea048b01d1ee5b1c2027a57580a4f93" as NonEmptyStr,
+  replaced_file_sha256_hex: "d4b5aef995406fcda896bb5a3a7e9f6829f7ea4a6b48203a3dd54b2630fa82a7" as NonEmptyStr,
+}
+
 // The image and the pinned checkpoint the launch runs, exported so the provision derivation and the
 // router row read THEM rather than restating a digest (one authority; DESIGN 3).
 fn srv1_serving_image() -> VllmServingImage {
-  local_inference_lab_vllm_image
+  srv1_serving_image_derivation.image
 }
 
 fn srv1_serving_pinned_checkpoint() -> HubCheckpointManifest {
