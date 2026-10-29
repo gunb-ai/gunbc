@@ -113,6 +113,7 @@ import extdeps.shadow.subordinate_ids {
   SubordinatePlanRefused,
   subordinate_id_file_path,
   parse_subordinate_file,
+  parse_subordinate_file_exact,
   subordinate_ranges_for,
   subordinate_file_ranges,
   plan_subordinate_file,
@@ -126,6 +127,7 @@ import extdeps.tools.gnu_coreutils {
   coreutils_install_directory_argv,
   ls_one_per_line_command,
   cat_command,
+  od_hex_file_command,
   coreutils_install_binary_name,
   coreutils_install_directory_flag,
   coreutils_install_mode_flag,
@@ -2504,12 +2506,12 @@ fn gpu_container_provision_subordinate_reconcile(
 // no entries means, and a half-written file is not a file with no entries.
 fn gpu_container_provision_file_reading(path: String, transport: HostEffectTransport) -> SubordinateFileReading {
   match run_argv_over_host_effect_transport(
-    command: sudo_elevate_command(command: gpu_container_provision_read_argv(path: path)),
+    command: sudo_elevate_command(command: od_hex_file_command(path: path)),
     transport: transport) {
     RunArgvTransportRefused { reason: r } =>
       SubordinateFileUnreadable { path: path, cause: r as String }
     RunArgvTransportObserved { observed: o } =>
-      parse_subordinate_file(path: path, exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
+      parse_subordinate_file_exact(path: path, exit_code: o.exit_code, od_stdout: o.stdout, stderr: o.stderr)
   }
 }
 
