@@ -30,9 +30,11 @@
 //
 // REAL NATIVE EMIT PATH: both specimens go through compile_sources(..., RenderTarget::Rust) — the
 // same entry the shipped CLI drives — and the emitted bytes are what is judged. The Rust integration
-// targets under src/v1/stage0/tests are the gate that runs this file; it is enrolled as a retained
-// harness in v2.self_host.seed_retention_frontier's retained_test_harness list, which is what the
-// v2-bootstrap CI job executes (required CI does not otherwise run Rust integration tests).
+// targets under src/v1/stage0/tests run this file under `cargo test`. It is enrolled in
+// v2.self_host.seed_retention_frontier's retained_test_harness list, but that row is only a census
+// entry: NO required CI step executes it today (the v2-bootstrap job runs no Rust integration
+// tests). Executing route: none yet; trigger: a `gunbc test` row on the required path carrying this
+// claim, at which point this .rs harness deletes.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -113,9 +115,12 @@ fn std_closure(root: &Path, entry: &str) -> Vec<Rc<SourceFile>> {
             continue;
         }
         let path = module_path(root, &m);
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            continue;
-        };
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "std closure module {m} unreadable at {}: {e}",
+                path.display()
+            )
+        });
         for line in content.lines() {
             if let Some(rest) = line.strip_prefix("import ") {
                 todo.push(
@@ -144,36 +149,64 @@ struct Emitted {
 }
 
 fn emit(root: &Path, source: &str, module: &str) -> Emitted {
-    let mut sources = std_closure(root, module);
+    // The std layer is authored under <repo>/dag/std; a module path `std.list` resolves there.
+    let mut sources = std_closure(&root.join("dag"), module);
     sources.push(Rc::new(SourceFile {
         path: format!("{}.dag", module),
         content: source.into(),
     }));
     let result = compile_sources(Rc::new(sources.into_iter().collect()), RenderTarget::Rust);
     let wanted = format!("src/{}.rs", module);
-    let module = result
+    // Only diagnostics located in the specimen itself: std's own bodies carry advisory
+    // placeholder diagnostics at every generic call, and they are not this probe's business.
+    let in_specimen = |path: &str| path.contains(module);
+    let diagnostics: Vec<String> = result
+        .diagnostics
+        .iter()
+        .filter(|d| {
+            in_specimen(&v1_compiler::v1_std_core::diagnostic_to_span(d.diagnostic.clone()).file)
+        })
+        .filter(|d| v1_compiler::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+        .map(|d| {
+            format!(
+                "{}:{}: {}",
+                v1_compiler::v1_std_core::diagnostic_to_span(d.diagnostic.clone()).file,
+                v1_compiler::v1_std_core::diagnostic_to_span(d.diagnostic.clone()).start,
+                v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone())
+            )
+        })
+        .collect();
+    if !diagnostics.is_empty() {
+        eprintln!("[{module}] specimen error diagnostics: {diagnostics:?}");
+    }
+    let emitted = result
         .files
         .iter()
         .find(|f| f.path == wanted)
         .map(|f| f.content.clone())
         .unwrap_or_else(|| {
             panic!(
-                "emission did not produce {wanted}: {:?}",
+                "emission did not produce {wanted}; files={:?}; all diagnostics={:?}",
                 result
                     .files
                     .iter()
                     .map(|f| f.path.clone())
+                    .collect::<Vec<_>>(),
+                result
+                    .diagnostics
+                    .iter()
+                    .map(|d| format!(
+                        "{}:{}: {}",
+                        v1_compiler::v1_std_core::diagnostic_to_span(d.diagnostic.clone()).file,
+                        v1_compiler::v1_std_core::diagnostic_to_span(d.diagnostic.clone()).start,
+                        v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone())
+                    ))
                     .collect::<Vec<_>>()
             )
         });
     Emitted {
-        module,
-        diagnostics: result
-            .diagnostics
-            .iter()
-            .filter(|d| v1_compiler::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
-            .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-            .collect(),
+        module: emitted,
+        diagnostics,
     }
 }
 

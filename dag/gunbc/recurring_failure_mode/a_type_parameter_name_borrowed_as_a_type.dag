@@ -15,9 +15,9 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // and a parallel wall refuses the symptom at the cast (quiet-bear-692's cast wall, landed separately)
 // — a discipline and a refusal, which other legs can still skip, so it is not structural. THAT
 // REACHED RUNG IS PENDING THE RUN: the naming specimen test.claim-adjacent Rust harness
-// src/v1/stage0/tests/fold_accumulator_hof_cast_emitted_rust.rs must execute in the v2-bootstrap gate
-// for the reached rung to be a measured fact rather than an authored claim; if that run changes the
-// finding, this row is updated in the same PR.
+// src/v1/stage0/tests/fold_accumulator_hof_cast_emitted_rust.rs has NO executing route on the required
+// path today (v2-bootstrap runs no Rust integration tests); trigger: a `gunbc test` row carrying its
+// claim. Until then the reached rung rests on a manual GREEN/RED run, not on the gate.
 data a_type_parameter_name_borrowed_as_a_type: RecurringFailureMode = RecurringFailureMode {
   identity: "a_type_parameter_name_borrowed_as_a_type" as NonEmptyStr,
 
