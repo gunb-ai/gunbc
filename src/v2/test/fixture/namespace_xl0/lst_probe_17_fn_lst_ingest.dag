@@ -1,0 +1,51 @@
+module v2.test.fixture.namespace_xl0.lst_probe_17_fn_lst_ingest
+import v2.compiler.source_root_eval {
+
+fn lst_ingest() -> SourceRootIngest {
+  Cons {
+    head: lst_read(source: lst_ctl_body_let_source, id: ^lst_ctl_body_let_artifact, unit: ^lst_ctl_body_let_cu, path: "src/v2/test/fixture/namespace_xl0/lst_ctl_body_let.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_ctl_arm_expr_source, id: ^lst_ctl_arm_expr_artifact, unit: ^lst_ctl_arm_expr_cu, path: "src/v2/test/fixture/namespace_xl0/lst_ctl_arm_expr.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_ctl_arm_block_source, id: ^lst_ctl_arm_block_artifact, unit: ^lst_ctl_arm_block_cu, path: "src/v2/test/fixture/namespace_xl0/lst_ctl_arm_block.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_ctl_if_branch_source, id: ^lst_ctl_if_branch_artifact, unit: ^lst_ctl_if_branch_cu, path: "src/v2/test/fixture/namespace_xl0/lst_ctl_if_branch.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_ctl_fn_value_source, id: ^lst_ctl_fn_value_artifact, unit: ^lst_ctl_fn_value_cu, path: "src/v2/test/fixture/namespace_xl0/lst_ctl_fn_value.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_tail_let_source, id: ^lst_tail_let_artifact, unit: ^lst_tail_let_cu, path: "src/v2/test/fixture/namespace_xl0/lst_tail_let.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_tail_let_after_let_source, id: ^lst_tail_let_after_let_artifact, unit: ^lst_tail_let_after_let_cu, path: "src/v2/test/fixture/namespace_xl0/lst_tail_let_after_let.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_tail_let_match_source, id: ^lst_tail_let_match_artifact, unit: ^lst_tail_let_match_cu, path: "src/v2/test/fixture/namespace_xl0/lst_tail_let_match.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_tail_let_und_source, id: ^lst_tail_let_und_artifact, unit: ^lst_tail_let_und_cu, path: "src/v2/test/fixture/namespace_xl0/lst_tail_let_und.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_arm_block_let_source, id: ^lst_arm_block_let_artifact, unit: ^lst_arm_block_let_cu, path: "src/v2/test/fixture/namespace_xl0/lst_arm_block_let.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_arm_block_two_let_source, id: ^lst_arm_block_two_let_artifact, unit: ^lst_arm_block_two_let_cu, path: "src/v2/test/fixture/namespace_xl0/lst_arm_block_two_let.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_arm_tail_let_source, id: ^lst_arm_tail_let_artifact, unit: ^lst_arm_tail_let_cu, path: "src/v2/test/fixture/namespace_xl0/lst_arm_tail_let.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_arm_block_if_match_source, id: ^lst_arm_block_if_match_artifact, unit: ^lst_arm_block_if_match_cu, path: "src/v2/test/fixture/namespace_xl0/lst_arm_block_if_match.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_if_match_branch_source, id: ^lst_if_match_branch_artifact, unit: ^lst_if_match_branch_cu, path: "src/v2/test/fixture/namespace_xl0/lst_if_match_branch.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_arm_rest_und_source, id: ^lst_arm_rest_und_artifact, unit: ^lst_arm_rest_und_cu, path: "src/v2/test/fixture/namespace_xl0/lst_arm_rest_und.dag"),
+    tail: Empty
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}

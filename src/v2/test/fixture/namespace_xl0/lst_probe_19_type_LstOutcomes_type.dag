@@ -1,0 +1,23 @@
+module v2.test.fixture.namespace_xl0.lst_probe_19_type_stutcomes_type
+import v2.compiler.source_root_eval {
+
+type LstOutcomes
+  = LstContextRefused
+  | LstOutcomesDecided {
+      ctl_body_let: LstVerdict
+      ctl_arm_expr: LstVerdict
+      ctl_arm_block: LstVerdict
+      ctl_if_branch: LstVerdict
+      ctl_fn_value: LstVerdict
+      tail_let: LstVerdict
+      tail_let_after_let: LstVerdict
+      tail_let_match: LstVerdict
+      tail_let_und: LstVerdict
+      arm_block_let: LstVerdict
+      arm_block_two_let: LstVerdict
+      arm_tail_let: LstVerdict
+      arm_block_if_match: LstVerdict
+      if_match_branch: LstVerdict
+      arm_rest_und: LstVerdict
+    }
+

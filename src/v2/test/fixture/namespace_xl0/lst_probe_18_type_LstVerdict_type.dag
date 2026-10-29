@@ -1,0 +1,9 @@
+module v2.test.fixture.namespace_xl0.lst_probe_18_type_sterdict_type
+import v2.compiler.source_root_eval {
+
+type LstVerdict
+  = LstResolved
+  | LstRefused { reason: Symbol, at_atom: Optional<Symbol> }
+  | LstFileRefused { fatal_reason: Optional<Symbol> }
+  | LstAbsent
+

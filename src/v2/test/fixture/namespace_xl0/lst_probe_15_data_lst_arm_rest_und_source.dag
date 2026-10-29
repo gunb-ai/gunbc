@@ -1,0 +1,5 @@
+module v2.test.fixture.namespace_xl0.lst_probe_15_data_lst_arm_rest_und_source
+import v2.compiler.source_root_eval {
+
+data lst_arm_rest_und_source: String = "module v2.test.fixture.namespace_xl0.lst_arm_rest_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    lst_undeclared_arm_rest\n  }\n  LstB => i\n} }\n"
+

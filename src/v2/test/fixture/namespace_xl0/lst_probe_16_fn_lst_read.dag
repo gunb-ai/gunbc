@@ -1,0 +1,11 @@
+module v2.test.fixture.namespace_xl0.lst_probe_16_fn_lst_read
+import v2.compiler.source_root_eval {
+
+fn lst_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}

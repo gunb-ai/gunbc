@@ -1,0 +1,26 @@
+module v2.test.fixture.namespace_xl0.lst_probe_23_fn_lst_outcomes
+import v2.compiler.source_root_eval {
+
+fn lst_outcomes() -> LstOutcomes {
+  match native_test_context_from_ingest(ingest: lst_ingest()) {
+    Rejected { diagnostics: _ } => LstContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      LstOutcomesDecided {
+        ctl_body_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu),
+        ctl_arm_expr: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_expr", unit: ^lst_ctl_arm_expr_cu),
+        ctl_arm_block: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu),
+        ctl_if_branch: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_ctl_if_branch", unit: ^lst_ctl_if_branch_cu),
+        ctl_fn_value: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_ctl_fn_value", unit: ^lst_ctl_fn_value_cu),
+        tail_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu),
+        tail_let_after_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_let_after_let", unit: ^lst_tail_let_after_let_cu),
+        tail_let_match: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_let_match", unit: ^lst_tail_let_match_cu),
+        tail_let_und: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_let_und", unit: ^lst_tail_let_und_cu),
+        arm_block_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu),
+        arm_block_two_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_block_two_let", unit: ^lst_arm_block_two_let_cu),
+        arm_tail_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_tail_let", unit: ^lst_arm_tail_let_cu),
+        arm_block_if_match: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_block_if_match", unit: ^lst_arm_block_if_match_cu),
+        if_match_branch: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_if_match_branch", unit: ^lst_if_match_branch_cu),
+        arm_rest_und: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_rest_und", unit: ^lst_arm_rest_und_cu)
+      }
+  }
+}

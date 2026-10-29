@@ -1,0 +1,9 @@
+module v2.test.fixture.namespace_xl0.lst_probe_25_fn_lst_refuses_as
+import v2.compiler.source_root_eval {
+
+fn lst_refuses_as(v: LstVerdict, reason: Symbol) -> Bool {
+  match v {
+    LstFileRefused { fatal_reason: Present { value: r } } => r == reason
+    _ => false
+  }
+}
