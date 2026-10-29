@@ -1,6 +1,6 @@
 module gunbc.live_deploy.capacity_migration_approval
 
-import std.types { String, NonEmptyStr, List, CommitSha, Timestamp }
+import std.types { String, NonEmptyStr, List, CommitSha, Timestamp, ShellResponse }
 import std.error_primitives { Result, Ok, Err }
 import std.content_hash { content_hash_of_value }
 import std.scoped_authorization {
@@ -102,4 +102,21 @@ fn capacity_cutover_operation_admission(authorization: CapacityCutoverAuthorizat
       AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
     }
   } else { Err { value: "cutover operation names a manager, unit or verb outside the approved plan" } }
+}
+
+// This is the transport boundary, not merely a plan-time check. Read the clock
+// again for each operation: time spent draining earlier units cannot extend consent.
+// Unknown time refuses before dispatch just as an expired or out-of-plan grant does.
+fn capacity_cutover_run_authorized(
+  authorization: CapacityCutoverAuthorization, operation: CapacityQuiescenceStep,
+  now: fn() -> Result<Timestamp, String>,
+  run: fn(CapacityQuiescenceStep) -> Result<ShellResponse, String>,
+) -> Result<ShellResponse, String> {
+  match now() {
+    Err { value: why } => Err { value: why }
+    Ok { value: at } => match capacity_cutover_operation_admission(authorization: authorization, operation: operation, at: at) {
+      Err { value: why } => Err { value: why }
+      Ok { value: admitted } => run(admitted)
+    }
+  }
 }

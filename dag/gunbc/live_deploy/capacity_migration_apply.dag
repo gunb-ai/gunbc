@@ -1,9 +1,10 @@
 module gunbc.live_deploy.capacity_migration_apply
 
-import std.types { String, List, CommitSha, NonEmptyStr, ShellResponse }
+import std.types { String, List, CommitSha, NonEmptyStr, ShellResponse, Timestamp }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import extdeps.systemd.manager { SystemdManager }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, capacity_cutover_run_authorized }
 import gunbc.live_deploy.capacity_migration_placement { capacity_cutover_placement }
 import gunbc.compute.capacity_migration {
   CapacityManagedUnit, CapacityTransientFamily, CapacityFamilyParents, CapacityActivationFamily,
@@ -116,4 +117,22 @@ fn capacity_migration_apply(request: CapacityMigrationApplyRequest, ports: Capac
       }
     }
   }
+}
+
+// The fleet consumer supplies a claimed one-off approval. All lifecycle effects
+// from the existing fold cross its exact-operation check at execution time.
+// The underlying run port still owns retirement realization; this wrapper never
+// invents an alternative mask actuator. A different revision cannot spend consent.
+fn capacity_migration_apply_authorized(
+  request: CapacityMigrationApplyRequest, ports: CapacityMigrationApplyPorts,
+  authorization: CapacityCutoverAuthorization, now: fn() -> Result<Timestamp, String>,
+) -> Result<CapacityMigrationAdmission, String> {
+  if request.target_revision != authorization.intent.revision {
+    return Err { value: "capacity migration revision differs from the approved cutover" }
+  }
+  capacity_migration_apply(request: request, ports: CapacityMigrationApplyPorts {
+    self_cgroup: ports.self_cgroup, parent_cgroup: ports.parent_cgroup,
+    run: step => capacity_cutover_run_authorized(authorization: authorization, operation: step, now: now, run: ports.run),
+    descendants: ports.descendants, list_matches: ports.list_matches, child: ports.child,
+  })
 }

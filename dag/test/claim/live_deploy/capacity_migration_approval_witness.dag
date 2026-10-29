@@ -1,7 +1,7 @@
 module test.claim.live_deploy.capacity_migration_approval_witness
 
-import std.types { Bool, NonEmptyStr }
-import std.error_primitives { Ok, Err }
+import std.types { Bool, NonEmptyStr, String, Timestamp, ShellResponse }
+import std.error_primitives { Result, Ok, Err }
 import std.durable_compare_and_set { cas_generation_first }
 import std.scoped_authorization {
   AttemptIdentity, ScopedAuthorization, AuthorizationGranted, OperatorGrant,
@@ -14,7 +14,7 @@ import gunbc.host.host_operation_exec { SystemctlMaskNow }
 import gunbc.live_deploy.capacity_quiescence { CapacityPlantStart, CapacityContainStart, CapacityInhibitUnit }
 import gunbc.live_deploy.capacity_migration_approval {
   CapacityCutoverIntent, capacity_cutover_request, capacity_cutover_claim,
-  capacity_cutover_operation_admission,
+  capacity_cutover_operation_admission, capacity_cutover_run_authorized,
 }
 
 fn approval_fixture_intent() -> CapacityCutoverIntent {
@@ -91,5 +91,36 @@ test fn another_runner_cannot_borrow_cutover_interruption_permission() -> Bool {
       Err { value: _ } => true
       Ok { value: _ } => false
     }
+  }
+}
+
+fn approval_transport_fixture(at: Result<Timestamp, String>, unit: NonEmptyStr) -> Result<ShellResponse, String> {
+  let request = capacity_cutover_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval")
+  match capacity_cutover_claim(request: request, authorization: approval_fixture_grant(), at: "2026-10-29T00:01:00Z",
+    claim: (id, attempt, time) => ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: time }, generation: cas_generation_first() }) {
+    Err { value: why } => Err { value: why }
+    Ok { value: approval } => capacity_cutover_run_authorized(authorization: approval,
+      operation: CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: unit } },
+      now: fn() { at }, run: operation => Err { value: "transport reached" })
+  }
+}
+
+test fn an_admitted_operation_reaches_the_supplied_transport() -> Bool {
+  approval_transport_fixture(at: Ok { value: "2026-10-29T00:02:00Z" }, unit: "fixture.service") == Err { value: "transport reached" }
+}
+
+test fn expiry_during_the_drain_refuses_before_dispatch() -> Bool {
+  match approval_transport_fixture(at: Ok { value: "2026-10-29T02:00:00Z" }, unit: "fixture.service") {
+    Err { value: why } => why != "transport reached" Ok { value: _ } => false
+  }
+}
+
+test fn an_unreadable_clock_refuses_before_dispatch() -> Bool {
+  approval_transport_fixture(at: Err { value: "clock unreadable" }, unit: "fixture.service") == Err { value: "clock unreadable" }
+}
+
+test fn another_unit_cannot_reach_the_transport() -> Bool {
+  match approval_transport_fixture(at: Ok { value: "2026-10-29T00:02:00Z" }, unit: "other.service") {
+    Err { value: why } => why == "cutover operation names a manager, unit or verb outside the approved plan" Ok { value: _ } => false
   }
 }
