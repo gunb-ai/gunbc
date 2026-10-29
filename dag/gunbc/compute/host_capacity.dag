@@ -1,7 +1,13 @@
 module gunbc.compute.host_capacity
 
 import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
-import std.nat { Nat }
+import std.nat { Nat, nat_min }
+import std.algebra { trim }
+import std.checked_arithmetic { checked_int_to_nat }
+import extdeps.systemd.systemctl
+import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, user_work_slice_memory_max_of, attempt_worker_slice_unit_name, attempt_worker_slice_memory_max }
+import gunbc.live_deploy.user_work_pool_slots { user_work_charged_slots }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size_count }
 import extdeps.linux.procfs
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
@@ -75,6 +81,8 @@ type ComputeCapacitySubject {
   root: NonEmptyStr
   partition: PartitionId
   appropriation: Kibibyte
+  parent_partition: PartitionId
+  parent_appropriation: Kibibyte
   request: Kibibyte
 }
 
@@ -135,11 +143,11 @@ fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {
 // belt's admission count (gunbc.roadmap.roadmap_session_placement passes it) and this module may not import
 // the belt. A count supplied by the caller is a fact of the subject, exactly like the request.
 //
-// DECLARED FRONTIER (DESIGN 3c): the two pools are adjudicated separately against the machine's
-// live availability, so neither sees the other's granted-but-untouched memory -- the double-promise
-// compute_backing_ceiling closes WITHIN a pool is open BETWEEN pools. Trigger: the per-host read of
-// outstanding grants' resident share named at compute_backing_ceiling, whose second consumer is the
-// cross-pool sum.
+// Parent admission follows the execution slice, not the pool's human role name.
+// Builds use the user manager; attempt workers use the system-manager slice.
+// Multiple child pools placed in one slice must bind the SAME parent partition.
+// This does not admit unmodeled processes in either slice: deployment/qualification
+// and the lab's obligation units must join admission before aggregate coverage is claimed.
 type HostCapacityPool
   = ComputeBuildPool
   | AgentSessionPool { slots: Nat }
@@ -172,6 +180,8 @@ fn host_capacity_subject(instance: HostDashboardInstance, pool: HostCapacityPool
           root: compute_capacity_root(host_instance: host_instance),
           partition: host_capacity_pool_partition(pool: pool, host: instance.host_identity),
           appropriation: host_capacity_pool_appropriation(instance: host_instance, pool: pool),
+          parent_partition: host_capacity_parent_partition(pool: pool),
+          parent_appropriation: host_capacity_parent_appropriation(pool: pool),
           request: request,
         },
       }
@@ -323,7 +333,7 @@ fn compute_memory_root_pool(subject: ComputeCapacitySubject, ceiling: Kibibyte) 
 // DIFFERENT fact with a different remedy (wait, or find out who else is on the host); an
 // unobservable host reserves nothing at all rather than reserving against a guess.
 type ComputeReservation
-  = ComputeReserved { grant: LeaseGrant, partition: PartitionId, amount: Kibibyte, store: FabricStorageBinding }
+  = ComputeReserved { grant: LeaseGrant, parent_partition: PartitionId, partition: PartitionId, amount: Kibibyte, store: FabricStorageBinding }
   | ComputeCapacityFull { wire: String }
   | ComputeHostBelowFloor { requested: Kibibyte, available: Kibibyte }
   | ComputeReservationRefused { detail: String }
@@ -342,7 +352,22 @@ fn host_capacity_reserve(instance: HostDashboardInstance, pool: HostCapacityPool
   match host_capacity_subject(instance: instance, pool: pool, request: request) {
     ComputeSubjectHostUnresolved { host: h } =>
       ComputeReservationRefused { detail: join(["no dashboard instance is declared for host ", h as String, ", so this host has no compute capacity authority to reserve against"], "") }
-    ComputeSubjectResolved { subject: subject } => compute_reserve_on(subject: subject, reference: reference, term_seconds: term_seconds)
+    ComputeSubjectResolved { subject: subject } => {
+      let observed = host_capacity_parent_limit(pool: pool)
+      if !observed.success { ComputeReservationRefused { detail: "the capacity parent MemoryMax could not be read" } }
+      else { match parse_int(s: trim(s: observed.value)) {
+        Absent => ComputeReservationRefused { detail: "the capacity parent has no finite observed MemoryMax" }
+        Present { value: bytes } => match checked_int_to_nat(n: bytes) {
+          Absent => ComputeReservationRefused { detail: "the capacity parent MemoryMax is negative" }
+          Present { value: n } => if n == 0 { ComputeReservationRefused { detail: "the capacity parent MemoryMax is zero" } }
+          else { compute_reserve_on(subject: ComputeCapacitySubject {
+            root: subject.root, partition: subject.partition, appropriation: subject.appropriation, request: subject.request,
+            parent_partition: subject.parent_partition,
+            parent_appropriation: kibibyte(count: nat_min(a: kibibyte_count(k: subject.parent_appropriation), b: n / 1024)),
+          }, reference: reference, term_seconds: term_seconds) }
+        }
+      } }
+    }
   }
 }
 
@@ -390,9 +415,75 @@ fn compute_reserve_against(
       FabricStorageRootReady =>
         match now_epoch_seconds() {
           Absent => ComputeReservationRefused { detail: "the clock could not be read as epoch seconds" }
-          Present { value: now } => compute_seat(subject: subject, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(subject: subject, available: available))
+          Present { value: now } => compute_seat_under_parent(subject: subject, reference: reference, now: now, term_seconds: term_seconds, available: available)
         }
     }
+  }
+}
+
+// Parent capacity is reserved FIRST through the same event-log CAS as a child.
+// Child partitions retain their policy budgets; they no longer each promise the
+// same parent bytes. A crash between these commits leaves an encumbrance, never
+// permission to execute. Recovery releases by the durable attempt reference.
+// Deployment must drain old writers/holds before enabling this binding: old
+// histories did not charge the parent and cannot be assumed to have done so.
+fn host_capacity_parent_partition(pool: HostCapacityPool) -> PartitionId {
+  match pool {
+    ComputeBuildPool => user_work_slice_unit_name as String as PartitionId
+    AgentSessionPool { slots: _ } => attempt_worker_slice_unit_name as String as PartitionId
+  }
+}
+
+fn host_capacity_parent_appropriation(pool: HostCapacityPool) -> Kibibyte {
+  kibibyte_from_byte_size_floor(b: match pool {
+    ComputeBuildPool => user_work_slice_memory_max_of(slots: user_work_charged_slots)
+    AgentSessionPool { slots: _ } => attempt_worker_slice_memory_max
+  })
+}
+
+type HostCapacityParentLimit { success: Bool, value: String }
+
+fn host_capacity_parent_limit(pool: HostCapacityPool) -> HostCapacityParentLimit {
+  match pool {
+    ComputeBuildPool => {
+      let r = systemctl.Systemctl.ShowUserProperty(unit: user_work_slice_unit_name, property: "MemoryMax")
+      HostCapacityParentLimit { success: r.success, value: r.value }
+    }
+    AgentSessionPool { slots: _ } => {
+      let r = systemctl.Systemctl.ShowProperty(unit: attempt_worker_slice_unit_name, property: "MemoryMax")
+      HostCapacityParentLimit { success: r.success, value: r.value }
+    }
+  }
+}
+
+fn compute_parent_reference(partition: PartitionId, reference: NonEmptyStr) -> NonEmptyStr {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "partition", value: json_string(s: partition as String)),
+    json_kv(key: "reference", value: json_string(s: reference as String)),
+  ])) as NonEmptyStr
+}
+
+fn compute_seat_under_parent(subject: ComputeCapacitySubject, reference: NonEmptyStr, now: EpochSecs, term_seconds: Nat, available: Kibibyte) -> ComputeReservation {
+  let parent = ComputeCapacitySubject {
+    root: subject.root, partition: subject.parent_partition,
+    parent_partition: subject.parent_partition,
+    appropriation: subject.parent_appropriation, parent_appropriation: subject.parent_appropriation, request: subject.request,
+  }
+  let parent_reference = compute_parent_reference(partition: subject.partition, reference: reference)
+  match compute_seat(subject: parent, reference: parent_reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(subject: parent, available: available)) {
+    ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: store } => {
+      let child = compute_seat(subject: subject, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(subject: subject, available: available))
+      match child {
+        ComputeCapacityFull { wire: w } => match compute_release_partition(store: store, partition: subject.parent_partition, appropriation: subject.parent_appropriation, reference: parent_reference, reason: "child admission refused before launch") {
+          ComputeReleased { partition: _, reference: _, reason: _ } => child
+          ComputeNothingToRelease { detail: _ } => child
+          ComputeReleaseRefused { detail: d } => ComputeReservationRefused { detail: join([w, "; parent rollback unconfirmed: ", d], "") }
+        }
+        // Unknown child publication keeps the parent charged for recovery.
+        _ => child
+      }
+    }
+    other => other
   }
 }
 
@@ -413,7 +504,7 @@ fn compute_seat(subject: ComputeCapacitySubject, reference: NonEmptyStr, now: Ep
     attempts: compute_seat_attempts,
     budget: compute_partition_read_budget,
   ) {
-    SeatGranted { grant: g, generation: _, attempts_used: _ } => ComputeReserved { grant: g, partition: subject.partition, amount: subject.request, store: store }
+    SeatGranted { grant: g, generation: _, attempts_used: _ } => ComputeReserved { grant: g, parent_partition: subject.parent_partition, partition: subject.partition, amount: subject.request, store: store }
     SeatFull { wire: w, attempts_used: n } =>
       if starts_with(s: w, prefix: pool_full_wire) {
         ComputeCapacityFull { wire: join([w, " (attempt ", to_string(value: n), ")"], "") }
@@ -458,8 +549,8 @@ fn compute_release(reservation: ComputeReservation, reason: NonEmptyStr) -> Comp
     ComputeCapacityFull { wire: w } => ComputeNothingToRelease { detail: join(["nothing to release: ", w], "") }
     ComputeHostBelowFloor { requested: _, available: _ } => ComputeNothingToRelease { detail: "nothing to release: the host was below its live memory floor" }
     ComputeReservationRefused { detail: d } => ComputeNothingToRelease { detail: join(["nothing to release: ", d], "") }
-    ComputeReserved { grant: g, partition: p, amount: _, store: store } =>
-      compute_release_on(store: store, partition: p, appropriation: kibibyte(count: 0), reference: g.reference, reason: reason)
+    ComputeReserved { grant: g, parent_partition: pp, partition: p, amount: _, store: store } =>
+      compute_release_on(store: store, parent_partition: pp, partition: p, appropriation: kibibyte(count: 0), reference: g.reference, reason: reason)
   }
 }
 
@@ -489,7 +580,19 @@ fn compute_release(reservation: ComputeReservation, reason: NonEmptyStr) -> Comp
 // carries no subject to read an appropriation from, and inventing one for it would be a number with
 // no consequence. Where a subject is at hand it is passed; where none is, zero is passed, and zero
 // cannot admit anything -- which is the right direction for a value nothing should be deciding on.
-fn compute_release_on(
+fn compute_release_on(store: FabricStorageBinding, parent_partition: PartitionId, partition: PartitionId, appropriation: Kibibyte, reference: NonEmptyStr, reason: NonEmptyStr) -> ComputeRelease {
+  let child = compute_release_partition(store: store, partition: partition, appropriation: appropriation, reference: reference, reason: reason)
+  match child {
+    ComputeReleaseRefused { detail: _ } => child
+    _ => match compute_release_partition(store: store, partition: parent_partition, appropriation: kibibyte(count: 0), reference: compute_parent_reference(partition: partition, reference: reference), reason: reason) {
+      ComputeReleaseRefused { detail: d } => ComputeReleaseRefused { detail: concat("parent capacity release unconfirmed: ", d) }
+      ComputeReleased { partition: _, reference: _, reason: _ } => ComputeReleased { partition: partition, reference: reference, reason: reason }
+      ComputeNothingToRelease { detail: _ } => child
+    }
+  }
+}
+
+fn compute_release_partition(
   store: FabricStorageBinding,
   partition: PartitionId,
   appropriation: Kibibyte,
@@ -583,7 +686,7 @@ fn compute_capacity_standing_on(subject: ComputeCapacitySubject) -> ComputeCapac
 
 fn compute_reservation_wire(r: ComputeReservation) -> String {
   match r {
-    ComputeReserved { grant: g, partition: p, amount: a, store: _ } =>
+    ComputeReserved { parent_partition: _, grant: g, partition: p, amount: a, store: _ } =>
       join(["reserved ", to_string(value: kibibyte_count(k: a)), " KiB on ", p as String, " as ", g.reference as String, " fence=", g.fence.grant as String, " expires_at=", to_string(value: g.expires_at)], "")
     ComputeCapacityFull { wire: w } => join(["capacity full: ", w], "")
     ComputeHostBelowFloor { requested: rq, available: av } =>

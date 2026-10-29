@@ -217,6 +217,7 @@ type SessionPlacementStores {
   records_dir: String
   store: FabricStorageBinding
   partition: PartitionId
+  parent_partition: PartitionId
 }
 
 type SessionStoresResolution
@@ -242,6 +243,7 @@ fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresRes
                 records_dir: session_placement_records_dir(instance: instance),
                 store: compute_capacity_store(subject: subject),
                 partition: subject.partition,
+                parent_partition: subject.parent_partition,
               } }
           }
       }
@@ -306,7 +308,7 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
               SessionPlacementRefused { detail: join(["the session slot could not be opened, so nothing was reserved: ", d], "") }
             AttemptAdvanced { state: _, generation: g } =>
               match host_capacity_reserve(instance: instance, pool: pool, reference: record.unit as NonEmptyStr, term_seconds: session_placement_term_seconds, request: record.granted) {
-                ComputeReserved { grant: lease, partition: p, amount: a, store: s } =>
+                ComputeReserved { parent_partition: _, grant: lease, partition: p, amount: a, store: s } =>
                   SessionPlacementGranted { grant: SessionPlacementGrant {
                     node_id: node_id, attempt_key: attempt_key, unit: record.unit as NonEmptyStr,
                     lease: lease, partition: p, amount: a, class_grant: class_grant, store: s, slot: record, slot_generation: g,
@@ -376,7 +378,7 @@ type SessionAbandonment {
 }
 
 fn session_abandon_release(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr, closed: String) -> SessionAbandonment {
-  let freed = compute_release_on(store: grant.store, partition: grant.partition, appropriation: kibibyte(count: 0), reference: grant.lease.reference, reason: reason)
+  let freed = compute_release_on(store: grant.store, parent_partition: stores.parent_partition, partition: grant.partition, appropriation: kibibyte(count: 0), reference: grant.lease.reference, reason: reason)
   let write = session_placement_release_write(
     records_dir: stores.records_dir, node_id: grant.node_id, attempt_key: grant.attempt_key,
     grant_binding: Present { value: SessionGrantBinding { grant_identity: grant.lease.fence.grant as String, fence_generation: grant.lease.fence.generation } },
@@ -1181,7 +1183,7 @@ fn session_settle_release(stores: SessionPlacementStores, host: String, unit: No
     SessionPlacementUnnameable { detail: _ } => none
   }
   let why = join(["settled: ", reason], "") as NonEmptyStr
-  let freed = compute_release_on(store: stores.store, partition: stores.partition, appropriation: kibibyte(count: 0), reference: unit, reason: why)
+  let freed = compute_release_on(store: stores.store, parent_partition: stores.parent_partition, partition: stores.partition, appropriation: kibibyte(count: 0), reference: unit, reason: why)
   let write = session_placement_release_write(records_dir: stores.records_dir, node_id: attempt.node_id, attempt_key: attempt.attempt_key, grant_binding: binding, reason: why, freed: freed)
   SessionSettlementReleaseAttempted { unit: unit as String, freed: freed, detail: join([reason, session_write_note(w: write)], "") }
 }

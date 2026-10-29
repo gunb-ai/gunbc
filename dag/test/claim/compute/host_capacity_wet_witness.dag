@@ -69,13 +69,15 @@ fn subject_at(root: String, appropriation_kib: Int, request_kib: Int) -> Compute
     root: join([trim(s: root), "/capacity"], "") as NonEmptyStr,
     partition: "compute-memory-wet-witness" as PartitionId,
     appropriation: kibibyte(count: appropriation_kib),
+    parent_partition: "fixture-parent-memory" as PartitionId,
+    parent_appropriation: kibibyte(count: appropriation_kib),
     request: kibibyte(count: request_kib),
   }
 }
 
 fn reserved_amount(r: ComputeReservation) -> Int {
   match r {
-    ComputeReserved { grant: _, partition: _, amount: a, store: _ } => kibibyte_count(k: a)
+    ComputeReserved { parent_partition: _, grant: _, partition: _, amount: a, store: _ } => kibibyte_count(k: a)
     ComputeCapacityFull { wire: _ } => 0
     ComputeHostBelowFloor { requested: _, available: _ } => 0
     ComputeReservationRefused { detail: _ } => 0
@@ -85,7 +87,7 @@ fn reserved_amount(r: ComputeReservation) -> Int {
 fn is_capacity_full(r: ComputeReservation) -> Bool {
   match r {
     ComputeCapacityFull { wire: w } => string_contains(s: w, pattern: "pool-full")
-    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+    ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: _ } => false
     ComputeHostBelowFloor { requested: _, available: _ } => false
     ComputeReservationRefused { detail: _ } => false
   }
@@ -94,7 +96,7 @@ fn is_capacity_full(r: ComputeReservation) -> Bool {
 fn is_ledger_refusal(r: ComputeReservation) -> Bool {
   match r {
     ComputeReservationRefused { detail: d } => string_contains(s: d, pattern: "the capacity ledger refused the acquire")
-    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+    ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: _ } => false
     ComputeCapacityFull { wire: _ } => false
     ComputeHostBelowFloor { requested: _, available: _ } => false
   }
@@ -138,13 +140,19 @@ fn standing_committed(s: ComputeCapacityStanding) -> Int {
 // release returns exactly what it held and the next request is admitted again, which is the other
 // half: capacity that never comes back is a wall, not a pool.
 //
-// MUTATION CONTROL: raise the appropriation above the sum of the three requests and the third
+// The second reservation uses a DIFFERENT child partition. Removing the parent
+// reservation admits the third despite both child pools individually fitting.
+// MUTATION CONTROL: raise the parent appropriation above the sum of the three requests and the third
 // reservation is admitted, so this cell goes red for the reason it names rather than for any
 // property of the store.
 test fn competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity() -> Bool {
   let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes * 2, request_kib: one_gibibyte_in_kibibytes)
   let first = reserve_with_room(subject: subject, reference: "wet-first" as NonEmptyStr)
-  let second = reserve_with_room(subject: subject, reference: "wet-second" as NonEmptyStr)
+  let sibling = ComputeCapacitySubject {
+    root: subject.root, partition: "session-memory-sibling-witness" as PartitionId,
+    appropriation: subject.appropriation, parent_partition: subject.parent_partition, parent_appropriation: subject.parent_appropriation, request: subject.request,
+  }
+  let second = reserve_with_room(subject: sibling, reference: "wet-second" as NonEmptyStr)
   let full = reserve_with_room(subject: subject, reference: "wet-third" as NonEmptyStr)
   let at_capacity = compute_capacity_standing_on(subject: subject)
   let back = compute_release(reservation: first, reason: "witness completion" as NonEmptyStr)
@@ -153,9 +161,9 @@ test fn competing_reservations_cannot_over_reserve_and_a_release_returns_the_cap
   reserved_amount(r: first) == one_gibibyte_in_kibibytes
     && reserved_amount(r: second) == one_gibibyte_in_kibibytes
     && is_capacity_full(r: full)
-    && standing_committed(s: at_capacity) == one_gibibyte_in_kibibytes * 2
+    && standing_committed(s: at_capacity) == one_gibibyte_in_kibibytes
     && released(r: back)
-    && standing_committed(s: after_release) == one_gibibyte_in_kibibytes
+    && standing_committed(s: after_release) == 0
     && reserved_amount(r: readmitted) == one_gibibyte_in_kibibytes
 }
 
@@ -171,7 +179,7 @@ test fn a_request_the_machine_cannot_back_refuses_below_the_live_floor() -> Bool
   match compute_reserve_against(subject: subject, reference: "wet-floor" as NonEmptyStr, term_seconds: 60, total: total, available: available) {
     ComputeHostBelowFloor { requested: rq, available: av } =>
       kibibyte_count(k: rq) == 26 * one_gibibyte_in_kibibytes && kibibyte_count(k: av) == 4 * one_gibibyte_in_kibibytes
-    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+    ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: _ } => false
     ComputeCapacityFull { wire: _ } => false
     ComputeReservationRefused { detail: _ } => false
   }
@@ -185,7 +193,7 @@ test fn an_appropriation_larger_than_the_machine_refuses_rather_than_admitting()
   let subject = subject_at(root: fresh_root(), appropriation_kib: 64 * one_gibibyte_in_kibibytes + 1, request_kib: one_gibibyte_in_kibibytes)
   match compute_reserve_against(subject: subject, reference: "wet-oversized" as NonEmptyStr, term_seconds: 60, total: total, available: total) {
     ComputeReservationRefused { detail: d } => string_contains(s: d, pattern: "never backed by the machine")
-    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+    ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: _ } => false
     ComputeCapacityFull { wire: _ } => false
     ComputeHostBelowFloor { requested: _, available: _ } => false
   }
@@ -321,7 +329,7 @@ test fn the_real_reservation_route_admits_exactly_what_the_reading_backs() -> Bo
     HostMemoryUnobserved { detail: _ } =>
       match reserved {
         ComputeReservationRefused { detail: d } => string_contains(s: d, pattern: "could not be observed")
-        ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+        ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: _ } => false
         ComputeCapacityFull { wire: _ } => false
         ComputeHostBelowFloor { requested: _, available: _ } => false
       }
@@ -331,7 +339,7 @@ test fn the_real_reservation_route_admits_exactly_what_the_reading_backs() -> Bo
       } else {
         match reserved {
           ComputeHostBelowFloor { requested: rq, available: _ } => kibibyte_count(k: rq) == 1024
-          ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+          ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: _ } => false
           ComputeCapacityFull { wire: _ } => false
           ComputeReservationRefused { detail: _ } => false
         }

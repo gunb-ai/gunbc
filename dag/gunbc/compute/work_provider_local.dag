@@ -1455,7 +1455,7 @@ fn compute_run_opened(
                 compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: retry_opened, cause: HostBelowMemoryFloor { requested: rq, available: av })
               ComputeReservationRefused { detail: d } =>
                 compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: retry_opened, cause: ComputeCapacityLedgerUnavailable { detail: d })
-              ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
+              ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: _ } =>
                 compute_run_ceiling_retry(
                   instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
                   dependency: dependency, grant: retry_grant, reference: retry_reference, reservation: retry_reservation, opened: retry_opened)
@@ -2421,7 +2421,7 @@ fn compute_reserve_opened(
       compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: opened, cause: HostBelowMemoryFloor { requested: rq, available: av })
     ComputeReservationRefused { detail: d } =>
       compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: opened, cause: ComputeCapacityLedgerUnavailable { detail: d })
-    ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
+    ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: _ } =>
       compute_run_opened(
         instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
         dependency: dependency, grant: grant, reference: reference, reservation: reservation, opened: opened)
@@ -3182,6 +3182,7 @@ fn compute_recovery_after_settlement(reference: String, verdict: String, returne
 // request, but the subject names the hold it is about rather than a figure invented for it.
 fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyStr, reason: String) -> ComputeRelease {
   compute_release_on(
+    parent_partition: subject.parent_partition,
     store: compute_capacity_store(subject: subject),
     partition: subject.partition,
     appropriation: kibibyte(count: 0),
