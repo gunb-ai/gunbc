@@ -1,0 +1,74 @@
+module test.claim.live_deploy.capacity_cutover_plan_input_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
+import std.scoped_authorization { ClaimHeld, ClaimedBy, ClaimUndecided }
+import std.durable_compare_and_set { cas_generation_first }
+import extdeps.systemd.manager { SystemManager, UserManager }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverIntent, CapacityGenerationOperation,
+  CapacityManagerReload, CapacityAfterInhibition, CapacityAfterInstall, CapacityAfterRemoval,
+  capacity_cutover_intent_text, capacity_cutover_plan_digest }
+import gunbc.live_deploy.capacity_cutover_plan_input { capacity_cutover_plan_input, capacity_cutover_claim_input }
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent, approval_fixture_request, approval_fixture_grant, approval_fixture_helper_digest }
+
+fn plan_input_fixture() -> CapacityCutoverIntent {
+  let prior = approval_fixture_intent()
+  CapacityCutoverIntent { host: prior.host, revision: prior.revision, attempt: prior.attempt,
+    operations: prior.operations, file_operations: prior.file_operations, captures: prior.captures,
+    reloads: [CapacityManagerReload { manager: UserManager { uid: 1000 },
+      boundaries: [CapacityAfterInhibition, CapacityAfterInstall, CapacityAfterRemoval] }],
+    generations: [CapacityGenerationOperation { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" },
+      destination: "/etc/systemd/system/fixture.service", root: "/var/lib/gunbc/cutover-capture/cutover-fixture", digest: approval_fixture_helper_digest }] }
+}
+
+test fn the_complete_canonical_operation_manifest_round_trips() -> Bool {
+  let intent = plan_input_fixture()
+  match capacity_cutover_plan_digest(intent: intent) {
+    Err { value: _ } => false
+    Ok { value: digest } => capacity_cutover_plan_input(text: capacity_cutover_intent_text(intent: intent) as String, approved: digest) == Ok { value: intent }
+  }
+}
+
+test fn modified_input_is_refused_before_a_claim_is_attempted() -> Bool {
+  let intent = plan_input_fixture()
+  let request = match approval_fixture_request(intent: intent, escalation_id: "input-fixture") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match capacity_cutover_claim_input(text: concat(capacity_cutover_intent_text(intent: intent) as String, " "),
+    request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z",
+    claim: (id, attempt, at) => ClaimUndecided { reason: "claim reached" }) {
+    Err { value: why } => why == "cutover plan input digest differs from the approval"
+    Ok { value: _ } => false
+  }
+}
+
+test fn verified_data_input_reaches_the_existing_inherited_claim() -> Bool {
+  let intent = plan_input_fixture()
+  let request = match approval_fixture_request(intent: intent, escalation_id: "input-fixture") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match capacity_cutover_claim_input(text: capacity_cutover_intent_text(intent: intent) as String,
+    request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z",
+    claim: (id, attempt, at) => ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() }) {
+    Err { value: _ } => false
+    Ok { value: approved } => approved.intent == intent && approved.request == request.request
+  }
+}
+
+fn plan_input_rejects_even_if_digest_is_approved(text: String) -> Bool {
+  match sha256_hex_digest(hex: sha256_hex_of_text(text: text)) {
+    Absent => false
+    Present { value: digest } => match capacity_cutover_plan_input(text: text, approved: digest) {
+      Err { value: _ } => true Ok { value: _ } => false
+    }
+  }
+}
+
+test fn source_and_unknown_operation_shapes_are_not_plan_data() -> Bool {
+  plan_input_rejects_even_if_digest_is_approved(text: "module attacker\nfn main() {}")
+    && plan_input_rejects_even_if_digest_is_approved(text: "[\"gunbc.capacity-cutover.v5\",\"srv1\",\"1111111111111111111111111111111111111111\",\"fixture\",[[\"system\",\"fixture.service\",\"exec-arbitrary\"]],[],[],[],[]]")
+    && plan_input_rejects_even_if_digest_is_approved(text: "[\"gunbc.capacity-cutover.v999\",\"srv1\",\"1111111111111111111111111111111111111111\",\"fixture\",[],[],[],[],[]]")
+}
