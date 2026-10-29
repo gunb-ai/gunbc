@@ -12,6 +12,8 @@ import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverIntent, Ca
 import gunbc.live_deploy.capacity_selected_generation { capacity_cutover_selected_deployment, capacity_cutover_projection_admit }
 import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent }
 import test.claim.live_deploy.capacity_controller_plan_witness { controller_fixture_install }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster }
 
 fn selected_generation_fixture() -> Result<CapacityCutoverIntent, String> {
   let prior = approval_fixture_intent()
@@ -67,9 +69,6 @@ test fn missing_duplicate_or_extra_units_cannot_disappear_in_projection() -> Boo
       })
   }
 }
-
-import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster }
 
 fn selected_generation_row_intent(row: DesiredDeployment, identity: DeclarationRef) -> CapacityCutoverIntent {
   let prior = approval_fixture_intent()

@@ -1,10 +1,23 @@
 module test.claim.live_deploy.capacity_root_helper_witness
 
-import std.types { Bool }
+import std.types { Bool, String }
 import std.decl_ref { declaration_ref_eq }
-import gunbc.auth.authorization_pattern_selection { PatternSelectionRefused }
-import gunbc.auth.privileged_effect_census { capacity_cutover_root_helper_row, srv1_root_mutation_approval_root, privileged_effect_census, site_verdict }
+import gunbc.auth.authorization_pattern_selection { PatternSelectionRefused, PatternSelected, ApprovedConvergenceGrant }
+import gunbc.auth.privileged_effect_census {
+  capacity_cutover_root_helper_row, srv1_root_mutation_approval_root, privileged_effect_census, site_verdict,
+  capacity_cutover_approval_root, capacity_cutover_root_helper_site,
+}
 import gunbc.live_deploy.capacity_root_helper { capacity_root_helper_selection }
+import std.content_hash { Sha256Digest, serialize_content_hash }
+import std.error_primitives { Result, Ok, Err }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_request_client { PollApproved }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
+import gunbc.fleet.srv1_root_mutation_approval_run {
+  Srv1CutoverRequest, Srv1RootMutationSelect, CapacityCutoverJob, CapacityCutoverRequest, ExistingRootMutationJob,
+  ExistingRootMutationRequest, srv1_root_mutation_request_for_kind, srv1_root_mutation_request,
+  srv1_root_mutation_approved_scopes, srv1_cutover_digest_admission,
+}
 
 // The canonical root is consumed, not a copy whose scopes could drift. This red
 // must change only when the broker's actual granted scope population changes.
@@ -21,20 +34,6 @@ test fn the_census_executes_the_same_selection_for_the_planned_site() -> Bool {
       PatternSelectionRefused { defects: defects } => count(defects) > 0
       _ => false
     })
-}
-
-import std.types { String }
-import std.content_hash { Sha256Digest, serialize_content_hash }
-import std.error_primitives { Result, Ok, Err }
-import gunbc.auth.authorization_pattern_selection { PatternSelected, ApprovedConvergenceGrant }
-import gunbc.auth.approval_decision_store { request_revision_of }
-import gunbc.auth.approval_request_client { PollApproved }
-import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
-import gunbc.auth.privileged_effect_census { capacity_cutover_approval_root, capacity_cutover_root_helper_site }
-import gunbc.fleet.srv1_root_mutation_approval_run {
-  Srv1CutoverRequest, Srv1RootMutationSelect, CapacityCutoverJob, CapacityCutoverRequest, ExistingRootMutationJob,
-  ExistingRootMutationRequest, srv1_root_mutation_request_for_kind, srv1_root_mutation_request,
-  srv1_root_mutation_approved_scopes, srv1_cutover_digest_admission
 }
 
 data helper_fixture_digest_a: Sha256Digest = Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
@@ -111,7 +110,6 @@ test fn an_approval_for_another_plan_is_refused_by_the_real_gate() -> Bool {
 test fn an_approval_for_another_helper_is_refused_by_the_real_gate() -> Bool {
   helper_fixture_substitution_refused(other_plan: helper_fixture_digest_a, other_helper: helper_fixture_digest_a)
 }
-
 
 test fn a_legacy_job_cannot_add_helper_authority_through_selection_text() -> Bool {
   match srv1_root_mutation_request_for_kind(kind: ExistingRootMutationJob { job: "microvm_controller_install" },

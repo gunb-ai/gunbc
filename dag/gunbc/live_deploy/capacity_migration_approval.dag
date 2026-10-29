@@ -152,28 +152,28 @@ fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
   serialize_json(v: JsonArray { elements: [JsonString { value: "gunbc.capacity-cutover.v6" },
     JsonString { value: intent.host as String }, JsonString { value: intent.revision as String },
     JsonString { value: intent.attempt as String },
-    JsonArray { elements: map(intent.operations, operation => {
-      let subject = capacity_quiescence_step_subject(step: operation)
+    JsonArray { elements: map(intent.operations, op => {
+      let subject = capacity_quiescence_step_subject(step: op)
       JsonArray { elements: [JsonString { value: match subject.manager {
         SystemManager => "system"
         UserManager { uid: uid } => concat("user:", to_string(uid))
-      } }, JsonString { value: subject.unit as String }, JsonString { value: capacity_cutover_operation_action(operation: operation) as String }] }
+      } }, JsonString { value: subject.unit as String }, JsonString { value: capacity_cutover_operation_action(operation: op) as String }] }
     }) },
     JsonArray { elements: map(intent.reloads, row => JsonArray { elements: [
       JsonString { value: capacity_reload_manager_text(manager: row.manager) },
       JsonArray { elements: map(row.boundaries, boundary => JsonString { value: capacity_reload_boundary_text(boundary: boundary) }) }
     ] }) },
-    JsonArray { elements: map(intent.generations, operation => JsonArray { elements: [
-      JsonString { value: match operation.subject.manager { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) } },
-      JsonString { value: operation.subject.unit as String }, JsonString { value: operation.destination as String },
-      JsonString { value: operation.root as String }, JsonString { value: operation.digest.hex as String }
+    JsonArray { elements: map(intent.generations, op => JsonArray { elements: [
+      JsonString { value: match op.subject.manager { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) } },
+      JsonString { value: op.subject.unit as String }, JsonString { value: op.destination as String },
+      JsonString { value: op.root as String }, JsonString { value: op.digest.hex as String }
     ] }) },
-    JsonArray { elements: map(intent.captures, operation => JsonArray { elements: [
-      JsonString { value: operation.source as String }, JsonString { value: operation.root as String }
+    JsonArray { elements: map(intent.captures, op => JsonArray { elements: [
+      JsonString { value: op.source as String }, JsonString { value: op.root as String }
     ] }) },
-    JsonArray { elements: map(intent.file_operations, operation => JsonArray { elements: [
-      JsonString { value: operation.path as String },
-      JsonString { value: capacity_cutover_file_action(operation: operation) as String },
+    JsonArray { elements: map(intent.file_operations, op => JsonArray { elements: [
+      JsonString { value: op.path as String },
+      JsonString { value: capacity_cutover_file_action(operation: op) as String },
     ] }) },
     JsonString { value: intent.instance_id as String },
     JsonArray { elements: [JsonString { value: intent.selected_identity.module_path as String },
@@ -197,10 +197,10 @@ fn capacity_cutover_plan_digest(intent: CapacityCutoverIntent) -> Result<Sha256D
 }
 
 fn capacity_cutover_internal_scopes(intent: CapacityCutoverIntent) -> List<AuthorizationScope> {
-  map(intent.operations, operation => capacity_cutover_operation_scope(intent: intent, operation: operation))
-    + map(intent.file_operations, operation => capacity_cutover_file_scope(operation: operation))
-    + map(intent.captures, operation => capacity_capture_scope(intent: intent, operation: operation))
-    + map(intent.generations, operation => capacity_generation_scope(intent: intent, operation: operation))
+  map(intent.operations, op => capacity_cutover_operation_scope(intent: intent, operation: op))
+    + map(intent.file_operations, op => capacity_cutover_file_scope(operation: op))
+    + map(intent.captures, op => capacity_capture_scope(intent: intent, operation: op))
+    + map(intent.generations, op => capacity_generation_scope(intent: intent, operation: op))
     + map(intent.reloads, row => capacity_reload_scope(intent: intent, manager: row.manager))
 }
 
@@ -304,7 +304,6 @@ fn capacity_cutover_file_run_authorized(authorization: CapacityCutoverAuthorizat
   }
 }
 
-
 fn capacity_cutover_capture_admission(authorization: CapacityCutoverAuthorization,
   operation: CapacityCaptureOperation, at: Timestamp) -> Result<CapacityCaptureOperation, String> {
   if count(filter(authorization.intent.captures, allowed => allowed == operation)) != 1 {
@@ -317,10 +316,9 @@ fn capacity_cutover_capture_admission(authorization: CapacityCutoverAuthorizatio
 }
 
 fn capacity_cutover_capture_plan_lines(intent: CapacityCutoverIntent) -> List<String> {
-  map(intent.captures, operation => join(["capture-create source=", operation.source as String,
-    " root=", operation.root as String, " once-per-apply=", intent.attempt as String], ""))
+  map(intent.captures, op => join(["capture-create source=", op.source as String,
+    " root=", op.root as String, " once-per-apply=", intent.attempt as String], ""))
 }
-
 
 fn capacity_cutover_generation_admission(authorization: CapacityCutoverAuthorization,
   operation: CapacityGenerationOperation, at: Timestamp) -> Result<CapacityGenerationOperation, String> {
@@ -333,13 +331,12 @@ fn capacity_cutover_generation_admission(authorization: CapacityCutoverAuthoriza
   } }
 }
 
-
 fn capacity_cutover_reload_admission(authorization: CapacityCutoverAuthorization, manager: SystemdManager,
   boundary: CapacityReloadBoundary, at: Timestamp) -> Result<CapacityReloadBoundary, String> {
   let rows = filter(authorization.intent.reloads, row => row.manager == manager)
   if count(rows) != 1 { return Err { value: "reload manager is absent or repeated in approved plan" } }
-  if !any(authorization.intent.operations, operation => capacity_quiescence_step_subject(step: operation).manager == manager)
-    && !any(authorization.intent.generations, operation => operation.subject.manager == manager) {
+  if !any(authorization.intent.operations, op => capacity_quiescence_step_subject(step: op).manager == manager)
+    && !any(authorization.intent.generations, op => op.subject.manager == manager) {
     return Err { value: "reload manager is not touched by the cutover plan" }
   }
   if !all(rows, row => count(filter(row.boundaries, allowed => allowed == boundary)) == 1) {

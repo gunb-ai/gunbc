@@ -8,7 +8,10 @@ import std.scoped_authorization { AuthorizationClaimOutcome, ClaimHeld, ClaimLos
 import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
-import std.fabric_blob { read_staged_fabric_blob, FabricBlobRead, FabricBlobReadRefused, fabric_blob_fault_text, fabric_blob_reading_digest, fabric_blob_reading_path }
+import std.fabric_blob {
+  read_staged_fabric_blob, FabricBlobRead, FabricBlobReadRefused, fabric_blob_fault_text,
+  fabric_blob_reading_digest, fabric_blob_reading_path,
+}
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import std.cache_identity { cutover_capture_artifact_kind }
@@ -20,19 +23,33 @@ import extdeps.realization.materialization_store_local {
   LocalStoreRetentionRefusal, local_store_binding_path, local_store_held_session,
   local_store_bind_retention, local_store_commit_under_request,
 }
-import gunbc.durable_cas_file_store { SlotStore, slot_observe, slot_commit, OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
-import std.durable_compare_and_set { CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasGeneration, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused }
+import gunbc.durable_cas_file_store {
+  SlotStore, slot_observe, slot_commit, OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload,
+  DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+}
+import std.durable_compare_and_set {
+  CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasGeneration,
+  ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+}
 import extdeps.languages.json.emit { serialize_json, json_array, json_string }
-import gunbc.live_deploy.capacity_capture_store { CapacityCaptureStore, CapturedUnitBlob, capacity_capture_blob_lookup, capacity_capture_blob_path, capacity_capture_directory_targets, capacity_capture_directory_target }
-import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityGenerationFile, CapacityCapturingGeneration, CapacityPreparingInhibition, capacity_generation_request, capacity_generation_install, capacity_generation_same_subjects }
+import gunbc.live_deploy.capacity_capture_store {
+  CapacityCaptureStore, CapturedUnitBlob, capacity_capture_blob_lookup, capacity_capture_blob_path,
+  capacity_capture_directory_targets, capacity_capture_directory_target,
+}
+import gunbc.live_deploy.capacity_cutover_recovery {
+  CapacityCutoverRecord, CapacityGenerationFile, CapacityCapturingGeneration, CapacityPreparingInhibition,
+  capacity_generation_request, capacity_generation_install, capacity_generation_same_subjects,
+}
 import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode, capacity_cutover_record_encode }
-import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation, capacity_cutover_capture_admission, capacity_cutover_generation_admission }
+import gunbc.live_deploy.capacity_migration_approval {
+  CapacityCutoverAuthorization, CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation,
+  capacity_cutover_capture_admission, capacity_cutover_generation_admission,
+}
 
 type CapacityCaptureFault
   = CapacityCaptureBoundaryRefused { detail: String }
   | CapacityCaptureRetentionRefused { refusal: LocalStoreRetentionRefusal }
   | CapacityCaptureCommitRefused { commit: StoreCommit }
-
 
 // Root/key are fixed by the cutover owner, not a caller-selected CAS destination.
 // This sibling root is separate from the provider's swept namespace.
@@ -232,7 +249,6 @@ fn capacity_capture_provisioning_targets(store: CapacityCaptureStore) -> Result<
   }
 }
 
-
 // Plan/record completeness is not a byte verification. The wet finish below
 // additionally looks up every prior and target part before its phase CAS.
 fn capacity_capture_manifest_complete(store: CapacityCaptureStore, intent: CapacityCutoverIntent,
@@ -244,14 +260,14 @@ fn capacity_capture_manifest_complete(store: CapacityCaptureStore, intent: Capac
   if count(intent.captures) == 0 || count(record.prior) != count(intent.captures) || count(record.target) == 0 {
     return Err { value: "capture generation is incomplete" }
   }
-  if !all(intent.captures, operation => operation.root == store.root
-    && count(filter(record.prior, file => file.host == intent.host && file.destination == operation.source)) == 1)
-    || !all(record.prior, file => count(filter(intent.captures, operation => operation.source == file.destination && operation.root == store.root)) == 1) {
+  if !all(intent.captures, op => op.root == store.root
+    && count(filter(record.prior, file => file.host == intent.host && file.destination == op.source)) == 1)
+    || !all(record.prior, file => count(filter(intent.captures, op => op.source == file.destination && op.root == store.root)) == 1) {
     return Err { value: "capture sources do not match the approved set exactly" }
   }
   if count(intent.generations) != count(record.target)
-    || !all(intent.generations, operation => count(filter(record.target, file => capacity_capture_target_matches(store: store, host: intent.host, operation: operation, file: file))) == 1)
-    || !all(record.target, file => count(filter(intent.generations, operation => capacity_capture_target_matches(store: store, host: intent.host, operation: operation, file: file))) == 1) {
+    || !all(intent.generations, op => count(filter(record.target, file => capacity_capture_target_matches(store: store, host: intent.host, operation: op, file: file))) == 1)
+    || !all(record.target, file => count(filter(intent.generations, op => capacity_capture_target_matches(store: store, host: intent.host, operation: op, file: file))) == 1) {
     return Err { value: "target generation does not match the approved digests exactly" }
   }
   if !capacity_generation_same_subjects(left: record.prior, right: record.target) {
@@ -271,9 +287,9 @@ fn capacity_capture_target_matches(store: CapacityCaptureStore, host: NonEmptySt
 
 fn capacity_capture_generation_consent(approval: CapacityCutoverAuthorization, at: Timestamp) -> Result<Bool, String> {
   if count(approval.intent.generations) == 0 { return Err { value: "no target generation approved" } }
-  fold(approval.intent.generations, init: Ok { value: true }, f: (prior, operation) => { match prior {
+  fold(approval.intent.generations, init: Ok { value: true }, f: (prior, op) => { match prior {
     Err { value: why } => Err { value: why }
-    Ok { value: _ } => match capacity_cutover_generation_admission(authorization: approval, operation: operation, at: at) {
+    Ok { value: _ } => match capacity_cutover_generation_admission(authorization: approval, operation: op, at: at) {
       Err { value: why } => Err { value: why } Ok { value: _ } => Ok { value: true }
     }
   } })
@@ -293,9 +309,9 @@ fn capacity_capture_finish(store: CapacityCaptureStore, provider: LocalStoreCapa
   match capacity_capture_generation_consent(approval: approval, at: at) {
     Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
   }
-  let consent = fold(approval.intent.captures, init: Ok { value: true }, f: (prior, operation) => { match prior {
+  let consent = fold(approval.intent.captures, init: Ok { value: true }, f: (prior, op) => { match prior {
     Err { value: why } => Err { value: why }
-    Ok { value: _ } => match capacity_cutover_capture_admission(authorization: approval, operation: operation, at: at) {
+    Ok { value: _ } => match capacity_cutover_capture_admission(authorization: approval, operation: op, at: at) {
       Err { value: why } => Err { value: why } Ok { value: _ } => Ok { value: true }
     }
   } })
@@ -328,9 +344,9 @@ fn capacity_capture_finish_held(store: CapacityCaptureStore, provider: LocalStor
   match capacity_capture_generation_consent(approval: approval, at: at) {
     Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
   }
-  let consent = fold(approval.intent.captures, init: Ok { value: true }, f: (acc, operation) => match acc {
+  let consent = fold(approval.intent.captures, init: Ok { value: true }, f: (acc, op) => match acc {
     Err { value: why } => Err { value: why }
-    Ok { value: _ } => match capacity_cutover_capture_admission(authorization: approval, operation: operation, at: at) {
+    Ok { value: _ } => match capacity_cutover_capture_admission(authorization: approval, operation: op, at: at) {
       Err { value: why } => Err { value: why } Ok { value: _ } => Ok { value: true }
     }
   })

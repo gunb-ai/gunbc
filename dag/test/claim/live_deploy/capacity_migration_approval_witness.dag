@@ -7,20 +7,26 @@ import std.content_hash { Sha256Digest }
 import gunbc.fleet.srv1_root_mutation_approval_run { Srv1CutoverRequest, Srv1RootMutationApproval }
 import std.durable_compare_and_set { cas_generation_first }
 import std.scoped_authorization {
-  AttemptIdentity, ScopedAuthorization, AuthorizationGranted, OperatorGrant,
-  Unclaimed, ClaimedBy, ClaimHeld, ClaimLost,
+  AttemptIdentity, ScopedAuthorization, AuthorizationGranted, OperatorGrant, Unclaimed, ClaimedBy, ClaimHeld,
+  ClaimLost, ClaimUndecided,
 }
 import extdeps.systemd.manager { SystemManager }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
-import gunbc.runner.runner_slot_retirement { cutover_interruption_authorization, authorized_retirement_actuation, RetirementActuationAuthorized, RetirementActuationRefused }
+import gunbc.runner.runner_slot_retirement {
+  cutover_interruption_authorization, authorized_retirement_actuation, RetirementActuationAuthorized,
+  RetirementActuationRefused,
+}
 import gunbc.host.host_operation_exec { SystemctlMaskNow }
 import gunbc.live_deploy.capacity_quiescence { CapacityPlantStart, CapacityContainStart, CapacityInhibitUnit }
 import gunbc.live_deploy.capacity_migration_approval {
-  CapacityCutoverIntent, capacity_cutover_request, capacity_cutover_claim,
-  CapacityCaptureOperation, capacity_cutover_capture_admission, capacity_cutover_capture_plan_lines,
-  CapacityCutoverFileOperation, CapacityInhibitionCreate, CapacityCaptureRemove, capacity_cutover_file_admission, capacity_cutover_file_run_authorized,
-  capacity_cutover_operation_admission, capacity_cutover_run_authorized,
+  CapacityCutoverIntent, capacity_cutover_request, capacity_cutover_claim, CapacityCaptureOperation,
+  capacity_cutover_capture_admission, capacity_cutover_capture_plan_lines, CapacityCutoverFileOperation,
+  CapacityInhibitionCreate, CapacityCaptureRemove, capacity_cutover_file_admission,
+  capacity_cutover_file_run_authorized, capacity_cutover_operation_admission, capacity_cutover_run_authorized,
 }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_request_client { PollApproved }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
 
 fn approval_fixture_intent() -> CapacityCutoverIntent {
   CapacityCutoverIntent {
@@ -83,7 +89,6 @@ test fn an_already_claimed_capability_cannot_start_a_second_execution() -> Bool 
   }
 }
 
-
 test fn claimed_interruption_reaches_the_existing_retirement_actuator() -> Bool {
   let request = match approval_fixture_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval") {
     Err { value: _ } => { return false } Ok { value: value } => value
@@ -94,8 +99,8 @@ test fn claimed_interruption_reaches_the_existing_retirement_actuator() -> Bool 
     Ok { value: approval } => match cutover_interruption_authorization(approval: approval, units: ["actions-runner@srv1-02.service"], at: "2026-10-29T00:02:00Z") {
       Err { value: _ } => false
       Ok { value: auth } => match authorized_retirement_actuation(auth: auth, unit: "actions-runner@srv1-02.service") {
-        RetirementActuationAuthorized { unit: unit, operation: operation } =>
-          unit == "actions-runner@srv1-02.service" && operation == SystemctlMaskNow { unit: "actions-runner@srv1-02.service" }
+        RetirementActuationAuthorized { unit: unit, operation: op } =>
+          unit == "actions-runner@srv1-02.service" && op == SystemctlMaskNow { unit: "actions-runner@srv1-02.service" }
         RetirementActuationRefused { unit: _, cause: _ } => false
       }
     }
@@ -125,7 +130,7 @@ fn approval_transport_fixture(at: Result<Timestamp, String>, unit: NonEmptyStr) 
     Err { value: why } => Err { value: why }
     Ok { value: approval } => capacity_cutover_run_authorized(authorization: approval,
       operation: CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: unit } },
-      now: fn() { at }, run: operation => Err { value: "transport reached" })
+      now: fn() { at }, run: op => Err { value: "transport reached" })
   }
 }
 
@@ -148,7 +153,6 @@ test fn another_unit_cannot_reach_the_transport() -> Bool {
     Err { value: why } => why == "cutover operation names a manager, unit or verb outside the approved plan" Ok { value: _ } => false
   }
 }
-
 
 test fn captured_file_consent_does_not_cover_another_path_or_removal() -> Bool {
   let request = match approval_fixture_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval") {
@@ -180,13 +184,12 @@ test fn unreadable_clock_refuses_before_a_capture_effect() -> Bool {
     Err { value: _ } => false
     Ok { value: approval } => match capacity_cutover_file_run_authorized(authorization: approval,
       operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityInhibitionCreate },
-      now: fn() { Err { value: "clock unavailable" } }, run: operation => Err { value: "effect dispatched" }) {
+      now: fn() { Err { value: "clock unavailable" } }, run: op => Err { value: "effect dispatched" }) {
       Err { value: why } => why == "clock unavailable"
       Ok { value: _ } => false
     }
   }
 }
-
 
 test fn capture_consent_names_the_source_and_apply_root_before_reading_bytes() -> Bool {
   let intent = approval_fixture_intent()
@@ -205,11 +208,6 @@ test fn capture_consent_names_the_source_and_apply_root_before_reading_bytes() -
     }
   }
 }
-
-import gunbc.auth.approval_decision_store { request_revision_of }
-import gunbc.auth.approval_request_client { PollApproved }
-import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
-import std.scoped_authorization { ClaimUndecided }
 
 test fn the_real_broker_gate_shape_inhabits_the_internal_operation_consumer() -> Bool {
   let intent = approval_fixture_intent()

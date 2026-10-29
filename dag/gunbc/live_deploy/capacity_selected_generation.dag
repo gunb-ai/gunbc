@@ -57,8 +57,8 @@ fn capacity_cutover_projection_admit(intent: CapacityCutoverIntent,
       if count(installs) == 0 || count(installs) != count(intent.generations) {
         return Err { value: "cutover target projection is empty or differs in membership" }
       }
-      if !all(intent.generations, operation => count(filter(installs, install => capacity_cutover_install_matches(operation: operation, install: install))) == 1)
-        || !all(installs, install => count(filter(intent.generations, operation => capacity_cutover_install_matches(operation: operation, install: install))) == 1) {
+      if !all(intent.generations, op => count(filter(installs, install => capacity_cutover_install_matches(operation: op, install: install))) == 1)
+        || !all(installs, install => count(filter(intent.generations, op => capacity_cutover_install_matches(operation: op, install: install))) == 1) {
         return Err { value: "cutover target projection differs from the approved unit digests" }
       }
       Ok { value: installs }

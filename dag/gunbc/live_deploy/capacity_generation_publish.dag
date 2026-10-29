@@ -7,26 +7,36 @@ import std.process { ExitSuccess, ExitFailure }
 import std.cache_identity { cutover_capture_artifact_kind }
 import std.judgment_contract { output_fabric_blob }
 import std.materialization_object { StoreCommitRefused, StoreCommitSettled }
-import std.fabric_blob { read_staged_fabric_blob, FabricBlobRead, FabricBlobReadRefused, fabric_blob_fault_text }
+import std.fabric_blob {
+  read_staged_fabric_blob, FabricBlobRead, FabricBlobReadRefused, fabric_blob_fault_text,
+  fabric_blob_reading_digest, fabric_blob_reading_path,
+}
 import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim }
 import gunbc.durable_cas_file_store { SlotStore }
 import gunbc.owned_directory { owned_directory_outcome_converged, owned_directory_outcome_detail }
 import gunbc.host.host_effect_realize { DeployApplyPorts, deploy_apply_unit_install_failure }
-import extdeps.realization.materialization_store_local { LocalStoreCapability, LocalStoreBracket, LocalStoreFamilyHeld, LocalStoreStagedPart, local_store_binding_path, local_store_held_session, local_store_bind_retention, local_store_commit_under_request }
+import extdeps.realization.materialization_store_local {
+  LocalStoreCapability, LocalStoreBracket, LocalStoreFamilyHeld, LocalStoreStagedPart, local_store_binding_path,
+  local_store_held_session, local_store_bind_retention, local_store_commit_under_request,
+}
 import std.types { String, NonEmptyStr, Timestamp, List, CommitSha }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import std.content_hash { sha256_hex_of_text, sha256_hex_digest }
 import std.materialization_provider { CutoverCaptureRequest }
-import std.fabric_blob { fabric_blob_reading_digest, fabric_blob_reading_path }
 import extdeps.languages.json.emit { serialize_json, json_array, json_string }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument, CapturedUnitDocument }
 import gunbc.live_deploy.apply_legs { apply_modeled_unit_install_payload }
-import gunbc.live_deploy.capacity_capture_store { CapacityCaptureStore, CapturedUnitBlob, capacity_capture_blob_path, capacity_capture_blob_lookup, capacity_capture_directory_target }
+import gunbc.live_deploy.capacity_capture_store {
+  CapacityCaptureStore, CapturedUnitBlob, capacity_capture_blob_path, capacity_capture_blob_lookup,
+  capacity_capture_directory_target,
+}
 import gunbc.live_deploy.capacity_capture_provider { capacity_capture_journal_root, capacity_capture_journal_open, capacity_capture_record_replace }
-import gunbc.live_deploy.capacity_migration_approval { CapacityGenerationOperation, CapacityCutoverAuthorization, capacity_cutover_generation_admission }
+import gunbc.live_deploy.capacity_migration_approval {
+  CapacityGenerationOperation, CapacityCutoverAuthorization, capacity_cutover_generation_admission,
+}
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityGenerationFile, CapacityCapturingGeneration }
 
 // This mint accepts only the modeled document arm. It cannot render an old or
@@ -52,7 +62,7 @@ fn capacity_generation_plan(store: CapacityCaptureStore, install: DeploymentUnit
     ModeledUnitDocument { file: file } => match sha256_hex_digest(hex: sha256_hex_of_text(text: apply_modeled_unit_install_payload(file: file))) {
       Absent => Err { value: "typed unit rendering produced no SHA-256 digest" }
       Present { value: digest } => {
-        let operation = CapacityGenerationOperation { subject: CapacityManagedUnit { manager: install.manager, unit: install.unit },
+        let op = CapacityGenerationOperation { subject: CapacityManagedUnit { manager: install.manager, unit: install.unit },
           destination: install.destination, root: store.root, digest: digest }
         let name = sha256_hex_of_text(text: serialize_json(v: json_array(elements: [
           json_string(s: match install.manager { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) }),
@@ -61,7 +71,7 @@ fn capacity_generation_plan(store: CapacityCaptureStore, install: DeploymentUnit
         let staging = DeploymentUnitInstall { manager: install.manager, unit: install.unit,
           destination: join([capacity_capture_journal_root(store: store) as String, "/generation-", name, ".unit"], "") as NonEmptyStr,
           file: ModeledUnitDocument { file: file } }
-        Ok { value: CapacityPlannedGeneration { store: store, install: install, staging: staging, operation: operation } }
+        Ok { value: CapacityPlannedGeneration { store: store, install: install, staging: staging, operation: op } }
       }
     }
   }
