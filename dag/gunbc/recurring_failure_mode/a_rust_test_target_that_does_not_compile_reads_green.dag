@@ -1,0 +1,109 @@
+module gunbc.recurring_failure_mode.a_rust_test_target_that_does_not_compile_reads_green
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A RUST TEST MODULE CAN SIT IN THE SEED UNBUILDABLE AND NO REQUIRED CHECK CAN SAY SO. Found 2026-10-29
+// by the manager's own directive, while a v1 seed repair (the iterative `Value` release, PR #15360) was
+// being measured: the PR's Rust evidence is tests, and the first thing that ever compiled those tests
+// was a manual `cargo test --no-run` on the shared runner. Filed here at the manager's direction
+// (tidy-ant-251, 2026-10-29) as its own row, kept out of that PR because the invalid state is about the
+// required path and that PR is about the interpreter. CI scope belongs to Manager 2, and the gate step
+// is crisp-bee-97's to build; this row files the class and names the trigger, and builds nothing.
+
+data a_rust_test_target_that_does_not_compile_reads_green: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_rust_test_target_that_does_not_compile_reads_green" as NonEmptyStr,
+
+  // FOUND SILENTLY WRONG, SO NOT ON THE LADDER AT ALL. The state reports nothing: no refusal, no failing
+  // test, no diagnostic on any required surface. A failing test at least speaks; an unbuildable test
+  // target does not exist as far as the required path is concerned, and silent wrongness is below the
+  // ladder rather than a rung on it. The ceiling is MechanicallyPreventable, not aspirational: one
+  // required step that compiles the test target refuses the state at the earliest boundary that cannot
+  // be justified, which is where §6b puts the fix.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability of the required path to compile the seed's Rust test targets, restored by the v2-bootstrap step that runs cargo test --no-run, modeled in gunbc.witness.compiler_gate_workflow and counted once it is measured on the fleet, SUFFICIENT FOR a checkout whose #[cfg(test)] code fails to name-resolve to refuse the merge while remaining INDIFFERENT to whether any test passes -- which is exactly why it narrows `gunbc.rung_drop.v1_required_lanes_withdrawn` rather than retiring it"
+    },
+  },
+
+  receipts: [
+    "**INVALID STATE.** A module under `#[cfg(test)]` in the seed Rust does not compile — its `use` list
+    omits names its own bodies call — and every required check on the pull request is consistent with
+    that. Not a red test: a red test is evidence. This is test source that cannot be built, committed as
+    source, and invisible. The harm is precise: a PR whose stated evidence is 'the tests prove it' can
+    carry tests that were never built by anything the repo requires, so the word 'proven' in a PR body
+    can mean 'written'. The class covers the seed's `src/v1/stage0/src/*.rs` test modules and every
+    `[[test]]`/integration target the workspace declares.",
+
+    "**WHY IT LOOKS SAFE AND ISN'T.** `cargo build` type-checks the library with `#[cfg(test)]` code
+    stripped before name resolution, so unresolved names, wrong arities and nonexistent types inside a
+    test module are never read. The required path is only that compile: the commands the workflows run
+    are enumerated by a grep anyone can re-derive, `grep -rn \"cargo test\" .github/workflows/` returning
+    nothing while the same files contain `cargo build --release -p v1-compiler --bin gunbc` and its
+    `--bin claim_executor` variant. The pre-push hook (`.githooks/pre-push`) is `cargo fmt --all --check`
+    plus a binary and `instrument_targets` discovery check, neither of which builds tests. So there is
+    no path from 'the PR is green' to 'the test target compiles', and every green surface — fmt, the
+    hook, `v2-bootstrap`, heal, the seed census — is fully consistent with the tests being dead source.",
+
+    "**HOW IT WAS FOUND, which is the incident that earns the row: by accident, on the way to measuring
+    something else.** A Rust RED/GREEN re-run for the `Value`-drop repair died at its build step with the
+    `v1-compiler (lib test)` target refusing to compile, while the same source's library compile and the
+    PR's required checks had passed at the previous head. The names all existed in the file: `HamtMap` is
+    a root-module alias and `map_value` and `CanonKey` are root-module items. What differed was the
+    importing module: the test module that used them opens an explicit `use super::{...}` list, while the
+    sibling test that uses the same names successfully lives in a *different* module
+    (`portable_canonical_order_tests`) which opens `use super::*`. Copying a working form across a module
+    boundary is exactly the edit a lib-only compile cannot see, and it survived one review round and one
+    approval before a manual `cargo test --no-run` on the runner read it.",
+
+    "**THE MEASURED SPECIMEN, and the pair that must be re-derived rather than quoted.** Take the commit
+    that carries the broken module (`a853c8e91532` on `repair/value-drop-weak-held-carriers`) on a clean
+    checkout and run, in this order, the two commands whose difference IS the class:
+    A `cargo build --release --locked -p v1-compiler --bin gunbc --bin claim_executor` — verbatim the
+    required-path command from `.github/workflows`, and the one that must come back clean for the row's
+    premise to hold; and
+    B `cargo test --no-run --locked -p v1-compiler --features trmc_runtime` — which no required job runs,
+    and which refuses the same source with `error[E0425]: cannot find function map_value in this scope`,
+    three `error[E0433]: failed to resolve: use of undeclared type` on `HamtMap`/`CanonKey`, and
+    `could not compile v1-compiler (lib test) due to 4 previous errors`. A=0 with B refusing is the
+    invalid state itself, measured on one tree. The commands are the instrument; the scratch log of my
+    own run is not, and no number from it is being asked of any reader. Where the pair has not been run,
+    the row's claim is the command set, which is checkable in `.github/workflows`.",
+
+    "**CEILING AND TRIGGER, per the ruling on this row (clever-crane-830 via sleek-owl-397).** The
+    next-rung trigger is a STEP in `v2-bootstrap`, modeled in `gunbc.witness.compiler_gate_workflow`,
+    that runs `cargo test --no-run`; it counts as a step on the ladder only once it is measured on the
+    fleet, and `crisp-bee-97` owns building it. The blocker class is ClimbableButUnbuilt rather than
+    AwaitsOneGrounding because nothing here waits on an authority or a grounding: the mechanism is a
+    toolchain command that exists today, and what it lacks is a lane that puts it on the required path.
+    **This trigger is declared a NARROWING of `gunbc.rung_drop.v1_required_lanes_withdrawn`, not a
+    retirement of it.** That drop stays standing for what it was dropped for: `--no-run` proves the tests
+    *compile* and proves nothing about whether they *pass*, so the withdrawn lane's verdict semantics are
+    not restored by this step and must not be read as restored. The step narrows the drop by restoring
+    the compile half — 'the test source is buildable' — which is a guarantee the withdrawn lane used to
+    carry implicitly.",
+
+    "**WHAT IS NOT CLAIMED.** (1) Nothing is claimed about whether the tests would pass; B is a
+    compile-only statement, which is precisely why the trigger is a narrowing. (2) Nothing is claimed
+    about the whole workspace's test targets: the measured instance is `v1-compiler`'s lib test target,
+    and a census over every declared test target is a larger claim this row does not make — a census
+    with an entry point is the honest follow-up, and none exists today, which is the same deficit the
+    hand-Rust ledger row records for scale (`gunbc.cli_run_hand_rust_area_ledger`, 'THE LEDGER HAS NO
+    EXECUTABLE MEASUREMENT ROUTE'). (3) The specimen head's own required runs were *superseded* by a later
+    push and this row does not claim they were green with the defect present; what the row claims is
+    modal and stronger than any run — no required check CAN refuse the state, which is a property of the
+    command set, re-derivable by the grep above, not an accident of one head.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn", decl_name: "v1_required_lanes_withdrawn"),
+    decl_ref(module_path: "gunbc.witness.compiler_gate_workflow", decl_name: "compiler_gate_build_step_name"),
+  ],
+}
