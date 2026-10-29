@@ -2248,6 +2248,14 @@ fn shape_git_worktree_add_branch_argv(path: FilePath, branch: NonEmptyStr) -> Li
   ["worktree", "add", path as String, branch as String]
 }
 
+// THE BRANCH-EXISTENCE CHECK for a worktree restore: `git rev-parse --verify --quiet <ref>` exits 0 when
+// the ref resolves and non-zero when it does not (with --quiet, silently), so the caller reads the exit
+// standing rather than the text. This is the durable record the restore reads from (§3b): if the branch is
+// gone there is nothing to re-materialize and the attempt fails closed rather than spawning on an unknown tree.
+fn shape_git_rev_parse_verify_args(reference: GitRef) -> List<String> {
+  ["rev-parse", "--verify", "--quiet", reference as String]
+}
+
 fn shape_git_checkout_orphan_args(branch: NonEmptyStr) -> List<String> {
   ["checkout", "-q", "--orphan", branch as String]
 }

@@ -13,7 +13,7 @@ import gunbc.compute.attempt_lifecycle {
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused, AttemptPayloadCodec,
   UnitLifecycle, UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended,
   attempt_state_wire, attempt_state_decode, attempt_member, attempt_member_epoch, attempt_transition_wire,
-  attempt_open_payload, attempt_terminate_payload, attempt_owner_wire, DispatchOwned,
+  attempt_open_payload, attempt_terminate_payload, attempt_reopen_settled_payload, attempt_owner_wire, DispatchOwned,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable }
 import gunbc.roadmap.roadmap_session_placement {
@@ -162,6 +162,7 @@ fn worktree_claim_codec() -> AttemptPayloadCodec<WorktreeClaim>
   admit_callers: [
     decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_open"),
     decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_close"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_reopen_settled"),
   ]
 {
   AttemptPayloadCodec {
@@ -203,6 +204,21 @@ fn worktree_claim_open(root: NonEmptyStr, claim: WorktreeClaim) -> AttemptTransi
 
 fn worktree_claim_close(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration, detail: String) -> AttemptTransition {
   attempt_terminate_payload(root: root, reference: reference, expected: expected, verdict: AttemptRecovered, detail: detail, codec: worktree_claim_codec())
+}
+
+// A CLAIM REOPENS WHEN THE SAME ATTEMPT IS RESUMED AFTER ITS WORKTREE WAS REAPED BY THE OLD, WRONG
+// SETTLEMENT (which read 'capture committed' as 'the attempt ended'). The caller supplies the same
+// fresh-timed claim it would open -- the fold commits it back to reserved at generation n+1 under a CAS
+// on the observed generation, keeping the whole generation line (§3b), admitting only a terminal claim
+// at that exact generation and refusing a live (reserved/launching) one. It is one transition with the
+// session-placement slot reopen: both call attempt_reopen_settled_payload, differing only by codec (§2).
+fn worktree_claim_reopen_settled(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration, claim: WorktreeClaim) -> AttemptTransition {
+  attempt_reopen_settled_payload(
+    root: root,
+    reference: reference,
+    expected: expected,
+    record: claim,
+    codec: worktree_claim_codec())
 }
 
 fn worktree_claim_new(node_id: String, attempt_key: String, worktree_path: String, opened_at: EpochSecs, launch_deadline: EpochSecs) -> WorktreeClaim {
@@ -341,6 +357,7 @@ fn worktree_claim_classify(
   worker: ClaimWorker,
   content: ClaimContent,
   capture: ClaimCapture,
+  lineage_ended: Bool,
 ) -> UpsertClassification<WorktreeClaimPlan> {
   match reading {
     WorktreeClaimUnreadable { detail } => claim_refuse(verdict: Inaccessible, reason: join(["the claim could not be read (", detail, "); nothing is changed"], ""))
@@ -362,7 +379,7 @@ fn worktree_claim_classify(
           ClaimTreeUnobserved { detail } => claim_refuse(verdict: Inaccessible, reason: join(["the worktree could not be observed (", detail, "); nothing is changed"], ""))
         }
       } else {
-        worktree_claim_classify_open(path: derived_path, tree: tree, worker: worker, content: content, capture: capture)
+        worktree_claim_classify_open(path: derived_path, tree: tree, worker: worker, content: content, capture: capture, lineage_ended: lineage_ended)
       }
   }
 }
@@ -373,6 +390,7 @@ fn worktree_claim_classify_open(
   worker: ClaimWorker,
   content: ClaimContent,
   capture: ClaimCapture,
+  lineage_ended: Bool,
 ) -> UpsertClassification<WorktreeClaimPlan> {
   match tree {
     ClaimTreeUnobserved { detail } => claim_refuse(verdict: Inaccessible, reason: join(["the worktree could not be observed (", detail, "); nothing is changed"], ""))
@@ -382,7 +400,12 @@ fn worktree_claim_classify_open(
         ClaimWorkerInFlight => claim_noop()
         ClaimWorkerUnknown { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["the worker's standing is unknown (", detail, "); the record stays open"], ""))
         ClaimWorkerNeverStarted => claim_apply(plan: ClaimCloseRecord { reason: "the worktree was never created and the attempt never started" })
-        ClaimWorkerEnded => claim_apply(plan: ClaimCloseRecord { reason: "the worktree is already gone and the attempt ended" })
+        ClaimWorkerEnded =>
+          if lineage_ended {
+            claim_apply(plan: ClaimCloseRecord { reason: "the worktree is already gone and the attempt ended" })
+          } else {
+            claim_noop()
+          }
       }
     ClaimTreePresent =>
       match worker {
@@ -390,7 +413,12 @@ fn worktree_claim_classify_open(
         ClaimWorkerInFlight => claim_noop()
         ClaimWorkerUnknown { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["the worker's standing is unknown (", detail, "); the worktree is kept"], ""))
         ClaimWorkerNeverStarted => worktree_claim_classify_captured(path: path, content: content, capture: capture, reason: "the worktree was created and the attempt never started")
-        ClaimWorkerEnded => worktree_claim_classify_captured(path: path, content: content, capture: capture, reason: "the attempt ended and its capture is committed")
+        ClaimWorkerEnded =>
+          if lineage_ended {
+            worktree_claim_classify_captured(path: path, content: content, capture: capture, reason: "the attempt ended and its capture is committed")
+          } else {
+            claim_noop()
+          }
       }
   }
 }
@@ -444,6 +472,7 @@ fn worktree_claim_ensure_one(
   content_of: fn(String) -> ClaimContent,
   remove_tree: fn(String) -> ClaimRemoval,
   capture_of: fn(String, String) -> ClaimCapture,
+  ended_of: fn(String, String) -> Bool,
 ) -> WorktreeClaimOutcome {
   let reference = worktree_claim_reference(node_id: node_id, attempt_key: attempt_key)
   let reading = worktree_claim_read(root: root, reference: reference as NonEmptyStr)
@@ -453,7 +482,8 @@ fn worktree_claim_ensure_one(
     tree: tree_of(derived_path),
     worker: worktree_claim_worker_standing(observation: observation, loaded: loaded, lifecycle: lifecycle, now: now, deadline: deadline),
     content: content_of(derived_path),
-    capture: capture_of(node_id, attempt_key))
+    capture: capture_of(node_id, attempt_key),
+    lineage_ended: ended_of(node_id, attempt_key))
   match classified.decision {
     Noop => WorktreeClaimNoop { subject: reference, why: "converged, in flight, live, or waiting on the capture commit" }
     Refuse { reason } => WorktreeClaimKept { subject: reference, reason: reason as String }
@@ -505,6 +535,7 @@ fn worktree_claim_ensure_pass_at(
   content_of: fn(String) -> ClaimContent,
   remove_tree: fn(String) -> ClaimRemoval,
   capture_of: fn(String, String) -> ClaimCapture,
+  ended_of: fn(String, String) -> Bool,
 ) -> WorktreeClaimPass {
   match cas_slot_keys(root: claims_root) {
     CasSlotKeysListed { keys } =>
@@ -520,7 +551,7 @@ fn worktree_claim_ensure_pass_at(
                     derived_path: path_of(c.node_id, c.attempt_key),
                     observation: session_placement_observe_at(stores: stores, host: host, node_id: c.node_id, attempt_key: c.attempt_key),
                     loaded: loaded_of(unit), lifecycle: lifecycle_of(unit), now: now,
-                    tree_of: tree_of, content_of: content_of, remove_tree: remove_tree, capture_of: capture_of)
+                    tree_of: tree_of, content_of: content_of, remove_tree: remove_tree, capture_of: capture_of, ended_of: ended_of)
               }
             WorktreeClaimAbsent => WorktreeClaimNoop { subject: k as String, why: "no claim is held" }
             WorktreeClaimUnreadable { detail } => WorktreeClaimKept { subject: k as String, reason: detail }

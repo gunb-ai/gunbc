@@ -2,12 +2,14 @@ module test.claim.roadmap.attempt_worktree_claim_wet_witness
 
 import extdeps.shell
 import std.types { Bool, String, List, NonEmptyStr, EpochSecs }
-import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedCauseUnknown }
+import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedCauseUnknown, AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused }
+import std.durable_compare_and_set { CasGeneration }
 import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimOutcome, WorktreeClaimNoop, WorktreeClaimRemoved, WorktreeClaimClosed, WorktreeClaimKept, WorktreeClaimRed,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_new, worktree_claim_open,
   worktree_claim_record_before_add, WorktreeClaimRecorded, WorktreeClaimNotRecorded,
+  worktree_claim_read, WorktreeClaimHeld, WorktreeClaimAbsent, WorktreeClaimUnreadable, worktree_claim_reference, worktree_claim_close, worktree_claim_reopen_settled,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits,
   ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
 }
@@ -38,7 +40,7 @@ fn open_claim(cd: String, td: String, n: String, k: String, opened: EpochSecs) -
 }
 
 fn pass(
-  dir: String, cd: String, td: String, others: AttemptUnitObservation, content: ClaimContent, capture: ClaimCapture, now: EpochSecs,
+  dir: String, cd: String, td: String, others: AttemptUnitObservation, content: ClaimContent, capture: ClaimCapture, now: EpochSecs, ended: Bool,
 ) -> List<WorktreeClaimOutcome> {
   match worktree_claim_ensure_pass_at(
     stores: stores_at(dir: dir), claims_root: cd as NonEmptyStr, host: host,
@@ -47,7 +49,8 @@ fn pass(
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
     content_of: p => content,
     remove_tree: p => if shell.Remove.RecursiveForce(path: p).success { ClaimRemoved } else { ClaimRemoveDeclined { detail: "rm failed" } },
-    capture_of: (n, k) => capture) {
+    capture_of: (n, k) => capture,
+    ended_of: (n, _k) => ended) {
     WorktreeClaimPassRan { outcomes } => outcomes
     WorktreeClaimPassRefused { detail: _ } => []
   }
@@ -69,7 +72,7 @@ test fn a_kill_before_the_claim_leaves_nothing_to_release() -> Bool {
   let dir = fresh_dir(tag: "w1")
   let cd = fresh_dir(tag: "w1c")
   let td = fresh_dir(tag: "w1t")
-  let os = pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 5000)
+  let os = pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 5000, ended: true)
   cleaned(dirs: [dir, cd, td], verdict: os.length() == 0)
 }
 
@@ -80,9 +83,9 @@ test fn a_kill_between_claim_and_add_closes_the_record_only_past_the_deadline() 
   let cd = fresh_dir(tag: "w2c")
   let td = fresh_dir(tag: "w2t")
   let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
-  let early = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1299), check: is_noop)
-  let late = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301), check: is_closed)
-  let rerun = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302), check: is_noop)
+  let early = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1299, ended: true), check: is_noop)
+  let late = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: true), check: is_closed)
+  let rerun = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302, ended: true), check: is_noop)
   cleaned(dirs: [dir, cd, td], verdict: opened && early && late && rerun && !tree_there(td: td, n: node_a, k: key_a))
 }
 
@@ -94,9 +97,9 @@ test fn a_kill_between_add_and_unit_start_removes_the_recorded_clean_tree_once()
   let td = fresh_dir(tag: "w3t")
   let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
   let planted = plant(td: td, n: node_a, k: key_a)
-  let first = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301), check: is_removed)
+  let first = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: true), check: is_removed)
   let gone = !tree_there(td: td, n: node_a, k: key_a)
-  let rerun = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302), check: is_noop)
+  let rerun = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302, ended: true), check: is_noop)
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && first && gone && rerun)
 }
 
@@ -107,7 +110,7 @@ test fn a_live_worker_keeps_its_tree() -> Bool {
   let td = fresh_dir(tag: "w4t")
   let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
   let planted = plant(td: td, n: node_a, k: key_a)
-  let one = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitActive, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 99999), check: is_noop)
+  let one = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitActive, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 99999, ended: true), check: is_noop)
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && one && tree_there(td: td, n: node_a, k: key_a))
 }
 
@@ -118,8 +121,8 @@ test fn a_dirty_or_unpushed_tree_is_kept() -> Bool {
   let td = fresh_dir(tag: "w5t")
   let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
   let planted = plant(td: td, n: node_a, k: key_a)
-  let dirty = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentDirty { detail: "M f" }, capture: ClaimCaptureSettled, now: 1301), check: is_kept)
-  let unpushed = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentUnpushedCommits { detail: "ahead" }, capture: ClaimCaptureSettled, now: 1301), check: is_kept)
+  let dirty = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentDirty { detail: "M f" }, capture: ClaimCaptureSettled, now: 1301, ended: true), check: is_kept)
+  let unpushed = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentUnpushedCommits { detail: "ahead" }, capture: ClaimCaptureSettled, now: 1301, ended: true), check: is_kept)
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && dirty && unpushed && tree_there(td: td, n: node_a, k: key_a))
 }
 
@@ -130,9 +133,9 @@ test fn release_waits_for_the_capture_commit() -> Bool {
   let td = fresh_dir(tag: "w6t")
   let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
   let planted = plant(td: td, n: node_a, k: key_a)
-  let owed = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureOwed { detail: "uncommitted" }, now: 1301), check: is_noop)
+  let owed = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureOwed { detail: "uncommitted" }, now: 1301, ended: true), check: is_noop)
   let kept = tree_there(td: td, n: node_a, k: key_a)
-  let settled = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302), check: is_removed)
+  let settled = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302, ended: true), check: is_removed)
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && owed && kept && settled && !tree_there(td: td, n: node_a, k: key_a))
 }
 
@@ -142,7 +145,7 @@ test fn a_tree_no_claim_names_is_never_touched() -> Bool {
   let cd = fresh_dir(tag: "w7c")
   let td = fresh_dir(tag: "w7t")
   let planted = plant(td: td, n: node_a, k: key_a)
-  let os = pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 99999)
+  let os = pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 99999, ended: true)
   cleaned(dirs: [dir, cd, td], verdict: planted && os.length() == 0 && tree_there(td: td, n: node_a, k: key_a))
 }
 
@@ -154,7 +157,7 @@ test fn another_attempts_tree_is_never_removed() -> Bool {
   let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
   let pa = plant(td: td, n: node_a, k: key_a)
   let pb = plant(td: td, n: node_b, k: key_b)
-  let first = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301), check: is_removed)
+  let first = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: true), check: is_removed)
   cleaned(dirs: [dir, cd, td], verdict: opened && pa && pb && first && !tree_there(td: td, n: node_a, k: key_a) && tree_there(td: td, n: node_b, k: key_b))
 }
 
@@ -181,9 +184,94 @@ test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
     content_of: p => ClaimContentPushed,
     remove_tree: p => ClaimRemoveUnexecuted { detail: "git is not resolvable on this host" },
-    capture_of: (n, k) => ClaimCaptureSettled) {
+    capture_of: (n, k) => ClaimCaptureSettled,
+    ended_of: (n, _k) => true) {
     WorktreeClaimPassRan { outcomes } => outcomes
     WorktreeClaimPassRefused { detail: _ } => []
   }
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && only(os: outcomes, check: is_red) && tree_there(td: td, n: node_a, k: key_a))
+}
+
+// THE LIVE LINEAGE IS NOT ENDED (the wedge fix): a request-pending worker legitimately EXITED (unit gone past
+// its deadline => ClaimWorkerEnded) with its capture settled, but its lineage is resumable -- so the settlement
+// reads the ONE 'ended' derivation (the continuation's, injected as ended_of) and keeps the claim + tree. This
+// is the discriminating case: the SAME state with ended_of true (the old unit-standing shortcut) releases it.
+test fn a_request_pending_worker_keeps_its_claim_until_the_lineage_ends() -> Bool {
+  // pending (ended_of false): worker exited, capture settled, clean+pushed tree -- the tree must SURVIVE.
+  let dir = fresh_dir(tag: "w11")
+  let cd = fresh_dir(tag: "w11c")
+  let td = fresh_dir(tag: "w11t")
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let planted = plant(td: td, n: node_a, k: key_a)
+  let pending = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: false), check: is_noop)
+  let kept = tree_there(td: td, n: node_a, k: key_a)
+  // positive control: identical state, but the lineage HAS ended -- exactly the tree is released.
+  let dir2 = fresh_dir(tag: "w11d")
+  let cd2 = fresh_dir(tag: "w11c2")
+  let td2 = fresh_dir(tag: "w11t2")
+  let opened2 = open_claim(cd: cd2, td: td2, n: node_a, k: key_a, opened: 1000)
+  let planted2 = plant(td: td2, n: node_a, k: key_a)
+  let ended_release = only(os: pass(dir: dir2, cd: cd2, td: td2, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: true), check: is_removed)
+  let gone2 = !tree_there(td: td2, n: node_a, k: key_a)
+  cleaned(dirs: [dir, cd, td, dir2, cd2, td2], verdict: opened && planted && pending && kept && opened2 && planted2 && ended_release && gone2)
+}
+
+// A reaped-worktree pending lineage (tree already gone, from the OLD wrong settlement) whose lineage is still
+// resumable must keep the CLAIM RECORD OPEN (noop), not close it -- so the spawn-route restore can re-materialize
+// the tree. Same state with the lineage ended closes the record (control).
+test fn a_tree_already_gone_and_a_pending_worker_keeps_the_record_open() -> Bool {
+  // tree NOT planted => ClaimTreeAbsent; worker ended past deadline; capture settled.
+  let dir = fresh_dir(tag: "w12")
+  let cd = fresh_dir(tag: "w12c")
+  let td = fresh_dir(tag: "w12t")
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let pending = only(os: pass(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: false), check: is_noop)
+  // control: the same tree-absent, worker-ended, capture-settled state, lineage ended -- the record closes.
+  let dir2 = fresh_dir(tag: "w12d")
+  let cd2 = fresh_dir(tag: "w12c2")
+  let td2 = fresh_dir(tag: "w12t2")
+  let opened2 = open_claim(cd: cd2, td: td2, n: node_a, k: key_a, opened: 1000)
+  let ended_close = only(os: pass(dir: dir2, cd: cd2, td: td2, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended: true), check: is_closed)
+  cleaned(dirs: [dir, cd, td, dir2, cd2, td2], verdict: opened && pending && opened2 && ended_close)
+}
+
+// THE REOPEN (the restore's durable half): a reclaimed claim (terminal:recovered, generation line kept) is
+// reopened on the SAME CAS slot at the next generation under a compare-and-set, mirroring the placement slot
+// reopen -- the generation history is never deleted (§3b). A second reopen on the now-open claim must not clobber it.
+test fn a_reclaimed_claim_reopens_on_the_same_slot_at_the_next_generation() -> Bool {
+  let cd = fresh_dir(tag: "w13c")
+  let td = fresh_dir(tag: "w13t")
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let reference = worktree_claim_reference(node_id: node_a, attempt_key: key_a)
+  let root = cd as NonEmptyStr
+  let closed_ok = match worktree_claim_read(root: root, reference: reference as NonEmptyStr) {
+    WorktreeClaimHeld { claim: _, generation: g } =>
+      match worktree_claim_close(root: root, reference: reference as NonEmptyStr, expected: g, detail: "the attempt ended and its capture is committed") {
+        AttemptAdvanced { state: _, generation: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+  let reopened_ok = match worktree_claim_read(root: root, reference: reference as NonEmptyStr) {
+    WorktreeClaimHeld { claim: _, generation: g } =>
+      match worktree_claim_reopen_settled(
+        root: root, reference: reference as NonEmptyStr, expected: g,
+        claim: worktree_claim_new(node_id: node_a, attempt_key: key_a, worktree_path: tree_path(td: td, n: node_a, k: key_a), opened_at: 5000, launch_deadline: 5300)) {
+        AttemptAdvanced { state: _, generation: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+  let refused = match worktree_claim_read(root: root, reference: reference as NonEmptyStr) {
+    WorktreeClaimHeld { claim: _, generation: g } =>
+      match worktree_claim_reopen_settled(
+        root: root, reference: reference as NonEmptyStr, expected: g,
+        claim: worktree_claim_new(node_id: node_a, attempt_key: key_a, worktree_path: tree_path(td: td, n: node_a, k: key_a), opened_at: 6000, launch_deadline: 6300)) {
+        AttemptTransitionRefused { detail: _ } => true
+        AttemptLostRace { expected: _, observed: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+  cleaned(dirs: [cd, td], verdict: opened && closed_ok && reopened_ok && refused)
 }
