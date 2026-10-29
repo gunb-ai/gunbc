@@ -485,7 +485,7 @@ fn belt_instance_obligation_cli(kind: String) -> ProcessExit {
 // in that entry's comment above): the root-resolved instance must equal the wake-named
 // one. Kept separate and Bool so the guard is witnessed hermetically apart from the env
 // reads and dispatch the entry wraps around it.
-fn belt_redeliver_instance_matches(resolved: Text, expected: Text) -> Bool {
+fn belt_redeliver_instance_matches(resolved: String, expected: String) -> Bool {
   resolved == expected
 }
 
@@ -503,7 +503,7 @@ fn belt_redeliver_attempt_cli() -> ProcessExit {
               exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_REDELIVER_INSTANCE_ID is empty — the wake must name the instance the attempt belongs to (fail-closed)")
             } else {
               belt_instance_from_env(entry: "belt_redeliver_attempt_cli", continuation: instance =>
-                if !belt_redeliver_instance_matches(resolved: instance.instance_id, expected: expected_instance) {
+                if !belt_redeliver_instance_matches(resolved: instance.instance_id as String, expected: expected_instance) {
                   exit_failure(reason: join(["belt_redeliver_attempt_cli: GUNBC_BELT_SPAWN_WORKDIR resolves instance ", instance.instance_id as String, " but the wake names ", expected_instance, " — refusing; a wake firing for the wrong instance is worse than a wedge"], ""))
                 } else {
                   let r = belt_dispatch_node_for_instance(instance: instance, node_id: node_id)
