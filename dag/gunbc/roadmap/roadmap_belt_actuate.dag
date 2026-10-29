@@ -2857,31 +2857,27 @@ fn belt_actuate_spawn_exec_modeled(
       match instance.toolchain.systemd_run {
         Absent => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["the request-pending attempt ", attempt_key, " is held until a re-delivery wake at ", to_string(value: at), " but this host carries no systemd-run to arm it; the belt cannot wake it -- provision systemd-run"], ""), provider: provider_wire_label, launch: launch }
         Present { value: systemd_run } => {
-          // The ROUTE the wake fires is built here, from the instance and the dispatch facts this module
-          // owns (belt_dispatch_env_var / belt_dispatch_instance_env_var / belt_dispatch_cli_entry /
-          // belt_dispatch_node_cli_function) -- the same serve-binary/run/--source-root/--entry/--function
-          // shape belt_obligation_unit_command uses. The wake module receives it and holds no route literal
-          // (§3: one copy of each fact).
+          // The ROUTE the wake fires is built here, from the instance and the re-delivery route facts this
+          // module owns (belt_spawn_workdir_env_var / belt_dispatch_env_var / belt_redeliver_instance_env_var /
+          // belt_redeliver_cli_entry / belt_redeliver_cli_function) -- the same serve-binary/run/--source-root/
+          // --entry/--function shape belt_obligation_unit_command uses. The entry resolves the instance BY
+          // REPO ROOT (belt_instance_from_env), so the wake carries SPAWN_WORKDIR (the attempt's own repo
+          // root), the NODE id, and the EXPECTED instance id as a cross-check -- NOT GUNBC_BELT_INSTANCE_ID,
+          // whose narrow admitted list refuses srv1-lab-codex-feedback-v0. The wake module holds no route literal.
           let repo = instance.repo_root as String
           let dispatch_env = [
+            SystemdSetenvBinding { name: belt_spawn_workdir_env_var, value: repo as NonEmptyStr },
             SystemdSetenvBinding { name: belt_dispatch_env_var, value: node.node as NonEmptyStr },
-            SystemdSetenvBinding { name: belt_dispatch_instance_env_var, value: instance.instance_id as NonEmptyStr },
+            SystemdSetenvBinding { name: belt_redeliver_instance_env_var, value: instance.instance_id as NonEmptyStr },
           ]
-          let dispatch_argv = [
-            instance.serve_binary as String,
-            "run",
-            "--source-root", join([repo, "/dag"], ""),
-            "--source-root", join([repo, "/src/v2"], ""),
-            "--entry", join([repo, "/", belt_dispatch_cli_entry], ""),
-            "--function", belt_dispatch_node_cli_function as String,
-          ]
+          let dispatch_argv = belt_function_run_argv(program: instance.serve_binary as String, repo_root: repo, entry: belt_redeliver_cli_entry, function: belt_redeliver_cli_function as String, args: [])
           match attempt_redelivery_wake_command(node_id: node.node as String, attempt_key: attempt_key, next_delivery: at, setenv_bindings: dispatch_env, command_argv: dispatch_argv) {
           SystemdRunCommandRefused { cause } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["the request-pending attempt ", attempt_key, " could not arm its re-delivery wake: ", systemd_run_option_words_refused_cause_detail(cause: cause)], ""), provider: provider_wire_label, launch: launch }
           SystemdRunCommandReady { command } => {
             let wake_stem = attempt_redelivery_wake_unit_stem(node_id: node.node as String, attempt_key: attempt_key, instant: at)
             let wake_unit = attempt_redelivery_wake_unit_name(node_id: node.node as String, attempt_key: attempt_key, instant: at)
             match belt_redelivery_wake_arm(exec: belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: workdir), unit_stem: wake_stem) {
-              WakeArmed => SpawnFailed { node_id: node.node as String, step: "continuation-hold-until", detail: join(["the prior attempt ", attempt_key, " is request-pending and its re-delivery is not due yet; its wake ", wake_unit as String, " is armed at ", to_string(value: at), " to re-deliver the same key by belt_dispatch_node_cli; no resume is spent now"], ""), provider: provider_wire_label, launch: launch }
+              WakeArmed => SpawnFailed { node_id: node.node as String, step: "continuation-hold-until", detail: join(["the prior attempt ", attempt_key, " is request-pending and its re-delivery is not due yet; its wake ", wake_unit as String, " is armed at ", to_string(value: at), " to re-deliver the same key by belt_redeliver_attempt_cli (resolving the instance by repo root); no resume is spent now"], ""), provider: provider_wire_label, launch: launch }
               WakeAlreadyArmed => SpawnFailed { node_id: node.node as String, step: "continuation-hold-until", detail: join(["the prior attempt ", attempt_key, " is request-pending and its re-delivery at ", to_string(value: at), " was already armed as ", wake_unit as String, "; the wake is not double-armed and no resume is spent now"], ""), provider: provider_wire_label, launch: launch }
               WakeArmFailed { program, exit_code, stderr } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["arming the re-delivery wake for ", attempt_key, " failed on host exec of ", program, " with exit ", to_string(value: exit_code), "; stderr: ", stderr, "; the attempt stays held and is retried on the next belt pass"], ""), provider: provider_wire_label, launch: launch }
               WakeArmRefused { program, reason } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["arming the re-delivery wake for ", attempt_key, " was refused on host exec of ", program, ": ", reason, "; the attempt stays held and is retried on the next belt pass"], ""), provider: provider_wire_label, launch: launch }
@@ -11706,14 +11702,28 @@ fn belt_dispatch_instance_selected(raw: String?) -> HostDashboardInstance? {
 
 data belt_dispatch_instance_env_var: NonEmptyStr = "GUNBC_BELT_INSTANCE_ID" as NonEmptyStr
 
-// HOW THE DISPATCH ROUTE IS FIRED FROM A TRANSIENT UNIT. The wake (roadmap_attempt_redelivery_wake) owns
-// only the timer (unit name + calendar from the instant); the ROUTE facts -- the module the CLI entry
-// resolves, the function name, and the two env names the CLI reads -- live here, next to the CLI that
-// reads them, so there is exactly one copy of each (§3). The wake command is assembled by the fold from
-// these, in the same serve-binary/run/--source-root/--entry/--function shape belt_obligation_unit_command
-// uses to fire any belt function from a transient unit.
-data belt_dispatch_cli_entry: String = "dag/gunbc/roadmap/roadmap_belt_actuate.dag"
-data belt_dispatch_node_cli_function: NonEmptyStr = "belt_dispatch_node_cli" as NonEmptyStr
+// HOW THE RE-DELIVERY ROUTE IS FIRED FROM A TRANSIENT UNIT. The wake (roadmap_attempt_redelivery_wake)
+// owns only the timer (unit name + calendar from the instant); the ROUTE facts -- the module the CLI
+// entry lives in, the function name, and the env names the entry reads -- live here, next to the fold
+// that fires them, so there is exactly one copy of each (§3). The wake command is assembled by the fold
+// in the same serve-binary/run/--source-root/--entry/--function shape belt_obligation_unit_command uses
+// to fire any belt function from a transient unit.
+//
+// THE ENTRY IS belt_redeliver_attempt_cli, NOT belt_dispatch_node_cli. On the srv1 lab the attempt's
+// instance is srv1-lab-codex-feedback-v0, which belt_dispatch_instance_named REFUSES (its admitted list
+// is deliberately narrow -- srv2-deploy/srv1-live -- and is not ours to widen). belt_redeliver_attempt_cli
+// resolves the instance the way the belt's OWN lab units already do -- by repo root, via the existing
+// belt_instance_from_env -- so it is proven to work on the lab without widening that fail-closed list. It
+// reads the node from GUNBC_BELT_NODE_ID and the expected instance from GUNBC_BELT_REDELIVER_INSTANCE_ID.
+data belt_redeliver_cli_entry: String = "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag"
+data belt_redeliver_cli_function: NonEmptyStr = "belt_redeliver_attempt_cli" as NonEmptyStr
+
+// THE CROSS-CHECK, NOT THE RESOLUTION. The instance is RESOLVED by repo root (belt_instance_from_env);
+// this carries the instance the ATTEMPT belongs to so the entry can refuse when the repo root resolves a
+// DIFFERENT one -- a wake firing for the wrong instance is worse than a wedge (roadmap_belt_tick_cli
+// belt_redeliver_attempt_cli). Distinct from belt_dispatch_instance_env_var, which is belt_dispatch_node_cli's
+// resolution input and is NOT set on the wake.
+data belt_redeliver_instance_env_var: NonEmptyStr = "GUNBC_BELT_REDELIVER_INSTANCE_ID" as NonEmptyStr
 
 // The instance comes from the one roster (gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_for_id),
 // so no constructor is named here. Admission for belt dispatch is a narrower set than the roster
@@ -15337,14 +15347,30 @@ fn belt_obligation_unit_command(
       Absent => [] as List<SystemdRunProperty>
     }),
     setenv_bindings: [SystemdSetenvBinding { name: belt_spawn_workdir_env_var, value: repo as NonEmptyStr }],
-    command_argv: concat([
-      instance.serve_binary as String,
+    command_argv: belt_function_run_argv(program: instance.serve_binary as String, repo_root: repo, entry: belt_obligation_entry, function: function, args: args),
+  )
+}
+
+// THE ONE argv BUILDER FOR FIRING A BELT FUNCTION FROM A TRANSIENT UNIT: `<program> run
+// --source-root <repo>/dag --source-root <repo>/src/v2 --entry <repo>/<entry> --function <fn> [--arg a]*`.
+// Extracted (§2 net concepts, §6b root generalization) so belt_obligation_unit_command and the wake's
+// SpawnRouteWake fold arm share ONE spelling instead of each hand-building it. `program` is passed
+// resolved so each caller supplies the instance's own serve binary; the pre-existing harness/auditor/
+// replay run-argv builders in roadmap_dispatch_actuator share this shape via its
+// dispatch_worker_source_root_words and are a named follow-up to route through here once it is placed
+// below both modules; roadmap_dashboard_instance's serve argv is a genuine divergence (the `serve`
+// verb with --host/--port and relative source-roots), so it correctly does not share this.
+fn belt_function_run_argv(program: String, repo_root: String, entry: String, function: String, args: List<String>) -> List<String> {
+  concat(
+    [
+      program,
       "run",
-      "--source-root", join([repo, "/dag"], ""),
-      "--source-root", join([repo, "/src/v2"], ""),
-      "--entry", join([repo, "/", belt_obligation_entry], ""),
+      "--source-root", join([repo_root, "/dag"], ""),
+      "--source-root", join([repo_root, "/src/v2"], ""),
+      "--entry", join([repo_root, "/", entry], ""),
       "--function", function,
-    ], args |> flat_map(a => ["--arg", a])),
+    ],
+    args |> flat_map(a => ["--arg", a]),
   )
 }
 

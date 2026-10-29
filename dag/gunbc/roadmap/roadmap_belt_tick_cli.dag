@@ -34,6 +34,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceRootUnknown,
   dashboard_instance_for_repo_root,
 }
+import gunbc.roadmap.roadmap_belt_actuate { belt_dispatch_node_for_instance, belt_dispatch_result_ok, belt_spawn_outcome_json, belt_dispatch_env_var, belt_redeliver_instance_env_var }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltPassRecorded, BeltPassDeferred, BeltPassRefused, BeltPassFailed,
   belt_run_once_in,
@@ -466,6 +467,44 @@ fn belt_instance_obligation_cli(kind: String) -> ProcessExit {
     Absent => exit_failure(reason: join(["belt_instance_obligation_cli: no instance obligation is named ", kind], ""))
     Present { value: k } =>
       belt_instance_from_env(entry: "belt_instance_obligation_cli", continuation: instance => belt_instance_obligation_run(instance: instance, kind: k))
+  }
+}
+
+// THE WAKE'S RE-DISPATCH ENTRY (armed by the belt's SpawnRouteWake fold, roadmap_attempt_redelivery_wake).
+// A transient re-delivery timer fires THIS with GUNBC_BELT_SPAWN_WORKDIR (the attempt's own repo root),
+// GUNBC_BELT_NODE_ID and GUNBC_BELT_REDELIVER_INSTANCE_ID (the instance the attempt belongs to). It
+// resolves the instance BY REPO ROOT with the belt's OWN existing resolver, belt_instance_from_env -- the
+// same one belt_run_once_cli / the obligation and discovery units use, and the only one that resolves
+// srv1-lab-codex-feedback-v0, which belt_dispatch_node_cli's narrow fail-closed admitted list REFUSES --
+// then hands the node to the SAME belt_dispatch_node_for_instance the door ends in. It is a composition of
+// those two existing functions with no copied dispatch logic. It REFUSES loudly, before any dispatch, when
+// the repo root resolves no instance (belt_instance_from_env's own refusal) OR a DIFFERENT one than the
+// wake named: the node is looked up over the GLOBAL plan (belt_find_node_in), so the instance identity is
+// the only thing that stops a wake firing on the wrong instance -- and that is worse than a wedge.
+fn belt_redeliver_attempt_cli() -> ProcessExit {
+  match shell.Env.Get(name: belt_dispatch_env_var).value {
+    Absent => exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_NODE_ID not set — a re-delivery wake must name the node it re-delivers (fail-closed)")
+    Present { value: node_id } =>
+      if string_length(s: node_id) == 0 {
+        exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_NODE_ID is empty — a re-delivery wake must name the node it re-delivers (fail-closed)")
+      } else {
+        match shell.Env.Get(name: belt_redeliver_instance_env_var).value {
+          Absent => exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_REDELIVER_INSTANCE_ID not set — the wake must name the instance the attempt belongs to, so a wrong spawn root cannot dispatch elsewhere (fail-closed)")
+          Present { value: expected_instance } =>
+            if string_length(s: expected_instance) == 0 {
+              exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_REDELIVER_INSTANCE_ID is empty — the wake must name the instance the attempt belongs to (fail-closed)")
+            } else {
+              belt_instance_from_env(entry: "belt_redeliver_attempt_cli", continuation: instance =>
+                if instance.instance_id as String != expected_instance {
+                  exit_failure(reason: join(["belt_redeliver_attempt_cli: GUNBC_BELT_SPAWN_WORKDIR resolves instance ", instance.instance_id as String, " but the wake names ", expected_instance, " — refusing; a wake firing for the wrong instance is worse than a wedge"], ""))
+                } else {
+                  let r = belt_dispatch_node_for_instance(instance: instance, node_id: node_id)
+                  if belt_dispatch_result_ok(r: r) { ExitSuccess } else { exit_failure(reason: serialize_json(v: belt_spawn_outcome_json(o: r))) }
+                }
+              )
+            }
+        }
+      }
   }
 }
 

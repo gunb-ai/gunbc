@@ -5,7 +5,9 @@ module test.claim.roadmap.roadmap_attempt_redelivery_wake
 // owed; the recorded CaptureAbsent lets the continuation reach its request-pending branch and Hold UNTIL
 // a TYPED instant (ContinuationHoldUntil.redeliver_at, the transport_retry_next_delivery_at value); the
 // belt maps that decision to a SpawnRouteWake and the armed command is a user-manager --on-calendar timer
-// named for the same attempt key, execing the instance's own belt_dispatch_node_cli route. A plain
+// named for the same attempt key, execing the instance's own belt_redeliver_attempt_cli route (which
+// resolves the instance by repo root, so it works on srv1-lab where belt_dispatch_node_cli's admitted list
+// refuses). A plain
 // (untimed) Hold, a due-now Resume, and a non-pending recovery map to NO wake -- so only the not-due
 // request-pending hold wakes. The authorization pattern is DERIVED from the selector, not borrowed.
 
@@ -26,6 +28,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   continuation_decision,
 }
 import gunbc.roadmap.roadmap_belt_actuate { SpawnRouteWake, SpawnRouteNone, SpawnRouteResume, SpawnRouteWorker, belt_spawn_route_for_decision, ExecOk, ExecFailed, ExecRefused, WakeArmed, WakeAlreadyArmed, WakeArmFailed, WakeArmRefused, belt_redelivery_wake_arm }
+import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_repo_root, DashboardInstanceRootUnknown, DashboardInstanceResolved }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryRequestPending }
 import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureAbsent }
 import gunbc.roadmap.roadmap_provider_events { ProviderRequestPending }
@@ -87,7 +90,7 @@ test fn a_wake_effect_needs_no_human_witness() -> Bool {
 // THE UPGRADE PATH, END TO END (eager-lynx req: no fresh dispatch). The already-wedged round-7 attempt:
 // capture owed; with CaptureAbsent recorded the continuation HOLDS UNTIL a typed future instant; that
 // decision maps to a SpawnRouteWake for the same attempt key at that instant; the armed command carries
-// --user / --on-calendar / the attempt-key unit / belt_dispatch_node_cli.
+// --user / --on-calendar / the attempt-key unit / belt_redeliver_attempt_cli (repo-root resolution).
 test fn the_wedged_pending_attempt_holds_until_an_instant_and_arms_a_wake() -> Bool {
   let capture_owed = belt_capture_recording_owed(provider: ProviderRequestPending { activity: "request-pending", detail: "{}" })
   let decision = continuation_decision(prior: Present { value: wedged_pri(capture: CaptureAbsent, last_delivery: wake_now, worker_terminal: true, now: Present { value: wake_now }) })
@@ -95,16 +98,17 @@ test fn the_wedged_pending_attempt_holds_until_an_instant_and_arms_a_wake() -> B
   let route = belt_spawn_route_for_decision(decision: decision)
   let route_is_wake = match route { SpawnRouteWake { attempt_key, at } => attempt_key == wake_key && at > wake_now, _ => false }
   let dispatch_env = [
+    SystemdSetenvBinding { name: "GUNBC_BELT_SPAWN_WORKDIR" as NonEmptyStr, value: "/opt/gunbc-lab/codex-provider-feedback-v0/source" as NonEmptyStr },
     SystemdSetenvBinding { name: "GUNBC_BELT_NODE_ID" as NonEmptyStr, value: wake_node as NonEmptyStr },
-    SystemdSetenvBinding { name: "GUNBC_BELT_INSTANCE_ID" as NonEmptyStr, value: "srv1-live" as NonEmptyStr },
+    SystemdSetenvBinding { name: "GUNBC_BELT_REDELIVER_INSTANCE_ID" as NonEmptyStr, value: "srv1-lab-codex-feedback-v0" as NonEmptyStr },
   ]
   let dispatch_argv = [
     "gunbc",
     "run",
     "--source-root", "/repo/dag",
     "--source-root", "/repo/src/v2",
-    "--entry", "dag/gunbc/roadmap/roadmap_belt_actuate.dag",
-    "--function", "belt_dispatch_node_cli",
+    "--entry", "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag",
+    "--function", "belt_redeliver_attempt_cli",
   ]
   let armed = match route {
     SpawnRouteWake { attempt_key, at } => match attempt_redelivery_wake_command(node_id: wake_node, attempt_key: attempt_key, next_delivery: at, setenv_bindings: dispatch_env, command_argv: dispatch_argv) {
@@ -116,7 +120,9 @@ test fn the_wedged_pending_attempt_holds_until_an_instant_and_arms_a_wake() -> B
           && string_contains(s: line, pattern: ".timer")
           && string_contains(s: line, pattern: "--timer-property=RemainAfterElapse=no")
           && string_contains(s: line, pattern: "--setenv=GUNBC_BELT_NODE_ID=roadmap-belt")
-          && string_contains(s: line, pattern: "--function belt_dispatch_node_cli")
+          && string_contains(s: line, pattern: "--setenv=GUNBC_BELT_REDELIVER_INSTANCE_ID=srv1-lab-codex-feedback-v0")
+          && string_contains(s: line, pattern: "--entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag")
+          && string_contains(s: line, pattern: "--function belt_redeliver_attempt_cli")
       SystemdRunCommandRefused { cause: _ } => false
     }
     _ => false
@@ -184,4 +190,23 @@ test fn a_non_pending_recovery_maps_to_a_spawn_not_a_wake() -> Bool {
     SpawnRouteWorker => true
     _ => false
   }
+}
+
+// THE ENTRY RESOLVES BY REPO ROOT, NOT BY THE ID LIST (hermetic). belt_redeliver_attempt_cli resolves
+// the instance via the belt's own belt_instance_from_env -> dashboard_instance_for_repo_root, keyed on the
+// SPAWN WORKDIR (repo root) -- NOT belt_dispatch_instance_named's narrow id list (which is what refuses
+// srv1-lab-codex-feedback-v0 and is why the wake does NOT use belt_dispatch_node_cli). The discriminator:
+// a path no instance is rooted at, and an instance ID (not a path), both return RootUnknown -- the refusal
+// belt_redeliver_attempt_cli surfaces before any dispatch. An id the name-admission WOULD accept ("srv1-live")
+// is still RootUnknown by the root lookup, proving the key is the root.
+test fn the_redelivery_route_resolves_by_repo_root_not_by_id() -> Bool {
+  let unknown_path = match dashboard_instance_for_repo_root(repo_root: "/no/such/belt/repo/root/xyzzy") {
+    DashboardInstanceRootUnknown { repo_root } => repo_root == "/no/such/belt/repo/root/xyzzy"
+    DashboardInstanceResolved { instance: _ } => false
+  }
+  let id_is_not_a_root = match dashboard_instance_for_repo_root(repo_root: "srv1-live") {
+    DashboardInstanceRootUnknown { repo_root } => repo_root == "srv1-live"
+    DashboardInstanceResolved { instance: _ } => false
+  }
+  unknown_path && id_is_not_a_root
 }
