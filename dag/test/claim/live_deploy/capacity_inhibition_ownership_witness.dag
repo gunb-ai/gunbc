@@ -1,0 +1,61 @@
+module test.claim.live_deploy.capacity_inhibition_ownership_witness
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.error_primitives { Ok, Err }
+import extdeps.filesystem.posix { PosixFileIdentity, S_IFLNK, S_IFREG }
+import extdeps.systemd.manager { SystemManager }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityMaskEntry, capacity_staged_inhibition, capacity_published_inhibition_owned }
+
+fn ownership_fixture_path() -> CapacityInhibitionPath {
+  CapacityInhibitionPath { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }, path: "/etc/systemd/system.control/fixture.service" }
+}
+
+fn ownership_fixture_entry(device: Int, inode: Int) -> CapacityMaskEntry {
+  CapacityMaskEntry { identity: PosixFileIdentity { st_dev: device, st_ino: inode }, kind: S_IFLNK, target: "/dev/null" }
+}
+
+test fn publication_before_receipt_recovers_from_retained_inode_identity() -> Bool {
+  let path = ownership_fixture_path()
+  let entry = ownership_fixture_entry(device: 10, inode: 42)
+  match capacity_staged_inhibition(inhibition: path, staged_path: "/etc/gunbc/cutover/fixture/mask", staged: Ok { value: entry }, destination_device: Ok { value: 10 }) {
+    Err { value: _ } => false
+    Ok { value: artifact } => capacity_published_inhibition_owned(artifact: artifact, published: Ok { value: entry }) == Ok { value: path }
+  }
+}
+
+test fn cross_filesystem_staging_refuses_before_linking() -> Bool {
+  match capacity_staged_inhibition(inhibition: ownership_fixture_path(), staged_path: "/other/mask", staged: Ok { value: ownership_fixture_entry(device: 10, inode: 42) }, destination_device: Ok { value: 20 }) {
+    Err { value: why } => why == "inhibition staging and control directory are on different filesystems"
+    Ok { value: _ } => false
+  }
+}
+
+test fn same_path_and_target_do_not_make_an_operator_mask_ours() -> Bool {
+  match capacity_staged_inhibition(inhibition: ownership_fixture_path(), staged_path: "/etc/gunbc/cutover/fixture/mask", staged: Ok { value: ownership_fixture_entry(device: 10, inode: 42) }, destination_device: Ok { value: 10 }) {
+    Err { value: _ } => false
+    Ok { value: artifact } => capacity_published_inhibition_owned(artifact: artifact, published: Ok { value: ownership_fixture_entry(device: 10, inode: 43) }) == Err { value: "published inhibition is a foreign inode; preserve it" }
+  }
+}
+
+test fn inode_number_without_device_identity_cannot_authorize_removal() -> Bool {
+  match capacity_staged_inhibition(inhibition: ownership_fixture_path(), staged_path: "/etc/gunbc/cutover/fixture/mask", staged: Ok { value: ownership_fixture_entry(device: 10, inode: 42) }, destination_device: Ok { value: 10 }) {
+    Err { value: _ } => false
+    Ok { value: artifact } => capacity_published_inhibition_owned(artifact: artifact, published: Ok { value: ownership_fixture_entry(device: 20, inode: 42) }) == Err { value: "published inhibition is a foreign inode; preserve it" }
+  }
+}
+
+test fn a_regular_file_cannot_stand_in_for_the_staged_symlink() -> Bool {
+  let entry = CapacityMaskEntry { identity: PosixFileIdentity { st_dev: 10, st_ino: 42 }, kind: S_IFREG, target: "/dev/null" }
+  match capacity_staged_inhibition(inhibition: ownership_fixture_path(), staged_path: "/etc/gunbc/cutover/fixture/mask", staged: Ok { value: entry }, destination_device: Ok { value: 10 }) {
+    Err { value: why } => why == "staged inhibition is not a symlink to /dev/null" Ok { value: _ } => false
+  }
+}
+
+test fn unreadable_publication_is_preserved_not_removed() -> Bool {
+  match capacity_staged_inhibition(inhibition: ownership_fixture_path(), staged_path: "/etc/gunbc/cutover/fixture/mask", staged: Ok { value: ownership_fixture_entry(device: 10, inode: 42) }, destination_device: Ok { value: 10 }) {
+    Err { value: _ } => false
+    Ok { value: artifact } => capacity_published_inhibition_owned(artifact: artifact, published: Err { value: "lstat failed" }) == Err { value: "lstat failed" }
+  }
+}

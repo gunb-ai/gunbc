@@ -1,0 +1,58 @@
+module gunbc.live_deploy.capacity_inhibition_ownership
+
+import std.types { String, NonEmptyStr, Int }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.filesystem.posix { PosixFileIdentity, PosixFileType, S_IFLNK }
+import extdeps.systemd.unit_load_path { systemd_mask_link_target }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+
+// lstat identity/type and readlink target. The reading is of the link itself,
+// never stat -L or a content read that follows it to /dev/null.
+type CapacityMaskEntry {
+  identity: PosixFileIdentity
+  kind: PosixFileType
+  target: NonEmptyStr
+}
+
+// Retain the staged inode until every published link is removed. Persist this
+// artifact in the cutover record BEFORE LinkCreateNew publishes the control entry.
+// A crash between publication and its receipt can then recover by inode identity.
+type CapacityStagedInhibition sole_constructor {
+  inhibition: CapacityInhibitionPath
+  staged_path: NonEmptyStr
+  identity: PosixFileIdentity
+}
+
+fn capacity_staged_inhibition(inhibition: CapacityInhibitionPath, staged_path: NonEmptyStr,
+  staged: Result<CapacityMaskEntry, String>, destination_device: Result<Int, String>) -> Result<CapacityStagedInhibition, String> {
+  if staged_path == inhibition.path { return Err { value: "staging and publication must have distinct names" } }
+  match staged {
+    Err { value: why } => Err { value: why }
+    Ok { value: entry } => {
+      if entry.kind != S_IFLNK || entry.target != systemd_mask_link_target {
+        return Err { value: "staged inhibition is not a symlink to /dev/null" }
+      }
+      match destination_device {
+        Err { value: why } => Err { value: why }
+        Ok { value: device } => if device != entry.identity.st_dev {
+          Err { value: "inhibition staging and control directory are on different filesystems" }
+        } else { Ok { value: CapacityStagedInhibition { inhibition: inhibition, staged_path: staged_path, identity: entry.identity } } }
+      }
+    }
+  }
+}
+
+// Same check at recovery AND immediately before removal. Merely finding a mask
+// at the planned name never licenses unlinking an operator's replacement inode.
+fn capacity_published_inhibition_owned(artifact: CapacityStagedInhibition, published: Result<CapacityMaskEntry, String>) -> Result<CapacityInhibitionPath, String> {
+  match published {
+    Err { value: why } => Err { value: why }
+    Ok { value: entry } => {
+      if entry.kind != S_IFLNK || entry.target != systemd_mask_link_target {
+        Err { value: "published inhibition is not a symlink to /dev/null; preserve it" }
+      } else if entry.identity != artifact.identity {
+        Err { value: "published inhibition is a foreign inode; preserve it" }
+      } else { Ok { value: artifact.inhibition } }
+    }
+  }
+}
