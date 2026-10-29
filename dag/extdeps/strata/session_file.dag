@@ -1,0 +1,152 @@
+module extdeps.strata.session_file
+
+import std.types { String, NonEmptyStr, Int, Bool, HttpStatus }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.optional { Present, Absent }
+import std.measure { TokenCount, ByteSize, token_count, byte_size }
+import std.decl_ref { decl_ref }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonNumber, JsonString, JsonBool, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound, JsonMemberAbsent }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/Niko1221/Strata/blob/32057b8c5a402291f8afc1c0b7ca08ec1d6c2592/serve/server.py" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: decl_ref(module_path: "extdeps.strata.session_file", decl_name: "SlotAction") },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [ExternalAuthority { uri: Uri { scheme: Https,
+    locator: "github.com/Niko1221/Strata/blob/32057b8c5a402291f8afc1c0b7ca08ec1d6c2592/include/strata/core/conversation_file.hpp" } }],
+}
+
+// slot_action's consumed surface, not a second implementation of the native codec.
+// SavedConversation contains tokens, image keys, recurrent GDN/PLE/QSA state, KV,
+// the deepest checkpoint and later GPU stages. v1/v3 are little-endian encodings;
+// v2 is reserved. Equal prompts do not identify an equal captured state.
+//
+// Restore delegates compatibility to session_file_read: SessionFileIdentity binds
+// sampled model inputs and SessionConfig (engine version, backend, KV format and
+// residency, context/MTP bounds, resolved RoPE, control vectors and arithmetic
+// switches); geometry, layer partitions and per-stage limits are also checked.
+// These fingerprints are NOT cryptographic. Models must remain immutable while
+// their files are retained. A successful restore is this engine's reading, not a
+// cross-engine equivalence proof. Blob SHA-256 verifies encoded bytes separately.
+// Consumer: gunbc.serving.strata_checkpoint_transfer.
+type SlotAction = SlotSave | SlotRestore
+
+type SlotRequest {
+  action: SlotAction
+  filename: NonEmptyStr
+}
+
+type SessionError = SessionInvalid | SessionStorage | SessionMemory | SessionIo
+
+type SlotTransfer {
+  request: SlotRequest
+  tokens: TokenCount
+  bytes: ByteSize
+}
+
+type SlotRefusal
+  = SlotRequestRefused { status: HttpStatus, message: String }
+  | SlotNativeRefused { error: SessionError, published: Bool, message: String }
+
+type SlotReply
+  = SlotTransferred { transfer: SlotTransfer }
+  | SlotRefused { refusal: SlotRefusal }
+  | SlotReplyUnreadable { detail: String }
+
+fn slot_action_word(action: SlotAction) -> String {
+  match action { SlotSave => "save" SlotRestore => "restore" }
+}
+
+fn slot_request_path(request: SlotRequest) -> NonEmptyStr {
+  concat("/slots/0?action=", slot_action_word(action: request.action)) as NonEmptyStr
+}
+
+fn slot_request_body(request: SlotRequest) -> String {
+  serialize_json(v: json_object(members: [json_kv(key: "filename", value: json_string(s: request.filename as String))]))
+}
+
+fn slot_json_field(value: JsonValue, name: String) -> JsonValue {
+  match json_object_unique_member(v: value, key: name) { JsonMemberFound { value: v } => v _ => JsonNull }
+}
+
+fn slot_json_count(value: JsonValue) -> Nat? {
+  match value {
+    JsonNumber { lexeme: n } => match parse_int(s: n as String) {
+      Present { value: i } => checked_int_to_nat(n: i)
+      Absent => none
+    }
+    _ => none
+  }
+}
+
+fn session_error_wire(error: SessionError) -> String {
+  match error { SessionInvalid => "invalid" SessionStorage => "storage" SessionMemory => "memory" SessionIo => "io" }
+}
+
+fn session_error_status(error: SessionError) -> HttpStatus {
+  match error { SessionInvalid => 400 SessionStorage => 507 SessionMemory => 503 SessionIo => 500 }
+}
+
+fn slot_success(request: SlotRequest, value: JsonValue) -> SlotReply {
+  let fields = match request.action { SlotSave => ["n_saved", "n_written"] SlotRestore => ["n_restored", "n_read"] }
+  let counts = fields |> flat_map(k => match slot_json_count(value: slot_json_field(value: value, name: k)) {
+    Present { value: n } => [n] Absent => []
+  })
+  let slot_ok = match slot_json_count(value: slot_json_field(value: value, name: "id_slot")) { Present { value: n } => n == 0 Absent => false }
+  let name_ok = match slot_json_field(value: value, name: "filename") { JsonString { value: s } => s == (request.filename as String) _ => false }
+  if !slot_ok || !name_ok || count(counts) != 2 { SlotReplyUnreadable { detail: "slot reply lacks matching slot, filename or counts" } }
+  else { match first(counts) {
+    Absent => SlotReplyUnreadable { detail: "slot token count absent" }
+    Present { value: tokens } => match last(counts) {
+      Absent => SlotReplyUnreadable { detail: "slot byte count absent" }
+      Present { value: bytes } => SlotTransferred { transfer: SlotTransfer { request: request, tokens: token_count(count: tokens), bytes: byte_size(count: bytes) } }
+    }
+  } }
+}
+
+fn slot_failure(status: HttpStatus, value: JsonValue) -> SlotReply {
+  let error = slot_json_field(value: value, name: "error")
+  match slot_json_field(value: error, name: "message") {
+    JsonString { value: message } => match slot_json_count(value: slot_json_field(value: error, name: "code")) {
+      Present { value: code } => if (code as Int) != (status as Int) { SlotReplyUnreadable { detail: "slot error status differs from HTTP status" } }
+        else { match json_object_unique_member(v: error, key: "kind") {
+          JsonMemberAbsent => SlotRefused { refusal: SlotRequestRefused { status: status, message: message } }
+          JsonMemberFound { value: JsonString { value: word } } => {
+            let kind = first([SessionInvalid, SessionStorage, SessionMemory, SessionIo] |> filter(e => session_error_wire(error: e) == word))
+            let published: Bool? = match json_object_unique_member(v: error, key: "published") {
+              JsonMemberAbsent => Present { value: false }
+              JsonMemberFound { value: JsonBool { value: b } } => Present { value: b }
+              _ => none
+            }
+            match kind {
+              Absent => SlotReplyUnreadable { detail: "unknown native session error" }
+              Present { value: k } => match published {
+                Absent => SlotReplyUnreadable { detail: "invalid native publication reading" }
+                Present { value: p } => if status == session_error_status(error: k) {
+                  SlotRefused { refusal: SlotNativeRefused { error: k, published: p, message: message } }
+                } else { SlotReplyUnreadable { detail: "native session error has the wrong HTTP status" } }
+              }
+            }
+          }
+          _ => SlotReplyUnreadable { detail: "native session error kind is unreadable" }
+        } }
+      Absent => SlotReplyUnreadable { detail: "slot error code is unreadable" }
+    }
+    _ => SlotReplyUnreadable { detail: "slot error message is unreadable" }
+  }
+}
+
+fn slot_reply(request: SlotRequest, status: HttpStatus, body: String) -> SlotReply {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => SlotReplyUnreadable { detail: "slot reply is not JSON" }
+    JsonDocumentParsed { value: v } => if (status as Int) == 200 { slot_success(request: request, value: v) }
+      else if (status as Int) >= 400 { slot_failure(status: status, value: v) }
+      else { SlotReplyUnreadable { detail: "unexpected slot HTTP status" } }
+  }
+}
