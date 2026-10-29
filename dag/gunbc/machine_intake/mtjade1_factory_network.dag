@@ -129,6 +129,17 @@ fn mtjade1_bmc_link_mac() -> Eui48Address {
   }
 }
 
+// THE ADDRESS THE CONTROLLER ANSWERED ON WHEN THIS READING WAS TAKEN, projected out of the same
+// observation as its link address. Absent for the arms that carry no static reading: the DHCP arm
+// describes a later lease, not the interface this link address was read on.
+fn mtjade1_bmc_observed_address() -> Ipv4Address? {
+  match mtjade1_bmc_observed_network {
+    BmcNetworkObservedStatic { address: a, prefix: _, gateway: _, link: _, basis: _ } => Present { value: a }
+    BmcNetworkObservedDhcpLease { address: _, prefix: _, basis: _ } => none
+    BmcNetworkUnobserved { discriminator: _ } => none
+  }
+}
+
 // THE CLAIM THAT MAKES THE UNREACHABLE ARMS ABOVE HONEST: the controller's link address is a READING
 // only when the observation that supplies it is the static one. A witness asserts this, so an edit that
 // drops the link layer from the observation turns the inventory red instead of filling it with zeros.
