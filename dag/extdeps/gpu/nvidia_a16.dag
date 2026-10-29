@@ -12,6 +12,7 @@ import extdeps.gpu.types {
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.storage.types { PcieLink, Gen4 }
 import extdeps.pci.identity { PciDeviceId }
+import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.external_authority { FactCitation }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -90,7 +91,7 @@ data nvidia_a16_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   gpu_count: 4,
   attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
   board_power: Present { value: ConfigurableBoardPower {
-    default: watt(count: 250),
+    default: Present { value: watt(count: 250) },
     minimum: watt(count: 195),
     maximum: watt(count: 250),
     named_points: [GpuNamedPowerPoint { name: "MaxQ (maximum performance per watt)", power: watt(count: 235) }],
@@ -98,6 +99,7 @@ data nvidia_a16_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   zero_power: Present { value: ZeroPowerNotSupported },
   thermal: Present { value: PassiveThermalSolution },
   pci_device_id: Present { value: "25b6" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA A16" },
   figure_citations: [
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "gpu_count"), authority: extdeps_external_authority_anchor },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "board_power"), authority: extdeps_external_authority_anchor },
@@ -105,6 +107,7 @@ data nvidia_a16_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "thermal"), authority: extdeps_external_authority_anchor },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "attachment"), authority: extdeps_external_authority_anchor },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "pci_device_id"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
   ],
 }
 

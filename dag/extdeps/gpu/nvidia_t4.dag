@@ -1,0 +1,81 @@
+module extdeps.gpu.nvidia_t4
+
+import std.types { List, NonEmptyStr }
+import std.optional { Present }
+import std.measure { hardware_thread_count, bandwidth, watt, gibibyte, gibibyte_to_byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, GpuComputeCapability, PassiveThermalSolution, PcieAddInBoard, RatedBoardPower, cuda_gpus_page_authority }
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.storage.types { Gen3, PcieLink }
+import extdeps.pci.identity { PciDeviceId }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.uri { Uri, Https }
+
+// NVIDIA T4 Tensor Core GPU datasheet 951643 (2019), read 2026-10-28: 2,560 CUDA cores, 16 GB GDDR6 at
+// 300 GB/s, x16 PCIe Gen3, low-profile PCIe, passive thermal solution, 70 W. Compute capability 7.5 is the
+// CUDA GPUs page's ("NVIDIA T4"); the driver lists the board as "Tesla T4", device 1eb8.
+
+data t4_datasheet_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/tesla-t4/t4-tensor-core-datasheet-951643.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_t4", decl_name: "nvidia_t4_board_catalogs", field: WholeDeclaration
+  } },
+  first_citation: t4_datasheet_authority,
+  further_citations: []
+}
+
+data nvidia_t4_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "T4",
+  microarchitecture: "Turing",
+  execution_lane_count: Present { value: hardware_thread_count(2560) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 300000000000) },
+  boost_clock: none,
+  compute_capability: Present { value: GpuComputeCapability { vendor: nvidia, major: 7, minor: 5 } },
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_t4", decl_name: "nvidia_t4_catalog", field_name: "memory"), authority: t4_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_t4", decl_name: "nvidia_t4_catalog", field_name: "memory_bandwidth"), authority: t4_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_t4", decl_name: "nvidia_t4_catalog", field_name: "execution_lane_count"), authority: t4_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_t4", decl_name: "nvidia_t4_catalog", field_name: "microarchitecture"), authority: t4_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_t4", decl_name: "nvidia_t4_catalog", field_name: "compute_capability"), authority: cuda_gpus_page_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_t4_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "T4",
+  gpu: nvidia_t4_catalog,
+  gpu_count: 1,
+  attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen3, lane_count: 16 } } },
+  board_power: Present { value: RatedBoardPower { rated: watt(count: 70) } },
+  zero_power: none,
+  thermal: Present { value: PassiveThermalSolution },
+  pci_device_id: Present { value: "1eb8" as PciDeviceId },
+  driver_listed_name: Present { value: "Tesla T4" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_t4", decl_name: "nvidia_t4_board_facts", field_name: "attachment"), authority: t4_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_t4", decl_name: "nvidia_t4_board_facts", field_name: "board_power"), authority: t4_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_t4", decl_name: "nvidia_t4_board_facts", field_name: "thermal"), authority: t4_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_t4", decl_name: "nvidia_t4_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_t4", decl_name: "nvidia_t4_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_t4_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_t4_board_facts)
+
+// Every board this module declares, in declaration order: the roster test.claim.gpu_board_catalog_witness
+// requires to be admitted, and this module's model-scope subject.
+data nvidia_t4_board_catalogs: List<GpuBoardAdmission> = [nvidia_t4_board_catalog]
