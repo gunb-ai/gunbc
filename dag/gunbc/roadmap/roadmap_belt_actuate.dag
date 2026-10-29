@@ -2862,13 +2862,16 @@ fn belt_actuate_spawn_exec_modeled(
           // belt_redeliver_cli_entry / belt_redeliver_cli_function) -- the same serve-binary/run/--source-root/
           // --entry/--function shape belt_obligation_unit_command uses. The entry resolves the instance BY
           // REPO ROOT (belt_instance_from_env), so the wake carries SPAWN_WORKDIR (the attempt's own repo
-          // root), the NODE id, and the EXPECTED instance id as a cross-check -- NOT GUNBC_BELT_INSTANCE_ID,
-          // whose narrow admitted list refuses srv1-lab-codex-feedback-v0. The wake module holds no route literal.
+          // root), the NODE id, the EXPECTED instance id as a cross-check, and the ATTEMPT KEY -- NOT
+          // GUNBC_BELT_INSTANCE_ID, whose narrow admitted list refuses srv1-lab-codex-feedback-v0. The entry
+          // uses the attempt key to refuse anything but a Resume/Hold-Until continuation of THAT attempt, so
+          // the wake continues admitted work rather than starting new dispatch. The wake module holds no route literal.
           let repo = instance.repo_root as String
           let dispatch_env = [
             SystemdSetenvBinding { name: belt_spawn_workdir_env_var, value: repo as NonEmptyStr },
             SystemdSetenvBinding { name: belt_dispatch_env_var, value: node.node as NonEmptyStr },
             SystemdSetenvBinding { name: belt_redeliver_instance_env_var, value: instance.instance_id as NonEmptyStr },
+            SystemdSetenvBinding { name: belt_redeliver_attempt_key_env_var, value: attempt_key as NonEmptyStr },
           ]
           let dispatch_argv = belt_function_run_argv(program: instance.serve_binary as String, repo_root: repo, entry: belt_redeliver_cli_entry, function: belt_redeliver_cli_function as String, args: [])
           match attempt_redelivery_wake_command(node_id: node.node as String, attempt_key: attempt_key, next_delivery: at, setenv_bindings: dispatch_env, command_argv: dispatch_argv) {
@@ -11714,7 +11717,13 @@ data belt_dispatch_instance_env_var: NonEmptyStr = "GUNBC_BELT_INSTANCE_ID" as N
 // is deliberately narrow -- srv2-deploy/srv1-live -- and is not ours to widen). belt_redeliver_attempt_cli
 // resolves the instance the way the belt's OWN lab units already do -- by repo root, via the existing
 // belt_instance_from_env -- so it is proven to work on the lab without widening that fail-closed list. It
-// reads the node from GUNBC_BELT_NODE_ID and the expected instance from GUNBC_BELT_REDELIVER_INSTANCE_ID.
+// reads the node from GUNBC_BELT_NODE_ID, the expected instance from GUNBC_BELT_REDELIVER_INSTANCE_ID, and
+// the ATTEMPT KEY from GUNBC_BELT_REDELIVER_ATTEMPT_KEY. THE ENTRY MAY ONLY CONTINUE, NEVER START: it
+// re-delivers only when the node's own continuation decision (the existing belt_continuation_decision_for_instance)
+// is a Resume or a request-pending Hold-Until for EXACTLY that key -- so it re-delivers an attempt the door
+// already admitted, never fresh work. The admitted-instance list (belt_dispatch_admitted_instance_ids) governs
+// what it was written for: STARTING work from the belt-dispatch CLI; a wake re-delivering admitted work is a
+// different authority and is NOT gated by it (review 87645, manager decision A1).
 data belt_redeliver_cli_entry: String = "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag"
 data belt_redeliver_cli_function: NonEmptyStr = "belt_redeliver_attempt_cli" as NonEmptyStr
 
@@ -11724,6 +11733,11 @@ data belt_redeliver_cli_function: NonEmptyStr = "belt_redeliver_attempt_cli" as 
 // belt_redeliver_attempt_cli). Distinct from belt_dispatch_instance_env_var, which is belt_dispatch_node_cli's
 // resolution input and is NOT set on the wake.
 data belt_redeliver_instance_env_var: NonEmptyStr = "GUNBC_BELT_REDELIVER_INSTANCE_ID" as NonEmptyStr
+
+// THE CONTINUATION GUARD'S SUBJECT. The armed wake names the ONE attempt it re-delivers so the entry can
+// refuse anything that is not a continuation of EXACTLY that attempt (belt_redeliver_attempt_continues): the
+// wake may re-deliver an already-admitted pending attempt, never start fresh work (review 87645, A1).
+data belt_redeliver_attempt_key_env_var: NonEmptyStr = "GUNBC_BELT_REDELIVER_ATTEMPT_KEY" as NonEmptyStr
 
 // The instance comes from the one roster (gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_for_id),
 // so no constructor is named here. Admission for belt dispatch is a narrower set than the roster

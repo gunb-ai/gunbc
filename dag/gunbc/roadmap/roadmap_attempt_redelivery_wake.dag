@@ -23,7 +23,10 @@ module gunbc.roadmap.roadmap_attempt_redelivery_wake
 // timer execs the instance's OWN re-delivery route, roadmap_belt_tick_cli.belt_redeliver_attempt_cli
 // (belt_redeliver_cli_function), which resolves the instance by repo root and ends in the SAME
 // belt_dispatch_node_for_instance a door dispatch ends in -- so the wake re-delivers the same key by
-// the same node-dispatch path, never a parallel spawn. It is deliberately NOT belt_dispatch_node_cli,
+// the same node-dispatch path, never a parallel spawn. That route CONTINUES ONLY, never STARTS: it carries
+// the attempt key and dispatches only when the node's own continuation decision is a Resume/Hold-Until for
+// exactly that key (belt_redeliver_attempt_continues), so a wake re-delivers an already-admitted attempt
+// rather than opening a second door into new dispatch (review 87645, decision A1). It is deliberately NOT belt_dispatch_node_cli,
 // whose narrow admitted-instance list refuses this lab's instance id. The authorization
 // pattern is DERIVED, not borrowed: characterized against
 // gunbc.auth.authorization_pattern_selection.select_authorization_pattern (consumed by the witness and

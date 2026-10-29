@@ -25,6 +25,8 @@ import gunbc.roadmap.roadmap_attempt_redelivery_wake {
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
   ContinuationHoldUntil,
+  ContinuationResume,
+  ContinuationSpawnFresh,
   continuation_decision,
 }
 import gunbc.roadmap.roadmap_belt_actuate { SpawnRouteWake, SpawnRouteNone, SpawnRouteResume, SpawnRouteWorker, belt_spawn_route_for_decision, ExecOk, ExecFailed, ExecRefused, WakeArmed, WakeAlreadyArmed, WakeArmFailed, WakeArmRefused, belt_redelivery_wake_arm }
@@ -33,7 +35,7 @@ import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecovery
 import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureAbsent }
 import gunbc.roadmap.roadmap_provider_events { ProviderRequestPending }
 import gunbc.roadmap.roadmap_belt_obligation { belt_capture_recording_owed }
-import gunbc.roadmap.roadmap_belt_tick_cli { belt_redeliver_instance_matches }
+import gunbc.roadmap.roadmap_belt_tick_cli { belt_redeliver_instance_matches, belt_redeliver_attempt_continues }
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused, SystemdSetenvBinding }
 import extdeps.exec.command { argv_words }
@@ -224,4 +226,33 @@ test fn the_redelivery_entry_guard_refuses_a_wrong_instance() -> Bool {
 
 test fn the_redelivery_entry_guard_clears_the_matching_instance() -> Bool {
   belt_redeliver_instance_matches(resolved: "srv1-lab-codex-feedback-v0", expected: "srv1-lab-codex-feedback-v0")
+}
+
+// THE STRUCTURAL CONTINUATION GUARD (review 87645, A1): the wake entry may only CONTINUE an already-admitted
+// attempt, never START fresh work. belt_redeliver_attempt_continues is the pure predicate; the entry refuses
+// dispatch unless the node's own belt_continuation_decision_for_instance is a Resume/Hold-Until for EXACTLY the
+// armed attempt key. These legs pin: fresh-start and wrong-key both refuse (so the entry is not a second door
+// into new dispatch), and the two genuine re-delivery cases -- the wedged request-pending Hold-Until and a
+// resume -- are allowed.
+
+test fn the_redelivery_guard_refuses_a_spawn_fresh_decision() -> Bool {
+  // A node with no prior attempt (SpawnFresh) is NEW work -- the wake entry must refuse it, exactly the
+  // case the review feared (a CLI-shaped entry starting un-admitted dispatch).
+  !belt_redeliver_attempt_continues(decision: ContinuationSpawnFresh { reason: "no prior attempt of this node" }, attempt_key: wake_key)
+}
+
+test fn the_redelivery_guard_refuses_resume_for_a_different_key() -> Bool {
+  // A resumable attempt whose key is not the one the wake armed: the entry re-delivers only ITS attempt,
+  // so a foreign key refuses.
+  !belt_redeliver_attempt_continues(decision: ContinuationResume { reason: "recovery needed", attempt_key: "some-other-attempt", ordinal: 1, causes: ["provider-busy"] }, attempt_key: wake_key)
+}
+
+test fn the_redelivery_guard_allows_resume_for_the_exact_key() -> Bool {
+  belt_redeliver_attempt_continues(decision: ContinuationResume { reason: "recovery needed", attempt_key: wake_key, ordinal: 7, causes: ["provider-busy"] }, attempt_key: wake_key)
+}
+
+test fn the_redelivery_guard_allows_hold_until_for_the_exact_key() -> Bool {
+  // THE acceptance case: the wedged round-7 request-pending attempt, resumed by its armed wake, is a
+  // Hold-Until for exactly wake_key -- allowed, because it is a continuation of already-admitted work.
+  belt_redeliver_attempt_continues(decision: ContinuationHoldUntil { reason: "request-pending, next re-delivery not due", attempt_key: wake_key, redeliver_at: 1700000060 }, attempt_key: wake_key)
 }
