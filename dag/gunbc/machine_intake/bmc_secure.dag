@@ -3314,18 +3314,39 @@ fn bmc_write_surface(write: PlannedAccountWrite) -> BmcFailedLoginSurface {
   }
 }
 
-// Does the sealed forced-change state exempt a login on THIS surface? Two
-// conditions, both load-bearing: the sealed record is for the build this very
-// reading reported (a forced change on 03.22.00 says nothing about a controller
-// that has since moved), and the surface is Redfish — the sealed 403 body is a
-// Redfish error body, and bmc_credential_policy grounds the factory-login
-// behaviour for that surface and leaves the IPMI lanplus row ungrounded.
+// Does the sealed forced-change state exempt a login on THIS surface? The carrier is
+// `PublishedCredentialChangeForced`, which is SOLE-CONSTRUCTOR and mintable only by
+// bmc_credential_policy.admit_published_credential_change_forced over a captured
+// ForcedChangeResponseReading: a 403 whose bytes are the capture's, whose body the
+// Redfish verdict reads as Base.1.16.0.PasswordChangeRequired, on a build the policy
+// answers as forcing a factory change. There is no flag a caller can set to claim
+// the exemption, and the record carries the identity of the answer it witnessed — so
+// four conditions, each load-bearing:
+//   - the SURFACE is Redfish: the sealed 403 body is a Redfish error body, and
+//     bmc_credential_policy grounds the factory-login behaviour for that surface and
+//     leaves the IPMI lanplus row ungrounded;
+//   - the ENDPOINT is the one this plan's reading is of: a controller that was forced
+//     does not make this controller forced;
+//   - the ATTEMPT is the one this plan's reading was taken in: a 403 from an earlier
+//     run does not license a login in this one, and a plan must rely on the answer it
+//     actually received;
+//   - the FIRMWARE is the one this reading reports: a forced change on 03.22.00 says
+//     nothing about a controller that has since moved.
 // CONSUMER: bmc_plan_failing_logins.
 fn bmc_forced_change_covers(forced: PublishedCredentialChangeForced?, observed: BmcAccountStateObservation, surface: BmcFailedLoginSurface) -> PublishedCredentialChangeForced? {
   match forced {
     Absent => none
     Present { value: f } =>
       if !bmc_failed_login_surface_same(a: surface, b: RedfishAccountServiceLogin) {
+        none
+      } else if f.endpoint != observed.endpoint {
+        // The 403 was read on a DIFFERENT controller. Its being forced says nothing
+        // about logging into this one, so nothing is exempt here.
+        none
+      } else if f.attempt != observed.attempt {
+        // And it was read in a DIFFERENT run of this controller. A forced answer
+        // from an earlier attempt does not license a login in this one: the answer
+        // the plan relies on has to be the answer this plan's reading received.
         none
       } else if !bmc_firmware_release_identity_eq(a: f.key.firmware, b: observed.firmware) {
         none

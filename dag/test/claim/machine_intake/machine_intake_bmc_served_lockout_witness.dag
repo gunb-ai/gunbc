@@ -32,21 +32,18 @@ module test.claim.machine_intake.machine_intake_bmc_served_lockout_witness
 // fixture's served reading; the live read that would replace the fixture is
 // gunbc.machine_intake.bmc_secure::bmc_served_lockout_live_read_frontier.
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Absent, Present }
 import std.algebra { list_head }
 import std.scoped_authorization { AttemptIdentity }
-import extdeps.bmc.ipmi_channel { IpmiChannelNumber }
-import extdeps.ietf.http_semantics { http_forbidden }
-import extdeps.bmc.redfish { RedfishPasswordChangeRequired }
 import gunbc.clock_read { ObserverClockInstant }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch }
 import gunbc.bmc_model { BmcWorld }
 import gunbc.machine_intake.bmc_credential_policy {
   PublishedCredentialChangeForced, ForcedChangeAdmitted, ForcedChangeAdmission,
-  admit_published_credential_change_forced, asrock_altrad8ud_openbmc_3_22_00_key, CredentialSurface,
+  admit_published_credential_change_forced, CredentialSurface,
 }
 import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, rotation_route_from_citation, redfish_account_password_write,
@@ -65,14 +62,15 @@ import gunbc.machine_intake.bmc_secure {
   BmcDeclaredLoginRetry,
   bmc_plan_failing_logins, bmc_failed_login_budget_verdict, bmc_known_failed_logins_of,
   bmc_spend_count, bmc_lockout_threshold, bmc_lockout_reading_not_read,
-  dry_read_bmc_account_state, plan_bmc_account_action, dry_bmc_account_instant, dry_evidence,
-}
+  dry_read_bmc_account_state, plan_bmc_account_action, dry_bmc_account_instant,}
 import test.fixture.machine_intake.bmc_lockout {
   lockout_both_served, lockout_redfish_only, lockout_redfish_window,
   lockout_redfish_never_locked, lockout_unread,
   lockout_redfish_served_ipmi_unread, lockout_ipmi_served_redfish_unread,
 }
 import test.fixture.machine_intake.bmc_write_approval { approved_bmc_convergence }
+import test.claim.machine_intake.machine_intake_bmc_credential_policy_witness { srv13_forced_change_body, srv13_capture, controller_reading }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
 import test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness {
   lab_subject, lab_endpoint, lab_firmware, root_ref, goal_v1, census, world_root,
   root_user, published_password, generation_1,
@@ -192,16 +190,35 @@ fn budget_blocks(outcome: BmcAccountPlanOutcome) -> List<BmcFailedLoginBudgetBlo
 // Base.1.16.0.PasswordChangeRequired, for the build the reading reports. A witness
 // that could write the record itself could exempt anything, so the record is only
 // ever admitted from a verdict the credential-policy module verified.
-fn sealed_forced_change() -> PublishedCredentialChangeForced? {
+// The 403 of THIS run, admitted the only way it can be admitted: through the policy
+// module's admission over a captured ForcedChangeResponseReading — status 403, the
+// body whose bytes the capture's digest is, the Redfish verdict reading it as
+// Base.1.16.0.PasswordChangeRequired, on a build the policy answers as forcing a
+// factory change. The caller supplies only the IDENTITY the answer was witnessed at:
+// which controller, which run. There is nothing here a caller could use to claim the
+// exemption for a login it never saw refused.
+fn sealed_forced_change_on(endpoint: BmcControllerEndpoint, attempt: AttemptIdentity) -> PublishedCredentialChangeForced? {
   match admit_published_credential_change_forced(
-    key: asrock_altrad8ud_openbmc_3_22_00_key(),
-    status: http_forbidden(),
-    verdict: RedfishPasswordChangeRequired { message_id: "Base.1.16.0.PasswordChangeRequired" as NonEmptyStr },
-    response_evidence: dry_evidence(text: "witness: the 403 body of the factory login"),
+    reading: controller_reading(
+      endpoint: endpoint,
+      attempt: attempt,
+      board: asrock_altrad8ud_board_authority,
+      login: "root" as NonEmptyStr,
+      status: 403,
+      body: srv13_forced_change_body,
+      capture: srv13_capture,
+      firmware: ForcedChangeBuildUnreadable,
+    ),
   ) {
     ForcedChangeAdmitted { state: f } => Present { value: f }
     ForcedChangeRefused { cause: _ } => none
   }
+}
+
+// The forced state of the very controller and run the plan's reading is of: the
+// reading's endpoint is lab_endpoint and its attempt is "attempt-1" (read_lock).
+fn sealed_forced_change() -> PublishedCredentialChangeForced? {
+  sealed_forced_change_on(endpoint: lab_endpoint, attempt: "attempt-1" as AttemptIdentity)
 }
 
 // RUNG: the served threshold is a ceiling on CUMULATIVE failed attempts, not on
@@ -412,10 +429,26 @@ test fn the_forced_change_path_costs_no_failed_login_on_the_surface_it_is_ground
   let exempt = plan_lock(reading: tight, forced_change: sealed, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
   let unsealed = plan_lock(reading: tight, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
   let unread_still_refuses = plan_lock(reading: unread, forced_change: sealed, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
+  // And the exemption belongs to the answer, not to the caller who holds a record:
+  // the same sealed 403 read on ANOTHER controller, or in ANOTHER run of this one,
+  // licenses nothing — the plan is back to spending the login and the headroom it
+  // does not have. A gate that took the sealed record as a token would admit both.
+  let elsewhere = match sealed_forced_change_on(endpoint: BmcControllerEndpoint { host: "198.51.100.160" }, attempt: "attempt-1" as AttemptIdentity) {
+    Present { value: f } => Present { value: f }
+    Absent => none
+  }
+  let other_run = match sealed_forced_change_on(endpoint: lab_endpoint, attempt: "attempt-20261029-other" as AttemptIdentity) {
+    Present { value: f } => Present { value: f }
+    Absent => none
+  }
+  let on_another_controller = plan_lock(reading: tight, forced_change: elsewhere, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
+  let on_another_run = plan_lock(reading: tight, forced_change: other_run, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
   minted
     && planned(exempt)
     && refused_by_budget(unsealed)
     && refused_by_budget(unread_still_refuses)
+    && refused_by_budget(on_another_controller)
+    && refused_by_budget(on_another_run)
 }
 
 // RUNG: a controller that SERVES no lockout licenses the plan whatever it costs —
