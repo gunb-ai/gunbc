@@ -1,0 +1,9 @@
+[package]
+name = "concat_bench"
+version = "0.0.0"
+edition = "2021"
+[workspace]
+[dependencies]
+im = "=15.1.0"
+[profile.release]
+opt-level = 3
