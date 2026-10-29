@@ -7,7 +7,7 @@ import std.algebra { trim }
 import extdeps.systemd.unit_file { ServiceUnitFile, SliceUnitFile, PathUnitFile, TimerUnitFile, PathUnit, TimerUnit, ServiceSlice }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.systemd { ActiveState, ControlGroup, Inactive, Failed, parse_systemd_unit_active_state }
+import extdeps.systemd { ActiveState, ControlGroup, LoadState, Inactive, Failed, parse_systemd_unit_active_state, parse_systemd_unit_load_state, UnitLoadMasked }
 import extdeps.systemd.systemctl {
   systemctl_managed_unit_command, ManagedUnitStart, ManagedUnitStop, ManagedUnitShow, ManagedUnitMaskNow,
   systemctl_show_property_value,
@@ -80,7 +80,7 @@ fn capacity_quiescence_step_subject(step: CapacityQuiescenceStep) -> CapacityMan
 fn capacity_quiescence_step_command(step: CapacityQuiescenceStep) -> ArgvCommand {
   let subject = capacity_quiescence_step_subject(step: step)
   let operation = match step {
-    CapacityReadUnit { subject: _ } => ManagedUnitShow { properties: [ActiveState, ControlGroup] }
+    CapacityReadUnit { subject: _ } => ManagedUnitShow { properties: [ActiveState, ControlGroup, LoadState] }
     CapacityInhibitUnit { subject: _ } => ManagedUnitMaskNow
     CapacityPlantStart { subject: _ } => ManagedUnitStart
     CapacityContainStart { subject: _ } => ManagedUnitStop
@@ -113,6 +113,16 @@ fn capacity_quiescence_probe(
         Ok { value: mask } => if mask.exit_code != 0 { return Err { value: join(["inhibition failed for ", subject.unit as String, ": ", mask.stderr], "") } }
       }
 
+      capacity_probe_activation_and_drain(subject: subject, requirement: requirement, run: run, descendants: descendants, control_group: control_group)
+    }
+  }
+}
+
+// Shared activation/containment law: post-install verification must not create
+// another mask, so it enters here only after checking the existing mask reading.
+fn capacity_probe_activation_and_drain(subject: CapacityManagedUnit, requirement: CapacityProbeRequirement,
+  run: fn(CapacityQuiescenceStep) -> Result<ShellResponse, String>,
+  descendants: fn(String) -> RecordedCgroupPathStanding, control_group: String?) -> Result<CapacityUnitDrain, String> {
           let probe = run(CapacityPlantStart { subject: subject })
           let containment = match probe {
             Ok { value: response } => if response.exit_code == 0 {
@@ -145,6 +155,36 @@ fn capacity_quiescence_probe(
               persistence: MaskPersistenceUnobserved { unit: subject.unit, cause: "this probe makes no reboot-durability claim" }),
             descendants: capacity_probe_descendants(requirement: requirement, control_group: control_group, read: descendants),
           } }
+}
+
+fn capacity_require_masked_response(response: Result<ShellResponse, String>) -> Result<ShellResponse, String> {
+  match response {
+    Err { value: why } => Err { value: why }
+    Ok { value: observed } => {
+      if observed.exit_code != 0 { return Err { value: "masked-state read failed" } }
+      match systemctl_show_property_value(text: observed.stdout, key: "LoadState") {
+        Absent => Err { value: "LoadState missing after cutover reload" }
+        Present { value: state } => match parse_systemd_unit_load_state(raw: state) {
+          Present { value: UnitLoadMasked } => Ok { value: observed }
+          _ => Err { value: "unit is not masked after cutover reload" }
+        }
+      }
     }
+  }
+}
+
+// A fresh proof after installation and reload, not reuse of pre-install evidence.
+// The supplied run port still checks approval on each START/containment operation.
+fn capacity_quiescence_reprobe(subject: CapacityManagedUnit, requirement: CapacityProbeRequirement,
+  run: fn(CapacityQuiescenceStep) -> Result<ShellResponse, String>,
+  descendants: fn(String) -> RecordedCgroupPathStanding) -> Result<CapacityUnitDrain, String> {
+  match capacity_require_masked_response(response: run(CapacityReadUnit { subject: subject })) {
+    Err { value: why } => Err { value: why }
+    Ok { value: before } => capacity_probe_activation_and_drain(subject: subject, requirement: requirement,
+      run: step => match step {
+        CapacityReadUnit { subject: _ } => capacity_require_masked_response(response: run(step))
+        _ => run(step)
+      }, descendants: descendants,
+      control_group: systemctl_show_property_value(text: before.stdout, key: "ControlGroup"))
   }
 }

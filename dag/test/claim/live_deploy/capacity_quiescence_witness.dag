@@ -11,7 +11,7 @@ import gunbc.deploy_transition_bootstrap {
 }
 import gunbc.live_deploy.capacity_quiescence {
   CapacityQuiescenceStep, CapacityReadUnit, CapacityInhibitUnit, CapacityPlantStart, CapacityContainStart,
-  capacity_quiescence_probe, capacity_quiescence_plan, CapacityProbeProcess,
+  capacity_quiescence_probe, capacity_quiescence_plan, capacity_quiescence_reprobe, CapacityProbeProcess,
 }
 
 fn quiescence_fixture_unit() -> CapacityManagedUnit {
@@ -80,4 +80,46 @@ test fn the_plan_names_the_start_and_conditional_containment_effects() -> Bool {
     CapacityReadUnit { subject: unit }, CapacityInhibitUnit { subject: unit }, CapacityPlantStart { subject: unit },
     CapacityContainStart { subject: unit }, CapacityReadUnit { subject: unit },
   ]
+}
+
+fn quiescence_reprobe_fixture(masked: Bool, start: Int) -> Result<CapacityUnitDrain, String> {
+  capacity_quiescence_reprobe(subject: quiescence_fixture_unit(), requirement: CapacityProbeProcess { parent: none },
+    run: step => match step {
+      CapacityReadUnit { subject: _ } => Ok { value: ShellResponse { exit_code: 0,
+        stdout: concat("ActiveState=inactive\nControlGroup=/fixture.slice/fixture.service\nLoadState=", if masked { "masked\n" } else { "loaded\n" }), stderr: "" } }
+      CapacityInhibitUnit { subject: _ } => Err { value: "post-install proof must not recreate inhibition" }
+      _ => quiescence_fixture_run(step: step, start: start)
+    }, descendants: path => RecordedPathEmpty)
+}
+
+test fn post_install_proof_reads_the_existing_mask_and_replants_start() -> Bool {
+  match quiescence_reprobe_fixture(masked: true, start: 1) {
+    Err { value: _ } => false
+    Ok { value: drain } => unit_quiescence_admission(q: drain.quiescence) == QuiescenceInForce
+  }
+}
+
+test fn inactive_but_unmasked_after_install_refuses() -> Bool {
+  match quiescence_reprobe_fixture(masked: false, start: 1) {
+    Err { value: why } => why == "unit is not masked after cutover reload"
+    Ok { value: _ } => false
+  }
+}
+
+test fn a_successful_post_install_start_never_discharges_inhibition() -> Bool {
+  match quiescence_reprobe_fixture(masked: true, start: 0) {
+    Err { value: _ } => false
+    Ok { value: drain } => match unit_quiescence_admission(q: drain.quiescence) {
+      QuiescenceRefused { cause: _ } => true QuiescenceInForce => false
+    }
+  }
+}
+
+test fn an_unanswered_post_install_start_is_not_proof() -> Bool {
+  match quiescence_reprobe_fixture(masked: true, start: -1) {
+    Err { value: _ } => true
+    Ok { value: drain } => match unit_quiescence_admission(q: drain.quiescence) {
+      QuiescenceRefused { cause: _ } => true QuiescenceInForce => false
+    }
+  }
 }
