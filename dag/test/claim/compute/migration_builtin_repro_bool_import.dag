@@ -1,0 +1,26 @@
+module test.claim.compute.migration_builtin_repro_bool_import
+
+import std.types { Bool }
+import std.error_primitives { Ok, Err }
+import std.decl_ref { decl_ref }
+import extdeps.systemd.manager { SystemManager }
+import gunbc.compute.migration_builtin_repro_bool_import {
+  CapacityManagedUnit, CapacityTransientFamily, CapacityFamilyParents,
+  CapacityConfirmedWriter, capacity_migration_enumerate_family,
+}
+
+// Reduction of the failing 351f9c62cad baseline: retain its imports, types and
+// exact selector, deleting all sibling functions. Outcome awaits execution.
+test fn real_module_with_bool_import() -> Bool {
+  let unit = CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }
+  let family = CapacityTransientFamily {
+    standing: CapacityConfirmedWriter, manager: SystemManager,
+    source: decl_ref(module_path: "test.claim.compute.migration_builtin_repro_bool_import", decl_name: "real_module_with_bool_import"),
+    patterns: ["fixture.service"], exclude_patterns: [], activators: [],
+    placement: CapacityFamilyParents { parents: Ok { value: [] } },
+  }
+  match capacity_migration_enumerate_family(family: family, read_matches: (manager, patterns) => Ok { value: [unit] }) {
+    Ok { value: units } => units == [unit]
+    Err { value: _ } => false
+  }
+}
