@@ -1,0 +1,64 @@
+module test.claim.live_deploy.capacity_capture_provider_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.error_primitives { Ok, Err }
+import std.optional { Present, Absent }
+import std.scoped_authorization { AttemptIdentity }
+import std.materialization_provider { CutoverCaptureRequest }
+import gunbc.live_deploy.capacity_capture_provider { capacity_capture_journal_admission }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityCapturingGeneration, CapacityInstalling, capacity_generation_request }
+import test.claim.live_deploy.capacity_capture_store_witness { capture_fixture_store }
+import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
+
+fn capture_preparing_record() -> CapacityCutoverRecord {
+  let record = recovery_fixture_record()
+  CapacityCutoverRecord { attempt: record.attempt, target_revision: record.target_revision,
+    prior: record.prior, target: record.target, planned_paths: record.planned_paths,
+    created_paths: [], artifacts: [], phase: CapacityCapturingGeneration }
+}
+
+test fn only_a_journal_retained_identity_can_be_captured() -> Bool {
+  let record = capture_preparing_record()
+  match capture_fixture_store(mode: "700") {
+    Err { value: _ } => false
+    Ok { value: store } => match first(record.prior) {
+      Absent => false
+      Present { value: file } => {
+        let request = capacity_generation_request(file: file)
+        (match capacity_capture_journal_admission(store: store, request: request, journal: Ok { value: record }) {
+          Ok { value: admitted } => admitted == request Err { value: _ } => false
+        }) && (match capacity_capture_journal_admission(store: store,
+          request: CutoverCaptureRequest { host: "other-host", source_unit: file.destination, digest: file.digest }, journal: Ok { value: record }) {
+          Err { value: _ } => true Ok { value: _ } => false
+        })
+      }
+    }
+  }
+}
+
+test fn an_absent_or_unreadable_journal_never_permits_capture() -> Bool {
+  let record = capture_preparing_record()
+  match capture_fixture_store(mode: "700") {
+    Err { value: _ } => false
+    Ok { value: store } => match first(record.prior) {
+      Absent => false
+      Present { value: file } => capacity_capture_journal_admission(store: store, request: capacity_generation_request(file: file),
+        journal: Err { value: "journal unavailable" }) == Err { value: "journal unavailable" }
+    }
+  }
+}
+
+test fn installation_cannot_recapture_the_already_changed_source() -> Bool {
+  let record = recovery_fixture_record()
+  match capture_fixture_store(mode: "700") {
+    Err { value: _ } => false
+    Ok { value: store } => match first(record.prior) {
+      Absent => false
+      Present { value: file } => match capacity_capture_journal_admission(store: store,
+        request: capacity_generation_request(file: file), journal: Ok { value: record }) {
+        Err { value: why } => why == "capture must finish before inhibition or installation begins"
+        Ok { value: _ } => false
+      }
+    }
+  }
+}

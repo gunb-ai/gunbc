@@ -900,7 +900,10 @@ type LocalStoreRetentionRefusal
 // Retention's root authority is pinned before its first write. Reopening the same
 // byte store against a different metadata registry must not authorize deletion.
 fn local_store_bind_retention(held: LocalStoreFamilyHeld, scope: NonEmptyStr) -> LocalStoreRetentionRefusal?
-  admit_callers: [decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_with_store")]
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_with_store"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_publish_held"),
+  ]
 {
   match local_store_hold_check(held: held) {
     LocalStoreHoldCurrent => match local_store_family_budget(budgets: held.binding.budgets, family: held.family) {
@@ -1449,6 +1452,7 @@ fn local_store_with_family_of<T>(binding: LocalStoreBinding, family: ArtifactKin
 fn local_store_held_session<T>(capability: LocalStoreCapability, family: ArtifactKindId, run: fn(LocalStoreFamilyHeld) -> T) -> LocalStoreBracket<T>
   admit_callers: [
     decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_with_store"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_publish"),
     decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution"),
   ]
 {

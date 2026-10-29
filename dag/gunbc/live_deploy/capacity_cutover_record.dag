@@ -12,7 +12,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact }
-import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityGenerationFile, CapacityCutoverPhase, CapacityPreparingInhibition, CapacityInstalling, CapacityGenerationVerified, CapacityRemovingInhibition }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityGenerationFile, CapacityCutoverPhase, CapacityCapturingGeneration, CapacityPreparingInhibition, CapacityInstalling, CapacityGenerationVerified, CapacityRemovingInhibition }
 
 // Versioned payload for the existing host-local durable CAS provider. Decoding
 // is data recovery, not permission to execute or an observation of live masks.
@@ -120,6 +120,7 @@ fn capacity_inhibition_artifact_read(obj: JsonValue) -> Result<CapacityInhibitio
 
 fn capacity_cutover_phase_wire(phase: CapacityCutoverPhase) -> JsonValue {
   match phase {
+    CapacityCapturingGeneration => json_object(members: [json_kv(key: "kind", value: json_string(s: "capturing"))])
     CapacityPreparingInhibition => json_object(members: [json_kv(key: "kind", value: json_string(s: "preparing"))])
     CapacityInstalling { completed: n } => json_object(members: [json_kv(key: "kind", value: json_string(s: "installing")), json_kv(key: "completed", value: json_int(n: n))])
     CapacityGenerationVerified => json_object(members: [json_kv(key: "kind", value: json_string(s: "verified"))])
@@ -129,7 +130,8 @@ fn capacity_cutover_phase_wire(phase: CapacityCutoverPhase) -> JsonValue {
 
 fn capacity_cutover_phase_read(obj: JsonValue) -> Result<CapacityCutoverPhase, String> {
   let kind = match capacity_record_text(obj: obj, key: "kind") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
-  if (kind as String) == "preparing" { Ok { value: CapacityPreparingInhibition } }
+  if (kind as String) == "capturing" { Ok { value: CapacityCapturingGeneration } }
+  else if (kind as String) == "preparing" { Ok { value: CapacityPreparingInhibition } }
   else if (kind as String) == "verified" { Ok { value: CapacityGenerationVerified } }
   else if (kind as String) == "installing" { match capacity_record_number(obj: obj, key: "completed") { Err { value: why } => Err { value: why } Ok { value: n } => Ok { value: CapacityInstalling { completed: n } } } }
   else if (kind as String) == "removing" { match capacity_record_number(obj: obj, key: "completed") { Err { value: why } => Err { value: why } Ok { value: n } => Ok { value: CapacityRemovingInhibition { completed: n } } } }

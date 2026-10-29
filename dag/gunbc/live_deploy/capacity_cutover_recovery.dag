@@ -26,7 +26,8 @@ type CapacityGenerationFile {
 }
 
 type CapacityCutoverPhase
-  = CapacityPreparingInhibition
+  = CapacityCapturingGeneration
+  | CapacityPreparingInhibition
   | CapacityInstalling { completed: Int }
   | CapacityGenerationVerified
   | CapacityRemovingInhibition { completed: Int }
@@ -132,9 +133,13 @@ fn capacity_recovery_finding(record: CasSlotObservation<CapacityCutoverRecord>, 
 // Recovery rehydrates bytes through the existing blob provider, then binds the
 // observed content to the durable manifest before constructing the typed install.
 // The record never stores a caller-asserted live path or serialized unit AST.
+fn capacity_generation_request(file: CapacityGenerationFile) -> ArtifactRequest {
+  CutoverCaptureRequest { host: file.host, source_unit: file.destination, digest: file.digest }
+}
+
 fn capacity_generation_install(file: CapacityGenerationFile,
   read: fn(ArtifactRequest) -> Result<CapturedUnitBlob, String>) -> Result<DeploymentUnitInstall, String> {
-  let request = CutoverCaptureRequest { host: file.host, source_unit: file.destination, digest: file.digest }
+  let request = capacity_generation_request(file: file)
   match read(request) {
     Err { value: why } => Err { value: why }
     Ok { value: capture } => if capture.request != request || !content_hash_eq_cryptographic(left: file.digest, right: fabric_blob_reading_digest(reading: capture.reading)) {
