@@ -1,10 +1,13 @@
 module gunbc.live_deploy.capacity_capture_store
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, List, FilePath }
 import std.error_primitives { Result, Ok, Err }
 import std.scoped_authorization { AttemptIdentity }
 import std.content_hash { Sha256Digest }
 import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path, fabric_blob_reading_digest }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DirectoryOwnerOnly }
 import extdeps.access.posix { FilePermissions, file_mode_octal }
 import gunbc.runner.runner_microvm_attempt_identity { attempt_segment, AttemptSegmentAccepted, AttemptSegmentRefused, attempt_segment_refusal_text }
 import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned }
@@ -65,4 +68,21 @@ fn capacity_capture_blob_admit(store: CapacityCaptureStore, reading: FabricBlobR
   if fabric_blob_reading_path(reading: reading) != capacity_capture_blob_path(store: store, digest: fabric_blob_reading_digest(reading: reading)) {
     Err { value: "unit blob is outside the admitted root-owned capture address" }
   } else { Ok { value: CapturedUnitBlob { store: store, reading: reading } } }
+}
+
+// Provision through the existing owned-directory realization. A foreign owner
+// refuses rather than being adopted. The caller must separately read protected
+// ancestors; these targets do not infer a safe path from a successful mkdir.
+fn capacity_capture_directory_target(path: NonEmptyStr) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared { member: "capacity-cutover-capture", path: path as FilePath,
+    owner: PosixOwnerNames { user: "root", group: "root" },
+    mode: DirectoryOwnerOnly, group_adoption: ForeignOwnershipRefuses }
+}
+
+fn capacity_capture_directory_targets(attempt: AttemptIdentity) -> Result<List<OwnedDirectoryTarget>, String> {
+  match capacity_capture_root(attempt: attempt) {
+    Err { value: why } => Err { value: why }
+    Ok { value: root } => Ok { value: [capacity_capture_directory_target(path: capacity_capture_base),
+      capacity_capture_directory_target(path: root)] }
+  }
 }

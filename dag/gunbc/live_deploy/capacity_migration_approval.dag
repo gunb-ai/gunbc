@@ -8,7 +8,8 @@ import std.scoped_authorization {
   OperatorGrant, authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
   AuthorizationClaimState, AuthorizationGranted, AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided,
 }
-import std.effect_grant { Execute, Write, NamespacePosition, ServiceOpTree, FilesystemPathTree }
+import std.effect_grant { Execute, Write, NamespacePosition, ServiceOpTree }
+import std.filesystem_path_grant { absolute_path_position }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import extdeps.languages.json.emit { serialize_json, JsonArray, JsonString }
 import gunbc.live_deploy.capacity_quiescence {
@@ -37,7 +38,7 @@ fn capacity_cutover_file_action(operation: CapacityCutoverFileOperation) -> Auth
 
 fn capacity_cutover_file_scope(operation: CapacityCutoverFileOperation) -> AuthorizationScope {
   AuthorizationScope { verb: Write,
-    resource: NamespacePosition { tree: FilesystemPathTree, path: split(s: operation.path as String, delimiter: "/") },
+    resource: absolute_path_position(path: operation.path as String),
     action: capacity_cutover_file_action(operation: operation) }
 }
 
