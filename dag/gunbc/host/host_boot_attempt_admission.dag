@@ -12,8 +12,13 @@ import std.durable_compare_and_set {
 }
 import gunbc.durable_cas_file_store {
   DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
-  admit_cas_attempt_for_derived_payload, file_compare_and_set,
+  admit_cas_attempt_for_derived_payload, file_slot_store, slot_commit, SlotStore,
 }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path, host_state_tree }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryoneTraverse }
+import extdeps.posix.identity { PosixOwnerNames }
+import extdeps.filesystem.filesystem_io { filesystem_listing_observation, Filesystem, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 import extdeps.git.inspect
 import extdeps.git
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
@@ -187,6 +192,7 @@ type AttemptReceiptRefusal
   | AttemptSlotKeyNotAddressable { slot: NonEmptyStr }
   | AttemptSlotPreconditionIncoherent { slot: NonEmptyStr }
   | AttemptSlotStoreRefused { slot: NonEmptyStr, cause: CasStoreFailure }
+  | ReceiptAttemptStoreUnready { detail: NonEmptyStr }
 
 // ── THE CLEARANCE THE BOOT ENTRY MUST HOLD ──────────────────────────────────────────────────────
 type AttemptConfigurationSource
@@ -654,10 +660,72 @@ fn dimm_rows(obj: JsonValue) -> DimmsOf {
 }
 
 // ── THE CREATE-ONCE ATTEMPT SLOT ────────────────────────────────────────────────────────────────
-// ITS OWN NAMESPACE: a store root beside, not inside, the unit hold store, so no hold release,
-// recovery or cleanup reaches it. Absent -> Consumed is the only successful transition (the CAS
-// expects the slot absent), and nothing in this repository writes a later generation or deletes one.
-data boot_attempt_slot_root: NonEmptyStr = "/var/lib/gunbc/boot-attempts"
+// ITS OWN NAMESPACE: a store member beside, not inside, the unit hold store under the ONE host-state
+// tree (gunbc.host_state_root), so no hold release, recovery or cleanup reaches it. Absent -> Consumed
+// is the only successful transition (the CAS expects the slot absent), and nothing in this repository
+// writes a later generation or deletes one.
+//
+// THE ONE DECLARATION: the member the store lives under in the tree, and the mode its directory is
+// created with. The mint, the provisioning target and the path all derive from THIS data -- no second
+// literal. THE MODE IS THE OBSERVED FACT: provisioning/srv1/gunbc-ghrunner.sudoers creates the directory
+// `install -d -m 00755 -o ghrunner -g ghrunner`, and the executor row that creates it
+// (gunbc.runner.runner_host_grants boot_attempt_slot_operations) uses the executor's managed mode, 0755
+// (DirectoryOwnerAllEveryoneTraverse).
+type BootAttemptSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data boot_attempt_slots: BootAttemptSlotsDeclaration = BootAttemptSlotsDeclaration {
+  member: "boot-attempts" as NonEmptyStr,
+  mode: DirectoryOwnerAllEveryoneTraverse,
+}
+
+// THE ROOT, DERIVED: the tree's path plus this store's member. Never a literal; only the mint and the
+// provisioning target read it.
+fn boot_attempt_slot_path(tree: HostStateTree) -> NonEmptyStr {
+  join([host_state_tree_path(tree: tree) as String, "/", boot_attempt_slots.member as String], "") as NonEmptyStr
+}
+
+// THE SEALED SLOT STORE (the operator's sealed-store shape): data only -- it carries the SlotStore the
+// slot operations take -- sole_constructor, non-generic, never a variant arm. Construction is sealed to
+// boot_attempt_store; a holder may READ the field (declared residual, gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module), so the rung claimed here is construction
+// only: no forged or wrong-root attempt store.
+type BootAttemptSlotStore sole_constructor {
+  slots: SlotStore
+}
+
+type BootAttemptStoreReading
+  = BootAttemptStoreReady { store: BootAttemptSlotStore }
+  | BootAttemptStoreUnready { detail: String }
+
+// THE ONE MINT, AND IT TAKES NO PATH: the sealed tree value plus nothing else. It observes the derived
+// directory (lists it, the reference mint's route) and refuses when it cannot be listed -- an attempt
+// store that cannot be read is not an empty one, and booting into it would re-admit a consumed attempt.
+fn boot_attempt_store(tree: HostStateTree) -> BootAttemptStoreReading {
+  let root = boot_attempt_slot_path(tree: tree)
+  let listing = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => BootAttemptStoreUnready { detail: join(["the boot attempt store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => BootAttemptStoreUnready { detail: join(["the boot attempt store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => BootAttemptStoreReady { store: BootAttemptSlotStore { slots: file_slot_store(root: root) } }
+  }
+}
+
+// THE STORE ROOT IS A DEMANDED DIRECTORY, derived from the same declaration as the path above and
+// enrolled where the tree's children are (gunbc.runner.runner_host_grants boot_attempt_slot_operations).
+// The mint refuses a root it cannot list rather than reading it as empty, so a root nothing creates
+// refuses every admission -- the creator the corpus names for a store root
+// (gunbc.dispatch_credential_acquisition credential_acquisition_slots_directory).
+fn boot_attempt_slot_directory(tree: HostStateTree, owner: PosixOwnerNames) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: boot_attempt_slots.member,
+    path: boot_attempt_slot_path(tree: tree) as String as FilePath,
+    owner: owner,
+    mode: boot_attempt_slots.mode,
+    // An attempt slot is the proof that a boot was spent; a directory another principal left is a
+    // foreign subtree and is refused outright -- ownership of an interlock store is never adopted.
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
 
 // THE KEY IS INJECTIVE BY CONSTRUCTION, NOT BY A HASH. The stable host identity is length-prefixed,
 // and both it and the nonce are admitted only over [A-Za-z0-9_-], so the encoding parses back
@@ -690,8 +758,8 @@ fn slot_consumption_payload(receipt: AttemptInspectionReceipt) -> NonEmptyStr {
 
 // THE ONLY WRITE, reachable only from admit_named_receipt (itself reachable only from
 // admit_boot_attempt, which holds the store-host executor) and from the wet witness that exercises it
-// against a temporary root.
-fn consume_attempt_slot(root: NonEmptyStr, key: NonEmptyStr, payload: NonEmptyStr) -> SlotConsumption
+// against an isolated tree. The root is the sealed store's own -- the write cannot be pointed elsewhere.
+fn consume_attempt_slot(store: BootAttemptSlotStore, key: NonEmptyStr, payload: NonEmptyStr) -> SlotConsumption
   admit_callers: [
     decl_ref(module_path: "gunbc.host.host_boot_attempt_admission", decl_name: "admit_named_receipt"),
     decl_ref(module_path: "test.claim.host.host_boot_attempt_admission_wet_witness", decl_name: "attempt_slot_controls"),
@@ -700,7 +768,7 @@ fn consume_attempt_slot(root: NonEmptyStr, key: NonEmptyStr, payload: NonEmptySt
   match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: k } => SlotRefused { cause: AttemptSlotKeyNotAddressable { slot: k } }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
+      match slot_commit(store: store.slots, publication: DefaultAccessCreateOnly, verified: v) {
         CasCommitted { committed: _ } => SlotConsumed { slot: key }
         CasPreconditionFailed { expected: _, observed: o } =>
           match o {
@@ -718,7 +786,7 @@ fn consume_attempt_slot(root: NonEmptyStr, key: NonEmptyStr, payload: NonEmptySt
 // of this process's hostname. THE ORDER IS THE CONTRACT: route, receipt variable (absent clears as
 // NotNamed and touches nothing), executor, binding, nonce, slot-safety, path, read, every check on the
 // file, and only then the slot.
-fn admit_boot_attempt(proof: UnitHoldProof, revision: NonEmptyStr) -> BootAttemptAdmission {
+fn admit_boot_attempt(proof: UnitHoldProof, revision: NonEmptyStr, tree: HostStateTree) -> BootAttemptAdmission {
   let host = proof.subject.host
   match attempt_receipt_route(host: host) {
     Absent => BootAttemptRefused { cause: ReceiptHostHasNoRoute { host: host.host } }
@@ -726,8 +794,9 @@ fn admit_boot_attempt(proof: UnitHoldProof, revision: NonEmptyStr) -> BootAttemp
       match actions_variable_read(name: route.receipt_env as String) {
         ActionsVariableAbsent { variable: _, detail: _ } => BootAttemptCleared { clearance: BootAttemptClearance { host: host.host, source: ConfigurationReceiptNotNamed } }
         ActionsVariablePresent { value: path } =>
-          match unit_hold_store_executor(subject: proof.subject) {
+          match unit_hold_store_executor(subject: proof.subject, tree: tree) {
             UnitHoldNotOnStoreHost { reason: r } => BootAttemptRefused { cause: ReceiptExecutorNotOnStoreHost { reason: r } }
+            UnitHoldStoreUnreadyOnExecutor { detail: d } => BootAttemptRefused { cause: ReceiptAttemptStoreUnready { detail: d as NonEmptyStr } }
             UnitHoldOnStoreHost { executor: e } =>
               match bmc_control_binding(observed: host.access, secured: host.secure) {
                 BmcControlAccessUnobserved { endpoint: _ } => BootAttemptRefused { cause: ReceiptHostUnbound { detail: "its controller access is unobserved" } }
@@ -739,7 +808,11 @@ fn admit_boot_attempt(proof: UnitHoldProof, revision: NonEmptyStr) -> BootAttemp
                   } else {
                     match actions_variable_read(name: route.nonce_env as String) {
                       ActionsVariableAbsent { variable: v, detail: d } => BootAttemptRefused { cause: ReceiptNonceMissing { variable: v as NonEmptyStr, detail: d } }
-                      ActionsVariablePresent { value: nonce } => admit_named_receipt(host: host.host, nonce: nonce, path: path, revision: revision, slots: route.slots)
+                      ActionsVariablePresent { value: nonce } =>
+                        match boot_attempt_store(tree: tree) {
+                          BootAttemptStoreUnready { detail: d } => BootAttemptRefused { cause: ReceiptAttemptStoreUnready { detail: d as NonEmptyStr } }
+                          BootAttemptStoreReady { store: s } => admit_named_receipt(host: host.host, nonce: nonce, path: path, revision: revision, slots: route.slots, store: s)
+                        }
                     }
                   }
               }
@@ -749,13 +822,13 @@ fn admit_boot_attempt(proof: UnitHoldProof, revision: NonEmptyStr) -> BootAttemp
 }
 
 // REACHABLE ONLY FROM admit_boot_attempt, which established the store-host executor for this host.
-fn admit_named_receipt(host: HostIdentity, nonce: String, path: String, revision: NonEmptyStr, slots: List<RosterSlot>) -> BootAttemptAdmission
+fn admit_named_receipt(host: HostIdentity, nonce: String, path: String, revision: NonEmptyStr, slots: List<RosterSlot>, store: BootAttemptSlotStore) -> BootAttemptAdmission
   admit_callers: [decl_ref(module_path: "gunbc.host.host_boot_attempt_admission", decl_name: "admit_boot_attempt")]
 {
   match named_receipt_validation(host: host, nonce: nonce, path: path, revision: revision, slots: slots) {
     ReceiptRefused { cause: c } => BootAttemptRefused { cause: c }
     ReceiptValidated { receipt: r } =>
-      match consume_attempt_slot(root: boot_attempt_slot_root, key: attempt_slot_key(host: host, nonce: r.plan.attempt), payload: slot_consumption_payload(receipt: r)) {
+      match consume_attempt_slot(store: store, key: attempt_slot_key(host: host, nonce: r.plan.attempt), payload: slot_consumption_payload(receipt: r)) {
         SlotRefused { cause: c } => BootAttemptRefused { cause: c }
         SlotConsumed { slot: k } => BootAttemptCleared { clearance: BootAttemptClearance { host: host, source: ConfigurationReceiptAdmitted { receipt: r, slot: k } } }
       }
@@ -891,6 +964,7 @@ fn attempt_receipt_refusal_text(cause: AttemptReceiptRefusal) -> String {
     AttemptSlotKeyNotAddressable { slot: k } => join(["attempt slot key ", k as String, " does not address a slot"], "")
     AttemptSlotPreconditionIncoherent { slot: k } => join(["attempt slot ", k as String, ": the store refused a create against a slot it reported absent"], "")
     AttemptSlotStoreRefused { slot: k, cause: c } => join(["attempt slot ", k as String, " could not be consumed: ", cas_store_failure_text(cause: c)], "")
+    ReceiptAttemptStoreUnready { detail: d } => join(["the boot attempt store refused to open (", d as String, "); a store that cannot be read is not an empty one"], "")
   }
 }
 

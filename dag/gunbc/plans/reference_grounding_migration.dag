@@ -2,76 +2,18 @@ module gunbc.plans.reference_grounding_migration
 
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
-import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { p }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn reference_grounding_migration_body() -> List<MarkdownBlock> {
   [
-    BlockquoteBlock { blocks: [p(text: "ROADMAP follow-on to the #5943 construction-justification prose deletion. The carrier half of a two-part groundedness effort: this plan owns migrating stringly-typed REFERENCES to typed carriers; the DETECTOR half is neat-fox-279's v2.lens.grounding (the EXTRACT pass that enumerates every bare-String field coinciding with a concept). DESIGN refs: sec 2 (decompose to grounded atoms; net concepts must not grow by re-invention), sec 3 (single authority; nicknaming), sec 4 (a closed substrate makes references walkable, not text-matched), sec 5 (construction over validation; a typed reference makes 'points at nothing' unwritable), sec 6 (the mark on the carrier is the authority). Sibling frame: [construction-justification-rule.md](construction-justification-rule.md).")] },
-
-    h2(text: "1. The displaced cost (DESIGN sec 1)"),
-    p(text: "A reference stored as a String is an un-checkable edge. The compiler cannot see that the symbol it names exists, is imported, is in-layer, or is the single authority for that fact -- so a typo, a dead symbol, a layer inversion, and a nickname all pass silently and are paid later as a debugging session or a wrong answer. The deliverable here is the removal of that silent-failure surface: once a reference is a typed carrier, the substrate walks it. The same String also defers cost the DRY way (DESIGN sec 2) -- every consumer that wants to follow the edge re-implements string parsing / lookup, and every one can drift."),
-    p(text: "A holistic audit (three-region fan-out, 2026-06-29) found this is not a long tail of unique problems but ONE problem with ~80+ instances: a symbol, module, fn, path, or URL written as free text where a typed edge belongs. That is the good news -- a handful of carrier changes cover almost all of it, and almost every carrier ALREADY EXISTS. The work is migration, not invention."),
-
-    h2(text: "2. The partition (expressibility-frontier regions)"),
-    p(text: "Each stringly-typed field sorts into one of four buckets. Only the first three are work; the fourth is honest residue to leave alone."),
-    TableBlock {
-      header: row(cells: [cell(text: "Bucket"), cell(text: "What the String holds"), cell(text: "Target -- reuse, do not mint"), cell(text: "Why it is a wall once migrated")]),
-      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
-      rows: [
-        row(cells: [cell(text: "Reference"), cell(text: "names an INDEPENDENT entity -- a qualified symbol / module / fn / decl"), cell(text: "std.decl_ref.DeclarationRef or a QualifiedName"), cell(text: "'points at nothing' / out-of-layer becomes a resolve error, not a runtime miss")]),
-        row(cells: [cell(text: "Reference (URL)"), cell(text: "a URL / locator (an independent entity)"), cell(text: "extdeps.uri.Uri (exists, already validated)"), cell(text: "scheme + locator parsed once, at the carrier, not per consumer")]),
-        row(cells: [cell(text: "Reference (path)"), cell(text: "a file path / entry"), cell(text: "the existing path-literal lane (resolver --entry accepts QualifiedName)"), cell(text: "decided in that lane; this plan routes to it, does not re-solve it")]),
-        row(cells: [cell(text: "Role (see sec 3.1)"), cell(text: "a genitive/ownership word -- id/owner/parent OF the enclosing concept, NOT an independent entity"), cell(text: "a tag on the field carrier (EdgeLabel/FieldRef) -- the upstream substrate gap, EARNED from the ledger, not guessed"), cell(text: "the role becomes a structural property of the field, not a coincidence of name")]),
-        row(cells: [cell(text: "Enum-like"), cell(text: "a value from a small CLOSED set used as a discriminator"), cell(text: "a closed sum type (e.g. UriScheme, ReasoningEffort)"), cell(text: "an unmodeled member becomes an unhandled-variant compile error")]),
-        row(cells: [cell(text: "Derivable"), cell(text: "a property the compiler could analyze structurally"), cell(text: "a check, not a stored field"), cell(text: "the fact is computed by construction, so the stale-copy state is unwritable")]),
-        row(cells: [cell(text: "Genuine prose"), cell(text: "a real human explanation with no structure to extract"), cell(text: "KEEP -- diagnostic detail, descriptions, fixtures, doc bodies"), cell(text: "honest sec 6 residue, not a wall")]),
-      ],
-    },
-
-    h2(text: "3. The single authorities to reuse (and the anti-goal)"),
-    p(text: "DFS the concept DAG first. The genuine-REFERENCE class (sec 3.1 -- fields naming an independent entity) collapses onto carriers that already exist; the ROLE class is the separate upstream gap handled in sec 3.1:"),
-    ul(items: [
-      li(text: "std.decl_ref.DeclarationRef (module_path + decl_name + field) -- already the carrier for Disposition.Scaffold.bind and the commit-workflow entries. This is the home for the dominant class: module / import_module / fn_qualified_name / construction / entry / check_fns / floor_plan_function / ref / caller / callee / operation_name / method_name / from_type / to_type."),
-      li(text: "QualifiedName -- where only a name (no field selector) is meant."),
-      li(text: "extdeps.uri.Uri -- the ~22 url fields (std.markdown LinkInline/ImageInline, std.types call surfaces, extdeps validation)."),
-      li(text: "extdeps.uri.UriScheme -- raw_scheme (already imported in extdeps_external_authority.dag; lowest-effort win)."),
-    ]),
-    BlockquoteBlock { blocks: [p(text: "ANTI-GOAL (DESIGN sec 2 / sec 3): do NOT mint a fresh branded NonEmptyStr per field (FieldName, ParamName, MethodName, ImportPath, TypeIdentity, GitRefLabel ...). That FAILS the sec 2 test -- 'net concepts must not grow by re-invention' -- and a per-field brand is exactly the nickname sec 3 forbids. The right move is the OPPOSITE: collapse the reference class onto the two authorities that already exist (DeclarationRef, QualifiedName). A genuinely new type earns its place only where the thing is NOT a decl reference -- a Uri, or a real closed enum (UriScheme, ReasoningEffort, the Docker mode enums).")] },
-
-    h3(text: "3.1. Role vs reference -- the cut the substrate does not yet model"),
-    p(text: "Not every String that coincides with a concept is a reference. Two cases hide under one name, and only one is a DeclarationRef:"),
-    ul(items: [
-      li(text: "REFERENCE -- the field names an INDEPENDENT entity that exists on its own (a url, a content hash, a real decl). This grounds on decl_ref.DeclarationRef / Uri: an external identity the substrate can resolve and walk."),
-      li(text: "ROLE -- the field is a genitive/ownership word ABOUT the enclosing concept (widget.id, record.owner, node.parent). There is no independent entity to point at; the meaning is 'this is the id OF this widget.' A DeclarationRef is the wrong carrier here."),
-    ]),
-    p(text: "The substrate models NEITHER distinction today: a field is a bare Edge with a Named label plus a FieldRef carrying only field-name + type-name (node.dag / concept_index.dag) -- zero genitive / ownership / foreign-reference semantics. So the role side is a genuine UPSTREAM gap: it wants a tag on the field carrier (EdgeLabel / FieldRef), not a new leaf type. (The third coincidence case -- a domain field colliding with the compiler's OWN meta-vocabulary, e.g. a FieldRef.field next to the meta concept Field -- is NOT in this lane: it is decidable by the layer DAG today (layer_prefix_from_qualified_name, a first-segment match) and retires by construction as the grounding lens's layer-exclusion, run BEFORE these candidates. That is neat-fox-279's half.)"),
-    BlockquoteBlock { blocks: [p(text: "EARN, do not guess (DESIGN sec 1: convention -> necessity). The role-vs-reference carrier is NOT designed up front and NOT decided by a hand-coded stop-list of generic names (id/name/value/kind/...) or a threshold -- that list is itself the under-modeling smell. Generic-name candidates flow to the adjudicating judge; they are not a live `RatchetForever` ConstructionClass (that arm is gone). `v2.lens.grounding` is `WallAfterGrounding` / `SingleAuthority` whose climb (`name_coincides`) is sufficient for closed-set-by-comparison cases; the name-only residual stays off that ceiling. An accumulated, per-site adjudication ledger (verdict + recorded signal / decided-by / section-5 kind, the anemia-confirm corpus shape -- no cutoff) records each 'role, not reference' decision. The upstream EdgeLabel/FieldRef tag is then EARNED by the accumulated necessity, not minted by a guess. The carrier shape is downstream of the ledger.")] },
-
-    h2(text: "4. The worklist is generated, not hand-maintained (DESIGN sec 6)"),
-    p(text: "neat-fox-279's v2.lens.grounding EXTRACT pass enumerates every bare-String field whose name coincides with an existing concept (after the sec 3.1 layer-exclusion) -- the candidate worklist. Load-bearing EXTRACT design: [model-grounding-lens-extract.md](model-grounding-lens-extract.md). So the migration is driven by the detector's output, not a hand-kept list in this doc (a hand-list would be the parallel-ledger sec 6 forbids). Each candidate carries enclosing-concept, field, declared-type, coincides-with (a resolved ref, not a bare name), target-structure, and qualified-name -- which is exactly the adjudication-ledger input. The detector finds and the ledger adjudicates; this carrier plan reshapes what the ledger confirms. The halves of one groundedness effort: EXTRACT + layer-exclusion (neat-fox), carrier + ledger (this plan)."),
-    p(text: "Concretely the division: the grounding LENS reports candidates and stays the permanent backstop; the ledger adjudicates role-vs-reference; the carrier migration consumes confirmed decisions. None subsumes the other -- a reshaped carrier with no detector still lets the NEXT bare-String slip in; a detector with no reshape only reports; a reshape with no ledger guesses the role/reference cut."),
-
-    h2(text: "5. Sequencing"),
-    ol(items: [
-      li(text: "#5933 (adds v2.lens.grounding) lands, then #5943 (deletes the unread rationale / undecidable_because prose) lands. Prerequisite: the carriers are already in their post-deletion shape."),
-      li(text: "PROOF PR -- WallNow construction:String becomes mechanism: ConstructionMechanism plus authority: DeclarationRef (reusing std.disposition.ConstructionMechanism + std.decl_ref.DeclarationRef). This is the first concrete reference reshape and the pattern proof: it turns 'every lens chains to a real construction' from a prose review into a walkable graph property (feeding the axiom-syllogism open thread). Small, self-contained, ~3 live sites."),
-      li(text: "BULK REFERENCE migration -- String becomes DeclarationRef / QualifiedName across the genuine-reference bucket, scoped by the EXTRACT worklist, in reviewable slices (one carrier family per slice, so a slice is one fold over N call sites)."),
-      li(text: "QUICK WINS -- url becomes Uri; raw_scheme becomes UriScheme; the small closed enums (ReasoningEffort, Docker modes, medium)."),
-      li(text: "ROLE carrier (EARNED, parallel and slower) -- generic-name candidates accumulate adjudications in the ledger (sec 3.1); once the ledger has earned the necessity, add the EdgeLabel/FieldRef role tag upstream and migrate the confirmed role fields. This step is deliberately NOT front-run -- it lands when the ledger, not a guess, justifies the carrier."),
-      li(text: "PATH-LITERAL debt folds into its existing lane (resolver --entry accepts QualifiedName), not a fresh effort."),
-    ]),
-
-    h2(text: "6. The wall, and what stays residue"),
-    p(text: "Each reshape is a sec 5 wall: a DeclarationRef that resolves to nothing is a compile error, so the bad state is unwritable by construction -- strictly stronger than a lens that flags a dangling String after the fact. What stays honest residue: (a) genuine-prose fields (kept); (b) the grounding LENS itself, which remains the permanent detector for the NEXT bare-String (a reshape makes one field a wall; only the lens keeps the CLASS closed); (c) deciding whether a given String is a reference vs genuine prose is itself a judgment -- the EXTRACT pass over-approximates and a human confirms, exactly the sec 6 residue the grounding lens is built to be."),
-    h3(text: "Non-goals"),
-    ul(items: [
-      li(text: "No new branded-String types (section 3 anti-goal)."),
-      li(text: "No hand-coded stop-list of generic role-words and no threshold -- the role/reference cut is EARNED from the ledger (sec 3.1), never guessed by convention."),
-      li(text: "No reshape of the derivable bucket into a stored field -- those become checks (e.g. the cost 'totality over the closed kernel' prose is a totality analysis, not a String)."),
-      li(text: "No hand-maintained site list in this doc -- the EXTRACT pass is the worklist authority."),
-    ]),
+    p(text: "Goal: replace opaque reference strings and repeated consumer parsing with walkable, single-authority edges. This is the carrier half of the post-#5943 grounding effort; v2.lens.grounding owns EXTRACT. DESIGN/domain carriers govern actual enforcement; the historical census is not a current guarantee."),
+    p(text: "Partition by meaning: independent declaration→std.decl_ref.DeclarationRef, or QualifiedName when no selector is needed; locator→extdeps.uri.Uri; path→the existing path-literal/QualifiedName entry lane; closed discriminator→existing/earned coproduct (UriScheme, ReasoningEffort, Docker modes); derivable property→compute it, never store a copy; irreducible prose→keep. Reuse authorities before minting; per-field branded strings such as FieldName/ImportPath/TypeIdentity merely rename the same ungrounded edge."),
+    p(text: "Role is different from reference: widget.id/record.owner/node.parent may describe the enclosing concept rather than name an independent entity. DeclarationRef is then wrong. EdgeLabel/FieldRef’s missing role/ownership relation must be earned from per-site adjudications, not a generic id/name/value/kind stop-list or threshold. Ledger rows record verdict, signal, decided-by and failure kind. Only accumulated necessity justifies an upstream role tag; do not guess its shape first."),
+    p(text: "EXTRACT supplies candidate enclosing concept, field/type, resolved-qualified target, target structure and qualified enclosing name; layer/meta exclusions precede adjudication. Its historical folder-direction assumptions are not authority to restore the retired layering gate. Name coincidence is only a signal: closed-set provable cases can climb deterministically; meaning-dependent residual remains outside that ceiling, not RatchetForever. The detector finds, the ledger judges, the migration changes confirmed carriers. Preserve that separation and the detector’s regression role."),
+    p(text: "Sequence: #5933 detector then #5943 unread-prose deletion; prove WallNow construction:String→ConstructionMechanism plus shared DeclarationRef (a real authority target checked by graph witness); migrate confirmed reference families one slice/fold at a time; Uri/UriScheme/closed-enum cases reuse their owners; accumulate role evidence in parallel before its carrier; route paths to the existing lane."),
+    p(text: "Validate resolution/refusal through each actual consumer: dangling references must fail rather than silently become runtime misses. Grounding one field does not prevent the next bare string; the standing EXTRACT backstop and adjudication remain. No authored site list, new per-field brands, generic-name exclusions, thresholds or derivable-as-stored fields. Completion requires the declared retirement’s migrated references, earned role representation and empty unadjudicated EXTRACT population; recording a typed field alone is not that receipt."),
   ]
 }
 

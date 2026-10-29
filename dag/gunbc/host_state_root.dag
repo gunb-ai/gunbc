@@ -1,0 +1,91 @@
+module gunbc.host_state_root
+
+import std.types { NonEmptyStr, FilePath }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryoneTraverse }
+import extdeps.posix.identity { PosixOwnerNames }
+
+// THE ONE DECLARATION OF THE HOST-STATE TREE: the directory under which every host-singleton durable
+// store of this repository lives. Nine cohorts have stores beneath it (/var/lib/gunbc/boot-attempts,
+// /var/lib/gunbc/unit-holds, /var/lib/gunbc/artifacts, and the roots of other cohorts named in the
+// sealed-store lane's PRs); the operator's ruling is that each such store derives its root from THIS
+// declaration plus its own member declaration, never from a second literal of the tree. This module is
+// a leaf (the way gunbc.roadmap.roadmap_attempt_worktree_claim_root is): it imports only std.types,
+// gunbc.owned_directory, gunbc.managed_directory and extdeps.posix.identity, so every cohort can import
+// it without a cycle, and no module in this import closure can import it back.
+// WHAT THIS CLAIMS, EXACTLY: the host-state tree's root is declared HERE, and every store THIS cohort
+// migrates onto HostStateTree derives from it. Every other "/var/lib/gunbc" literal anywhere else is a
+// different store or path -- each one owned by its own inventory row and cohort, listed by identity
+// (site, row_id, disposition, cohort) at census-data/jolly-hawk-60 0c30918
+// .store-inventory/var_lib_gunbc_literals.tsv. No cohort may declare a second host-state tree; a store
+// moves onto THIS declaration in its own cohort's PR.
+//
+// THE OWNER AND MODE ARE THE OBSERVED FACT, NOT A DEMAND INVENTED HERE. The executor's privileged
+// operations create the store directories beneath it with install -d -o -g -m (gunbc.executor_privileged_operation
+// EnsureOwnedDirectory), whose owner/group/mode options apply to the FINAL named directory only -- the
+// parent components are created by the privileged invoker, root, at its umask, which is 0755 on the
+// managed hosts. That is why the tree is root-owned and world-traversable rather than owned by any one
+// service account: its children belong to different principals (the job user owns the boot-attempt and
+// unit-hold stores, gunbc-service-owned rows sit beside them in live_deploy's host directories, and the
+// fabric substrate beneath it asserts a root-owned presence ancestor,
+// gunbc.fabric.fabric_allocation_store_substrate presence_ancestor). No single account may own the tree,
+// because no single account owns all of its children; root owns it and everyone may traverse it.
+type HostStateTreeRoot {
+  path: NonEmptyStr
+  owner: PosixOwnerNames
+  mode: DeclaredDirectoryMode
+}
+
+data host_state_tree_root: HostStateTreeRoot = HostStateTreeRoot {
+  path: "/var/lib/gunbc" as NonEmptyStr,
+  owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr },
+  mode: DirectoryOwnerAllEveryoneTraverse,
+}
+
+// THE TREE AS A SEALED VALUE. HostStateTree is sole_constructor and this module builds it in exactly
+// two places, and there is no other:
+//
+//   host_state_tree()               -- the production constructor, derived from host_state_tree_root.
+//   isolated_host_state_tree(dir)   -- the witness constructor, mirroring isolated_dashboard_instance:
+//       it points a test at a directory it controls, so a wet witness can exercise a singleton store's
+//       full realization without writing into the real tree.
+//
+// Every host-singleton mint takes a HostStateTree (plus nothing else -- the store's own member
+// declaration supplies the rest) and no mint takes a path, so the only route from a literal path to a
+// live singleton store is this public path-taking constructor. It is the SAME bypass class as
+// gunbc.durable_cas_file_store file_slot_store, and it is cited as the second specimen in the existing
+// row gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module; its
+// restoring capability is the same ambient-authority removal that row's disposition names.
+type HostStateTree sole_constructor {
+  root: NonEmptyStr
+}
+
+fn host_state_tree() -> HostStateTree {
+  HostStateTree { root: host_state_tree_root.path }
+}
+
+fn isolated_host_state_tree(dir: NonEmptyStr) -> HostStateTree {
+  HostStateTree { root: dir }
+}
+
+fn host_state_tree_path(tree: HostStateTree) -> NonEmptyStr {
+  tree.root
+}
+
+// THE TREE IS ITSELF A DEMANDED DIRECTORY, derived from the same declaration as the value above: one
+// literal in host_state_tree_root serves the mint, this provisioning target, and every member path
+// beneath it. It is a demanded directory because the store mints list their derived root and refuse
+// when it cannot be listed -- and their parents must exist and be traversable for the child to exist at
+// all, so the tree is enrolled wherever the tree's children are (gunbc.runner.runner_host_grants
+// unit_hold_store_plan and its neighbours).
+fn host_state_tree_directory() -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "host-state" as NonEmptyStr,
+    path: host_state_tree_root.path as NonEmptyStr as FilePath,
+    owner: host_state_tree_root.owner,
+    mode: host_state_tree_root.mode,
+    // The tree holds stores of several principals; a present tree owned by anyone else is a foreign
+    // subtree and is refused outright -- ownership of the tree is never adopted.
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}

@@ -1,172 +1,34 @@
-# Cassette inventory convergence implementation
+# Cassette inventory convergence
 
-Inventory/readback is implemented; relation/route/selection migration remains open.
-The printer runner has not switched to inventory-derived actuation. These operations
-neither start printers nor admit powered operation.
+**Goal:** assess printed assembly completeness from observed physical inventory. **Method:** desired occurrences from `assembly_inventory.required_printed_parts`, artifact-bound preparation, append-only CAS inventory and independent inspection/readback. **Validation:** identity/refusal/transition controls, then real concurrent publication and controller restart. This stage does not switch the printer runner, start printers or admit powered operation; relation/route/selection migration remains open.
 
-## Implemented boundary
+`std.goal_assessment` owns verdicts: read failure→`ObservationRefused`; uncovered slots, active attempts, pending inspection and incompatible revisions remain indeterminate; missing/rejected parts are known deviations, retained alongside unknowns. Satisfaction carries physical identities and inspection evidence. Planning distinguishes print/replacement, observation, reconciliation, inspection and compatibility review; unknowns are never automatically prints or a guessed remedy.
 
-`assembly_inventory.required_printed_parts` derives one slot per printed occurrence
-in the selected residential assembly (28 in the current producer). Review manifests
-expose occurrences without inventing geometry/process revisions. `print_workflow.plan_remaining`
-binds revisions from verified preparation output and shadow-assesses an independent
-inventory capture. Unprepared slots request preparation; they cannot reserve or satisfy inventory.
+`assembly_inventory_store` owns the prototype slot `cassette-prototype-inventory` under `/var/lib/gunbc/printer-starts`. Reserve all selected slots with their own originating attempts in **one CAS publication**, never a competing partial subset. Baseline `generation:N` comes from store generation, not receipt labels, preventing receipt-name ABA. Unread/malformed/absent stores refuse mutation; initialization is explicit create-if-absent.
 
-`std.goal_assessment` owns the verdict. Read failure is `ObservationRefused`;
-coverage gaps, active attempts, pending inspection, and incompatible revisions
-remain indeterminate. Missing and rejected parts are known deviations. Known
-deviations survive alongside unknowns. A satisfied assessment carries the
-observed inventory entries, including physical identity and inspection evidence.
+Inspection binds slot, compatible revision, physical item, originating attempt, evidence and timestamp. Reject wrong attempts and item reuse across slots; preserve sibling entries. Re-reservation retains rejected identity/revision/attempt/evidence in `retired_rejections`; active **and retired** identities participate in reuse refusal without replaying history. Every generation retains its transition. `capture_validity` owns duplicate/evidence checks separately; `record_inspection` independently rereads publication and reassesses, never treats write success as physical acceptance.
 
-The planner distinguishes print/replacement, observation, attempt reconciliation,
-inspection and compatibility review; unknowns never all become prints. Unknown failure
-causes do not select a remedy.
+`product.printed_chassis.print_workflow` operations:
 
-`assembly_inventory_store` uses the append-only file CAS store at
-`/var/lib/gunbc/printer-starts`, slot `cassette-prototype-inventory`. One CAS publication
-reserves all requested parts with their originating plate attempts; competing writers
-cannot reserve a subset. Readback derives baseline `generation:N` from the store,
-so receipt-name reuse cannot cause an ABA match. Unread, malformed or absent stores
-refuse mutation; initialization is explicit and create-if-absent. Scope is this prototype only.
+| Operation | Contract |
+| --- | --- |
+| `plan_remaining` | Independent `inventory_file` + `prepared_output` → shadow assessment/candidates. |
+| `inventory_initialize` | Validate `capture_file`; create once. |
+| `plan_remaining_stored` | Canonical store + preparation → current residential assessment. |
+| `reserve_plan` | Verify preparation bytes/membership; fenced atomic reservation by baseline/receipt, no printer command. |
+| `record_inspection` | Fenced slot/attempt/item/evidence/time/acceptance transition, reread and reassessment. |
 
-Inspection binds slot, compatible revision, physical item, originating attempt,
-evidence reference and timestamp. It refuses another attempt's part or reuse across
-slots; updates preserve siblings. Re-reserving a rejected slot retains its item,
-revision, attempt and inspection evidence in the current capture's `retired_rejections`.
-Reuse refusal checks active and retired identities without caller-side CAS replay;
-each store generation also retains the prior transition. `capture_validity` owns
-duplicate/evidence checks separately from goal assessment. `record_inspection`
-independently rereads and reassesses publication; publication success is not physical acceptance.
+Preparation is an absolute output directory. Hash actual `cad/assembly.json` and sliced projects against `cad_binding`/readback digests; derive membership/attempts from `prepared-queues.json`. Duplicate slots/attempts refuse. Unprepared slots request preparation and cannot reserve/satisfy; no free-form revision is accepted. Revision includes CAD **and exact sliced-project** digests, so repacking/process/CAD edits require explicit compatibility reconciliation, still unimplemented. Identity checks neither rerun CAD/slicer admission nor legitimate forged receipts.
 
-## Workflow operations
+Schema `gunbc.cassette-inventory.v2` refuses old free-label captures; never silently discard rejected history. No production inventory was initialized; a v1 store requires evidence reconciliation and separately authorized migration. Covered-without-entry means observed absence; uncovered means unknown, never inferred from CAD. Accepted/rejected entries need evidence/time, reserved needs attempt, awaiting-inspection needs item+attempt. `accepted` is a decision: unresolved inspection remains pending; its distinct receipt is still owed.
 
-All operations live on `product.printed_chassis.print_workflow`:
+Selected fan facts flow through `RearFanBank`→`FanHarnessPlan`→`HarnessPlan`/cable fold, `selected_fan_harness_json` and `fan_bank_header_load`. P14/P8 have their own facts; unread P12/F9 stays absent. Never borrow P8 values or invent a PST link for one fan. Report lead, route plus service allowance, extension need, native cables excluding unselected extensions, header load and chain-read obligation. Fan review needs no invented power station/switch/DC population; full-stack census waits for those choices. Routes remain lower bounds. [P14 specification](https://www.arctic.de/media/1d/98/04/1693306037/Spec_Sheet_P14_PWM_PST_EN.pdf) read 2026-10-05 is bound by `arctic_p14_wiring_read_receipt`; it proves neither header capacity, chain allowance, final routing nor cooling.
 
-| Operation | Inputs | Effect |
-| --- | --- | --- |
-| `plan_remaining` | `inventory_file`, `prepared_output` | Read an independent capture; emit shadow assessment and candidate work |
-| `inventory_initialize` | `capture_file` | Validate and create the prototype inventory once |
-| `plan_remaining_stored` | `prepared_output` | Read the canonical store and assess the current residential desired slots |
-| `reserve_plan` | `prepared_output`, `baseline`, `receipt` | Verify prepared artifact bytes and assembly membership and atomically reserve its slots/attempts; no printer commands |
-| `record_inspection` | `prepared_output`, `baseline`, `receipt`, `slot`, `attempt`, `physical_item`, `observed_at`, `accepted` | Fenced inspection transition, independent reread, reassessment |
+Before actuation cutover:
 
-`accepted` is Boolean. Leave unresolved inspection pending; a separate
-unresolved-inspection receipt remains an open migration item.
+- Bind selections/compatibility and owner-held mechanical/profile/electrical obligations; implement port/provider relations consumed by review/preparation, then derive routes/bends/service/BOM.
+- Make preparation and print-request convergence consume reserved slots; telemetry records completion into inspection-pending without releasing uncertain starts. `printer_actuation` start claims remain guards. Deleted `printer_batch` completion files are not live publishers; restoration requires request-convergence completion receipts. A reservation may be inspected with supplied physical identity; FINISH never accepts a part.
+- Add explicit stale-reservation recovery/cancellation and unresolved-inspection receipts; no timeout currently frees slots.
+- Execute concurrent store/restart integration and shared effectful convergence, fleet admission first. Pure controls/CAS implementation do not establish integration.
 
-`prepared_output` must be the absolute directory produced by preparation. The
-identity reader hashes `cad/assembly.json` and each actual sliced project, checks
-the corresponding `cad_binding` and project digest in its readback, and obtains
-slot membership and attempt from `prepared-queues.json`. Duplicate slots or plate
-attempts refuse. Inspection must name that prepared slot's attempt. Neither command
-accepts a free-form revision. This identity check complements the preparation gates;
-it does not independently rerun CAD/slicer admission or make a forged receipt valid.
-
-A revision binds the CAD manifest digest **and exact sliced-project digest**.
-Repacking or changing process/CAD changes identity and requires explicit compatibility
-reconciliation before reusing an accepted or rejected item. That operation remains unimplemented.
-
-Schema `gunbc.cassette-inventory.v2` refuses earlier free-label captures; migration
-must preserve rejected-item history. This work created no production inventory and
-performed no live migration. Any v1 store requires reconciliation against retained
-preparation/inspection evidence before separate migration authorization.
-
-Capture shape (illustrative hashes, not an observation of the user's hardware):
-
-```json
-{
-  "schema": "gunbc.cassette-inventory.v2",
-  "snapshot": "independent-capture-id",
-  "retired_rejections": [],
-  "covered_slots": ["M140", "G140"],
-  "entries": [
-    {
-      "slot": "M140",
-      "revision": {
-        "cad_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "project_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-      },
-      "status": "accepted",
-      "physical_item": "unique-physical-item-id",
-      "attempt": "originating-plate-attempt",
-      "evidence": "retained-inspection-receipt-or-photo-reference",
-      "observed_at": "2026-10-05T20:00:00Z"
-    },
-    {
-      "slot": "G140",
-      "revision": {
-        "cad_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "project_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-      },
-      "status": "reserved",
-      "attempt": "another-plate-attempt"
-    }
-  ]
-}
-```
-
-A covered slot without an entry means observed absence; an uncovered slot means
-unobserved. CAD membership alone cannot establish coverage. Accepted/rejected entries
-require evidence and timestamp; reservations require an attempt; `awaiting-inspection`
-requires physical identity and attempt.
-
-## Selected fan facts
-
-The harness and header-current screen now require the selected fan's lead,
-sharing and current facts as inputs; neither imports a P8 value implicitly.
-Rear fan candidates carry optional wiring facts. P14 and P8 have their own rows;
-unread P12/F9 wiring stays absent. `residential_review.main` now calls `selected_fan_harness_json`: the selected
-`RearFanBank` constructs the `FanHarnessPlan` shared by `HarnessPlan` and the fan
-cable fold, and calls `fan_bank_header_load`. The emitted review includes lead,
-header span plus explicit service allowance, extension need, native fan-cable count (excluding any unselected extension), header
-load, and the chain read obligation. Missing candidate facts produce an open result
-rather than borrowing P8 values. A single PST fan contributes no fictitious link.
-
-The independent fan subplan needs no invented power station, DC population or switch
-placement. Full-stack DC/Ethernet census awaits those selections. Fan routes remain
-design lower bounds, not verified cut lengths or powered-operation approval.
-
-ARCTIC's [P14 PWM PST specification, p.1](https://www.arctic.de/media/1d/98/04/1693306037/Spec_Sheet_P14_PWM_PST_EN.pdf)
-was downloaded/read 2026-10-05: 400 mm lead, four-pin plug and socket, 0.12 A at
-12 V. The read receipt retains byte count and SHA-256 in
-`gunbc.specification_citation_read_provenance.arctic_p14_wiring_read_receipt`.
-This does not establish board-header capacity, allowable chain count, a routed
-cable length, or installed cooling performance.
-
-## Still required before actuation cutover
-
-- Bind component choices to selection receipts and add explicit compatibility
-  reconciliation for changed prepared-project identities.
-- Attach all mechanical, profile and electrical obligations to their owners,
-  implement the port/provider relation, and consume it in review/preparation.
-- Derive selected cable routes, bends, service volumes and BOM from those
-  relations. The older harness lengths remain lower-bound estimates.
-- Make preparation and the print-request convergence (the part-D successor of the deleted
-  `gunbc.fleet.printer_batch`) consume the reserved desired slots; reconcile telemetry into
-  inspection-pending inventory without releasing an uncertain start. The start claims under
-  `/var/lib/gunbc/printer-starts`, written by `gunbc.fleet.printer_actuation`, remain the guards.
-  Nothing currently publishes `PartAwaitingInspection` into this store (the batch controller's
-  `.completed-awaiting-inspection.json` went with it); the trigger to restore it is the request
-  convergence recording a completion receipt. Inspection can consume a reservation with a
-  caller-supplied physical identity; FINISH alone still cannot accept a part.
-- Add explicit recovery/cancellation of stale reservations and unresolved
-  inspection receipts. No timeout currently frees a reservation automatically.
-- Exercise real concurrent store publication and restart through the integrated
-  controller. Pure transition controls and the existing CAS implementation do
-  not establish that end-to-end integration.
-- Land the shared effectful convergence cycle with the fleet admission spine as
-  its first consumer, as the migration plan requires.
-
-## Validation of this stage
-
-18 inventory claims and 12 stack/feed claims pass in the source interpreter.
-A separate file-backed integration check admits matching artifact hashes and
-refuses changed project bytes with unchanged receipts (two passing controls).
-The claims cover digest changes, retained rejected identities through JSON readback,
-unprepared reservation refusal, the selected residential P14 harness, missing fan
-facts, and the existing inventory and feed controls. The production residential review emits the selected P14
-lead (400 mm), route estimate with allowance (470 mm), extension requirement and
-120 mA header load with its unresolved capacity. Workflow checks use synthetic
-files in `/tmp`; the full `plan_remaining` entrypoint returned 28 desired slots,
-27 preparation requests and one observation request for the bound, uncovered slot.
-These checks neither initialize nor accept physical inventory, nor start printers. Required CI,
-native emission and concurrent controller/store integration remain separate checks.
+Historical source-interpreter inventory/stack/feed claims and file-backed artifact controls passed; synthetic `/tmp` workflow checks neither initialized inventory nor started printers. Controls include changed bytes with unchanged receipts, digest changes, retired identity roundtrip, unprepared reservations, selected P14 and missing fan facts. Required CI, native emission and concurrent controller integration remain separate evidence.

@@ -104,7 +104,9 @@ import std.materialization_object {
   StoreCommitManifestUninterpretable, StoreCommitContractRefused, StoreCommitPublishRefused, StoreCommitReadBackRefused,
   StoreCommitAddressRefused, StoreCommitResultContentConflict, StoreCommitResultHashFamilyIncomparable,
   StoreCommitResultIdentityUnverifiable, StoreCommitBudgetUndeclared, StoreCommitDidNotFit, StoreCommitOccupancyUnavailable,
-  StoreCommitCleanupOutstanding,
+  StoreCommitCleanupOutstanding, StoreCommitAtCapacity,
+  StoreLookupOutputContentRefused, StoreCommitOutputContentRefused,
+  StoreOutputContentRefusal, StoreRequiredBytePartMissing, StoreRequiredBytePartDifferent,
   StoreFault, store_lookup_payload,
 }
 import extdeps.realization.materialization_store_local {
@@ -1974,7 +1976,7 @@ type ComputeMaterialization {
 // root declares no budget for has no provider and the ladder refuses.
 fn compute_store_providers(family: ArtifactKindId) -> List<std.materialization_ladder.CacheProvider> {
   match local_store_family_budget(budgets: materialization_store_durable_family_budgets, family: family) {
-    Present { value: b } => [local_store_family_provider(family: family, budget: b.budget)]
+    Present { value: b } => [local_store_family_provider(family: family, budget: b.budget, at_capacity: b.at_capacity)]
     Absent => []
   }
 }
@@ -2231,8 +2233,16 @@ fn compute_store_unavailable_detail(c: LocalStoreUnavailableCause) -> String {
   }
 }
 
+fn compute_store_output_content_refusal_detail(cause: StoreOutputContentRefusal) -> String {
+  match cause {
+    StoreRequiredBytePartMissing { part } => join(["required byte part missing: ", part as String], "")
+    StoreRequiredBytePartDifferent { part, expected, found } => join(["byte content differs for ", part as String, ": expected SHA-256 ", expected.hex as String, ", found ", found.hex as String], "")
+  }
+}
+
 fn compute_store_lookup_refusal_detail(r: StoreLookupRefusal) -> String {
   match r {
+    StoreLookupOutputContentRefused { cause } => compute_store_output_content_refusal_detail(cause: cause)
     StoreLookupObjectUnavailable { fault } => join(["object unavailable: ", compute_store_fault_detail(f: fault)], "")
     StoreLookupObjectMalformed { cause } => join(["object malformed: ", cause], "")
     StoreLookupManifestUninterpretable { decode: _ } => "manifest uninterpretable"
@@ -2247,6 +2257,7 @@ fn compute_store_lookup_refusal_detail(r: StoreLookupRefusal) -> String {
 
 fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
   match r {
+    StoreCommitOutputContentRefused { cause } => compute_store_output_content_refusal_detail(cause: cause)
     StoreCommitManifestUninterpretable { decode: _ } => "manifest uninterpretable"
     StoreCommitContractRefused { binding: _ } => "the provider contract refused the offered artifact"
     StoreCommitPublishRefused { fault } => join(["publish refused: ", compute_store_fault_detail(f: fault)], "")
@@ -2257,6 +2268,7 @@ fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
     StoreCommitResultIdentityUnverifiable { cause } => join(["result identity unverifiable: ", cause], "")
     StoreCommitBudgetUndeclared { family } => join(["no budget is declared for family ", family as String], "")
     StoreCommitDidNotFit { artifact_bytes: a, budget: b } => join(["the record (", to_string(value: byte_size_count(b: a)), " bytes) exceeds the family budget (", to_string(value: byte_size_count(b: b)), " bytes)"], "")
+    StoreCommitAtCapacity { artifact_bytes: a, available: b } => join(["store at capacity: the record needs ", to_string(value: byte_size_count(b: a)), " bytes; ", to_string(value: byte_size_count(b: b)), " bytes are available"], "")
     StoreCommitCleanupOutstanding { artifact_bytes: a, budget: b, undeleted: u } => join(["the record (", to_string(value: byte_size_count(b: a)), " bytes) does not fit the family budget (", to_string(value: byte_size_count(b: b)), " bytes) while ", to_string(value: byte_size_count(b: u)), " bytes of evicted entries are still undeleted"], "")
     StoreCommitOccupancyUnavailable { cause } => join(["occupancy record unavailable: ", cause], "")
   }

@@ -1,0 +1,27 @@
+module test.claim.bmc.bmc_world_literal_omit_probe
+
+// A compile-probe, not a behavioural claim: it constructs a raw BmcWorld literal that OMITS the new
+// redfish_accounts field (relying on its `= none` default), which is exactly what the pre-existing full
+// literals across the tree do. If this entry resolves and typechecks, adding the defaulted field is
+// source-compatible with every existing literal; if it errors, the field must be threaded everywhere instead.
+// It asserts only a power-on fact, so the assertion is not the point -- the compilation is.
+
+import std.types { Bool }
+import std.measure { Second, second }
+import gunbc.bmc_model {
+  BmcWorld, BmcPowerOn, BootOverrideNone, bmc_web_world_untouched, bmc_record_surfaces_unmodeled, bmc_power_is_on,
+}
+
+// A raw literal with the ORIGINAL fourteen fields and NOT redfish_accounts -- the omit path.
+fn on_host_no_redfish() -> BmcWorld {
+  BmcWorld {
+    power: BmcPowerOn, pending: [], fired: [], boot_override: BootOverrideNone, sel: [],
+    sol_session_open: false, cycle_off_interval: second(count: 30),
+    host_booted_at: none, booted_via_override: false, sol_drop_after_boot: none,
+    web: bmc_web_world_untouched, ipmi_users: [], ipmi_user_access: [], record_surfaces: bmc_record_surfaces_unmodeled,
+  }
+}
+
+test fn an_existing_style_literal_still_compiles_and_reads_power() -> Bool {
+  bmc_power_is_on(world: on_host_no_redfish())
+}

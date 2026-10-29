@@ -75,3 +75,12 @@ test fn the_root_bootstrap_enables_the_journal_buckets_services() -> Bool {
     && any(iam_bootstrap_required_services, r => r == "iam.googleapis.com")
     && any(iam_bootstrap_required_services, r => r == "secretmanager.googleapis.com")
 }
+
+// The journal bucket binds the custom roles gunbcIamBootstrapJournal and gunbcIamObserveBucket,
+// which the roles stage creates; on 2026-10-28 (receipt iam-ceremony-20261028T123903Z) the bucket
+// stage ran first and GCP answered 400 "Role ... does not exist in the resource's hierarchy".
+test fn the_journal_bucket_waits_for_the_roles_it_binds() -> Bool {
+  comes_before(first: BootstrapRoles, second: BootstrapJournalBucket)
+    && !iam_bootstrap_stage_admitted(stage: BootstrapJournalBucket, completed: [BootstrapServices, BootstrapIdentities])
+    && iam_bootstrap_stage_admitted(stage: BootstrapJournalBucket, completed: [BootstrapServices, BootstrapIdentities, BootstrapRoles])
+}

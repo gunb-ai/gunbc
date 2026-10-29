@@ -7,6 +7,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.inspect
 import extdeps.gunbc
 import extdeps.shell
+import extdeps.rust.cargo { cargo_default_target_dir }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -58,7 +59,7 @@ type PlantedParseGate
 
 fn plant_parse_gate(root: String, lib_source: String) -> PlantedParseGate {
   let dir = shell.Mktemp.DirWithTemplate(
-    template: concat(root, "/target/parse-gate-planted-XXXXXX") as FilePath,
+    template: concat(cargo_default_target_dir(build_root: root), "/parse-gate-planted-XXXXXX") as FilePath,
   )
   if !dir.success {
     PlantedParseGateUnwritable { detail: "mktemp under target/ failed" }

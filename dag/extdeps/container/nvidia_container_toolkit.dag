@@ -142,17 +142,22 @@ fn nvidia_ctk_cdi_output_word_of(spec_path: NonEmptyStr) -> NonEmptyStr {
 data nvidia_ctk_cdi_output_word: NonEmptyStr =
   nvidia_ctk_cdi_output_word_of(spec_path: nvidia_cdi_spec_path)
 
-// The generate leg's argv. `nvidia-ctk cdi list`, below, is the readback that proves a device
+// The generate leg's ARGUMENTS. `nvidia-ctk cdi list`, below, is the readback that proves a device
 // exists, which is what a capability witness cites. These are argv ROWS, not shell: the caller
 // composes them with elevation where the write needs privilege.
+//
+// THE PROGRAM NAME IS NOT IN THESE ROWS, and that is load-bearing rather than stylistic. Both are fed
+// to argv_command(program: nvidia_ctk_program(), arguments: …), and extdeps.exec.command argv_words
+// PREPENDS command.program.invocation — so spelling the binary here emitted `nvidia-ctk nvidia-ctk cdi
+// list` on the first real host run (srv3, 2026-10-26, exit 3 "unknown command nvidia-ctk"). A row that
+// names only arguments is the shape every other *_argv in the corpus uses for exactly that reason.
 data nvidia_ctk_cdi_generate_argv: List<NonEmptyStr> = [
-  "nvidia-ctk",
   "cdi",
   "generate",
   nvidia_ctk_cdi_output_word,
 ]
 
-data nvidia_ctk_cdi_list_argv: List<NonEmptyStr> = ["nvidia-ctk", "cdi", "list"]
+data nvidia_ctk_cdi_list_argv: List<NonEmptyStr> = ["cdi", "list"]
 
 // The complete-device name a job must pass to select every GPU on the host. One spelling here, so
 // no instrument, unit, or probe gets to invent a variant — nvidia-ctk's own list output on the

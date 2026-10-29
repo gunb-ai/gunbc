@@ -8,7 +8,7 @@ import gunbc.design_ruling {
   machine_mode_names_drop_the_unit,
 }
 import std.markdown { MarkdownBlock }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul }
+import gunbc.plans.md_helpers { p }
 import std.types { String }
 
 // THE DESIGN ARGUMENT BEHIND gunbc.design_ruling one_physical_machine_boot_transaction AND
@@ -27,64 +27,42 @@ fn ruling_names() -> List<String> {
 
 fn opening() -> List<MarkdownBlock> {
   [
-    h2(text: "1. Target"),
-    p(text: "One boot transaction for every physical machine, one physical-machine convergence entry, and zero per-machine workflow roots. Boot is an operation reused by arrival qualification, OS provisioning, reset and recovery; it does not own those lifecycles. A single managed-host lifecycle that owns everything is explicitly not the target."),
+    p(text: "Goal: one physical-machine boot transaction and convergence entry, with no per-machine workflow roots. Arrival qualification, provisioning, reset and recovery consume boot; a universal managed-host lifecycle is not the target."),
     p(text: concat("Rulings (gunbc.design_ruling): ", join(ruling_names(), ", "))),
   ]
 }
 
 fn axes() -> List<MarkdownBlock> {
   [
-    h2(text: "2. Three axes, joined, not merged"),
-    ul(items: [
-      li(text: "**Physical identity:** gunbc.machine_intake.subject UnitKey plus the current MachineIntakeSubject (assembly and firmware state). A receipt taken before a DIMM or firmware change does not apply to the repaired assembly."),
-      li(text: "**Fleet binding (optional):** gunbc.fleet.fleet_enrollment HostEnrollmentIntent; the host-to-unit edge is to live on gunbc.fleet.fleet_host_backing OwnedMachine as an optional UnitKeyStanding, absent until a board serial is observed (cut 1, #14062, not yet on main; today OwnedMachine carries only provisioning). Roles (CI runner, serving, sessions) are participation, never a machine kind, and never select a boot implementation."),
-      li(text: "**Control standing:** gunbc.host.host_control_route ControlledHost, to be re-based over a sealed BMC control binding (gunbc.host.bmc_control_binding, cut 2, #14063, not yet on main). Control is to be keyed by controller endpoint and unit, not by host label, so an unenrolled arrival unit is controllable."),
-      li(text: "gunbc.host.managed_host is a BMC-specific standing being decomposed and retired, not the universal machine. Ampere SMpro is a platform capability (absent, not refused, on x86); BMC capabilities are to come from a per-firmware-release catalog looked up from the observed release, never a per-unit row (cut 2; today mtcollins1 still carries a per-unit capability row)."),
-    ]),
+    p(text: "Join three independent axes: current physical assembly/firmware identity (machine_intake.subject UnitKey and MachineIntakeSubject); optional fleet participation (fleet_enrollment HostEnrollmentIntent and fleet_host_backing OwnedMachine, with UnitKeyStanding absent until serial observation); and sealed control standing (host_control_route ControlledHost over bmc_control_binding), keyed by controller endpoint and unit so unenrolled arrivals remain controllable."),
+    p(text: "A changed DIMM or firmware invalidates the old subject receipt. Roles never select boot implementations. Retire BMC-specific managed_host; obtain BMC capabilities from observed firmware-release catalogs, not per-unit copies. Ampere SMpro is an optional platform capability, absent rather than refused on x86."),
   ]
 }
 
 fn transaction() -> List<MarkdownBlock> {
   [
-    h2(text: "3. The boot transaction"),
-    p(text: "A request (physical subject, desired target, revision, terminal requirement, authorization and maintenance hold) leads to an admitted subject, then a plan (control route, delivery strategy, target, expected terminal), an attempt, effect progress (not started, unreached, began with completion unknown, failed, reported applied) and an independent terminal readback. The request and the plan each carry an identity, and the transaction ends in a receipt bound to the exact physical subject, desired revision, attempt and incarnation, and the terminal actually observed. A controller acknowledgement is never boot success, and a receipt for one subject or revision never stands for another."),
-    p(text: "Today's BootMedium splits into artifact identity, delivery (where a controller reads it), boot target and terminal demand. The terminal demand belongs to the consumer: arrival wants a diagnostic attestation, provisioning wants installed-system identity, reset wants down-then-back, runner qualification wants runner readiness."),
-    p(text: "Strategies are protocol and delivery adapters, not machine classes: IPMI one-shot plus virtual media, Redfish override plus virtual media, PXE or HTTP boot, local installed disk, provider rebuild, appliance first boot. A new machine on a known board and controller adds rows, never a workflow, mode, boot function or host-name branch."),
+    p(text: "Method: request (subject, target, revision, consumer terminal requirement, authorization, maintenance hold) → admission → identified plan (route, delivery, target, expected terminal) → attempt → effect progress → independent terminal readback. Preserve not-started, unreached, began/completion-unknown, failed and reported-applied progress. Bind the receipt to exact subject, revision, attempt, incarnation and observed terminal; acknowledgement is never boot success."),
+    p(text: "Separate artifact identity, delivery, boot target and terminal demand. Arrival requires diagnostic attestation; provisioning installed-system identity; reset down-then-back; runner qualification readiness. IPMI/Redfish virtual media, PXE/HTTP, installed disk, provider rebuild and appliance first boot are adapters. A known machine adds rows, not a workflow, mode or host-name branch."),
   ]
 }
 
 fn guests() -> List<MarkdownBlock> {
   [
-    h2(text: "4. Physical machines and guests"),
-    p(text: "MicroVM guests do not share inventory, controller, media or power interfaces with physical machines. They share what comes after start: runtime identity, OS and configuration convergence, workload assignment, attempt and incarnation vocabulary, and independent-readback transaction semantics."),
+    p(text: "Guests share runtime identity, OS/configuration convergence, workload assignment, attempt/incarnation vocabulary and independent-readback semantics. Their inventory, controllers, media and power interfaces remain distinct from physical machines."),
   ]
 }
 
 fn cuts() -> List<MarkdownBlock> {
   [
-    h2(text: "5. Cut order"),
-    ul(items: [
-      li(text: "**Managed-host untangle (in flight):** 4b-ii census image chain (merged, #14065); 4d-ii neutral boot-attempt core plus MegaRAC adapter (#14064); 4d-i boot-run re-derivation; cut 1 physical subject join (#14062); cut 2 ManagedHost decomposition (#14063). The untangle's own cut ledger (cuts 0-7 and O1a-O2, the governing import rule, the non-import census and the terminal receipt each cut owes) was the hand-written plan deleted by the plan bankruptcy; it is recoverable verbatim with `git show 80c2a87d1b6^:docs/plans/managed-host-untangle.md`, and in-tree modules still cite its cut numbers. This program supersedes its target (the managed-host lifecycle) but keeps its cut discipline."),
-      li(text: "**3 — common boot transaction** built around the mtcollins1 boot, without changing its operational sequence."),
-      li(text: "**4 — srv3 as the second forcing consumer:** a different BMC protocol and boot-selection shape, and OS installation rather than a diagnostic census."),
-      li(text: "**5 — host_reset_return as the third:** no media, a terminal observed from another host, local disk as a first-class target; the old controller actuation is then deleted."),
-      li(text: "**6 — PXE and HTTP as delivery strategies, and OS provisioning:** artifact delivered, OS installed, local target booted, runtime identity matching the physical subject."),
-      li(text: "**7 — host-system and workload convergence:** desired, observed, apply and readback, recovering the transaction semantics of the deleted Spark serving work (capture before effect, named permitted delta, effect reachability, independent readback, incarnation identity, pending as a real state, rollback from observed progress, multi-subject requirements), not its Docker or vLLM specifics."),
-      li(text: "**Last — mode renames** per machine_mode_names_drop_the_unit, once the old roots are deleted."),
-    ]),
+    p(text: "Cut order: finish managed-host untangling (#14062–#14065; its cut ledger is preserved at 80c2a87d1b6^:docs/plans/managed-host-untangle.md); (3) extract common boot around mtcollins1 without changing its operation sequence; (4) force a second protocol and OS-installation consumer through srv3; (5) replace host_reset_return with first-class local disk and terminal observation from another host, then delete old actuation; (6) PXE/HTTP provisioning with matching physical/runtime identity; (7) host/workload convergence; finally rename modes after old roots disappear."),
+    p(text: "Cut 7 preserves capture-before-effect, named permitted delta, effect reachability, independent readback, incarnation, genuine pending state, rollback from observed progress and multi-subject requirements. Reuse these transaction semantics from the deleted Spark work, not its Docker/vLLM choices."),
   ]
 }
 
 fn decisions() -> List<MarkdownBlock> {
   [
-    h2(text: "6. Decisions, settled and open"),
-    ul(items: [
-      li(text: "**OS install mechanism for ASRock ALTRAD8UD-1L2T at OpenBMC 3.22:** extdeps.boards.asrock_rack asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog lists CapabilityNbdProxyVirtualMedia for 2.07.00 only; the 3.06.00 and 3.22.00 rows carry the base set. The candidates were a network-boot delivery strategy (cut 6) or a BMC firmware downgrade. Decided 2026-10-16 by the operator, relayed through session royal-seal-46 (`pxe is usually preferred`): network boot (PXE or HTTP) as a cut 6 delivery strategy, which also avoids regressing the firmware of the just-recovered altrad8ud-1l2t-6. The downgrade route is not pursued."),
-      li(text: "**BMC credential recovery through an in-band route:** a candidate to be qualified. Like any privileged operation it owes typed admission, refusal, effect progress and an independent readback; which convergence entry owns it is open."),
-    ]),
-    h3(text: "Onboarding bar"),
-    p(text: "Another unit of a supported board and controller needs only observation, inventory and enrollment rows; a new board needs one per-board authority and a binding row; a new CPU architecture on a supported OS family needs only artifact-compatibility and platform-profile rows; a new controller protocol needs one adapter with its witnesses; a new role needs only participation and workload assignment."),
+    p(text: "Settled: use PXE/HTTP for ASRock ALTRAD8UD-1L2T at OpenBMC 3.22 (operator 2026-10-16), not firmware downgrade; the catalog grants NbdProxyVirtualMedia only to 2.07.00, with base capabilities at 3.06.00/3.22.00. Open: qualify in-band BMC credential recovery with typed admission/refusal, effect progress and independent readback, and decide its convergence owner."),
+    p(text: "Validate onboarding breadth: another supported unit needs observation/inventory/enrollment rows; a new board one authority and binding; a new CPU architecture on a supported OS only artifact-compatibility/platform rows; a new controller one witnessed adapter; a new role only participation/workload assignment. Retirement requires the shared boot and convergence entries to serve every physical machine, with per-machine roots removed."),
   ]
 }
 
