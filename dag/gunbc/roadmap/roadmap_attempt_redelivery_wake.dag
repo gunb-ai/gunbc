@@ -50,10 +50,6 @@ import extdeps.systemd.systemd_run {
 }
 
 data attempt_redelivery_unit_prefix: String = "gunbc-attempt-redeliver-"
-data attempt_redelivery_cli_program: String = "gunbc"
-data attempt_redelivery_cli_function: String = "belt_dispatch_node_cli"
-data attempt_redelivery_env_node: String = "GUNBC_BELT_NODE_ID"
-data attempt_redelivery_env_instance: String = "GUNBC_BELT_INSTANCE_ID"
 data attempt_redelivery_effect_subject: NonEmptyStr = "arm ONE transient wallclock timer in the lab's operating user's systemd USER manager for a request-pending attempt, via systemd-run --user --on-calendar --collect --timer-property=RemainAfterElapse=no, named gunbc-attempt-redeliver-<node>-<attempt-key>-<epoch> for the single re-delivery instant it targets, that execs the instance's own belt re-dispatch route (roadmap_belt_actuate.belt_dispatch_node_cli) for that node at the re-delivery instant the transport-retry policy already computed; it mints no credential, its name fixes one instant so arming the same instant twice is refused by systemd as already-armed and a later instant is a distinct name, and it runs unattended so no human is on the effect's path -- no other unit, user, credential, or program" as NonEmptyStr
 
 // THE WAKE EFFECT, CHARACTERIZED FOR THE SELECTOR. A user-manager transient timer armed by the belt
@@ -113,25 +109,20 @@ fn attempt_redelivery_wake_unit_name(node_id: String, attempt_key: String, insta
   join([attempt_redelivery_wake_unit_stem(node_id: node_id, attempt_key: attempt_key, instant: instant) as String, ".timer"], "") as NonEmptyStr
 }
 
-// THE WAKE COMMAND THE TIMER ARMS. A user-manager --on-calendar --collect timer for the unit name above,
-// at the calendar spelling of the decision's instant (`next_delivery`, admitted at a typed EpochSecs
-// position -- never a brand cast), that execs the instance's OWN belt re-dispatch route
-// (belt_dispatch_node_cli under GUNBC_BELT_NODE_ID / GUNBC_BELT_INSTANCE_ID) -- the same route the door's
-// dispatch takes -- so the wake re-delivers the same key by the same path. Consumed by
+// THE WAKE COMMAND THE TIMER ARMS. A user-manager --on-calendar --collect timer for the instant-keyed
+// unit name, at the calendar spelling of the decision's instant (`next_delivery`, admitted at a typed
+// EpochSecs position -- never a brand cast). The route it fires -- the argv and the node/instance
+// environment it is handed -- belongs to the re-dispatch route's OWN module (roadmap_belt_actuate), so
+// THIS module carries no route literal: the caller passes `setenv_bindings` (built from
+// belt_dispatch_env_var / belt_dispatch_instance_env_var) and `command_argv` (the instance's serve_binary
+// run --source-root/--entry/--function belt_dispatch_node_cli). That keeps one copy of each fact (§3):
+// if the dispatch renames its env var or function, there is no second copy here to drift. Consumed by
 // roadmap_belt_actuate's SpawnRouteWake fold arm.
-fn attempt_redelivery_wake_command(node_id: String, instance_id: String, attempt_key: String, next_delivery: EpochSecs) -> SystemdRunCommandReading {
+fn attempt_redelivery_wake_command(node_id: String, attempt_key: String, next_delivery: EpochSecs, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_user_oneshot_timer_command(
     unit: attempt_redelivery_wake_unit_name(node_id: node_id, attempt_key: attempt_key, instant: next_delivery),
     on_calendar: systemd_onetime_calendar_expression(instant: next_delivery) as NonEmptyStr,
-    setenv_bindings: [
-      SystemdSetenvBinding { name: attempt_redelivery_env_node as NonEmptyStr, value: node_id as NonEmptyStr },
-      SystemdSetenvBinding { name: attempt_redelivery_env_instance as NonEmptyStr, value: instance_id as NonEmptyStr },
-    ],
-    command_argv: [
-      attempt_redelivery_cli_program,
-      "run",
-      "--function",
-      attempt_redelivery_cli_function,
-    ],
+    setenv_bindings: setenv_bindings,
+    command_argv: command_argv,
   )
 }

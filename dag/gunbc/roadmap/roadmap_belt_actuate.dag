@@ -2856,7 +2856,26 @@ fn belt_actuate_spawn_exec_modeled(
     SpawnRouteWake { attempt_key, at } =>
       match instance.toolchain.systemd_run {
         Absent => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["the request-pending attempt ", attempt_key, " is held until a re-delivery wake at ", to_string(value: at), " but this host carries no systemd-run to arm it; the belt cannot wake it -- provision systemd-run"], ""), provider: provider_wire_label, launch: launch }
-        Present { value: systemd_run } => match attempt_redelivery_wake_command(node_id: node.node as String, instance_id: instance.instance_id as String, attempt_key: attempt_key, next_delivery: at) {
+        Present { value: systemd_run } => {
+          // The ROUTE the wake fires is built here, from the instance and the dispatch facts this module
+          // owns (belt_dispatch_env_var / belt_dispatch_instance_env_var / belt_dispatch_cli_entry /
+          // belt_dispatch_node_cli_function) -- the same serve-binary/run/--source-root/--entry/--function
+          // shape belt_obligation_unit_command uses. The wake module receives it and holds no route literal
+          // (§3: one copy of each fact).
+          let repo = instance.repo_root as String
+          let dispatch_env = [
+            SystemdSetenvBinding { name: belt_dispatch_env_var, value: node.node as NonEmptyStr },
+            SystemdSetenvBinding { name: belt_dispatch_instance_env_var, value: instance.instance_id as NonEmptyStr },
+          ]
+          let dispatch_argv = [
+            instance.serve_binary as String,
+            "run",
+            "--source-root", join([repo, "/dag"], ""),
+            "--source-root", join([repo, "/src/v2"], ""),
+            "--entry", join([repo, "/", belt_dispatch_cli_entry], ""),
+            "--function", belt_dispatch_node_cli_function as String,
+          ]
+          match attempt_redelivery_wake_command(node_id: node.node as String, attempt_key: attempt_key, next_delivery: at, setenv_bindings: dispatch_env, command_argv: dispatch_argv) {
           SystemdRunCommandRefused { cause } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["the request-pending attempt ", attempt_key, " could not arm its re-delivery wake: ", cause], ""), provider: provider_wire_label, launch: launch }
           SystemdRunCommandReady { command } => {
             let wake_stem = attempt_redelivery_wake_unit_stem(node_id: node.node as String, attempt_key: attempt_key, instant: at)
@@ -2867,6 +2886,7 @@ fn belt_actuate_spawn_exec_modeled(
               WakeArmFailed { program, exit_code, stderr } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["arming the re-delivery wake for ", attempt_key, " failed on host exec of ", program, " with exit ", to_string(value: exit_code), "; stderr: ", stderr, "; the attempt stays held and is retried on the next belt pass"], ""), provider: provider_wire_label, launch: launch }
               WakeArmRefused { program, reason } => SpawnFailed { node_id: node.node as String, step: "redelivery-wake", detail: join(["arming the re-delivery wake for ", attempt_key, " was refused on host exec of ", program, ": ", reason, "; the attempt stays held and is retried on the next belt pass"], ""), provider: provider_wire_label, launch: launch }
             }
+          }
           }
         }
       }
@@ -11685,6 +11705,15 @@ fn belt_dispatch_instance_selected(raw: String?) -> HostDashboardInstance? {
 }
 
 data belt_dispatch_instance_env_var: NonEmptyStr = "GUNBC_BELT_INSTANCE_ID" as NonEmptyStr
+
+// HOW THE DISPATCH ROUTE IS FIRED FROM A TRANSIENT UNIT. The wake (roadmap_attempt_redelivery_wake) owns
+// only the timer (unit name + calendar from the instant); the ROUTE facts -- the module the CLI entry
+// resolves, the function name, and the two env names the CLI reads -- live here, next to the CLI that
+// reads them, so there is exactly one copy of each (§3). The wake command is assembled by the fold from
+// these, in the same serve-binary/run/--source-root/--entry/--function shape belt_obligation_unit_command
+// uses to fire any belt function from a transient unit.
+data belt_dispatch_cli_entry: String = "dag/gunbc/roadmap/roadmap_belt_actuate.dag"
+data belt_dispatch_node_cli_function: NonEmptyStr = "belt_dispatch_node_cli" as NonEmptyStr
 
 // The instance comes from the one roster (gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_for_id),
 // so no constructor is named here. Admission for belt dispatch is a narrower set than the roster

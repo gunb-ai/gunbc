@@ -31,7 +31,7 @@ import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureA
 import gunbc.roadmap.roadmap_provider_events { ProviderRequestPending }
 import gunbc.roadmap.roadmap_belt_obligation { belt_capture_recording_owed }
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
-import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
+import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused, SystemdSetenvBinding }
 import extdeps.exec.command { argv_words }
 
 data wake_now: EpochSecs = 1700000000
@@ -94,8 +94,20 @@ test fn the_wedged_pending_attempt_holds_until_an_instant_and_arms_a_wake() -> B
   let is_hold_until = match decision { ContinuationHoldUntil { reason: _, attempt_key, redeliver_at } => attempt_key == wake_key && redeliver_at > wake_now, _ => false }
   let route = belt_spawn_route_for_decision(decision: decision)
   let route_is_wake = match route { SpawnRouteWake { attempt_key, at } => attempt_key == wake_key && at > wake_now, _ => false }
+  let dispatch_env = [
+    SystemdSetenvBinding { name: "GUNBC_BELT_NODE_ID" as NonEmptyStr, value: wake_node as NonEmptyStr },
+    SystemdSetenvBinding { name: "GUNBC_BELT_INSTANCE_ID" as NonEmptyStr, value: "srv1-live" as NonEmptyStr },
+  ]
+  let dispatch_argv = [
+    "gunbc",
+    "run",
+    "--source-root", "/repo/dag",
+    "--source-root", "/repo/src/v2",
+    "--entry", "dag/gunbc/roadmap/roadmap_belt_actuate.dag",
+    "--function", "belt_dispatch_node_cli",
+  ]
   let armed = match route {
-    SpawnRouteWake { attempt_key, at } => match attempt_redelivery_wake_command(node_id: wake_node, instance_id: "srv1-live", attempt_key: attempt_key, next_delivery: at) {
+    SpawnRouteWake { attempt_key, at } => match attempt_redelivery_wake_command(node_id: wake_node, attempt_key: attempt_key, next_delivery: at, setenv_bindings: dispatch_env, command_argv: dispatch_argv) {
       SystemdRunCommandReady { command } =>
         let line = join(argv_words(command: command), separator: " ")
         string_contains(s: line, pattern: "--user")
@@ -103,7 +115,8 @@ test fn the_wedged_pending_attempt_holds_until_an_instant_and_arms_a_wake() -> B
           && string_contains(s: line, pattern: "gunbc-attempt-redeliver-roadmap-belt-e5a42384c6a5e13d-")
           && string_contains(s: line, pattern: ".timer")
           && string_contains(s: line, pattern: "--timer-property=RemainAfterElapse=no")
-          && string_contains(s: line, pattern: "belt_dispatch_node_cli")
+          && string_contains(s: line, pattern: "--setenv=GUNBC_BELT_NODE_ID=roadmap-belt")
+          && string_contains(s: line, pattern: "--function belt_dispatch_node_cli")
       SystemdRunCommandRefused { cause: _ } => false
     }
     _ => false
