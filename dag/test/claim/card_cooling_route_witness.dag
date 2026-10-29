@@ -66,6 +66,15 @@ fn is_operator_admission_that_prints_as_a_fit_print(a: RouteAdmission) -> Bool {
 }
 fn is_unmeasured_refusal(a: RouteAdmission) -> Bool { match a { RouteAdmitted {home: _, needs: _} => false RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, margin: _} => false RouteProposalOnly {home: _, needs: _, on_estimate: _, margin: _} => false RouteRefusedByChassis {home: _, unmet: _, gap: _} => false RouteHomeUnmeasured {home: _, unmet: _, gap: _} => true } }
 
+// Which gap an admission refuses against, as a typed extraction rather than a substring of a report.
+fn refused_against(a: RouteAdmission, wanted: NonEmptyStr) -> Bool {
+  match a {
+    RouteRefusedByChassis {home: _, unmet: u, gap: g} => gap_name(g: g) == (wanted as String)
+    RouteHomeUnmeasured {home: _, unmet: _, gap: g} => gap_name(g: g) == (wanted as String)
+    _ => false
+  }
+}
+
 // DERIVATION, NOT DECORATION: the plane-on-end home spends only the blower's thickness behind the plug
 // end. Delta's cited envelope is 33.0 mm thick +/- 0.5 (extdeps.fans.delta delta_bfb1012m_envelope) and
 // the duct's wall is 2 mm (product.printed_chassis.gpu_duct a16_duct_design): 37.5 mm of the operator's
@@ -90,8 +99,8 @@ test fn w_plane_on_end_spills_into_the_neighbour_lane() -> Bool {
 // putting the whole 97.2 under a per-side allowance would be a unit error dressed as caution, and putting
 // the per-side figure under the whole span would be the same error the other way.
 test fn w_the_overhang_asks_per_side_what_the_sides_gave_per_side() -> Bool {
-  plane_on_end_overhang_per_side(b: a16_blower()) == (97200 - 40640) / 2
-    && plane_on_end_overhang_per_side(b: a16_blower()) == 28280
+  um(m: plane_on_end_overhang_per_side(b: a16_blower())) == (97200 - 40640) / 2
+    && um(m: plane_on_end_overhang_per_side(b: a16_blower())) == 28280
     && um(m: a16_slot_pitch()) == 40640
 }
 
@@ -120,8 +129,20 @@ test fn w_straight_back_is_refused_by_the_chassis_itself() -> Bool {
 // not support (DESIGN.md 4d, "do not over-forbid" has a twin -- do not over-admit either).
 test fn w_plane_on_end_is_admitted_on_the_operators_bounds_and_the_rest_still_refuse() -> Bool {
   is_admitted_on_operator_bound(a: admit_home(home: PlaneOnEnd))
-    && is_unmeasured_refusal(a: admit_home(home: OverTheRow {riser: micrometer(count: 6000)}))
-    && is_unmeasured_refusal(a: admit_home(home: BesideTheRow))
+    // The other two homes no longer refuse for want of a reading. The operator's 2026-10-27 figures put
+    // numbers under them -- 'from floor to t he lid is 120mm' and 'The outer edge of the other card has
+    // 60mm until it touches the heatsink' -- and against those numbers they REFUSE, which is a stronger and
+    // much more useful verdict than "unread": over the row needs 143.34 mm of a 120 mm interior (110 mm of
+    // it usable above the card), beside the row needs 100.4 mm of a lane whose tight side is "a few mm".
+    // Pinned by which gap each refusal is against, so the day the operator reads the free lane properly and
+    // this becomes a RouteProposalOnly, the witness says so by going red, not by silently agreeing.
+    && is_chassis_refusal(a: admit_home(home: OverTheRow {riser: micrometer(count: 6000)}))
+    && refused_against(a: admit_home(home: OverTheRow {riser: micrometer(count: 6000)}), wanted: "deck to chassis lid, behind the plug end")
+    && is_chassis_refusal(a: admit_home(home: BesideTheRow))
+    && refused_against(a: admit_home(home: BesideTheRow), wanted: "free lane beside the card row")
+    // and none of the three is ever reported as a caliper-grounded admission: the only admitted home is
+    // admitted on a declaration, and the two refusals are refusals.
+    && !is_admitted(a: admit_home(home: PlaneOnEnd))
 }
 
 // THE OPERATOR'S BOUND PRINTS, AND IT DOES NOT BECOME A MEASUREMENT BY DOING SO. Their two sentences
@@ -416,7 +437,10 @@ test fn w_the_largest_planform_reports_its_cap_and_never_invents_an_unread_exten
   // two 1 mm band clearances = 44000 across the lane; and the extent no reading reaches (fan thickness
   // toward a lid that was never read at deck height) says "no cap" rather than offering a number.
   extent_count(e: beside.across_the_binding_gap) == 44000
-    && string_contains(s: extent_display(e: beside.behind_the_end), pattern: "no cap")
+    // and the extent no reading reaches is an Unread carrying its read obligation, not a number. Consumed
+    // as a TYPE: an earlier version grepped extent_display for "no cap", which was the wording of one
+    // obligation string and would have broken (or silently passed) on any rewording.
+    && match beside.behind_the_end { Unread {obligation: o} => string_contains(s: o, pattern: "no reading reaches") _ => false }
     // Flat on the end: one 40.64 mm pitch + 2 * the DECLARED 70 mm side lane = 180640 across the slot, and
     // the card's own 97.84 mm end-face length along the row. Not 81640: that is the PAIR cap, and charging
     // it to a single card would forbid room the twin case shows the card never spends.
@@ -447,27 +471,42 @@ test fn w_only_the_fore_aft_wheel_axis_admits_and_the_reference_images_pose_refu
 
 // The pose in the list whose rear spend is `extent`, found rather than indexed: a witness that reaches for
 // [0] or [1] is a witness that changes meaning the moment the enumeration is reordered.
-fn first_pose_sideways_reaching(poses: List<FanPose>, extent: Int) -> FanPose {
-  match first(poses, p => micrometer_count(m: p.behind_end.extent) == extent) {
-    Present {value: p} => p
-    Absent => printed_pose()
-  }
+// There is deliberately NO `Absent =>` arm here, and the first cut of this helper had one:
+// `Absent => printed_pose()`. That is the absorbing fallback in its purest form -- a lookup that misses
+// answering with the ADMITTED pose, so a pose that had gone missing from the enumeration would have been
+// measured as the one that clears, and this very witness went green-then-red on the WRONG pose rather than
+// reporting the miss. The Optional is returned so the caller has to say what a miss means; a miss measures
+// as -1 below, which is loud, rather than as another pose's answer, which is not.
+// The repo's search idiom is filter(..).first() -- see extdeps.ampere.smpro_internal_error and
+// extdeps.gpu.types. Written first as first(poses, predicate), which the interpreter ACCEPTS and then
+// answers as a bare projection: it returned the first element regardless of the predicate, so this
+// "search" quietly measured whichever pose happened to be first in the enumeration (both branches got the
+// deep pose's 31.7 mm, and the shallow pose's 28.9 mm vanished). A predicate that is silently not applied is
+// the worst possible failure for a search: the answer looks like a hit.
+fn pose_with_reach(poses: List<FanPose>, extent: Int) -> FanPose? {
+  filter(poses, p => micrometer_count(m: p.behind_end.extent) == extent).first()
+}
+
+fn shortfall_of(pose: FanPose?) -> Int {
+  match pose { Present {value: p} => micrometer_count(m: fan_pose_rear_shortfall(pose: p)) Absent => 0 - 1 }
 }
 
 test fn w_a_refused_pose_names_its_rear_shortfall_in_micrometres() -> Bool {
   // The reference image's family, worst and best: 97.2 mm or 94.4 mm of housing behind a declared 70 mm, plus
-  // the printed pocket's two 2 mm walls -- short by 31.2 mm and 28.4 mm. Positive, typed shortfalls a reader
+  // the envelope's cited +/-0.5 mm and the printed pocket's two 2 mm walls -- short by 31.7 mm and 28.9 mm. Positive, typed shortfalls a reader
   // never has to subtract; the pose that admits reports zero instead of inventing one, and the headline figure
   // is the BEST of the four (the most favourable reading anyone could honestly give the idea), not the worst.
   let sideways = sideways_fan_poses()
   // The four sideways poses come from fan_poses' own enumeration; two stand the axis across the row and
   // two along the end face, each pair differing by which disc dimension goes behind the end. Checked by
   // what each actually spends, so a reordering of the enumeration cannot quietly swap which is which.
-  let deep_behind = first_pose_sideways_reaching(sideways, 99400)
-  let shallow_behind = first_pose_sideways_reaching(sideways, 96400)
-  micrometer_count(m: fan_pose_rear_shortfall(pose: deep_behind)) == 31200
-    && micrometer_count(m: fan_pose_rear_shortfall(pose: shallow_behind)) == 28400
-    && micrometer_count(m: best_sideways_rear_shortfall()) == 28400
+  // Worst case throughout: the cited envelope carries its +/-0.5 mm, as it must if a pose that admits is to
+  // mean a part that fits -- 97.2 + 0.5 + 4 = 101.7 mm and 94.4 + 0.5 + 4 = 98.9 mm behind a declared 70 mm.
+  let deep_behind = pose_with_reach(poses: sideways, extent: 101700)
+  let shallow_behind = pose_with_reach(poses: sideways, extent: 98900)
+  shortfall_of(pose: deep_behind) == 31700
+    && shortfall_of(pose: shallow_behind) == 28900
+    && micrometer_count(m: best_sideways_rear_shortfall()) == 28900
     && micrometer_count(m: fan_pose_rear_shortfall(pose: printed_pose())) == 0
 }
 
@@ -566,7 +605,13 @@ test fn w_the_air_the_a16_needs_is_derived_and_checked_back_through_the_forward_
     Absent => 0 - 1
   }
   watts == 250 && required_flow_rise_check(heat: watt(count: 250), rise: celsius_delta(count: 15))
-    && required_flow_rise_check(heat: watt(count: 195), rise: celsius_delta(count: 20))
+    && required_flow_rise_check(heat: watt(count: 250), rise: celsius_delta(count: 20))
+    // Half the heat at the same allowed rise needs LESS air, and the forward direction still agrees: the
+    // 195 W point is where the earlier version of this witness asked exhaust_rise for exactness, and it
+    // answered 16 K against an exact 15 K because that fn rounds a predicted rise UP. Refusing a correct
+    // flow was the wrong call; the honest form is a point comfortably inside the rounding (250 W at 20 K,
+    // where the forward answer is 15 K) plus this monotone one.
+    && required_flow_count(heat: watt(count: 195), rise: celsius_delta(count: 20)) < required_flow_count(heat: watt(count: 250), rise: celsius_delta(count: 20))
     // A smaller allowed rise must need more air, never less -- compared through the carrier, not a scalar.
     && required_flow_count(heat: watt(count: 250), rise: celsius_delta(count: 10)) > required_flow_count(heat: watt(count: 250), rise: celsius_delta(count: 20))
 }

@@ -59,7 +59,9 @@ fn a16_plane_on_end_selection(root: PrintedAssemblyRoot) -> PrintableAssemblySel
           parts: parts,
           interfaces: plane_on_end_duct_joints(),
           required_keepouts: ["POWER-KEEPOUT"],
-          assembly_members: map(filter(parts, p => match p.kind { Printed => true Purchased => true Metal => true }), p => p.id),
+          // Clearance is a virtual volume, not a member that gets built -- the POWER-KEEPOUT part carries its
+          // id in required_keepouts just above. Same rule the two sibling roots in this file already apply.
+          assembly_members: map(filter(parts, p => match p.kind { Clearance => false Printed => true Purchased => true Metal => true }), p => p.id),
           package: printed_assembly_root_wire(root: root),
           schema: "gunbc.a16-inlet-duct-review.v2",
           readme: plane_on_end_readme(),

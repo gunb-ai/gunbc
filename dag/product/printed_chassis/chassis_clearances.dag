@@ -54,8 +54,21 @@ fn gap_name(g: ChassisGap) -> NonEmptyStr {
   match g { Measured {name: n, from_point: _, to_point: _, distance: _, standing: _} => n NeedsMeasurement {name: n, from_point: _, to_point: _, read_obligation: _} => n }
 }
 
+// Whether somebody with an instrument read this gap. Note what this does NOT ask: it is not "does the row
+// carry a distance", because a Measured row can carry a distance the OPERATOR AUTHORED -- the conservative
+// 70 mm is a decision with an owner, not an observation, and the design_ruling row
+// a16_rear_clearance_and_sides_are_operator_declared_bounds says gap_is_measured stays false for it. The
+// first version of this fn matched the CONSTRUCTOR, so every declared bound reported itself as measured:
+// the branch below that says "the bound is not a measurement and this reading is still owed" was dead code,
+// and the print checklist silently dropped exactly the gaps whose readings are still owed. Executing the
+// witnesses found it; a resolver could not, because every arm of the old match was well-typed.
 fn gap_is_measured(g: ChassisGap) -> Bool {
-  match g { Measured {name: _, from_point: _, to_point: _, distance: _, standing: _} => true NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => false }
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => true
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: _, date: _, positions: _, bound_is: _}} => false
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => false
+    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => false
+  }
 }
 
 fn measured_distance(g: ChassisGap) -> Micrometer? {

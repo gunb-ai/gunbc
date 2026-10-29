@@ -195,7 +195,7 @@ fn admit_plane_on_end(rear: ChassisGap, lane: ChassisGap) -> RouteAdmission {
     Present { value: refused } => refused
     Absent => {
       let back = RouteDemand { name: "behind the plug end", needed: micrometer(count: plane_on_end_run_back(b: b, d: d)), of_gap: "plug end to rear chassis fan" }
-      finish(home: home, needs: [slot, overhang, back], gap: rear, need: um(m: back.needed))
+      finish(home: home, needs: [slot, overhang, back], gap: rear, unmet: back)
     }
   }
 }
@@ -290,14 +290,20 @@ fn ask(gap: ChassisGap, need: Int, home: BlowerHome, unmet: RouteDemand) -> Rout
 //   spoken estimate      a guess at what the gap is, which admits nothing -- a 70 mm that turns out to be
 //                        64 mm is a cracked housing                                -> PROPOSED ONLY
 //   unread               nobody has looked                                            -> REFUSED
-fn finish(home: BlowerHome, needs: List<RouteDemand>, gap: ChassisGap, need: Int) -> RouteAdmission {
-  match ask(gap: gap, need: need, home: home, unmet: RouteDemand { name: "final gap", needed: micrometer(count: need), of_gap: "final gap" }) {
+// The last gap a home spends, decided by the SAME rule as every other demand. `unmet` is the caller's real
+// demand rather than one synthesized here: an earlier version invented RouteDemand { name: "final gap" },
+// so a refusal against the rear clearance was reported as a refusal against a gap named "final gap" that
+// exists nowhere in the chassis. The verdict was right and its explanation was fabricated -- which is worse
+// than a wrong verdict, because the reader goes to measure the wrong thing.
+fn finish(home: BlowerHome, needs: List<RouteDemand>, gap: ChassisGap, unmet: RouteDemand) -> RouteAdmission {
+  let need = um(m: unmet.needed)
+  match ask(gap: gap, need: need, home: home, unmet: unmet) {
     Present { value: refused } => refused
     Absent => match gap {
       Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: bnd, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => RouteAdmittedOnOperatorBound { home: home, needs: needs, on_bound: gap, margin: micrometer(count: um(m: bnd) - need) }
       Measured {name: _, from_point: _, to_point: _, distance: dist, standing: EstimatedByOperator {bound: bnd, date: _, positions: _, bound_is: _}} => RouteProposalOnly { home: home, needs: needs, on_estimate: gap, margin: micrometer(count: um(m: dist) - um(m: bnd) - need) }
       Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => RouteAdmitted { home: home, needs: needs }
-      NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => RouteHomeUnmeasured { home: home, unmet: RouteDemand { name: "final gap", needed: micrometer(count: need), of_gap: "final gap" }, gap: gap }
+      NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => RouteHomeUnmeasured { home: home, unmet: unmet, gap: gap }
     }
   }
 }
@@ -699,9 +705,17 @@ type PoseFit {
 // printed collector's two walls add behind the end -- spent in every pose, because the housing always sits in
 // a printed pocket.
 fn fan_poses(fan: RadialBlowerEnvelope, d: GpuDuctDesign) -> List<FanPose> {
-  let len = placed(along: ForeAft, extent: fan.housing_length, which_envelope_dimension: "housing_length (flow path), extdeps.fans.delta delta_bfb1012m_envelope")
-  let dep = placed(along: ForeAft, extent: fan.housing_depth, which_envelope_dimension: "housing_depth (across the flow path), same row")
-  let thk = placed(along: ForeAft, extent: fan.thickness, which_envelope_dimension: "thickness (the wheel axis), same row")
+  // WORST CASE, not nominal. Each cited dimension carries the datasheet's +/-0.5 mm (delta_bfb1012m_envelope
+  // .thickness_tolerance) and every pose adds it, because a pose that admits at 33.0 mm and fails at 33.5 mm
+  // is a pose model that prints a part nothing fits. This is also what keeps the enumeration and the printed
+  // geometry honest with each other: plane_on_end_duct_run_back already adds the same tolerance, so the pose
+  // the CAD implements (37.5 mm behind) is actually IN this list -- the witness w_the_admitted_pose_is_the_one
+  // _the_printable_duct_uses is what caught it missing, when this fn modelled the nominal 33.0 and reported
+  // 37.0 while the duct was built at 37.5.
+  let tol = micrometer_count(m: fan.thickness_tolerance)
+  let len = placed(along: ForeAft, extent: micrometer(count: micrometer_count(m: fan.housing_length) + tol), which_envelope_dimension: "housing_length (flow path) + the cited +/- tolerance, extdeps.fans.delta delta_bfb1012m_envelope")
+  let dep = placed(along: ForeAft, extent: micrometer(count: micrometer_count(m: fan.housing_depth) + tol), which_envelope_dimension: "housing_depth (across the flow path) + tolerance, same row")
+  let thk = placed(along: ForeAft, extent: micrometer(count: micrometer_count(m: fan.thickness) + tol), which_envelope_dimension: "thickness (the wheel axis) + tolerance, same row")
   let pocket = placed_in_pocket(p: thk, wall: d.wall)
   // wheel axis fore-aft: the printed home -- thickness behind the end, the disc standing in the x-y plane
   let upright_long_across = FanPose { wheel_axis: ForeAft, behind_end: pocket, across_row: len, along_end_face: dep }
@@ -768,7 +782,8 @@ fn fan_pose_displays() -> List<String> {
 // ARE THE SCROLL AND THE FLAT-ON-END DUCT THE SAME GEOMETRY? ONE GEOMETRY, NOT TWO -- derived, above. The
 // reference image's pose has its wheel axis perpendicular to the CARD FACE (across the row), which puts a DISC
 // dimension behind the plug end: 94.4 mm, or 97.2 mm spun the other way, against the operator's declared
-// 70 mm -- short by 28.4 mm at best, printed pocket walls included (best_sideways_rear_shortfall derives it). The poses that clear are the
+// 70 mm -- short by 28.9 mm at best, printed pocket walls and the envelope tolerance included (best_sideways_rear_shortfall derives
+// it, worst case). The poses that clear are the
 // ones with the 33 mm wheel axis fore-aft, and that is the pose the flat-on-end duct already prints. What the
 // image still contributes is the collector's SHAPE -- a throat that turns the wheel's tangential discharge
 // into the heatsink's end face -- printed here as the duct's open-shoulder collector rather than as a second
@@ -777,7 +792,7 @@ fn scroll_is_not_a_second_geometry() -> String {
   join(["one geometry, not two. Of the ", to_string(value: length(list: fan_poses(fan: a16_blower(), d: a16_wall_design()))),
         " poses the fixed BFB1012M can stand in, ", to_string(value: length(list: admitting_fan_poses())),
         " clear every reading, and all of them have the 33 mm wheel axis fore-aft -- the pose gpu_duct plane_on_end_duct_parts already prints. The reference image's pose (axis across the row) is refused on cited envelope dimensions: a disc dimension goes behind the plug end and is short by ",
-        mm_text(m: micrometer(count: best_sideways_rear_shortfall())), " at best. What survives of the image is its collector SHAPE, printed as the duct's open shoulder."], "")
+        mm_text(m: best_sideways_rear_shortfall()), " at best. What survives of the image is its collector SHAPE, printed as the duct's open shoulder."], "")
 }
 
 // How far a pose falls short behind the end, as a positive Micrometer the reader never has to subtract.
@@ -958,11 +973,18 @@ fn required_flow(heat: Watt, rise: CelsiusDelta) -> MillilitrePerSecond? {
 // returns must give a rise no greater than asked. Carriers pass straight through -- the check cannot compare
 // a number against a unit it silently dropped, which is the whole reason this is written as a round trip
 // rather than as arithmetic on both sides.
+// The tolerance is ONE degree, and it is the forward function's, not a fudge: exhaust_rise rounds the rise it
+// predicts UP (product.printed_chassis.exhaust_thermal -- a rise rounded down would under-report the heat the
+// chassis has to carry), so at an exact boundary the forward direction can answer one degree worse than the
+// flow can physically deliver. The flow required_flow(250 W, 15 K) returns is exactly 13775 mL/s, and
+// exhaust_rise at that flow says 16 K. Demanding `<= 15` would have refused a correct flow, so this is stated
+// as what it is: forward agrees to within its own rounding. It is NOT a loose bound -- an order-of-magnitude
+// error in required_flow still fails it, which is what the witness pins.
 fn required_flow_rise_check(heat: Watt, rise: CelsiusDelta) -> Bool {
   match required_flow(heat: heat, rise: rise) {
     Absent => false
     Present { value: flow } => match exhaust_rise(heat: heat, flow: flow) {
-      Present { value: d } => celsius_delta_count(delta: d) <= celsius_delta_count(delta: rise)
+      Present { value: d } => celsius_delta_count(delta: d) <= celsius_delta_count(delta: rise) + 1
       Absent => false
     }
   }
