@@ -1,0 +1,161 @@
+/// Wake source for a request-pending attempt (roadmap attempt redelivery wake).
+///
+/// WHEN A PATIENT ATTEMPT WAITS, SOMETHING MUST WAKE IT. The patient-request contract (#15313)
+/// reads a request-pending worker exit as a ProviderRequestPending projection; the belt then owes the
+/// capture (roadmap_belt_obligation's belt_capture_recording_owed), records it, and the attempt
+/// continuation (roadmap_attempt_continuation) reaches a decision. When the provider is still
+/// re-delivering, that decision is a ContinuationHold; the instant the belt must come back is the one
+/// the transport-retry policy already computes (harness_transport_retry_policy's
+/// transport_retry_next_delivery_at) -- the SAME derivation the continuation's own reason quotes, so
+/// the belt does not invent a second schedule. A Hold is a fact, not a wake: on the srv1 lab nothing
+/// self-fires at a named instant (the lab installs only the belt-exit / belt-discovery / publication /
+/// attempt-unit-drain path units and the credential-recovery timer), so a pending attempt could
+/// neither end nor resume.
+///
+/// THIS MODULE IS THE WAKE, CONFORMING. It builds no scheduler and polls nothing until due. When the
+/// continuation Holds a request-pending attempt, the belt arms ONE transient wallclock timer for that
+/// attempt, at the instant the policy already named, through the already-modelled systemd realization
+/// (extdeps.systemd's systemd_run, whose SystemdRunOption::OnCalendar projects systemd-run(1)
+/// --on-calendar; the calendar spelling is systemd's fact, produced by
+/// systemd_onetime_calendar_expression over extdeps.units's iso8601_calendar). The unit name is
+/// derived from node + attempt key like the obligation unit, so a re-arm replaces the pending timer
+/// idempotently -- one wake per pending window. When it fires it execs the SAME route a dispatch takes
+/// -- roadmap_belt_actuate's belt_dispatch_node_cli, which reaches belt_actuate_spawn_for_instance and
+/// consults the continuation again -- under the operating user's own systemd user manager, so no new
+/// spawn path and no parallel door. The effect is characterized against
+/// gunbc.auth.authorization_pattern_selection's select_authorization_pattern rather than borrowing the
+/// attempt-launcher's pattern; for a credential-free, reversible, unattended user-manager unit the fold
+/// selects FederatedScopedGrant, which the witness computes from the selector rather than asserting.
+module gunbc.roadmap.roadmap_attempt_redelivery_wake
+
+use std.types { Bool, EpochSecs, NonEmptyStr, Str }
+use std.bool { not_bool }
+use gunbc.auth.authorization_pattern_selection {
+  FederatedScopedGrant,
+  NoBillingConsequence,
+  NoWitnessDischarge,
+  PatternSelected,
+  PrivilegedEffect,
+  ReversibleByReapply,
+  ApiSurface,
+  EveryProvision,
+  MintsNoCredential,
+  WorkloadIdentityBindable,
+  select_authorization_pattern,
+  witness_required,
+}
+use extdeps.systemd.systemd_run {
+  SystemdRunCommandReading,
+  SystemdSetenvBinding,
+  systemd_onetime_calendar_expression,
+  systemd_run_user_oneshot_timer_command,
+}
+use gunbc.roadmap.roadmap_attempt_continuation { ContinuationDecision, ContinuationHold }
+use gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryRequestPending }
+use gunbc.harness.harness_transport_retry_policy { harness_transport_retry_policy_now, transport_retry_next_delivery_at }
+
+const attempt_redelivery_unit_prefix: Str = "gunbc-attempt-redeliver-"
+const attempt_redelivery_cli_program: Str = "gunbc"
+const attempt_redelivery_cli_function: Str = "belt_dispatch_node_cli"
+const attempt_redelivery_env_node: Str = "GUNBC_BELT_NODE_ID"
+const attempt_redelivery_env_instance: Str = "GUNBC_BELT_INSTANCE_ID"
+const attempt_redelivery_effect_subject: Str = "arm ONE transient wallclock timer in the lab's operating user's systemd USER manager for a request-pending attempt, via systemd-run --user --on-calendar --collect, named gunbc-attempt-redeliver-<node>-<attempt-key>, that execs the instance's own belt re-dispatch route (roadmap_belt_actuate.belt_dispatch_node_cli) for that node at the re-delivery instant the transport-retry policy already computed; it mints no credential, is replaced idempotently by re-arming the same unit name, and runs unattended so no human is on the effect's path -- no other unit, user, credential, or program" as NonEmptyStr
+
+/// THE WAKE EFFECT, CHARACTERIZED FOR THE SELECTOR. A user-manager transient timer armed by the belt
+/// itself: it mints no credential, bills nothing, is reversible by re-arming (idempotent unit name),
+/// runs on an API surface (systemctl/systemd-run), and is paid unattended (armed per pending window,
+/// no human on its path). It is bound to the operating user, who owns the user manager it arms into --
+/// the same standing the attempt launcher's units are driven by, but reaching the USER manager rather
+/// than the system manager, so it is deliberately NOT the attempt_system_unit_launch effect.
+fn attempt_redelivery_wake_effect(operating_user: NonEmptyStr) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: attempt_redelivery_effect_subject,
+    frequency: EveryProvision,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityBindable {
+      member: join([operating_user as String, " on the lab, the belt's own operating user arming a transient timer into its OWN systemd user manager (it holds no privilege beyond starting units in its own manager)"], "") as NonEmptyStr,
+    },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+/// THE SELECTED PATTERN, DERIVED -- never a call-site choice. The wake is credential-free, reversible,
+/// unattended, on an API surface with a bindable identity, so the fold must select the federated
+/// pattern (the run's own workload identity, zero human actions, receipt is the run), not a
+/// human-in-the-loop pattern. The witness asks the selector rather than assuming.
+fn attempt_redelivery_wake_selects_pattern(operating_user: NonEmptyStr) -> Bool {
+  match select_authorization_pattern(e: attempt_redelivery_wake_effect(operating_user: operating_user)) {
+    PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
+    _ => false
+  }
+}
+
+/// THE WAKE NEEDS NO HUMAN WITNESS. Reversible by re-apply, mints no credential, bills nothing, not
+/// break-glass -- so the derived witness obligation is false: nothing here belongs on an operator's
+/// phone, which is what keeps a recurring wake from becoming a queue of taps.
+fn attempt_redelivery_wake_needs_no_witness(operating_user: NonEmptyStr) -> Bool {
+  not_bool(a: witness_required(e: attempt_redelivery_wake_effect(operating_user: operating_user)))
+}
+
+/// THE INSTANT THE WAKE IS ARMED FOR IS THE POLICY'S, NOT THE BELT'S. The continuation's request-pending
+/// Hold already quotes transport_retry_next_delivery_at as the instant to return; the belt arms its
+/// timer at exactly that instant by calling the SAME function, so there is one schedule and the wake
+/// and the continuation's own reason cannot name two different times for the same attempt.
+fn attempt_redelivery_wake_instant(last_delivery_at: EpochSecs, re_deliveries: Int, attempt_key: Str) -> EpochSecs {
+  transport_retry_next_delivery_at(
+    policy: harness_transport_retry_policy_now,
+    last_delivery_at: last_delivery_at,
+    re_deliveries: re_deliveries,
+    session_key: attempt_key,
+  )
+}
+
+/// THE UNIT NAME IS THE ATTEMPT'S, SO A RE-ARM IS IDEMPOTENT. The same node + attempt key names the
+/// same transient unit, so arming a wake twice replaces the pending timer rather than stacking one per
+/// re-pend.
+fn attempt_redelivery_wake_unit_name(node_id: Str, attempt_key: Str) -> NonEmptyStr {
+  join([attempt_redelivery_unit_prefix, node_id, "-", attempt_key, ".timer"], "") as NonEmptyStr
+}
+
+/// THE WAKE COMMAND THE TIMER ARMS. A user-manager --on-calendar --collect timer for the unit name
+/// above, at the calendar spelling of the policy's instant, that execs the instance's OWN belt
+/// re-dispatch route (belt_dispatch_node_cli under GUNBC_BELT_NODE_ID / GUNBC_BELT_INSTANCE_ID) -- the
+/// same route the door's dispatch takes -- so the wake re-delivers the same key by the same path.
+fn attempt_redelivery_wake_command(node_id: Str, instance_id: Str, attempt_key: Str, next_delivery: EpochSecs) -> SystemdRunCommandReading {
+  systemd_run_user_oneshot_timer_command(
+    unit: attempt_redelivery_wake_unit_name(node_id: node_id, attempt_key: attempt_key),
+    on_calendar: systemd_onetime_calendar_expression(instant: next_delivery),
+    setenv_bindings: [
+      SystemdSetenvBinding { key: attempt_redelivery_env_node as NonEmptyStr, value: node_id as NonEmptyStr },
+      SystemdSetenvBinding { key: attempt_redelivery_env_instance as NonEmptyStr, value: instance_id as NonEmptyStr },
+    ],
+    command_argv: [
+      Text(kind: Raw, value: attempt_redelivery_cli_program),
+      Text(kind: Raw, value: "run"),
+      Text(kind: Raw, value: "--function"),
+      Text(kind: Raw, value: attempt_redelivery_cli_function),
+    ],
+  )
+}
+
+/// THE WAKE IS OWED EXACTLY WHEN A LIVE REQUEST-PENDING ATTEMPT IS HELD. If the durable recovery reads
+/// the attempt as request-pending AND the continuation's own decision on that attempt is a Hold (the
+/// provider not yet due), a timer is owed at the policy's instant. A Resume (due now, the route is
+/// already re-delivering it), a Refused/Complete/Ended (nothing waiting), a non-pending recovery, or an
+/// attempt whose worker is not terminal (still running, the provider is mid-turn -- never wake a live
+/// worker) owes no wake. Because "owed" reads the SAME decision the continuation returned, it cannot
+/// disagree with it about whether the attempt is waiting.
+fn attempt_redelivery_wake_owed(recovery: SessionRecovery, worker_terminal: Bool, decision: ContinuationDecision) -> Bool {
+  let is_pending = match recovery {
+    SessionRecoveryRequestPending { re_deliveries: _, cause: _, since: _, wakes_made: _, last_delivery_at: _, resumable: _, interrupted_calls: _, resume_round: _ } => true
+    _ => false
+  }
+  let is_held = match decision {
+    ContinuationHold { reason: _ } => true
+    _ => false
+  }
+  is_pending && worker_terminal && is_held
+}
