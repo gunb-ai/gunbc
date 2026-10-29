@@ -346,6 +346,7 @@ type ReviewerSliceBudget
   = SliceBudgetObserved { budget: Kibibyte, detail: String }
   | SliceBudgetDeclared { budget: Kibibyte, detail: String }
   | SliceBudgetZero { detail: String }
+  | SliceBudgetUnreadable { detail: String }
 
 // KI-B, CEILING -- FOR A CHARGE ONLY (review 87534): never understate what a unit consumed, so an
 // observed MemoryPeak converts with the CEILING (its sole user is session_reviewer_peak_from_show,
@@ -365,10 +366,15 @@ fn reviewer_slice_declared_budget(slots: Nat) -> Kibibyte {
   kibibyte_from_byte_size_floor(b: user_work_slice_memory_max_of(slots: slots))
 }
 
-// THE PURE RESOLUTION: observed reading, plus the DECLARED row. Absent, unbounded and unreadable
-// readings all fall to the declared figure WITH THE FALL STATED: a host whose slice has not been
-// converged admits at the row it is supposed to run -- which is what the wrap standing already
-// refuses to launch outside of -- and never at a widened figure.
+// THE PURE RESOLUTION: observed reading, plus the DECLARED row. ABSENT and UNBOUNDED fall to the
+// declared figure WITH THE FALL STATED: a host whose slice has not been converged admits at the row
+// it is supposed to run -- which is what the wrap standing already refuses to launch outside of
+// (the operator's srv1 ruling: infinity/blank falls to the declared row with provenance; zero
+// refuses). UNREADABLE REFUSES (review 87545): "infinity"/"blank" are POSITIVE answers with a
+// known meaning; a failed read is the absence of an answer, and a drifted-or-unreachable manager
+// must not be papered over with the larger figure. Unknowns defer, they do not admit -- DESIGN 5:
+// a failure arm refuses, never widens, and the degradation is typed, located and countable in the
+// refusal detail the belt renders as ReviewDeferred.
 fn reviewer_slice_budget_from_reading(observed: SliceLimitReading, declared: Kibibyte) -> ReviewerSliceBudget {
   match observed {
     SliceLimitObserved { limit } =>
@@ -384,7 +390,7 @@ fn reviewer_slice_budget_from_reading(observed: SliceLimitReading, declared: Kib
       }
     SliceLimitUnbounded => SliceBudgetDeclared { budget: declared, detail: join([user_work_slice_unit_name as String, " is unbounded (MemoryMax infinity); admitting at the declared row -- the slice enforces nothing until converged"], "") }
     SliceLimitAbsent => SliceBudgetDeclared { budget: declared, detail: join([user_work_slice_unit_name as String, " answered blank (the unit is not loaded under the user manager yet); admitting at the declared row the wrap standing installs"], "") }
-    SliceLimitUnreadable { detail: d } => SliceBudgetDeclared { budget: declared, detail: join(["the slice limit could not be read (", d, "); admitting at the declared row"], "") }
+    SliceLimitUnreadable { detail: d } => SliceBudgetUnreadable { detail: join(["the slice limit could not be read (", d, "); admission is refused until it can be read"], "") }
   }
 }
 
@@ -402,6 +408,7 @@ fn observe_reviewer_slice_limit() -> SliceLimitReading {
 fn compute_slice_leg(budget: ReviewerSliceBudget, sibling_committed: Kibibyte, own_committed: Kibibyte, request: Kibibyte) -> ComputeSliceLeg {
   match budget {
     SliceBudgetZero { detail: d } => ComputeSliceRefusedForRoom { detail: join(["the slice's limit is zero: ", d], "") }
+    SliceBudgetUnreadable { detail: d } => ComputeSliceRefusedForRoom { detail: d }
     SliceBudgetObserved { budget: b, detail: _ } => compute_slice_arithmetic(b: b, sibling_committed: sibling_committed, own_committed: own_committed, request: request)
     SliceBudgetDeclared { budget: b, detail: _ } => compute_slice_arithmetic(b: b, sibling_committed: sibling_committed, own_committed: own_committed, request: request)
   }

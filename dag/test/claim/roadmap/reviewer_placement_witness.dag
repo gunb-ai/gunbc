@@ -32,7 +32,7 @@ import gunbc.compute.host_capacity {
   SliceLimitReading, SliceLimitObserved, SliceLimitUnbounded, SliceLimitAbsent, SliceLimitUnreadable,
   ReviewerSliceBudget, SliceBudgetObserved, SliceBudgetDeclared, SliceBudgetZero,
   ComputeSliceLeg, ComputeSliceRoom, ComputeSliceRefusedForRoom, compute_slice_arithmetic,
-  reviewer_slice_budget_from_reading, kibibyte_from_byte_size_ceiling, slice_limit_from_shell,
+  reviewer_slice_budget_from_reading, kibibyte_from_byte_size_ceiling, slice_limit_from_shell, compute_slice_leg,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_name, dispatch_review_unit_properties }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
@@ -192,8 +192,12 @@ test fn the_slice_leg_admits_to_the_byte_and_refuses_for_room_never_for_failure(
     ComputeSliceRefusedForRoom { detail } => string_contains(s: detail, pattern: "44") || string_contains(s: detail, pattern: "46137344")
     ComputeSliceRoom { budget: _ } => false
   }
-  let declared_on_unreadable = match reviewer_slice_budget_from_reading(observed: SliceLimitUnreadable { detail: "manager unreachable" }, declared: budget) {
-    SliceBudgetDeclared { budget: b, detail: _ } => kibibyte_count(k: b) == 46137344 && string_contains(s: detail, pattern: "could not be read")
+  let unreadable_refuses = match compute_slice_leg(budget: reviewer_slice_budget_from_reading(observed: SliceLimitUnreadable { detail: "manager unreachable" }, declared: budget), sibling_committed: kibibyte(count: 0), own_committed: kibibyte(count: 0), request: kibibyte(count: 1)) {
+    ComputeSliceRefusedForRoom { detail: d } => string_contains(s: d, pattern: "could not be read")
+    ComputeSliceRoom { budget: _ } => false
+  }
+  let absent_falls_declared = match reviewer_slice_budget_from_reading(observed: SliceLimitAbsent, declared: budget) {
+    SliceBudgetDeclared { budget: b, detail: d } => kibibyte_count(k: b) == 46137344 && string_contains(s: d, pattern: "not loaded")
     _ => false
   }
   let zero_holds_nothing = match reviewer_slice_budget_from_reading(observed: SliceLimitObserved { limit: kibibyte(count: 0) }, declared: budget) {
@@ -204,7 +208,7 @@ test fn the_slice_leg_admits_to_the_byte_and_refuses_for_room_never_for_failure(
     SliceBudgetObserved { budget: b, detail: _ } => kibibyte_count(k: b) == 1000
     _ => false
   }
-  fits && one_over && declared_on_unreadable && zero_holds_nothing && observed_below_declared
+  fits && one_over && unreadable_refuses && absent_falls_declared && zero_holds_nothing && observed_below_declared
 }
 
 // THE INSTRUMENT NEVER INVENTS A NUMBER. Only an exited, successful, parseable reading is a peak;
@@ -349,13 +353,13 @@ test fn the_slice_budget_is_never_wider_than_what_the_cgroup_reports() -> Bool {
     SliceBudgetObserved { budget: b, detail: _ } => kibibyte_count(k: b) == 1
     _ => false
   }
-  let unparseable_falls_declared = match reviewer_slice_budget_from_reading(observed: slice_limit_from_shell(outcome: ShellExited, success: true, value: "forty-four gigabytes"), declared: kibibyte(count: 46137344)) {
-    SliceBudgetDeclared { budget: b, detail: d } => kibibyte_count(k: b) == 46137344 && string_contains(s: d, pattern: "could not be read")
-    _ => false
+  let unparseable_refuses_room = match compute_slice_leg(budget: reviewer_slice_budget_from_reading(observed: slice_limit_from_shell(outcome: ShellExited, success: true, value: "forty-four gigabytes"), declared: kibibyte(count: 46137344)), sibling_committed: kibibyte(count: 0), own_committed: kibibyte(count: 0), request: kibibyte(count: 1)) {
+    ComputeSliceRefusedForRoom { detail: d } => string_contains(s: d, pattern: "could not be read")
+    ComputeSliceRoom { budget: _ } => false
   }
   let charge_stays_up = match session_reviewer_peak_from_show(outcome: ShellExited, success: true, value: "1.5K") {
     SessionReviewerPeakObserved { peak } => kibibyte_count(k: peak) == 2
     SessionReviewerPeakUnobserved { reason: _ } => false
   }
-  plain_bytes && sub_kib_refuses && fractional_lower && unparseable_falls_declared && charge_stays_up
+  plain_bytes && sub_kib_refuses && fractional_lower && unparseable_refuses_room && charge_stays_up
 }
