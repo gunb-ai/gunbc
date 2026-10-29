@@ -1,0 +1,150 @@
+module gunbc.live_deploy.capacity_quiescence
+
+import std.types { String, List, ShellResponse }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.systemd.unit_file { ServiceUnitFile, SliceUnitFile, PathUnitFile, TimerUnitFile, PathUnit, TimerUnit, ServiceSlice }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.systemd { ActiveState, ControlGroup, Inactive, Failed, parse_systemd_unit_active_state }
+import extdeps.systemd.systemctl {
+  systemctl_managed_unit_command, ManagedUnitStart, ManagedUnitStop, ManagedUnitShow, ManagedUnitMaskNow,
+  systemctl_show_property_value,
+}
+import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityUnitDrain, CapacityRecordedDescendants, CapacityParentDescendants, CapacityActivationDescendants, CapacityDescendantStanding }
+import gunbc.compute.recorded_cgroup_drain { RecordedCgroupPathStanding, RecordedPathUnreadable }
+import gunbc.deploy_transition_bootstrap {
+  ExternalQuiescence, observe_unit_quiescence, unit_inactive_standing,
+  unit_activation_standing, probe_containment, MaskPersistenceUnobserved,
+}
+
+type CapacityProbeRequirement
+  = CapacityProbeProcess { parent: CapacityManagedUnit? }
+  | CapacityProbeActivation { targets: List<CapacityManagedUnit> }
+  | CapacityProbeUnknown { cause: String }
+
+fn capacity_probe_requirement(install: DeploymentUnitInstall) -> CapacityProbeRequirement {
+  match install.file {
+    ServiceUnitFile { unit: _, service: settings, install: _ } => {
+      let parents = flat_map(settings, setting => match setting { ServiceSlice { name: name } => [CapacityManagedUnit { manager: install.manager, unit: name }] _ => [] })
+      if count(parents) == 1 { CapacityProbeProcess { parent: first(parents) } }
+      else { CapacityProbeUnknown { cause: "service has no unique declared parent slice" } }
+    }
+    SliceUnitFile { unit: _, slice: _, install: _ } => CapacityProbeProcess { parent: none }
+    PathUnitFile { unit: _, path: settings, install: _ } => CapacityProbeActivation { targets: flat_map(settings, setting => match setting {
+      PathUnit { target: target } => [CapacityManagedUnit { manager: install.manager, unit: target }] _ => []
+    }) }
+    TimerUnitFile { unit: _, timer: settings, install: _ } => CapacityProbeActivation { targets: flat_map(settings, setting => match setting {
+      TimerUnit { target: target } => [CapacityManagedUnit { manager: install.manager, unit: target }] _ => []
+    }) }
+    _ => CapacityProbeUnknown { cause: "unit kind has no migration drain binding" }
+  }
+}
+
+fn capacity_probe_descendants(requirement: CapacityProbeRequirement, control_group: String?, read: fn(String) -> RecordedCgroupPathStanding) -> CapacityDescendantStanding {
+  match requirement {
+    CapacityProbeUnknown { cause: why } => CapacityRecordedDescendants { reading: RecordedPathUnreadable { detail: why } }
+    CapacityProbeActivation { targets: targets } => CapacityActivationDescendants { targets: targets }
+    CapacityProbeProcess { parent: parent } => {
+      match control_group {
+        Present { value: path } => if trim(s: path) != "" { return CapacityRecordedDescendants { reading: read(path) } }
+        Absent => {}
+      }
+      match parent {
+        Present { value: parent } => CapacityParentDescendants { parent: parent }
+        Absent => CapacityRecordedDescendants { reading: RecordedPathUnreadable { detail: "empty ControlGroup without an enclosing parent proof" } }
+      }
+    }
+  }
+}
+
+// These are effectful apply steps, not observations disguised as reads. The plan
+// names both the planted START and its conditional STOP. Only the existing apply
+// transport executes their argv, under the same transaction authorization.
+type CapacityQuiescenceStep
+  = CapacityReadUnit { subject: CapacityManagedUnit }
+  | CapacityInhibitUnit { subject: CapacityManagedUnit }
+  | CapacityPlantStart { subject: CapacityManagedUnit }
+  | CapacityContainStart { subject: CapacityManagedUnit }
+
+fn capacity_quiescence_step_subject(step: CapacityQuiescenceStep) -> CapacityManagedUnit {
+  match step {
+    CapacityReadUnit { subject: subject } => subject
+    CapacityInhibitUnit { subject: subject } => subject
+    CapacityPlantStart { subject: subject } => subject
+    CapacityContainStart { subject: subject } => subject
+  }
+}
+
+fn capacity_quiescence_step_command(step: CapacityQuiescenceStep) -> ArgvCommand {
+  let subject = capacity_quiescence_step_subject(step: step)
+  let operation = match step {
+    CapacityReadUnit { subject: _ } => ManagedUnitShow { properties: [ActiveState, ControlGroup] }
+    CapacityInhibitUnit { subject: _ } => ManagedUnitMaskNow
+    CapacityPlantStart { subject: _ } => ManagedUnitStart
+    CapacityContainStart { subject: _ } => ManagedUnitStop
+  }
+  systemctl_managed_unit_command(manager: subject.manager, unit: subject.unit, operation: operation)
+}
+
+fn capacity_quiescence_plan(subject: CapacityManagedUnit) -> List<CapacityQuiescenceStep> {
+  [CapacityReadUnit { subject: subject }, CapacityInhibitUnit { subject: subject }, CapacityPlantStart { subject: subject },
+   CapacityContainStart { subject: subject }, CapacityReadUnit { subject: subject }]
+}
+
+// The initial read records ControlGroup before a stopped/collected unit can lose it.
+// A refused/unanswered probe is different from an observed nonzero process exit.
+// Successful START always refuses admission, even if containment subsequently works.
+// No mask exit code is used to mint activation inhibition.
+fn capacity_quiescence_probe(
+  subject: CapacityManagedUnit,
+  requirement: CapacityProbeRequirement,
+  run: fn(CapacityQuiescenceStep) -> Result<ShellResponse, String>,
+  descendants: fn(String) -> RecordedCgroupPathStanding,
+) -> Result<CapacityUnitDrain, String> {
+  match run(CapacityReadUnit { subject: subject }) {
+    Err { value: why } => Err { value: why }
+    Ok { value: before } => {
+      if before.exit_code != 0 { return Err { value: join(["unit read failed: ", subject.unit as String, ": ", before.stderr], "") } }
+      let control_group = systemctl_show_property_value(text: before.stdout, key: "ControlGroup")
+      match run(CapacityInhibitUnit { subject: subject }) {
+        Err { value: why } => { return Err { value: why } }
+        Ok { value: mask } => if mask.exit_code != 0 { return Err { value: join(["inhibition failed for ", subject.unit as String, ": ", mask.stderr], "") } }
+      }
+
+          let probe = run(CapacityPlantStart { subject: subject })
+          let containment = match probe {
+            Ok { value: response } => if response.exit_code == 0 {
+              match run(CapacityContainStart { subject: subject }) {
+                Err { value: why } => probe_containment(stopped_ok: false, observed: false, detail: why)
+                Ok { value: stopped } => probe_containment(stopped_ok: stopped.exit_code == 0, observed: true, detail: stopped.stderr)
+              }
+            } else { probe_containment(stopped_ok: false, observed: false, detail: "start was refused; containment not needed") }
+            Err { value: why } => probe_containment(stopped_ok: false, observed: false, detail: why)
+          }
+          let activation = match probe {
+            Err { value: why } => unit_activation_standing(unit: subject.unit, probe_ran: false, start_succeeded: false, detail: why, containment: containment)
+            Ok { value: response } => unit_activation_standing(unit: subject.unit, probe_ran: true, start_succeeded: response.exit_code == 0, detail: response.stderr, containment: containment)
+          }
+          let after = run(CapacityReadUnit { subject: subject })
+          let inactive = match after {
+            Err { value: why } => unit_inactive_standing(unit: subject.unit, observed: false, active: false, cause: why)
+            Ok { value: response } => match systemctl_show_property_value(text: response.stdout, key: "ActiveState") {
+              Absent => unit_inactive_standing(unit: subject.unit, observed: false, active: false, cause: "ActiveState missing")
+              Present { value: state } => match parse_systemd_unit_active_state(raw: state) {
+                Absent => unit_inactive_standing(unit: subject.unit, observed: false, active: false, cause: "ActiveState unrecognized")
+                Present { value: state } => unit_inactive_standing(unit: subject.unit,
+                  observed: response.exit_code == 0, active: state != Inactive && state != Failed, cause: response.stderr)
+              }
+            }
+          }
+          Ok { value: CapacityUnitDrain {
+            subject: subject,
+            quiescence: observe_unit_quiescence(unit: subject.unit, inactive: inactive, activation: activation,
+              persistence: MaskPersistenceUnobserved { unit: subject.unit, cause: "this probe makes no reboot-durability claim" }),
+            descendants: capacity_probe_descendants(requirement: requirement, control_group: control_group, read: descendants),
+          } }
+    }
+  }
+}

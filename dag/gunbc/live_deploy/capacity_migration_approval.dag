@@ -1,0 +1,105 @@
+module gunbc.live_deploy.capacity_migration_approval
+
+import std.types { String, NonEmptyStr, List, CommitSha, Timestamp }
+import std.error_primitives { Result, Ok, Err }
+import std.content_hash { content_hash_of_value }
+import std.scoped_authorization {
+  AuthorizationScope, AuthorizedAction, AttemptIdentity, AuthorizationRequest, ScopedAuthorization,
+  OperatorGrant, authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
+  AuthorizationClaimState, AuthorizationGranted, AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided,
+}
+import std.effect_grant { Execute, NamespacePosition, ServiceOpTree }
+import extdeps.systemd.manager { SystemManager, UserManager }
+import extdeps.languages.json.emit { serialize_json, JsonArray, JsonString }
+import gunbc.live_deploy.capacity_quiescence {
+  CapacityQuiescenceStep, CapacityReadUnit, CapacityInhibitUnit, CapacityPlantStart, CapacityContainStart,
+  capacity_quiescence_step_subject,
+}
+
+type CapacityCutoverIntent {
+  host: NonEmptyStr
+  revision: CommitSha
+  attempt: AttemptIdentity
+  operations: List<CapacityQuiescenceStep>
+}
+
+fn capacity_cutover_operation_action(operation: CapacityQuiescenceStep) -> AuthorizedAction {
+  (match operation {
+    CapacityReadUnit { subject: _ } => "show"
+    CapacityInhibitUnit { subject: _ } => "mask-now"
+    CapacityPlantStart { subject: _ } => "start"
+    CapacityContainStart { subject: _ } => "stop"
+  }) as NonEmptyStr as AuthorizedAction
+}
+
+fn capacity_cutover_operation_scope(intent: CapacityCutoverIntent, operation: CapacityQuiescenceStep) -> AuthorizationScope {
+  let subject = capacity_quiescence_step_subject(step: operation)
+  let manager = match subject.manager {
+    SystemManager => ["system"]
+    UserManager { uid: uid } => ["user", to_string(uid)]
+  }
+  AuthorizationScope {
+    verb: Execute,
+    resource: NamespacePosition { tree: ServiceOpTree { service: "org.freedesktop.systemd1" },
+      path: ["hosts", intent.host as String, "managers"] + manager + ["units", subject.unit as String] },
+    action: capacity_cutover_operation_action(operation: operation),
+  }
+}
+
+// JSON framing keeps identity inputs injective even when a name contains punctuation.
+// The full operation set is fixed before consent; late-discovered units cannot borrow it.
+fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
+  serialize_json(v: JsonArray { elements: [JsonString { value: "gunbc.capacity-cutover.v1" },
+    JsonString { value: intent.host as String }, JsonString { value: intent.revision as String },
+    JsonString { value: intent.attempt as String },
+    JsonArray { elements: map(intent.operations, operation => {
+      let subject = capacity_quiescence_step_subject(step: operation)
+      JsonArray { elements: [JsonString { value: match subject.manager {
+        SystemManager => "system"
+        UserManager { uid: uid } => concat("user:", to_string(uid))
+      } }, JsonString { value: subject.unit as String }, JsonString { value: capacity_cutover_operation_action(operation: operation) as String }] }
+    }) },
+  ] }) as NonEmptyStr
+}
+
+fn capacity_cutover_request(intent: CapacityCutoverIntent, escalation_id: NonEmptyStr) -> AuthorizationRequest<CapacityCutoverIntent> {
+  AuthorizationRequest {
+    escalation_id: escalation_id, subject: intent, attempt: intent.attempt,
+    scopes: map(intent.operations, operation => capacity_cutover_operation_scope(intent: intent, operation: operation)),
+    intent_hash: content_hash_of_value(value: capacity_cutover_intent_text(intent: intent)),
+    purpose: "One capacity-writer cutover: inhibit and probe exactly the named manager/unit operations; contain a successful probe; install only after drain admission" as NonEmptyStr,
+    destructive: true,
+  }
+}
+
+type CapacityCutoverAuthorization sole_constructor {
+  intent: CapacityCutoverIntent
+  grant: OperatorGrant<CapacityCutoverIntent>
+  claim: AuthorizationClaimState
+}
+
+// Broker redemption grants consent; this existing CAS claim consumes execution.
+// A repeated call loses even for the same attempt. No lease expiry grants takeover.
+fn capacity_cutover_claim(
+  request: AuthorizationRequest<CapacityCutoverIntent>, authorization: ScopedAuthorization<CapacityCutoverIntent>, at: Timestamp,
+  claim: fn(NonEmptyStr, AttemptIdentity, Timestamp) -> AuthorizationClaimOutcome,
+) -> Result<CapacityCutoverAuthorization, String> {
+  match authorize(authorization: authorization, request: request, observed_at: at) {
+    AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
+    AuthorizationPermitted { grant: grant } => match claim(request.escalation_id, request.attempt, at) {
+      ClaimLost { holder: holder } => Err { value: concat("cutover approval already consumed: ", holder as String) }
+      ClaimUndecided { reason: reason } => Err { value: reason as String }
+      ClaimHeld { state: state, generation: _ } => Ok { value: CapacityCutoverAuthorization { intent: request.subject, grant: grant, claim: state } }
+    }
+  }
+}
+
+fn capacity_cutover_operation_admission(authorization: CapacityCutoverAuthorization, operation: CapacityQuiescenceStep, at: Timestamp) -> Result<CapacityQuiescenceStep, String> {
+  if fold(authorization.intent.operations, init: false, f: (found, allowed) => found || allowed == operation) {
+    match authorize(authorization: AuthorizationGranted { grant: authorization.grant, claim: authorization.claim },
+      request: capacity_cutover_request(intent: authorization.intent, escalation_id: authorization.grant.escalation_id), observed_at: at) {
+      AuthorizationPermitted { grant: _ } => Ok { value: operation }
+      AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
+    }
+  } else { Err { value: "cutover operation names a manager, unit or verb outside the approved plan" } }
+}

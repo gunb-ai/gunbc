@@ -1,0 +1,100 @@
+module gunbc.live_deploy.capacity_migration_source
+
+import std.types { String, List, NonEmptyStr, CommitSha }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.decl_ref { decl_ref, DeclarationRef }
+import std.measure { kibibyte }
+import extdeps.systemd.manager { SystemManager, UserManager }
+import gunbc.compute.capacity_migration {
+  CapacityManagedUnit, CapacityTransientFamily, CapacityFamilyParents, CapacityUnclassified,
+  CapacityWriterReading, CapacityMigrationChild, capacity_migration_parent_requirements,
+}
+import gunbc.compute.host_capacity {
+  ComputeBuildPool, ComputeCapacitySubject, host_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
+}
+import gunbc.roadmap.roadmap_session_placement { session_placement_pool }
+import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown }
+import gunbc.roadmap.roadmap_belt_obligation { belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, belt_instance_obligation_kinds }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_name, dispatch_audit_unit_name, dispatch_supervisor_unit_name_text }
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_unit_stem }
+import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, attempt_worker_slice_unit_name }
+import gunbc.live_deploy.spec {
+  DeploymentSpec, gunbc_service_uid,
+  deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_publication_path_unit_name,
+  deployment_attempt_unit_drain_path_unit_name, deployment_belt_credential_recovery_timer_unit_name, deployment_agent_door_unit_name,
+}
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import gunbc.live_deploy.capacity_migration { deployment_capacity_population_from_installs }
+import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyRequest, CapacityProbeBinding }
+import gunbc.live_deploy.capacity_quiescence { capacity_probe_requirement, CapacityProbeUnknown }
+
+// Main's producers, derived from their actual naming functions. The lab's extra
+// redelivery and hand-in producers are bound on lab integration, not fabricated on
+// main. All unclassified process roots remain in the drain.
+fn capacity_main_family(source: DeclarationRef, patterns: List<NonEmptyStr>, activators: List<CapacityManagedUnit>, parent: CapacityManagedUnit) -> CapacityTransientFamily {
+  CapacityTransientFamily { source: source, patterns: patterns, exclude_patterns: [], activators: activators,
+    manager: parent.manager, standing: CapacityUnclassified { detail: "process reachability has no covered negative reading" },
+    placement: CapacityFamilyParents { parents: Ok { value: [parent] } },
+  }
+}
+
+fn capacity_main_transient_families(spec: DeploymentSpec) -> List<CapacityTransientFamily> {
+  let names = spec.names
+  let activators = map([
+    deployment_belt_exit_path_unit_name(names: names), deployment_belt_answer_path_unit_name(names: names),
+    deployment_publication_path_unit_name(names: names), deployment_attempt_unit_drain_path_unit_name(names: names),
+    deployment_belt_credential_recovery_timer_unit_name(names: names), deployment_agent_door_unit_name(names: names),
+  ], unit => CapacityManagedUnit { manager: SystemManager, unit: unit })
+  let user = CapacityManagedUnit { manager: UserManager { uid: gunbc_service_uid }, unit: user_work_slice_unit_name }
+  let worker = CapacityManagedUnit { manager: SystemManager, unit: attempt_worker_slice_unit_name }
+  [
+    capacity_main_family(source: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_obligation", decl_name: "belt_attempt_obligation_unit_name"), patterns: [belt_attempt_obligation_unit_name(node_id: "*", attempt_key: "*")], activators: activators, parent: user),
+    capacity_main_family(source: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_obligation", decl_name: "belt_instance_obligation_unit_name"), patterns: map(belt_instance_obligation_kinds, kind => belt_instance_obligation_unit_name(instance_id: spec.instance_id as String, kind: kind)), activators: activators, parent: user),
+    capacity_main_family(source: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_review_unit_name"), patterns: [dispatch_review_unit_name(node_id: "*", attempt_key: "*", criterion_key: "*")], activators: activators, parent: user),
+    capacity_main_family(source: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_audit_unit_name"), patterns: [dispatch_audit_unit_name(node_id: "*", attempt_key: "*")], activators: activators, parent: user),
+    capacity_main_family(source: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_supervisor_unit_name_text"), patterns: [dispatch_supervisor_unit_name_text(node_id: "*", attempt_key: "*", turn: "*")], activators: activators, parent: user),
+    capacity_main_family(source: decl_ref(module_path: "gunbc.roadmap.dispatch_worker_unit_confinement", decl_name: "dispatch_attempt_unit_stem"), patterns: [join([dispatch_attempt_unit_stem(node_id: "*", attempt_key: "*"), ".service"], "") as NonEmptyStr], activators: activators, parent: worker),
+  ]
+}
+
+fn capacity_main_child_subjects(spec: DeploymentSpec) -> Result<List<ComputeCapacitySubject>, String> {
+  match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+    DashboardInstanceIdUnknown { instance_id: id } => Err { value: concat("unknown capacity instance: ", id) }
+    DashboardInstanceForId { instance: instance } => match session_placement_pool() {
+      Absent => Err { value: "session capacity pool is unresolved" }
+      Present { value: agents } => fold([ComputeBuildPool, agents], init: Ok { value: [] }, f: (prior, pool) => match prior {
+        Err { value: why } => Err { value: why }
+        Ok { value: subjects } => match host_capacity_subject(instance: instance, pool: pool, request: kibibyte(count: 0)) {
+          ComputeSubjectHostUnresolved { host: host } => Err { value: concat("unresolved capacity host: ", host as String) }
+          ComputeSubjectResolved { subject: subject } => Ok { value: subjects + [subject] }
+        }
+      })
+    }
+  }
+}
+
+fn capacity_main_apply_request(spec: DeploymentSpec, revision: CommitSha, installed: List<DeploymentUnitInstall>) -> Result<CapacityMigrationApplyRequest, String> {
+  match capacity_main_child_subjects(spec: spec) {
+    Err { value: why } => Err { value: why }
+    Ok { value: subjects } => match deployment_capacity_population_from_installs(installed: installed,
+      transients: capacity_main_transient_families(spec: spec), children: map(subjects, subject => CapacityMigrationChild { root: subject.root, partition: subject.partition }),
+      classify: install => CapacityWriterReading { source: decl_ref(module_path: "gunbc.live_deploy.capacity_migration_source", decl_name: "capacity_main_apply_request"),
+        standing: CapacityUnclassified { detail: "installed service has no covered negative reachability reading" } }) {
+      Err { value: why } => Err { value: why }
+      Ok { value: population } => {
+        let required = population.installed + flat_map(population.transients, family => family.activators)
+          + flat_map(capacity_migration_parent_requirements(population: population), row => match row.parents { Ok { value: parents } => parents Err { value: _ } => [] })
+        let unique = fold(required, init: [], f: (units, unit) => if fold(units, init: false, f: (found, previous) => found || previous == unit) { units } else { units + [unit] })
+        Ok { value: CapacityMigrationApplyRequest { population: population, target_revision: revision, child_subjects: subjects,
+          bindings: map(unique, unit => {
+            let matching = filter(installed, install => install.manager == unit.manager && install.unit == unit.unit)
+            CapacityProbeBinding { subject: unit, requirement: if count(matching) != 1 {
+              CapacityProbeUnknown { cause: concat("unit has no unique source install binding: ", unit.unit as String) }
+            } else { match first(matching) { Present { value: install } => capacity_probe_requirement(install: install) Absent => CapacityProbeUnknown { cause: "source install binding absent" } } } }
+          }),
+        } }
+      }
+    }
+  }
+}

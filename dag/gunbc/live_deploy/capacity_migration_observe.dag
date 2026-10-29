@@ -1,0 +1,57 @@
+module gunbc.live_deploy.capacity_migration_observe
+
+import std.types { String, List, NonEmptyStr, ShellResponse }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.systemd.manager { SystemdManager }
+import extdeps.systemd.systemctl { systemctl_managed_list_units_command }
+import gunbc.runner.runner_slot_population_census { list_units_field }
+import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityMigrationChild }
+import gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityStanding, ComputeCapacityStandingUnread, compute_capacity_standing_on }
+import gunbc.compute.recorded_cgroup_drain { observe_recorded_cgroup_path }
+import gunbc.live_deploy.capacity_quiescence { capacity_quiescence_step_command }
+import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyRequest, CapacityMigrationApplyPorts }
+
+// Reuse the existing systemctl row-field reader; globs remain systemd's. An
+// incomplete row is a failed reading, not an absent unit. Empty successful output
+// means no loaded matching units only after the fixed activators are inhibited.
+fn capacity_migration_read_matches(manager: SystemdManager, patterns: List<NonEmptyStr>, run: fn(ArgvCommand) -> Result<ShellResponse, String>) -> Result<List<CapacityManagedUnit>, String> {
+  if count(patterns) == 0 { return Err { value: "refuse unbounded list-units without source patterns" } }
+  match run(systemctl_managed_list_units_command(manager: manager, patterns: patterns)) {
+    Err { value: why } => Err { value: why }
+    Ok { value: response } => {
+      if response.exit_code != 0 { return Err { value: response.stderr } }
+      fold(filter(split(s: response.stdout, delimiter: "\n"), line => trim(s: line) != ""), init: Ok { value: [] }, f: (prior, line) => match prior {
+        Err { value: why } => Err { value: why }
+        Ok { value: units } => {
+          let name = list_units_field(line: line, index: 0)
+          if name == "" || list_units_field(line: line, index: 3) == "" { Err { value: "systemctl returned an incomplete unit row" } }
+          else { Ok { value: units + [CapacityManagedUnit { manager: manager, unit: name as NonEmptyStr }] } }
+        }
+      })
+    }
+  }
+}
+
+fn capacity_migration_read_child(child: CapacityMigrationChild, subjects: List<ComputeCapacitySubject>) -> ComputeCapacityStanding {
+  let matched = filter(subjects, subject => subject.root == child.root && subject.partition == child.partition)
+  if count(matched) != 1 { return ComputeCapacityStandingUnread { detail: "child ledger has no unique source-owned subject" } }
+  match first(matched) {
+    Absent => ComputeCapacityStandingUnread { detail: "child ledger subject absent" }
+    Present { value: subject } => compute_capacity_standing_on(subject: subject)
+  }
+}
+
+// Local apply only: the enclosing apply locus gate already refuses remote execution.
+// Commands use the granted apply transport; cgroup and ledger reads use their existing
+// local owners. No read initializes a missing store or replaces an unreadable child.
+fn capacity_migration_apply_ports(request: CapacityMigrationApplyRequest, run: fn(ArgvCommand) -> Result<ShellResponse, String>) -> CapacityMigrationApplyPorts {
+  CapacityMigrationApplyPorts {
+    run: step => run(capacity_quiescence_step_command(step: step)),
+    descendants: path => observe_recorded_cgroup_path(control_group: path),
+    list_matches: (manager, patterns) => capacity_migration_read_matches(manager: manager, patterns: patterns, run: run),
+    child: child => capacity_migration_read_child(child: child, subjects: request.child_subjects),
+  }
+}

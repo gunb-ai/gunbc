@@ -1,0 +1,83 @@
+module test.claim.live_deploy.capacity_quiescence_witness
+
+import std.types { Bool, Int, String, ShellResponse }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.systemd.manager { SystemManager }
+import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityUnitDrain, CapacityRecordedDescendants }
+import gunbc.compute.recorded_cgroup_drain { RecordedPathEmpty }
+import gunbc.deploy_transition_bootstrap {
+  unit_quiescence_admission, QuiescenceInForce, QuiescenceRefused,
+  ActivationObservedAdmitted, ProbeContained,
+}
+import gunbc.live_deploy.capacity_quiescence {
+  CapacityQuiescenceStep, CapacityReadUnit, CapacityInhibitUnit, CapacityPlantStart, CapacityContainStart,
+  capacity_quiescence_probe, capacity_quiescence_plan, CapacityProbeProcess,
+}
+
+fn quiescence_fixture_unit() -> CapacityManagedUnit {
+  CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }
+}
+
+fn quiescence_fixture_run(step: CapacityQuiescenceStep, start: Int) -> Result<ShellResponse, String> {
+  match step {
+    CapacityReadUnit { subject: _ } => Ok { value: ShellResponse {
+      exit_code: 0, stdout: "ActiveState=inactive\nControlGroup=/fixture.slice/fixture.service\n", stderr: "",
+    } }
+    CapacityPlantStart { subject: _ } => if start < 0 { Err { value: "transport did not answer the planted start" } }
+      else { Ok { value: ShellResponse { exit_code: start, stdout: "", stderr: "supplied activation result" } } }
+    CapacityInhibitUnit { subject: _ } => Ok { value: ShellResponse { exit_code: 0, stdout: "", stderr: "mask requested" } }
+    CapacityContainStart { subject: _ } => Ok { value: ShellResponse { exit_code: 0, stdout: "", stderr: "supplied containment succeeded" } }
+  }
+}
+
+fn quiescence_fixture_probe(start: Int) -> Result<CapacityUnitDrain, String> {
+  capacity_quiescence_probe(subject: quiescence_fixture_unit(), requirement: CapacityProbeProcess { parent: none },
+    run: step => quiescence_fixture_run(step: step, start: start), descendants: path => RecordedPathEmpty)
+}
+
+test fn an_observed_refused_start_and_inactive_readback_admit() -> Bool {
+  match quiescence_fixture_probe(start: 1) {
+    Err { value: _ } => false
+    Ok { value: drain } => match unit_quiescence_admission(q: drain.quiescence) {
+      QuiescenceInForce => drain.descendants == CapacityRecordedDescendants { reading: RecordedPathEmpty }
+      QuiescenceRefused { cause: _ } => false
+    }
+  }
+}
+
+test fn a_successful_start_is_contained_but_never_admitted() -> Bool {
+  match quiescence_fixture_probe(start: 0) {
+    Err { value: _ } => false
+    Ok { value: drain } => {
+      let contained = match drain.quiescence.activation {
+        ActivationObservedAdmitted { unit: _, detail: _, containment: c } => match c {
+          ProbeContained { detail: detail } => detail == "supplied containment succeeded"
+          _ => false
+        }
+        _ => false
+      }
+      contained && match unit_quiescence_admission(q: drain.quiescence) {
+        QuiescenceInForce => false
+        QuiescenceRefused { cause: _ } => true
+      }
+    }
+  }
+}
+
+test fn an_unanswered_start_is_not_an_observed_refusal() -> Bool {
+  match quiescence_fixture_probe(start: -1) {
+    Err { value: _ } => true
+    Ok { value: drain } => match unit_quiescence_admission(q: drain.quiescence) {
+      QuiescenceInForce => false
+      QuiescenceRefused { cause: cause } => string_contains(s: cause, pattern: "no start was planted")
+    }
+  }
+}
+
+test fn the_plan_names_the_start_and_conditional_containment_effects() -> Bool {
+  let unit = quiescence_fixture_unit()
+  capacity_quiescence_plan(subject: unit) == [
+    CapacityReadUnit { subject: unit }, CapacityInhibitUnit { subject: unit }, CapacityPlantStart { subject: unit },
+    CapacityContainStart { subject: unit }, CapacityReadUnit { subject: unit },
+  ]
+}

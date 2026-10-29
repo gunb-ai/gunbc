@@ -2,12 +2,13 @@ module test.claim.compute.capacity_migration_witness
 
 import std.types { Bool, String, NonEmptyStr, CommitSha, List }
 import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
 import std.decl_ref { decl_ref }
 import std.measure { kibibyte }
 import product.capacity.event_chain { PartitionId }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import gunbc.compute.capacity_migration {
-  CapacityManagedUnit, CapacityTransientFamily, CapacityFamilyParents, CapacityActivationFamily, capacity_migration_enumerate_family, CapacityMigrationChild, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified, capacity_migration_family_parent_requirements,
+  CapacityRecordedDescendants, CapacityParentDescendants, CapacityActivationDescendants, capacity_migration_unit_refusal, CapacityManagedUnit, CapacityTransientFamily, CapacityFamilyParents, CapacityActivationFamily, capacity_migration_enumerate_family, CapacityMigrationChild, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified, capacity_migration_family_parent_requirements,
   CapacityMigrationPopulation, CapacityUnitDrain, CapacityMigrationAdmission, capacity_migration_admit,
 }
 import gunbc.compute.host_capacity { ComputeCapacityStanding, ComputeCapacityStandingRead }
@@ -44,7 +45,7 @@ fn migration_fixture_drain(name: NonEmptyStr, populated: Bool) -> CapacityUnitDr
       inactive: UnitObservedInactive { unit: name },
       activation: ActivationObservedRefused { unit: name, detail: "masked" },
       persistence: MaskRuntimeOnlyObserved { unit: name, path: "/run/systemd/system" }),
-    descendants: if populated { RecordedPathPopulated } else { RecordedPathEmpty },
+    descendants: CapacityRecordedDescendants { reading: if populated { RecordedPathPopulated } else { RecordedPathEmpty } },
   }
 }
 
@@ -181,4 +182,32 @@ test fn an_activation_family_requires_its_destination_in_the_installed_drain() -
     Err { value: _ } => true
     Ok { value: _ } => false
   }
+}
+
+// Non-process activators cannot borrow an empty cgroup value. They owe target
+// edges, and those targets owe their own process-tree proof.
+test fn a_timer_without_a_target_and_a_path_with_an_undrained_target_refuse() -> Bool {
+  let base = migration_fixture_drain(name: "fixture.timer", populated: false)
+  let timer = CapacityUnitDrain { subject: base.subject, quiescence: base.quiescence,
+    descendants: CapacityActivationDescendants { targets: [] } }
+  let path_base = migration_fixture_drain(name: "fixture.path", populated: false)
+  let path = CapacityUnitDrain { subject: path_base.subject, quiescence: path_base.quiescence,
+    descendants: CapacityActivationDescendants { targets: [migration_fixture_unit(name: "target.service")] } }
+  let target = migration_fixture_drain(name: "target.service", populated: true)
+  match capacity_migration_unit_refusal(subject: timer.subject, observed: [timer]) {
+    Present { value: _ } => true Absent => false
+  } && match capacity_migration_unit_refusal(subject: path.subject, observed: [path, target]) {
+    Present { value: _ } => true Absent => false
+  }
+}
+
+test fn an_empty_service_cgroup_needs_its_independently_drained_parent() -> Bool {
+  let base = migration_fixture_drain(name: "fixture.service", populated: false)
+  let service = CapacityUnitDrain { subject: base.subject, quiescence: base.quiescence,
+    descendants: CapacityParentDescendants { parent: migration_fixture_unit(name: "fixture.slice") } }
+  let good = migration_fixture_drain(name: "fixture.slice", populated: false)
+  let busy = migration_fixture_drain(name: "fixture.slice", populated: true)
+  (match capacity_migration_unit_refusal(subject: service.subject, observed: [service]) { Present { value: _ } => true Absent => false })
+    && (match capacity_migration_unit_refusal(subject: service.subject, observed: [service, busy]) { Present { value: _ } => true Absent => false })
+    && (match capacity_migration_unit_refusal(subject: service.subject, observed: [service, good]) { Present { value: _ } => false Absent => true })
 }
