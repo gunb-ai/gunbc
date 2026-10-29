@@ -1,6 +1,6 @@
 module gunbc.compute.capacity_migration
 
-import std.types { String, NonEmptyStr, List, CommitSha }
+import std.types { String, NonEmptyStr, List, CommitSha, Bool }
 import std.optional { Present, Absent }
 import std.error_primitives { Result, Ok, Err }
 import std.decl_ref { DeclarationRef }
@@ -71,6 +71,17 @@ fn capacity_migration_parent_requirements(population: CapacityMigrationPopulatio
     + capacity_migration_family_parent_requirements(families: population.transients)
 }
 
+// Stated divergence: keep these predicates at declaration scope until the
+// production-module builtin/effect-summary resolution defect is understood.
+// Receipt: gunbc.recurring_failure_mode.nested_builtin_loses_callee_identity.
+fn capacity_units_have_wrong_manager(units: List<CapacityManagedUnit>, manager: SystemdManager) -> Bool {
+  fold(units, init: false, f: (wrong, unit) => wrong || unit.manager != manager)
+}
+
+fn capacity_unit_is_not_excluded(excluded: List<CapacityManagedUnit>, unit: CapacityManagedUnit) -> Bool {
+  fold(excluded, init: true, f: (keep, other) => keep && other != unit)
+}
+
 // The manager owns glob matching. Read inclusions and exclusions through that same
 // reader after inhibition; never implement a second glob parser here. A failed
 // exclusion read is not an empty exclusion set. Both readings carry manager identity.
@@ -86,10 +97,10 @@ fn capacity_migration_enumerate_family(
       match exclusion {
         Err { value: why } => Err { value: why }
         Ok { value: excluded } => {
-          if any(included + excluded, unit => unit.manager != family.manager) {
+          if capacity_units_have_wrong_manager(units: included + excluded, manager: family.manager) {
             Err { value: "family selector reading came from a different manager" }
           } else {
-            Ok { value: filter(included, unit => fold(excluded, init: true, f: (keep, other) => keep && other != unit)) }
+            Ok { value: filter(included, unit => capacity_unit_is_not_excluded(excluded: excluded, unit: unit)) }
           }
         }
       }
