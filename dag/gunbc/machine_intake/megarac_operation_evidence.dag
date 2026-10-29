@@ -1,10 +1,13 @@
 module gunbc.machine_intake.megarac_operation_evidence
 
 import std.types { EpochMs, List }
+import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
+import extdeps.crypto.sha2 { sha256_computed_digest }
 import extdeps.bmc.ipmitool_observed_output {
   mtcollins1_boot_run_40082618814_hpm_check_artifact_path, mtcollins1_boot_run_40082618814_hpm_check_digest,
+  ipmitool_hpm_check_bmc0_45,
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.host.megarac_operation_standing {
@@ -44,6 +47,11 @@ import gunbc.machine_intake.mtcollins1_32dimm_bringup_observation { mtcollins1_s
 //   - That run's sensor read was taken with the host off: every CPU0_ and CPU1_ record answered "No
 //     Reading", but the SDR RECORD NAMES are present in the capture, which is what socket naming reads.
 //     So the receipt evidences the naming, not only that a read executed.
+//   - Boots 5 and 6 (runs 40258937016 and 40264233543, 2026-10-26, main after #15193) READ THE SAME BUILD
+//     again: their hpm captures are byte-identical to the 2026-10-24 one, so the ledger holds two readings
+//     of one build at two instants, not two builds. Boot 5 EXECUTED the media attach at that build; boot 6
+//     refused at attach on an uncatalogued `redirection_status 16` before any write or power action, so it
+//     grounds no operation beyond the reading it took.
 
 // THE FIXTURE EVIDENCE MINT, public on purpose and living HERE rather than in a witness. The carriers
 // (reading/receipt/transition) and their one mint (megarac_operation_evidence_of) are sole_constructor and
@@ -167,6 +175,47 @@ data mtcollins1_current_build_hpm_check_evidence: EvidenceRef = EvidenceRef {
 // 2026-10-24T18:00:43Z: the instant the boot's read-only pre-power phase ran `hpm check` on this unit.
 data mtcollins1_current_build_read_at: EpochMs = 1792864843000
 
+// THE TWO BOOTS THAT FOLLOWED THE READING, AND WHAT EACH ONE ACTUALLY DID.
+//
+// BOOT 5 (fleet-converge run 40258937016, 2026-10-26, main after #15193) EXECUTED the media attach at
+// the machine-read build: the share bound to 192.168.1.201:/srv/bmc, the runner ISO row started at
+// session_index 0, `cd_error_code` read 0 before any write and again at ready, and the host booted far
+// enough to show the UEFI setup prompt. Those lines are verbatim in its committed diagnostics, so this
+// row is a receipt of MegaRacVirtualMediaAttach AT THE READ BUILD. It is the newest executed evidence of
+// that operation, and it is 1 of 3: boot 5's committed receipt line (mtcollins1-boot-receipt.txt in the
+// same run directory) reads "screen=observer not started: MegaRAC KVM canvas still is not grounded by
+// committed evidence on this baseboard at firmware 0.32", so KVM still gained NOTHING at 0.45, and SDR
+// socket naming never ran on either boot (both refuse before the sensor phase; boot 6 refuses at attach,
+// boot 5's fan-gate SDR read goes through gunbc.machine_intake.bmc_fan_observation, which admits nothing
+// and leaves no receipt). Encoding that as "all three grounded again" would be the convenient version,
+// not the true one.
+data mtcollins1_run_40258937016_diagnostics: EvidenceRef = EvidenceRef {
+  label: "artifacts/bmc/mtcollins1-boot-run-40258937016/mtcollins1-boot-diagnostics.txt",
+  digest: Sha256Hash(Sha256Digest { hex: "16a18fed0a9630d33194fef1a0a5efb80807f64b2363ad7e63f94cc44dec498f" }),
+}
+
+// 2026-10-26T02:55:27.734Z: the attach's own established_at, printed in boot 5's media line beside the
+// session_index and cd_error_code it reports.
+data mtcollins1_run_40258937016_media_at: EpochMs = 1792983327734
+
+// BOOT 6 (run 40264233543, 2026-10-26T06:30Z, main after #15193) RE-READ THE BUILD in its read-only
+// pre-power phase and then REFUSED at media attach, before any write or power action. Its hpm capture is
+// BYTE-IDENTICAL to the capture whose bytes have their one home in
+// extdeps.bmc.ipmitool_observed_output ipmitool_hpm_check_bmc0_45 -- both runs' committed SHA256SUMS
+// print 31d953d5e2ffc0ee084d7c7087d40be88a29ddf94cdc0b30d2b368610fca273d -- so the digest is COMPUTED
+// from those bytes here instead of typed as a second hex literal: the PATH is this run's, the CONTENT is
+// one fact told once (DESIGN.md §3). A row keyed by a run id is a receipt of one unit's attempt, so it
+// lives in this gunbc module and not in extdeps, which holds vendor facts keyed by firmware.
+data mtcollins1_run_40264233543_hpm_check_evidence: EvidenceRef = EvidenceRef {
+  label: "artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-hpm-check-40264233543.txt",
+  digest: Sha256Hash(sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: ipmitool_hpm_check_bmc0_45)))),
+}
+
+// 2026-10-26T06:30:20Z: the instant boot 6's own diagnostics stamp this reading. It is the LATEST
+// reading of this controller's build, so it is what gunbc.host.megarac_operation_standing
+// megarac_current_build returns, and every receipt above and below is joined against it.
+data mtcollins1_run_40264233543_read_at: EpochMs = 1792996220000
+
 fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
   megarac_operation_evidence_of(
     // THE CURRENT-BUILD ROW EXISTS ONLY IF THE MACHINE READ ESTABLISHED IT (reviews 86103/86139;
@@ -179,6 +228,7 @@ fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
       Present { value: current_build_identity } => [
         megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_identity, evidence: mtcollins1_intake_reading_evidence, observed_at: mtcollins1_observed_at),
         megarac_build_reading(endpoint: mtcollins1_endpoint, identity: current_build_identity, evidence: mtcollins1_current_build_hpm_check_evidence, observed_at: mtcollins1_current_build_read_at),
+        megarac_build_reading(endpoint: mtcollins1_endpoint, identity: current_build_identity, evidence: mtcollins1_run_40264233543_hpm_check_evidence, observed_at: mtcollins1_run_40264233543_read_at),
       ]
       Absent => [
         megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_identity, evidence: mtcollins1_intake_reading_evidence, observed_at: mtcollins1_observed_at),
@@ -190,6 +240,11 @@ fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
       megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_diagnostics, executed_at: mtcollins1_run_37102391062_media_at),
       megarac_operation_receipt(operation: MegaRacKvmCanvasStill, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_kvm_journal, executed_at: mtcollins1_run_37102391062_kvm_at),
       megarac_operation_receipt(operation: MegaRacSdrSocketNaming, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_diagnostics, executed_at: mtcollins1_run_37102391062_sensors_by),
+      // BOOT 5'S EXECUTED ATTACH AT THE READ BUILD, 2026-10-26. It falls after the reflash window closed
+      // and after both 0.45 readings, and no build OTHER than 0.45 was read between it and the latest
+      // reading -- the only 0.32 reading in this ledger predates the reflash -- so it joins the current
+      // build the same way the Oct-3 rows do.
+      megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_40258937016_diagnostics, executed_at: mtcollins1_run_40258937016_media_at),
     ],
     // THE REFLASH DESTINATION IS THE MACHINE-READ BUILD, AND ONLY IF THERE IS ONE. The 2026-10-02
     // reflash happened whatever the catalogue says -- but the LEDGER ROW says which build it moved TO, and
