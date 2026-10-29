@@ -140,8 +140,22 @@ fn srv1_serving_launch_argv(api_key_wire: NonEmptyStr) -> List<String> {
 // observed facts below; the build itself is not a modeled realization yet (its home is the derived-key
 // pattern of gunbc.spark.vllm_image_identity, glm53_kvplan_key: base key + patch digest), and the
 // standing says so (DESIGN 4d).
+//
+// WHY NOT A VllmServingImage: that type is extdeps.vllm.local_inference_lab_build's sole_constructor
+// release identity, and minting one here would present our build as the upstream's release (the
+// nickname DESIGN 3 forbids). The derivation therefore carries its OWN identity fields and holds the
+// upstream row only as its base.
+//
+// KNOWN GAP, DECLARED: gunbc.serving.serving_provision_derivation's srv1 arm still takes the RECIPE's
+// build image (the base, af14f1a9), because its image field is the upstream carrier. Executing that
+// derivation would deploy the unpatched base -- the regression of 2026-10-29 10:58, made by hand.
+// Nothing executes it yet (its own unbound dissolution row says so); before anything does, its image
+// field must admit this derivation.
 type Srv1ServingImageDerivation {
-  image: VllmServingImage
+  repository: NonEmptyStr
+  tag: NonEmptyStr
+  digest_sha256: NonEmptyStr
+  standing: CitedFigureStanding
   base: VllmServingImage
   replaced_path: NonEmptyStr
   base_file_sha256_hex: NonEmptyStr
@@ -149,15 +163,13 @@ type Srv1ServingImageDerivation {
 }
 
 data srv1_serving_image_derivation: Srv1ServingImageDerivation = Srv1ServingImageDerivation {
-  image: VllmServingImage {
-    repository: "local/eager-lynx-lmcache" as NonEmptyStr,
-    tag: "late-delete-completion" as NonEmptyStr,
-    // `docker inspect --format {{.Image}} lil-flash-next` on srv1, 2026-10-29 12:55, after the relaunch
-    // that restored it; the wrapper runs it BY THIS ID, so the mutable local tag is not the identity.
-    digest_sha256: "da08aaf9d967bebc0fa053f59b087249cd0fd4719cd6e0ae76e7c1b432c2cd8b" as NonEmptyStr,
-    standing: TranscribedUncited {
-      read_obligation: "A local build with no registry manifest: this repository read the running container's image ID and, inside it, the replaced file's sha256 (2026-10-29). The build recipe (FROM the base by digest, a sha256 -c guard on the base file, one COPY) is read from gunbc-private#255's Dockerfile, not from a modeled realization; retiring this needs the build as a keyed realization under gunbc.spark.vllm_image_identity's derived-key pattern." as NonEmptyStr,
-    },
+  repository: "local/eager-lynx-lmcache" as NonEmptyStr,
+  tag: "late-delete-completion" as NonEmptyStr,
+  // `docker inspect --format {{.Image}} lil-flash-next` on srv1, 2026-10-29 12:55, after the relaunch
+  // that restored it; the wrapper runs it BY THIS ID, so the mutable local tag is not the identity.
+  digest_sha256: "da08aaf9d967bebc0fa053f59b087249cd0fd4719cd6e0ae76e7c1b432c2cd8b" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "A local build with no registry manifest: this repository read the running container's image ID and, inside it, the replaced file's sha256 (2026-10-29). The build recipe (FROM the base by digest, a sha256 -c guard on the base file, one COPY) is read from gunbc-private#255's Dockerfile, not from a modeled realization; retiring this needs the build as a keyed realization under gunbc.spark.vllm_image_identity's derived-key pattern." as NonEmptyStr,
   },
   base: local_inference_lab_vllm_image,
   replaced_path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/l2_adapters/native_connector_l2_adapter.py" as NonEmptyStr,
@@ -167,10 +179,10 @@ data srv1_serving_image_derivation: Srv1ServingImageDerivation = Srv1ServingImag
   replaced_file_sha256_hex: "d4b5aef995406fcda896bb5a3a7e9f6829f7ea4a6b48203a3dd54b2630fa82a7" as NonEmptyStr,
 }
 
-// The image and the pinned checkpoint the launch runs, exported so the provision derivation and the
-// router row read THEM rather than restating a digest (one authority; DESIGN 3).
-fn srv1_serving_image() -> VllmServingImage {
-  srv1_serving_image_derivation.image
+// The image and the pinned checkpoint the launch runs, exported so the router row and the witness read
+// THEM rather than restating a digest (one authority; DESIGN 3).
+fn srv1_serving_image() -> Srv1ServingImageDerivation {
+  srv1_serving_image_derivation
 }
 
 fn srv1_serving_pinned_checkpoint() -> HubCheckpointManifest {
