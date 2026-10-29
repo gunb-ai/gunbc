@@ -33,6 +33,7 @@ import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecovery
 import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureAbsent }
 import gunbc.roadmap.roadmap_provider_events { ProviderRequestPending }
 import gunbc.roadmap.roadmap_belt_obligation { belt_capture_recording_owed }
+import gunbc.roadmap.roadmap_belt_tick_cli { belt_redeliver_instance_matches }
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused, SystemdSetenvBinding }
 import extdeps.exec.command { argv_words }
@@ -209,4 +210,18 @@ test fn the_redelivery_route_resolves_by_repo_root_not_by_id() -> Bool {
     DashboardInstanceResolved { instance: _ } => false
   }
   unknown_path && id_is_not_a_root
+}
+
+test fn the_redelivery_entry_guard_refuses_a_wrong_instance() -> Bool {
+  // The entry's ONLY novel pure decision (the env reads + belt_instance_from_env +
+  // belt_dispatch_node_for_instance around it are existing and witnessed elsewhere): a
+  // mis-set GUNBC_BELT_SPAWN_WORKDIR that resolves a DIFFERENT instance than the armed
+  // wake named must NOT match (the entry then refuses) — a wake firing for the wrong
+  // instance is worse than a wedge, and the node is found over the global plan so this
+  // identity check is the only guard.
+  !belt_redeliver_instance_matches(resolved: "srv1-live", expected: "srv1-lab-codex-feedback-v0")
+}
+
+test fn the_redelivery_entry_guard_clears_the_matching_instance() -> Bool {
+  belt_redeliver_instance_matches(resolved: "srv1-lab-codex-feedback-v0", expected: "srv1-lab-codex-feedback-v0")
 }

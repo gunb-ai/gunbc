@@ -481,6 +481,16 @@ fn belt_instance_obligation_cli(kind: String) -> ProcessExit {
 // the repo root resolves no instance (belt_instance_from_env's own refusal) OR a DIFFERENT one than the
 // wake named: the node is looked up over the GLOBAL plan (belt_find_node_in), so the instance identity is
 // the only thing that stops a wake firing on the wrong instance -- and that is worse than a wedge.
+// The pure decision behind belt_redeliver_attempt_cli's wrong-instance guard: the
+// instance the spawn root resolves to must be exactly the one the armed wake named,
+// or the entry refuses (the node is looked up over the GLOBAL plan, so the instance
+// identity is the only thing that stops a mis-set GUNBC_BELT_SPAWN_WORKDIR from
+// dispatching a live instance's node elsewhere). Witnessed hermetically; the entry
+// keeps only the env reads and the dispatch around it.
+fn belt_redeliver_instance_matches(resolved: Text, expected: Text) -> Bool {
+  resolved == expected
+}
+
 fn belt_redeliver_attempt_cli() -> ProcessExit {
   match shell.Env.Get(name: belt_dispatch_env_var).value {
     Absent => exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_NODE_ID not set — a re-delivery wake must name the node it re-delivers (fail-closed)")
@@ -495,7 +505,7 @@ fn belt_redeliver_attempt_cli() -> ProcessExit {
               exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_REDELIVER_INSTANCE_ID is empty — the wake must name the instance the attempt belongs to (fail-closed)")
             } else {
               belt_instance_from_env(entry: "belt_redeliver_attempt_cli", continuation: instance =>
-                if instance.instance_id as String != expected_instance {
+                if !belt_redeliver_instance_matches(resolved: instance.instance_id, expected: expected_instance) {
                   exit_failure(reason: join(["belt_redeliver_attempt_cli: GUNBC_BELT_SPAWN_WORKDIR resolves instance ", instance.instance_id as String, " but the wake names ", expected_instance, " — refusing; a wake firing for the wrong instance is worse than a wedge"], ""))
                 } else {
                   let r = belt_dispatch_node_for_instance(instance: instance, node_id: node_id)
