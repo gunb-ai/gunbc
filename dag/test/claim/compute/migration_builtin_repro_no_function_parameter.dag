@@ -1,0 +1,18 @@
+module test.claim.compute.migration_builtin_repro_no_function_parameter
+
+import std.types { String, List, Bool }
+import std.error_primitives { Result, Ok, Err }
+
+fn selected(input: Result<List<String>, String>) -> Result<List<String>, String> {
+  match input {
+    Err { value: why } => Err { value: why }
+    Ok { value: included } => match input {
+      Err { value: why } => Err { value: why }
+      Ok { value: excluded } => Ok { value: filter(included, unit => fold(excluded, init: true, f: (keep, other) => keep && other != unit)) }
+    }
+  }
+}
+
+test fn repro() -> Bool {
+  selected(input: Ok { value: ["x"] }) == Ok { value: [] }
+}
