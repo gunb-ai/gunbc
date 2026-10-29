@@ -4998,6 +4998,19 @@ fn fleet_converge_boot_credential_source_account(source: BootCredentialSource) -
   }
 }
 
+// THE FALSE ELEMENT OF A GITHUB CONDITION, SPOOLED AS A REF. extdeps.github.expressions Expression has
+// NO boolean arm -- there is no way to write `false` -- so an empty roster cannot be rendered as
+// "never admits". It is rendered as the ref that no dispatch can ever carry: the same poisoned-sentinel
+// convention this lane already uses for an unnameable pin (gunbc.auth.mtcollins1_branch_boot_trust
+// mtcollins1_boot_trusted_ref_pin) and for a refused emission (boot_credential_source_emit_refused_poison
+// just below). It admits nothing, and it reads as a sentinel rather than as a ref someone might create.
+fn fleet_converge_ref_matches_no_branch() -> Expression {
+  Equals {
+    left: ContextAccess { context: Github, path: ["ref"] },
+    right: StringLiteral { value: "__GUNBC_MTCOLLINS1_BOOT_NO_TRUSTED_BRANCH__" },
+  }
+}
+
 fn fleet_converge_mtcollins1_boot_source_provider(standing: BootCredentialStanding) -> String {
   match standing {
     BootCredentialSourceSelected { source: s } => fleet_converge_boot_credential_source_provider(source: s)
@@ -5031,7 +5044,7 @@ fn fleet_converge_mtcollins1_boot_ref_is_trusted_branch() -> Expression {
     right: StringLiteral { value: mtcollins1_boot_trusted_branch_ref(branch: b as String) },
   })
   match terms.first() {
-    Absent => BooleanLiteral { value: false }
+    Absent => fleet_converge_ref_matches_no_branch()
     Present { value: t } => fold(terms.skip(n: 1), init: t, f: (acc, x) => LogicalOr { left: acc, right: x })
   }
 }
@@ -5048,7 +5061,7 @@ fn fleet_converge_mtcollins1_boot_wif_provider_resource() -> String {
         // THE ROUTE'S OWN IDENTITY, named by the trust module: one pool, provider and account are declared
         // for this route, so this is not a credential computed from a representative branch. WHICH refs may
         // ask for it is the ref guard beside it, decided per entry.
-        right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: TrustedBranchBootIdentity) },
+        right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: BootCredentialSourceSelected { source: TrustedBranchBootIdentity }) },
       },
       right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: select_boot_credential_source(on_reviewed_main: false)) },
     },
@@ -5064,7 +5077,7 @@ fn fleet_converge_mtcollins1_boot_wif_service_account() -> String {
     right: LogicalOr {
       left: LogicalAnd {
         left: fleet_converge_mtcollins1_boot_ref_is_trusted_branch(),
-        right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: TrustedBranchBootIdentity) },
+        right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: BootCredentialSourceSelected { source: TrustedBranchBootIdentity }) },
       },
       right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: select_boot_credential_source(on_reviewed_main: false)) },
     },
@@ -5836,7 +5849,7 @@ fn fleet_converge_off_main_grant_required_term(mode: FleetConvergeWorkflowMode) 
       })
       Present { value: LogicalAnd {
         left: base,
-        right: LogicalNot { operand: fold(terms.skip(n: 1), init: match terms.first() { Present { value: t } => t  Absent => BooleanLiteral { value: false } }, f: (acc, x) => LogicalOr { left: acc, right: x }) },
+        right: LogicalNot { operand: fold(terms.skip(n: 1), init: match terms.first() { Present { value: t } => t  Absent => fleet_converge_ref_matches_no_branch() }, f: (acc, x) => LogicalOr { left: acc, right: x }) },
       } }
     }
   } else {

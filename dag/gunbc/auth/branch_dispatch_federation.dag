@@ -195,8 +195,16 @@ fn run_scoped_mode_named(mode: String) -> RunScopedMode? {
 // grant run 39895564897 queued for that same runner). A mode that needs no credential needs no grant, and
 // this is now the single place that decides both.
 //
-// ONLY THE SELECTED-SOURCE ROUTE IS REF-GATED THIS WAY: every other mode, and host_reset_return above all,
-// keeps the class rule it has always had, at every ref. The roster opens mtcollins1_boot and nothing else.
+// ONLY THE SELECTED-SOURCE ROUTE IS REF-GATED THIS WAY. Every OTHER ROW of run_scoped_modes() --
+// hetzner_cloud_server_read, plan, apply -- keeps the class rule it has always had, at every ref, and the
+// measurement says so rather than this comment asserting it (2026-10-29, the claim route on
+// test.claim.auth.branch_run_grant_witness): fleet_converge_grant_required is true for each of them at
+// every ref. The roster opens mtcollins1_boot and nothing else.
+//
+// DO NOT READ THIS AS COVERING MODES OUTSIDE THAT TABLE. host_reset_return has no row in run_scoped_modes()
+// -- an earlier draft of these comments cited it as a mode that "keeps its grant" here, and the claim
+// route refused it: for such modes fleet_converge_grant_required is false at every ref, main and branch
+// alike, because this is not the authority that decides their admission. Saying less is the honest move.
 fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
   let on_main = branch == (gunbc_default_branch_name as String)
   match run_scoped_mode_named(mode: mode) {
@@ -222,6 +230,13 @@ fn run_scoped_mode_eligible_on(mode: String, on_reviewed_main: Bool) -> RunScope
         match select_boot_credential_source(on_reviewed_main: on_reviewed_main) {
           BootCredentialSourceSelected { source: RunScopedApprovedGrant } => Present { value: m }
           BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => none
+          // UNREACHABLE FROM THIS READER, AND IT FAILS CLOSED IF IT EVER IS REACHED. This class-level
+          // reader holds no branch name, and the approval-free branch source is established ONLY at a
+          // rostered ref (select_boot_credential_source_at_ref) -- the ref-less twin above can never
+          // produce it. Answering as if the grant were still required is the safe direction: a mode that
+          // wrongly landed here would wait for a grant rather than boot unattended. The reader that must
+          // answer for a trusted branch is the ref-aware one, never this one.
+          BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => Present { value: m }
           BootCredentialSourceRefused { cause: _ } => none
         }
     }
@@ -427,8 +442,11 @@ type BootCredentialSource
   // gunbc.auth.mtcollins1_branch_boot_trust). A same-repository branch dispatch of mtcollins1_boot whose
   // ref the code-declared roster holds federates as a DEDICATED branch boot account, through a pool and
   // provider of its own whose WIF condition pins the ref and the job environment. It waits for no grant
-  // run. It is not the grant route bypassed -- it is a different, STANDING IAM-side trust, and every
-  // other mode, host_reset_return included, still selects RunScopedApprovedGrant off main.
+  // run. It is not the grant route bypassed -- it is a different, STANDING IAM-side trust. Every other
+  // ROW of run_scoped_modes() still selects RunScopedApprovedGrant off main (measured: true for
+  // hetzner_cloud_server_read, plan and apply at every ref, and for mtcollins1_boot at every ref except a
+  // rostered one). Modes with no row there -- host_reset_return -- are neither opened nor restricted by
+  // this arm; this row is not their authority.
   | TrustedBranchBootIdentity
 
 type BootCredentialStanding
@@ -566,7 +584,7 @@ fn branch_boot_workload_identity() -> WorkloadIdentityStanding {
 // for the effect, not merely named) and its own arm, because off reviewed main FederatedScopedGrant means
 // the dedicated main-only identity and refuses a branch. A branch outside the roster never reaches this:
 // select_boot_credential_source_at_ref asks the roster first, and every other ref falls through to the
-// per-run grant. So host_reset_return and every other mode keep their grant.
+// per-run grant. So every other row of run_scoped_modes() keeps its grant, at the trusted ref included.
 fn boot_credential_source_from_branch_selection(s: AuthorizationPatternSelection) -> BootCredentialStanding {
   match s {
     PatternSelected { pattern: FederatedScopedGrant, receipt: _ } =>

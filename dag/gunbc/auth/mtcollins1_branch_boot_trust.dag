@@ -40,8 +40,9 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 //   2. The classifier reads a pool and requires EXACTLY ONE provider (gunbc.auth.heal_publisher_provision
 //      providers_reasons: "the pool holds N providers; exactly one is declared"), compared against the
 //      one the federation declares. Adding a second provider to github-fleet-converge-dispatch would
-//      make every federation naming that pool refuse to classify -- the run-scoped accounts of every
-//      mode that KEEPS its grant, host_reset_return included, would stop converging.
+//      make every federation naming that pool refuse to classify -- the run-scoped accounts of the modes
+//      that DO keep a grant (run_scoped_modes: hetzner_cloud_server_read, plan, apply) would stop
+//      converging, including modes that have nothing to do with this host.
 //   3. Widening the standing binding on the EXISTING mtcollins1-boot-run account is refused by that
 //      account's own doctrine (gunbc.auth.heal_publisher_provision): a run-scoped federation "binds
 //      nothing standing -- its pool admits branch dispatches, so a standing binding would hand the
@@ -62,8 +63,8 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 // consent out of band for this one mode, the same consent the 2026-09-23/25 rulings recorded for the
 // main-dispatched twin, moved to the branch case -- nor does it mint host root. So there is no second
 // broker, no second consent object, and nothing here asks a human to attend: it is a no-approval
-// SELECTION. host_reset_return and every other mode keep their per-run grant, issued only after
-// operator approval.
+// SELECTION. Every other row of run_scoped_modes() keeps its per-run grant, issued only after operator
+// approval; host_reset_return has no row in that table and this module changes nothing about it.
 //
 // WHAT IT WIDENS, SAID PLAINLY (the PR body says it in these terms): anyone who can push to a rostered
 // branch of gunb-ai/gunbc can drive mtcollins1's BMC -- power-cycle it and mount its virtual CD -- with

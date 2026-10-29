@@ -46,7 +46,7 @@ import gunbc.auth.branch_run_grant {
   plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
 }
 import gunbc.auth.branch_dispatch_federation { BranchRunFacts, BranchRunAdmitted, BranchRunRefused, judge_branch_run }
-import gunbc.auth.oidc_claim_pins { with_presented_value, without_presented_claim }
+import gunbc.auth.oidc_claim_pins { with_presented_value, without_presented_claim, OidcClaimPin }
 import std.algebra { string_contains }
 import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of }
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
@@ -292,8 +292,8 @@ test fn both_boot_accounts_pin_the_admitted_bmc_and_fleet_key_versions() -> Bool
             (t.service_account_id as String) == (run.service_account_id as String)
               && any(t.secret_grants, g => (g.target.secret as String) == "bmc-mtcollins1-gunbc"
                 && any(admitted.secret_grants, a => (a.target.secret as String) == "bmc-mtcollins1-gunbc" && a.target.version != g.target.version)))
-          && match select_boot_credential_source(on_reviewed_main: true) { BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => true  BootCredentialSourceSelected { source: RunScopedApprovedGrant } => false  BootCredentialSourceRefused { cause: _ } => false }
-          && match select_boot_credential_source(on_reviewed_main: false) { BootCredentialSourceSelected { source: RunScopedApprovedGrant } => true  BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => false  BootCredentialSourceRefused { cause: _ } => false }
+          && match select_boot_credential_source(on_reviewed_main: true) { BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => true  BootCredentialSourceSelected { source: RunScopedApprovedGrant } => false  BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false  BootCredentialSourceRefused { cause: _ } => false }
+          && match select_boot_credential_source(on_reviewed_main: false) { BootCredentialSourceSelected { source: RunScopedApprovedGrant } => true  BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => false  BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false  BootCredentialSourceRefused { cause: _ } => false }
       }
     }
   }
@@ -330,8 +330,8 @@ test fn boot_credential_source_is_the_authorization_pattern_selection() -> Bool 
     && !boot_pattern_is_approved(on_reviewed_main: true)
     && boot_pattern_is_approved(on_reviewed_main: false)
     && !boot_pattern_is_federated(on_reviewed_main: false)
-    && match select_boot_credential_source(on_reviewed_main: true) { BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => true  BootCredentialSourceSelected { source: RunScopedApprovedGrant } => false  BootCredentialSourceRefused { cause: _ } => false }
-    && match select_boot_credential_source(on_reviewed_main: false) { BootCredentialSourceSelected { source: RunScopedApprovedGrant } => true  BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => false  BootCredentialSourceRefused { cause: _ } => false }
+    && match select_boot_credential_source(on_reviewed_main: true) { BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => true  BootCredentialSourceSelected { source: RunScopedApprovedGrant } => false  BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false  BootCredentialSourceRefused { cause: _ } => false }
+    && match select_boot_credential_source(on_reviewed_main: false) { BootCredentialSourceSelected { source: RunScopedApprovedGrant } => true  BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => false  BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false  BootCredentialSourceRefused { cause: _ } => false }
     && census_boot_credential_effect_conforms(decl_name: "boot_credential_effect_on_reviewed_main")
     && census_boot_credential_effect_conforms(decl_name: "boot_credential_effect_off_reviewed_main")
 }
@@ -389,10 +389,18 @@ test fn every_roster_entry_is_answered_on_its_own_ref() -> Bool {
   all(mtcollins1_boot_trusted_branches, b =>
     fleet_converge_grant_required_at_ref(mode: MtCollins1Boot, branch: b as String)
       == boot_grant_required_at_ref(on_reviewed_main: false, branch: b as String))
-    // and the boot is the ONLY mode whose grant question can differ by ref
+    // AND THE BOOT IS THE ONLY MODE WHOSE GRANT QUESTION CAN DIFFER BY REF -- asked of the modes that
+    // actually own a grant question. MEASURED, NOT ASSUMED (2026-10-29, gunbc test on this file): the
+    // run-scoped grant universe is gunbc.auth.branch_dispatch_federation run_scoped_modes(), which holds
+    // hetzner_cloud_server_read, mtcollins1_boot, plan and apply. An earlier draft of this claim asked
+    // host_reset_return and gcp_iam_converge instead, and it FAILED: neither has a row in that table, so
+    // fleet_converge_grant_required answers false for them at every ref -- main and branch alike -- and
+    // their admission is decided by other authorities entirely. Asking the "still needs the grant"
+    // question of a mode that never had one is a claim that cannot fail for the wrong reason, which is
+    // the same thing as proving nothing.
     && all(mtcollins1_boot_trusted_branches, b =>
-      fleet_converge_grant_required_at_ref(mode: HostResetReturn, branch: b as String)
-        && fleet_converge_grant_required_at_ref(mode: GcpIamConverge, branch: b as String))
+      fleet_converge_grant_required_at_ref(mode: HetznerCloudServerRead, branch: b as String)
+        && fleet_converge_grant_required_at_ref(mode: FleetApply, branch: b as String))
 }
 
 fn boot_environment() -> String {
@@ -548,8 +556,11 @@ test fn the_approval_free_boot_admits_a_skipped_wait() -> Bool {
     && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: trusted_boot_branch(), result: GrantWaitCancelled)
     // an unrostered branch keeps the OLD admission: no grant, no boot
     && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: concat(trusted_boot_branch(), "-not-rostered"), result: GrantWaitSkipped)
-    // and a different mode at the rostered ref does too
-    && !fleet_converge_grant_wait_admits_at_ref(mode: HostResetReturn, branch: trusted_boot_branch(), result: GrantWaitSkipped)
+    // and a different mode AT THE ROSTERED REF keeps the old admission. HetznerCloudServerRead is chosen
+    // because the measurement says it genuinely requires the grant off main (run_scoped_modes:
+    // MainUsesGrantedAccount); HostResetReturn was the earlier choice and it passed vacuously, since it
+    // has no row in that table and so never waits anywhere.
+    && !fleet_converge_grant_wait_admits_at_ref(mode: HetznerCloudServerRead, branch: trusted_boot_branch(), result: GrantWaitSkipped)
 }
 
 // ══ THE ENVIRONMENT STANDING CANNOT BE REMOVED WITHOUT SHUTTING THE ROUTE DOWN (side-chat
@@ -565,14 +576,16 @@ test fn the_approval_free_boot_admits_a_skipped_wait() -> Bool {
 // illustrated: the pins are the membership rule and the CEL is a fold over them.
 test fn the_environment_conjunct_is_never_droppable() -> Bool {
   let pins = mtcollins1_boot_branch_claim_pins()
-  let named_environment = filter(pins, pin => (pin.claim as String) == "environment")
+  let named_environment: List<OidcClaimPin> = filter(pins, pin => (pin.claim as String) == "environment")
+  // THE BODY MUST START WITH A PRIMARY EXPRESSION: a leading '&&' here is parsed as a continuation of
+  // the let's own initializer, which makes named_environment undefined inside its own definition.
   // exactly one, and it is the poisoned-by-default pin
-  && named_environment.length() == 1
+  named_environment.length() == 1
   && match named_environment.first() {
     Present { value: p } => p.value == mtcollins1_boot_trusted_environment_pin().value
     Absent => false
   }
-  && mtcollins1_boot_branch_attribute_condition() |> string_contains(pattern: "assertion.environment")
+  && string_contains(s: mtcollins1_boot_branch_attribute_condition(), pattern: "assertion.environment")
   // THE CONDITION GCP STORES, not just the list it is folded from: dropping the pin would remove this
   // conjunct from the CEL itself, which is the fail-open the review named. Asserted on the stored
   // provider, because that is the object converge creates -- and asserted as an EQUALITY ON THE
@@ -580,7 +593,7 @@ test fn the_environment_conjunct_is_never_droppable() -> Bool {
   // equality to itself through the same function, which would be tautological.
   && match mtcollins1_boot_branch_provider().attribute_condition {
     Present { value: c } =>
-      c |> string_contains(pattern: mtcollins1_boot_environment_conjunct())
+      string_contains(s: c, pattern: mtcollins1_boot_environment_conjunct())
       // every other conjunct survives too: the condition is a fold, so one term per pin
       && pins.length() == split(s: c, delimiter: " && ").length()
     Absent => false
@@ -626,7 +639,7 @@ test fn an_unnameable_environment_leaves_no_federation_and_a_poisoned_pin() -> B
     Present { value: f } =>
       f.attribute_condition == mtcollins1_boot_branch_attribute_condition()
         // ...and its environment conjunct is the real name, not the poison
-        && f.attribute_condition |> string_contains(pattern: boot_environment())
+        && string_contains(s: f.attribute_condition, pattern: boot_environment())
         && (mtcollins1_boot_trusted_environment_pin().value != "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__")
     // if the boot identity were ever unprovisioned, this is the branch that must hold: no federation at
     // all, and the pin the provider would have used is the value no dispatch can present
