@@ -145,13 +145,20 @@ test fn definite_publication_rejection_is_distinct_from_unknown_commit() -> Bool
 
 test fn deny_propagation_retry_requires_live_authority_and_a_remaining_budget() -> Bool {
   let refused = RestStatusRefused { status: 403, body: "permission not established" }
-  bootstrap_deny_retry_admitted(refusal: refused, remaining: 2, live: true)
-    && !bootstrap_deny_retry_admitted(refusal: refused, remaining: 1, live: true)
-    && !bootstrap_deny_retry_admitted(refusal: refused, remaining: 30, live: false)
-    && !bootstrap_deny_retry_admitted(refusal: RestTransportRefused { cause: "unknown commit" }, remaining: 30, live: true)
-    && !bootstrap_deny_retry_admitted(refusal: RestStatusRefused { status: 500, body: "unknown commit" }, remaining: 30, live: true)
+  bootstrap_deny_retry_admitted(refusal: refused, admitted_status: 403, remaining: 2, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: refused, admitted_status: 403, remaining: 1, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: refused, admitted_status: 403, remaining: 30, live: false)
+    && !bootstrap_deny_retry_admitted(refusal: RestTransportRefused { cause: "unknown commit" }, admitted_status: 403, remaining: 30, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: RestStatusRefused { status: 500, body: "unknown commit" }, admitted_status: 403, remaining: 30, live: true)
 }
 
+test fn a_429_retry_is_admitted_only_for_a_429_with_budget_and_live_authority() -> Bool {
+  let limited = RestStatusRefused { status: 429, body: "x" }
+  bootstrap_deny_retry_admitted(refusal: limited, admitted_status: 429, remaining: 2, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: limited, admitted_status: 429, remaining: 1, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: limited, admitted_status: 429, remaining: 30, live: false)
+    && !bootstrap_deny_retry_admitted(refusal: RestStatusRefused { status: 403, body: "x" }, admitted_status: 429, remaining: 30, live: true)
+}
 
 test fn cleanup_dependency_does_not_wait_for_successful_deny_installation() -> Bool {
   !any(bootstrap_authority_requires(subject: TemporaryAuthorityRetired), prerequisite => prerequisite == DenyPolicyReadback)

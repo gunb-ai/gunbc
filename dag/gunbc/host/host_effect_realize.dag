@@ -168,7 +168,7 @@ import extdeps.posix.path_ownership {
   path_ownership_verdict,
 }
 import extdeps.posix.identity { PosixOwnerSpec, posix_user_id_from_text, posix_group_id_from_text }
-import extdeps.sudo.elevation { sudo_elevate, sudo_program, sudo_elevate_command }
+import extdeps.sudo.elevation { sudo_elevate, sudo_program, sudo_elevate_command, argv_command_is_sudo_elevated }
 import gunbc.retained_shell_script {
   RetainedShellScript,
   retained_shell_script_to_transport,
@@ -178,6 +178,7 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   typed_argv_exec_over_ssh_with_stdin,
   typed_argv_exec_over_fleet_ssh,
+  typed_argv_exec_over_fleet_ssh_with_stdin,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
   TypedArgvExecRefused,
@@ -504,6 +505,10 @@ import extdeps.provisioning.ubuntu_install_media_fetch {
 import gunbc.artifact_acquisition {
   AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquisition_refusal_text,
 }
+import gunbc.provisioning.install_media_store {
+  InstallMediaStoreReading, InstallMediaStoreReady, InstallMediaStoreUnready, install_media_store,
+}
+import gunbc.host_state_root { host_state_tree }
 import gunbc.provisioning.seeded_install_media_publish {
   SeededImagePublished,
   SeededImageAlreadyPublished,
@@ -578,7 +583,7 @@ import gunbc.runner.runner_microvm_slot_unit {
 }
 import gunbc.live_deploy.emit {
   microvm_controller_release_dir, microvm_controller_stage_dir,
-  microvm_controller_tarball_stage_path, microvm_controller_vmm_receipt_path,
+  microvm_controller_stage_tarball_path, microvm_controller_vmm_receipt_path,
   microvm_locus_unit_with_workspace_root, microvm_slot_unit_file_with_workspace_root,
 }
 import gunbc.workspace_commissioning_executor_unit {
@@ -660,7 +665,7 @@ type ResolvedHostEffectCell =
   | LiveDeployApplyOnHost { node: ComputeHost, spec: DeploymentSpec, candidate: CandidateRelease, plan: ReleaseEffectPlan }
   | LiveDeployRetractOnHost { node: ComputeHost, spec: DeploymentSpec }
   | LiveDeployApprovalBrokerDarkInstallOnHost { node: ComputeHost, spec: DeploymentSpec, candidate: CandidateRelease }
-  | LiveDeployMicrovmControllerInstallOnHost { node: ComputeHost, candidate: CandidateRelease }
+  | LiveDeployMicrovmControllerInstallOnHost { node: ComputeHost, candidate: CandidateRelease, elevated: HostEffectTransport }
   | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
   | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int, expected_digest: Fnv1a64Structural }
   | LiveDeployServeRouteOnHost { node: ComputeHost, endpoint: TailscaleServeEndpoint, enabled: Bool }
@@ -749,8 +754,8 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
       LiveDeployRetractOnHost { node: n, spec: s }
     LiveDeployApprovalBrokerDarkInstall { spec: s, candidate: c } =>
       LiveDeployApprovalBrokerDarkInstallOnHost { node: n, spec: s, candidate: c }
-    LiveDeployMicrovmControllerInstall { candidate: c } =>
-      LiveDeployMicrovmControllerInstallOnHost { node: n, candidate: c }
+    LiveDeployMicrovmControllerInstall { candidate: c, elevated: e } =>
+      LiveDeployMicrovmControllerInstallOnHost { node: n, candidate: c, elevated: e }
     LiveDeployEnsureDependency { dep: d } =>
       LiveDeployEnsureDependencyOnHost { node: n, dep: d }
     LiveDeployDigestReadback { port: p, expected_digest: d } =>
@@ -938,8 +943,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           LiveDeployRetractOnHost { node: n, spec: s }
         LiveDeployApprovalBrokerDarkInstall { spec: s, candidate: c } =>
           LiveDeployApprovalBrokerDarkInstallOnHost { node: n, spec: s, candidate: c }
-        LiveDeployMicrovmControllerInstall { candidate: c } =>
-          LiveDeployMicrovmControllerInstallOnHost { node: n, candidate: c }
+        LiveDeployMicrovmControllerInstall { candidate: c, elevated: e } =>
+          LiveDeployMicrovmControllerInstallOnHost { node: n, candidate: c, elevated: e }
         LiveDeployEnsureDependency { dep: d } =>
           LiveDeployEnsureDependencyOnHost { node: n, dep: d }
         LiveDeployDigestReadback { port: p, expected_digest: d } =>
@@ -3889,8 +3894,8 @@ fn run_argv_parameters_of(command: ArgvCommand) -> RunArgvParameters {
 // refusal was fail-closed until that seam existed; it exists, and SshShell already mapped the
 // same way through typed_argv_exec_over_ssh. A second path that called the fleet seam from a
 // leaf while this dispatcher still refused is the parallel-authority tell. EmitArtifactThenThinRun
-// still refuses: it is not a typed argv transport. The stdin sibling stays refused until its own
-// portable-words-with-stdin admit (browser_ready_labels_fleet_route_stall).
+// still refuses: it is not a typed argv transport. The stdin sibling maps FleetSsh the same way
+// through typed_argv_exec_over_fleet_ssh_with_stdin.
 fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
   match transport {
     LocalShell => {
@@ -3919,7 +3924,38 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
 // THE STDIN SIBLING, for the one op in a fold whose payload is DATA rather than words: unit-file
 // bytes cross the transport as stdin to dd, never as script text and never as an argv element, so a
 // unit body carrying quotes, spaces or metacharacters cannot change the command's meaning whatever
-// it contains. Same arms, same refusal posture, same exit-status derivation.
+// it contains. Same arms, same refusal posture, same exit-status derivation. FleetSsh admits the
+// words exactly as the argv runner does and hands the payload to the leg typed_remote_file_write
+// already runs against the same principal (exec_as_fleet_principal_with_stdin): one sealed context,
+// one bound credential, the payload never a word.
+// THE ELEVATION SPLIT: one fold, two principals. A job that runs ON the host it mutates keeps its
+// unelevated legs (downloads, extraction, digests of its own checkout) as the job user, and sends
+// every elevated leg to a principal that holds root without the job user holding it -- the fleet
+// administrator over its SSH edge (gunbc.fleet.fleet_bootstrap_principal). Which side a leg runs on is
+// read from the command itself (extdeps.sudo.elevation argv_command_is_sudo_elevated), never chosen
+// per call site, so a leg cannot be elevated on one principal and run on the other. A fold with one
+// principal is the route whose two sides are the same transport.
+type HostEffectElevationRoute {
+  unelevated: HostEffectTransport
+  elevated: HostEffectTransport
+}
+
+fn one_transport_route(transport: HostEffectTransport) -> HostEffectElevationRoute {
+  HostEffectElevationRoute { unelevated: transport, elevated: transport }
+}
+
+fn elevation_route_transport(route: HostEffectElevationRoute, command: ArgvCommand) -> HostEffectTransport {
+  if argv_command_is_sudo_elevated(command: command) { route.elevated } else { route.unelevated }
+}
+
+fn run_argv_over_elevation_route(command: ArgvCommand, transport: HostEffectElevationRoute) -> RunArgvTransportOutcome {
+  run_argv_over_host_effect_transport(command: command, transport: elevation_route_transport(route: transport, command: command))
+}
+
+fn run_argv_stdin_over_elevation_route(command: ArgvCommand, stdin_payload: String, transport: HostEffectElevationRoute) -> RunArgvTransportOutcome {
+  run_argv_stdin_over_host_effect_transport(command: command, stdin_payload: stdin_payload, transport: elevation_route_transport(route: transport, command: command))
+}
+
 // THE CAPTURE OF ONE HOST COMMAND, AS A RECORD THE TYPED ENSURE CLASSIFIES. ONE runner for reads and
 // writes, because run_argv_over_host_effect_transport and run_argv_stdin_over_host_effect_transport both
 // preserve stdout AND stderr on a non-zero exit for LocalShell and SshShell -- which is the property this
@@ -4269,18 +4305,13 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
         argv: argv_words(command: command),
         stdin_payload: stdin_payload,
       ))
-    FleetSsh { target: t, context: _ } =>
-      RunArgvTransportRefused {
-        reason: join([
-          "host_effect_apply: run_argv_stdin_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
-          known_hosts_host_field(address: t.address) as String,
-          ". The command is typed argv with its payload on stdin, so the old carrier objection (a script",
-          " body where the fleet path admits portable words) does not apply; what remains is the",
-          " transport's own authority: the fleet seam executes through its own session type and trust",
-          " policy, and admitting the portable-words-with-stdin op as a host-effect transport arm is its",
-          " own change with its own analysis. Fail-closed until that change names itself.",
-        ], ""),
-      }
+    FleetSsh { target: t, context: c } =>
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh_with_stdin(
+        target: t,
+        context: c,
+        argv: argv_words(command: command),
+        stdin_payload: stdin_payload,
+      ))
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       RunArgvTransportRefused {
         reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
@@ -4352,7 +4383,13 @@ fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTr
 }
 
 fn realize_install_media_fetch_in_process(intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match install_media_fetch_reconcile(artifact: srv3_ubuntu_install_media_artifact) {
+  // THE MINT GATES THE FETCH: the fetch's paths and parent directory come off the sealed record, and a
+  // store that cannot be listed converges nothing -- a fetch that could not confirm its own directory
+  // must not publish bytes nobody can read back.
+  match install_media_store(tree: host_state_tree()) {
+    InstallMediaStoreUnready { detail: d } =>
+      NotConverged { reason: concat("install-media-fetch: the install media store refused to open: ", d), applied: intent }
+    InstallMediaStoreReady { store: s } => match install_media_fetch_reconcile(store: s, artifact: srv3_ubuntu_install_media_artifact) {
     AcquisitionAlreadyPresent { identity: _, install_path: p } =>
       reconcile_grounded(
         apply_effect: intent,
@@ -4377,6 +4414,7 @@ fn realize_install_media_fetch_in_process(intent: HostEffectIntent) -> Reconcili
       )
     AcquisitionRefused { cause: why } =>
       NotConverged { reason: concat("install-media-fetch: ", acquisition_refusal_text(cause: why)), applied: intent }
+  }
   }
 }
 
@@ -6223,7 +6261,7 @@ fn live_deploy_apply_broker_tree_on_host(spec: DeploymentSpec, revision: Release
     source_root: source_root,
     revision: revision,
     executables: approval_broker_release_locus_executables,
-    transport: transport,
+    transport: one_transport_route(transport: transport),
   ) {
     TreeInstallConverged { installed_digest: _, files_installed: _ } => Absent
     TreeInstallRefused { step: ts, reason: r } => Present { value: join(["broker tree refused at tree step ", tree_install_step_name(step: ts), ": ", r], "") }
@@ -6524,10 +6562,10 @@ fn tree_step_failure(step: TreeInstallStep, outcome: RunArgvTransportOutcome) ->
   }
 }
 
-fn tree_run_step(state: TreeInstallStepState, step: TreeInstallStep, command: ArgvCommand, transport: HostEffectTransport) -> TreeInstallStepState {
+fn tree_run_step(state: TreeInstallStepState, step: TreeInstallStep, command: ArgvCommand, transport: HostEffectElevationRoute) -> TreeInstallStepState {
   match state {
     TreeStepFailed { step: _, reason: _ } => state
-    TreeStepsOk => tree_step_failure(step: step, outcome: run_argv_over_host_effect_transport(command: command, transport: transport))
+    TreeStepsOk => tree_step_failure(step: step, outcome: run_argv_over_elevation_route(command: command, transport: transport))
   }
 }
 
@@ -6536,12 +6574,12 @@ type TreeObservation
   = TreeObserved { entries: List<TreeFileHash> }
   | TreeObservationFailed { reason: String }
 
-fn observe_tree_hashes(root: String, subs: List<String>, transport: HostEffectTransport) -> TreeObservation {
+fn observe_tree_hashes(root: String, subs: List<String>, transport: HostEffectElevationRoute) -> TreeObservation {
   fold(subs, init: TreeObserved { entries: [] }, f: (acc, sub) =>
     match acc {
       TreeObservationFailed { reason: _ } => acc
       TreeObserved { entries: es } =>
-        match run_argv_over_host_effect_transport(
+        match run_argv_over_elevation_route(
           command: find_regular_files_sha256_command(root: join([root, "/", sub], "")),
           transport: transport,
         ) {
@@ -6566,7 +6604,7 @@ fn approval_broker_tree_install(
   source_root: String,
   revision: ReleaseRevisionBinding,
   executables: List<String>,
-  transport: HostEffectTransport,
+  transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
   approval_broker_tree_install_at(
     owner: owner,
@@ -6588,7 +6626,7 @@ fn approval_broker_tree_install_at(
   source_root: String,
   revision: ReleaseRevisionBinding,
   executables: List<String>,
-  transport: HostEffectTransport,
+  transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
   match revision {
     RevisionNotInstalled =>
@@ -6610,7 +6648,7 @@ fn approval_broker_tree_install_at(
   }
 }
 
-fn tree_install_directory_step(state: TreeInstallStepState, owner: NonEmptyStr, path: String, transport: HostEffectTransport) -> TreeInstallStepState {
+fn tree_install_directory_step(state: TreeInstallStepState, owner: NonEmptyStr, path: String, transport: HostEffectElevationRoute) -> TreeInstallStepState {
   tree_run_step(state: state, step: TreeStepInstallDirectory, transport: transport, command: sudo_elevate_command(
     command: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: owner, group: owner, path: path)))
 }
@@ -6652,6 +6690,10 @@ fn observe_sha256_over_transport(path: String, transport: HostEffectTransport) -
   sha256_observation_of_outcome(outcome: run_argv_over_host_effect_transport(command: sha256sum_file_command(path: path), transport: transport))
 }
 
+fn observe_sha256_over_route(path: String, transport: HostEffectElevationRoute) -> Sha256Observation {
+  sha256_observation_of_outcome(outcome: run_argv_over_elevation_route(command: sha256sum_file_command(path: path), transport: transport))
+}
+
 fn sha256_unobserved_cause_text(cause: Sha256UnobservedCause) -> String {
   match cause {
     Sha256TransportRefused { reason: r } => r
@@ -6673,10 +6715,10 @@ fn sha256_observations_agreement(source: Sha256Observation, installed: Sha256Obs
 
 // The binary is outside the dag/src-v2 tree walk, so it is read back on its own: both sums are
 // observed through the transport and must be equal; an unobserved side is a disagreement naming its cause.
-fn tree_binary_agreement(source_path: String, installed_path: String, transport: HostEffectTransport) -> Sha256Agreement {
+fn tree_binary_agreement(source_path: String, installed_path: String, transport: HostEffectElevationRoute) -> Sha256Agreement {
   sha256_observations_agreement(
-    source: observe_sha256_over_transport(path: source_path, transport: transport),
-    installed: observe_sha256_over_transport(path: installed_path, transport: transport))
+    source: observe_sha256_over_route(path: source_path, transport: transport),
+    installed: observe_sha256_over_route(path: installed_path, transport: transport))
 }
 
 fn sha256_side_text(side: Sha256Side) -> String {
@@ -6695,7 +6737,7 @@ fn sha256_disagreement_text(agreement: Sha256Agreement) -> String? {
 }
 
 // The first executable whose installed bytes disagree with the source, named; none when every member agrees.
-fn tree_executables_disagreement(executables: List<String>, source_root: String, locus: String, transport: HostEffectTransport) -> String? {
+fn tree_executables_disagreement(executables: List<String>, source_root: String, locus: String, transport: HostEffectElevationRoute) -> String? {
   fold(executables, init: none, f: (acc, name) =>
     match acc {
       Present { value: _ } => acc
@@ -6718,7 +6760,7 @@ fn approval_broker_tree_install_observed(
   revision: ReleaseRevisionBinding,
   source: List<TreeFileHash>,
   executables: List<String>,
-  transport: HostEffectTransport,
+  transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
   let after_spine = fold(list_snoc_item(xs: spine, item: locus), init: TreeStepsOk, f: (st, d) => tree_install_directory_step(state: st, owner: owner, path: d, transport: transport))
   let after_dirs = fold(tree_ancestor_directories(files: source), init: after_spine, f: (st, d) =>
@@ -6766,9 +6808,9 @@ fn approval_broker_tree_receipt_write(
   revision: ReleaseRevisionBinding,
   lines: String,
   files: Int,
-  transport: HostEffectTransport,
+  transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
-  match run_argv_stdin_over_host_effect_transport(
+  match run_argv_stdin_over_elevation_route(
     command: sha256sum_file_command(path: "/dev/stdin"),
     stdin_payload: lines,
     transport: transport,
@@ -6780,7 +6822,7 @@ fn approval_broker_tree_receipt_write(
         Present { value: d } => {
           let digest = d.hex as String
           let body = join(["candidate_revision=", release_revision_execstart_text(binding: revision), "\ninstalled_digest=", digest, "\n"], "")
-          match run_argv_stdin_over_host_effect_transport(
+          match run_argv_stdin_over_elevation_route(
             command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
               mode: install_file_shared_mode, owner: owner, group: owner,
               source: "/dev/stdin", dest: join([locus, "/", release_locus_tree_receipt_name], ""))),
@@ -7047,7 +7089,7 @@ fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: Re
         source_root: source_root,
         revision: revision,
         executables: [gunbc_release_bin_name],
-        transport: transport,
+        transport: one_transport_route(transport: transport),
       ) {
         TreeInstallRefused { step: ts, reason: r } =>
           DarkFailed { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
@@ -7104,7 +7146,7 @@ fn dark_stage_broker_tree(i: DarkInstallInputs) -> DarkInstallVerdict {
     source_root: i.source_root,
     revision: i.revision,
     executables: approval_broker_release_locus_executables,
-    transport: i.transport,
+    transport: one_transport_route(transport: i.transport),
   ) {
     TreeInstallRefused { step: ts, reason: r } =>
       DarkInstallRefused { step: DarkStepBrokerTree, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
@@ -7938,8 +7980,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       NotConverged { reason: ungated_live_deploy_emission_refusal, applied: intent }
     LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: _, candidate: _ } =>
       NotConverged { reason: ungated_live_deploy_emission_refusal, applied: intent }
-    LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: c } =>
-      realize_microvm_controller_install_on_host(candidate: c, transport: transport, intent: intent)
+    LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: c, elevated: e } =>
+      realize_microvm_controller_install_on_host(candidate: c, transport: HostEffectElevationRoute { unelevated: transport, elevated: e }, intent: intent)
     LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
       realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
     LiveDeployDigestReadbackOnHost { node: _, port: p, expected_digest: d } =>
@@ -8197,8 +8239,8 @@ fn host_effect_apply_gated(
           realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent, access: access)
         LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: s, candidate: c } =>
           realize_approval_broker_dark_install_on_host(spec: s, candidate: c, transport: transport, intent: intent, access: access)
-        LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: c } =>
-          realize_microvm_controller_install_on_host(candidate: c, transport: transport, intent: intent)
+        LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: c, elevated: e } =>
+          realize_microvm_controller_install_on_host(candidate: c, transport: HostEffectElevationRoute { unelevated: transport, elevated: e }, intent: intent)
         LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
           realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
         LiveDeployDigestReadbackOnHost { node: _, port: p, expected_digest: d } =>
@@ -10091,7 +10133,14 @@ fn microvm_controller_pinned_digest_refusal() -> String {
 
 // THE WHOLE PLAN, in the order the retired pipeline ran it. Planning is total:
 // every pin and every malformed-name check is answered before any step can run.
-fn microvm_controller_install_staging(revision: ReleaseRevisionBinding) -> MicrovmControllerInstallStaging {
+// THE CHECKOUT ROOT IS AN INPUT AND MUST BE ABSOLUTE: the staged sources live under the job's
+// checkout, and the elevated legs that read them run as another principal whose working directory
+// is not the checkout, so a relative staged path would name a different file on that side.
+fn microvm_controller_checkout_path(checkout_root: String, relative: String) -> String {
+  join([checkout_root, "/", relative], "")
+}
+
+fn microvm_controller_install_staging(revision: ReleaseRevisionBinding, checkout_root: String) -> MicrovmControllerInstallStaging {
   let release_dir = microvm_controller_release_dir(revision: revision)
   let slice_name = microvm_controller_slice_unit_name as String
   let slot_name = microvm_slot_unit_template_name as String
@@ -10120,13 +10169,16 @@ fn microvm_controller_install_staging(revision: ReleaseRevisionBinding) -> Micro
     release_dir: release_dir,
     kernel_digest: kernel_digest,
     guest_kernel_pinned_digest: guest_kernel_digest,
+    checkout_root: checkout_root,
   )
   let invariant_refusal = fold(
     steps,
     init: "",
     f: (acc, s) => if acc != "" { acc } else { microvm_controller_starts_no_instance_refusal(step: s) },
   )
-  if name_refusal != "" {
+  if !starts_with(s: checkout_root, prefix: "/") {
+    MicrovmControllerInstallRefused { reason: join([microvm_controller_install_edge, ": the checkout root '", checkout_root, "' is not absolute, so an elevated leg run by another principal could not resolve the staged sources"], "") }
+  } else if name_refusal != "" {
     MicrovmControllerInstallRefused { reason: name_refusal }
   } else if pin_refusal != "" {
     MicrovmControllerInstallRefused { reason: pin_refusal }
@@ -10153,7 +10205,7 @@ fn revision_job_owned_dir_step(name: String, path: String) -> MicrovmControllerI
 // directories, and its templated unit. Present exactly when the authority declares a revision-job
 // slot (gunbc.runner.runner_slot_allocation revision_job_slots). Like every leg here it starts
 // nothing: the job unit is started by the granted request, never by the install.
-fn microvm_controller_revision_job_steps(release_dir: String, guest_kernel_pinned_digest: Digest) -> List<MicrovmControllerInstallStep> {
+fn microvm_controller_revision_job_steps(release_dir: String, guest_kernel_pinned_digest: Digest, checkout_root: String) -> List<MicrovmControllerInstallStep> {
   if count(revision_job_slots) == 0 {
     []
   } else {
@@ -10161,7 +10213,7 @@ fn microvm_controller_revision_job_steps(release_dir: String, guest_kernel_pinne
     let kernel = revision_job_installed_kernel(release_dir: release_dir)
     let rootfs = revision_job_installed_rootfs(release_dir: release_dir)
     let toolchain = revision_job_installed_toolchain(release_dir: release_dir)
-    let staging = revision_job_image_staging_root
+    let staging = microvm_controller_checkout_path(checkout_root: checkout_root, relative: revision_job_image_staging_root)
     let operator = fleet_posix_operator_user.name
     let instances = map(revision_job_slots, slot => runner_slot_instance_name(slot: slot))
     concat(
@@ -10217,9 +10269,11 @@ fn microvm_controller_install_steps(
   release_dir: String,
   kernel_digest: Digest,
   guest_kernel_pinned_digest: Digest,
+  checkout_root: String,
 ) -> List<MicrovmControllerInstallStep> {
-  let stage = microvm_controller_stage_dir
-  let tarball = microvm_controller_tarball_stage_path()
+  let stage = microvm_controller_checkout_path(checkout_root: checkout_root, relative: microvm_controller_stage_dir)
+  let tarball = microvm_controller_stage_tarball_path(stage: stage)
+  let workspace_staging = microvm_controller_checkout_path(checkout_root: checkout_root, relative: workspace_image_staging_root)
   let image_root = workspace_installed_image_root(release_dir: release_dir, identity: workspace_demo_image_identity())
   let kernel_installed = concat(image_root, concat("/", runner_guest_kernel_artifact.filename as String))
   let rootfs = concat(image_root, "/workspace.ext4")
@@ -10316,7 +10370,7 @@ fn microvm_controller_install_steps(
             mode: install_file_shared_mode,
             owner: microvm_controller_owner,
             group: microvm_controller_owner,
-            source: runner_guest_base_artifact_path(root: workspace_image_staging_root, artifact: runner_guest_kernel_artifact),
+            source: runner_guest_base_artifact_path(root: workspace_staging, artifact: runner_guest_kernel_artifact),
             dest: kernel_installed,
           )),
         ),
@@ -10332,7 +10386,7 @@ fn microvm_controller_install_steps(
             mode: install_file_shared_mode,
             owner: microvm_controller_owner,
             group: microvm_controller_owner,
-            source: workspace_image_path(root: workspace_image_staging_root),
+            source: workspace_image_path(root: workspace_staging),
             dest: rootfs,
           )),
         ),
@@ -10472,7 +10526,7 @@ fn microvm_controller_install_steps(
             ],
             // systemctl daemon-reload, LAST: the units above are templates; the
             // reload makes them known and starts nothing.
-            concat(microvm_controller_revision_job_steps(release_dir: release_dir, guest_kernel_pinned_digest: guest_kernel_pinned_digest), [microvm_controller_argv_step(
+            concat(microvm_controller_revision_job_steps(release_dir: release_dir, guest_kernel_pinned_digest: guest_kernel_pinned_digest, checkout_root: checkout_root), [microvm_controller_argv_step(
               name: "systemd daemon-reload",
               command: extdeps.systemd.systemctl.systemctl_daemon_reload_command(),
             )]),
@@ -10513,7 +10567,7 @@ fn microvm_controller_run_verify(
   command: ArgvCommand,
   subject: String,
   expected: Digest,
-  transport: HostEffectTransport,
+  transport: HostEffectElevationRoute,
 ) -> MicrovmControllerStepRun {
   match microvm_controller_run_argv(name: step_name, command: command, stdin_payload: "", transport: transport) {
     StepRefused { reason: why } => StepRefused { reason: why }
@@ -10547,11 +10601,11 @@ fn microvm_controller_run_verify(
 
 // THE RUNNER FOR A PLAIN LEG, factored out so verify/receipt can call it
 // without re-matching the arm they already know.
-fn microvm_controller_run_argv(name: String, command: ArgvCommand, stdin_payload: String, transport: HostEffectTransport) -> MicrovmControllerStepRun {
+fn microvm_controller_run_argv(name: String, command: ArgvCommand, stdin_payload: String, transport: HostEffectElevationRoute) -> MicrovmControllerStepRun {
   let outcome = if stdin_payload == "" {
-    run_argv_over_host_effect_transport(command: command, transport: transport)
+    run_argv_over_elevation_route(command: command, transport: transport)
   } else {
-    run_argv_stdin_over_host_effect_transport(command: command, stdin_payload: stdin_payload, transport: transport)
+    run_argv_stdin_over_elevation_route(command: command, stdin_payload: stdin_payload, transport: transport)
   }
   match outcome {
     RunArgvTransportObserved { observed: observed } => StepRan {
@@ -10573,7 +10627,7 @@ fn microvm_controller_run_receipt(
   observe2: ArgvCommand,
   write: ArgvCommand,
   subject: String,
-  transport: HostEffectTransport,
+  transport: HostEffectElevationRoute,
 ) -> MicrovmControllerStepRun {
   let first = microvm_controller_run_argv(name: step_name, command: observe, stdin_payload: "", transport: transport)
   match first {
@@ -10640,88 +10694,87 @@ fn microvm_controller_tree_step_name(step: TreeInstallStep) -> String {
 // the retired pipeline's final receipt did.
 fn realize_microvm_controller_install_on_host(
   candidate: CandidateRelease,
-  transport: HostEffectTransport,
+  transport: HostEffectElevationRoute,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let revision = RevisionBoundAtEmission { revision: candidate.revision }
-  match microvm_controller_install_staging(revision: revision) {
+  let source_root = microvm_controller_source_root()
+  if source_root == "" {
+    return NotConverged {
+      reason: join([microvm_controller_run_edge, " tree-copy leg refused: the host reports no checkout root (git rev-parse --show-toplevel returned nothing), so there is no source tree to install from"], ""),
+      applied: intent,
+    }
+  }
+  match microvm_controller_install_staging(revision: revision, checkout_root: source_root) {
     MicrovmControllerInstallRefused { reason: why } => NotConverged { reason: why, applied: intent }
     MicrovmControllerInstallReady { steps: steps } => {
-      let source_root = microvm_controller_source_root()
-      if source_root == "" {
-        NotConverged {
-          reason: join([microvm_controller_run_edge, " tree-copy leg refused: the host reports no checkout root (git rev-parse --show-toplevel returned nothing), so there is no source tree to install from"], ""),
-          applied: intent,
-        }
-      } else {
-        let acc = fold(
-          steps,
-          init: FoldOk { exit_code: 0, stdout: "", stderr: "" },
-          f: (a, s) =>
-            match a {
-              FoldFailed { reason: why } => FoldFailed { reason: why }
-              FoldOk { exit_code: prior_code, stdout: prior_out, stderr: prior_err } =>
-                match s {
-                  MicrovmControllerArgvStep { name: name, command: command, stdin_payload: stdin_text } =>
-                    match microvm_controller_run_argv(name: name, command: command, stdin_payload: stdin_text, transport: transport) {
-                      StepRefused { reason: why } => FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "': ", why], "") }
-                      StepRan { exit_code: code, stdout: out, stderr: err } =>
-                        if code == 0 { FoldOk { exit_code: code, stdout: out, stderr: err } }
-                        else { FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "' failed (exit ", to_string(code), "): ", err], "") } }
-                    }
-                  MicrovmControllerVerifyStep { name: name, command: command, expected: expected, subject: subject } =>
-                    match microvm_controller_run_verify(step_name: name, command: command, subject: subject, expected: expected, transport: transport) {
-                      StepRefused { reason: why } => FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "': ", why], "") }
-                      StepRan { exit_code: code, stdout: out, stderr: err } =>
-                        if code == 0 { FoldOk { exit_code: code, stdout: out, stderr: err } }
-                        else { FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "' refused (exit ", to_string(code), "): ", err], "") } }
-                    }
-                  MicrovmControllerReceiptStep { name: name, observe: observe, observe2: observe2, write: write, subject: subject } =>
-                    match microvm_controller_run_receipt(step_name: name, observe: observe, observe2: observe2, write: write, subject: subject, transport: transport) {
-                      StepRefused { reason: why } => FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "': ", why], "") }
-                      StepRan { exit_code: code, stdout: out, stderr: err } =>
-                        if code == 0 { FoldOk { exit_code: code, stdout: out, stderr: err } }
-                        else { FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "' failed (exit ", to_string(code), "): ", err], "") } }
-                    }
-                  // The tree leg is not run by the fold's own hands: the realizer
-                  // called W6's vertical ONCE, before the fold, and refused the
-                  // whole edge if it refused. Its verdict is the fold's initial
-                  // evidence, so this arm passes the accumulator through -- the
-                  // leg is in the plan (a witness counts it) but never re-run.
-                  // THE TREE LEG, wired to W6's vertical: ONE call, in plan
-                  // position (first), over this edge's own transport. A refusal
-                  // from the vertical stops the fold exactly as a non-zero exit
-                  // would, naming which of W6's eight legs refused; its success is
-                  // this leg's evidence but NOT the edge's final evidence -- the
-                  // later legs' output wins, as the plan's order decides.
-                  MicrovmControllerTreeStep { name: name } =>
-                    match approval_broker_tree_install(
-                      owner: microvm_controller_owner,
-                      base_root: microvm_controller_root,
-                      source_root: source_root,
-                      revision: revision,
-                      executables: [gunbc_release_bin_name],
-                      transport: transport,
-                    ) {
-                      TreeInstallConverged { installed_digest: digest, files_installed: files } =>
-                        FoldOk {
-                          exit_code: 0,
-                          stdout: join([microvm_controller_run_edge, " step '", name, "': ", to_string(files), " files installed at receipt digest ", digest], ""),
-                          stderr: prior_err,
-                        }
-                      TreeInstallRefused { step: step, reason: why } => FoldFailed {
-                        reason: join([microvm_controller_run_edge, " step '", name, "' refused at ", microvm_controller_tree_step_name(step: step), ": ", why], ""),
+      let acc = fold(
+        steps,
+        init: FoldOk { exit_code: 0, stdout: "", stderr: "" },
+        f: (a, s) =>
+          match a {
+            FoldFailed { reason: why } => FoldFailed { reason: why }
+            FoldOk { exit_code: prior_code, stdout: prior_out, stderr: prior_err } =>
+              match s {
+                MicrovmControllerArgvStep { name: name, command: command, stdin_payload: stdin_text } =>
+                  match microvm_controller_run_argv(name: name, command: command, stdin_payload: stdin_text, transport: transport) {
+                    StepRefused { reason: why } => FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "': ", why], "") }
+                    StepRan { exit_code: code, stdout: out, stderr: err } =>
+                      if code == 0 { FoldOk { exit_code: code, stdout: out, stderr: err } }
+                      else { FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "' failed (exit ", to_string(code), "): ", err], "") } }
+                  }
+                MicrovmControllerVerifyStep { name: name, command: command, expected: expected, subject: subject } =>
+                  match microvm_controller_run_verify(step_name: name, command: command, subject: subject, expected: expected, transport: transport) {
+                    StepRefused { reason: why } => FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "': ", why], "") }
+                    StepRan { exit_code: code, stdout: out, stderr: err } =>
+                      if code == 0 { FoldOk { exit_code: code, stdout: out, stderr: err } }
+                      else { FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "' refused (exit ", to_string(code), "): ", err], "") } }
+                  }
+                MicrovmControllerReceiptStep { name: name, observe: observe, observe2: observe2, write: write, subject: subject } =>
+                  match microvm_controller_run_receipt(step_name: name, observe: observe, observe2: observe2, write: write, subject: subject, transport: transport) {
+                    StepRefused { reason: why } => FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "': ", why], "") }
+                    StepRan { exit_code: code, stdout: out, stderr: err } =>
+                      if code == 0 { FoldOk { exit_code: code, stdout: out, stderr: err } }
+                      else { FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "' failed (exit ", to_string(code), "): ", err], "") } }
+                  }
+                // The tree leg is not run by the fold's own hands: the realizer
+                // called W6's vertical ONCE, before the fold, and refused the
+                // whole edge if it refused. Its verdict is the fold's initial
+                // evidence, so this arm passes the accumulator through -- the
+                // leg is in the plan (a witness counts it) but never re-run.
+                // THE TREE LEG, wired to W6's vertical: ONE call, in plan
+                // position (first), over this edge's own transport. A refusal
+                // from the vertical stops the fold exactly as a non-zero exit
+                // would, naming which of W6's eight legs refused; its success is
+                // this leg's evidence but NOT the edge's final evidence -- the
+                // later legs' output wins, as the plan's order decides.
+                MicrovmControllerTreeStep { name: name } =>
+                  match approval_broker_tree_install(
+                    owner: microvm_controller_owner,
+                    base_root: microvm_controller_root,
+                    source_root: source_root,
+                    revision: revision,
+                    executables: [gunbc_release_bin_name],
+                    transport: transport,
+                  ) {
+                    TreeInstallConverged { installed_digest: digest, files_installed: files } =>
+                      FoldOk {
+                        exit_code: 0,
+                        stdout: join([microvm_controller_run_edge, " step '", name, "': ", to_string(files), " files installed at receipt digest ", digest], ""),
+                        stderr: prior_err,
                       }
+                    TreeInstallRefused { step: step, reason: why } => FoldFailed {
+                      reason: join([microvm_controller_run_edge, " step '", name, "' refused at ", microvm_controller_tree_step_name(step: step), ": ", why], ""),
                     }
-                }
-            },
-        )
-        match acc {
-          FoldFailed { reason: why } => NotConverged { reason: why, applied: intent }
-          FoldOk { exit_code: code, stdout: out, stderr: err } => Converged {
-            evidence: ShellEffectApplied { exit_code: code, stdout: out, stderr: err },
-            applied: intent,
-          }
+                  }
+              }
+          },
+      )
+      match acc {
+        FoldFailed { reason: why } => NotConverged { reason: why, applied: intent }
+        FoldOk { exit_code: code, stdout: out, stderr: err } => Converged {
+          evidence: ShellEffectApplied { exit_code: code, stdout: out, stderr: err },
+          applied: intent,
         }
       }
     }

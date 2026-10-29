@@ -4,7 +4,7 @@ import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_leng
 import std.decl_ref { decl_ref }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.algebra { FreeSemigroup }
+import std.algebra { FreeSemigroup, length, list_head }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -19,6 +19,10 @@ import std.goal_assessment {
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.board_authority { BoardAuthorityRef }
+import gunbc.machine_intake.bmc_credential_policy {
+  BmcCredentialPolicyKey, CredentialSurface, SharedCredentialSurface, shared_store_surfaces, bmc_credential_policy_for, bmc_credential_policy_key_eq,
+}
 import extdeps.cloud.gcp.secret_manager {
   SmResolvedVersionIdentity,
   SmVersionIdProjected,
@@ -30,8 +34,7 @@ import extdeps.cloud.gcp.secret_manager {
 }
 import gunbc.clock_read { ObserverClockInstant, observer_clock_modeled, observer_instant_millis, observer_instant_precedes }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
-import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused }
-import std.scoped_authorization { AttemptIdentity }
+import std.scoped_authorization { AttemptIdentity, ScopedAuthorization, AuthorizationGranted, AuthorizationPending, AuthorizationDenied }
 import gunbc.auth.secret_ref_credential {
   SecretCredentialFetch,
   SecretCredentialReady,
@@ -52,17 +55,17 @@ import gunbc.machine_intake.bmc_rotation_route {
   RotationApplyRouteForAnotherController,
   RotationApplyRouteForAnotherBuild,
   RotationApplyApprovalRefused,
-  RotationApplyApprovalDenied,
-  RotationApplyApprovalForAnotherAuthority,
-  RotationApplyApprovalForAnotherRequest,
   RotationApplyRouteForAnotherOperation,
   RotationApplyRouteEffectUnobserved,
   RotationApplyWouldLeaveNoAdministrator,
   IpmiSetUserPrivilegeLimit,
   ManagedAdministratorReadback,
   managed_administrator_readback_projected,
-  rotation_route_request_identity,
+  BmcAccountWriteApproval,
+  RotateCredential,
   account_write_request_text,
+  account_write_request_eq,
+  grounded_request,
   admit_rotation_apply,
 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
@@ -322,6 +325,14 @@ fn observed_bmc_credential_rotation(
 // PublishedCredentialStillAccepted is the discriminating refusal this phase
 // exists for: everything else about the rotation succeeded and the machine is
 // still open on its published default.
+//
+// PhaseReceiptForAnotherSubject is the state-shaped fold's subject join, minted only by
+// bmc_secure_standing_of_phase_receipt: a converged phase receipt is about ONE unit, and a consumer
+// that names a different one gets this refusal rather than the standing of the unit the readback
+// actually covers. It is deliberately NOT RotationObservationForOtherAttempt under a second reading:
+// that arm's label asserts a rotation observation, and a receipt whose conjunction was satisfied
+// BEFORE any write (the Noop arm) records that no rotation was applied at all — one name for two
+// facts is the fork DESIGN §3 names, and a label that overstates what the carrier holds is §4d.
 type BmcSecureRefusalCause
   = RotationObservationForOtherAttempt { expected: MachineIntakeSubject, found: MachineIntakeSubject }
   | CredentialStateUnknown { detail: NonEmptyStr }
@@ -348,6 +359,7 @@ type BmcSecureRefusalCause
   | PublishedCredentialProbeUnmatched { channel: IpmiChannelNumber }
   | PublishedCredentialRetainedNotAdmittedByProdRiskPolicy
   | PublishedCredentialNotRetained { channel: IpmiChannelNumber }
+  | PhaseReceiptForAnotherSubject { expected: MachineIntakeSubject, found: MachineIntakeSubject }
 
 // NO ARM RETURNS UnitHardware, AND THAT IS THE POINT (design §6: a non-working
 // factory credential is an access state -> PartsHold, not ReturnWindow, absent
@@ -384,6 +396,7 @@ fn bmc_secure_refusal_owner(cause: BmcSecureRefusalCause) -> QualificationRefusa
     PublishedCredentialProbeUnmatched { channel: _ } => QualificationPolicy
     PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => QualificationPolicy
     PublishedCredentialNotRetained { channel: _ } => OperatorAction
+    PhaseReceiptForAnotherSubject { expected: _, found: _ } => QualificationPolicy
   }
 }
 
@@ -414,6 +427,7 @@ fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
     PublishedCredentialProbeUnmatched { channel: _ } => "a published-credential probe matched no census LAN member"
     PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => "a retained BMC backdoor is not admitted under a ProdRisk-admitting qualification policy; a fresh census pass that retires or disables the published credential is required"
     PublishedCredentialNotRetained { channel: _ } => "the declared factory-credential retention was not observed on a census LAN member"
+    PhaseReceiptForAnotherSubject { expected: _, found: _ } => "the converged phase receipt was read for another intake subject"
   }
 }
 
@@ -1172,6 +1186,12 @@ fn bmc_secure_phase_receipt(
 // committed read-only post-reflash probe and the operator-approved wet Apply on that unit
 // (bmc_secure_state_cutover_frontier). Until then the executing consumers of this section are its dry
 // realization over gunbc.bmc_model BmcWorld and that realization's witness.
+//
+// PER CONTROLLER FAMILY (ruling gunbc.design_ruling bmc_secure_goes_live_per_controller_family, 2026-10-28).
+// The operator admitted this section as the live authority for the ASRock ALTRAD8UD / OpenBMC family ahead
+// of the held transition, the event path staying frozen for mtcollins1 alone. That family's published
+// account is the managed account (root), which is the PublishedCredentialRetiredOnTheManagedAccount reading
+// below; its live read and apply are the two frontiers at the end of this module.
 
 // A CONTROLLER'S OWN CLOCK IS AN OBSERVATION OF THE CONTROLLER, NEVER AN ORDERING CLOCK. mtjade1's BMC
 // reports the year 2000. The reading is kept, with its evidence, and it is not an ordering clock: every
@@ -1218,6 +1238,76 @@ type ObservedPublishedLanProbe {
   probe: ObservedCredentialProbe
 }
 
+// HOW THE PUBLISHED CREDENTIAL'S STATE WAS ESTABLISHED, and so what it cost.
+//
+// Probed: the published credential was tried on every addressed LAN member of the channel census, one
+// failed login each against the published account's lockout budget. That is the only reading for a
+// controller whose published account is a DIFFERENT account from the managed one (mtcollins1: user 2
+// beside managed user 3), because nothing else says what that account accepts.
+//
+// RetiredOnTheManagedAccount: the published login names the very account the managed credential
+// authenticates as (OpenBMC root), and the build's credential policy grounds ONE password per account on
+// every surface this controller serves (gunbc.machine_intake.bmc_credential_policy). The managed
+// generation being accepted on that account then says the published password is not its password on any
+// of those surfaces -- derived, with no failed login, so the managed account's own lockout budget is not
+// spent proving it. A surface the policy does not ground refuses the derivation; it is never assumed.
+type PublishedCredentialEvidence
+  = PublishedCredentialProbed { probes: List<ObservedPublishedLanProbe> }
+  | PublishedCredentialRetiredOnTheManagedAccount { derivation: SharedStoreRetirement }
+
+type SharedStoreRetirement sole_constructor {
+  policy: BmcCredentialPolicyKey
+  account: NonEmptyStr
+  surfaces: List<SharedCredentialSurface>
+}
+
+type SharedStoreRetirementRefusal
+  = RetirementAccountIsNotTheManagedAccount { published: NonEmptyStr, managed: NonEmptyStr }
+  | RetirementSurfaceNotGroundedAsShared { surface: CredentialSurface, policy: BmcCredentialPolicyKey }
+  | RetirementGenerationIsThePublishedPassword
+  | RetirementBuildHasNoPolicy { policy: BmcCredentialPolicyKey }
+  | RetirementServedSurfacesUnknown
+
+type SharedStoreRetirementOutcome
+  = SharedStoreRetirementDerived { derivation: SharedStoreRetirement }
+  | SharedStoreRetirementRefused { cause: SharedStoreRetirementRefusal }
+
+fn shared_surface_listed(surfaces: List<SharedCredentialSurface>, surface: CredentialSurface) -> Bool {
+  any(surfaces, x => x.surface == surface)
+}
+
+// THE DERIVATION'S ONE MINT, run by a reader that holds the generation's bytes: it alone can say whether
+// the generation equals the published password (a rotation to the factory password retires nothing).
+// `served` is every surface the read found the controller serving.
+fn derive_shared_store_retirement(
+  policy: BmcCredentialPolicyKey,
+  published_account: NonEmptyStr,
+  managed_account: NonEmptyStr,
+  served: List<CredentialSurface>,
+  generation_is_published_password: Bool,
+) -> SharedStoreRetirementOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_published_credential"),
+  ]
+{
+  let shared = shared_store_surfaces(key: policy)
+  let unshared: List<CredentialSurface> = filter(served, x => !shared_surface_listed(surfaces: shared, surface: x))
+  if (published_account as String) != (managed_account as String) {
+    SharedStoreRetirementRefused { cause: RetirementAccountIsNotTheManagedAccount { published: published_account, managed: managed_account } }
+  } else if (match bmc_credential_policy_for(key: policy) { Absent => true  Present { value: _ } => false }) {
+    SharedStoreRetirementRefused { cause: RetirementBuildHasNoPolicy { policy: policy } }
+  } else if list_length(items: served) == 0 {
+    SharedStoreRetirementRefused { cause: RetirementServedSurfacesUnknown }
+  } else if generation_is_published_password {
+    SharedStoreRetirementRefused { cause: RetirementGenerationIsThePublishedPassword }
+  } else {
+    match list_head(xs: unshared) {
+      Absent => SharedStoreRetirementDerived { derivation: SharedStoreRetirement { policy: policy, account: published_account, surfaces: shared } }
+      Present { value: first } => SharedStoreRetirementRefused { cause: RetirementSurfaceNotGroundedAsShared { surface: first, policy: policy } }
+    }
+  }
+}
+
 type PublishedAccountKind
   = PublishedAccountRetired
   | PublishedAccountDisabledNotRetired { restore_path: PublishedCredentialRestorePath }
@@ -1244,9 +1334,14 @@ fn observed_published_account(kind: PublishedAccountKind, evidence: EvidenceRef,
 // firmware is the release the controller reported in the same read. It is the build a route must be
 // grounded for: the plan reads it from here and takes no build argument, so a current reading cannot be
 // admitted over a route for a build the controller no longer runs (O1a's stale-route crossing).
+// board is the controller's declared board (gunbc.machine_intake.bmc_write_controller row), Absent where no
+// row declares one. With firmware it is the credential-policy key (gunbc.machine_intake
+// bmc_credential_policy BmcCredentialPolicyKey) a derived retirement must have been grounded by: the key is
+// read from here, never supplied beside the reading, and an undeclared board grounds no derivation.
 type BmcAccountStateObservation sole_constructor {
   subject: MachineIntakeSubject
   endpoint: BmcControllerEndpoint
+  board: BoardAuthorityRef?
   firmware: BmcFirmwareReleaseIdentity
   managed: ManagedCredentialReference
   managed_user: IpmiUserId
@@ -1256,7 +1351,7 @@ type BmcAccountStateObservation sole_constructor {
   channel_census: IpmiControllerChannelCensus
   census_evidence: EvidenceRef
   census_observed_at: ObserverClockInstant
-  published_probes: List<ObservedPublishedLanProbe>
+  published_credential: PublishedCredentialEvidence
   published_user: IpmiUserId
   published_account: ObservedPublishedAccount
   break_glass: ManagedCredentialReference
@@ -1267,6 +1362,7 @@ type BmcAccountStateObservation sole_constructor {
 fn observed_bmc_account_state(
   subject: MachineIntakeSubject,
   endpoint: BmcControllerEndpoint,
+  board: BoardAuthorityRef?,
   firmware: BmcFirmwareReleaseIdentity,
   managed: ManagedCredentialReference,
   managed_user: IpmiUserId,
@@ -1276,7 +1372,7 @@ fn observed_bmc_account_state(
   channel_census: IpmiControllerChannelCensus,
   census_evidence: EvidenceRef,
   census_observed_at: ObserverClockInstant,
-  published_probes: List<ObservedPublishedLanProbe>,
+  published_credential: PublishedCredentialEvidence,
   published_user: IpmiUserId,
   published_account: ObservedPublishedAccount,
   break_glass: ManagedCredentialReference,
@@ -1291,6 +1387,7 @@ fn observed_bmc_account_state(
   BmcAccountStateObservation {
     subject: subject,
     endpoint: endpoint,
+    board: board,
     firmware: firmware,
     managed: managed,
     managed_user: managed_user,
@@ -1300,7 +1397,7 @@ fn observed_bmc_account_state(
     channel_census: channel_census,
     census_evidence: census_evidence,
     census_observed_at: census_observed_at,
-    published_probes: published_probes,
+    published_credential: published_credential,
     published_user: published_user,
     published_account: published_account,
     break_glass: break_glass,
@@ -1339,6 +1436,7 @@ fn observation_with_controller_clock(base: BmcAccountStateObservation, controlle
   observed_bmc_account_state(
     subject: base.subject,
     endpoint: base.endpoint,
+    board: base.board,
     firmware: base.firmware,
     managed: base.managed,
     managed_user: base.managed_user,
@@ -1348,7 +1446,7 @@ fn observation_with_controller_clock(base: BmcAccountStateObservation, controlle
     channel_census: base.channel_census,
     census_evidence: base.census_evidence,
     census_observed_at: base.census_observed_at,
-    published_probes: base.published_probes,
+    published_credential: base.published_credential,
     published_user: base.published_user,
     published_account: base.published_account,
     break_glass: base.break_glass,
@@ -1491,6 +1589,10 @@ fn conjunction_cause_class(cause: BmcSecureRefusalCause) -> ConjunctionCauseClas
     PublishedCredentialProbeUnmatched { channel: _ } => CauseRefusesAssessment
     PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => CauseRefusesAssessment
     PublishedCredentialNotRetained { channel: _ } => CauseNeedsUngroundedOperation { operation: PublishedFactoryCredentialRestore }
+    // Not minted by the conjunction: this cause belongs to the standing projection beside this fold, and
+    // an assessment never sees it. Named so the match stays the forcing function DESIGN §4b wants — a
+    // cause added to the coproduct must be classified here before anything compiles.
+    PhaseReceiptForAnotherSubject { expected: _, found: _ } => CauseRefusesAssessment
   }
 }
 
@@ -1505,22 +1607,63 @@ fn conjunction_over_observation(goal: BmcSecureGoal, observed: BmcAccountStateOb
       if observer_instant_precedes(earlier: at, later: observed.read_floor) {
         BmcSecureRefused { cause: ManagedCredentialProbePrecedesRotation { applied_at: floor, probed_at: observer_instant_millis(instant: at) } }
       } else {
-        adjudicate_published_census(
+        match observed.published_credential {
+          PublishedCredentialProbed { probes: probes } =>
+            adjudicate_published_census(
+              endpoint: observed.endpoint,
+              reference: observed.managed,
+              applied_at: floor,
+              rotation_evidence: me,
+              bootstrap: CredentialProbeUnestablished { detail: "no bootstrap probe: the desired-state reading carries none" as NonEmptyStr },
+              managed_evidence: me,
+              census: observed.channel_census,
+              census_evidence: observed.census_evidence,
+              census_observed_at: observer_instant_millis(instant: observed.census_observed_at),
+              probes: map(probes, p => PublishedCredentialLanProbe { channel: p.channel, address: p.address, outcome: observed_probe_at_join(probe: p.probe) }),
+              published_user: observed.published_user,
+              published_account: observed_published_account_at_join(account: observed.published_account),
+              admits: goal.policy.admits,
+            )
+          PublishedCredentialRetiredOnTheManagedAccount { derivation: d } =>
+            retired_on_the_managed_account(observed: observed, derivation: d, managed_evidence: me, managed_at: at)
+        }
+      }
+    }
+  }
+}
+
+// THE PUBLISHED HALF WHEN THE PUBLISHED ACCOUNT IS THE MANAGED ONE. There is no published account left to
+// close on a channel -- it is the account the managed credential authenticates as, which must keep its
+// access -- so the census join over the published user does not apply, and the derivation stands where
+// the probes would. The reading must say the account was retired (its password changed), on the same
+// IPMI user the managed probe authenticated; anything else is a reading the derivation does not cover.
+fn retired_on_the_managed_account(
+  observed: BmcAccountStateObservation,
+  derivation: SharedStoreRetirement,
+  managed_evidence: EvidenceRef,
+  managed_at: ObserverClockInstant,
+) -> BmcSecureOutcome {
+  if (observed.published_user as Int) != (observed.managed_user as Int) || (derivation.account as String) != (observed.managed.account as String) {
+    BmcSecureRefused { cause: PublishedCredentialRetirementUnestablished { detail: "the derived retirement names an account the managed probe did not authenticate as" as NonEmptyStr } }
+  } else if !(match observed.board {
+      Absent => false
+      Present { value: b } => bmc_credential_policy_key_eq(a: derivation.policy, b: BmcCredentialPolicyKey { board: b, firmware: observed.firmware })
+    }) {
+    BmcSecureRefused { cause: PublishedCredentialRetirementUnestablished { detail: "the derived retirement was grounded by another board's or build's policy than the controller this reading observed" as NonEmptyStr } }
+  } else {
+    match observed.published_account.kind {
+      PublishedAccountRetired =>
+        BmcSecured {
           endpoint: observed.endpoint,
           reference: observed.managed,
-          applied_at: floor,
-          rotation_evidence: me,
-          bootstrap: CredentialProbeUnestablished { detail: "no bootstrap probe: the desired-state reading carries none" as NonEmptyStr },
-          managed_evidence: me,
-          census: observed.channel_census,
-          census_evidence: observed.census_evidence,
-          census_observed_at: observer_instant_millis(instant: observed.census_observed_at),
-          probes: map(observed.published_probes, p => PublishedCredentialLanProbe { channel: p.channel, address: p.address, outcome: observed_probe_at_join(probe: p.probe) }),
-          published_user: observed.published_user,
-          published_account: observed_published_account_at_join(account: observed.published_account),
-          admits: goal.policy.admits,
-        )
-      }
+          evidence: concat([managed_evidence, observed.published_account.evidence], map(derivation.surfaces, x => x.evidence)),
+          latest_admitted_probe_at: observer_instant_millis(instant: managed_at),
+          published_credential: observed_published_account_at_join(account: observed.published_account),
+        }
+      PublishedAccountDisabledNotRetired { restore_path: _ } =>
+        BmcSecureRefused { cause: PublishedCredentialRetirementUnestablished { detail: "a derived retirement over an account read as disabled rather than retired" as NonEmptyStr } }
+      PublishedAccountRetainedByPolicy { retention: _ } =>
+        BmcSecureRefused { cause: PublishedCredentialRetirementUnestablished { detail: "a derived retirement over an account read as retained by policy" as NonEmptyStr } }
     }
   }
 }
@@ -1808,6 +1951,22 @@ type PlannedAccountWrite {
   generation: ManagedCredentialGenerationFetched
 }
 
+// THE PUBLISHED ACCOUNT'S WRITE. Separate: a distinct published account retired to the goal's break-glass
+// generation by its own write. TheManagedWrite: the published login names the managed account itself
+// (OpenBMC root), so the one managed write retires the published credential and a second write of the same
+// account would only repeat it (DESIGN §2).
+type PlannedPublishedWrite
+  = PublishedWrittenSeparately { write: PlannedAccountWrite }
+  | PublishedIsTheManagedWrite
+
+// What the caller supplies for that write, in the same two shapes. Its approval is the plan's one approval.
+type PublishedWriteInput
+  = PublishedWriteInputs {
+      route: BmcRotationRouteStanding
+      generation: ManagedCredentialGenerationFetched
+    }
+  | PublishedAccountIsTheManagedAccount
+
 type BmcAccountActionPlan sole_constructor {
   subject: MachineIntakeSubject
   endpoint: BmcControllerEndpoint
@@ -1816,7 +1975,7 @@ type BmcAccountActionPlan sole_constructor {
   diverged: BmcAccountStateObservation
   due: BmcAccountActionDue
   managed_write: PlannedAccountWrite
-  published_write: PlannedAccountWrite
+  published_write: PlannedPublishedWrite
   channel_writes: List<PlannedChannelAccessWrite>
   planned_at: ObserverClockInstant
 }
@@ -1825,8 +1984,10 @@ type BmcAccountPlanRefusal
   = AccountPlanNotDue { decision: UpsertDecision<BmcAccountActionDue> }
   | AccountPlanUnobserved { cause: BmcSecureStateRefusal }
   | AccountWriteNotAdmitted { target: AccountWriteTarget, admission: RotationApplyAdmission }
-  | AccountWriteRequestNotIpmiUser { target: AccountWriteTarget, request: BmcAccountWriteRequest }
-  | AccountWriteRequestForAnotherUser { target: AccountWriteTarget, admitted: IpmiUserId, required: IpmiUserId }
+  | AccountWriteRequestForAnotherAccount { target: AccountWriteTarget, request: BmcAccountWriteRequest }
+  | PublishedAccountIsNotTheManagedAccount { published_user: IpmiUserId, managed_user: IpmiUserId }
+  | PublishedWriteWouldRepeatTheManagedWrite { user: IpmiUserId }
+  | PublishedGoalIsNotTheManagedGoal { goal: ManagedCredentialReference, managed: ManagedCredentialReference }
   | ManagedGenerationForAnotherAccount { generation: ManagedCredentialReference, in_force: ManagedCredentialReference }
   | ManagedGenerationNotAdvanced { in_force: Int, generation: Int }
   | PublishedGenerationNotGoalBound { generation: ManagedCredentialReference, goal: ManagedCredentialReference }
@@ -1835,49 +1996,66 @@ type BmcAccountPlanRefusal
   | PlanPrecedesReading { planned_at: ObserverClockInstant }
   | ManagedUserNotTheAuthenticatedAccount { supplied: IpmiUserId, authenticated: IpmiUserId }
   | ChannelCloseRouteNotSupplied { channels: List<IpmiChannelNumber> }
-  | ChannelCloseApprovalAbsent { channel: IpmiChannelNumber }
+  | PlanWritesAreNotTheApprovedConvergence { approved: List<BmcAccountWriteRequest>, planned: List<BmcAccountWriteRequest> }
   | ChannelWriteNotAdmitted { channel: IpmiChannelNumber, admission: RotationApplyAdmission }
 
 type BmcAccountPlanOutcome
   = BmcAccountPlanned { plan: BmcAccountActionPlan }
   | BmcAccountPlanRefused { cause: BmcAccountPlanRefusal }
 
+// THE PASSWORD WRITE A ROUTE MAKES FOR ONE ACCOUNT. A route grounds an operation: an IPMI Set User Password
+// route is written by the account's IPMI user id, a Redfish account-password route by the account's name.
+// A route grounding neither password operation has no password write to offer.
+fn password_write_over(route: BmcRotationRouteStanding, user: IpmiUserId, account: NonEmptyStr) -> BmcAccountWriteRequest? {
+  match grounded_request(standing: route) {
+    Absent => none
+    Present { value: g } =>
+      match g {
+        IpmiSetUserPassword { user: _ } => Present { value: IpmiSetUserPassword { user: user } }
+        RedfishAccountPasswordWrite { account: _, transport_operation: op, action_shape: act } =>
+          Present { value: RedfishAccountPasswordWrite { account: account, transport_operation: op, action_shape: act } }
+        IpmiSetUserPrivilegeLimit { access: _ } => none
+      }
+  }
+}
+
+// The password write a plan asks a route for: the route's own operation for this account, or, over a route
+// grounding no password operation, the IPMI write its admission then refuses as another operation.
+fn wanted_account_write(route: BmcRotationRouteStanding, user: IpmiUserId, account: NonEmptyStr) -> BmcAccountWriteRequest {
+  match password_write_over(route: route, user: user, account: account) {
+    Present { value: r } => r
+    Absent => IpmiSetUserPassword { user: user }
+  }
+}
+
 fn admitted_account_write(
   target: AccountWriteTarget,
   user: IpmiUserId,
+  account: NonEmptyStr,
   route: BmcRotationRouteStanding,
   endpoint: BmcControllerEndpoint,
   firmware: BmcFirmwareReleaseIdentity,
-  approval: Redemption,
+  approval: ScopedAuthorization<BmcAccountWriteApproval>,
   generation: ManagedCredentialGenerationFetched,
   planned_at: ObserverClockInstant,
 ) -> PlannedAccountWriteAdmission {
-  let admission = admit_rotation_apply(standing: route, target_endpoint: endpoint, target_firmware: firmware, request: IpmiSetUserPassword { user: user }, managed_readback: none, approval: approval)
+  let wanted = wanted_account_write(route: route, user: user, account: account)
+  let admission = admit_rotation_apply(standing: route, target_endpoint: endpoint, target_firmware: firmware, request: wanted, managed_readback: none, approval: approval)
   match admission {
     RotationApplyAdmitted { standing: s, request: req, decided_by: by } =>
-      match req {
-        RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } =>
-          PlannedAccountWriteRefused { cause: AccountWriteRequestNotIpmiUser { target: target, request: req } }
-        IpmiSetUserPrivilegeLimit { access: _ } =>
-          PlannedAccountWriteRefused { cause: AccountWriteRequestNotIpmiUser { target: target, request: req } }
-        IpmiSetUserPassword { user: u } =>
-          if (u as Int) != (user as Int) {
-            PlannedAccountWriteRefused { cause: AccountWriteRequestForAnotherUser { target: target, admitted: u, required: user } }
-          } else if observer_instant_precedes(earlier: planned_at, later: generation.fetched_at) {
-            PlannedAccountWriteRefused { cause: GenerationFetchedAfterPlan { target: target, fetched_at: generation.fetched_at, planned_at: planned_at } }
-          } else {
-            PlannedAccountWriteAdmitted {
-              write: PlannedAccountWrite { target: target, user: user, route: s, request: req, decided_by: by, generation: generation },
-            }
-          }
+      if !account_write_request_eq(a: req, b: wanted) {
+        PlannedAccountWriteRefused { cause: AccountWriteRequestForAnotherAccount { target: target, request: req } }
+      } else if observer_instant_precedes(earlier: planned_at, later: generation.fetched_at) {
+        PlannedAccountWriteRefused { cause: GenerationFetchedAfterPlan { target: target, fetched_at: generation.fetched_at, planned_at: planned_at } }
+      } else {
+        PlannedAccountWriteAdmitted {
+          write: PlannedAccountWrite { target: target, user: user, route: s, request: req, decided_by: by, generation: generation },
+        }
       }
     RotationApplyRouteNotGrounded { standing: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
     RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
     RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
     RotationApplyApprovalRefused { cause: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
-    RotationApplyApprovalDenied => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
-    RotationApplyApprovalForAnotherAuthority { authority: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
-    RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
     RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
     RotationApplyRouteEffectUnobserved { standing: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
     RotationApplyWouldLeaveNoAdministrator { channel: _, cause: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
@@ -1902,7 +2080,6 @@ type PlannedChannelAccessWrite {
 
 type ChannelCloseInput {
   route: BmcRotationRouteStanding
-  approvals: List<Redemption>
 }
 
 fn census_member_channel(m: IpmiChannelCensusMember) -> IpmiChannelNumber {
@@ -1914,8 +2091,14 @@ fn census_member_channel(m: IpmiChannelCensusMember) -> IpmiChannelNumber {
 
 // Every census member -- LAN, addressed or not, and non-LAN such as a serial channel -- on which the
 // published account's unique Get User Access row is not NO ACCESS. A missing or duplicated row is not
-// listed here: the conjunction already refuses those readings before any plan.
+// listed here: the conjunction already refuses those readings before any plan. Where the published account
+// IS the managed account (OpenBMC root), its access rows are the managed account's: the password write
+// retires the published credential, and closing those channels would lock the managed credential out.
 fn published_channels_left_open(observed: BmcAccountStateObservation) -> List<IpmiChannelNumber> {
+  if observed.published_user == observed.managed_user { [] } else { published_channels_open_to(observed: observed) }
+}
+
+fn published_channels_open_to(observed: BmcAccountStateObservation) -> List<IpmiChannelNumber> {
   let index = index_published_user_access(rows: observed.channel_census.user_access)
   fold(observed.channel_census.members, init: [], f: (acc, m) =>
     match map_get(index, published_user_access_key(channel: census_member_channel(m: m), user: observed.published_user)) {
@@ -1967,25 +2150,18 @@ fn managed_probe_instant(probe: ObservedCredentialProbe, fallback: ObserverClock
   }
 }
 
-fn approval_for_request(route: BmcRotationRouteStanding, request: BmcAccountWriteRequest, approvals: List<Redemption>) -> Redemption? {
-  let wanted = rotation_route_request_identity(standing: route, request: request)
-  let none_yet: Redemption? = none
-  fold(approvals, init: none_yet, f: (acc, a) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match a {
-          RedemptionAdmitted { claims: cl, decided_by: _ } => if cl.request_revision == wanted { Present { value: a } } else { acc }
-          RedemptionRefused { cause: _ } => acc
-        }
-    })
-}
-
+// The supplied grant whose approved subject is this write. Its purpose and intent are read by the
+// admission (read_bmc_write_approval), so a grant selected here for its subject is still refused
+// there if it approves another purpose.
 type ChannelWritesAdmission
   = ChannelWritesAdmitted { writes: List<PlannedChannelAccessWrite> }
   | ChannelWritesRefused { cause: BmcAccountPlanRefusal }
 
-fn admitted_channel_writes(observed: BmcAccountStateObservation, input: ChannelCloseInput?) -> ChannelWritesAdmission {
+fn channel_close_request(observed: BmcAccountStateObservation, channel: IpmiChannelNumber) -> BmcAccountWriteRequest {
+  IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: channel, user: observed.published_user, privilege: IpmiPrivilegeNoAccess) }
+}
+
+fn admitted_channel_writes(observed: BmcAccountStateObservation, input: ChannelCloseInput?, approval: ScopedAuthorization<BmcAccountWriteApproval>) -> ChannelWritesAdmission {
   let open = published_channels_left_open(observed: observed)
   if list_length(items: open) == 0 {
     ChannelWritesAdmitted { writes: [] }
@@ -1997,34 +2173,26 @@ fn admitted_channel_writes(observed: BmcAccountStateObservation, input: ChannelC
           match acc {
             ChannelWritesRefused { cause: _ } => acc
             ChannelWritesAdmitted { writes: done } => {
-              let request = IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: ch, user: observed.published_user, privilege: IpmiPrivilegeNoAccess) }
-              match approval_for_request(route: inp.route, request: request, approvals: inp.approvals) {
-                Absent => ChannelWritesRefused { cause: ChannelCloseApprovalAbsent { channel: ch } }
-                Present { value: approval } => {
-                  let readback = project_managed_administrator_readback(observed: observed)
-                  let admission = admit_rotation_apply(
-                    standing: inp.route,
-                    target_endpoint: observed.endpoint,
-                    target_firmware: observed.firmware,
-                    request: request,
-                    managed_readback: readback,
-                    approval: approval,
-                  )
-                  match admission {
-                    RotationApplyAdmitted { standing: st, request: req, decided_by: by } =>
-                      ChannelWritesAdmitted { writes: concat(done, [PlannedChannelAccessWrite { channel: ch, route: st, request: req, decided_by: by }]) }
-                    RotationApplyRouteNotGrounded { standing: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyRouteEffectUnobserved { standing: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyApprovalRefused { cause: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyApprovalDenied => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyApprovalForAnotherAuthority { authority: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyWouldLeaveNoAdministrator { channel: _, cause: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                  }
-                }
+              let request = channel_close_request(observed: observed, channel: ch)
+              let readback = project_managed_administrator_readback(observed: observed)
+              let admission = admit_rotation_apply(
+                standing: inp.route,
+                target_endpoint: observed.endpoint,
+                target_firmware: observed.firmware,
+                request: request,
+                managed_readback: readback,
+                approval: approval,
+              )
+              match admission {
+                RotationApplyAdmitted { standing: st, request: req, decided_by: by } =>
+                  ChannelWritesAdmitted { writes: concat(done, [PlannedChannelAccessWrite { channel: ch, route: st, request: req, decided_by: by }]) }
+                RotationApplyRouteNotGrounded { standing: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                RotationApplyRouteEffectUnobserved { standing: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                RotationApplyApprovalRefused { cause: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                RotationApplyWouldLeaveNoAdministrator { channel: _, cause: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
               }
             }
           })
@@ -2036,6 +2204,57 @@ type PlannedAccountWriteAdmission
   = PlannedAccountWriteAdmitted { write: PlannedAccountWrite }
   | PlannedAccountWriteRefused { cause: BmcAccountPlanRefusal }
 
+// WHAT A RUN ASKS THE OPERATOR TO APPROVE: the convergence the reading entails, computed by the same
+// helpers the plan admits its writes with (wanted_account_write, channel_close_request), so the request and the
+// plan cannot name different writes -- and if the controller changes between the request and the plan, the
+// plan's exactness check below refuses. The run files it through gunbc.machine_intake.bmc_rotation_route
+// bmc_account_write_authorization_request: one request, one tap, per controller.
+fn bmc_secure_convergence_approval(
+  goal: BmcSecureGoal,
+  reading: BmcAccountStateObservation,
+  managed_user: IpmiUserId,
+  managed_route: BmcRotationRouteStanding,
+  published: PublishedWriteInput,
+) -> BmcAccountWriteApproval {
+  let managed = wanted_account_write(route: managed_route, user: managed_user, account: goal.managed.account)
+  let published_requests: List<BmcAccountWriteRequest> = match published {
+    PublishedWriteInputs { route: r, generation: _ } => [wanted_account_write(route: r, user: reading.published_user, account: goal.published_break_glass.account)]
+    PublishedAccountIsTheManagedAccount => []
+  }
+  BmcAccountWriteApproval {
+    controller: reading.endpoint,
+    firmware: reading.firmware,
+    writes: concat(concat([managed], published_requests), map(published_channels_left_open(observed: reading), ch => channel_close_request(observed: reading, channel: ch))),
+    purpose: RotateCredential,
+  }
+}
+
+// THE PLAN IS THE APPROVED CONVERGENCE, NO MORE AND NO LESS (operator ruling 2026-10-25, gunbc.design_ruling
+// the_initial_convergence_is_the_only_approval). Each write was admitted against the one approval above; a
+// plan that entails fewer writes than were approved is another convergence than the operator approved (the
+// controller changed since the request was filed), and is refused for a fresh request rather than run in part.
+fn planned_write_requests(managed: PlannedAccountWrite, published: PlannedPublishedWrite, channels: List<PlannedChannelAccessWrite>) -> List<BmcAccountWriteRequest> {
+  let published_requests: List<BmcAccountWriteRequest> = match published {
+    PublishedWrittenSeparately { write: w } => [w.request]
+    PublishedIsTheManagedWrite => []
+  }
+  concat(concat([managed.request], published_requests), map(channels, c => c.request))
+}
+
+fn approved_write_requests(approval: ScopedAuthorization<BmcAccountWriteApproval>) -> List<BmcAccountWriteRequest> {
+  match approval {
+    AuthorizationGranted { grant: g, claim: _ } => g.subject.writes
+    AuthorizationPending { request: _ } => []
+    AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => []
+  }
+}
+
+fn same_write_requests(a: List<BmcAccountWriteRequest>, b: List<BmcAccountWriteRequest>) -> Bool {
+  length(a) == length(b)
+    && all(a, x => any(b, y => account_write_request_eq(a: x, b: y)))
+    && all(b, y => any(a, x => account_write_request_eq(a: x, b: y)))
+}
+
 // THE PLAN MINT RUNS THE DECISION ITSELF. A caller supplies the reading, the goal and the route
 // inputs; it does not supply a decision, so an Apply cannot be planned over a Noop or a refusal.
 fn plan_bmc_account_action(
@@ -2044,11 +2263,9 @@ fn plan_bmc_account_action(
   reading: BmcAccountStateObservation,
   managed_user: IpmiUserId,
   managed_route: BmcRotationRouteStanding,
-  managed_approval: Redemption,
+  approval: ScopedAuthorization<BmcAccountWriteApproval>,
   managed_generation: ManagedCredentialGenerationFetched,
-  published_route: BmcRotationRouteStanding,
-  published_approval: Redemption,
-  published_generation: ManagedCredentialGenerationFetched,
+  published: PublishedWriteInput,
   channel_close: ChannelCloseInput?,
   planned_at: ObserverClockInstant,
 ) -> BmcAccountPlanOutcome {
@@ -2072,37 +2289,84 @@ fn plan_bmc_account_action(
               BmcAccountPlanRefused { cause: ManagedGenerationForAnotherAccount { generation: next, in_force: in_force } }
             } else if next.credential_epoch <= in_force.credential_epoch {
               BmcAccountPlanRefused { cause: ManagedGenerationNotAdvanced { in_force: in_force.credential_epoch, generation: next.credential_epoch } }
-            } else if !managed_reference_same(a: fetched_generation_reference(fetched: published_generation), b: goal.published_break_glass) {
-              BmcAccountPlanRefused { cause: PublishedGenerationNotGoalBound { generation: fetched_generation_reference(fetched: published_generation), goal: goal.published_break_glass } }
             } else {
-              match admitted_account_write(target: ManagedAccountTarget, user: managed_user, route: managed_route, endpoint: o.endpoint, firmware: o.firmware, approval: managed_approval, generation: managed_generation, planned_at: planned_at) {
+              match admitted_account_write(target: ManagedAccountTarget, user: managed_user, account: in_force.account, route: managed_route, endpoint: o.endpoint, firmware: o.firmware, approval: approval, generation: managed_generation, planned_at: planned_at) {
                 PlannedAccountWriteRefused { cause: c } => BmcAccountPlanRefused { cause: c }
                 PlannedAccountWriteAdmitted { write: mw } =>
-                  match admitted_account_write(target: PublishedAccountTarget, user: o.published_user, route: published_route, endpoint: o.endpoint, firmware: o.firmware, approval: published_approval, generation: published_generation, planned_at: planned_at) {
-                    PlannedAccountWriteRefused { cause: c } => BmcAccountPlanRefused { cause: c }
-                    PlannedAccountWriteAdmitted { write: pw } =>
-                      match admitted_channel_writes(observed: o, input: channel_close) {
+                  match admitted_published_write(goal: goal, observed: o, managed_user: managed_user, next: next, published: published, approval: approval, planned_at: planned_at) {
+                    PublishedWriteRefused { cause: c } => BmcAccountPlanRefused { cause: c }
+                    PublishedWriteAdmitted { write: pw, published_goal: pg } =>
+                      match admitted_channel_writes(observed: o, input: channel_close, approval: approval) {
                         ChannelWritesRefused { cause: c } => BmcAccountPlanRefused { cause: c }
-                        ChannelWritesAdmitted { writes: cw } =>
-                      BmcAccountPlanned {
-                        plan: BmcAccountActionPlan {
-                          subject: subject,
-                          endpoint: o.endpoint,
-                          firmware: o.firmware,
-                          goal: BmcSecureGoal { managed: next, published_break_glass: goal.published_break_glass, policy: goal.policy },
-                          diverged: o,
-                          due: due,
-                          managed_write: mw,
-                          published_write: pw,
-                          channel_writes: cw,
-                          planned_at: planned_at,
-                        },
-                      }
+                        ChannelWritesAdmitted { writes: cw } => {
+                          let planned = planned_write_requests(managed: mw, published: pw, channels: cw)
+                          let approved = approved_write_requests(approval: approval)
+                          if !same_write_requests(a: approved, b: planned) {
+                            BmcAccountPlanRefused { cause: PlanWritesAreNotTheApprovedConvergence { approved: approved, planned: planned } }
+                          } else {
+                          BmcAccountPlanned {
+                            plan: BmcAccountActionPlan {
+                              subject: subject,
+                              endpoint: o.endpoint,
+                              firmware: o.firmware,
+                              goal: BmcSecureGoal { managed: next, published_break_glass: pg, policy: goal.policy },
+                              diverged: o,
+                              due: due,
+                              managed_write: mw,
+                              published_write: pw,
+                              channel_writes: cw,
+                              planned_at: planned_at,
+                            },
+                          }
+                          }
+                        }
                       }
                   }
               }
             }
           }
+      }
+  }
+}
+
+type PublishedWriteAdmission
+  = PublishedWriteAdmitted { write: PlannedPublishedWrite, published_goal: ManagedCredentialReference }
+  | PublishedWriteRefused { cause: BmcAccountPlanRefusal }
+
+// THE PUBLISHED ACCOUNT'S HALF OF THE PLAN, in the shape the reading allows. When the published user IS the
+// managed user, only PublishedAccountIsTheManagedAccount is admitted, the goal's published generation must
+// already be the managed one, and the plan's new goal carries the advanced managed generation for both
+// halves -- the account has one password. When they differ, only separate inputs are admitted and the
+// published write is computed as before, to the goal's predeclared break-glass generation.
+fn admitted_published_write(
+  goal: BmcSecureGoal,
+  observed: BmcAccountStateObservation,
+  managed_user: IpmiUserId,
+  next: ManagedCredentialReference,
+  published: PublishedWriteInput,
+  approval: ScopedAuthorization<BmcAccountWriteApproval>,
+  planned_at: ObserverClockInstant,
+) -> PublishedWriteAdmission {
+  let same_account = (observed.published_user as Int) == (managed_user as Int)
+  match published {
+    PublishedAccountIsTheManagedAccount =>
+      if !same_account {
+        PublishedWriteRefused { cause: PublishedAccountIsNotTheManagedAccount { published_user: observed.published_user, managed_user: managed_user } }
+      } else if !managed_reference_same(a: goal.published_break_glass, b: goal.managed) {
+        PublishedWriteRefused { cause: PublishedGoalIsNotTheManagedGoal { goal: goal.published_break_glass, managed: goal.managed } }
+      } else {
+        PublishedWriteAdmitted { write: PublishedIsTheManagedWrite, published_goal: next }
+      }
+    PublishedWriteInputs { route: r, generation: g } =>
+      if same_account {
+        PublishedWriteRefused { cause: PublishedWriteWouldRepeatTheManagedWrite { user: managed_user } }
+      } else if !managed_reference_same(a: fetched_generation_reference(fetched: g), b: goal.published_break_glass) {
+        PublishedWriteRefused { cause: PublishedGenerationNotGoalBound { generation: fetched_generation_reference(fetched: g), goal: goal.published_break_glass } }
+      } else {
+        match admitted_account_write(target: PublishedAccountTarget, user: observed.published_user, account: goal.published_break_glass.account, route: r, endpoint: observed.endpoint, firmware: observed.firmware, approval: approval, generation: g, planned_at: planned_at) {
+          PlannedAccountWriteRefused { cause: c } => PublishedWriteRefused { cause: c }
+          PlannedAccountWriteAdmitted { write: w } => PublishedWriteAdmitted { write: PublishedWrittenSeparately { write: w }, published_goal: goal.published_break_glass }
+        }
       }
   }
 }
@@ -2254,6 +2518,90 @@ fn bmc_secure_phase_receipt_evidence(receipt: BmcSecurePhaseReceipt) -> List<Evi
   }
 }
 
+// THE ONE PROJECTION FROM THIS FOLD TO THE STANDING EVERY CONSUMER READS.
+//
+// WHY IT EXISTS. BmcSecureStanding is what gunbc.host.managed_host, gunbc.host.bmc_control_binding,
+// gunbc.host.managed_host_boot_federation, gunbc.fleet.mtcollins_firmware_converge and
+// gunbc.machine_intake.mtcollins1_bmc_secure_observation all read; before this fn its only mint took the
+// EVENT-shaped BmcCredentialRotationObservation, so a controller this fold converged could not be handed
+// to any of them. That is what made mtcollins1's cutover a rewrite of every consumer instead of a change
+// of mint (operator ruling gunbc.design_ruling bmc_secure_goes_live_per_controller_family); with this
+// projection the cutover moves the call site beside the standing, which is the flag switch
+// bmc_secure_state_cutover_frontier names. It is a MINT, not a codec: a caller can hand it a receipt
+// belonging to another unit and get a refused standing, and it can hand it nothing else.
+//
+// THE RUNG (§4b), and what the projection does NOT trust. The standing's credential verdict is RE-DERIVED
+// here by conjunction_over_observation over the readback the receipt itself carries -- the observation the
+// fold inspected and then had to satisfy -- so the projection cannot be talked into a BmcSecured standing
+// by an argument it is handed; a reading that does not conjoin yields BmcSecureRefused with the cause the
+// conjunction named, never a standing with a satisfied result. The one fact taken from the receipt rather
+// than re-derived is its EVIDENCE, on the conjunction's own authority: the conjunction's list is a prefix
+// of BmcSecureHeld.evidence, which bmc_secure_phase_receipt_evidence extends with the write receipts the
+// Applied arm rests on -- the event path's standing carries the same two kinds, its bootstrap probe being
+// the entry this fold has no route to (see the asymmetry note on the standing above). It is one authority,
+// not two: the receipt mints held and the observation together, and the standing reports exactly what
+// that readback established.
+//
+// SUBJECT, AND WHY IT IS THE ONLY CHECK. `subject` is the caller's claim and is compared against the
+// subject the fold minted the receipt for -- two values minted independently, so a real check that can
+// fail (the discriminating RED is the state witness's a_receipt_for_another_subject_never_projects). The
+// readback's OWN subject is not compared: observe_bmc_account_state already refuses a reading of another
+// unit and bmc_secure_phase_applied already refuses a post-read of another plan, so a second comparison
+// there is a structural invariant dressed as a check (DESIGN §3c). The POLICY is not a formal either: the
+// standing reports the policy the readback was adjudicated under, receipt.goal.policy, because a caller-
+// supplied policy would be a second minted authority over the same fact and the ProdRisk arm of the
+// conjunction is decided by it -- a standing claiming a policy the readback never established is the
+// content-hash lie the standing's doc comment above exists to forbid. The check that would have been
+// needed with such a formal is therefore not available by construction, which is the stronger answer.
+//
+// THE WITNESSES, AND THE FRONTIER. Positive control and the two REDs are
+// test.claim.machine_intake.machine_intake_bmc_secure_state_witness on the dry world, and the seal that
+// keeps this the only route from a receipt to a standing is
+// test.claim.machine_intake.machine_intake_bmc_secure_standing_forged_probe_witness. It has no production
+// caller: bmc_secure_standing_consumer_frontier below names the first.
+fn bmc_secure_standing_of_phase_receipt(
+  subject: MachineIntakeSubject,
+  receipt: BmcSecurePhaseReceipt,
+) -> BmcSecureStanding
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_secured_noop_projects_to_a_secured_standing"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_secured_apply_projects_to_a_secured_standing_carrying_the_writes"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_unestablished_reading_yields_no_receipt_to_project"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "a_receipt_for_another_subject_never_projects"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_standing_reports_the_policy_the_readback_was_adjudicated_under")
+  ]
+{
+  let outcome =
+    if !same_intake_subject(left: subject, right: receipt.subject) {
+      BmcSecureRefused {
+        cause: PhaseReceiptForAnotherSubject { expected: subject, found: receipt.subject },
+      }
+    } else {
+      let readback = match receipt.decision {
+        BmcSecurePhaseNoop { observation: o } => o
+        BmcSecurePhaseApplied { plan: _, application: _, post_read: o } => o
+      }
+      match conjunction_over_observation(goal: receipt.goal, observed: readback) {
+        BmcSecured {
+          endpoint: endpoint,
+          reference: reference,
+          evidence: _,
+          latest_admitted_probe_at: latest_admitted_probe_at,
+          published_credential: published_credential,
+        } =>
+          BmcSecured {
+            endpoint: endpoint,
+            reference: reference,
+            evidence: bmc_secure_phase_receipt_evidence(receipt: receipt),
+            latest_admitted_probe_at: latest_admitted_probe_at,
+            published_credential: published_credential,
+          }
+        BmcSecureRefused { cause: cause } => BmcSecureRefused { cause: cause }
+      }
+    }
+  BmcSecureStanding { subject: subject, policy: receipt.goal.policy, outcome: outcome }
+}
+
 // ── THE DRY REALIZATION OVER gunbc.bmc_model BmcWorld ────────────────────────────────────────────
 //
 // The executing consumer of this section while it is in shadow. The world's IPMI user table is the
@@ -2307,7 +2655,7 @@ fn dry_published_lan_probes(
   at: ObserverClockInstant,
 ) -> List<ObservedPublishedLanProbe>
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_published_credential"),
   ]
 {
   fold(census.members, init: [], f: (acc, m) =>
@@ -2322,6 +2670,52 @@ fn dry_published_lan_probes(
     })
 }
 
+// HOW THE DRY READ ESTABLISHES THE PUBLISHED CREDENTIAL: by probing it on every addressed LAN member, or
+// by deriving its retirement on the managed account under a credential-policy row, for the surfaces the
+// modeled controller serves. The dry world keeps one password per IPMI user, so a derivation over it is
+// exactly as sound as the row it cites -- which is why the row, not the world, is what it names.
+type DryPublishedReading
+  = DryProbePublished
+  | DryDerivePublishedRetirement { published_account: NonEmptyStr, served: List<CredentialSurface> }
+
+// A derivation the policy refuses is read as an unestablished published state on the one LAN member the
+// probes would have covered first, never as a retirement. The policy key is the read's own board and build.
+fn dry_published_credential(
+  world: BmcWorld,
+  board: BoardAuthorityRef?,
+  firmware: BmcFirmwareReleaseIdentity,
+  census: IpmiControllerChannelCensus,
+  managed: ManagedCredentialReference,
+  managed_password: String,
+  published_user: IpmiUserId,
+  published_password: String,
+  reading: DryPublishedReading,
+  at: ObserverClockInstant,
+) -> PublishedCredentialEvidence
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
+  ]
+{
+  match reading {
+    DryProbePublished =>
+      PublishedCredentialProbed { probes: dry_published_lan_probes(world: world, census: census, published_user: published_user, published_password: published_password, at: at) }
+    DryDerivePublishedRetirement { published_account: acct, served: sv } => {
+      let unestablished = PublishedCredentialProbed {
+        probes: map(dry_published_lan_probes(world: world, census: census, published_user: published_user, published_password: published_password, at: at), x =>
+          ObservedPublishedLanProbe { channel: x.channel, address: x.address, probe: ObservedCredentialUnestablished { detail: "the published retirement could not be derived under the controller's credential policy" as NonEmptyStr } }),
+      }
+      match board {
+        Absent => unestablished
+        Present { value: b } =>
+          match derive_shared_store_retirement(policy: BmcCredentialPolicyKey { board: b, firmware: firmware }, published_account: acct, managed_account: managed.account, served: sv, generation_is_published_password: managed_password == published_password) {
+            SharedStoreRetirementDerived { derivation: d } => PublishedCredentialRetiredOnTheManagedAccount { derivation: d }
+            SharedStoreRetirementRefused { cause: _ } => unestablished
+          }
+      }
+    }
+  }
+}
+
 // ONE READ OF THE WORLD'S ACCOUNT STATE. read_at_millis is the realization's observer schedule; every
 // reading in the observation is taken at it. The census MEMBERS (which channels exist, their media and
 // LAN addresses) are the supplied channel layout; every Get User Access row is read from the world, so a
@@ -2332,6 +2726,7 @@ fn dry_read_bmc_account_state(
   world: BmcWorld,
   subject: MachineIntakeSubject,
   endpoint: BmcControllerEndpoint,
+  board: BoardAuthorityRef?,
   firmware: BmcFirmwareReleaseIdentity,
   managed: ManagedCredentialReference,
   managed_user: IpmiUserId,
@@ -2342,11 +2737,14 @@ fn dry_read_bmc_account_state(
   published_account: PublishedAccountKind,
   break_glass: ManagedCredentialReference,
   break_glass_password: String,
+  published_reading: DryPublishedReading,
   attempt: AttemptIdentity,
   read_at_millis: EpochMs,
 ) -> BmcAccountStateObservation
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "read_root"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "read_root_on"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
@@ -2358,6 +2756,7 @@ fn dry_read_bmc_account_state(
   observed_bmc_account_state(
     subject: subject,
     endpoint: endpoint,
+    board: board,
     firmware: firmware,
     managed: managed,
     managed_user: managed_user,
@@ -2367,7 +2766,7 @@ fn dry_read_bmc_account_state(
     channel_census: ipmi_controller_channel_census(members: census.members, user_access: world.ipmi_user_access),
     census_evidence: dry_evidence(text: join(["dry channel census of ", endpoint.host as String, " at ", to_string(read_at_millis as Int)], "")),
     census_observed_at: at,
-    published_probes: dry_published_lan_probes(world: world, census: census, published_user: published_user, published_password: published_password, at: at),
+    published_credential: dry_published_credential(world: world, board: board, firmware: firmware, census: census, managed: managed, managed_password: managed_password, published_user: published_user, published_password: published_password, reading: published_reading, at: at),
     published_user: published_user,
     published_account: observed_published_account(
       kind: published_account,
@@ -2388,6 +2787,13 @@ type BmcChannelWritesDryStep {
 type BmcAccountDryStep {
   world: BmcWorld
   application: BmcAccountApplication
+}
+
+fn published_write_text(write: PlannedPublishedWrite) -> String {
+  match write {
+    PublishedIsTheManagedWrite => "the published account, which is the managed account (no second write)"
+    PublishedWrittenSeparately { write: w } => account_write_request_text(request: w.request) as String
+  }
 }
 
 fn dry_fetch_resolves(fetch: SecretCredentialFetch, write: PlannedAccountWrite) -> String? {
@@ -2412,19 +2818,26 @@ fn dry_apply_bmc_account_plan(
   applied_at_millis: EpochMs,
 ) -> BmcAccountDryStep
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "applied_with"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "applied_outcome_of_plan"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "the_root_rotation_applies_reads_back_and_converges"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
+  // A Redfish account-password write and an IPMI Set User Password land in the dry world the same way: the
+  // world keeps one password per user, which is the shared-store premise a derived retirement cites.
   let managed_step = match dry_fetch_resolves(fetch: managed_fetch, write: plan.managed_write) {
     Absent => BmcIpmiSetUserPasswordStep { world: world, completed: false }
     Present { value: pw } => bmc_ipmi_set_user_password(world: world, user: plan.managed_write.user, password: pw)
   }
-  let published_step = match dry_fetch_resolves(fetch: published_fetch, write: plan.published_write) {
-    Absent => BmcIpmiSetUserPasswordStep { world: managed_step.world, completed: false }
-    Present { value: pw } => bmc_ipmi_set_user_password(world: managed_step.world, user: plan.published_write.user, password: pw)
+  let published_step = match plan.published_write {
+    PublishedIsTheManagedWrite => BmcIpmiSetUserPasswordStep { world: managed_step.world, completed: managed_step.completed }
+    PublishedWrittenSeparately { write: w } =>
+      match dry_fetch_resolves(fetch: published_fetch, write: w) {
+        Absent => BmcIpmiSetUserPasswordStep { world: managed_step.world, completed: false }
+        Present { value: pw } => bmc_ipmi_set_user_password(world: managed_step.world, user: w.user, password: pw)
+      }
   }
   let channel_steps = fold(plan.channel_writes, init: BmcChannelWritesDryStep { world: published_step.world, completed: true }, f: (acc, w) =>
     match w.request {
@@ -2433,11 +2846,11 @@ fn dry_apply_bmc_account_plan(
         BmcChannelWritesDryStep { world: step.world, completed: acc.completed && step.completed }
       }
       IpmiSetUserPassword { user: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
-      RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
+      RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
     })
   let request_text = join(
     concat(
-      ["dry ", account_write_request_text(request: plan.managed_write.request) as String, " then ", account_write_request_text(request: plan.published_write.request) as String],
+      ["dry ", account_write_request_text(request: plan.managed_write.request) as String, " then ", published_write_text(write: plan.published_write)],
       concat(map(plan.channel_writes, w => concat(" then ", account_write_request_text(request: w.request) as String)), [" on ", plan.endpoint.host as String]),
     ),
     "",
@@ -2467,11 +2880,40 @@ data bmc_secure_state_live_read_frontier: DissolutionCondition = unbound_dissolu
 )
 
 data bmc_secure_state_live_apply_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a live realization of BmcAccountActionPlan mints BmcAccountApplication beside dry_apply_bmc_account_plan, materializing each write's bytes through gunbc.auth.secret_ref_credential fetch_secret_ref_credential over that write's pinned generation reference, under the controller's own operator go-ahead redeemed through gunbc.auth.approval_broker; NOT satisfied by the dry realization, by a workflow entry that has not executed, or by a write whose bytes were supplied out of band" as NonEmptyStr,
+  description: "dissolves when a live realization of BmcAccountActionPlan mints BmcAccountApplication beside dry_apply_bmc_account_plan, materializing each write's bytes through gunbc.auth.secret_ref_credential fetch_secret_ref_credential over that write's pinned generation reference, under the controller's own operator go-ahead admitted through gunbc.auth.approval_gate (gunbc.machine_intake.bmc_rotation_route read_bmc_write_approval); NOT satisfied by the dry realization, by a workflow entry that has not executed, or by a write whose bytes were supplied out of band" as NonEmptyStr,
 )
 
 // THE HELD TRANSITION (operator ruling C, 2026-10-04). Its rung drop is
 // gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash, retired by the same trigger.
 data bmc_secure_state_cutover_frontier: DissolutionCondition = unbound_dissolution(
   description: "dissolves when mtcollins1's BmcSecure standing is derived by the state-shaped fold (bmc_secure_phase_noop or bmc_secure_phase_applied) from a committed post-reflash readback of the current subject, and the rotation-event path (derive_bmc_secure, BmcCredentialRotationObservation, CredentialRotationApplication, CredentialProbeOutcome and every consumer that reads them, including gunbc.host.managed_host managed_hosts and gunbc.fleet.mtcollins_firmware_converge BmcCredentialReestablishment) is deleted in the same change; NOT satisfied by this section typechecking, by its dry realization, by re-expressing the 2026-09-13 readback on BMC 0.32, or by a readback whose subject is not the unit's current firmware" as NonEmptyStr,
+)
+
+// THE CONSUMER FRONTIER OF THE PROJECTION (DESIGN §3c). bmc_secure_standing_of_phase_receipt exists today
+// with NO production caller: the event path is FROZEN, so no consumer swapped when this projection landed
+// and the fold stays in shadow behind its dry realization. This row is what keeps a mint with no consumer
+// from being dead code, and it names the order the consumers arrive in, so a swap can be checked against
+// a promise made before it.
+//
+// TRIGGER, in this order, each part required:
+//   1. the srv1-4 / srv14 ALTRAD8UD rows -- gunbc.host.managed_host managed_hosts rows for the units on
+//      board gunbc.boards.altrad8ud (OpenBMC 03.22.00) -- are admitted with their secure standing produced
+//      by bmc_secure_standing_of_phase_receipt over THAT unit's own converged phase receipt: today the
+//      dry-realized fold (dry_read_bmc_account_state, dry_apply_bmc_account_plan), and the wet fold only
+//      once bmc_secure_state_live_read_frontier and bmc_secure_state_live_apply_frontier have dissolved.
+//      The author of that admission is added to the projection's admit_callers, which is what makes the
+//      swap visible at the seal rather than in a comment.
+//   2. mtcollins1's held transition follows on the SAME projection:
+//      gunbc.machine_intake.mtcollins1_bmc_secure_observation mtcollins1_bmc_secure_standing stops calling
+//      derive_bmc_secure and calls this fn over the post-reflash fold's receipt, in the change that drops
+//      gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash.
+//
+// NOT satisfied by: a witness calling the projection (the witnesses are the shadow and are admitted from
+// the first commit), by a consumer that re-mints the standing from an event-shaped observation, or by
+// pointing a consumer at a receipt belonging to another unit or an older firmware than the standing
+// claims -- the projection refuses the first and the rung drop names the second. SUFFICIENT FOR: deleting
+// this row. NOT sufficient for deleting the event-path fold, which dissolves only with
+// bmc_secure_state_cutover_frontier beside it, in the change that deletes that fold and its consumers.
+data bmc_secure_standing_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when the srv1-4 / srv14 ALTRAD8UD gunbc.host.managed_host rows take their BmcSecureStanding from bmc_secure_standing_of_phase_receipt over each unit's own converged BmcSecurePhaseReceipt, that admission being named in the projection's admit_callers, and mtcollins1's held transition follows on the same projection in the change that drops gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash; NOT satisfied by a witness calling the projection, by a standing re-minted from an event-shaped observation, or by a consumer pointed at a receipt for another subject" as NonEmptyStr,
 )

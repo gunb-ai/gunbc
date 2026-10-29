@@ -124,8 +124,12 @@ fn qwen3_8_flash_next_pin_roster() -> List<HubFileDigest> {
   list_append(left: qwen3_8_flash_next_shard_pins, right: qwen3_8_flash_next_pinned_files())
 }
 
-// The roster folded against the manifest: 23 files, one revision everywhere, shard bytes summing to
-// the manifest's safetensors total and all bytes summing to the repository total. Pure rows — this is
+// The roster folded against the manifest: 23 files, one revision everywhere, shard bytes summing EXACTLY
+// to the manifest's safetensors total, and the roster's bytes bounded by the repository total. The roster
+// pins 23 of the repository's 39 files (the 21 shards, config.json and the index), so its bytes cannot
+// equal the 39-file total: the other 16 files (102262354720 - 102239367907 = 22986813 bytes) are not
+// pinned here. An equality there was false from #15222 on and went unseen because no witness over it
+// resolved until #15367; this states what the rows support (DESIGN 4d). Pure rows — this is
 // decidable without the network, and the witness asserts it. Shards are recognised by the "-of-00021"
 // segment their names carry (config.json and the index do not contain it), so no path-prefix vocabulary
 // is needed here.
@@ -137,5 +141,5 @@ fn qwen3_8_flash_next_pins_cohere() -> Bool {
   length(xs: roster) == 23
     && one_revision
     && shard_sum == (byte_size_count(b: qwen3_8_flash_next_manifest.safetensors_bytes) as Int)
-    && total_sum == (byte_size_count(b: qwen3_8_flash_next_manifest.repository_total_bytes) as Int)
+    && total_sum <= (byte_size_count(b: qwen3_8_flash_next_manifest.repository_total_bytes) as Int)
 }

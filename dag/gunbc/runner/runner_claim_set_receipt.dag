@@ -21,6 +21,7 @@ import product.fabric.execution { Receipt, ExecutionReceipt, LeaseIdentity }
 import product.fabric.sanitation { CellReadiness }
 import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
 import gunbc.fabric.fabric_cell_grant { CellGrantSettlement, settle_cell_grant }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
 import gunbc.runner.runner_claim_set_results {
   ClaimSetResultsDecode, ClaimSetResultsRefused, ResultsDriveSizeMismatch, ResultsDriveUnobserved, ClaimSetResultsAdmission,
   ClaimSetResultsAdmitted, ClaimSetResult, decode_claim_set_results, admit_claim_set_results,
@@ -169,7 +170,7 @@ type ClaimSetJobEnd
 // The two readings are the caller's: the revision job takes them in its await step, before teardown
 // destroys the jail and the unit, and hands them here.
 fn claim_set_receipt_and_settle(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   work: FabricIdentity<NonEmptyStr, WorkKey>,
   offer: FabricIdentity<NonEmptyStr, OfferKey>,
   attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
@@ -194,7 +195,7 @@ fn claim_set_receipt_and_settle(
     ClaimSetReceipted { receipt: r, outputs: _, results: rs } => ClaimSetJobSettled {
       receipt: r,
       results: rs,
-      settlement: settle_cell_grant(root: root, work: work, offer: offer, receipt: r, readiness: readiness),
+      settlement: settle_cell_grant(store: store, work: work, offer: offer, receipt: r, readiness: readiness),
     }
   }
 }
