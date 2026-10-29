@@ -16,10 +16,11 @@ import std.error_primitives { pure_dag_seam_unreachable_string }
 import std.optional { Absent, Optional, Present }
 import extdeps.dns.domain_name { host_name_eq }
 import extdeps.cloudflare.zone {
-  CloudflareAccountId, CloudflareZoneId, CloudflareZone, CloudflareDnsRecord, ProxyNotApplicable,
+  CloudflareAccountId, CloudflareZoneId, CloudflareZone, CloudflareDnsRecord,
+  Proxied, Direct, ProxyNotApplicable,
   RecordTypeA, RecordTypeTXT, RecordTypeMX, RecordTypeNS, RecordTypeSOA,
   ZoneStatusActive, ZoneStatusPending,
-  ZoneNotUnderHold, ZoneUnderHold, ZoneHoldUnobserved,
+  ZoneHeld, ZoneNotHeld,
   r2_custom_domain_zone_admissible, ZoneAdmissible,
   ZoneRefusedWrongAccount, ZoneRefusedNotActive, ZoneRefusedPaused, ZoneRefusedHold, ZoneRefusedHoldUnobserved,
   ZoneRefusedBucketAccountUnobserved,
@@ -35,13 +36,32 @@ import gunbc.cloudflare.zone {
   namecheap_copied_records, namecheap_observed_records, cloudflare_served_records,
   unverified_copied_records, unproxied_contents_agree, copied_record_is_carried, zone_record_copy_standing,
   CopyPendingRecordList,
-  namecheap_ttl_short, namecheap_apex_txt, namecheap_apex_mx, namecheap_registrar_soa,
+  namecheap_apex_txt, namecheap_apex_mx, namecheap_registrar_soa,
   cloudflare_apex_txt, cloudflare_apex_mx, fleet_gunb_ai_zone_standing,
   ZoneLiveButIdentityUnobserved, boot_origin_hostname_binding_verdict, BindingAwaitingZoneIdentity,
   boot_origin_bind_effect_gap, CloudflareRecordListUnread,
   boot_origin_bind_gap_is_reported, boot_origin_bind_gap_names,
   gunb_ai_bucket_account, boot_origin_bucket, gunb_ai_apex, boot_origin_hostname,
   gunb_ai_delegated_nameservers, boot_origin_binding_readback_pending, boot_origin_nxdomain_answers,
+  boot_origin_zone_admissibility, boot_origin_zone_hold_observation, copied_record_of_type,
+}
+
+// THE PRODUCT'S OWN CALL SITE is claimed too (review 87180: a rule only tests call is not a rule the
+// product uses). Today there is no zone identity to put in front of the rule, so the module's answer is
+// the typed Absent — and the hold receipt it would pass is the module's own Absent, not a stand-in the
+// zone type could silently default.
+test fn the_module_carries_the_hold_receipt_as_its_own_absence() -> Bool {
+  match boot_origin_zone_hold_observation {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match boot_origin_zone_admissibility() {
+         Absent => true
+         Present { value: standing } => match standing {
+           ZoneAdmissible { zone: _, basis: _ } => false
+           _ => true
+         }
+       }
 }
 
 // Witness ids are MINTED, never cast (review 38602: a cast walks straight through a `where brand`
@@ -85,48 +105,46 @@ data wrong_account: Optional<CloudflareAccountId> =
 data wrong_account_id: CloudflareAccountId = account_fixture(text: "00000000000000000000000000000001")
 
 fn zone_in(account: CloudflareAccountId, active: Bool, paused: Bool) -> CloudflareZone {
-  zone_with_hold(account: account, active: active, paused: paused, hold: ZoneNotUnderHold)
-}
-
-// THE HOLD IS A FIELD, not a sentence: the admissibility rule is exercised across all three hold states,
-// so a zone under a hold cannot be judged admissible and an unread hold cannot be read as no hold.
-fn zone_with_hold(account: CloudflareAccountId, active: Bool, paused: Bool, hold: ZoneHoldState) -> CloudflareZone {
   CloudflareZone {
     apex: gunb_ai_apex,
     account: account,
     zone_id: zone_id_fixture(text: "0123456789abcdef0123456789abcdef"),
     status: if active { ZoneStatusActive } else { ZoneStatusPending },
     paused: paused,
-    hold: hold,
   }
 }
+
+// A HOLD IS NOT A FIELD OF THE ZONE (review 87475, DESIGN §3): the vendor publishes it on its own
+// endpoint, so the rule receives the hold as the OBSERVER'S Optional receipt. These three spellings —
+// held, not-held, never-read — are what a caller can bring, and the admissibility arms below prove each
+// one lands somewhere different. The zone type has no hold to fake, so there is nothing to default.
 
 // THE CITED RULE, checked where it bites: same account + active + not paused admits, and each violated
 // condition refuses for its OWN reason. A fold that ignored the account, or treated the pause switch as
 // cosmetic, would fail exactly one of these four.
 test fn admissible_zone_admits() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: same_account, hold: Present { value: ZoneNotHeld }) {
     ZoneAdmissible { zone: _, basis: _ } => true
     _ => false
   }
 }
 
 test fn wrong_account_refuses() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_in(account: wrong_account_id, active: true, paused: false), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: wrong_account_id, active: true, paused: false), bucket_account: same_account, hold: Present { value: ZoneNotHeld }) {
     ZoneRefusedWrongAccount { zone: _, bucket_account: _, basis: _ } => true
     _ => false
   }
 }
 
 test fn inactive_zone_refuses() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: false, paused: false), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: false, paused: false), bucket_account: same_account, hold: Present { value: ZoneNotHeld }) {
     ZoneRefusedNotActive { zone: _, basis: _ } => true
     _ => false
   }
 }
 
 test fn paused_zone_refuses() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: true), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: true), bucket_account: same_account, hold: Present { value: ZoneNotHeld }) {
     ZoneRefusedPaused { zone: _, basis: _ } => true
     _ => false
   }
@@ -144,21 +162,21 @@ test fn cited_reading_names_the_same_account_rule() -> Bool {
 // DIFFERENT reason, because the next action differs (release it vs read it). Both must be distinct from
 // every other refusal, and only the not-under-hold arm admits.
 test fn held_zone_refuses_even_when_active_in_account() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: same_account_id, active: true, paused: false, hold: ZoneUnderHold), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: same_account, hold: Present { value: ZoneHeld }) {
     ZoneRefusedHold { zone: _, basis: _ } => true
     _ => false
   }
 }
 
 test fn unobserved_hold_refuses_for_its_own_reason() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: same_account_id, active: true, paused: false, hold: ZoneHoldUnobserved), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: same_account, hold: Absent) {
     ZoneRefusedHoldUnobserved { zone: _, basis: _ } => true
     _ => false
   }
 }
 
 test fn a_hold_refusal_is_not_any_other_refusal() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: wrong_account_id, active: false, paused: true, hold: ZoneUnderHold), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: wrong_account_id, active: false, paused: true), bucket_account: same_account, hold: Present { value: ZoneHeld }) {
     ZoneRefusedWrongAccount { zone: _, bucket_account: _, basis: _ } => true
     _ => false
   }
@@ -221,20 +239,69 @@ test fn unproxied_contents_agree_on_both_sides() -> Bool {
     && namecheap_apex_mx == cloudflare_apex_mx
 }
 
+// Read OUT OF the copy (review 87475): the product picks these two rows out of the derived set by type
+// and asks whether the zone publishes them, so this test is about the copy and the served answer rather
+// than about three literal blocks written in the same files. If the derivation ever dropped the SPF or
+// the MX row, copied_record_of_type returns Absent and both legs refuse.
 test fn unproxied_copied_records_are_carried() -> Bool {
-  copied_record_is_carried(record: CloudflareDnsRecord {
-    name: gunb_ai_apex,
-    record_type: RecordTypeTXT,
-    content: namecheap_apex_txt,
-    ttl: namecheap_ttl_short,
-    proxy: ProxyNotApplicable { record_type: RecordTypeTXT },
-  }) && copied_record_is_carried(record: CloudflareDnsRecord {
-    name: gunb_ai_apex,
-    record_type: RecordTypeMX,
-    content: namecheap_apex_mx,
-    ttl: namecheap_ttl_short,
-    proxy: ProxyNotApplicable { record_type: RecordTypeMX },
-  })
+  match copied_record_of_type(record_type: RecordTypeTXT) {
+    Present { value: txt } => copied_record_is_carried(record: txt) && (txt.content as String) == (namecheap_apex_txt as String)
+    Absent => false
+  }
+    && match copied_record_of_type(record_type: RecordTypeMX) {
+         Present { value: mx } => copied_record_is_carried(record: mx) && (mx.content as String) == (namecheap_apex_mx as String)
+         Absent => false
+       }
+}
+
+// THE DERIVATION'S DECISION BOUNDARY. The copy is observed-minus-registrar, so the ONLY free choice left
+// is which types the filter excludes; this pins that choice to exactly the registrar's own rows. An edit
+// that also excluded the SPF record, or started carrying the registrar NS, fails here — which is exactly
+// the drift the second transcription used to hide.
+// A proxy arm must agree with the record's OWN type (review 87475 advisory): the arms no longer carry a
+// type, so a record's proxy state cannot contradict it by storing a second one — but the arms can still
+// be written directly, and a Proxied on a TXT record is the inconsistency the old payloads could have
+// hidden in the other direction. Every row of BOTH sets, observed and served, is checked; the fold is
+// total over the arms, so an arm outside the proxyable types refuses rather than passing quietly.
+fn every_record_proxy_agrees_with_its_type(records: List<CloudflareDnsRecord>) -> Bool {
+  fold(
+    records,
+    init: true,
+    f: (acc, record) => acc
+      && match record.proxy {
+           Proxied => cloudflare_record_type_admits_proxy(record_type: record.record_type)
+           Direct => cloudflare_record_type_admits_proxy(record_type: record.record_type)
+           ProxyNotApplicable => !cloudflare_record_type_admits_proxy(record_type: record.record_type)
+         }
+  )
+}
+
+test fn no_record_carries_a_proxy_state_its_type_cannot_have() -> Bool {
+  every_record_proxy_agrees_with_its_type(records: namecheap_observed_records())
+    && every_record_proxy_agrees_with_its_type(records: cloudflare_served_records())
+}
+
+test fn the_filter_excludes_exactly_the_registrar_rows() -> Bool {
+  match copied_record_of_type(record_type: RecordTypeNS) {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match copied_record_of_type(record_type: RecordTypeSOA) {
+         Absent => true
+         Present { value: _ } => false
+       }
+    && match copied_record_of_type(record_type: RecordTypeTXT) {
+         Present { value: _ } => true
+         Absent => false
+       }
+    && match copied_record_of_type(record_type: RecordTypeMX) {
+         Present { value: _ } => true
+         Absent => false
+       }
+    && match copied_record_of_type(record_type: RecordTypeA) {
+         Present { value: _ } => true
+         Absent => false
+       }
 }
 
 // The outstanding set is the nine records whose CONTENT a DNS answer cannot settle — the four apex A, the
@@ -322,17 +389,17 @@ test fn an_unread_zone_identity_matches_no_zone_but_a_read_one_matches_its_own()
 // distinct from every other refusal, so "we never read the bucket's owner" cannot be misread as "wrong
 // account" (which would send the next actor to the wrong remedy).
 test fn an_unread_bucket_account_refuses_for_its_own_reason() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: Absent) {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: Absent, hold: Present { value: ZoneNotHeld }) {
     ZoneRefusedBucketAccountUnobserved { zone: _, basis: _ } => true
     _ => false
   }
     // Even a zone that is otherwise perfectly admissible refuses: active, unpaused, no hold.
-    && match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: same_account_id, active: true, paused: false, hold: ZoneNotUnderHold), bucket_account: Absent) {
+    && match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: Absent, hold: Present { value: ZoneNotHeld }) {
          ZoneRefusedBucketAccountUnobserved { zone: _, basis: _ } => true
          _ => false
        }
     // And it is NOT the wrong-account refusal: the two arms must not collapse.
-    && match r2_custom_domain_zone_admissible(zone: zone_in(account: wrong_account_id, active: true, paused: false), bucket_account: same_account) {
+    && match r2_custom_domain_zone_admissible(zone: zone_in(account: wrong_account_id, active: true, paused: false), bucket_account: same_account, hold: Present { value: ZoneNotHeld }) {
          ZoneRefusedWrongAccount { zone: _, bucket_account: _, basis: _ } => true
          _ => false
        }

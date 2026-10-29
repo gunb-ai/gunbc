@@ -126,6 +126,27 @@ data dns_record_api_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// The hold endpoint, as the API reference publishes it: zones.holds is a subresource whose model is
+// zone_hold, holding a single `hold` field (a boolean). Cited next to the requirement page's own warning
+// because the two together are the rule: a custom domain needs an active zone, AND the hold page adds
+// that a hold under the zone blocks adding a custom domain or custom hostname even inside the same
+// account — which is why the admissibility rule below consults the hold at all.
+data zone_hold_api_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/zones/subresources/hold/"
+  }
+}
+
+data zone_hold_api_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.zone",
+    decl_name: "ZoneHold",
+    field: WholeDeclaration
+  },
+  authority: zone_hold_api_authority
+}
+
 // A proxied record resolves to Cloudflare's addresses; these are the vendor's published ranges, cited
 // because "the answer is not the stored content" is a claim that needs a source of its own.
 data cloudflare_proxy_ranges_authority: ExternalAuthority = ExternalAuthority {
@@ -257,41 +278,31 @@ fn cloudflare_zone_status_wire(status: CloudflareZoneStatus) -> NonEmptyStr {
   }
 }
 
-// A zone as the vendor describes it: one apex namespace under one account, with a status, a separate
-// pause switch, and a separate HOLD state. paused and hold stay distinct because they are distinct
-// vendor mechanisms — the pause switch is the account owner's, while a hold is an account-security
-// measure the requirement page names as the thing that silently blocks a custom domain from activating
-// (its own authority member, zone_hold_authority). A fold must be able to say which it observed, and
-// Unobserved is its own arm rather than a default to NotUnderHold: absence of the fact is not evidence
-// of absence of the hold.
-type ZoneHoldState
-  = ZoneNotUnderHold
-  | ZoneUnderHold
-  | ZoneHoldUnobserved
+// The vendor's zone hold, as its own endpoint publishes it: GET /zones/{zone_id}/hold returns the
+// zone_hold model, whose `hold` field is a boolean (developers.cloudflare.com/api/resources/zones/
+// subresources/hold/). Two states, because the vendor publishes two — and deliberately NOTHING for "the
+// read has not happened": a missing observation is a coverage obligation of the LAYER THAT OBSERVES
+// (DESIGN §3, External upstream decomposition), never a property of the upstream type. The rule below
+// therefore receives the hold as an Optional from the observing module, and refuses for its own reason
+// when the read has not been made, instead of this file inventing a stand-in for it.
+//
+// paused and hold also stay distinct from each other: the pause switch is the account owner's, while a
+// hold is an account-security measure that the requirement page names as the thing which silently
+// blocks a custom domain from activating (authority member zone_hold_authority), and the hold page adds
+// that it blocks adding a custom domain or custom hostname under the hold even inside the same account.
+type ZoneHold
+  = ZoneHeld
+  | ZoneNotHeld
 
-fn zone_hold_state_wire(state: ZoneHoldState) -> NonEmptyStr {
-  match state {
-    ZoneNotUnderHold => "not_under_hold"
-    ZoneUnderHold => "under_hold"
-    ZoneHoldUnobserved => "unobserved"
-  }
-}
-
-fn zone_hold_state_of_text(text: String) -> ZoneHoldState {
-  match text {
-    "not_under_hold" => ZoneNotUnderHold
-    "under_hold" => ZoneUnderHold
-    _ => ZoneHoldUnobserved
-  }
-}
-
+// A zone as the zones-list endpoint describes it: one apex namespace under one account, with a status and
+// a separate pause switch. NO hold field — the hold is a DIFFERENT endpoint, so a zone parsed from the
+// list response does not know it, and a type that demanded one would force the reader to invent it.
 type CloudflareZone {
   apex: HostName
   account: CloudflareAccountId
   zone_id: CloudflareZoneId
   status: CloudflareZoneStatus
   paused: Bool
-  hold: ZoneHoldState
 }
 
 // The record types the copy path can ever need. Every other vendor type lands in Unknown rather than
@@ -348,16 +359,16 @@ fn cloudflare_dns_record_type_from_wire(wire: NonEmptyStr) -> CloudflareDnsRecor
 // below turns on. proxied is valid on A/AAAA/CNAME only, per the add route.
 type CloudflareRecordProxy
   = Proxied
-  | Direct { record_type: CloudflareDnsRecordType }
-  | ProxyNotApplicable { record_type: CloudflareDnsRecordType }
+  | Direct
+  | ProxyNotApplicable
 
 fn cloudflare_record_proxy(record_type: CloudflareDnsRecordType, proxied: Bool) -> CloudflareRecordProxy {
   if !cloudflare_record_type_admits_proxy(record_type: record_type) {
-    ProxyNotApplicable { record_type: record_type }
+    ProxyNotApplicable
   } else if proxied {
     Proxied
   } else {
-    Direct { record_type: record_type }
+    Direct
   }
 }
 
@@ -523,7 +534,13 @@ type R2CustomDomainZoneStanding
   | ZoneRefusedBucketAccountUnobserved { zone: CloudflareZone, basis: FactCitation }
   | ZoneMissingForHostname { hostname: HostName, reason: NonEmptyStr, basis: FactCitation }
 
-fn r2_custom_domain_zone_admissible(zone: CloudflareZone, bucket_account: Optional<CloudflareAccountId>) -> R2CustomDomainZoneStanding {
+// hold arrives as the CALLER's observation (Optional<ZoneHold>): the hold lives on its own endpoint, so
+// whether it has been read is a fact about the READER, carried by the observing layer (§3 External
+// upstream decomposition), never a property of the zone type (review 87475). The rule still names the
+// vendor's consequence — the hold page says a held zone blocks adding a custom domain even in the same
+// account — and refuses for each input state with its OWN arm, because the next action differs:
+// release a hold, versus read the hold endpoint.
+fn r2_custom_domain_zone_admissible(zone: CloudflareZone, bucket_account: Optional<CloudflareAccountId>, hold: Optional<ZoneHold>) -> R2CustomDomainZoneStanding {
   let basis = r2_custom_domain_requires_zone_citation
   match bucket_account {
     // No identity read means no rule to evaluate: this refuses FIRST, for its own reason, rather than
@@ -537,12 +554,13 @@ fn r2_custom_domain_zone_admissible(zone: CloudflareZone, bucket_account: Option
       } else if !cloudflare_zone_status_is_active(status: zone.status) {
         ZoneRefusedNotActive { zone: zone, basis: basis }
       } else {
-        // The hold is matched, not asked about: a hold and an unread hold differ in the NEXT action
-        // (release it, or read it), so neither collapses into the other nor into a Bool.
-        match zone.hold {
-          ZoneUnderHold => ZoneRefusedHold { zone: zone, basis: basis }
-          ZoneHoldUnobserved => ZoneRefusedHoldUnobserved { zone: zone, basis: basis }
-          ZoneNotUnderHold => ZoneAdmissible { zone: zone, basis: basis }
+        // The hold is matched, not asked about, and its absence is the CALLER'S unread state, not a
+        // Cloudflare state: a hold and an unread hold differ in the NEXT action (release it, or read
+        // it), so neither collapses into the other nor into a Bool.
+        match hold {
+          Present { value: ZoneHeld } => ZoneRefusedHold { zone: zone, basis: basis }
+          Present { value: ZoneNotHeld } => ZoneAdmissible { zone: zone, basis: basis }
+          Absent => ZoneRefusedHoldUnobserved { zone: zone, basis: basis }
         }
       }
   }

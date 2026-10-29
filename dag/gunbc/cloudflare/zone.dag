@@ -28,9 +28,10 @@ import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, FullyQualified, host_name_eq }
 import extdeps.external_authority { FactCitation }
 import extdeps.cloudflare.zone {
-  CloudflareAccountId, CloudflareZone,
+  CloudflareAccountId, CloudflareZone, ZoneHold,
+  R2CustomDomainZoneStanding, r2_custom_domain_zone_admissible,
   CloudflareDnsRecord, RecordTypeA, RecordTypeAAAA, RecordTypeCNAME,
-  RecordTypeTXT, RecordTypeMX, RecordTypeNS, RecordTypeSOA, Proxied, Direct, ProxyNotApplicable,
+  RecordTypeTXT, RecordTypeMX, RecordTypeNS, RecordTypeSOA,
   cloudflare_dns_record_key, cloudflare_record_type_admits_proxy, cloudflare_record_type_wire_eq,
   cloudflare_account_id_from_text,
   CloudflareR2CustomDomainBinding, CloudflareR2CustomDomainStatus,
@@ -114,101 +115,71 @@ fn namecheap_observed_records() -> List<CloudflareDnsRecord> {
     record_type: RecordTypeA,
     content: content,
     ttl: namecheap_ttl_short,
-    proxy: Direct { record_type: RecordTypeA },
+    proxy: cloudflare_record_proxy(record_type: RecordTypeA, proxied: false),
   })
   let apex_aaaa = map(namecheap_apex_aaaa_contents, content => CloudflareDnsRecord {
     name: gunb_ai_apex,
     record_type: RecordTypeAAAA,
     content: content,
     ttl: namecheap_ttl_short,
-    proxy: Direct { record_type: RecordTypeAAAA },
+    proxy: cloudflare_record_proxy(record_type: RecordTypeAAAA, proxied: false),
   })
   let txt = [CloudflareDnsRecord {
     name: gunb_ai_apex,
     record_type: RecordTypeTXT,
     content: namecheap_apex_txt,
     ttl: namecheap_ttl_short,
-    proxy: ProxyNotApplicable { record_type: RecordTypeTXT },
+    proxy: cloudflare_record_proxy(record_type: RecordTypeTXT, proxied: false),
   }]
   let mx = [CloudflareDnsRecord {
     name: gunb_ai_apex,
     record_type: RecordTypeMX,
     content: namecheap_apex_mx,
     ttl: namecheap_ttl_short,
-    proxy: ProxyNotApplicable { record_type: RecordTypeMX },
+    proxy: cloudflare_record_proxy(record_type: RecordTypeMX, proxied: false),
   }]
   let www = [CloudflareDnsRecord {
     name: gunb_ai_www,
     record_type: RecordTypeCNAME,
     content: namecheap_www_cname,
     ttl: namecheap_ttl_short,
-    proxy: Direct { record_type: RecordTypeCNAME },
+    proxy: cloudflare_record_proxy(record_type: RecordTypeCNAME, proxied: false),
   }]
   let ns = map(namecheap_registrar_ns_contents, content => CloudflareDnsRecord {
     name: gunb_ai_apex,
     record_type: RecordTypeNS,
     content: content,
     ttl: namecheap_ttl_registrar,
-    proxy: ProxyNotApplicable { record_type: RecordTypeNS },
+    proxy: cloudflare_record_proxy(record_type: RecordTypeNS, proxied: false),
   })
   let soa = [CloudflareDnsRecord {
     name: gunb_ai_apex,
     record_type: RecordTypeSOA,
     content: namecheap_registrar_soa,
     ttl: namecheap_ttl_registrar,
-    proxy: ProxyNotApplicable { record_type: RecordTypeSOA },
+    proxy: cloudflare_record_proxy(record_type: RecordTypeSOA, proxied: false),
   }]
   concat(apex_a, concat(apex_aaaa, concat(txt, concat(mx, concat(www, concat(ns, soa))))))
 }
 
+// THE COPY, DERIVED — not re-typed. The copied set IS the observed set minus the two records the
+// registrar owns (its NS pair and the SOA Cloudflare mints itself); that exclusion is the whole decision,
+// so it is written ONCE as a filter over the observation rather than as a second transcription of eleven
+// literals that could silently drift from the fourteen they were copied from (review 87475, §2 "a
+// perfectly DRY process is therefore the minimal one"). The match is inline because it is this filter's
+// question, not a concept the module needs a name for.
 fn namecheap_copied_records() -> List<CloudflareDnsRecord> {
-  let apex_a = map(namecheap_apex_a_contents, content => CloudflareDnsRecord {
-    name: gunb_ai_apex,
-    record_type: RecordTypeA,
-    content: content,
-    ttl: namecheap_ttl_short,
-    proxy: Direct { record_type: RecordTypeA },
-  })
-  let apex_aaaa = map(namecheap_apex_aaaa_contents, content => CloudflareDnsRecord {
-    name: gunb_ai_apex,
-    record_type: RecordTypeAAAA,
-    content: content,
-    ttl: namecheap_ttl_short,
-    proxy: Direct { record_type: RecordTypeAAAA },
-  })
-  let txt = [CloudflareDnsRecord {
-    name: gunb_ai_apex,
-    record_type: RecordTypeTXT,
-    content: namecheap_apex_txt,
-    ttl: namecheap_ttl_short,
-    proxy: ProxyNotApplicable { record_type: RecordTypeTXT },
-  }]
-  let mx = [CloudflareDnsRecord {
-    name: gunb_ai_apex,
-    record_type: RecordTypeMX,
-    content: namecheap_apex_mx,
-    ttl: namecheap_ttl_short,
-    proxy: ProxyNotApplicable { record_type: RecordTypeMX },
-  }]
-  let www = [CloudflareDnsRecord {
-    name: gunb_ai_www,
-    record_type: RecordTypeCNAME,
-    content: namecheap_www_cname,
-    ttl: namecheap_ttl_short,
-    proxy: Direct { record_type: RecordTypeCNAME },
-  }]
-  concat(apex_a, concat(apex_aaaa, concat(txt, concat(mx, www))))
+  filter(
+    namecheap_observed_records(),
+    record => match record.record_type {
+      RecordTypeNS => false
+      RecordTypeSOA => false
+      _ => true
+    }
+  )
 }
 
-// --------------------------------------------------------------------------------
-// (2) WHAT CLOUDFLARE NOW SERVES. Observed 2026-10-27T22:44:54Z from the account's own
-// delegated pair — alexandra.ns.cloudflare.com (108.162.194.30) and austin.ns.cloudflare.com
-// (108.162.193.70), the two servers the .ai parent names for gunb.ai (re-queried here from
-// v0n0/v0n1/v2n0/v2n1.nic.ai rather than trusted from dac3f6f53dc: all four named the same
-// pair, 2026-10-27T23:12:19Z). Both Cloudflare servers answered identically for every type.
-//
-// THE ONE THING THIS READING CANNOT DO, and the reason the standing below is not Complete.
-// These answers are PROXIED: the apex A/AAAA answer with Cloudflare's own anycast addresses
+
 // and www resolves to them with no CNAME in the answer at all, so what the DNS reader sees is
 // the proxy's front, not the stored content the copy has to match. The zone's record LIST is
 // therefore the only complete source for a proxied record's content, and reading it needs the
@@ -245,42 +216,42 @@ fn cloudflare_served_records() -> List<CloudflareDnsRecord> {
     record_type: RecordTypeA,
     content: content,
     ttl: cloudflare_ttl_proxied,
-    proxy: Proxied,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeA, proxied: true),
   })
   let apex_aaaa = map(cloudflare_apex_aaaa_answers, content => CloudflareDnsRecord {
     name: gunb_ai_apex,
     record_type: RecordTypeAAAA,
     content: content,
     ttl: cloudflare_ttl_proxied,
-    proxy: Proxied,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeAAAA, proxied: true),
   })
   let txt = [CloudflareDnsRecord {
     name: gunb_ai_apex,
     record_type: RecordTypeTXT,
     content: cloudflare_apex_txt,
     ttl: cloudflare_ttl_proxied,
-    proxy: ProxyNotApplicable { record_type: RecordTypeTXT },
+    proxy: cloudflare_record_proxy(record_type: RecordTypeTXT, proxied: false),
   }]
   let mx = [CloudflareDnsRecord {
     name: gunb_ai_apex,
     record_type: RecordTypeMX,
     content: cloudflare_apex_mx,
     ttl: cloudflare_ttl_proxied,
-    proxy: ProxyNotApplicable { record_type: RecordTypeMX },
+    proxy: cloudflare_record_proxy(record_type: RecordTypeMX, proxied: false),
   }]
   let www_a = map(cloudflare_www_a_answers, content => CloudflareDnsRecord {
     name: gunb_ai_www,
     record_type: RecordTypeA,
     content: content,
     ttl: cloudflare_ttl_proxied,
-    proxy: Proxied,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeA, proxied: true),
   })
   let www_aaaa = map(cloudflare_www_aaaa_answers, content => CloudflareDnsRecord {
     name: gunb_ai_www,
     record_type: RecordTypeAAAA,
     content: content,
     ttl: cloudflare_ttl_proxied,
-    proxy: Proxied,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeAAAA, proxied: true),
   })
   concat(apex_a, concat(apex_aaaa, concat(txt, concat(mx, concat(www_a, www_aaaa)))))
 }
@@ -310,6 +281,7 @@ fn served_set_publishes(record: CloudflareDnsRecord) -> Bool {
 }
 
 
+
 // The records whose CONTENT the DNS read could not settle: everything the Cloudflare side answers from
 // behind its anycast front, plus anything whose name/type the served set does not publish at all. This is
 // the outstanding work for a Complete copy, named rather than assumed away. The check matches the record's
@@ -333,20 +305,35 @@ fn unverified_copied_records() -> List<CloudflareDnsRecord> {
 
 // The unproxied contents, checked directly. Both copies serve the SPF TXT and MX "1 smtp.google.com"
 // identically, and this is the part of the copy the credential-free route can actually verify.
+// THE COPIED SET, not a third transcription (review 87475): the two rows are PICKED OUT of the copy by
+// type and then compared to what the zone answers, so the agreement being claimed is between the copy
+// standing and the served answer — not between two literals written in the same file, which would be
+// true whatever Cloudflare served. Absent is a refusal of its own: a copy that lost its SPF or its MX
+// cannot be reported as agreeing.
+fn copied_record_of_type(record_type: CloudflareDnsRecordType) -> Optional<CloudflareDnsRecord> {
+  fold(
+    namecheap_copied_records(),
+    init: Absent,
+    f: (acc, record) => match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if cloudflare_record_type_wire_eq(a: record.record_type, b: record_type) {
+        Present { value: record }
+      } else {
+        Absent
+      }
+    }
+  )
+}
+
 fn unproxied_contents_agree() -> Bool {
-  copied_record_is_carried(record: CloudflareDnsRecord {
-    name: gunb_ai_apex,
-    record_type: RecordTypeTXT,
-    content: namecheap_apex_txt,
-    ttl: namecheap_ttl_short,
-    proxy: ProxyNotApplicable { record_type: RecordTypeTXT },
-  }) && copied_record_is_carried(record: CloudflareDnsRecord {
-    name: gunb_ai_apex,
-    record_type: RecordTypeMX,
-    content: namecheap_apex_mx,
-    ttl: namecheap_ttl_short,
-    proxy: ProxyNotApplicable { record_type: RecordTypeMX },
-  })
+  match copied_record_of_type(record_type: RecordTypeTXT) {
+    Present { value: txt } => copied_record_is_carried(record: txt)
+    Absent => false
+  }
+    && match copied_record_of_type(record_type: RecordTypeMX) {
+         Present { value: mx } => copied_record_is_carried(record: mx)
+         Absent => false
+       }
 }
 
 data copy_observed_at: Rfc3339Timestamp = "2026-10-27T22:44:54Z" as Rfc3339Timestamp
@@ -441,6 +428,36 @@ data boot_origin_binding_readback_pending: CloudflareR2CustomDomainBinding = Clo
 // three it is waiting on, so the plan's gate reads off the arms instead of off a paragraph,
 // and no agent can reach the allocated-looking arm without all three having happened.
 // --------------------------------------------------------------------------------
+
+// THE HOLD READ, as an OBSERVATION of this repository. The vendor publishes the hold on its own
+// endpoint (zones.holds, a boolean), not on the zones-list response, so whether THIS fleet has read it
+// is a fact about this fleet, never a field of a Cloudflare zone (DESIGN §3, External upstream
+// decomposition; review 87475 — the extdeps model had made it one, with a fabricated default besides).
+// Absent here is a coverage obligation with a named remedy, and it reaches the admissibility rule
+// unchanged, so the rule's refusal on unread input is the SAME absence the module carries — not a second
+// invented stand-in.
+data boot_origin_zone_hold_observation: Optional<ZoneHold> = Absent
+
+data boot_origin_zone_hold_read_citation: FactCitation = zone_hold_api_citation
+
+// The admissibility rule, CALLED with what the module actually knows (review 87180: a rule only a test
+// calls is a rule the product does not use). It returns Optional because when the zone's identity has
+// not been read there IS no zone to put in front of the rule — the standing arms say so, and Absent is
+// their answer. The verdict path consumes that Absent as the zone-identity gap it already reports, so no
+// placeholder zone is invented to satisfy a signature (review 87415, §5).
+//
+// Today this yields Absent: no Cloudflare credential route reaches the session, so the zone is live but
+// unnamed. The moment the identity is read, the rule runs against the real zone, the account receipt and
+// the hold receipt — and the hold is still Absent here, so a zone would be refused for the UNREAD hold
+// rather than waved through: each unmade observation refuses for its own reason.
+fn boot_origin_zone_admissibility() -> Optional<R2CustomDomainZoneStanding> {
+  match fleet_gunb_ai_zone_standing() {
+    ZoneNotObserved { reason: _ } => Absent
+    ZoneLiveButIdentityUnobserved { reason: _ } => Absent
+    ZoneObservedActive { zone, soa: _, observed_at: _, basis: _ } =>
+      Present { value: r2_custom_domain_zone_admissible(zone: zone, bucket_account: gunb_ai_bucket_account, hold: boot_origin_zone_hold_observation) }
+  }
+}
 
 type BootOriginHostnameBindingVerdict
   = BindingAllocated { binding: CloudflareR2CustomDomainBinding, observed_at: Rfc3339Timestamp }
