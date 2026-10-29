@@ -170,7 +170,7 @@ test fn a_reviewer_record_binds_composite_key_and_review_unit_and_nothing_else()
   // (non-composite) attempt key, another criterion's composite key and review unit, and the
   // worker's unit wire: each is Foreign to this name, and none of them is fabricated -- they are
   // exactly the shapes the binder must refuse.
-  let raw_key = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(r: forged_record(attempt_key: rattempt, unit: gunbc.roadmap.roadmap_session_placement.session_unit_wire(node_id: rnode, attempt_key: rattempt), grant_identity: "evt-7", identity: gunbc.roadmap.roadmap_session_placement.session_reviewer_identity(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a))))), name: name_a(), host: rhost) {
+  let raw_key = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(r: forged_record(attempt_key: rattempt, unit: forged_worker_unit(node_id: rnode, attempt_key: rattempt), grant_identity: "evt-7", identity: gunbc.roadmap.roadmap_session_placement.session_reviewer_identity(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a))))), name: name_a(), host: rhost) {
     SessionGrantForeign { path: _, detail: _ } => true
     _ => false
   }
@@ -179,11 +179,23 @@ test fn a_reviewer_record_binds_composite_key_and_review_unit_and_nothing_else()
     SessionGrantForeign { path: _, detail: _ } => true
     _ => false
   }
-  let worker_unit = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(r: forged_record(attempt_key: session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_a), unit: gunbc.roadmap.roadmap_session_placement.session_unit_wire(node_id: rnode, attempt_key: rattempt), grant_identity: "evt-7", identity: gunbc.roadmap.roadmap_session_placement.session_reviewer_identity(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a))))), name: name_a(), host: rhost) {
+  let worker_unit = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(r: forged_record(attempt_key: session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_a), unit: forged_worker_unit(node_id: rnode, attempt_key: rattempt), grant_identity: "evt-7", identity: gunbc.roadmap.roadmap_session_placement.session_reviewer_identity(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a))))), name: name_a(), host: rhost) {
     SessionGrantForeign { path: _, detail: _ } => true
     _ => false
   }
   recorded && raw_key && other_criterion && worker_unit
+}
+
+// THE WORKER'S UNIT WIRE, UNMATCHED NOT CAST: session_unit_wire answers NonEmptyStr? -- the name
+// can be refused (empty stem, disallowed character, overlong) and a cast does not eliminate the
+// absence. These stems are ordinary, so the admitted arm is the only real one; the fallback is a
+// plainly-different string that still makes the forged unit foreign to a reviewer's name, so the
+// claim discriminates either way and no Optional is ever forced.
+fn forged_worker_unit(node_id: String, attempt_key: String) -> NonEmptyStr {
+  match gunbc.roadmap.roadmap_session_placement.session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    Present { value: u } => u
+    Absent => "gunbc-attempt-forged-worker-unit" as NonEmptyStr
+  }
 }
 
 // ONE FORGED RECORD, BUILT NOT SPLICED: the grant's fields with the three identity-bearing members
@@ -204,7 +216,7 @@ fn forged_record(attempt_key: String, unit: NonEmptyStr, grant_identity: String,
     expires_at: g.lease.expires_at,
     partition: g.partition as String,
     amount: g.amount,
-    class_grant: gunbc.roadmap.roadmap_session_placement.work_class_grant_wire(g: g.class_grant),
+    class_grant: gunbc.compute.work_class_grant.work_class_grant_wire(g: g.class_grant),
     unit_properties: ["MemoryMax=8589934592", "CPUQuota=800%"],
   }
 }
