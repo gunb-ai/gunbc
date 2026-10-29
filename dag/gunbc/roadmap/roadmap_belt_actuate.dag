@@ -4875,19 +4875,38 @@ fn belt_launch_member_node_id(m: DispatchMember) -> String {
   }
 }
 
-fn belt_tick_spawn_after_settlement(settled: SessionSettlePass, decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
+// G5 (side-chat ruling on #13074): settlement is its own pass, ORDERED BEFORE EVERY NEW ACQUISITION.
+// ONE derivation shared by the two routes that acquire a placement -- the tick (belt_tick_spawn_after_
+// settlement, which has run the pass every tick) and the dispatch route that the door and the redeliver
+// entry both end in (belt_dispatch_node_staged_over) -- so a stale slot the tick's own pass would have
+// released can never wedge an acquisition on the sibling route. That asymmetry was the wedge: on a
+// manual_ready lab with no tick, a dead worker's terminal slot held the seat a same-key re-delivery
+// needed, and nothing ran the pass to release it. Absent = the pass ran, the caller may acquire;
+// Present = the pass refused, the acquisition is refused with a typed LaunchNoPlacementGrant carrying
+// the settlement wire -- never a spawn that collided halfway. Fail-closed, not a resume special case:
+// it guards EVERY new acquisition on the dispatch route (fresh, resume and re-delivery alike).
+fn belt_settlement_spawn_gate(settled: SessionSettlePass, node_id: String) -> BeltSpawnOutcome? {
   match settled {
-    SessionSettlePassRan { settlements: _ } => belt_tick_spawn_decided(decisions: decisions, workdir: workdir)
+    SessionSettlePassRan { settlements: _ } => Absent
     SessionSettlePassRefused { detail } =>
-      decisions |> map(d => match d {
-        BeltLaunchWithheld { node_id, refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
-        BeltLaunchDecided { member, launch: _ } =>
-          SpawnNotAdmitted {
-            node_id: belt_launch_member_node_id(m: member),
-            refusal: LaunchNoPlacementGrant { detail: session_settle_pass_wire(p: SessionSettlePassRefused { detail: detail }) },
-          }
-      })
+      Present {
+        value: SpawnNotAdmitted {
+          node_id: node_id,
+          refusal: LaunchNoPlacementGrant { detail: session_settle_pass_wire(p: SessionSettlePassRefused { detail: detail }) },
+        },
+      }
   }
+}
+
+fn belt_tick_spawn_after_settlement(settled: SessionSettlePass, decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
+  decisions |> map(d => match d {
+    BeltLaunchWithheld { node_id, refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
+    BeltLaunchDecided { member, launch } =>
+      match belt_settlement_spawn_gate(settled: settled, node_id: belt_launch_member_node_id(m: member)) {
+        Present { value: refused } => refused
+        Absent => belt_actuate_spawn_member(m: member, workdir: workdir, launch: launch)
+      }
+  })
 }
 
 fn belt_tick_spawn_decided(decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
@@ -11491,14 +11510,18 @@ fn belt_dispatch_node_staged_over(
         NodeFound { node } =>
           match clock_now_probed_at() {
             Present { value: probed_at } =>
-              belt_actuate_spawn_for_instance(
-                instance: instance,
-                node: node,
-                probed_at: probed_at as String,
-                launch: identity,
-                request: request,
-                executor: executor,
-              )
+              match belt_settlement_spawn_gate(settled: belt_session_settlement_pass(instance: instance), node_id: node_id) {
+                Present { value: refused } => refused
+                Absent =>
+                  belt_actuate_spawn_for_instance(
+                    instance: instance,
+                    node: node,
+                    probed_at: probed_at as String,
+                    launch: identity,
+                    request: request,
+                    executor: executor,
+                  )
+              }
             Absent =>
               SpawnFailed {
                 node_id: node_id,

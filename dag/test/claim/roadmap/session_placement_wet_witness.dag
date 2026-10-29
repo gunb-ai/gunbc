@@ -448,3 +448,62 @@ test fn a_post_gate_failure_with_an_ended_unit_returns_the_real_seat_from_the_cu
     }
   }
 }
+
+// ── THE DISPATCH ROUTE NOW RUNS THE SETTLEMENT PASS BEFORE EVERY NEW ACQUISITION ────────────────
+//
+// The wedge (srv1-lab, attempt e5a42384c6a5e13d): on a manual_ready lab with no tick, the dead
+// worker's session slot was never settled, and the door's same-key re-delivery collided with it --
+// 503 "a session slot already exists ... one attempt holds at most one placement". The acquisition's
+// first step (session_placement_acquire -> attempt_open, create-only) is exactly what collides, so
+// these controls drive that step around the settlement pass, which the belt's acquisition route now
+// runs first (belt_settlement_spawn_gate). They need no capacity grant: acquire reserves capacity
+// only AFTER this slot-open step succeeds.
+
+// RED -- reproduces today's wedge: with no settlement pass, the same-key re-acquisition collides with
+// the slot the dead worker still holds.
+test fn a_reacquisition_of_an_unsettled_slot_collides() -> Bool {
+  let dir = fresh_dir(tag: "g5-wedge-red")
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let launched = launched_ok(dir: dir, rec: slot_a(opened: 1000))
+  let collides = match attempt_open(root: dir as NonEmptyStr, record: slot_a(opened: 1000)) {
+    AttemptLostRace { expected: _, observed: _ } => true
+    AttemptAdvanced { state: _, generation: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+  charged && launched && collides
+}
+
+// GREEN -- the fix: the route runs the settlement pass before acquiring; the dead worker's unit is
+// terminal (absent), so the pass releases the seat and deletes the slot, and the same-key acquisition
+// then opens it fresh instead of colliding.
+test fn the_settlement_releases_a_terminal_slot_so_the_same_attempt_re_acquires() -> Bool {
+  let dir = fresh_dir(tag: "g5-settle-release-reacquire")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let launched = launched_ok(dir: dir, rec: slot_a(opened: 1000))
+  let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999))
+  let released = released_unit(s: s) == unit_a() && slot_is_terminal(dir: dir)
+  let re_acquires = match attempt_open(root: dir as NonEmptyStr, record: slot_a(opened: 1000)) {
+    AttemptAdvanced { state: _, generation: _ } => true
+    AttemptLostRace { expected: _, observed: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+  charged && launched && released && re_acquires
+}
+
+// SAFETY -- a still-running worker's seat is KEPT by the pass, so the same-key acquisition still
+// collides: a re-delivery never displaces a live worker.
+test fn a_still_running_slot_is_kept_so_the_same_attempt_still_refuses() -> Bool {
+  let dir = fresh_dir(tag: "g5-settle-keep-refuse")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let launched = launched_ok(dir: dir, rec: slot_a(opened: 1000))
+  let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_running, now: 99999))
+  let kept_seat = kept(s: s)
+  let still_collides = match attempt_open(root: dir as NonEmptyStr, record: slot_a(opened: 1000)) {
+    AttemptLostRace { expected: _, observed: _ } => true
+    AttemptAdvanced { state: _, generation: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+  charged && launched && kept_seat && still_collides
+}
