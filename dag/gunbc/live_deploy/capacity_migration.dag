@@ -1,7 +1,6 @@
 module gunbc.live_deploy.capacity_migration
 
 import std.types { String, List }
-import std.measure { Second }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.optional { Present, Absent }
 import std.error_primitives { Result, Ok, Err }
@@ -11,10 +10,6 @@ import gunbc.compute.capacity_migration {
   CapacityMigrationParentRequirement, CapacityWriterReading, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified,
 }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
-import gunbc.live_deploy.unit_install_roster { deployment_desired_unit_installs }
-import gunbc.live_deploy.spec { DeploymentSpec }
-import gunbc.live_deploy.member_identity { ReleaseTarget }
-import gunbc.host.host_axis_caps { CapConvergeDecision }
 
 // Classification belongs to the source owner. Confirmed non-writers are excluded;
 // confirmed writers AND unclassified services are drained. The reading remains visible
@@ -80,17 +75,4 @@ fn deployment_capacity_population_from_installs(
         transients: transients, children: children,
       } }
     }
-}
-
-fn deployment_capacity_migration_population(
-  spec: DeploymentSpec, target: ReleaseTarget, authorization: CapConvergeDecision,
-  source_root: String, oidc_now: Second?,
-  transients: List<CapacityTransientFamily>, children: List<CapacityMigrationChild>,
-  classify: fn(DeploymentUnitInstall) -> CapacityWriterReading,
-) -> Result<CapacityMigrationPopulation, String> {
-  match deployment_desired_unit_installs(spec: spec, target: target, authorization: authorization,
-    source_root: source_root, oidc_now: oidc_now) {
-    Err { value: reason } => Err { value: reason }
-    Ok { value: installed } => deployment_capacity_population_from_installs(installed: installed, transients: transients, children: children, classify: classify)
-  }
 }
