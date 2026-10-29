@@ -13,6 +13,7 @@ import gunbc.machine_intake.bmc_recovery_route_frontier {
   bmc_recovery_route_onboarding_consumer_frontier_rows,
   bmc_recovery_route_pairing_frontier_rows,
 }
+import gunbc.machine_intake.host_interface_inventory_frontier { host_interface_inventory_consumer_frontier_rows }
 import gunbc.machine_intake.h11ssl_x86_bringup_frontier { h11ssl_x86_bringup_frontier_rows }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_oauth_frontier_rows }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
@@ -192,6 +193,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     bmc_recovery_route_onboarding_consumer_frontier_rows(),
     bmc_recovery_route_pairing_frontier_rows(),
     h11ssl_x86_bringup_frontier_rows,
+    host_interface_inventory_consumer_frontier_rows(),
   ]
 }
 

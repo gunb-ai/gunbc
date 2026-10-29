@@ -1,0 +1,47 @@
+module gunbc.machine_intake.host_interface_inventory_frontier
+
+// THE INVENTORY'S MISSING PRODUCTION CONSUMER IS ROSTERED HERE, NOT PROMISED IN PROSE.
+//
+// gunbc.machine_intake.host_interface_inventory declares the per-HostIdentity interface table and the
+// five folds that read it. Today only its witness calls them: no existing fold needs a host's
+// interfaces by function (the BMC credential inventory is keyed by the unit's own BMC MAC and covers
+// hosts this table does not). DESIGN §3c names that state: "consumed by a named later change (a
+// declared frontier, with its trigger)". The named later change is S2 of
+// gunbc.plans.site_segment_anchor_bmc_reach, whose anchor relation binds a host interface to a segment
+// and has to ask exactly these questions: which address answers the host, which answers the
+// controller, and is the controller on a dedicated wire.
+//
+// A frontier row is read by a fold -- gunbc.dissolution_census folds
+// gunbc.census_closure_frontier.census_closure_frontier_rows() and reports a row whose bound trigger
+// APPEARS as fired -- so the deferral cannot outlive the work: the day the anchor relation lands the
+// census goes red until these rows are deleted, and the new relation is then the consumer.
+//
+// The trigger names a declaration that DOES NOT EXIST YET. That is deliberate (the same precedent as
+// gunbc.machine_intake.bmc_recovery_route_frontier): the ref is the contract for what must be added,
+// and std.dissolution reports a not-yet-present DeclarationAppears trigger as pending.
+//
+// NOT satisfied by: a witness calling the folds, or a module importing them without a call site.
+import std.types { NonEmptyStr, List }
+import std.decl_ref { decl_ref }
+import std.dissolution { bound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_rows_for_decls }
+
+fn host_interface_inventory_consumer_frontier_rows() -> List<FrontierRow> {
+  frontier_rows_for_decls(
+    module_path: "gunbc.machine_intake.host_interface_inventory",
+    decl_names: [
+      "host_interface_inventory_for" as NonEmptyStr,
+      "host_interface_rows" as NonEmptyStr,
+      "host_controller_dedicated_interface" as NonEmptyStr,
+      "host_operating_system_interface" as NonEmptyStr,
+      "host_controller_interfaces" as NonEmptyStr,
+    ],
+    reason: "no production caller: git grep shows the five folds are called only by test.claim.machine_intake.host_interface_inventory_witness. One reason for all five -- they share a single missing consumer, S2's host-interface-to-segment anchor relation (gunbc.plans.site_segment_anchor_bmc_reach), which is the first fold that needs a host's interfaces by function",
+    dissolution: bound_dissolution(
+      ref: decl_ref(
+        module_path: "gunbc.site_segment_anchor",
+        decl_name: "host_interface_segment_anchor",
+      ),
+    ),
+  )
+}
