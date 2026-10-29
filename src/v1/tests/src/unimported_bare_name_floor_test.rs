@@ -70,7 +70,7 @@ fn probe_b(with_import: bool) -> Rc<SourceFile> {
 fn probe_c() -> Rc<SourceFile> {
     src(
         "probe_floor_c.dag",
-        "module probe.floor.c\nimport probe.floor.a { FloorProbeRecord }\nimport probe.floor.b { floor_probe_tag, floor_probe_name }\nfn floor_probe_go() -> Int {{ floor_probe_tag(x: FloorProbeRecord { tag: 1 }) }}\nfn floor_probe_show() -> String {{ floor_probe_name() }}\n",
+        "module probe.floor.c\nimport probe.floor.a { FloorProbeRecord }\nimport probe.floor.b { floor_probe_tag, floor_probe_name }\nfn floor_probe_go() -> Int { floor_probe_tag(x: FloorProbeRecord { tag: 1 }) }\nfn floor_probe_show() -> String { floor_probe_name() }\n",
     )
 }
 
@@ -143,7 +143,7 @@ fn chain_ancestor_bare_reference_compiles_clean() {
 fn kernel_builtins_and_none_stay_bare_and_admitted() {
     let diags = error_diag_messages(vec![src(
         "probe_kernel_surface.dag",
-        "module probe.kernel.surface\nfn floor_probe_tally(xs: List<Int>) -> Bool {\n  let doubled = map(xs, x => x + x)\n  let evens = filter(doubled, x => x % 2 == 0)\n  count(evens) > 0 && all(evens, x => x >= 0) && any(evens, x => x == 0)\n}\nfn floor_probe_missing() -> String? { none }\n",
+        "module probe.kernel.surface\nfn floor_probe_tally(xs: List<Int>) -> Bool {\n  let doubled = map(xs, x => x + x)\n  let evens = filter(doubled, x => x % 2 == 0)\n  count(evens) > 0 && all(evens, x => x >= 0) && any(evens, x => x == 0)\n}\nfn floor_probe_missing() -> Optional<String> { none }\n",
     )]);
     assert!(
         diags.is_empty(),
