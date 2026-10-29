@@ -3631,12 +3631,48 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ inputs.revision_job_image_run_id }}
         timeout-minutes: 10
+      - name: Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)
+        run: |-
+          # 🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite
+          set -euo pipefail
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/fleet-automation-key"
+          HDR_FILE="$RUNNER_TEMP/fleet-automation-auth-header"
+          AGENT_STARTED=0
+          cleanup() { rm -f "$KEY_FILE" "$HDR_FILE"; if [ "$AGENT_STARTED" = 1 ] && [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }
+          trap cleanup EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          curl -sSf -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]))' > "$KEY_FILE"
+          rm -f "$HDR_FILE"
+          chmod 600 "$KEY_FILE"
+          EXPECTED_FP="SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ"
+          OBSERVED_FP="$(ssh-keygen -y -f "$KEY_FILE" | ssh-keygen -lf - | awk '{print $2}')"
+          if [ "$OBSERVED_FP" != "$EXPECTED_FP" ]; then echo "ProbeCredentialIdentityMismatch: fetched secret versions/1 fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host" >&2; exit 1; fi
+          eval "$(ssh-agent -s)" >/dev/null
+          AGENT_STARTED=1
+          ssh-add "$KEY_FILE" 2>/dev/null
+          rm -f "$KEY_FILE"
+          trap - EXIT
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        timeout-minutes: 5
       - name: Install the microVM slot controller release locus, VMM + jailer and template unit on srv1 (additive; starts no instance)
         id: microvm_controller_install
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function microvm_controller_install_wet
         timeout-minutes: 30
+      - name: End the fleet ssh masters, then kill the in-run ssh-agent (key never outlives the job)
+        run: |
+          MUX_DIR="$RUNNER_TEMP"'/fleet-ssh-mux'
+          if '[' '-d' "$MUX_DIR" ']'; then 'find' "$MUX_DIR" '-mindepth' '1' '-maxdepth' '1' '-type' 's' '-exec' 'ssh' '-F' 'none' '-S' '{}' '-O' 'exit' 'fleet-ssh-mux-teardown' ';'; 'rm' '-rf' '--' "$MUX_DIR"; fi
+
+          if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
+        if: always()
+        timeout-minutes: 5
   rlm-launch-deployment-receipt:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
