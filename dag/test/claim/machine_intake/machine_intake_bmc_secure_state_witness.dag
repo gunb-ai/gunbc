@@ -76,6 +76,7 @@ import gunbc.machine_intake.bmc_rotation_route {
   rotation_route_from_citation,
 }
 import gunbc.machine_intake.bmc_secure {
+  BmcRedfishCensusUnmodeled,
   bmc_secure_convergence_approval, PublishedWriteInput,
   ChannelCloseInput, ChannelCloseRouteNotSupplied, PlanWritesAreNotTheApprovedConvergence, ChannelWriteNotAdmitted,
   PlanPrecedesReading, ManagedUserNotTheAuthenticatedAccount,
@@ -389,6 +390,10 @@ fn read_in(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentia
     published_reading: DryProbePublished,
     attempt: attempt as AttemptIdentity,
     read_at_millis: at,
+    redfish_accounts: BmcRedfishCensusUnmodeled {},
+
+    redfish_surface_served: false,
+
   )
 }
 

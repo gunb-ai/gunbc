@@ -34,6 +34,7 @@ import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, rotation_route_from_citation, redfish_account_password_write,
 }
 import gunbc.machine_intake.bmc_secure {
+  BmcRedfishCensusUnmodeled,
   bmc_secure_convergence_approval,
   BmcSecureGoal, BmcAccountActionDue, BmcAccountStateObservation, ManagedCredentialReference, ManagedCredentialGenerationFetched,
   BmcSecureStateInspected, BmcSecureStateUnobserved, PublishedAccountRetired,
@@ -150,6 +151,10 @@ fn read_root(w: BmcWorld, managed: ManagedCredentialReference, password: String,
     published_reading: derive_over(served: served),
     attempt: "attempt-1" as AttemptIdentity,
     read_at_millis: at,
+    redfish_accounts: BmcRedfishCensusUnmodeled {},
+
+    redfish_surface_served: false,
+
   )
 }
 
@@ -358,6 +363,10 @@ fn read_root_on(board: BoardAuthorityRef?, firmware: BmcFirmwareReleaseIdentity,
     published_reading: derive_over(served: served),
     attempt: "attempt-1" as AttemptIdentity,
     read_at_millis: t_read,
+    redfish_accounts: BmcRedfishCensusUnmodeled {},
+
+    redfish_surface_served: false,
+
   )
 }
 

@@ -18,10 +18,11 @@ import std.goal_assessment {
   GoalObservationRefused,
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
-import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.board_authority { BoardAuthorityRef }
 import gunbc.machine_intake.bmc_credential_policy {
   BmcCredentialPolicyKey, CredentialSurface, SharedCredentialSurface, shared_store_surfaces, bmc_credential_policy_for, bmc_credential_policy_key_eq,
+  ForcedBuildInferredFromTheResponse, ForcedBuildRead,
 }
 import extdeps.cloud.gcp.secret_manager {
   SmResolvedVersionIdentity,
@@ -48,6 +49,7 @@ import extdeps.bmc.redfish { redfish_manager_account_collection_from_json, redfi
 import extdeps.languages.json.parse { FieldRead, FieldAbsent, FieldMalformed }
 import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding,
+  AdmittedForcedFirstRotation,
   BmcAccountWriteRequest,
   IpmiSetUserPassword,
   RedfishAccountPasswordWrite,
@@ -1831,6 +1833,54 @@ fn bmc_redfish_password_write_completed(step: BmcRedfishPasswordWriteDryStep) ->
 type BmcRedfishPasswordWriteDryStep {
   step: BmcRedfishPasswordChangeStep
   request_body: String
+}
+
+// A forced first rotation whose build the controller never answered (ForcedBuildInferredFromTheResponse) rests
+// on an INFERENCE: the board has exactly one build whose row answers that exact MessageId, so the build is that
+// row's. An inference is not a confirmation (DESIGN §4d) and must be paid for by a reading, not assumed. The
+// first authenticated read after the write must name the forced state's OWN build, on the SAME controller the
+// state was sealed for; a controller that answers a different build -- or that turns out to be a different
+// machine -- is not the controller we wrote, and BmcSecure refuses. A build that WAS read before the write is
+// checked the same way. This holds for every forced first rotation, not only a dry one: the dry end-to-end cycle
+// calls it now, and the live apply will call this SAME function when
+// gunbc.machine_intake.bmc_rotation_route.forced_first_rotation_apply_frontier dissolves -- that frontier's own
+// text already names this firmware join as the live consumer it waits for.
+// consumer-frontier: gunbc.machine_intake.bmc_rotation_route.forced_first_rotation_apply_frontier
+type ForcedFirstRotationBuildConfirmation
+  = ForcedFirstRotationBuildConfirmed
+  | ForcedFirstRotationBuildRefused { cause: ForcedFirstRotationBuildMismatch }
+
+type ForcedFirstRotationBuildMismatch
+  = ForcedRotationControllerDiffers { expected: BmcControllerEndpoint, found: BmcControllerEndpoint }
+  | ForcedRotationBuildDiffers { expected: BmcFirmwareReleaseIdentity, answered: BmcFirmwareReleaseIdentity }
+
+fn confirm_forced_first_rotation_build(
+  admitted: AdmittedForcedFirstRotation,
+  post_read: BmcAccountStateObservation,
+) -> ForcedFirstRotationBuildConfirmation
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "the_forced_change_applies_once_and_the_second_run_is_a_noop"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "a_wrong_build_answered_after_the_write_refuses"),
+  ]
+{
+  if (admitted.forced.endpoint.host as String) != (post_read.endpoint.host as String) {
+    ForcedFirstRotationBuildRefused { cause: ForcedRotationControllerDiffers { expected: admitted.forced.endpoint, found: post_read.endpoint } }
+  } else {
+    match admitted.forced.build {
+      ForcedBuildInferredFromTheResponse =>
+        if bmc_firmware_release_identity_eq(a: admitted.forced.key.firmware, b: post_read.firmware) {
+          ForcedFirstRotationBuildConfirmed
+        } else {
+          ForcedFirstRotationBuildRefused { cause: ForcedRotationBuildDiffers { expected: admitted.forced.key.firmware, answered: post_read.firmware } }
+        }
+      ForcedBuildRead { evidence: _ } =>
+        if bmc_firmware_release_identity_eq(a: admitted.forced.key.firmware, b: post_read.firmware) {
+          ForcedFirstRotationBuildConfirmed
+        } else {
+          ForcedFirstRotationBuildRefused { cause: ForcedRotationBuildDiffers { expected: admitted.forced.key.firmware, answered: post_read.firmware } }
+        }
+    }
+  }
 }
 
 
