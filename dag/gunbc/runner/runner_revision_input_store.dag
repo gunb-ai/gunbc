@@ -1,0 +1,77 @@
+module gunbc.runner.runner_revision_input_store
+
+import std.types { Bool, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import extdeps.access.posix { file_mode_of_octal_text }
+import std.error_primitives { Result, Ok, Err }
+import std.materialization_store_grant {
+  MaterializationStoreRoot, PersistentInstanceWorkspace, materialization_store_root_path,
+}
+import gunbc.persistent_instance_roots { RevisionPreparation }
+import gunbc.materialization_store_budgets { materialization_store_revision_input_budgets }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_materialization_writer_user }
+import gunbc.runner.runner_microvm_cell_readiness {
+  StoreRootOwned, StoreNotRootOwned,
+}
+import gunbc.runner.runner_microvm_cell_readiness_store {
+  StoreOwnershipReading, OwnershipRead, OwnershipUnread, read_store_ownership,
+}
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.tools.id { id_uid_command }
+import gunbc.command_runner { run_shell_command_capture }
+import std.algebra { trim }
+import extdeps.realization.materialization_store_local {
+  LocalStoreOpening, LocalStoreInitialization,
+  local_store_initialize, local_store_open,
+}
+
+// One dedicated persistent root; neither root nor the preparer initializes the writer's
+// store. The account boundary bounds authority, not pathname ancestry. The existing
+// a_pathname_reresolves_its_ancestry_between_calls frontier remains: a directory-handle
+// filesystem primitive is the trigger for making ancestry substitution unrepresentable.
+// Consumer frontier: the admitted preparation producer initializes this store as the writer;
+// the prepared cell handoff reads it through the ownership gate below. No CLI cutover is
+// justified by these entry points without that producer and its attack controls.
+data revision_input_store_root: MaterializationStoreRoot = PersistentInstanceWorkspace { scope: RevisionPreparation }
+
+fn revision_input_store_owner_admits(reading: StoreOwnershipReading) -> Bool {
+  match reading {
+    OwnershipUnread { reason: _ } => false
+    OwnershipRead { ownership: StoreRootOwned } => false
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: uid, mode: mode } } =>
+      uid == fleet_posix_materialization_writer_user.uid && match file_mode_of_octal_text(text: mode as String) {
+        Absent => false
+        Present { value: permissions } => !permissions.group.write && !permissions.other.write
+      }
+  }
+}
+
+fn revision_input_store_observed_owner_admits() -> Bool {
+  revision_input_store_owner_admits(reading: read_store_ownership(path: materialization_store_root_path(root: revision_input_store_root)))
+}
+
+fn revision_input_store_initialize_as_writer() -> Result<LocalStoreInitialization, String> {
+  match run_shell_command_capture(command: id_uid_command(), transport: LocalExec) {
+    ProcessOutputAbsent => Err { value: "materializer uid was not observed" }
+    ProcessRefused { exit_code: _, stderr: why } => Err { value: concat("materializer uid unreadable: ", why) }
+    ProcessOutputPresent { text: uid } =>
+      if trim(s: uid) != to_string(fleet_posix_materialization_writer_user.uid) {
+        Err { value: "only the dedicated materializer may initialize revision inputs" }
+      } else if !revision_input_store_observed_owner_admits() {
+        Err { value: "revision input store ownership does not admit the materializer" }
+      } else {
+        Ok { value: local_store_initialize(root: revision_input_store_root, instance_label: "revision-inputs", budgets: materialization_store_revision_input_budgets) }
+      }
+  }
+}
+
+// Root cannot silently initialize an absent store: only the writer initializes it. This
+// opening verifies the marker and bounded family catalog after the ownership observation.
+fn revision_input_store_open_owned() -> Result<LocalStoreOpening, String> {
+  if !revision_input_store_observed_owner_admits() {
+    Err { value: "revision input store has unreadable or inadmissible ownership" }
+  } else {
+    Ok { value: local_store_open(root: revision_input_store_root, budgets: materialization_store_revision_input_budgets) }
+  }
+}

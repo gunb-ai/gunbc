@@ -1,12 +1,16 @@
 module gunbc.host.host_effect_realize
 
 import extdeps.access.posix { PosixUser }
-import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverseSetgid }
 import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_revision_preparer_user, fleet_posix_materialization_writer_user,
   fleet_revision_principal_home,
 }
 import gunbc.fleet.fleet_revision_accounts { revision_account_converge, revision_account_possible_commands }
+import gunbc.runner.runner_revision_input_store { revision_input_store_root }
+import std.materialization_store_grant { materialization_store_root_path, materialization_store_staging_root_path }
+import gunbc.persistent_instance_roots { persistent_instance_scope_root, RevisionPreparation }
+
 
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text, admitted_scratch_path }
 
@@ -10238,6 +10242,17 @@ fn microvm_controller_revision_job_steps(release_dir: String, guest_kernel_pinne
               mode: declared_directory_mode(m: DirectoryOwnerOnly), owner: user.name, group: user.name, path: fleet_revision_principal_home(user: user) as String))),
         ]),
       [
+        revision_job_owned_dir_step(name: "revision-job preparation base", path: persistent_instance_scope_root(scope: RevisionPreparation)),
+        microvm_controller_argv_step(name: "revision-job materialization store",
+          command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
+            mode: declared_directory_mode(m: DirectoryOwnerOnly),
+            owner: fleet_posix_materialization_writer_user.name, group: fleet_posix_materialization_writer_user.name,
+            path: materialization_store_root_path(root: revision_input_store_root)))),
+        microvm_controller_argv_step(name: "revision-job preparation staging",
+          command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
+            mode: declared_directory_mode(m: DirectoryOwnerAllGroupTraverseSetgid),
+            owner: fleet_posix_revision_preparer_user.name, group: fleet_posix_materialization_writer_user.name,
+            path: materialization_store_staging_root_path(root: revision_input_store_root)))),
         revision_job_owned_dir_step(name: "revision-job image dir", path: root),
         revision_job_install_file_step(name: "revision-job kernel install", source: runner_guest_base_artifact_path(root: staging, artifact: runner_guest_kernel_artifact), dest: kernel),
         MicrovmControllerVerifyStep {

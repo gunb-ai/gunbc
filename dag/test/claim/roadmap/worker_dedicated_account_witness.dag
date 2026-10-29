@@ -13,6 +13,9 @@ import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mo
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessRefused }
 import gunbc.fleet.fleet_revision_accounts { revision_account_converge }
+import gunbc.runner.runner_revision_input_store { revision_input_store_owner_admits }
+import gunbc.runner.runner_microvm_cell_readiness_store { OwnershipRead, OwnershipUnread }
+import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
 import extdeps.tools.findutils { find_program }
 // THE TWO ACTION WORDS, so the pairing claim can tell a re-group walk from a mode walk by WHAT IT RUNS
 // rather than by its position in a list -- a model that swapped the two families would keep its count and
@@ -1546,4 +1549,17 @@ test fn revision_account_convergence_refuses_wrong_uid_and_extra_groups() -> Boo
       }
     }
   }
+}
+
+// Ownership observations are supplied here; the wet observation remains read_store_ownership.
+// A correct uid with writable group/other bits is not an exclusive writer boundary.
+test fn revision_input_store_admits_only_its_writer_and_no_other_write_bits() -> Bool {
+  let writer = fleet_posix_materialization_writer_user
+  revision_input_store_owner_admits(reading: OwnershipRead { ownership: StoreNotRootOwned { owner_uid: writer.uid, mode: "700" } })
+    && !revision_input_store_owner_admits(reading: OwnershipRead { ownership: StoreNotRootOwned { owner_uid: writer.uid, mode: "wat" } })
+    && !revision_input_store_owner_admits(reading: OwnershipUnread { reason: "stat refused" })
+    && !revision_input_store_owner_admits(reading: OwnershipRead { ownership: StoreRootOwned })
+    && !revision_input_store_owner_admits(reading: OwnershipRead { ownership: StoreNotRootOwned { owner_uid: fleet_posix_revision_preparer_user.uid, mode: "700" } })
+    && !revision_input_store_owner_admits(reading: OwnershipRead { ownership: StoreNotRootOwned { owner_uid: writer.uid, mode: "770" } })
+    && !revision_input_store_owner_admits(reading: OwnershipRead { ownership: StoreNotRootOwned { owner_uid: writer.uid, mode: "707" } })
 }
