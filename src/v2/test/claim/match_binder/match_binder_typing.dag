@@ -480,7 +480,7 @@ test fn mbt_a_host_text_scrutinee_refuses_holds() -> Bool {
 // it replaces, which could not say WHERE in its module a reason was reported.
 data mbt_program_src: String = mbt_decls
   + "fn g(h: Outcome<ParseArtifact>, fallback: ParseArtifact) -> ParseTree {\n  match h {\n" + mbt_arms + "  }\n}\n\n"
-  + "fn g_constructor(h: Outcome<ParseArtifact>, fallback: ParseArtifact) -> ParseTree {\n  match h {\n    Rejected { diagnostics: r } => Rejected { diagnostics: r }\n    Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }\n  }\n}\n\n"
+  + "fn g_constructor(h: Outcome<ParseArtifact>, fallback: ParseArtifact) -> Outcome<ParseTree> {\n  match h {\n    Rejected { diagnostics: r } => Rejected { diagnostics: r }\n    Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }\n  }\n}\n\n"
   + "fn parse_module_prepared(tokens: Int) -> Outcome<ParseArtifact> {\n  Rejected { diagnostics: NonEmptyDiagnostics { head: tokens } }\n}\n\nfn g_tokenize_parse(text: Int) -> Outcome<ParseTree> {\n  match parse_module_prepared(tokens: text) {\n    Rejected { diagnostics: r } => Rejected { diagnostics: r }\n    Accepted { value: artifact, diagnostics: d } =>\n      Accepted { value: artifact.tree, diagnostics: d }\n  }\n}\n"
 
 type MbtDeclReading {
