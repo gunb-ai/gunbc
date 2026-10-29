@@ -1,0 +1,176 @@
+module test.claim.roadmap.belt_worktree_restore_wet_witness
+
+// THE INHABITANCE CLAIM FOR THE REQUEST-PENDING WORKTREE RESTORE (#15362, DESIGN §3 pairing:
+// "supplying inputs may not remove the last execution of the real path").
+//
+// The live wedge this PR clears: a request-pending attempt's worktree was RECLAIMED while its claim
+// was settled terminal:recovered, so the door's re-delivery refused at the continuation ("the prior
+// attempt's worktree head cannot be observed", git exit 125). The restore step is what re-materialises
+// that tree on spawn, but no claim executed it against a real repository — every other leg is hermetic.
+// This file arms the REAL route: a real git repo whose refs/heads/dispatch/<node>-a<key> row is the
+// ledger (the ledger IS git for-each-ref on that namespace), a real provider-events.jsonl stream whose
+// request-pending event the recovery reading parses back as resumable (a worktree-INDEPENDENT fact), a
+// REAL absent worktree, and a real `git worktree add`. It asserts AttemptWorktreeRestored and that the
+// tree ends up at the branch head, plus the two fail-closed arms a wet git fixture can reach faithfully
+// (tree already present -> NotNeeded; no resumable request-pending recovery -> NotNeeded).
+//
+// The BranchAbsent and ledger/pane-unknown arms need a dangling ref / an unobservable host a wet git
+// fixture cannot forge faithfully; those are covered hermetically in roadmap_belt_actuate_witness (the
+// standing collapse and the branch check) and attempt_worktree_claim_wet (the standing classifier).
+
+import std.logic { Bool }
+import std.types { String, FilePath, List, NonEmptyStr, join, trim }
+import std.filesystem { path_parent_directory }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
+}
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  host_exec_argv, dispatch_worktree_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_branch_name,
+}
+import gunbc.roadmap.roadmap_belt_actuate {
+  belt_exec, ExecOk, ExecFailed, ExecRefused,
+  belt_attempt_worktree_restore_for_instance, AttemptWorktreeRestore,
+  AttemptWorktreeRestored, AttemptWorktreeNotNeeded, AttemptWorktreeBranchAbsent, AttemptWorktreeRestoreRefused,
+}
+import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
+import gunbc.harness.harness_session_recovery { SessionValidated, session_event_request_pending }
+
+fn fresh_instance(tag: String) -> HostDashboardInstance {
+  let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_wt_restore_wet_", tag, ".XXXXXX"], "")).path
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["wt-restore-wet-", tag], "") as NonEmptyStr),
+    instance_id: join(["wt-restore-wet-", tag], "") as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18101,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn git_ok(dir: String, args: List<String>) -> Bool {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir) {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+fn git_out(dir: String, args: List<String>) -> String {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir) {
+    ExecOk { stdout } => trim(stdout)
+    ExecFailed { program: _, exit_code: _, stderr: _ } => ""
+    ExecRefused { program: _, reason: _ } => ""
+  }
+}
+
+fn mkdir_p(dir: String) -> Bool {
+  shell.Mkdir.Parents(path: dir as FilePath).success
+}
+
+// Lay a real repo at the instance's repo_root with one commit, then create the dispatch branch that IS
+// the ledger row for (node, attempt_key): the ledger is git for-each-ref on refs/heads/dispatch/.
+fn lay_repo_with_dispatch_branch(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
+  let root = instance.instance_root as String
+  let repo = instance.repo_root as String
+  git_ok(dir: root, args: ["init", "-q", repo])
+    && git_ok(dir: repo, args: ["config", "user.name", "witness"])
+    && git_ok(dir: repo, args: ["config", "user.email", "witness@invalid"])
+    && git_ok(dir: repo, args: ["config", "commit.gpgsign", "false"])
+    && Filesystem.Write(path: join([repo, "/file.txt"], ""), content: "base\n").success
+    && git_ok(dir: repo, args: ["add", "-A"])
+    && git_ok(dir: repo, args: ["commit", "-q", "-m", "base"])
+    && git_ok(dir: repo, args: ["branch", dispatch_branch_name(node_id: node, attempt_key: attempt_key)])
+}
+
+// Seed the worker's provider-events.jsonl with a single resumable request-pending event at the exact
+// path the recovery reading reads; create the parent directory first. A SessionValidated validation
+// makes the event resumable with no interrupted calls — the shape the restore gate reads.
+fn seed_request_pending_events(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
+  let events_path = dispatch_attempt_events_path_for_instance(instance: instance, node_id: node, attempt_key: attempt_key)
+  mkdir_p(path_parent_directory(path: events_path))
+    && Filesystem.Write(path: events_path, content: join([session_event_request_pending(round: 7, cause: "the pool front answered 429 (no capacity)", since: 1000, validation: SessionValidated), "\n"], "")).success
+}
+
+fn prepare_claim_store(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
+  mkdir_p(worktree_claim_slots_root_of(instance: instance) as String)
+    && mkdir_p(path_parent_directory(path: dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: attempt_key)))
+}
+
+fn cleaned(instance: HostDashboardInstance, verdict: Bool) -> Bool {
+  shell.Remove.RecursiveForce(path: instance.instance_root as String).success && verdict
+}
+
+fn is_restored(step: AttemptWorktreeRestore) -> Bool {
+  match step {
+    AttemptWorktreeRestored { worktree_path: _, branch: _ } => true
+    AttemptWorktreeNotNeeded => false
+    AttemptWorktreeBranchAbsent { branch: _, detail: _ } => false
+    AttemptWorktreeRestoreRefused { detail: _ } => false
+  }
+}
+
+fn is_not_needed(step: AttemptWorktreeRestore) -> Bool {
+  match step {
+    AttemptWorktreeRestored { worktree_path: _, branch: _ } => false
+    AttemptWorktreeNotNeeded => true
+    AttemptWorktreeBranchAbsent { branch: _, detail: _ } => false
+    AttemptWorktreeRestoreRefused { detail: _ } => false
+  }
+}
+
+// (1) THE INHABITANCE: a request-pending resumable lineage whose worktree is absent, with its branch
+// present, is RESTORED — the real `git worktree add` runs and the tree ends up at the branch head.
+test fn a_request_pending_missing_tree_is_restored_at_the_branch_head() -> Bool {
+  let instance = fresh_instance(tag: "restore")
+  let node = "n-wt-restore"
+  let key = "wt-restore-1"
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
+  let branch = dispatch_branch_name(node_id: node, attempt_key: key)
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: key)
+  let head_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+  let branch_sha = git_out(dir: instance.repo_root as String, args: ["rev-parse", branch])
+  let restored = is_restored(step)
+    && head_sha != ""
+    && head_sha == branch_sha
+  cleaned(instance: instance, verdict: laid && restored)
+}
+
+// (2) FAIL-CLOSED (already-present tree): the same lineage whose worktree is already checked out is
+// NotNeeded — the restore must not run `git worktree add` over a live tree.
+test fn an_already_present_tree_is_not_needed() -> Bool {
+  let instance = fresh_instance(tag: "restore-present")
+  let node = "n-wt-present"
+  let key = "wt-present-1"
+  let branch = dispatch_branch_name(node_id: node, attempt_key: key)
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: key)
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+    && mkdir_p(path_parent_directory(path: worktree))
+    && git_ok(dir: instance.repo_root as String, args: ["worktree", "add", "--force", worktree, branch])
+  let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
+  cleaned(instance: instance, verdict: laid && is_not_needed(step))
+}
+
+// (3) FAIL-CLOSED (no resumable request-pending recovery): no provider-events stream means the
+// recovery reads as none, so the restore is NotNeeded and never touches a tree.
+test fn a_lineage_without_a_request_pending_stream_is_not_needed() -> Bool {
+  let instance = fresh_instance(tag: "restore-none")
+  let node = "n-wt-none"
+  let key = "wt-none-1"
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
+  cleaned(instance: instance, verdict: laid && is_not_needed(step))
+}
