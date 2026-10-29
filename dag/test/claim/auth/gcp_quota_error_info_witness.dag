@@ -1,6 +1,6 @@
 module test.claim.auth.gcp_quota_error_info_witness
 
-import std.types { Bool, Int, String }
+import std.types { Bool, EpochSecs, String }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { string_contains }
@@ -17,7 +17,7 @@ data body_without_error_info: String = "{\"error\":{\"code\":429,\"message\":\"s
 data body_without_window_start: String = "{\"error\":{\"code\":429,\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"RATE_LIMIT_EXCEEDED\",\"domain\":\"googleapis.com\",\"metadata\":{\"quota_unit\":\"1/min\"}}]}}"
 
 // Supplied reduction of the instant (the clock's fact at the real route): "T0" is epoch 1000.
-fn fake_epoch(s: String) -> Int? { if s == "T0" { Present { value: 1000 } } else { none } }
+fn fake_epoch(s: String) -> EpochSecs? { if s == "T0" { Present { value: 1000 } } else { none } }
 
 test fn a_429_body_with_error_info_decodes_its_quota_facts() -> Bool {
   match decode_429_error_info(body: body_with_error_info) {

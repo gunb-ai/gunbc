@@ -30,7 +30,7 @@ import std.algebra { string_contains }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { minutes_per_hour, second, second_count, seconds_per_day, seconds_per_minute, Second }
 import std.optional { Present, Absent }
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochSecs, Int, List, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.emit { JsonArray, JsonValue }
@@ -214,8 +214,8 @@ fn quota_window_for(info: GcpQuotaErrorInfo) -> Second {
 // governs and the published row is the fallback.
 fn quota_retry_wait_for(
   info: GcpQuotaErrorInfo,
-  now_secs: Int,
-  to_epoch_secs: fn(String) -> Int?
+  now_secs: EpochSecs,
+  to_epoch_secs: fn(String) -> EpochSecs?
 ) -> GcpQuotaRetryWait {
   match info.window_start_time {
     Absent => QuotaWaitRefused { missing: "google.rpc.ErrorInfo.metadata.window_start_time is absent; the quota window cannot be anchored" }
@@ -223,11 +223,11 @@ fn quota_retry_wait_for(
       Absent => QuotaWaitRefused { missing: "google.rpc.ErrorInfo.metadata.window_start_time is not a reducible instant" }
       Present { value: start_secs } => {
         let window = quota_window_for(info: info)
-        let opens_at = start_secs + (second_count(s: window) as Int)
-        if opens_at <= now_secs {
+        let opens_at = (start_secs as Int) + (second_count(s: window) as Int)
+        if opens_at <= (now_secs as Int) {
           QuotaWaitNow
         } else {
-          match checked_int_to_nat(n: opens_at - now_secs) {
+          match checked_int_to_nat(n: opens_at - (now_secs as Int)) {
             Present { value: secs } => QuotaWaitBefore { wait: second(count: secs) }
             Absent => QuotaWaitRefused { missing: "the derived quota wait does not fit a whole-second sleep" }
           }
