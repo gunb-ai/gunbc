@@ -529,8 +529,6 @@ pub type PowerCordCount = Rc<Measure<Count, One, Nat>>;
 
 pub type MemoryControllerCount = Rc<Measure<Count, One, Nat>>;
 
-pub type SdrUndecodedLineCount = Rc<Measure<Count, One, Nat>>;
-
 pub type ObservationRoundCount = Rc<Measure<Count, One, Nat>>;
 
 pub type FanCount = Rc<Measure<Count, One, Nat>>;
@@ -1647,17 +1645,6 @@ pub fn cpu_core_count(count: Nat) -> CpuCoreCount {
 }
 
 pub fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
-    measure_count(c)
-}
-
-pub fn sdr_undecoded_line_count(count: Nat) -> SdrUndecodedLineCount {
-    Rc::new(Measure {
-        count: count.clone(),
-        _phantom: std::marker::PhantomData,
-    })
-}
-
-pub fn sdr_undecoded_line_count_value(c: SdrUndecodedLineCount) -> Nat {
     measure_count(c)
 }
 
