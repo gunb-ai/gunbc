@@ -38,7 +38,7 @@ import extdeps.cloud.gcp.storage { GcsBucketWire }
 import gunbc.auth.gcp_iam_bootstrap_journal { JournalSubject, JournalPoolFirstPublication, JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, JournalListing, JournalListed, JournalListingUnreadable, journal_list, journal_mark, journal_mark_outcome, JournalMarkOutcome, JournalMarkRecorded, JournalMarkAlreadyPresent, JournalMarkRefused, journal_listed_consents, journal_has, journal_object_name, journal_mark_named }
 import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_journal_bucket, iam_bootstrap_journal_bucket_location, iam_bootstrap_journal_bucket_uniform_access, iam_bootstrap_journal_bucket_public_access_prevention,
-  iam_bootstrap_trust_root_tag_key_namespaced, iam_bootstrap_trust_root_tag_value_namespaced, iam_bootstrap_trust_root_tag_key_parent, iam_bootstrap_trust_root_tag_key_short, iam_bootstrap_trust_root_tag_value_short, iam_bootstrap_trust_root_tag_parents,
+  iam_bootstrap_trust_root_tag_key_namespaced, iam_bootstrap_trust_root_tag_value_namespaced, iam_bootstrap_trust_root_tag_key_parent, iam_bootstrap_trust_root_tag_key_short, iam_bootstrap_trust_root_tag_value_short,
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_trust_bindings, iam_bootstrap_capability_bindings_over, iam_bootstrap_root_ceremony_bindings_over,
@@ -48,7 +48,7 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_tag_value_detach_permissions, TagDetachProbeVerdict, TagDetachAbsent, TagDetachUndiscriminating, TagDetachHeld, tag_detach_probe_verdict,
   TrustRootTagAdmission, TrustRootTagAdmitted, TrustRootTagRefused, trust_root_tag_key_admission, trust_root_tag_value_admission,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
-  IamBootstrapDenyPolicy, iam_bootstrap_deny_policies, iam_bootstrap_deny_rules_match,
+  IamBootstrapDenyPolicy, iam_bootstrap_deny_policies, iam_bootstrap_deny_rules_match, deny_rules_text,
   iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_ceremony_identity_population,
   iam_bootstrap_journal_cells, ceremony_cell_phrase, iam_bootstrap_ceremony_identity_population_over, iam_bootstrap_identity_population_over, IamBootstrapIdentity, iam_bootstrap_bound_secrets,
 }
@@ -81,7 +81,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
 type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapTrustRootTags | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapJournalBucket | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
 
-data iam_bootstrap_stage_order: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapJournalBucket, BootstrapTrustRootTags, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
+data iam_bootstrap_stage_order: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapTrustRootTags, BootstrapRoles, BootstrapJournalBucket, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
 
 // A STAGE IS OWED IFF ITS DECLARED POPULATION IS NONEMPTY. THE POPULATIONS THIS PREDICATE READS ARE
 // THE SAME ONES THE STAGES EXECUTE (iam_bootstrap_execute_stage, iam_bootstrap_stage_bindings) AND THE
@@ -126,7 +126,7 @@ fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBoo
     BootstrapDeny => [BootstrapIdentities, BootstrapTrustRootTags]
     BootstrapAuthorityCleanup => [BootstrapDeny]
     BootstrapCapabilities => [BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapJournalBucket]
-    BootstrapJournalBucket => [BootstrapIdentities]
+    BootstrapJournalBucket => [BootstrapRoles]
     BootstrapProbeAuthority => [BootstrapCapabilities]
     BootstrapPrivilegeReadback => [BootstrapCapabilities, BootstrapTrustRootTags, BootstrapProbeAuthority]
     BootstrapProbeCleanup => [BootstrapProbeAuthority]
@@ -436,7 +436,7 @@ fn iam_bootstrap_ensure_deny(token: Secret) -> String {
 fn iam_bootstrap_ensure_deny_bounded(policy: IamBootstrapDenyPolicy, token: Secret, remaining: Int) -> String {
   match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id) {
     RestAnswered { answer: seen } =>
-      if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: policy.rules) { "" } else { concat(policy.policy_id as String, ": existing bootstrap deny policy differs; refusing to weaken or adopt it") }
+      if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: policy.rules) { "" } else { join([policy.policy_id as String, ": existing bootstrap deny policy differs; refusing to weaken or adopt it; read: ", deny_rules_text(rules: seen.rules), "; declared: ", deny_rules_text(rules: Present { value: policy.rules })], "") }
     RestRefused { refusal: seen_refusal } =>
       if !outcome_is_not_found(o: seen_refusal) { rest_refusal_text(o: seen_refusal) }
       else {
@@ -712,30 +712,56 @@ fn ensure_trust_root_tag_value(key_name: NonEmptyStr, token: Secret) -> TagResou
   }
 }
 
-fn tag_bound_on(parent: String, value_name: NonEmptyStr, token: Secret) -> TagBindingReading? {
+// The listing's refusal is carried, not dropped: on 2026-10-28 (receipt iam-ceremony-20261028T130224Z)
+// the stage refused "tag bindings unreadable" with the upstream's cause discarded.
+type TagBindingRead = TagBindingReadAnswered { reading: TagBindingReading } | TagBindingReadRefused { cause: String }
+
+// The account parent is requested as //iam.googleapis.com/projects/<project id>/serviceAccounts/<uniqueId>;
+// the same resource under the project number is the other spelling the listing may answer.
+fn tag_parent_spellings(parent: String) -> List<String> {
+  let by_id = concat("//iam.googleapis.com/projects/", fleet_secrets_project_id as String)
+  let by_number = concat("//iam.googleapis.com/projects/", fleet_secrets_project_number)
+  if starts_with(s: parent, prefix: concat(by_id, "/")) { [parent, concat(by_number, parent.substring(start: by_id.length(), end: parent.length()))] } else { [parent] }
+}
+
+fn tag_bound_on(parent: String, value_name: NonEmptyStr, token: Secret) -> TagBindingRead {
   match gcp.ResourceManager.ListTagBindings(access_token: token, parent: parent as NonEmptyStr) {
-    RestRefused { refusal: _ } => none
-    RestAnswered { answer: l } => Present { value: trust_root_tag_binding_reading(parent: parent, value_name: value_name, bindings: l.tag_bindings, next_page_token: l.next_page_token) }
+    RestRefused { refusal } => TagBindingReadRefused { cause: rest_refusal_text(o: refusal) }
+    RestAnswered { answer: l } => TagBindingReadAnswered { reading: trust_root_tag_binding_reading(parents: tag_parent_spellings(parent: parent), value_name: value_name, bindings: l.tag_bindings, next_page_token: l.next_page_token) }
   }
 }
 
 fn ensure_trust_root_tag_binding(parent: String, value_name: NonEmptyStr, token: Secret) -> TrustRootTagsOutcome {
   match tag_bound_on(parent: parent, value_name: value_name, token: token) {
-    Absent => trust_root_tags_refused(reason: concat(parent, ": tag bindings unreadable"))
-    Present { value: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding listing has another page and no exact row; a partial listing is not absence"))
-    Present { value: TagBindingEstablished } => TrustRootTagsBound
-    Present { value: TagBindingAbsent } => match gcp.ResourceManager.CreateTagBinding(access_token: token, parent: parent as NonEmptyStr, tag_value: value_name) {
+    TagBindingReadRefused { cause } => trust_root_tags_refused(reason: join([parent, ": tag bindings unreadable: ", cause], ""))
+    TagBindingReadAnswered { reading: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding listing has another page and no exact row; a partial listing is not absence"))
+    TagBindingReadAnswered { reading: TagBindingEstablished } => TrustRootTagsBound
+    TagBindingReadAnswered { reading: TagBindingAbsent } => match gcp.ResourceManager.CreateTagBinding(access_token: token, parent: parent as NonEmptyStr, tag_value: value_name) {
       RestRefused { refusal } => trust_root_tags_refused(reason: join([parent, ": tag binding create refused: ", rest_refusal_text(o: refusal)], ""))
       RestAnswered { answer: a } => match a.error {
         Present { value: e } => trust_root_tags_refused(reason: join([parent, ": tag binding failed: ", match e.message { Present { value: m } => m  Absent => "no message" }], ""))
         Absent => match tag_bound_on(parent: parent, value_name: value_name, token: token) {
-          Present { value: TagBindingEstablished } => TrustRootTagsBound
-          Present { value: TagBindingAbsent } => trust_root_tags_refused(reason: concat(parent, ": tag binding not yet visible on readback; rerun the ceremony once it is"))
-          Present { value: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding readback listing has another page and no exact row; a partial listing is not absence"))
-          Absent => trust_root_tags_refused(reason: concat(parent, ": tag binding readback unreadable"))
+          TagBindingReadAnswered { reading: TagBindingEstablished } => TrustRootTagsBound
+          TagBindingReadAnswered { reading: TagBindingAbsent } => trust_root_tags_refused(reason: concat(parent, ": tag binding not yet visible on readback; rerun the ceremony once it is"))
+          TagBindingReadAnswered { reading: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding readback listing has another page and no exact row; a partial listing is not absence"))
+          TagBindingReadRefused { cause } => trust_root_tags_refused(reason: join([parent, ": tag binding readback unreadable: ", cause], ""))
         }
       }
     }
+  }
+}
+
+// A service account's tag-binding parent names the account by its numeric uniqueId, not its email:
+// on 2026-10-28 (receipt iam-ceremony-20261028T131118Z) ListTagBindings on the email form answered 403
+// "iam.serviceAccounts.listTagBindings required (or the resource may not exist in this location)" to a
+// project owner. The id is read from the account, never transcribed.
+type TrustRootTagParent = TrustRootTagParentRead { parent: String } | TrustRootTagParentRefused { reason: String }
+
+fn trust_root_tag_parent(account: ServiceAccountEmail, token: Secret) -> TrustRootTagParent {
+  match gcp.IamAdmin.GetServiceAccount(access_token: token, project_id: fleet_secrets_project_id, sa_email: account) {
+    RestRefused { refusal } => TrustRootTagParentRefused { reason: join([account as String, ": account unreadable for its tag-binding parent: ", rest_refusal_text(o: refusal)], "") }
+    RestAnswered { answer: a } => if a.email != account || a.unique_id == "" { TrustRootTagParentRefused { reason: concat(account as String, ": account read answered another account or no uniqueId") } }
+      else { TrustRootTagParentRead { parent: join(["//iam.googleapis.com/projects/", fleet_secrets_project_id as String, "/serviceAccounts/", a.unique_id], "") } }
   }
 }
 
@@ -746,9 +772,12 @@ fn iam_bootstrap_ensure_trust_root_tags(token: Secret) -> TrustRootTagsOutcome {
     TagResourcePresent { name: key } => match ensure_trust_root_tag_value(key_name: key, token: token) {
       TagResourceRefused { reason } => trust_root_tags_refused(reason: reason)
       TagResourcePending { what } => trust_root_tags_refused(reason: concat(what, " creation is not yet done; rerun the ceremony once it is"))
-      TagResourcePresent { name: value } => fold(iam_bootstrap_trust_root_tag_parents(), init: TrustRootTagsBound, f: (acc, parent) => match acc {
+      TagResourcePresent { name: value } => fold(iam_bootstrap_trust_root_tagged_accounts(), init: TrustRootTagsBound, f: (acc, account) => match acc {
         TrustRootTagsRefused { reason: _ } => acc
-        TrustRootTagsBound => ensure_trust_root_tag_binding(parent: parent, value_name: value, token: token)
+        TrustRootTagsBound => match trust_root_tag_parent(account: account, token: token) {
+          TrustRootTagParentRefused { reason } => trust_root_tags_refused(reason: reason)
+          TrustRootTagParentRead { parent } => ensure_trust_root_tag_binding(parent: parent, value_name: value, token: token)
+        }
       })
     }
   }
@@ -767,7 +796,7 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
     BootstrapDeny => fold(iam_bootstrap_deny_policies(), init: "", f: (prior, d) => if prior != "" { prior } else {
       match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: d.policy_id) {
         RestAnswered { answer: seen } =>
-          if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: d.rules) { "" } else { concat(d.policy_id as String, ": existing deny policy differs; no authority granted") }
+          if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: d.rules) { "" } else { join([d.policy_id as String, ": existing deny policy differs; no authority granted; read: ", deny_rules_text(rules: seen.rules), "; declared: ", deny_rules_text(rules: Present { value: d.rules })], "") }
         RestRefused { refusal: seen_refusal } =>
           if !outcome_is_not_found(o: seen_refusal) { rest_refusal_text(o: seen_refusal) }
           else {
@@ -1327,7 +1356,8 @@ fn iam_bootstrap_current_authority_live() -> Bool {
 fn iam_bootstrap_deny_creation_readback(policy: IamBootstrapDenyPolicy, token: Secret, remaining: Int) -> String {
   match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id) {
     RestAnswered { answer: check } =>
-      if iam_bootstrap_deny_rules_match(observed: check.rules, declared: policy.rules) { "" } else { concat(policy.policy_id as String, ": created deny policy differs; no capabilities granted") }
+      if iam_bootstrap_deny_rules_match(observed: check.rules, declared: policy.rules) { "" }
+      else { join([policy.policy_id as String, ": created deny policy differs; no capabilities granted; read: ", deny_rules_text(rules: check.rules), "; declared: ", deny_rules_text(rules: Present { value: policy.rules })], "") }
     RestRefused { refusal: check_refusal } =>
       if outcome_is_not_found(o: check_refusal) && remaining > 0 {
         if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
@@ -1423,8 +1453,8 @@ fn pool_initialization_readback(reading: PolicyReading, cells: List<GcpIamBindin
   match reading {
     PolicyObserved { policy } => if iam_bootstrap_pool_initialized(policy: policy, cells: cells) { PoolInitReadbackExact }
       else { PoolInitReadbackRefused { reason: "pool initialization readback differs; workflow trust withheld" } }
-    PolicyResourceAbsent => PoolInitReadbackRefused { reason: "pool initialization readback lacks its policy revision; workflow trust withheld" }
-    PolicyUnreadable { cause: _ } => PoolInitReadbackRefused { reason: "pool initialization readback lacks its policy revision; workflow trust withheld" }
+    PolicyResourceAbsent => PoolInitReadbackRefused { reason: "pool initialization readback found no pool policy; workflow trust withheld" }
+    PolicyUnreadable { cause } => PoolInitReadbackRefused { reason: concat("pool initialization readback lacks its policy revision; workflow trust withheld: ", cause) }
   }
 }
 

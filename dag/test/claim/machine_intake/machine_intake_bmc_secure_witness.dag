@@ -1223,6 +1223,7 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
   PublishedCredentialProbeUnmatched { channel: channel_eight },
   PublishedCredentialRetainedNotAdmittedByProdRiskPolicy,
   PublishedCredentialNotRetained { channel: channel_eight },
+  PhaseReceiptForAnotherSubject { expected: intake_subject, found: other_attempt_subject },
 ]
 
 // WHAT THIS ROSTER IS, AND WHAT IT IS NOT. `every_refusal_cause` is a
@@ -1267,6 +1268,7 @@ fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
     PublishedCredentialProbeUnmatched { channel: _ } => 22
     PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => 23
     PublishedCredentialNotRetained { channel: _ } => 24
+    PhaseReceiptForAnotherSubject { expected: _, found: _ } => 25
   }
 }
 

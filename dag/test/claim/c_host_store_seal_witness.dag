@@ -1,0 +1,163 @@
+module test.claim.c_host_store_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE C-HOST STORES CANNOT BE SPELLED, CAST, OR MINTED FROM A PATH OUTSIDE THEIR DECLARING FILES.
+// gunbc.host_state_root HostStateTree, gunbc.host.managed_host_unit_hold UnitHoldStore,
+// gunbc.host.host_boot_attempt_admission BootAttemptSlotStore and
+// gunbc.provisioning.install_media_store InstallMediaStore are sole_constructor; each is built only by
+// its one mint (host_state_tree / isolated_host_state_tree / unit_hold_store / boot_attempt_store /
+// install_media_store), and no mint takes a path -- the tree value carries the root, derived from the
+// ONE declaration gunbc.host_state_root host_state_tree_root. Each RED hands the compiler a module
+// outside the defining files and asserts the refusal on the real acceptance path: exactly one
+// SoleConstructorViolation on its subject. The GREEN mints every store from the PRODUCTION tree and,
+// against the shared baseline importing the same modules, draws no blocking diagnostic of its own.
+// THE SECOND SPECIMEN, under the EXISTING row gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module (per the 2026-10-25 ruling; not a new row):
+// isolated_host_state_tree is a public path-taking bypass of the same class as file_slot_store, and the
+// expecting-red probe a_production_module_minting_over_the_isolated_tree_is_accepted_today asserts it
+// is accepted TODAY and must flip with the ambient-authority lane. A plain file_slot_store over a
+// literal is likewise accepted (test.claim.slot_store_seal_witness); no rung is claimed for it.
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+// THE BASELINE every delta is judged against: imports the same modules, does nothing.
+data closure_baseline_source: String = "module probe_c_host_baseline\nimport std.types { NonEmptyStr }\nimport gunbc.host_state_root { HostStateTree, host_state_tree, isolated_host_state_tree, host_state_tree_path }\nimport gunbc.host.managed_host_unit_hold { UnitHoldStore, UnitHoldStoreReading, UnitHoldStoreReady, UnitHoldStoreUnready, unit_hold_store }\nimport gunbc.host.host_boot_attempt_admission { BootAttemptSlotStore, BootAttemptStoreReading, BootAttemptStoreReady, BootAttemptStoreUnready, boot_attempt_store }\nimport gunbc.provisioning.install_media_store { InstallMediaStore, InstallMediaStoreReading, InstallMediaStoreReady, InstallMediaStoreUnready, install_media_store }\nfn baseline(t: HostStateTree) -> NonEmptyStr {\n  host_state_tree_path(tree: t)\n}\n"
+
+// ── forged constructions (REDs) ──────────────────────────────────────────────────────────────────────
+
+data forged_tree_literal_source: String = "module probe_c_host_forged_tree_literal\nimport std.types { NonEmptyStr }\nimport gunbc.host_state_root { HostStateTree }\nfn forged(dir: NonEmptyStr) -> HostStateTree {\n  HostStateTree { root: dir }\n}\n"
+
+data forged_hold_literal_source: String = "module probe_c_host_forged_hold_literal\nimport std.types { NonEmptyStr }\nimport gunbc.host.managed_host_unit_hold { UnitHoldStore }\nfn forged(dir: NonEmptyStr) -> UnitHoldStore {\n  UnitHoldStore { root: dir }\n}\n"
+
+data forged_hold_cast_source: String = "module probe_c_host_forged_hold_cast\nimport std.types { NonEmptyStr }\nimport gunbc.host.managed_host_unit_hold { UnitHoldStore }\nfn forged(dir: NonEmptyStr) -> UnitHoldStore {\n  dir as UnitHoldStore\n}\n"
+
+// A store built around the PUBLIC plain SlotStore: the nested construction is still a spelling of the
+// sealed outer record, and the seal refuses it.
+data forged_boot_store_literal_source: String = "module probe_c_host_forged_boot_literal\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { file_slot_store }\nimport gunbc.host.host_boot_attempt_admission { BootAttemptSlotStore }\nfn forged(dir: NonEmptyStr) -> BootAttemptSlotStore {\n  BootAttemptSlotStore { slots: file_slot_store(root: dir) }\n}\n"
+
+data forged_media_literal_source: String = "module probe_c_host_forged_media_literal\nimport std.types { NonEmptyStr }\nimport gunbc.provisioning.install_media_store { InstallMediaStore }\nfn forged(dir: NonEmptyStr) -> InstallMediaStore {\n  InstallMediaStore { root: dir }\n}\n"
+
+// ── the SAME forged sources against the STRIPPED TWIN (positive controls) ────────────────────────────
+// test.fixture.c_host_store_seal.unsealed declares the same four records with the same fields and NO
+// sole_constructor keyword. Every forged source above runs a second time against the twin, with only
+// the import path swapped: the same text compiles clean and draws no SoleConstructorViolation. The
+// refusal is therefore the keyword, not the shape, the name, or the field types.
+
+data twin_tree_literal_source: String = "module probe_c_host_twin_tree_literal\nimport std.types { NonEmptyStr }\nimport test.fixture.c_host_store_seal.unsealed { HostStateTree }\nfn forged(dir: NonEmptyStr) -> HostStateTree {\n  HostStateTree { root: dir }\n}\n"
+
+data twin_hold_literal_source: String = "module probe_c_host_twin_hold_literal\nimport std.types { NonEmptyStr }\nimport test.fixture.c_host_store_seal.unsealed { UnitHoldStore }\nfn forged(dir: NonEmptyStr) -> UnitHoldStore {\n  UnitHoldStore { root: dir }\n}\n"
+
+data twin_boot_store_literal_source: String = "module probe_c_host_twin_boot_literal\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { file_slot_store }\nimport test.fixture.c_host_store_seal.unsealed { BootAttemptSlotStore }\nfn forged(dir: NonEmptyStr) -> BootAttemptSlotStore {\n  BootAttemptSlotStore { slots: file_slot_store(root: dir) }\n}\n"
+
+data twin_media_literal_source: String = "module probe_c_host_twin_media_literal\nimport std.types { NonEmptyStr }\nimport test.fixture.c_host_store_seal.unsealed { InstallMediaStore }\nfn forged(dir: NonEmptyStr) -> InstallMediaStore {\n  InstallMediaStore { root: dir }\n}\n"
+
+// NO MINT TAKES A PATH, as import-identical pairs (the census lesson from test.claim.slot_store_seal_witness:
+// a probe's blocking count scales with its import closure, so only same-import pairs compare): the OK
+// variant calls the mint with the sealed tree, the BAD variant the same call with a path. Each BAD is a
+// blocking error its OK twin does not have.
+data hold_mint_ok_source: String = "module probe_c_host_hold_mint_ok\nimport std.types { NonEmptyStr }\nimport gunbc.host_state_root { host_state_tree }\nimport gunbc.host.managed_host_unit_hold { UnitHoldStoreReading, unit_hold_store }\nfn minted() -> UnitHoldStoreReading {\n  unit_hold_store(tree: host_state_tree())\n}\n"
+
+data boot_mint_ok_source: String = "module probe_c_host_boot_mint_ok\nimport std.types { NonEmptyStr }\nimport gunbc.host_state_root { host_state_tree }\nimport gunbc.host.host_boot_attempt_admission { BootAttemptStoreReading, boot_attempt_store }\nfn minted() -> BootAttemptStoreReading {\n  boot_attempt_store(tree: host_state_tree())\n}\n"
+
+data media_mint_ok_source: String = "module probe_c_host_media_mint_ok\nimport std.types { NonEmptyStr }\nimport gunbc.host_state_root { host_state_tree }\nimport gunbc.provisioning.install_media_store { InstallMediaStoreReading, install_media_store }\nfn minted() -> InstallMediaStoreReading {\n  install_media_store(tree: host_state_tree())\n}\n"
+
+// The mint-path BAD pair members, with the tree import added so each is import-identical to its OK twin.
+data tree_mint_given_a_path_source: String = "module probe_c_host_tree_mint_path\nimport std.types { NonEmptyStr }\nimport gunbc.host_state_root { HostStateTree, host_state_tree }\nfn minted() -> HostStateTree {\n  host_state_tree(dir: \"/var/lib/gunbc\" as NonEmptyStr)\n}\n"
+
+data tree_mint_ok_source: String = "module probe_c_host_tree_mint_ok\nimport std.types { NonEmptyStr }\nimport gunbc.host_state_root { HostStateTree, host_state_tree }\nfn minted() -> HostStateTree {\n  host_state_tree()\n}\n"
+
+data hold_mint_given_a_path_source: String = "module probe_c_host_hold_mint_path\nimport std.types { NonEmptyStr }\nimport gunbc.host_state_root { host_state_tree }\nimport gunbc.host.managed_host_unit_hold { UnitHoldStoreReading, unit_hold_store }\nfn minted() -> UnitHoldStoreReading {\n  unit_hold_store(tree: \"/var/lib/gunbc\" as NonEmptyStr)\n}\n"
+
+data boot_mint_given_a_path_source: String = "module probe_c_host_boot_mint_path\nimport std.types { NonEmptyStr }\nimport gunbc.host_state_root { host_state_tree }\nimport gunbc.host.host_boot_attempt_admission { BootAttemptStoreReading, boot_attempt_store }\nfn minted() -> BootAttemptStoreReading {\n  boot_attempt_store(tree: \"/var/lib/gunbc/boot-attempts\" as NonEmptyStr)\n}\n"
+
+data media_mint_given_a_path_source: String = "module probe_c_host_media_mint_path\nimport std.types { NonEmptyStr }\nimport gunbc.host_state_root { host_state_tree }\nimport gunbc.provisioning.install_media_store { InstallMediaStoreReading, install_media_store }\nfn minted() -> InstallMediaStoreReading {\n  install_media_store(tree: \"/var/lib/gunbc/artifacts\" as NonEmptyStr)\n}\n"
+
+// THE EXPECTING-RED PAIR, same shape: OK mints from host_state_tree(), BYPASS mints from
+// isolated_host_state_tree over a literal. The bypass adds no blocking diagnostic over the lawful route
+// -- it is accepted TODAY.
+data isolated_tree_from_production_source: String = "module probe_c_host_isolated_tree_production\nimport std.types { Bool, NonEmptyStr }\nimport gunbc.host_state_root { host_state_tree, isolated_host_state_tree }\nimport gunbc.host.managed_host_unit_hold { UnitHoldStoreReading, UnitHoldStoreReady, UnitHoldStoreUnready, unit_hold_store }\nfn bypassed() -> Bool {\n  match unit_hold_store(tree: isolated_host_state_tree(dir: \"/var/lib/gunbc\" as NonEmptyStr)) {\n    UnitHoldStoreReady { store: _ } => true\n    UnitHoldStoreUnready { detail: _ } => false\n  }\n}\n"
+
+data lawful_tree_from_production_source: String = "module probe_c_host_lawful_tree_production\nimport std.types { Bool, NonEmptyStr }\nimport gunbc.host_state_root { host_state_tree, isolated_host_state_tree }\nimport gunbc.host.managed_host_unit_hold { UnitHoldStoreReading, UnitHoldStoreReady, UnitHoldStoreUnready, unit_hold_store }\nfn lawful() -> Bool {\n  match unit_hold_store(tree: host_state_tree()) {\n    UnitHoldStoreReady { store: _ } => true\n    UnitHoldStoreUnready { detail: _ } => false\n  }\n}\n"
+
+// ── the lawful routes (GREENs) ───────────────────────────────────────────────────────────────────────
+
+// Every store minted from the PRODUCTION tree -- no path appears in this module.
+data lawful_mints_source: String = "module probe_c_host_lawful_mints\nimport std.types { Bool }\nimport gunbc.host_state_root { host_state_tree }\nimport gunbc.host.managed_host_unit_hold { UnitHoldStoreReading, UnitHoldStoreReady, UnitHoldStoreUnready, unit_hold_store }\nimport gunbc.host.host_boot_attempt_admission { BootAttemptStoreReading, BootAttemptStoreReady, BootAttemptStoreUnready, boot_attempt_store }\nimport gunbc.provisioning.install_media_store { InstallMediaStoreReading, InstallMediaStoreReady, InstallMediaStoreUnready, install_media_store }\nfn lawful() -> Bool {\n  match unit_hold_store(tree: host_state_tree()) {\n    UnitHoldStoreReady { store: _ } =>\n      match boot_attempt_store(tree: host_state_tree()) {\n        BootAttemptStoreReady { store: _ } =>\n          match install_media_store(tree: host_state_tree()) {\n            InstallMediaStoreReady { store: _ } => true\n            InstallMediaStoreUnready { detail: _ } => false\n          }\n        BootAttemptStoreUnready { detail: _ } => false\n      }\n    UnitHoldStoreUnready { detail: _ } => false\n  }\n}\n"
+
+// ── tests ────────────────────────────────────────────────────────────────────────────────────────────
+
+test fn a_forged_host_state_tree_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_tree_literal_source, subject: "HostStateTree"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_unit_hold_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_hold_literal_source, subject: "UnitHoldStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_unit_hold_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_hold_cast_source, subject: "UnitHoldStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_boot_attempt_store_around_a_plain_slot_store_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_boot_store_literal_source, subject: "BootAttemptSlotStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_install_media_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_media_literal_source, subject: "InstallMediaStore"), holds: fn(n) { n == 1 }))
+}
+
+// THE STRIPPED TWIN, same sources: each compiles and draws ZERO SoleConstructorViolations.
+test fn the_same_forged_sources_pass_against_the_seal_stripped_twin() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: total_blocking_census(source: twin_tree_literal_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: twin_hold_literal_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: twin_boot_store_literal_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: twin_media_literal_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: twin_tree_literal_source, subject: "HostStateTree"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: twin_hold_literal_source, subject: "UnitHoldStore"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: twin_boot_store_literal_source, subject: "BootAttemptSlotStore"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: twin_media_literal_source, subject: "InstallMediaStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+// NO MINT TAKES A PATH: import-identical pairs -- the OK twin calls the mint with the sealed tree, the
+// BAD twin the same call with a path. Each BAD is a blocking error its OK twin does not have.
+test fn no_c_host_mint_accepts_a_path() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: tree_mint_given_a_path_source, safe: tree_mint_ok_source, holds: fn(n) { n >= 1 }),
+    blocking_delta(hostile: hold_mint_given_a_path_source, safe: hold_mint_ok_source, holds: fn(n) { n >= 1 }),
+    blocking_delta(hostile: boot_mint_given_a_path_source, safe: boot_mint_ok_source, holds: fn(n) { n >= 1 }),
+    blocking_delta(hostile: media_mint_given_a_path_source, safe: media_mint_ok_source, holds: fn(n) { n >= 1 }),
+  ])
+}
+
+test fn the_lawful_mints_from_the_production_tree_draw_no_seal_violation_and_no_new_blockers() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: lawful_mints_source, subject: "HostStateTree"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: lawful_mints_source, subject: "UnitHoldStore"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: lawful_mints_source, subject: "BootAttemptSlotStore"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: lawful_mints_source, subject: "InstallMediaStore"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: lawful_mints_source, safe: closure_baseline_source, holds: fn(n) { n <= 0 }),
+  ])
+}
+
+// EXPECTING RED (see the second-specimen note above; import-identical pair -- the OK twin mints from
+// host_state_tree(), the BYPASS twin the same call through isolated_host_state_tree over a literal):
+// asserts the acceptance TODAY, so the day the bypass stops being ambient-callable this probe fails
+// LOUDLY.
+test fn a_production_module_minting_over_the_isolated_tree_is_accepted_today() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: isolated_tree_from_production_source, subject: "UnitHoldStore"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: isolated_tree_from_production_source, safe: lawful_tree_from_production_source, holds: fn(n) { n <= 0 }),
+  ])
+}
