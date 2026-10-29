@@ -15,6 +15,8 @@ import product.printed_chassis.card_cooling_route {
   card_intake, CardIntake, Facing, RowEmpty, NoSuchCard, BlockedSide, NeighbourCard, ChassisWall,
   required_flow, required_flow_rise_check, free_air_cfm_text, bfb1012m_flow_context,
   a16_blower, a16_wall_design, a16_route_report, outlet_alignment_obligation, mm_text, rear_of_end_room, rear_of_end_governing_room, plugged_head_reach, plugged_head_admits, plugged_head_margin, cable_bend_is_still_owed, route_admission_display,
+  cable_bend_path, CableBendPath, ClearOfPrintedMaterial, MeetsPrintedSeat, PastTheReliefEdge,
+  plane_on_end_head_vs_blower_overlap_without_the_seat, plane_on_end_original_seat_ceiling, plane_on_end_head_clearance, plane_on_end_plugged_head_clears_blower, plane_on_end_fan_standoff_required, plane_on_end_standoff_admits,
 }
 import product.printed_chassis.gpu_duct {a16_blower_duct_design, blower_reach_behind, um, plane_on_end_connector_protrusion_admits, plane_on_end_readme}
 import product.printed_chassis.chassis_clearances {ChassisGap, Measured, DeclaredConservativeByOperator, EstimatedByOperator, NeedsMeasurement, card_end_rear_fan_clearance, neighbour_lane_width, side_lane_width, deck_to_lid_clearance, chassis_gaps, chassis_gap, gap_display, gap_name, gap_is_measured, gap_is_estimate, gap_may_be_printed_on, gap_room, remeasure_before_print, measured_distance, standing_origin}
@@ -23,7 +25,7 @@ import extdeps.fans.delta {delta_bfb1012m_envelope, delta_bfb1012m_rating}
 import extdeps.fans.types {RadialBlowerEnvelope}
 import std.measure {CelsiusDelta, MillilitrePerSecond, Watt, celsius_delta, millilitre_per_second, millilitre_per_second_count, micrometer, micrometer_count, watt, watt_count}
 import product.printed_chassis.chassis_clearances {GapRoom, Room, remeasure_before_print, chassis_gaps, cable_bend_keepout}
-import product.printed_chassis.gpu_duct {a16_end_face, EndFaceMeasurement, plane_on_end_duct_run_back, plane_on_end_face_clear_of_keepout, plane_on_end_keepout_crossing, plane_on_end_housing_clears_keepout, plane_on_end_connector_protrusion_admits, plane_on_end_max_admissible_protrusion}
+import product.printed_chassis.gpu_duct {a16_end_face, EndFaceMeasurement, plane_on_end_duct_run_back, plane_on_end_face_clear_of_keepout, plane_on_end_keepout_crossing, plane_on_end_housing_clears_keepout, plane_on_end_connector_protrusion_admits, plane_on_end_max_admissible_protrusion, plane_on_end_blower_bottom_standoff, plane_on_end_floor_behind_face, plane_on_end_relief_back_reach}
 
 // required_flow answers with an Optional carrier; a witness comparing two of them needs the count, and an
 // absent flow must fail the comparison rather than read as zero -- which is what this does.
@@ -73,13 +75,15 @@ fn refused_against(a: RouteAdmission, wanted: NonEmptyStr) -> Bool {
   }
 }
 
-// DERIVATION, NOT DECORATION: the plane-on-end home spends only the blower's thickness behind the plug
-// end. Delta's cited envelope is 33.0 mm thick +/- 0.5 (extdeps.fans.delta delta_bfb1012m_envelope) and
-// the duct's wall is 2 mm (product.printed_chassis.gpu_duct a16_duct_design): 37.5 mm of the operator's
-// ~70 mm. If Delta's number or the wall moves, this test moves with it -- that is the point of the literal.
+// DERIVATION, NOT DECORATION: the plane-on-end home spends the blower's thickness behind the plug end,
+// nothing more. Delta's cited envelope is 33.0 mm thick +/- 0.5 (extdeps.fans.delta delta_bfb1012m_envelope),
+// and behind the blower is the PRINTED SEAT it rests on -- 2 x 2 mm of printed edge allowance over the head's
+// worst-case reach (product.printed_chassis.gpu_duct plane_on_end_blower_bottom_standoff), not the two walls
+// this fn used to assume: 33.0 + 0.5 + 7.5 = 41.0 mm of the operator's 70 mm. If Delta's number, the wall or
+// the head moves, this test moves with it -- that is the point of the literal.
 test fn w_plane_on_end_spends_its_thickness_not_its_face_behind_the_end() -> Bool {
-  plane_on_end_run_back(b: a16_blower(), d: a16_wall_design()) == 33000 + 500 + 2 * 2000
-    && plane_on_end_run_back(b: a16_blower(), d: a16_wall_design()) <= 70000
+  plane_on_end_run_back(d: a16_wall_design()) == 33000 + 500 + 7500
+    && plane_on_end_run_back(d: a16_wall_design()) <= 59000
 }
 
 // THE SAME HOME PAYS ACROSS THE SLOT. Plane on end, the housing's LONG face (97.2 mm) spans the slot
@@ -162,10 +166,10 @@ test fn w_the_operators_bound_prints_without_becoming_a_measurement() -> Bool {
 // nobody has ruled on, and an unread gap is nobody's claim at all: both keep refusing, so the print answer
 // tracks WHO DECIDED rather than how big the number is.
 
-// THE MARGIN IS WHATEVER GOVERNS'S, AND THE REPORT SAYS WHICH. The route needs 37.5 mm behind the end.
+// THE MARGIN IS WHATEVER GOVERNS'S, AND THE REPORT SAYS WHICH. The route needs 41.0 mm behind the end.
 // Two rows speak for that span: the operator's authored allowance of 70 (2026-10-26) and a 60 mm figure
 // they read at the machine on 2026-10-29, which this repository carries with a 1 mm width on it. So the
-// margin is 59 - 37.5 = 21.5 mm, NOT the 32.5 mm the declaration alone would have granted -- and the
+// margin is 59 - 41 = 18 mm, NOT the 32.5 mm the declaration alone would have granted -- and the
 // admission says so in a field rather than in prose, because the day the re-read is superseded by a
 // caliper the number has to move on its own.
 //
@@ -179,10 +183,10 @@ test fn w_the_margin_is_the_governing_readings_and_the_report_says_which_row_gov
       gap_name(g: b) == "plug end to rear chassis fan"
       // ...but the number was set by the tighter re-read, and that is recorded, not implied
       && match gov { Present {value: row} => gap_name(g: row) == "plug end to the 120 mm chassis fan (re-read)" Absent => false }
-      && um(m: mg) == 59000 - plane_on_end_run_back(b: a16_blower(), d: a16_wall_design())
-      && um(m: mg) == 21500
+      && um(m: mg) == 59000 - plane_on_end_run_back(d: a16_wall_design())
+      && um(m: mg) == 18000
       // and neither reading's authority comes from the 73 the operator discounted
-      && um(m: mg) < 73000 - plane_on_end_run_back(b: a16_blower(), d: a16_wall_design())
+      && um(m: mg) < 73000 - plane_on_end_run_back(d: a16_wall_design())
     _ => false
   }
 }
@@ -212,9 +216,11 @@ test fn w_the_plugged_head_fits_the_relief_window_and_the_margin_is_derived() ->
 // the pass mean something rather than "the number happens to work".
 test fn w_the_head_admits_until_the_rear_room_runs_out_and_then_refuses() -> Bool {
   plane_on_end_connector_protrusion_admits(reach: plugged_head_reach(), b: a16_blower_duct_design(), d: a16_wall_design(), rear_bound: micrometer(count: 59000))
-    // THE BOUNDARY, found by execution rather than asserted: the window is 4 mm of floor + (rear - 37.5 mm
-    // of stack), so a 7 mm head fits at exactly 40.5 mm of rear room and not at 40.0. Pinning both sides of
-    // one millimetre is what makes this a boundary; a single passing point would not.
+    // THE BOUNDARY, found by execution rather than asserted: the window is the seat's depth + (rear - the
+    // 41 mm stack), so a 7 mm head fits at exactly 40.5 mm of rear room and not at 40.0. Pinning both sides
+    // of one millimetre is what makes this a boundary; a single passing point would not. The boundary did not
+    // move when the seat replaced the two plates, and w_the_head_window_is_set_by_the_stack_not_by_the_shoulder
+    // below is why: lifting the blower spends rear room and buys head room in equal measure.
     && plane_on_end_connector_protrusion_admits(reach: plugged_head_reach(), b: a16_blower_duct_design(), d: a16_wall_design(), rear_bound: micrometer(count: 40500))
     && !plane_on_end_connector_protrusion_admits(reach: plugged_head_reach(), b: a16_blower_duct_design(), d: a16_wall_design(), rear_bound: micrometer(count: 40000))
     // and a head too fat for the window refuses even with all the rear room in the world -- the check cannot
@@ -235,45 +241,76 @@ test fn w_the_cable_bend_keepout_is_still_unmeasured_and_still_owed() -> Bool {
 // THE CABLE TURN, ANSWERED BY THE PART RATHER THAN BY A TAPE. The operator read the direction -- sideways, in
 // the plane of the card end -- and the model was then asked whether printed material sits anywhere along that
 // path. It cannot answer that with one yes/no, because what is in the path changes with depth, so it answers
-// per-surface and names the surface. Pinned at three depths: a run that dips shallow meets the relief's
-// inboard edge; the run the operator described (leaving the head's outer end, 7 mm) is clear of plastic; a run
-// deeper than the relief meets the fan, which is purchased material no cut can move.
+// per-surface and names the surface, and the depth it is cleared to is a Micrometer the arm carries rather
+// than a number in prose. Pinned on both sides of each surface: inside the window's width the run is clear of
+// plastic at the head's own reach AND at a depth shallower than the seat (the cut opens the seat as well as the
+// floor, which is the whole point of the seat); a run that strays past the window's inboard edge at a shallow
+// depth meets the PRINTED SEAT at the seat's depth; and a run deeper than the relief's reach meets the fan,
+// which is purchased material no cut can move.
 test fn w_the_cable_bend_is_discharged_by_the_relief_and_names_the_surface_it_would_meet() -> Bool {
   cable_bend_is_discharged_by_geometry()
-    && match cable_bend_path(depth: plugged_head_reach()) {
-         ClearOfPrintedMaterial {cable_depth_behind_face: d, cleared_to: c, why: _} => um(m: d) == 7000 && um(m: c) == 8000
+    && match cable_bend_path(depth: plugged_head_reach(), stays_across_the_window: true) {
+         ClearOfPrintedMaterial {cable_depth_behind_face: d, cleared_to: c, why: _} =>
+           um(m: d) == 7000 && um(m: c) == um(m: plane_on_end_relief_back_reach(a16_wall_design())) && um(m: c) > um(m: d)
          _ => false
        }
-    && match cable_bend_path(depth: micrometer(count: 3000)) {
-         MeetsPrintedFloor {cable_depth_behind_face: d, floor_surface_behind_face: f, relief_edge_from_face_centre: e, which_wall: _} =>
-           um(m: d) == 3000 && um(m: f) == 4000 && um(m: e) == 22920
+    && match cable_bend_path(depth: micrometer(count: 3000), stays_across_the_window: true) {
+         ClearOfPrintedMaterial {cable_depth_behind_face: _, cleared_to: _, why: _} => true
          _ => false
        }
-    && match cable_bend_path(depth: micrometer(count: 9000)) {
-         PastTheReliefEdge {cable_depth_behind_face: d, relief_edge_from_face_centre: _, which_wall: _} => um(m: d) == 9000
+    && match cable_bend_path(depth: micrometer(count: 3000), stays_across_the_window: false) {
+         MeetsPrintedSeat {cable_depth_behind_face: d, seat_surface_behind_face: f, relief_edge_from_face_centre: e, which_wall: _} =>
+           um(m: d) == 3000 && um(m: f) == um(m: plane_on_end_blower_bottom_standoff(d: a16_wall_design())) && um(m: f) == 7500 && um(m: e) == 22920
+         _ => false
+       }
+    && match cable_bend_path(depth: micrometer(count: 12000), stays_across_the_window: true) {
+         PastTheReliefEdge {cable_depth_behind_face: d, relief_edge_from_face_centre: _, which_wall: _} => um(m: d) == 12000
          _ => false
        }
 }
 
-// WHAT THE SAME READING FOUND INSTEAD, and why it is reported rather than quietly fixed: the plugged head
-// reaches 7 mm behind the end face and the blower's housing begins 4 mm behind it across the same strip, so
-// 3 mm of head sits inside 3 mm of fan. Deepening the relief does not clear it -- cutting plastic deeper does
-// not move the fan. The standoff that WOULD clear it is derived (3 mm) and confirmed affordable against the
-// 59 mm that governs the rear, and it is deliberately not built: the fit print, plugged in, is the instrument,
-// and "1 mm clear" and "crushed 3 mm in" call for different next parts. A witness that let this row go true
-// would be certifying a part nobody has fitted.
-test fn w_the_plugged_head_overlaps_the_blower_and_the_fix_is_derived_but_not_built() -> Bool {
-  !plane_on_end_plugged_head_clears_blower()
-    && um(m: plane_on_end_head_vs_blower_overlap()) == 3000
-    && um(m: plane_on_end_fan_standoff_required()) == 3000
-    // affordable: 37.5 mm of stack + 3 mm of standoff inside the 59 mm the tightest reading leaves
+// WHAT THE SAME READING FOUND INSTEAD, and what was done about it. The plugged head reaches 7 mm behind the
+// end face; before 2026-10-29 the blower's housing began 2 mm behind it across the same strip (the pocket's
+// own wall ate the 4 mm shoulder, which is what the CAD actually built), so 5 mm of head sat inside the fan.
+// Deepening the relief could not clear it -- cutting plastic deeper moves the socket's ceiling the wrong way
+// and does not move the fan -- so the seat the blower rests on was BUILT, sized at the head's worst-case reach
+// plus the print's own edge allowance on both printed faces, and it stands 7.5 mm. The head now clears by the
+// margin the seat leaves, and the stack that pays for it is affordable inside the 59 mm that governs the rear.
+// What the fit print still owns is the fit itself: the head under the seat, the seating on the shoulder, and
+// the blower's bottom face over the open window.
+test fn w_the_plugged_head_clears_the_built_seat_and_the_seat_is_affordable() -> Bool {
+  plane_on_end_plugged_head_clears_blower()
+    // the overlap there was, and the seat that removes it: sized past the reach by printed allowances, never
+    // flush, because at exactly 3 mm it is flush and flush on a +/-0.5 mm print is zero clearance
+    && um(m: plane_on_end_head_vs_blower_overlap_without_the_seat()) == 5000
+    && um(m: plane_on_end_fan_standoff_required()) == 5500
+    && um(m: plane_on_end_blower_bottom_standoff(d: a16_wall_design())) == 7500
+    && um(m: plane_on_end_head_clearance()) == 500
+    && um(m: plane_on_end_head_clearance()) > 0
+    // affordable: 41.0 mm of stack inside the 59 mm the tightest reading leaves, 18 mm to spare
     && plane_on_end_standoff_admits()
-    && 37500 + 3000 <= 59000
+    && um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design())) <= um(m: rear_of_end_governing_room())
+    && um(m: rear_of_end_governing_room()) - um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design())) == 18000
     // and the print's own build notes say to fit-test PLUGGED -- the instrument has to be named where the
     // part is described, not only in the model
     && string_contains(s: plane_on_end_readme(), pattern: "PLUGGED IN, NOT BARE")
     // and it names what the print is checking, so the operator reading the print sheet knows what to look at
     && string_contains(s: plane_on_end_readme(), pattern: "blower")
+    // and it says the seat is IN the part, so nobody prints an earlier revision expecting the collision
+    && string_contains(s: plane_on_end_readme(), pattern: "seat")
+}
+
+// WHY THE HEAD WINDOW DID NOT MOVE WHEN THE SEAT WAS INTRODUCED, and why it will not move next time either.
+// The window a protrusion gets is the seat's depth plus whatever rear room is left after the stack; the stack
+// IS thickness + tolerance + that same seat depth. So the seat cancels, and what limits the head is the blower
+// stack and the rear room -- nothing else. Stated as arithmetic on the two fns rather than as a sentence, so
+// the day someone "optimises" the seat depth and wonders why the head verdict did not change, this says why.
+test fn w_the_head_window_is_set_by_the_stack_not_by_the_shoulder() -> Bool {
+  let room = rear_of_end_governing_room()
+  let win = plane_on_end_max_admissible_protrusion(b: a16_blower_duct_design, d: a16_wall_design(), rear_bound: room)
+  um(m: win) == um(m: room) - (33000 + 500)
+    && um(m: win) == 25500
+    && um(m: win) == um(m: plane_on_end_floor_behind_face(d: a16_wall_design())) + um(m: room) - um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design()))
 }
 
 // THE SUPERSESSION IS VISIBLE IN THE REPORT. The print is admitted on the operator's 2026-10-26 allowance;
@@ -285,7 +322,7 @@ test fn w_the_admission_report_shows_both_the_authorizing_bound_and_the_governin
   string_contains(s: report, pattern: "70 mm")
     && string_contains(s: report, pattern: "TIGHTER")
     && string_contains(s: report, pattern: "120 mm chassis fan (re-read)")
-    && string_contains(s: report, pattern: "21.5 mm")
+    && string_contains(s: report, pattern: "18 mm")
 }
 
 test fn w_the_rear_room_is_the_tightest_reading_after_each_ones_own_width() -> Bool {
@@ -303,8 +340,8 @@ test fn w_the_rear_room_is_the_tightest_reading_after_each_ones_own_width() -> B
 // rather than the print discovering 4 mm that the chassis never agreed to.
 test fn w_the_printable_part_budgets_exactly_the_admitted_run_back() -> Bool {
   um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design()))
-    == plane_on_end_run_back(b: a16_blower(), d: a16_wall_design())
-    && um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design())) == 37500
+    == plane_on_end_run_back(d: a16_wall_design())
+    && um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design())) == 41000
 }
 
 // THE SHARP OPEN POINT, PINNED AS AN ARITHMETIC FACT AND NOT AS A PARAGRAPH. The A16 end face is 97.84 mm;
@@ -329,10 +366,11 @@ test fn w_the_housing_cannot_be_placed_clear_of_the_power_keepout_on_this_card()
 // THE LATCH IS ACCOMMODATED, NOT CUT -- AND THE ARITHMETIC SAYS WHY A RELIEF AND NOT A STANDOFF. The
 // operator ruled on 2026-10-28 that the duct must accommodate the plugged 8-pin and its latch (gunbc.design_ruling
 // a16_latch_is_accommodated_not_cut), and required the choice between relief and standoff to be derived. It is
-// derived here, from the same rows the CAD uses: the stack spends two 2 mm wall plates before the housing
+// derived here, from the same rows the CAD uses: the stack spends the 7.5 mm printed seat before the housing
 // pocket, and the latch must be assumed 4 mm deep (3 mm read by eye plus this repository's 1 mm width on a
-// by-eye figure), so the floor meets the latch FLUSH -- zero clearance -- and a relief cut is needed even
-// though the latch is small. The standoff the ruling also offered computes to zero millimetres at these
+// by-eye figure). A 4 mm latch is inside the seat's own depth, so it would meet PRINTED material flush unless
+// the relief cut opens the seat across the connector's band -- which is what the part does, and why a relief
+// is needed even though the latch is small. The standoff the ruling also offered computes to zero millimetres at these
 // readings, so building one would be printing a fiction; what the same arithmetic yields instead is a
 // BOUNDARY, and these witnesses pin both sides of it.
 test fn w_the_latch_is_accommodated_by_relief_and_the_home_refuses_only_past_36_5_mm() -> Bool {
@@ -344,8 +382,8 @@ test fn w_the_latch_is_accommodated_by_relief_and_the_home_refuses_only_past_36_
   plane_on_end_connector_protrusion_admits(reach: micrometer(count: 3000), b: b, d: d, rear_bound: rear)
     && plane_on_end_connector_protrusion_admits(reach: micrometer(count: 4000), b: b, d: d, rear_bound: rear)
     && plane_on_end_connector_protrusion_admits(reach: micrometer(count: 20000), b: b, d: d, rear_bound: rear)
-  // The boundary itself, from the rows: floor 4 mm + (70 - 37.5) mm of headroom = 36.5 mm. At it, admissible;
-  // 3.5 mm past it, refused. This is the number the fit print checks against.
+  // The boundary itself, from the rows: the 7.5 mm seat + (70 - 41) mm of headroom = 36.5 mm. At it,
+  // admissible; 3.5 mm past it, refused. This is the number the fit print checks against.
     && um(m: plane_on_end_max_admissible_protrusion(b: b, d: d, rear_bound: rear)) == 36500
     && plane_on_end_connector_protrusion_admits(reach: micrometer(count: 36500), b: b, d: d, rear_bound: rear)
     && !plane_on_end_connector_protrusion_admits(reach: micrometer(count: 40000), b: b, d: d, rear_bound: rear)
@@ -612,17 +650,18 @@ test fn w_a_refused_pose_names_its_rear_shortfall_in_micrometres() -> Bool {
 
 test fn w_the_admitted_pose_is_the_one_the_printable_duct_uses() -> Bool {
   // The printed pose's rear spend comes from the SAME fn the CAD is built with, so a report cannot drift from
-  // the geometry it describes: 33 mm of thickness with its tolerance plus the pocket's two 2 mm walls = 37500,
-  // with the 97.2 mm flow path across the row and the 94.4 mm disc dimension along the end face -- those are
-  // gpu_duct plane_on_end_duct_parts' own placements (housing_x = the smaller, housing_y = the larger).
+  // the geometry it describes: 33 mm of thickness with its tolerance plus the 7.5 mm printed seat the blower
+  // rests on = 41000, with the 97.2 mm flow path across the row and the 94.4 mm disc dimension along the end
+  // face -- those are gpu_duct plane_on_end_duct_parts' own placements (housing_x = the smaller, housing_y =
+  // the larger), and the receding dimension is the seat, not the pocket's two walls.
   let pose = printed_pose()
-  micrometer_count(m: pose.behind_end.extent) == 37500
+  micrometer_count(m: pose.behind_end.extent) == 41000
     && micrometer_count(m: pose.across_row.extent) == 97200
     && micrometer_count(m: pose.along_end_face.extent) == 94400
     && match pose.wheel_axis { ForeAft => true _ => false }
     && fan_pose_admits(fit: fan_pose_checks(pose: pose, d: a16_wall_design()))
     // the enumeration CONTAINS it, so this fn is naming a pose rather than inventing a seventh
-    && any(fan_poses(fan: a16_blower(), d: a16_wall_design()), p => micrometer_count(m: p.behind_end.extent) == 37500 && match p.wheel_axis { ForeAft => true _ => false })
+    && any(fan_poses(fan: a16_blower(), d: a16_wall_design()), p => micrometer_count(m: p.behind_end.extent) == 41000 && match p.wheel_axis { ForeAft => true _ => false })
 }
 
 // THE INTAKE IS TYPED, AND ITS REFUSALS ARE REFUSALS (review 87223). Two of card_intake's four cases are

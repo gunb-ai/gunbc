@@ -5,11 +5,11 @@ import std.types {Bool, Int, List, NonEmptyStr, String}
 import std.measure {Micrometer, micrometer}
 import std.optional {Present, Absent}
 import product.printed_chassis.chassis_clearances {ChassisGap, Measured, NeedsMeasurement, CaliperByOperator, EstimatedByOperator, DeclaredConservativeByOperator, chassis_gaps, card_end_to_chassis_fan_2026_10_29, power_connector_head_protrusion, cable_bend_keepout, card_end_rear_fan_clearance, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, gap_display, gap_declared_bound, gap_is_estimate, inter_card_gap, card_to_rear_fans, power_connector_latch, power_connector_head_protrusion, cable_bend_keepout, outer_side_at_the_wall, GapRoom, Room, OverSubscribed, NoReading, gap_room, standing_origin, gap_may_be_printed_on}
-import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, a16_end_face, a16_duct_design, a16_blower_duct_design, blower_reach_behind, um, plane_on_end_duct_run_back}
+import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, a16_end_face, a16_duct_design, a16_blower_duct_design, blower_reach_behind, um, plane_on_end_duct_run_back, plane_on_end_blower_bottom_standoff}
 import extdeps.fans.types {RadialBlowerEnvelope}
 import extdeps.fans.delta {delta_bfb1012m_envelope}
 import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
-import extdeps.gpu.types {gpu_board_power_ceiling, GpuBoardPowerSpecification, RatedBoardPower, ConfigurableBoardPower}
+import extdeps.gpu.types {gpu_board_power_ceiling, GpuBoardPowerSpecification, RatedBoardPower, ConfigurableBoardPower, SystemDependentTgp}
 import std.measure {CelsiusDelta, MillilitrePerSecond, Watt, celsius_delta, celsius_delta_count, gram_per_cubic_metre_count, joule_per_kilogram_kelvin_count, micrometer_count, millilitre_per_second, millilitre_per_second_count, watt, watt_count}
 import extdeps.physics.dry_air {dry_air_at_20c}
 import product.printed_chassis.exhaust_thermal {exhaust_rise}
@@ -90,8 +90,12 @@ fn longest_face_edge(b: RadialBlowerEnvelope) -> Int { larger_i(a: um(m: b.housi
 fn shortest_face_edge(b: RadialBlowerEnvelope) -> Int { smaller_i(a: um(m: b.housing_length), b: um(m: b.housing_depth)) }
 fn thickness_extent(b: RadialBlowerEnvelope) -> Int { um(m: b.thickness) + um(m: b.thickness_tolerance) }
 
-// PLANE-ON-END: the thickness is all that goes back, so the operator's 70 mm buys it.
-fn plane_on_end_run_back(b: RadialBlowerEnvelope, d: GpuDuctDesign) -> Int { thickness_extent(b: b) + 2 * um(m: d.wall) }
+// PLANE-ON-END: the thickness is what goes back, PLUS the printed seat the blower rests on -- and this
+// delegates to product.printed_chassis.gpu_duct plane_on_end_duct_run_back rather than re-deriving it here,
+// because the demand the route admits against and the geometry the CAD builds are one fact. They were
+// written separately once (this fn said "two walls", the duct said "two walls") and drifted apart when the
+// seat was introduced; a route that reports a smaller spend than the part has is the fabrication §5 forbids.
+fn plane_on_end_run_back(d: GpuDuctDesign) -> Int { um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: d)) }
 // ...but its face spans the slot, where the pitch is the only room.
 fn plane_on_end_slot_demand(b: RadialBlowerEnvelope) -> Int { longest_face_edge(b: b) }
 // The same demand stated the way the SIDES are measured. The face spans the pitch, so what it spends
@@ -224,7 +228,7 @@ fn admit_plane_on_end(rear: ChassisGap, lane: ChassisGap) -> RouteAdmission {
   match ask(gap: lane, need: overhang.needed, home: home, unmet: overhang, over: Absent) {
     Present { value: refused } => refused
     Absent => {
-      let back = RouteDemand { name: "behind the plug end", needed: micrometer(count: plane_on_end_run_back(b: b, d: d)), of_gap: "plug end to rear chassis fan" }
+      let back = RouteDemand { name: "behind the plug end", needed: micrometer(count: plane_on_end_run_back(d: d)), of_gap: "plug end to rear chassis fan" }
       finish(home: home, needs: [slot, overhang, back], gap: rear, unmet: back, over: governing_rear(rear: rear))
     }
   }
@@ -752,7 +756,7 @@ fn largest_planform_per_home() -> List<String> {
    join(["flat on the plug end, two ducted cards across the inter-card gap: ", shape_display(s: shape_max_for_home(home: PlaneOnEnd, d: d, riser: shape_um(m: 6000)))], ""),
    join(["what the BFB1012M actually asks for: across the slot ", mm_text(m: micrometer(count: longest_face_edge(b: b))),
          "; up the end face ", mm_text(m: micrometer(count: shortest_face_edge(b: b))),
-         "; behind the end ", mm_text(m: micrometer(count: plane_on_end_run_back(b: b, d: d))), " (fan envelope from extdeps.fans.delta delta_bfb1012m_envelope, cited)"], "")]
+         "; behind the end ", mm_text(m: micrometer(count: plane_on_end_run_back(d: d))), " (fan envelope from extdeps.fans.delta delta_bfb1012m_envelope, cited)"], "")]
 }
 
 // THE FIXED FAN DECIDES THE POSE, AND THE POSE DECIDES WHETHER IT FITS
@@ -805,6 +809,14 @@ fn placed(along: EnvelopeAxis, extent: Micrometer, which_envelope_dimension: Non
 // `wall` the duct design carries.
 fn placed_in_pocket(p: PlacedDimension, wall: Micrometer) -> PlacedDimension {
   placed(along: p.along, extent: micrometer(count: micrometer_count(m: p.extent) + 2 * micrometer_count(m: wall)), which_envelope_dimension: p.which_envelope_dimension)
+}
+
+// A dimension that recedes behind the end face by way of the PRINTED SEAT rather than a pocket: the seat's
+// own depth is what sets where the blower sits, and it is owned by the geometry module.
+fn placed_on_seat(p: PlacedDimension, seat: Micrometer) -> PlacedDimension {
+  placed(along: p.along,
+    extent: micrometer(count: micrometer_count(m: p.extent) + micrometer_count(m: seat)),
+    which_envelope_dimension: join([p.which_envelope_dimension, " + the printed seat that lifts the blower clear of the plugged 8-pin head (product.printed_chassis.gpu_duct plane_on_end_blower_bottom_standoff)"], ""))
 }
 
 // What one pose spends along one axis, and whether the room there covers it. Room keeps its kind and origin
@@ -868,10 +880,13 @@ fn fan_poses(fan: RadialBlowerEnvelope, d: GpuDuctDesign) -> List<FanPose> {
   let len = placed(along: ForeAft, extent: micrometer(count: micrometer_count(m: fan.housing_length) + tol), which_envelope_dimension: "housing_length (flow path) + the cited +/- tolerance, extdeps.fans.delta delta_bfb1012m_envelope")
   let dep = placed(along: ForeAft, extent: micrometer(count: micrometer_count(m: fan.housing_depth) + tol), which_envelope_dimension: "housing_depth (across the flow path) + tolerance, same row")
   let thk = placed(along: ForeAft, extent: micrometer(count: micrometer_count(m: fan.thickness) + tol), which_envelope_dimension: "thickness (the wheel axis) + tolerance, same row")
-  let pocket = placed_in_pocket(p: thk, wall: d.wall)
-  // wheel axis fore-aft: the printed home -- thickness behind the end, the disc standing in the x-y plane
-  let upright_long_across = FanPose { wheel_axis: ForeAft, behind_end: pocket, across_row: len, along_end_face: dep }
-  let upright_deep_across = FanPose { wheel_axis: ForeAft, behind_end: pocket, across_row: dep, along_end_face: len }
+  // wheel axis fore-aft: the printed home -- thickness behind the end PLUS the printed seat it rests on,
+  // the disc standing in the x-y plane. Not placed_in_pocket: the face the blower bears on is the seat's,
+  // and the seat is what keeps the plugged 8-pin head off the housing (gpu_duct
+  // plane_on_end_blower_bottom_standoff). One fn owns the number, so this list and the CAD cannot drift.
+  let seat = placed_on_seat(p: thk, seat: plane_on_end_blower_bottom_standoff(d: d))
+  let upright_long_across = FanPose { wheel_axis: ForeAft, behind_end: seat, across_row: len, along_end_face: dep }
+  let upright_deep_across = FanPose { wheel_axis: ForeAft, behind_end: seat, across_row: dep, along_end_face: len }
   // wheel axis across the row: THE REFERENCE IMAGE'S POSE (axis perpendicular to the card face). The disc
   // stands in the x-z plane, so a disc dimension is what recedes behind the end.
   let sideways_flat_long_behind = FanPose { wheel_axis: AcrossRow, behind_end: placed_in_pocket(p: len, wall: d.wall), across_row: thk, along_end_face: dep }
@@ -1164,11 +1179,23 @@ fn a16_power_points_w() -> List<String> {
   match nvidia_a16_board_facts.board_power {
     Absent => ["the A16's board row states no power window: nothing to size against"]
     Present { value: ConfigurableBoardPower { default: dd, minimum: lo, maximum: hi, named_points: _ } } =>
-      [join(["default ", to_string(value: watt_count(w: dd)), " W"], ""),
-       join(["maximum ", to_string(value: watt_count(w: hi)), " W"], ""),
-       join(["minimum ", to_string(value: watt_count(w: lo)), " W"], "")]
+      // #15315 made the published default an Optional, because that is what vendors do: the A16's row states
+      // 250 W, the A2's page states "40-60 W (configurable)" and no default at all. A report that printed
+      // "default 0 W" for the second case would be §5's fabricated output, so the absence is a line of its own.
+      concat(
+        match dd {
+          Present { value: d } => [join(["default ", to_string(value: watt_count(w: d)), " W"], "")]
+          Absent => ["the vendor states no published default: size against the maximum"]
+        },
+        [join(["maximum ", to_string(value: watt_count(w: hi)), " W"], ""),
+         join(["minimum ", to_string(value: watt_count(w: lo)), " W"], "")])
     Present { value: RatedBoardPower { rated: r } } =>
       [join(["rated ", to_string(value: watt_count(w: r)), " W (the vendor states one figure, not a window)"], "")]
+    // A laptop part's TGP span: the vendor states the range and the machine's maker picks the point, so no
+    // figure in it is THE board's power and the duct can only be sized against the top. The A16's row is not
+    // this arm; it exists because the type admits it and this report reads the row rather than quoting it.
+    Present { value: SystemDependentTgp { minimum: lo, maximum: hi } } =>
+      [join(["system-dependent TGP from ", to_string(value: watt_count(w: lo)), " W to ", to_string(value: watt_count(w: hi)), " W (the machine's maker sets the point; size against the top)"], "")]
   }
 }
 
@@ -1247,9 +1274,13 @@ fn plugged_head_admits() -> Bool {
 // reach. Derived, never typed: floor 2 x wall + governing rear room - the blower stack - the head. A witness
 // pins the arithmetic and the number in the same expression, so the number cannot drift from the formula and
 // the formula cannot silently change its shape.
+// The slack the plugged head has left in its window, taken from the SAME window the geometry checks
+// (product.printed_chassis.gpu_duct plane_on_end_max_admissible_protrusion) rather than re-derived here. It
+// used to re-derive it as "two wall plates + rear room - stack", which silently disagreed with the part the
+// day the seat replaced the plates.
 fn plugged_head_margin() -> Micrometer {
-  let window = 2 * um(m: a16_wall_design().wall) + um(m: rear_of_end_governing_room()) - um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design()))
-  micrometer(count: window - um(m: plugged_head_reach()))
+  let window = plane_on_end_max_admissible_protrusion(b: a16_blower_duct_design, d: a16_wall_design(), rear_bound: rear_of_end_governing_room())
+  micrometer(count: um(m: window) - um(m: plugged_head_reach()))
 }
 
 // THE CABLE TURN. 'the cable bends almost as soon as it leaves the head' is not a clearance to spend, it is a
@@ -1273,14 +1304,18 @@ fn cable_bend_is_still_owed() -> Bool {
 //
 // It cannot be answered with a single yes/no, and a single yes/no is what would have been the fabrication
 // here. The relief window cuts printed material away across the connector's own band down to a stated depth;
-// outside that window the shoulder's floor begins at a stated depth; and between them the strip the connector
-// occupies is where the BLOWER sits, which is purchased material and not printed material at all. So the
-// answer is per-surface, and the function returns which surface a cable at a given depth would meet, with the
-// depth it would meet it at. Naming the wall is the useful part: it turns "measure the cable" into "measure
-// this one height".
+// outside that window the printed seat begins at a stated depth; and past the seat the surface in the path is
+// the BLOWER, which is purchased material and not printed material at all. So the answer is per-surface, and
+// the function returns which surface a cable at a given depth would meet, with the depth it would meet it at --
+// every depth in micrometres, not in prose. Naming the wall is the useful part: it turns "measure the cable"
+// into "measure this one height".
+//
+// `stays_across_the_window` is the operator's own words, typed: "the cable bends SIDEWAYS as it leaves the
+// head, in the plane of the card end" -- a run inside the connector's band. Flip it to false to ask what a
+// cable that strays past the window's inboard edge would hit at the same depth, which is the seat.
 type CableBendPath
   = ClearOfPrintedMaterial {cable_depth_behind_face: Micrometer, cleared_to: Micrometer, why: NonEmptyStr}
-  | MeetsPrintedFloor {cable_depth_behind_face: Micrometer, floor_surface_behind_face: Micrometer, relief_edge_from_face_centre: Micrometer, which_wall: NonEmptyStr}
+  | MeetsPrintedSeat {cable_depth_behind_face: Micrometer, seat_surface_behind_face: Micrometer, relief_edge_from_face_centre: Micrometer, which_wall: NonEmptyStr}
   | PastTheReliefEdge {cable_depth_behind_face: Micrometer, relief_edge_from_face_centre: Micrometer, which_wall: NonEmptyStr}
 
 // A cable running sideways at `depth` behind the end face, inside the connector's band -- which is what the
@@ -1288,21 +1323,21 @@ type CableBendPath
 // that stays parallel to the end face keeps that depth, so `depth` is the head's own worst-case reach and the
 // answer is per-surface rather than one yes/no: what sits in the path changes with depth, and naming the
 // surface is the part that turns "measure the cable" into "measure this one thing".
-fn cable_bend_path(depth: Micrometer) -> CableBendPath {
+fn cable_bend_path(depth: Micrometer, stays_across_the_window: Bool) -> CableBendPath {
   let relief = plane_on_end_relief_back_reach(a16_wall_design())
-  let floor = plane_on_end_floor_behind_face(a16_wall_design())
-  if um(m: depth) <= um(m: floor) {
-    MeetsPrintedFloor {
+  let seat = plane_on_end_blower_bottom_standoff(d: a16_wall_design())
+  if !stays_across_the_window && um(m: depth) <= um(m: seat) {
+    MeetsPrintedSeat {
       cable_depth_behind_face: depth,
-      floor_surface_behind_face: floor,
+      seat_surface_behind_face: seat,
       relief_edge_from_face_centre: plane_on_end_relief_inboard_x(a16_end_face, a16_wall_design()),
-      which_wall: "the relief window's inboard edge -- the shoulder floor's end face. The floor is two wall plates (4 mm deep behind the end face) and the cut opens it only across the connector's own band, so a cable running that shallow hits the edge of the opening rather than passing under it",
+      which_wall: "the printed seat's end face, at the depth this arm carries. The seat spans the whole blower footprint and the relief cut opens it only across the connector's own band, so a cable that strays past the window's inboard edge at this depth hits the seat rather than passing under it",
     }
   } else if um(m: depth) <= um(m: relief) {
     ClearOfPrintedMaterial {
       cable_depth_behind_face: depth,
       cleared_to: relief,
-      why: "the relief cut opens the shoulder floor across the connector's own band, from 4.5 mm in front of the end face to 8 mm behind it, so a cable running at this depth has no printed wall in front of it across that band",
+      why: "the relief cut opens the shoulder floor AND the seat across the connector's own band, from 4.5 mm in front of the end face to the relief's back reach behind it, so a cable running at this depth within the window's width has no printed wall in front of it",
     }
   } else {
     PastTheReliefEdge {
@@ -1315,46 +1350,70 @@ fn cable_bend_path(depth: Micrometer) -> CableBendPath {
 
 // THE ANSWER TO "IS THE KEEP-OUT DISCHARGED BY GEOMETRY". At the only depth the operator's reading implies --
 // the cable leaves the head's outer end, and the head's outer end is the head's worst-case reach -- the run is
-// ClearOfPrintedMaterial: the relief opens to 8 mm and the head is 7 mm, so there is no printed wall for the
-// turn to hit. The keep-out is discharged against PRINTED material, by the cut, without a reading.
+// ClearOfPrintedMaterial, because the relief cut opens the shoulder floor AND the seat across the connector's
+// own band deeper than the head reaches. So there is no printed wall for the turn to hit, and the keep-out is
+// discharged against PRINTED material, by the cut, without a reading. The arm carries the depth it is cleared
+// to, so "deeper than the head reaches" is a number a reader can check, not a claim.
 //
 // It is NOT discharged against the blower, and that is the finding the reading produced rather than the one it
 // was asked for: see plane_on_end_head_vs_blower_overlap.
 fn cable_bend_is_discharged_by_geometry() -> Bool {
-  match cable_bend_path(depth: plugged_head_reach()) {
+  match cable_bend_path(depth: plugged_head_reach(), stays_across_the_window: true) {
     ClearOfPrintedMaterial {cable_depth_behind_face: _, cleared_to: _, why: _} => true
     _ => false
   }
 }
 
-// THE OVERLAP NO CUT CAN REMOVE. The plugged head reaches 7 mm behind the end face at worst case; the
-// blower's bottom face begins 4 mm behind it across the same strip -- the blower lies flat directly behind the
-// connector band, and its envelope starts where the two shoulder wall plates end. So 3 mm of head sits inside
-// 3 mm of fan. Deepening the relief does not clear it: cutting plastic deeper into the pocket does not move the
-// fan, it only moves plastic away from where the fan already is. That is why this is reported rather than
-// "fixed", and it is the same reason plane_on_end_housing_clears_keepout stays false.
-fn plane_on_end_head_vs_blower_overlap() -> Micrometer {
+// THE COLLISION THE READING BOUGHT, AND THE SEAT THAT REMOVES IT.
+//
+// The plugged head reaches 7 mm behind the end face at worst case. The blower's bottom face -- where its housing
+// bears on the printed seat -- sat 2 mm behind the end face: the shoulder's two wall plates are 4 mm deep, but
+// the pocket cut bites a wall into them to open the socket, so what the fan actually rests against is 2 mm back.
+// That is a 5 mm overlap, and NO CUT REMOVES IT: cutting plastic deeper into the pocket moves the socket's
+// ceiling the wrong way -- the ceiling is what sets where the fan sits. Deepening the relief clears the head from
+// PRINTED material (which is what plane_on_end_connector_relief was always for) and leaves the fan exactly where
+// it was. The only thing that removes it is lifting the fan, which means growing the seat it rests on.
+//
+// THE SEAT IS BUILT IN. product.printed_chassis.gpu_duct plane_on_end_blower_bottom_standoff places the seat's
+// face at the head's worst-case reach plus twice the print's cited deposited-path edge allowance -- 7.00 + 2 x
+// 0.25 = 7.50 mm behind the end face -- which leaves 0.50 mm clear at nominal and is flush only if both printed
+// faces in the gap misplace by the full allowance together. Sized at exactly the reach it would be flush at
+// nominal, which is zero clearance on a printed part; sized one allowance short, the nominal case interferes.
+// Sizing it as reach + tolerance is also why the fit print still has a job: it measures the gap this arithmetic
+// can only predict.
+fn plane_on_end_head_vs_blower_overlap_without_the_seat() -> Micrometer {
   let head = plugged_head_reach()
-  let fan_floor = plane_on_end_floor_behind_face(a16_wall_design())
-  micrometer(count: if um(m: head) - um(m: fan_floor) > 0 { um(m: head) - um(m: fan_floor) } else { 0 })
+  let seat_before = plane_on_end_original_seat_ceiling(a16_wall_design())
+  let over = um(m: head) - um(m: seat_before)
+  micrometer(count: if over > 0 { over } else { 0 })
 }
 
-fn plane_on_end_plugged_head_clears_blower() -> Bool { um(m: plane_on_end_head_vs_blower_overlap()) == 0 }
+// Where the fan's housing bore against before the seat was lifted. The pocket cut opens the socket by biting a
+// wall into the two floor plates, so the ceiling the fan rested on is one wall shallower than the floor is deep.
+fn plane_on_end_original_seat_ceiling(d: GpuDuctDesign) -> Micrometer {
+  micrometer(count: 2 * um(m: d.wall) - um(m: d.wall))
+}
 
-// THE ONE NUMBER THE READING BOUGHT. The plugged head reaches 7 mm behind the end face at worst case; the
-// blower's bottom face begins 4 mm behind it across the same strip, because the blower lies flat directly
-// behind the connector band. So 3 mm of head is inside 3 mm of fan, and the fit print is the instrument that
-// says whether they actually meet (the operator's own ruling: 'could we try both? ... the fit print decides').
-//
-// Lifting the fan by 3 mm on a standoff removes it on paper and the rear room affords it -- see
-// plane_on_end_standoff_admits -- but it has NOT been built into the printable part, for two reasons. One:
-// the relief cut was designed against a boundary, not this reading, and the standoff's whole justification is
-// the reading, so it wants the operator's eyes on the number before it moves the part. Two: the print is the
-// instrument, and a print that comes back with the head 1 mm clear of the housing is a different next part
-// from one that comes back crushed 3 mm into it. Printing the current geometry is what tells us which.
-fn plane_on_end_fan_standoff_required() -> Micrometer { plane_on_end_head_vs_blower_overlap() }
+// What the fit print reports for item (b): the gap between the plugged head's worst-case reach and the face the
+// blower's housing bears on. Positive means clear.
+fn plane_on_end_head_clearance() -> Micrometer {
+  micrometer(count: um(m: plane_on_end_floor_behind_face(a16_wall_design())) - um(m: plugged_head_reach()))
+}
 
+fn plane_on_end_plugged_head_clears_blower() -> Bool { um(m: plane_on_end_head_clearance()) > 0 }
+
+// How much the seat was raised from the ceiling the design originally had. This is what the correction added to
+// the part, and it is the number that has to stay inside the rear room -- which is the next check.
+fn plane_on_end_fan_standoff_required() -> Micrometer {
+  micrometer(count: um(m: plane_on_end_floor_behind_face(a16_wall_design())) - um(m: plane_on_end_original_seat_ceiling(a16_wall_design())))
+}
+
+// THE COST OF THE SEAT, AGAINST THE ROOM THAT GOVERNS. The stack behind the end face now spends
+// plane_on_end_duct_run_back (the fan's thickness at tolerance plus the lifted seat); it has to stay inside the
+// room the tightest reading of the span behind the end leaves. If a future reading took the room under this, the
+// seat would stop fitting and the home would have to be refused rather than the seat quietly shortened -- which
+// is why this is a check and not a comment.
 fn plane_on_end_standoff_admits() -> Bool {
-  let spent = um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design())) + um(m: plane_on_end_fan_standoff_required())
+  let spent = um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design()))
   spent <= um(m: rear_of_end_governing_room())
 }

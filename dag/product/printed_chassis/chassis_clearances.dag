@@ -423,6 +423,21 @@ data cable_bend_keepout: ChassisGap = NeedsMeasurement {
 
 data chassis_gaps: List<ChassisGap> = [card_end_rear_fan_clearance, card_end_to_chassis_fan_2026_10_29, rear_fan_face_ambiguity, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, inter_card_gap, card_to_rear_fans, power_connector_latch, power_connector_head_protrusion, cable_bend_keepout, outer_side_at_the_wall]
 
+// THE HEAD'S WORST-CASE REACH, AT THE ROW ITSELF. A clearance is always checked against the worst credible
+// value, which for an operator-reported figure means the face value plus the width this repository puts on it
+// -- here 6 mm read + 1 mm = 7 mm. It lives here rather than in the module that consumes it so the rule "a
+// by-eye figure is never checked at its face value" has one home: the duct geometry and the route's checks
+// both ask this one question and cannot drift apart. An unread row answers 0 -- nothing may be assumed to
+// protrude when nobody has looked, and nothing may be assumed CLEAR either; consumers that need a reading
+// (plugged_head_admits) read the row's standing and refuse, they do not trust the zero.
+fn plugged_head_worst_case_reach() -> Micrometer {
+  match power_connector_head_protrusion {
+    Measured {name: _, from_point: _, to_point: _, distance: d, standing: EstimatedByOperator {bound: b, date: _, positions: _, bound_is: _}} => micrometer(count: um(m: d) + um(m: b))
+    Measured {name: _, from_point: _, to_point: _, distance: d, standing: _} => d
+    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => micrometer(count: 0)
+  }
+}
+
 fn chassis_gap(name: NonEmptyStr) -> ChassisGap? {
   fold(chassis_gaps, init: Absent, f: (found, g) => match found { Present { value: v } => Present { value: v } Absent => if gap_name(g: g) == name { Present { value: g } } else { Absent } })
 }
