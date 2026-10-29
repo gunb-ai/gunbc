@@ -24,10 +24,10 @@ data a_type_parameter_name_borrowed_as_a_type: RecurringFailureMode = RecurringF
   rung: RungRead {
     found_at: FoundBelowTheLadder,
     standing: BelowCeiling {
-      current: FoundOnRung { rung: Mitigatable },
+      current: FoundBelowTheLadder,
       ceiling: StructurallyGuaranteed,
       blocker: ClimbableButUnbuilt,
-      trigger_capability: "a v2 callback-frame rule (v2.compiler.infer infer_callback_formal_frame) that reads a lambda's expected fn type from an instantiated signature and carries binder identity on the variable node, so a callee's own formal can never be credited as a call's argument in any carrier",
+      trigger_capability: "first, an executing route for the red control (a `gunbc test` row on the required path carrying src/v1/stage0/tests/fold_accumulator_hof_cast_emitted_rust.rs's claim), which establishes Mitigatable; then a v2 callback-frame rule (v2.compiler.infer infer_callback_formal_frame) that reads a lambda's expected fn type from an instantiated signature and carries binder identity on the variable node, so a callee's own formal can never be credited as a call's argument in any carrier",
     },
   },
 
@@ -39,7 +39,7 @@ data a_type_parameter_name_borrowed_as_a_type: RecurringFailureMode = RecurringF
     "MASKING, MEASURED (why absence of the panic is NOT evidence of a fix). At the parallel cast-wall head f178f6018025, after the stage0 mirrors were regenerated, the whole emitted corpus contained 0 files with an unsupported-cast panic and the store emitted 4 `int_to_decimal_string` uses with no panic — while the minimal fold probe still emitted `panic!(\"unsupported cast from T to String\")`. A refusal at the cast removes the symptom without touching the unification, so the control for this class must assert the TYPE, not the absence of a panic.",
     "RECOGNITION RULE: (1) never construct a type node from a binder's spelling — absence of instantiation evidence is the ABSENCE OF AN EXPECTED TYPE, and the slot stays an unsolved variable that the existing evidence gates refuse to credit; (2) never read a callee's UN-substituted formal as the expected type of a call's argument, and never resolve a declaration's parameter name against an ENCLOSING scope; (3) discriminate vacuous candidates by binder identity (the callee's own unsubstituted formal, or an unconstrained variable), never by whether a name matches; (4) a control for any such rule must include a generic wrapper, because an over-broad refusal breaks legitimate T := U bindings; (5) where a fabricated node has already been credited, the red control asserts the resulting TYPE or its emission shape — panic-absence can be produced by masking.",
     "CEILING AND ITS REASON: structurally guaranteed would mean a type variable can NEVER be manufactured from a name and no consumer can mistake one for evidence, which needs binder identity carried on the variable itself (a scope/owner identity on the node) rather than reconstructed from strings at each use site. THIS PR closes the one construction that produced such a node (the record-literal uninstantiated-owner-parameter arm, src/v1/04_infer.dag) and deletes the map that built it, rather than adding a second guard beside it. The v2 callback-frame rule is named as the next trigger: v2 self-host runs on the v1 seed carrier today, so v2's own lambda-frame rule (src/v2/compiler/infer.dag, infer_callback_formal_frame) is re-checked against this shape separately.",
-    "RUNG REACHED BY THIS ROW IS PENDING ITS RUN: the fixture named in this class (src/v1/stage0/tests/fold_accumulator_hof_cast_emitted_rust.rs, enrolled in v2.self_host.seed_retention_frontier's retained_test_harness list) has not yet executed in the gate at the time of writing; the Mitigatable standing above is the finding from the construction-level fix plus the measured masking contrast, and this row is updated when the harness's execution is on record.",
+    "RUNG STATED IS WHAT EXECUTED EVIDENCE SUPPORTS: no run of the fixture is on record in the gate, so the standing is FoundBelowTheLadder, not Mitigatable. The construction-level fix plus the measured masking contrast would reach Mitigatable once the fixture executes on the required path; this row is raised in the PR that adds that route.",
   ],
   evidence: [],
 }
