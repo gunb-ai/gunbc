@@ -115,6 +115,10 @@ fn capacity_reload_journal_held(store: CapacityCaptureStore, journal: SlotStore,
   let reading = match capacity_cutover_journal_read(store: store, journal: journal, key: key) {
     Err { value: why } => { return Err { value: why } } Ok { value: value } => value
   }
+  let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  match capacity_reload_record_admission(approval: approval, record: reading.record, manager: manager, boundary: boundary, at: at) {
+    Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
+  }
   let scope = serialize_json(v: json_array(elements: [json_string(s: journal.root as String), json_string(s: key as String)])) as NonEmptyStr
   match local_store_bind_retention(held: held, scope: scope) {
     Present { value: _ } => { return Err { value: "reload journal retention hold is not current" } } Absent => {}
