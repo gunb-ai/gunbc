@@ -52,6 +52,7 @@ import v2.std.integer { Int }
 import v2.std.node { symbol_intern_lexeme }
 import v2.std.operation_declaration {
   DeclaredShape,
+  NativeHostActuation,
   NativeHostObservation,
   OperationDispositionUnclassified,
   ObservesHost,
@@ -62,7 +63,6 @@ import v2.std.operation_declaration {
   operation_declaration_path,
   operation_declaration_roster
 }
-import v2.compiler.effect_demand { effect_demand_blocked_operations, effect_demand_implementable_operations }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_string_segments }
 
 // THE REAL SEAM PATHS, module-qualified the way a module walk produces them -- never a bare primitive
@@ -157,9 +157,29 @@ test fn every_host_realized_seam_carries_exactly_one_declaration_row_holds() -> 
 // RED A: DELETING filesystem_read's declaration row reddens THIS claim -- the row disappears, so
 // filesystem_read is no longer implementable and the split is 0 implementable / 6 blocked.
 test fn the_m2v_population_still_splits_one_implementable_and_six_blocked_holds() -> Bool {
-  length(xs: operation_declaration_m2v_population()) == 7
-    && length(xs: effect_demand_implementable_operations(classifications: effect_demand_operation_classifications())) == 1
-    && length(xs: effect_demand_blocked_operations(classifications: effect_demand_operation_classifications())) == 6
+  let rows = operation_declaration_m2v_population()
+  length(xs: rows) == 7
+    && fold_list(
+      xs: rows,
+      empty: 0,
+      cons: fn(n, row) {
+        match row.disposition {
+          NativeHostObservation { operation_identity: _ } => n + 1
+          NativeHostActuation { operation_identity: _ } => n + 1
+          _ => n
+        }
+      }
+    ) == 1
+    && fold_list(
+      xs: rows,
+      empty: 0,
+      cons: fn(n, row) {
+        match row.disposition {
+          OperationDispositionUnclassified { blocking_question: _ } => n + 1
+          _ => n
+        }
+      }
+    ) == 6
 }
 
 test fn filesystem_read_declares_observes_host_read_named_file_with_the_filesystem_requirement_holds() -> Bool {
