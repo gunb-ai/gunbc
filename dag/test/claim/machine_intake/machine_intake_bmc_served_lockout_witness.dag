@@ -289,15 +289,19 @@ test fn a_retry_on_another_account_spends_that_account_and_not_root() -> Bool {
 // member — and the census here reports one addressed LAN member, so the count that
 // must NOT be zero is exactly one (a gate that charged derived retirement anyway
 // would fail the first half, and one that ignored the probes would fail the second).
+// THE ROSTER OF A PLAN THAT WRITES NOTHING: with no managed write and no published
+// write there is no probe to charge, so whatever the roster holds came from the
+// reading alone — which is exactly what these two rungs compare.
+fn roster_of(observed: BmcAccountStateObservation) -> BmcPlanFailedLoginRoster {
+  bmc_plan_failing_logins(goal: goal_v1(), observed: observed, managed_write: none, published_write: none, forced_change: none, declared_retries: [])
+}
+
 test fn derived_retirement_costs_nothing_and_the_probed_path_one_per_member() -> Bool {
   let derived = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_both_served(read_at: t_read, redfish_threshold: 8, ipmi_channel: 1, ipmi_threshold: 8))
   let probed = read_lock(password: published_password, shared: false, at: t_read, lockout: lockout_both_served(read_at: t_read, redfish_threshold: 8, ipmi_channel: 1, ipmi_threshold: 8))
-  let roster = fn(o: BmcAccountStateObservation) -> BmcPlanFailedLoginRoster {
-    bmc_plan_failing_logins(goal: goal_v1(), observed: o, managed_write: none, published_write: none, forced_change: none, declared_retries: [])
-  }
   let published_key = BmcFailedLoginBudgetKey { account: "root" as NonEmptyStr, surface: IpmiLanPlusLogin { channel: 1 } }
-  bmc_spend_count(spends: roster(derived).spends, key: published_key) == 0
-    && bmc_spend_count(spends: roster(probed).spends, key: published_key) == 1
+  bmc_spend_count(spends: roster_of(observed: derived).spends, key: published_key) == 0
+    && bmc_spend_count(spends: roster_of(observed: probed).spends, key: published_key) == 1
 }
 
 // RUNG: the forced-change path is an AUTHENTICATED answer, not a failed login, and
