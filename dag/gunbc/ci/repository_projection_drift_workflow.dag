@@ -4,7 +4,6 @@ import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { byte_size_count }
 import std.optional { Optional, Present, Absent }
 import std.algebra { list_map }
-import std.dissolution { DissolutionCondition, dissolution_description }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -61,7 +60,7 @@ import gunbc.ci.repository_seed_steps {
   repository_checkout_step,
   seed_build_step,
   seed_checkout_step,
-  seed_revision_step,
+  record_seed_revision_step,
   toolchain_install_step
 }
 
@@ -233,7 +232,8 @@ fn projection_drift_steps(
   program: DriftProgram,
   drift: ProjectionDrift,
   check_body: String,
-  seal_body: String
+  seal_body: String,
+  record_step: Step
 ) -> List<Step> {
   let budget = memory_budget_rows(profile: profile)
   let check_step = RunStep {
@@ -288,7 +288,7 @@ fn projection_drift_steps(
           [
           repository_checkout_step(step_name: program.checkout_step_name),
           seed_checkout_step(seed: seed),
-          seed_revision_step(seed: seed),
+          record_step,
           toolchain_install_step(step_name: program.toolchain_step_name),
           seed_build_step(seed: seed),
           check_step
@@ -315,7 +315,8 @@ fn projection_drift_job(
   program: DriftProgram,
   drift: ProjectionDrift,
   check_body: String,
-  seal_body: String
+  seal_body: String,
+  record_step: Step
 ) -> Job {
   Job {
     id: drift.job_id,
@@ -329,7 +330,8 @@ fn projection_drift_job(
       program: program,
       drift: drift,
       check_body: check_body,
-      seal_body: seal_body
+      seal_body: seal_body,
+      record_step: record_step
     ),
     needs: [],
     env: none,
@@ -380,7 +382,8 @@ fn projection_drift_workflow(
   program: DriftProgram,
   drift: ProjectionDrift,
   check_body: String,
-  seal_body: String
+  seal_body: String,
+  record_step: Step
 ) -> Workflow {
   Workflow {
     name: drift.workflow_name as String,
@@ -397,7 +400,8 @@ fn projection_drift_workflow(
         program: program,
         drift: drift,
         check_body: check_body,
-        seal_body: seal_body
+        seal_body: seal_body,
+        record_step: record_step
       )
     ]
   }
@@ -437,12 +441,18 @@ fn expected_projection_drift_workflow_yml(
               reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the heal seal script, so no workflow is emitted rather than one publishing a candidate no grammar row accounted for"
             }
             Accepted { value: seal_body, diagnostics: _ } =>
-          match emit_yaml(v: project_workflow_to_yaml(workflow: projection_drift_workflow(profile: profile, seed: seed, overlay: overlay, program: program, drift: drift, check_body: check_body, seal_body: seal_body))) {
+          match record_seed_revision_step(seed: seed) {
+            Rejected { diagnostics: _ } => ProjectionDriftWorkflowGenerationRefused {
+              reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the seed-revision receipt step, so no workflow is emitted rather than one whose drift check judges an unnamed compiler"
+            }
+            Accepted { value: record_step, diagnostics: _ } =>
+          match emit_yaml(v: project_workflow_to_yaml(workflow: projection_drift_workflow(profile: profile, seed: seed, overlay: overlay, program: program, drift: drift, check_body: check_body, seal_body: seal_body, record_step: record_step))) {
             EmittedYaml { text: t } => ProjectionDriftWorkflowGenerated { content: t }
             YamlEmitRefused { path: p, reason: r } =>
               ProjectionDriftWorkflowGenerationRefused {
                 reason: yaml_emit_refusal_text(module_path: "gunbc.ci.repository_projection_drift_workflow", path: p, reason: r)
               }
+          }
           }
           }
           }
@@ -453,8 +463,4 @@ fn expected_projection_drift_workflow_yml(
 
 fn drift_row(profile: RepositoryCiProfile) -> Optional<ProjectionDrift> {
   profile.drift
-}
-
-fn dissolution_text(condition: DissolutionCondition) -> String {
-  dissolution_description(condition: condition)
 }

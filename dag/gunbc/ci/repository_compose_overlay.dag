@@ -157,10 +157,6 @@ fn echo_stmt(text: String) -> Node {
   command(words: [word(text: "echo"), word(text: text)])
 }
 
-// WHERE THE OVERLAY LANDS INSIDE THE COMPOSED TREE.
-fn compose_overlay_dir_path(overlay: OverlayIngest) -> String {
-  concat(concat(overlay.compose_dir_name as String, "/"), overlay.overlay_dir_name as String)
-}
 
 // THE INGEST COPY IS NOT A SOURCE. It is generated from the mirror checkout, so the step that makes it
 // says so, names the file an editor should open instead, and prints the capability that deletes the
@@ -180,11 +176,6 @@ fn local_runs_note(overlay: OverlayIngest) -> String {
   concat("LOCAL RUNS: ", overlay.local_runs_warning as String)
 }
 
-// A NOTE THE ROUTE ADDS, printed once per composition, stating the capability that retires the hand-written
-// form. Kept here so every composition carries the same disclosure in the same words.
-fn dissolution_note(prefix: NonEmptyStr, condition: DissolutionCondition) -> String {
-  concat(concat(prefix as String, " Dissolves when: "), dissolution_description(condition: condition))
-}
 
 // THE COMPOSITION A WITNESS RUN NEEDS: the checkout's own .dag copied in as the overlay, and the checkout
 // itself reachable by name from inside the composed tree so committed files can still be read.
@@ -252,45 +243,8 @@ fn compose_preamble_statements(seed: PublicSeed, c: ComposeSpec) -> List<Node> {
   )
 }
 
-fn compose_preamble(seed: PublicSeed, c: ComposeSpec) -> Outcome<String> {
-  bash_emit_stmts(statements: compose_preamble_statements(seed: seed, c: c), set_e: true)
-}
 
-// A STEP OF THE SAME JOB RE-ENTERS THE COMPOSITION AN EARLIER STEP BUILT, rather than building it again:
-// the steps are separate shells but the directory persists, and a step only runs after the one that made
-// it succeeded. Re-deriving the composition instead would re-run `git worktree add` against a directory
-// that already exists, and the second composition's failure would be reported as if the code under test
-// had failed to appear.
-fn compose_reentry_statements(seed: PublicSeed, compose_dir: NonEmptyStr) -> List<Node> {
-  concat(
-    [
-      set_strict_stmt(),
-      bash_build_assign(
-        name: "GUNBC",
-        value: bash_build_word_concat_from_nodes(
-          parts: [
-            var_word(name: "GITHUB_WORKSPACE"),
-            word(text: concat("/", seed.checkout_path as String)),
-            word(text: concat("/", seed.seed_binary_relative_path as String))
-          ]
-        )
-      )
-    ],
-    concat(
-      runner_tmp_root_stmts(fallback: "/tmp"),
-      [
-        bash_build_assign(name: "COMPOSE", value: path_under(name: "RUNNER_TMP_ROOT", tail: compose_dir as String)),
-        command(words: [word(text: "cd"), var_word(name: "COMPOSE")]),
-        unset_may_be_absent(name: "GUNBC_RESOLVED_GRAPH_CACHE_DIR"),
-        unset_may_be_absent(name: "GUNBC_NATIVE_CACHE_ROOT")
-      ]
-    )
-  )
-}
 
-fn compose_reentry(seed: PublicSeed, compose_dir: NonEmptyStr) -> Outcome<String> {
-  bash_emit_stmts(statements: compose_reentry_statements(seed: seed, compose_dir: compose_dir), set_e: true)
-}
 
 // RUN ONE SUBJECT OVER THE COMPOSED ROOT. The entry is spelled through the overlay prefix because the
 // composed tree is what the compiler resolves against: the same claim run from the mirror checkout
@@ -325,9 +279,6 @@ fn compose_gunbc_run_statements(overlay: OverlayIngest, source_roots: List<Strin
   [compose_gunbc_run_command(overlay: overlay, source_roots: source_roots, entry: entry, function: function)]
 }
 
-fn compose_gunbc_run(overlay: OverlayIngest, source_roots: List<String>, entry: NonEmptyStr, function: NonEmptyStr) -> Outcome<String> {
-  bash_emit_stmts(statements: compose_gunbc_run_statements(overlay: overlay, source_roots: source_roots, entry: entry, function: function), set_e: true)
-}
 
 // THE SOURCE ROOTS OF A COMPOSED RUN: the repository's own roots, plus the overlay copy the composition
 // made. Derived rather than written into a row, because a row that lists the overlay root can go stale
@@ -401,24 +352,6 @@ fn head_tree_compose_statements(
   )
 }
 
-fn head_tree_compose(
-  seed: PublicSeed,
-  overlay: OverlayIngest,
-  head_tree_dir_name: NonEmptyStr,
-  head_link_name: NonEmptyStr,
-  compose_dir_name: NonEmptyStr
-) -> Outcome<String> {
-  bash_emit_stmts(
-    statements: head_tree_compose_statements(
-      seed: seed,
-      overlay: overlay,
-      head_tree_dir_name: head_tree_dir_name,
-      head_link_name: head_link_name,
-      compose_dir_name: compose_dir_name
-    ),
-    set_e: true
-  )
-}
 
 // THE SEAL'S ENVIRONMENT. Names the publisher's admit step reads, so they are shared vocabulary and not
 // per-repo configuration: the publisher refuses a candidate whose seal did not name the pull request.

@@ -4,7 +4,6 @@ import std.types { NonEmptyStr, String, List, Bool, Int, gt_zero }
 import std.measure { ByteSize }
 import std.optional { Optional, Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_rows_for_decls }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.ci.ci_spec { gunbc_ci_tier_o_drift_check_target }
@@ -311,17 +310,8 @@ fn gunbc_roster_gate() -> RosterGate {
   gunbc_repository_ci_profile().roster
 }
 
-fn gunbc_heal_workflow_policy() -> Optional<HealWorkflowPolicy> {
-  gunbc_repository_ci_profile().heal
-}
 
-fn gunbc_drift_watch_policy() -> Optional<ProjectionDrift> {
-  gunbc_repository_ci_profile().drift
-}
 
-fn gunbc_heal_publisher_policy() -> Optional<HealPublisherPolicy> {
-  gunbc_repository_ci_profile().publisher
-}
 
 // THE SAME THREE ROWS, FOR THE EMITTERS THAT RENDER THEM. An emitter cannot render an Optional, and it
 // must not invent a default either - a fabricated job id or timeout would be the "unadmitted fallback"
@@ -574,9 +564,6 @@ fn profile_has_seal(profile: RepositoryCiProfile) -> Bool {
   }
 }
 
-fn seals_repair_candidates(profile: RepositoryCiProfile) -> Bool {
-  profile_has_seal(profile: profile)
-}
 
 fn profile_publisher_is_declared(profile: RepositoryCiProfile) -> Bool {
   match profile.publisher {
@@ -652,30 +639,3 @@ fn source_root_flag(root: String) -> String {
   join(["--source-root ", root], "")
 }
 
-// THE MIRROR LANE OF THIS MODULE, DECLARED AS A FRONTIER RATHER THAN LEFT LOOKING LIKE A PUBLIC ROW.
-//
-// DESIGN 3c says a declaration whose consumption is claimed but not visible is the one red: either name
-// the consumer and the route that executes it, or classify it. Half of this module is consumed by gunbc's
-// own four emitters and is NOT here - the required-context accessor, the runner target, the four job
-// records, the invocation helper. The half below is not: gunbc's own row passes Absent to every arm these
-// describe and routes its roster through the instrument dispatcher, so nothing in this repository ever
-// builds one. A reader who greps finds only dag/test/claim/, and a test that calls a function proves it
-// evaluates, not that anything consumes what it names. They are here because the mirror repository's own
-// profile row will construct them, from the sibling repository, where this tree cannot see the import -
-// which is the same position product.data_category's frontier rows are in, and they are enrolled in
-// gunbc.census_closure_frontier the way those are so the fold sees them rather than a comment.
-data repository_ci_mirror_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
-  module_path: "gunbc.ci.repository_ci_profile",
-  decl_names: [
-    "PublicSeed" as NonEmptyStr,
-    "OverlayIngest" as NonEmptyStr,
-    "HealSeal" as NonEmptyStr,
-    "ComposedOverlayInterpreterRoster" as NonEmptyStr,
-    "profile_uses_public_seed" as NonEmptyStr,
-    "repository_ci_profile_refusal" as NonEmptyStr,
-  ],
-  reason: "no public row constructs or executes this. gunbc's own profile row sets public_seed, heal.seal and publisher to Absent and selects RosterRoute InstrumentLabelRows, so these arms are dead in the public repository by that row's construction, not by omission; the module's other accessors are consumed by gunbc's four emitters and are deliberately absent from this list. The single consumer is the profile row of the sibling mirror repository gunb-ai/gunbc-private, which lives in THAT repository (private content may not land in the public corpus) and passes the built row to gunbc.witness.repository_witness_workflow and gunbc.ci.repository_projection_drift_workflow as an argument. ONE REASON RATHER THAN ONE PER NAME: the six names share one fact - a lane of the profile that only the mirror exercises - and copying this sentence per name would imply six separate facts.",
-  dissolution: unbound_dissolution(
-    description: "NAMED CONSUMER: gunb-ai/gunbc-private's own .dag profile row, which builds RepositoryCiProfile with a Present PublicSeed, a Present OverlayIngest inside RosterRoute ComposedOverlayInterpreterRoster, and a Present HealSeal on its drift row, then passes it to the two parameterized emitters. TRIGGER, STATED AS THE CAPABILITY AND NOT A VEHICLE: gunbc-private's committed .github/workflows become the output of these emitters, so its .dag imports these names from this module as it stands on public main and its committed YAML equals what they emit under gunbc.ci.repository_projection_drift_workflow's check. Any change carrying that import satisfies it; no particular PR is named, deliberately. READ OBLIGATION: whoever lands that import names its change here at that time; when every name in the list above is imported, the roster is empty and goes. NOT satisfied by a public witness calling one of them: the claim file already does, and that proves evaluation rather than consumption.",
-  ),
-)

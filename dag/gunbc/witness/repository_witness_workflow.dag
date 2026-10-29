@@ -1,46 +1,126 @@
 module gunbc.witness.repository_witness_workflow
 
-import std.types { Bool, Int, List, String, NonEmptyStr }
-import std.measure { byte_size_count }
-import std.optional { Optional, Present, Absent }
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
-import std.dissolution { dissolution_description, DissolutionCondition, unbound_dissolution }
-import extdeps.languages.yaml.emit { emit_yaml, YamlEmitResult, EmittedYaml, YamlEmitRefused }
-import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep, WorkflowTrigger, Push, PullRequest, Schedule, WorkflowDispatch,
-  PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
-  WorkflowPermissions, PermRead, RunnerSpec, SelfHosted
+import std.types {
+  Bool,
+  List,
+  String,
+  NonEmptyStr
 }
-import extdeps.cron.schedule_model { CronSchedule, CronField, Exact, Listed, Wildcard }
-import gunbc.action_use_admission { checkout_action, setup_rust_action }
+import std.measure {
+  byte_size_count
+}
+import std.optional {
+  Optional,
+  Present,
+  Absent
+}
+import extdeps.languages.yaml.types {
+  yaml_int,
+  kv,
+  YamlKeyValue
+}
+import std.dissolution {
+  dissolution_description,
+  DissolutionCondition,
+  unbound_dissolution
+}
+import extdeps.languages.yaml.emit {
+  emit_yaml,
+  YamlEmitResult,
+  EmittedYaml,
+  YamlEmitRefused
+}
+import extdeps.languages.yaml.gha_workflow {
+  project_workflow_to_yaml
+}
+import extdeps.github.actions {
+  Workflow,
+  Job,
+  Step,
+  WorkflowTrigger,
+  Push,
+  PullRequest,
+  Schedule,
+  WorkflowDispatch,
+  Opened,
+  Synchronize,
+  Reopened,
+  ReadyForReview,
+  WorkflowPermissions,
+  PermRead
+}
+
 import gunbc.ci.repository_ci_profile {
-  RepositoryCiProfile, PublicSeed, OverlayIngest, RosterRoute, ComposedOverlayInterpreterRoster,
-  AnnotationStep, DagInvocation, repository_ci_profile_refusal,
-  roster_route_is_instrument_dispatcher, profile_uses_public_seed
+  RepositoryCiProfile,
+  PublicSeed,
+  OverlayIngest,
+  ComposedOverlayInterpreterRoster,
+  AnnotationStep,
+  repository_ci_profile_refusal,
+  roster_route_is_instrument_dispatcher,
+  profile_uses_public_seed
 }
 import gunbc.ci.repository_compose_overlay {
-  composed_source_roots, compose_preamble_statements, merge_checkout_compose,
-  overlay_note, local_runs_note, echo_stmt, command_words, path_under,
-  unset_may_be_absent, runner_tmp_root_stmts
+  composed_source_roots,
+  compose_preamble_statements,
+  merge_checkout_compose,
+  overlay_note,
+  local_runs_note,
+  echo_stmt,
+  command_words,
+  path_under,
+  unset_may_be_absent,
+  runner_tmp_root_stmts
 }
-import v2.std.diagnostic { Outcome, Accepted, Rejected, None, bind_outcome }
-import v2.std.node { Node }
+import v2.std.diagnostic {
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  bind_outcome
+}
+import v2.std.node {
+  Node
+}
 import v2.extdeps.languages.bash_build {
-  bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst,
-  bash_build_command_with_words, bash_build_assign, bash_build_assign_lit,
-  bash_build_stmt_list_from_nodes, bash_build_if, bash_build_if_else, bash_build_and_then,
-  bash_build_negation, bash_build_test_bracket, bash_build_or_else, bash_build_pipe,
-  bash_build_with_redir, bash_build_with_redir_to_file, bash_build_exit
+  bash_build_word_lit,
+  bash_build_word_var,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_cmdsubst,
+  bash_build_command_with_words,
+  bash_build_assign,
+  bash_build_assign_lit,
+  bash_build_stmt_list_from_nodes,
+  bash_build_if,
+  bash_build_if_else,
+  bash_build_and_then,
+  bash_build_negation,
+  bash_build_test_bracket,
+  bash_build_or_else,
+  bash_build_pipe,
+  bash_build_with_redir,
+  bash_build_with_redir_to_file,
+  bash_build_exit
 }
 import gunbc.witness.witness_roster {
-  RosterEntry, RosterEntryKind, Enforced, KnownRed, MustNotCompile,
-  enforced_entries, roster_needs_declared_cause_arms,
-  roster_enforced_verdict, roster_known_red_statements, roster_must_not_compile_statements,
+  RosterEntry,
+  enforced_entries,
+  roster_enforced_verdict,
+  roster_known_red_statements,
+  roster_must_not_compile_statements,
   RosterAggregate
 }
-import gunbc.ci.ci_runner_target { ci_runner_target_spec }
-import std.roster_frontier { FrontierRow, frontier_rows_for_decls }
+import gunbc.ci.ci_runner_target {
+  ci_runner_target_spec
+}
+import gunbc.ci.repository_seed_steps {
+  repository_checkout_step,
+  seed_checkout_step,
+  record_seed_revision_step,
+  toolchain_install_step,
+  seed_build_step,
+  emit_run_step
+}
 
 // THE REQUIRED GATE FOR A REPOSITORY WHOSE CLAIMS ARE RUN BY ANOTHER REPOSITORY'S COMPILER.
 //
@@ -127,11 +207,11 @@ fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, prog
               Accepted {
                 value: concat(
                   [
-                    checkout_repository_step(program: program),
-                    checkout_seed_step(seed: seed),
+                    repository_checkout_step(step_name: program.checkout_step_name),
+                    seed_checkout_step(seed: seed),
                     record,
-                    toolchain_step(program: program),
-                    build_seed_step(seed: seed),
+                    toolchain_install_step(step_name: program.toolchain_step_name),
+                    seed_build_step(seed: seed),
                     roster
                   ],
                   annotation
@@ -146,87 +226,6 @@ fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, prog
   )
 }
 
-fn checkout_repository_step(program: RosterProgram) -> Step {
-  UsesStep {
-    name: Present { value: program.checkout_step_name },
-    id: none,
-    uses: checkout_action,
-    with: none,
-    env: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-// THE SEED, CHECKED OUT BESIDE THE REPOSITORY UNDER CI. `ref` is a row rather than "whatever the runner
-// happens to have", because the claims are judged by that compiler and an unpinned checkout makes the
-// verdict unattributable.
-fn checkout_seed_step(seed: PublicSeed) -> Step {
-  UsesStep {
-    name: Present { value: join(["Checkout ", seed.repository as String], "") },
-    id: none,
-    uses: checkout_action,
-    with: Present {
-      value: [
-        kv(key: "repository", value: yaml_string(s: seed.repository as String)),
-        kv(key: "ref", value: yaml_string(s: seed.ref_name as String)),
-        kv(key: "path", value: yaml_string(s: seed.checkout_path as String))
-      ]
-    },
-    env: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-// WHICH SEED REVISION WAS JUDGED, printed by the step that judged it. Without this, a green gate is a
-// claim about an unnamed compiler, and the first thing an operator does after a regression is guess.
-fn record_seed_revision_step(seed: PublicSeed) -> Outcome<Step> {
-  emit_run_step(
-    name: seed.record_step_name,
-    statements: [
-      command_words(rest: ["set", "-u"]),
-      command_words(rest: ["git", "-C", seed.checkout_path as String, "rev-parse", "HEAD"]),
-      command_words(rest: ["git", "-C", seed.checkout_path as String, "log", "-1", "--format='%H %s'"]),
-    ],
-    set_e: false,
-    env: none,
-    if_condition: none
-  )
-}
-
-fn toolchain_step(program: RosterProgram) -> Step {
-  UsesStep {
-    name: Present { value: program.toolchain_step_name },
-    id: none,
-    uses: setup_rust_action,
-    with: Present { value: [kv(key: "cache", value: yaml_bool(b: false))] },
-    env: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-// THE COMPILER IS BUILT FROM SOURCE IN THE SEED CHECKOUT rather than downloaded: the claims are about
-// this revision of the compiler's own language, and a released binary would be testing the language the
-// mirror's rows were written against rather than the one on main.
-fn build_seed_step(seed: PublicSeed) -> Step {
-  RunStep {
-    name: Present { value: seed.build_step_name },
-    id: none,
-    run: join([seed.build_command, "\n"], ""),
-    shell: none,
-    env: none,
-    working_directory: Present { value: seed.checkout_path as String },
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
 // THE ROSTER RUN: compose, then one process per row, with the arms that read each row's declared causes.
 // The memory budget is a row (profile.roster.memory_budget) rather than a constant because the
 // ceiling belongs to the machine the job runs on: a hosted runner with a different RAM figure is a row
@@ -238,32 +237,6 @@ fn run_roster_step(profile: RepositoryCiProfile, seed: PublicSeed, program: Rost
     set_e: true,
     env: memory_budget_env(profile: profile),
     if_condition: none
-  )
-}
-
-// ONE SEAM WHERE SCRIPT TEXT IS MADE. Every `run:` body of this workflow is a list of Nodes folded by
-// v2.workflow.bash_emit::bash_emit_stmts, and the fold's Refused is carried up as this emitter's own
-// refusal rather than swallowed: a workflow that silently lost a step is precisely the artifact a reader
-// cannot audit, so the emission stops instead.
-fn emit_run_step(name: NonEmptyStr, statements: List<Node>, set_e: Bool, env: Optional<List<YamlKeyValue>>, if_condition: Optional<String>) -> Outcome<Step> {
-  bind_outcome(
-    o: bash_emit_stmts(statements: statements, set_e: set_e),
-    f: fn(script) {
-      Accepted {
-        value: RunStep {
-          name: Present { value: name },
-          id: none,
-          run: script,
-          shell: none,
-          env: env,
-          working_directory: none,
-          if_condition: if_condition,
-          continue_on_error: none,
-          timeout_minutes: none
-        },
-        diagnostics: None
-      }
-    }
   )
 }
 
@@ -615,7 +588,6 @@ fn schedule_triggers(profile: RepositoryCiProfile) -> List<WorkflowTrigger> {
   }
 }
 
-
 // THE GATE'S JOB. The runner is a CiRunnerTarget projected to a spec
 // (gunbc.ci.ci_runner_target ci_runner_target_spec) rather than a label list, so moving a repository's
 // CI to another machine class is one row in one authority and every derivation - labels, memory regime,
@@ -742,32 +714,3 @@ fn yaml_emission_admitted(result: YamlEmitResult) -> Bool {
   }
 }
 
-// EVERY DECLARATION IN THIS MODULE IS FRONTIER, AND SAYING SO IS THE POINT OF THE ROSTER.
-//
-// gunbc's own required gate is emitted by gunbc.witness.compiler_gate_workflow, and it will stay that way:
-// this module exists for the repository whose claims are executed by another repository's compiler, and
-// gunbc is not that repository. So a grep over the public corpus finds these names imported by exactly one
-// file, and that file is a claim. DESIGN 3c names that shape as the one red a review must stop on -
-// consumption claimed and not visible - and the honest options are to delete the module or to declare it.
-// Deleting it puts the mirror's fork back in the mirror, which is the defect this work item exists to
-// remove and the reason the fork's check has been failing unnoticed. So it is declared: one roster, one
-// shared reason, one trigger, enrolled in gunbc.census_closure_frontier so the fold carries it.
-data repository_witness_mirror_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
-  module_path: "gunbc.witness.repository_witness_workflow",
-  decl_names: [
-    "repository_witness_workflow" as NonEmptyStr,
-    "repository_witness_job" as NonEmptyStr,
-    "repository_witness_steps" as NonEmptyStr,
-    "repository_witness_lane_refusal" as NonEmptyStr,
-    "expected_repository_witnesses_yml" as NonEmptyStr,
-    "repository_witnesses_yml_emission" as NonEmptyStr,
-    "run_roster_step" as NonEmptyStr,
-    "roster_run_script" as NonEmptyStr,
-    "composed_roster_script" as NonEmptyStr,
-    "mirror_compose_preamble" as NonEmptyStr,
-  ],
-  reason: "no public call site: gunbc's required gate comes from gunbc.witness.compiler_gate_workflow, and this module's job body is unreachable from it by construction (the two share gunbc.ci.repository_seed_steps and the profile row, which are NOT listed here because they are consumed). The consumer is the sibling mirror repository gunb-ai/gunbc-private, whose committed .github/workflows/witnesses.yml is meant to be the output of expected_repository_witnesses_yml applied to rows that live THERE - its profile row and its RosterEntry rows - because private content may not land in the public corpus, so the import cannot appear in this tree. ONE REASON RATHER THAN ONE PER NAME: the ten names are one fact, the mirror's required gate, and per-name copies would imply ten facts and invite ten divergent edits.",
-  dissolution: unbound_dissolution(
-    description: "NAMED CONSUMER: gunb-ai/gunbc-private's CI rows - its RepositoryCiProfile row and its RosterEntry rows - which pass the row and the roster to expected_repository_witnesses_yml and commit what it emits as .github/workflows/witnesses.yml, the check its branch protection names. TRIGGER, STATED AS THE CAPABILITY AND NOT A VEHICLE: the mirror's committed workflow becomes the output of this emitter, i.e. its .dag imports these names from this module as it stands on public main and the committed bytes equal the emission under gunbc.ci.repository_projection_drift_workflow's check. Any change carrying that import satisfies it; no particular PR is named, deliberately. READ OBLIGATION: whoever lands that import names its change here at that time; when every name above is imported, the roster is empty and goes. NOT satisfied by a public witness calling one of them: dag/test/claim does, and that proves the emitter evaluates rather than that a repository runs the workflow it emits.",
-  ),
-)

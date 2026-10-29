@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String, Int }
 import std.measure { byte_size }
 import std.optional { Optional, Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.roster_frontier { frontier_rows_well_formed }
+import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject, frontier_rows_well_formed }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
 import gunbc.ci.repository_ci_profile {
   RepositoryCiProfile, RosterGate, RosterRoute, ComposedOverlayInterpreterRoster, InstrumentLabelRows,
@@ -12,7 +12,6 @@ import gunbc.ci.repository_ci_profile {
   DagInvocation, gunbc_repository_ci_profile, repository_ci_profile_refusal,
   fleet_runner_group_target,
   github_hosted_publisher_runner_target, dag_invocation_argv,
-  repository_ci_mirror_frontier_rows,
 }
 import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted }
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
@@ -22,6 +21,7 @@ import gunbc.witness.witness_roster {
   enforced_entries, known_red_entries, must_not_compile_entries, roster_needs_declared_cause_arms,
   RosterAggregate
 }
+import gunbc.ci.repository_mirror_frontier { repository_mirror_frontier_rows }
 import gunbc.ci.repository_compose_overlay { heal_seal_env }
 import gunbc.ci.repository_projection_drift_workflow {
   DriftProgram, projection_drift_refusal, expected_projection_drift_workflow_yml,
@@ -30,7 +30,6 @@ import gunbc.ci.repository_projection_drift_workflow {
 import gunbc.witness.repository_witness_workflow {
   RosterProgram, repository_witness_lane_refusal, expected_repository_witnesses_yml,
   repository_witnesses_yml_emission, yaml_emission_admitted, repository_witness_triggers,
-  repository_witness_mirror_frontier_rows,
 }
 
 // WHAT THESE CLAIMS HOLD.
@@ -630,16 +629,46 @@ test fn the_drift_emission_seals_at_the_head_and_uploads_the_candidate() -> Bool
   }
 }
 
+// THE MIRROR LANE IS CHECKED, NOT JUST WRITTEN. A frontier row with an empty reason or trigger is how a
+// declaration becomes decoration, and `frontier_rows_well_formed` is the check the rest of the corpus uses
+// for exactly that. What is asserted on top of it: the lane is non-empty, and each of the five modules that
+// exist wholly for the mirror is named by a PathSubject row, so deleting a module's declaration deletes the
+// record of why it is allowed to be unread here. What is NOT asserted, and cannot be from inside a claim:
+// that the DECL names the roster lists exist. std.roster_frontier builds them as typed `decl_ref` literals,
+// and the authority that resolves those against the live declaration index is the decl-ref census instrument
+// (gunbc.native_census_verb, dispatched through gunbc/instrument_targets.dag, manual dispatch), which per
+// gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved refuses an
+// unresolved identity BY NAME; resolving refs inside claim evaluation is the repo's declared stall
+// (gunbc.guarantee_stall::decl_ref_host_resolver_awaits_native_claim_evaluation_stall), so no Bool here can
+// be that check. What is NOT asserted either is that the roster reaches gunbc.census_closure_frontier: the
+// fold includes it by construction, and restating what the model already builds is the 4c tell.
+test fn the_mirror_frontier_roster_is_well_formed_and_covers_the_lane() -> Bool {
+  frontier_rows_well_formed(rows: repository_mirror_frontier_rows)
+    && length(xs: repository_mirror_frontier_rows) > 0
+    && mirror_lane_module_is_rostered(path: "dag/gunbc/witness/repository_witness_workflow.dag")
+    && mirror_lane_module_is_rostered(path: "dag/gunbc/ci/repository_projection_drift_workflow.dag")
+    && mirror_lane_module_is_rostered(path: "dag/gunbc/ci/repository_compose_overlay.dag")
+    && mirror_lane_module_is_rostered(path: "dag/gunbc/witness/witness_roster.dag")
+    && mirror_lane_module_is_rostered(path: "dag/gunbc/ci/repository_seed_steps.dag")
+}
+
+// ONE ROW PER MIRROR-LANE FILE, asserted by path. A row that names a file nobody reads is the thing a
+// frontier is for; a roster that stops naming a file that is still unread is how the lane drifts back into
+// undocumented hand-owned CI.
+fn mirror_lane_module_is_rostered(path: String) -> Bool {
+  any(
+    xs: repository_mirror_frontier_rows,
+    f: fn(row) {
+      match row.subject {
+        PathSubject { path: p } => p == path
+        DeclSubject { ref: r } => false
+      }
+    }
+  )
+}
+
 // A MIRROR WITH NO CADENCE GETS NO SCHEDULE TRIGGER. It has three: dispatch, push, and the pull request
 // that the seal needs. A schedule here would only re-run the same comparison against an unchanged seed.
-// THE FRONTIER ROSTERS ARE CHECKED, NOT JUST WRITTEN. A frontier row with an empty reason or trigger is how
-// a declaration becomes decoration, and `frontier_rows_well_formed` is the check the rest of the corpus uses
-// for exactly that. What is NOT asserted here is that the rosters reach gunbc.census_closure_frontier: the
-// fold includes them by construction, and restating what the model already builds is the 4c tell.
-test fn the_mirror_frontier_rosters_are_well_formed() -> Bool {
-  frontier_rows_well_formed(rows: repository_ci_mirror_frontier_rows)
-    && frontier_rows_well_formed(rows: repository_witness_mirror_frontier_rows)
-}
 
 test fn a_mirror_with_no_cadence_gets_no_schedule_trigger() -> Bool {
   match expected_projection_drift_workflow_yml(

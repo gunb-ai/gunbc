@@ -1,0 +1,125 @@
+module gunbc.ci.repository_mirror_frontier
+
+// ONE FRONTIER FOR THE WHOLE MIRROR LANE, IN ONE PLACE.
+//
+// WHAT THE LANE IS. gunbc and the sibling repository gunb-ai/gunbc-private are CI mirrors: same workflows,
+// same required checks, differing in that the private repository is not public and carries rows the public
+// corpus may not contain. The agreed fix is that BOTH repositories' committed .github/workflows are the
+// output of ONE set of emitters living here, parameterized by that repository's row of
+// gunbc.ci.repository_ci_profile. The emitters and the row types they need therefore have to be written in
+// the public repository, while the rows they are given live in the other one.
+//
+// WHY THAT IS A FRONTIER AND NOT DEAD CODE. DESIGN 3c admits three classifications for a declaration the
+// public corpus does not consume, and this is the second one: named, with the consumer and the route that
+// executes it, rather than dangling. Nothing here is reachable from a public row by construction -- gunbc's
+// required gate is emitted by gunbc.witness.compiler_gate_workflow, its drift watch by
+// gunbc.drift_watch_workflow, and gunbc's own profile row sets public_seed, heal.seal and publisher to
+// Absent and routes its roster through the instrument dispatcher. The consumer is a row in another
+// repository, which cannot import in this tree because private content may not land in the public corpus.
+// A test that calls one of these proves it evaluates, not that a repository runs what it emits, so
+// dag/test/claim is deliberately not offered as the consumer.
+//
+// WHY ONE MODULE RATHER THAN A ROSTER IN EACH FILE. Every row below shares one dissolution: the mirror's
+// committed YAML becomes the output of these emitters. Writing that sentence six times would imply six
+// facts and invite six divergent edits of the same promise; here it is `mirror_lane_dissolution`, read by
+// every row, and each row states only what is specific to its lane. The rows are grouped by module because
+// the grain differs: five modules exist wholly for the mirror, and one public module
+// (gunbc.ci.repository_ci_profile) has a lane of arms inside it that no public row constructs.
+//
+// READING OBLIGATION. These modules are read at the time the mirror consumes them, not before: whoever
+// lands gunbc-private's adoption names at that time what of this text is still true, and any row whose
+// subject has become reachable from a public row is deleted here rather than left rostering a live path.
+// When every subject is imported by the mirror's own .dag, each roster is empty and this module goes.
+
+import std.types { List, NonEmptyStr, String }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_path, frontier_rows_for_decls }
+
+// THE ONE DISSOLUTION EVERY ROW BELOW SHARES, written once. It states a capability rather than a vehicle:
+// no PR, branch or date appears, because a promise that expires on a date is a countdown nobody maintains,
+// and a promise that names a PR is a citation to something that will be merged and stop existing.
+data mirror_lane_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunb-ai/gunbc-private's own .dag -- its RepositoryCiProfile row, its RosterEntry rows and its drift program rows -- which pass those rows to the emitters listed in the reason above and commit what they emit as .github/workflows/<file>, the files that repository's branch protection names. TRIGGER, STATED AS THE CAPABILITY AND NOT A VEHICLE: the mirror's committed workflow becomes the output of these emitters, i.e. its .dag imports the subject from this module as it stands on public main and the committed bytes equal the emission under gunbc.ci.repository_projection_drift_workflow's check. Any change carrying that import satisfies it. READ OBLIGATION: whoever lands that import names its change here at that time. NOT satisfied by a public witness calling one of these: dag/test/claim already does, and that proves evaluation rather than consumption.",
+)
+
+// FIVE MODULES THAT EXIST WHOLELY FOR THE MIRROR. Subject is the file, because the whole file is the lane:
+// each is imported today only by other members of this roster and by dag/test/claim.
+data mirror_lane_module_rows: List<FrontierRow> = [
+  frontier_row_path(
+    path: "dag/gunbc/witness/repository_witness_workflow.dag",
+    reason: "the mirror's required gate: the composed-overlay roster run, the KnownRed and MustNotCompile verdict arms, and the seed compile step. Unreachable from a public row by construction -- gunbc's required check comes from gunbc.witness.compiler_gate_workflow, which shares gunbc.ci.repository_seed_steps and the profile row with this module but never calls into it.",
+    dissolution: mirror_lane_dissolution,
+  ),
+  frontier_row_path(
+    path: "dag/gunbc/ci/repository_projection_drift_workflow.dag",
+    reason: "the mirror's drift check and heal seal: the committed-YAML-vs-emission check, and the seal step that produces a repair candidate for the publisher. gunbc's own drift watch is gunbc.drift_watch_workflow, emitted from gunbc's own row, so nothing here is reached from a public workflow.",
+    dissolution: mirror_lane_dissolution,
+  ),
+  frontier_row_path(
+    path: "dag/gunbc/ci/repository_compose_overlay.dag",
+    reason: "the typed shell of the composed overlay: the seed checkout, the copy of the private rows beside it, the runner-temp ceiling and the re-entry into the composed tree. Only the two emitters above read it, and both are in this roster; the copy step's own end is carried by OverlayIngest.overlay_copy_dissolves_when in the row, not here.",
+    dissolution: mirror_lane_dissolution,
+  ),
+  frontier_row_path(
+    path: "dag/gunbc/witness/witness_roster.dag",
+    reason: "the general row types the mirror supplies rows for (RosterEntry and its Enforced, KnownRed and MustNotCompile kinds, RosterProgram, RosterAggregate) and the verdict arms those rows drive. gunbc enrolls no rows of its own today -- its gate runs the instrument dispatcher route -- so the types are exercised in this repository only by dag/test/claim, which proves they evaluate and not that a repository runs the verdicts they print.",
+    dissolution: mirror_lane_dissolution,
+  ),
+  frontier_row_path(
+    path: "dag/gunbc/ci/repository_seed_steps.dag",
+    reason: "the five steps every CI job in a mirror has (checkout, seed checkout, seed-revision receipt, toolchain, seed build), written once in typed statements after both forks had written them by hand. Its consumers are the two emitters above, so it is reached only through the lane; it is listed rather than left implied because a module imported solely by frontier modules is otherwise invisible to the census.",
+    dissolution: mirror_lane_dissolution,
+  ),
+]
+
+// THE MIRROR LANE INSIDE A PUBLIC MODULE. Half of gunbc.ci.repository_ci_profile is read by gunbc's own
+// four emitters -- the required-context accessor, the runner target, the four job records, the invocation
+// helper -- and those are deliberately NOT here. These seven are the arms no public row constructs. Every
+// name here is a top-level declaration of that module: a frontier subject is a declaration, so the lane's
+// composed-overlay route is rostered as its owning declaration `RosterRoute` (whose
+// ComposedOverlayInterpreterRoster alternative is the arm the mirror selects) rather than as the alternative's
+// name, which is not a declaration and would make the roster claim something the Node tree cannot resolve.
+data profile_mirror_arm_rows: List<FrontierRow> = frontier_rows_for_decls(
+  module_path: "gunbc.ci.repository_ci_profile",
+  decl_names: [
+    "PublicSeed" as NonEmptyStr,
+    "OverlayIngest" as NonEmptyStr,
+    "HealSeal" as NonEmptyStr,
+    "RosterRoute" as NonEmptyStr,
+    "profile_uses_public_seed" as NonEmptyStr,
+    "profile_public_seed" as NonEmptyStr,
+    "repository_ci_profile_refusal" as NonEmptyStr,
+  ],
+  reason: "no public row constructs or executes these. gunbc's own profile row sets public_seed, heal.seal and publisher to Absent and selects RosterRoute InstrumentLabelRows, so these arms are dead in the public repository by that row's construction rather than by omission. The single consumer is the mirror repository's profile row, which builds a Present PublicSeed, a Present OverlayIngest inside RosterRoute ComposedOverlayInterpreterRoster and a Present HealSeal, and reads them back through profile_public_seed and profile_uses_public_seed to hand the emitters their arguments. ONE REASON RATHER THAN ONE PER NAME: the seven names are one fact -- a lane of the profile only the mirror exercises -- and per-name copies would imply seven facts.",
+  dissolution: mirror_lane_dissolution,
+)
+
+// THE ENTRY POINTS OF THE MIRROR'S GATE EMITTER, named individually because the module's internals are
+// already covered by the module row above and these are the subjects a reader of the mirror's import
+// statement will actually look for. Every name here is a declaration that exists in
+// dag/gunbc/witness/repository_witness_workflow.dag; the three *_statements names are the typed-statement
+// builders the fold consumes, which replaced the String-returning script builders this roster once listed.
+data witness_emitter_rows: List<FrontierRow> = frontier_rows_for_decls(
+  module_path: "gunbc.witness.repository_witness_workflow",
+  decl_names: [
+    "repository_witness_workflow" as NonEmptyStr,
+    "repository_witness_job" as NonEmptyStr,
+    "repository_witness_steps" as NonEmptyStr,
+    "repository_witness_lane_refusal" as NonEmptyStr,
+    "expected_repository_witnesses_yml" as NonEmptyStr,
+    "repository_witnesses_yml_emission" as NonEmptyStr,
+    "run_roster_step" as NonEmptyStr,
+    "roster_run_statements" as NonEmptyStr,
+    "mirror_compose_statements" as NonEmptyStr,
+    "composed_roster_statements" as NonEmptyStr,
+  ],
+  reason: "no public call site: the required gate of THIS repository is gunbc.witness.compiler_gate_workflow's, and this module's job body is unreachable from it by construction. The consumer is the mirror repository, whose committed .github/workflows/witnesses.yml is meant to be the output of expected_repository_witnesses_yml applied to rows that live THERE -- its profile row and its RosterEntry rows -- so the import cannot appear in this tree. ONE REASON RATHER THAN ONE PER NAME: these ten names are one fact, the mirror's required gate.",
+  dissolution: mirror_lane_dissolution,
+)
+
+// THE ROSTER THE CENSUS FOLDS. Enrolled the way product.data_category's rows are, in
+// gunbc.census_closure_frontier, so the fold sees the lane rather than a comment describing it.
+data repository_mirror_frontier_rows: List<FrontierRow> = concat(
+  mirror_lane_module_rows,
+  concat(profile_mirror_arm_rows, witness_emitter_rows)
+)

@@ -1,11 +1,15 @@
 module gunbc.ci.repository_seed_steps
 
-import std.types { String, NonEmptyStr }
-import std.optional { Present, Absent }
-import extdeps.languages.yaml.types { yaml_string, yaml_bool, kv }
+import std.types { Bool, List, String, NonEmptyStr }
+import std.optional { Optional, Present, Absent }
+import extdeps.languages.yaml.types { yaml_string, yaml_bool, kv, YamlKeyValue }
 import extdeps.github.actions { RunStep, Step, UsesStep }
 import gunbc.action_use_admission { checkout_action, setup_rust_action }
 import gunbc.ci.repository_ci_profile { PublicSeed }
+import gunbc.ci.repository_compose_overlay { command_words }
+import v2.std.diagnostic { Outcome, Accepted, bind_outcome }
+import v2.std.node { Node }
+import v2.workflow.bash_emit { bash_emit_stmts }
 
 // THE FIVE STEPS EVERY CI JOB IN A MIRROR REPOSITORY HAS, written once. A repository that runs its
 // claims under a compiler checked out beside it must: take its own tree, take the seed, say WHICH seed
@@ -57,31 +61,47 @@ fn seed_checkout_step(seed: PublicSeed) -> Step {
   }
 }
 
-// WHICH SEED REVISION WAS JUDGED, printed by the step that judged it. Without this, a green gate is a
-// claim about an unnamed compiler, and the first thing an operator does after a regression is guess.
-fn seed_revision_step(seed: PublicSeed) -> Step {
-  RunStep {
-    name: Present { value: seed.record_step_name },
-    id: none,
-    run: seed_revision_receipt_script(seed: seed),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
+// A RUN STEP FROM TYPED STATEMENTS. Every run body in this module is a tree of
+// v2.extdeps.languages.bash_build nodes folded by v2.workflow.bash_emit::bash_emit_stmts, so the shape of
+// a step is a model rather than a string that happens to be shell. The fold's Refused is carried up as the
+// emitter's own refusal, which is why these builders return Outcome.
+fn emit_run_step(name: NonEmptyStr, statements: List<Node>, set_e: Bool, env: Optional<List<YamlKeyValue>>, if_condition: Optional<String>) -> Outcome<Step> {
+  bind_outcome(
+    o: bash_emit_stmts(statements: statements, set_e: set_e),
+    f: fn(script) {
+      Accepted {
+        value: RunStep {
+          name: Present { value: name },
+          id: none,
+          run: script,
+          shell: none,
+          env: env,
+          working_directory: none,
+          if_condition: if_condition,
+          continue_on_error: none,
+          timeout_minutes: none
+        },
+        diagnostics: None
+      }
+    }
+  )
 }
 
-fn seed_revision_receipt_script(seed: PublicSeed) -> String {
-  join(
-    [
-      "set -u",
-      join(["cd ", seed.checkout_path as String], ""),
-      join(["echo \"", seed.repository as String, " resolved to $(git rev-parse HEAD)\"",], ""),
-      join(["echo \"tracking ref: ", seed.ref_name as String, "\""], "")
+// WHICH SEED REVISION WAS JUDGED, printed by the step that judged it. Without this, a green gate is a
+// claim about an unnamed compiler, and the first thing an operator does after a regression is guess.
+// `git -C <path>` rather than a `cd`: the step must not carry a working directory that the next statement
+// silently inherits, and the receipt must be about the seed's checkout even when the job's cwd is elsewhere.
+fn record_seed_revision_step(seed: PublicSeed) -> Outcome<Step> {
+  emit_run_step(
+    name: seed.record_step_name,
+    statements: [
+      command_words(rest: ["set", "-u"]),
+      command_words(rest: ["git", "-C", seed.checkout_path as String, "rev-parse", "HEAD"]),
+      command_words(rest: ["git", "-C", seed.checkout_path as String, "log", "-1", "--format='%H %s'"]),
     ],
-    "\n"
+    set_e: false,
+    env: none,
+    if_condition: none
   )
 }
 
