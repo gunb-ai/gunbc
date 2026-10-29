@@ -11,7 +11,7 @@ import gunbc.live_deploy.capacity_capture_provider { capacity_cutover_journal_re
 import std.types { String, NonEmptyStr, Timestamp, ShellResponse }
 import std.error_primitives { Result, Ok, Err }
 import std.content_hash { sha256_hex_of_text }
-import std.scoped_authorization { AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided }
+import std.scoped_authorization { AttemptIdentity, AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided }
 import std.durable_compare_and_set { CasGeneration }
 import std.process { ExitSuccess, ExitFailure }
 import extdeps.languages.json.emit { serialize_json, json_array, json_string }
@@ -22,6 +22,28 @@ import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorizat
   capacity_reload_manager_text, capacity_reload_boundary_text, capacity_cutover_reload_admission }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord,
   CapacityPreparingInhibition, CapacityInstalling, CapacityRemovingInhibition }
+
+type CapacityReloadCompleted sole_constructor {
+  attempt: AttemptIdentity
+  manager: SystemdManager
+  boundary: CapacityReloadBoundary
+}
+
+// Only an observed successful reload mints this receipt. Production reaches it
+// after the durable phase claim; the witness supplies that observation boundary.
+fn capacity_reload_completed(approval: CapacityCutoverAuthorization, record: CapacityCutoverRecord,
+  manager: SystemdManager, boundary: CapacityReloadBoundary, response: ShellResponse, at: Timestamp) -> Result<CapacityReloadCompleted, String>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.live_deploy.capacity_manager_reload", decl_name: "capacity_reload_run_authorized"),
+    decl_ref(module_path: "test.claim.live_deploy.capacity_discharge_witness", decl_name: "discharge_fixture_reload"),
+  ]
+{
+  match capacity_reload_record_admission(approval: approval, record: record, manager: manager, boundary: boundary, at: at) {
+    Err { value: why } => Err { value: why }
+    Ok { value: _ } => if response.exit_code != 0 { Err { value: "reload completion requires an observed successful response" } }
+      else { Ok { value: CapacityReloadCompleted { attempt: record.attempt, manager: manager, boundary: boundary } } }
+  }
+}
 
 // This checks phase, not quiescence. The executor must still acquire its live
 // drain and post-reload proofs. It supplies a freshly read durable journal.
@@ -66,7 +88,7 @@ fn capacity_reload_claim_admission(outcome: AuthorizationClaimOutcome) -> Result
 // phase's capability. The port is the existing apply manager transport.
 fn capacity_reload_run_authorized(approval: CapacityCutoverAuthorization, record: CapacityCutoverRecord,
   manager: SystemdManager, boundary: CapacityReloadBoundary, now: fn() -> Result<Timestamp, String>,
-  run: fn(SystemdManager) -> Result<ShellResponse, String>) -> Result<ShellResponse, String>
+  run: fn(SystemdManager) -> Result<ShellResponse, String>) -> Result<CapacityReloadCompleted, String>
   admit_callers: [decl_ref(module_path: "gunbc.live_deploy.capacity_manager_reload", decl_name: "capacity_reload_journal_held")]
 {
   let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
@@ -82,7 +104,7 @@ fn capacity_reload_run_authorized(approval: CapacityCutoverAuthorization, record
   let finished = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   match settle_authorization_claim(label: "cutover manager reload", outcome: ExitSuccess, escalation_id: key,
     attempt: record.attempt, held_at: held, at: finished) {
-    ExitSuccess => Ok { value: result }
+    ExitSuccess => capacity_reload_completed(approval: approval, record: record, manager: manager, boundary: boundary, response: result, at: finished)
     ExitFailure { code: _, reason: why } => Err { value: why }
   }
 }
@@ -93,7 +115,7 @@ fn capacity_reload_run_authorized(approval: CapacityCutoverAuthorization, record
 fn capacity_reload_from_journal(store: CapacityCaptureStore, provider: LocalStoreCapability,
   journal: SlotStore, key: NonEmptyStr, approval: CapacityCutoverAuthorization, manager: SystemdManager,
   boundary: CapacityReloadBoundary, now: fn() -> Result<Timestamp, String>,
-  run: fn(SystemdManager) -> Result<ShellResponse, String>) -> Result<LocalStoreBracket<Result<ShellResponse, String>>, String> {
+  run: fn(SystemdManager) -> Result<ShellResponse, String>) -> Result<LocalStoreBracket<Result<CapacityReloadCompleted, String>>, String> {
   if local_store_binding_path(b: provider.binding) != (store.root as String) || store.attempt != approval.intent.attempt {
     return Err { value: "reload provider or approval belongs to another apply" }
   }
@@ -109,7 +131,7 @@ fn capacity_reload_from_journal(store: CapacityCaptureStore, provider: LocalStor
 fn capacity_reload_journal_held(store: CapacityCaptureStore, journal: SlotStore, key: NonEmptyStr,
   held: LocalStoreFamilyHeld, approval: CapacityCutoverAuthorization, manager: SystemdManager,
   boundary: CapacityReloadBoundary, now: fn() -> Result<Timestamp, String>,
-  run: fn(SystemdManager) -> Result<ShellResponse, String>) -> Result<ShellResponse, String>
+  run: fn(SystemdManager) -> Result<ShellResponse, String>) -> Result<CapacityReloadCompleted, String>
   admit_callers: [decl_ref(module_path: "gunbc.live_deploy.capacity_manager_reload", decl_name: "capacity_reload_from_journal")]
 {
   let reading = match capacity_cutover_journal_read(store: store, journal: journal, key: key) {

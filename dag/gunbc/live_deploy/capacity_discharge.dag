@@ -1,0 +1,63 @@
+module gunbc.live_deploy.capacity_discharge
+
+import std.types { String, List, ShellResponse }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import extdeps.systemd { parse_systemd_unit_load_state, UnitLoadMasked }
+import extdeps.systemd.systemctl { systemctl_show_property_value }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityMaskEntry }
+import gunbc.live_deploy.capacity_migration_approval { CapacityAfterRemoval }
+import gunbc.live_deploy.capacity_manager_reload { CapacityReloadCompleted }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityRemovingInhibition, capacity_recovery_has_artifact }
+
+// Cleanup consumes this whole proof, never a Bool plus a separately supplied
+// journal. Foreign entries and other masks are findings, not unlink permissions.
+type CapacityDischargeReady sole_constructor {
+  record: CapacityCutoverRecord
+  foreign_entries: List<CapacityInhibitionPath>
+  externally_masked: List<CapacityManagedUnit>
+}
+
+fn capacity_discharge_admit(record: CapacityCutoverRecord, reloads: Result<List<CapacityReloadCompleted>, String>,
+  read_entry: fn(CapacityInhibitionPath) -> Result<CapacityMaskEntry?, String>,
+  read_unit: fn(CapacityManagedUnit) -> Result<ShellResponse, String>) -> Result<CapacityDischargeReady, String> {
+  let done = match record.phase {
+    CapacityRemovingInhibition { completed: completed } => count(record.created_paths) > 0 && completed == count(record.created_paths)
+    _ => false
+  }
+  if !done || record.created_paths != record.planned_paths
+    || !all(record.created_paths, path => capacity_recovery_has_artifact(artifacts: record.artifacts, path: path)) {
+    return Err { value: "journal removal requires completed owned-link removal receipts" }
+  }
+  let completed = match reloads { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  if !all(completed, receipt => receipt.attempt == record.attempt && receipt.boundary == CapacityAfterRemoval)
+    || !all(record.created_paths, path => count(filter(completed, receipt => receipt.manager == path.subject.manager)) == 1) {
+    return Err { value: "journal removal requires a confirmed final reload for every touched manager" }
+  }
+  fold(record.artifacts, init: Ok { value: CapacityDischargeReady { record: record, foreign_entries: [], externally_masked: [] } },
+    f: (prior, artifact) => match prior {
+      Err { value: why } => Err { value: why }
+      Ok { value: ready } => {
+        let entry = match read_entry(artifact.inhibition) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+        let foreign = match entry {
+          Absent => []
+          Present { value: value } => if value.identity == artifact.identity {
+            return Err { value: "owned inhibition inode remains; retain journal and captures" }
+          } else { [artifact.inhibition] }
+        }
+        let observed = match read_unit(artifact.inhibition.subject) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+        if observed.exit_code != 0 { return Err { value: "final unit load-state read failed; retain journal and captures" } }
+        let raw = match systemctl_show_property_value(text: observed.stdout, key: "LoadState") {
+          Absent => { return Err { value: "final unit LoadState is missing" } } Present { value: value } => value
+        }
+        let state = match parse_systemd_unit_load_state(raw: raw) {
+          Absent => { return Err { value: "final unit LoadState is unknown" } } Present { value: value } => value
+        }
+        Ok { value: CapacityDischargeReady { record: record,
+          foreign_entries: ready.foreign_entries + foreign,
+          externally_masked: ready.externally_masked + (if state == UnitLoadMasked { [artifact.inhibition.subject] } else { [] }) } }
+      }
+    })
+}

@@ -56,7 +56,11 @@ type CapacityRecoveryLeg
   | CapacityRecoveryInstall { file: CapacityGenerationFile }
   | CapacityRecoveryVerifyGeneration { files: List<CapacityGenerationFile> }
   | CapacityRecoveryVerifyInhibition { paths: List<CapacityInhibitionPath> }
+  | CapacityRecoveryVerifyDischarge { artifacts: List<CapacityInhibitionArtifact> }
+  | CapacityRecoveryRemoveCaptures { files: List<CapacityGenerationFile> }
   | CapacityRecoveryRemoveRecordedLinks { artifacts: List<CapacityInhibitionArtifact> }
+  | CapacityRecoveryVerifyDischarge { artifacts: List<CapacityInhibitionArtifact> }
+  | CapacityRecoveryRemoveCaptures { files: List<CapacityGenerationFile> }
   | CapacityRecoveryRemoveRecord
   | CapacityRecoveryReload
 
@@ -84,7 +88,8 @@ fn capacity_recovery_plan(record: CapacityCutoverRecord, choice: CapacityRecover
     + [CapacityRecoveryVerifyGeneration { files: selected },
       CapacityRecoveryVerifyInhibition { paths: record.planned_paths },
       CapacityRecoveryRemoveRecordedLinks { artifacts: record.artifacts },
-      CapacityRecoveryRemoveRecord, CapacityRecoveryReload] }
+      CapacityRecoveryReload, CapacityRecoveryVerifyDischarge { artifacts: record.artifacts },
+      CapacityRecoveryRemoveCaptures { files: record.prior + record.target }, CapacityRecoveryRemoveRecord] }
 }
 
 fn capacity_recovery_has_artifact(artifacts: List<CapacityInhibitionArtifact>, path: CapacityInhibitionPath) -> Bool {
