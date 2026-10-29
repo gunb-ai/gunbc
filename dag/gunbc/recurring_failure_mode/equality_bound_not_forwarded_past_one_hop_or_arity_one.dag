@@ -1,0 +1,33 @@
+module gunbc.recurring_failure_mode.equality_bound_not_forwarded_past_one_hop_or_arity_one
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data equality_bound_not_forwarded_past_one_hop_or_arity_one: RecurringFailureMode = RecurringFailureMode {
+  identity: "equality_bound_not_forwarded_past_one_hop_or_arity_one" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "a std-modeled equality kind that a generic parameter declares, whose inhabitance is the equality operand admission, so the type check refuses == on a parameter that does not declare it and the emitted bound is rendered from the declaration instead of derived from the body" } },
+
+  receipts: [
+    "**a caller of a generic fn that compares its type parameters is emitted without the PartialEq bound the callee carries** (INVALID STATE: an emitted generic fn whose body reaches a == on its own type parameters only through a callee, either more than one call away or through a callee parameter applying two or more type arguments, emitted with `<T: Clone>` while the callee carries `<T: Clone + PartialEq>`.",
+
+    "HARM: the emitted crate fails rustc E0277 at the call (`can't compare T with T`), so any native claim program whose closure reaches the caller cannot be built. Loud, at cargo, below the front end.",
+
+    "FILED FROM the emitter-debt list routed by stern-bat-401 (class 3), measured on the rfm-rung-census route at 1bceac02818: eight E0277 errors in std_state_durability.rs on Target and ReadbackSubject. std.state_durability state_durability_admission_eq<Target, ReadbackSubject> compares both; state_durability_evidence_cardinality calls it inside a fold lambda with a StateDurabilityAdmission<Target, ReadbackSubject> argument; state_durability_boundary_evidence_verdict calls that, two hops above the ==. Both callers emitted `<Target: Clone, ReadbackSubject: Clone>`.",
+
+    "ROOT CAUSE (DESIGN section 6b): the emitter's own bound inference was the earliest unjustified boundary, because the .dag language has no declared bound vocabulary (a `<T: X>` parameter declares a KIND, judged by type argument inhabitance, and the corpus has one). The inference claimed to compute the bounds a generic fn owes, but it had two answers to one question. Map-key forwarding read a closure-wide call-graph fixpoint table (v1_fn_map_key_bound_table), while equality forwarding re-derived the callee's bound from the callee body, one hop and no further. Both read one join, v1.compiler.trait_bound_witness v1_call_forwarding_bound_wrapper_param_names, which paired type arguments only at arity exactly 1 and named arity 2 as its next-rung trigger; std.state_durability is that specimen.",
+
+    "REPAIRED: the forwarding walk (v1.compiler.emit_rust v1_call_forwarding_bound_param_names) reads a callee-bounds table for every bound class, and v1_fn_bound_fixpoint closes both v1_fn_map_key_bound_table and the new v1_fn_equality_bound_table (seeded by v1_fn_body_equality_bound_param_names). ForwardedBoundClass and the one-hop equality derivation are deleted. The join pairs type arguments positionally at any equal arity. RED/controls in test.claim.fn_equality_bound_witness: arity_two_fold_lambda_caller_inherits_the_equality_bound, two_hop_caller_inherits_the_equality_bound, and the discriminator two_hop_caller_of_an_unbounded_callee_stays_bare.",
+
+    "RUNG: found at and still mitigatable, because the bound is DERIVED from the body: the source never states that a parameter must admit equality, and the 04_infer equality wall admits == on a type parameter by design (equality_admission_wall_note boundary 1). Ceiling structurally guaranteed: when a std-modeled equality kind exists (Charter 1's type floor), the check refuses == on a parameter that does not declare it, and the emitter renders the declared bound, after which this inference is deleted. Not modeled here, on stern-bat-401's ruling.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "v1_fn_equality_bound_table", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "v1_fn_bound_fixpoint", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.trait_bound_witness", decl_name: "v1_call_forwarding_bound_wrapper_param_names", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.fn_equality_bound_witness", decl_name: "two_hop_caller_inherits_the_equality_bound", field: WholeDeclaration },
+  ],
+}

@@ -114,7 +114,7 @@ import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build { bash_build_with_redir, bash_build_command_with_words, bash_build_word_lit, bash_build_exit }
 import gunbc.fleet.fleet_workflow_steps {
-  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
+  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_site_pxe_edge_converge_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
 }
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host.host_reset_return_run { host_reset_dispatch_mode_env }
@@ -2235,6 +2235,10 @@ fn fleet_converge_microvm_host_standing_upload_step() -> Step {
 // and see what a converge would write before any root-evaluated file changes. Both reach the target
 // over the job's fleet-key agent as the declared administrator; the job user gains no grant.
 fn fleet_converge_runner_host_file_step(id: String, name: String, invoke: String, if_condition: String) -> Step {
+  fleet_converge_runner_host_file_step_within(id: id, name: name, invoke: invoke, if_condition: if_condition, timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes)
+}
+
+fn fleet_converge_runner_host_file_step_within(id: String, name: String, invoke: String, if_condition: String, timeout_minutes: Duration) -> Step {
   RunStep {
     name: Present { value: name },
     id: Present { value: id },
@@ -2248,7 +2252,7 @@ fn fleet_converge_runner_host_file_step(id: String, name: String, invoke: String
     working_directory: none,
     if_condition: Present { value: if_condition },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
+    timeout_minutes: Present { value: timeout_minutes }
   }
 }
 
@@ -2539,11 +2543,12 @@ fn fleet_converge_site_pxe_edge_observe_step() -> Step {
 }
 
 fn fleet_converge_site_pxe_edge_converge_step() -> Step {
-  fleet_converge_runner_host_file_step(
+  fleet_converge_runner_host_file_step_within(
     id: "site_pxe_edge_converge",
     name: "Site PXE edge: if the gate is open, write what differs, restart the unit, read its active state back",
     invoke: gunbc_ci_site_pxe_edge_converge_invoke(),
     if_condition: fleet_converge_site_pxe_edge_converge_step_if,
+    timeout_minutes: gunbc_ci_site_pxe_edge_converge_step_timeout_minutes,
   )
 }
 
