@@ -75,4 +75,12 @@ emission of `fleet_converge_hosted_gunbc_build_step(purpose:)`, whose run body d
 (only the step NAME interpolates it), so its body is carried byte-for-byte from the committed grant-wait
 job's build step — the current model's own emission, regenerated on main the same day — and a reviewer with a
 fresh binary should get identical bytes. If a regen at a newer main ever shows a difference in that one step,
-the carry was wrong, not the model.
+the carry was wrong, not the model. That equality is not asserted on trust:
+`test.claim.host.fleet_keypair_mint_witness` executes the comparison -- the
+builder's run body is purpose-independent (only the name interpolates it),
+the committed file's two build steps are byte-identical bodies under their
+declared names, the skeleton around the body is the builder's field list, and
+where the interpreter's fold can render, the committed body must EQUAL the
+builder's own run string (where it refuses -- every binary predating #15235 --
+the test asserts the refusal names the fold, a disclosed gap rather than a
+silent pass).
