@@ -8,7 +8,7 @@ import std.measure { kibibyte }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import gunbc.compute.capacity_migration {
   CapacityManagedUnit, CapacityTransientFamily, CapacityFamilyParents, CapacityUnclassified,
-  CapacityWriterReading, CapacityMigrationChild, capacity_migration_parent_requirements,
+  CapacityWriterReading, CapacityMigrationChild, CapacityMigrationPopulation, CapacityConfirmedWriter, CapacityMigrationParentRequirement, capacity_migration_parent_requirements,
 }
 import gunbc.compute.host_capacity {
   ComputeBuildPool, ComputeCapacitySubject, host_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
@@ -27,7 +27,7 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
 import gunbc.live_deploy.capacity_migration { deployment_capacity_population_from_installs }
 import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyRequest, CapacityProbeBinding }
-import gunbc.live_deploy.capacity_quiescence { capacity_probe_requirement, CapacityProbeUnknown }
+import gunbc.live_deploy.capacity_quiescence { capacity_probe_requirement, CapacityProbeUnknown, CapacityProbeProcess }
 
 // Main's producers, derived from their actual naming functions. The lab's extra
 // redelivery and hand-in producers are bound on lab integration, not fabricated on
@@ -74,7 +74,8 @@ fn capacity_main_child_subjects(spec: DeploymentSpec) -> Result<List<ComputeCapa
   }
 }
 
-fn capacity_main_apply_request(spec: DeploymentSpec, revision: CommitSha, installed: List<DeploymentUnitInstall>) -> Result<CapacityMigrationApplyRequest, String> {
+fn capacity_main_apply_request(spec: DeploymentSpec, revision: CommitSha, installed: List<DeploymentUnitInstall>, runners: Result<List<CapacityManagedUnit>, String>) -> Result<CapacityMigrationApplyRequest, String> {
+  let runner_units = match runners { Err { value: why } => { return Err { value: why } } Ok { value: units } => units }
   match capacity_main_child_subjects(spec: spec) {
     Err { value: why } => Err { value: why }
     Ok { value: subjects } => match deployment_capacity_population_from_installs(installed: installed,
@@ -82,14 +83,25 @@ fn capacity_main_apply_request(spec: DeploymentSpec, revision: CommitSha, instal
       classify: install => CapacityWriterReading { source: decl_ref(module_path: "gunbc.live_deploy.capacity_migration_source", decl_name: "capacity_main_apply_request"),
         standing: CapacityUnclassified { detail: "installed service has no covered negative reachability reading" } }) {
       Err { value: why } => Err { value: why }
-      Ok { value: population } => {
+      Ok { value: lab_population } => {
+        let population = CapacityMigrationPopulation {
+          source: lab_population.source,
+          installed: lab_population.installed + runner_units,
+          writer_parents: lab_population.writer_parents + map(runner_units, unit => CapacityMigrationParentRequirement {
+            source: decl_ref(module_path: "gunbc.live_deploy.capacity_runner_roster", decl_name: "capacity_runner_units"),
+            standing: CapacityConfirmedWriter, parents: Ok { value: [unit] },
+          }),
+          transients: lab_population.transients, children: lab_population.children,
+        }
         let required = population.installed + flat_map(population.transients, family => family.activators)
           + flat_map(capacity_migration_parent_requirements(population: population), row => match row.parents { Ok { value: parents } => parents Err { value: _ } => [] })
         let unique = fold(required, init: [], f: (units, unit) => if fold(units, init: false, f: (found, previous) => found || previous == unit) { units } else { units + [unit] })
         Ok { value: CapacityMigrationApplyRequest { population: population, target_revision: revision, child_subjects: subjects,
           bindings: map(unique, unit => {
             let matching = filter(installed, install => install.manager == unit.manager && install.unit == unit.unit)
-            CapacityProbeBinding { subject: unit, requirement: if count(matching) != 1 {
+            let runner = fold(runner_units, init: false, f: (found, candidate) => found || candidate == unit)
+            CapacityProbeBinding { subject: unit, requirement: if runner { CapacityProbeProcess { parent: none } }
+            else if count(matching) != 1 {
               CapacityProbeUnknown { cause: concat("unit has no unique source install binding: ", unit.unit as String) }
             } else { match first(matching) { Present { value: install } => capacity_probe_requirement(install: install) Absent => CapacityProbeUnknown { cause: "source install binding absent" } } } }
           }),

@@ -1,0 +1,49 @@
+module test.claim.live_deploy.capacity_runner_roster_witness
+
+import std.types { Bool }
+import std.error_primitives { Ok, Err }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_slot_allocation { CommittedPopulationDerived, srv3_fabric_first_slot }
+import gunbc.runner.runner_slot_population_census { ObservedRunnerUnit }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.live_deploy.capacity_runner_roster { capacity_runner_units_from_roster }
+
+// Supplied membership exercises the join, without resolving host capacity once
+// per example. Naming and purpose are projections from their existing owners.
+test fn old_listeners_above_the_desired_width_still_join_the_drain() -> Bool {
+  let first = RunnerSlotIdentity { host: "srv1", slot_index: 1 }
+  match capacity_runner_units_from_roster(host: "srv1", committed: CommittedPopulationDerived { members: [first] },
+    observed: Ok { value: [ObservedRunnerUnit { unit: "actions-runner@srv1-22.service", active: true }] }) {
+    Err { value: _ } => false
+    Ok { value: units } => map(units, unit => unit.unit) == [runner_slot_unit_name(slot: first), "actions-runner@srv1-22.service"]
+  }
+}
+
+test fn unreadable_runner_census_never_means_no_old_writers() -> Bool {
+  match capacity_runner_units_from_roster(host: "srv1", committed: CommittedPopulationDerived { members: [] }, observed: Err { value: "manager unavailable" }) {
+    Err { value: _ } => true Ok { value: _ } => false
+  }
+}
+
+test fn a_foreign_runner_is_not_added_to_the_hosts_interruption_scope() -> Bool {
+  match capacity_runner_units_from_roster(host: "srv1", committed: CommittedPopulationDerived { members: [] },
+    observed: Ok { value: [ObservedRunnerUnit { unit: "actions-runner@srv4-01.service", active: true }] }) {
+    Err { value: _ } => true Ok { value: _ } => false
+  }
+}
+
+test fn a_fabric_slot_is_not_a_desired_github_listener() -> Bool {
+  match capacity_runner_units_from_roster(host: "srv3", committed: CommittedPopulationDerived { members: [srv3_fabric_first_slot] }, observed: Ok { value: [] }) {
+    Err { value: _ } => false
+    Ok { value: units } => units == []
+  }
+}
+
+test fn an_observed_legacy_listener_in_a_fabric_slot_is_still_drained() -> Bool {
+  let unit = runner_slot_unit_name(slot: srv3_fabric_first_slot)
+  match capacity_runner_units_from_roster(host: "srv3", committed: CommittedPopulationDerived { members: [srv3_fabric_first_slot] },
+    observed: Ok { value: [ObservedRunnerUnit { unit: unit, active: true }] }) {
+    Err { value: _ } => false
+    Ok { value: units } => map(units, row => row.unit) == [unit]
+  }
+}
