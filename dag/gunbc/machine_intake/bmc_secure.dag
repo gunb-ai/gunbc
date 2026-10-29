@@ -1,5 +1,6 @@
 module gunbc.machine_intake.bmc_secure
 
+import std.measure { Second, second_to_millisecond, millisecond_count }
 import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length, range }
 import std.decl_ref { decl_ref }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
@@ -26,6 +27,7 @@ import gunbc.machine_intake.bmc_credential_policy {
 }
 import extdeps.bmc.redfish {
   RedfishAccountServicePropertyCount,
+  redfish_account_lockout_counter_reset_window,
   RedfishAccountServiceLockoutServed,
   RedfishAccountServiceLockoutVerdict,
   RedfishAccountServiceLockoutPropertiesRead,
@@ -39,6 +41,7 @@ import extdeps.bmc.redfish {
 }
 import extdeps.bmc.ipmi_channel {
   IpmiLanBadPasswordThreshold,
+  ipmi_lan_attempt_count_reset_window,
   IpmiLanBadPasswordThresholdVerdict,
   IpmiLanBadPasswordThresholdRead,
   IpmiLanBadPasswordThresholdNotAvailable,
@@ -3684,7 +3687,10 @@ fn bmc_lockout_not_readable_text(cause: BmcLockoutNotReadableCause, surface: Bmc
 // the same block as the threshold. Absent means UNREAD, not infinite, and never
 // a borrowed 300 from the H11SSL capture.
 type BmcFailedAttemptWindow =
-    FailedAttemptsCountedFor { secs: Int }
+    // The window as the repo's own time unit, produced at the extdeps boundary
+    // (redfish_account_lockout_counter_reset_window, ipmi_lan_attempt_count_reset_window).
+    // No layer below this one multiplies it by a factor to compare with a timestamp.
+    FailedAttemptsCountedFor { window: Second }
   | FailedAttemptsNeverReset { reason: NonEmptyStr }
   | FailedAttemptWindowUnread { detail: NonEmptyStr }
 
@@ -3701,12 +3707,12 @@ fn bmc_failed_attempt_window(surface: BmcFailedLoginSurface, reading: BmcControl
         if !redfish_account_lockout_counter_reset_enabled_reads(served: p) {
           FailedAttemptsNeverReset { reason: "AccountService.AccountLockoutCounterResetEnabled is false: the account stays locked until an administrator resets it (AccountService.v1_19_0)" }
         } else {
-          // ANNOTATED, because the checker will not guess a Present arm's type
-          // argument from a record field it has to resolve through the field's own
-          // declaration: the field's Optional is named here so the arm is decided.
-          let reset_after: Optional<RedfishAccountServicePropertyCount> = p.account_lockout_counter_reset_after
-          match reset_after {
-            Present { value: secs } => FailedAttemptsCountedFor { secs: secs }
+          // The seconds this property serves become a time measure at the
+          // extdeps boundary (redfish_account_lockout_counter_reset_window), so this
+          // layer never holds a bare count of them and never scales one itself. An
+          // absent property stays Absent here and is reported as an unread window.
+          match redfish_account_lockout_counter_reset_window(served: p) {
+            Present { value: w } => FailedAttemptsCountedFor { window: w }
             Absent => FailedAttemptWindowUnread { detail: join([bmc_failed_login_surface_text(surface: surface), ": AccountService.AccountLockoutCounterResetAfter is not served"], "") }
           }
         }
@@ -3714,7 +3720,7 @@ fn bmc_failed_attempt_window(surface: BmcFailedLoginSurface, reading: BmcControl
         if !p.invalid_password_disable {
           FailedAttemptsNeverReset { reason: join([bmc_failed_login_surface_text(surface: surface), ": invalid password disable is off, so a lockout on this channel is not driven by the failed-attempt counter at all"], "") }
         } else {
-          FailedAttemptsCountedFor { secs: p.attempt_count_reset_secs }
+          FailedAttemptsCountedFor { window: ipmi_lan_attempt_count_reset_window(served: p) }
         }
     }
   }
@@ -3745,16 +3751,22 @@ fn bmc_known_failures_in_window(known: List<BmcKnownFailedLogin>, key: BmcFailed
     // the failure to be old, so the plan must not assume it is.
     FailedAttemptsNeverReset { reason: _ } => list_length(mine)
     FailedAttemptWindowUnread { detail: _ } => list_length(mine)
-    FailedAttemptsCountedFor { secs: secs } =>
+    FailedAttemptsCountedFor { window: window } => {
+      // The measure converts itself: seconds to milliseconds is
+      // second_to_millisecond, and the elapsed value on the other side of this
+      // comparison is already a millisecond difference of EpochMs. There is no
+      // local factor here because there is no local unit.
+      let window_ms: Int = millisecond_count(m: second_to_millisecond(s: window))
       // A served window of 0 seconds is NOT read as "nothing counts": upstream
       // gives no sentence that licenses dropping a failure the controller has
       // already counted, so a 0 window counts everything too, and the refusal it
       // produces is the honest one.
-      if secs <= 0 {
+      if window_ms <= 0 {
         list_length(mine)
       } else {
-        list_length(filter(mine, k => now >= k.at && (now - k.at) <= secs * 1000))
+        list_length(filter(mine, k => now >= k.at && (now - k.at) <= window_ms))
       }
+    }
   }
 }
 

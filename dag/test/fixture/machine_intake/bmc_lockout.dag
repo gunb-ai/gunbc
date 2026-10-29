@@ -116,9 +116,9 @@ fn lockout_both_served(
         policy: LockoutPolicyServed {
           served: ServedFromRedfishAccountService {
             properties: redfish_account_service_lockout_served(
-              account_lockout_threshold: redfish_threshold as RedfishAccountServicePropertyCount,
-              account_lockout_duration: Present { value: 300 as RedfishAccountServicePropertyCount },
-              account_lockout_counter_reset_after: Present { value: 300 as RedfishAccountServicePropertyCount },
+              account_lockout_threshold: redfish_threshold,
+              account_lockout_duration: Present { value: 300 },
+              account_lockout_counter_reset_after: Present { value: 300 },
               account_lockout_counter_reset_enabled: Present { value: true },
             ),
           },
@@ -132,9 +132,9 @@ fn lockout_both_served(
           served: ServedFromIpmiLanBadPasswordThreshold {
             parameters: ipmi_lan_bad_password_threshold_served(
               invalid_password_disable: true,
-              bad_password_threshold: ipmi_threshold as IpmiLanBadPasswordCount,
-              attempt_count_reset_secs: 300 as IpmiLanLockoutSeconds,
-              user_lockout_interval_secs: 300 as IpmiLanLockoutSeconds,
+              bad_password_threshold: ipmi_threshold,
+              attempt_count_reset_secs: 300,
+              user_lockout_interval_secs: 300,
             ),
           },
         },
@@ -156,9 +156,9 @@ fn lockout_redfish_only(read_at: EpochMs, redfish_threshold: Int) -> BmcControll
       policy: LockoutPolicyServed {
         served: ServedFromRedfishAccountService {
           properties: redfish_account_service_lockout_served(
-            account_lockout_threshold: redfish_threshold as RedfishAccountServicePropertyCount,
-            account_lockout_duration: Present { value: 300 as RedfishAccountServicePropertyCount },
-            account_lockout_counter_reset_after: Present { value: 300 as RedfishAccountServicePropertyCount },
+            account_lockout_threshold: redfish_threshold,
+            account_lockout_duration: Present { value: 300 },
+            account_lockout_counter_reset_after: Present { value: 300 },
             account_lockout_counter_reset_enabled: Present { value: true },
           ),
         },
@@ -181,7 +181,7 @@ fn lockout_redfish_never_locked(read_at: EpochMs) -> BmcControllerLockoutReading
       policy: LockoutPolicyServed {
         served: ServedFromRedfishAccountService {
           properties: redfish_account_service_lockout_served(
-            account_lockout_threshold: 0 as RedfishAccountServicePropertyCount,
+            account_lockout_threshold: 0,
             account_lockout_duration: Absent {  },
             account_lockout_counter_reset_after: Absent {  },
             account_lockout_counter_reset_enabled: Absent {  },

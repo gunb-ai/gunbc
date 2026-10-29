@@ -641,6 +641,22 @@ type RedfishAccountLockoutThresholdReading
   = AccountIsNeverLockedByServedThreshold
   | AccountLocksAfter { failed_attempts: Int where range(min: 1, max: 4294967295) }
 
+// THE RESET WINDOW, IN THE REPO'S TIME UNIT. AccountService.v1_19_0 says
+// AccountLockoutCounterResetAfter is "The number of seconds since the last failed
+// login attempt" before the failed-login counter resets, so the seconds this
+// property serves become a std.measure Second HERE, at the cited-upstream boundary,
+// and not in whatever module ends up comparing them with a timestamp. An absent
+// property is Absent: no window is invented for it. A product layer that carried
+// this as a bare Int would be re-inventing a unit std.measure already owns
+// (DESIGN.md section 2, "net concepts must not grow by re-invention").
+// CONSUMER: bmc_failed_attempt_window in gunbc.machine_intake.bmc_secure.
+fn redfish_account_lockout_counter_reset_window(served: RedfishAccountServiceLockoutServed) -> Optional<Second> {
+  match served.account_lockout_counter_reset_after {
+    Present { value: secs } => Present { value: second(count: secs) }
+    Absent => Absent {  }
+  }
+}
+
 // THE ONLY WAY TO HOLD ONE OF THESE OUTSIDE THIS MODULE: the served values come
 // from a controller's own AccountService body, and the record is sole_constructor
 // so nothing outside can fabricate one field by field. Nothing here fills a gap:

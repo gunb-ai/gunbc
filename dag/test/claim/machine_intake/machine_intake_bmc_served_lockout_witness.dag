@@ -305,41 +305,43 @@ test fn derived_retirement_costs_nothing_and_the_probed_path_one_per_member() ->
 }
 
 // RUNG: the forced-change path is an AUTHENTICATED answer, not a failed login, and
-// the exemption reaches only the surface the sealed record is grounded for. Under a
-// READ that says nothing is readable before the change, the plan whose published
-// credential authenticates over Redfish is admitted — because 403
-// Base.1.16.0.PasswordChangeRequired rejects the operation, not the credential, and
-// only a rejected credential moves the counter. The discriminating half is what
-// happens without the sealed state: the same plan on the same unread reading is
-// refused. A gate that treated the 403 as a failure would refuse both; one that
-// exempted any login claiming a forced change, on any surface, would admit both.
+// the exemption reaches only the surface the sealed record is grounded for. Three
+// halves, because a single pair cannot tell an exemption from a hole:
+//   - threshold 2, the sealed forced-change state: ADMITTED. The plan makes one
+//     login that can fail (the managed probe) and the published credential's own
+//     authentication, which the sealed 403 Base.1.16.0.PasswordChangeRequired says
+//     is answered as AUTHENTICATED — it rejects the operation, not the credential,
+//     so it moves no counter. One login of headroom is enough.
+//   - the same threshold 2 WITHOUT the sealed state: REFUSED. Two logins now count,
+//     so the exemption above is doing the work; it is not that the plan was cheap.
+//     This is also the parent's RED: a plan with no forced state cannot exempt a
+//     login. The exemption is not a flag a caller sets — the parameter is the sealed
+//     PublishedCredentialChangeForced, mintable only by
+//     admit_published_credential_change_forced over a captured 403 verdict, and this
+//     half fails if anything lets a plan claim it for free.
+//   - threshold UNREAD, sealed state present: REFUSED anyway. The exemption makes
+//     one login cost nothing; it does not manufacture a threshold for the logins
+//     that remain. A gate that read the sealed state as "this plan needs no budget"
+//     would admit here.
 test fn the_forced_change_path_costs_no_failed_login_on_the_surface_it_is_grounded_for() -> Bool {
   let store_at = observer_clock_modeled(millis: t_store, realization: lockout_schedule)
   let fetch_at = observer_clock_modeled(millis: t_fetch, realization: lockout_schedule)
   let plan_at = observer_clock_modeled(millis: t_plan, realization: lockout_schedule)
+  let tight = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_only(read_at: t_read, redfish_threshold: 2))
   let unread = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_unread(read_at: t_read, detail: "nothing authenticated is readable before the forced change" as NonEmptyStr))
   let sealed = match sealed_forced_change() {
     Present { value: f } => Present { value: f }
     Absent => none
   }
-  let exempt = plan_lock(reading: unread, forced_change: sealed, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
-  let not_sealed = plan_lock(reading: unread, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
-  // And the exemption is recorded, not silently absent: the roster says which login
-  // it exempted, under which sealed record, on which surface.
-  let roster = bmc_plan_failing_logins(
-    goal: goal_v1(),
-    observed: unread,
-    managed_write: none,
-    published_write: PublishedIsTheManagedWrite,
-    forced_change: sealed,
-    declared_retries: [],
-  )
-  let one_exempt_on_redfish = match list_head(roster.exempt) {
-    Absent => false
-    Present { value: e } => (e.account as String) == "root" && list_length(roster.exempt) == 1
-      && match e.surface { RedfishAccountServiceLogin => true, _ => false }
-  }
-  planned(exempt) && refused_by_budget(not_sealed) && one_exempt_on_redfish
+  // The sealed record must actually exist for this build, or the test proves nothing.
+  let minted = match sealed { Present { value: _ } => true, Absent => false }
+  let exempt = plan_lock(reading: tight, forced_change: sealed, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
+  let unsealed = plan_lock(reading: tight, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
+  let unread_still_refuses = plan_lock(reading: unread, forced_change: sealed, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
+  minted
+    && planned(exempt)
+    && refused_by_budget(unsealed)
+    && refused_by_budget(unread_still_refuses)
 }
 
 // RUNG: a controller that SERVES no lockout licenses the plan whatever it costs —
