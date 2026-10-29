@@ -304,22 +304,15 @@ fn slice_limit_from_shell(outcome: ShellOutcome, success: Bool, value: String) -
         } else if text == "infinity" || text == "max" {
           SliceLimitUnbounded
         } else {
-          match parse_int(s: text) {
-            // THE PLAIN-BYTES FORM IS WHAT 'systemctl show -p MemoryMax' PRINTS (the operator's
-            // srv1 receipt read 47244640256, not "44G"): read it as exact bytes, and let the
-            // budget conversion round DOWN from there -- a limit like 47244640001 must yield a
-            // budget of floor bytes/1024, never the ceiling one, or admission passes the byte
-            // the cgroup stops at (review 87534's failure case, now a control).
-            Present { value: v } =>
-              if v < 0 {
-                SliceLimitUnreadable { detail: join(["MemoryMax is negative: ", text], "") }
-              } else {
-                SliceLimitObserved { limit: byte_size(count: v) }
-              }
-            Absent => match systemd_formatted_bytes_parse(text: text) {
-              FormattedBytesUnparseable { text: t } => SliceLimitUnreadable { detail: join(["MemoryMax is not a bytes figure: ", t], "") }
-              FormattedBytesRead { value: b } => SliceLimitObserved { limit: systemd_formatted_bytes_lower(b: b) }
-            }
+          // ONE PARSER FOR WHAT SYSTEMD PRINTS, its plain-bytes arm included (review 87640,
+          // delete-first: a caller's mirror of the exact-bytes reading was a second copy of the
+          // rule). The budget conversion rounds DOWN from the lower bound -- a limit like
+          // 47244640001 must yield a budget of floor bytes/1024, never the ceiling one, or
+          // admission passes the byte the cgroup stops at (review 87534's failure case, now a
+          // control).
+          match systemd_formatted_bytes_parse(text: text) {
+            FormattedBytesUnparseable { text: t } => SliceLimitUnreadable { detail: join(["MemoryMax is not a bytes figure: ", t], "") }
+            FormattedBytesRead { value: b } => SliceLimitObserved { limit: systemd_formatted_bytes_lower(b: b) }
           }
         }
       }

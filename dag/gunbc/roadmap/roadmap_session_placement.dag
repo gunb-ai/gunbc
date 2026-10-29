@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_session_placement
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.measure { Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_ceiling, millicore }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, kibibyte_ceiling, millicore }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_count, cas_generation_first }
 import product.capacity.lease { LeaseGrant }
 import product.capacity.event_chain { PartitionId }
@@ -1881,7 +1881,7 @@ fn session_reviewer_peak_from_show(outcome: ShellOutcome, success: Bool, value: 
         SessionReviewerPeakUnobserved { reason: "the unit reports its memory peak as unbounded" }
       } else {
         match systemd_formatted_bytes_parse(text: trim(s: value)) {
-          FormattedBytesRead { value: b } => SessionReviewerPeakObserved { peak: kibibyte_from_byte_size_ceiling(b: systemd_formatted_bytes_upper(b: b)) }
+          FormattedBytesRead { value: b } => SessionReviewerPeakObserved { peak: kibibyte_ceiling(b: systemd_formatted_bytes_upper(b: b)) }
           FormattedBytesUnparseable { text: t } => SessionReviewerPeakUnobserved { reason: join(["the peak ", t, " is not a byte figure"], "") }
         }
       }

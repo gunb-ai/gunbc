@@ -751,7 +751,13 @@ fn systemd_formatted_bytes_parse(text: String) -> SystemdFormattedBytesReading {
   } else {
     let suffix = substring(s: t, start: n - 1, end: n)
     let body = substring(s: t, start: 0, end: n - 1)
-    if suffix == "B" {
+    match parse_int(s: t) {
+      // THE PLAIN-BYTES FORM IS WHAT 'systemctl show -p MemoryMax/MemoryPeak' ACTUALLY PRINTS --
+      // whole bytes, not a formatted figure (the operator's srv1 receipts read 47244640256, not
+      // "44G"). The parser of what systemd prints owns that reading, so no caller re-implements it
+      // beside it (review 87640, delete-first). A negative byte count is not a reading at all.
+      Present { value: v } => if v < 0 { FormattedBytesUnparseable { text: t } } else { FormattedBytesRead { value: FormattedBytesExact { bytes: byte_size(count: v) } } }
+      Absent => if suffix == "B" {
       match parse_int(s: body) {
         Present { value: v } => if v < 0 { FormattedBytesUnparseable { text: t } } else { FormattedBytesRead { value: FormattedBytesExact { bytes: byte_size(count: v) } } }
         Absent => FormattedBytesUnparseable { text: t }
@@ -790,6 +796,7 @@ fn systemd_formatted_bytes_parse(text: String) -> SystemdFormattedBytesReading {
             Empty {} => FormattedBytesUnparseable { text: t }
           }
       }
+    }
     }
   }
 }
