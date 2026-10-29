@@ -1065,6 +1065,20 @@ test fn mbt_r_the_widening_refusal_names_the_nullary_alternatives_it_leaves_hold
   }
 }
 
+// (RED for the nullary filter) A remainder that MIXES a payload alternative with nullary ones: the
+// carrier holds the nullary B and D only. C carries a payload, so the binder arm catches it correctly
+// and the repair never inserts an arm for it. Without this row nothing discriminates the filter,
+// because the fixture above has only nullary alternatives left.
+data mbt_r_mixed_left: String = "type T = A { x: Int } | B | C { y: Int } | D"
+
+test fn mbt_r_the_carrier_leaves_a_payload_alternative_to_the_binder_holds() -> Bool {
+  let r = mbp_reading(src: mbt_r_src(decl: mbt_r_mixed_left, arms: mbt_r_misspelled_arms))
+  match mbt_r_widening_correction(reading: r) {
+    Present { value: carrier } => mbt_r_carrier_tags(carrier: carrier) == [^B, ^D]
+    Absent => false
+  }
+}
+
 // (control 1) With a second PAYLOAD alternative left instead, nothing refuses at all, so there is no
 // refusal to read facts off — and the payload-bearing alternatives stay out of any carrier by rule.
 // (control 2) The singleton-remainder case still infers, so its correction is never consulted.
