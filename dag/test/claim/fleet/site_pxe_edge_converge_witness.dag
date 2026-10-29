@@ -15,6 +15,7 @@ import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64 }
 import extdeps.provisioning.network_boot { NotAuthenticated, network_boot_loader_chain_is_chainloader_only }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_amd64_uefi_network_boot_chain, noble_numbat_2404_3_live_server_amd64, noble_numbat_2404_5_live_server_arm64, noble_numbat_2404_3_live_server_arm64 }
 import std.decl_ref { decl_ref }
+import gunbc.systemctl_show_read { systemctl_show_property_value_from_stdout }
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
@@ -134,6 +135,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_image_standing,
   site_pxe_edge_install_standing,
   site_pxe_edge_install_files,
+  site_pxe_edge_unit_active_standing,
   site_pxe_edge_file_parent_argv,
   site_pxe_edge_host_grub_cfg,
   site_pxe_edge_http_unit_file,
@@ -932,6 +934,29 @@ test fn each_install_file_write_creates_its_own_parent_directory() -> Bool {
       && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg-01-ac-1f-6b-e3-f7-fe" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/tftp/grub"])
       && any(files, f => f.path == "/etc/systemd/system/gunbc-site-pxe-edge-http.service" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/etc/systemd/system"])
   })
+}
+
+// THE UNIT'S ACTIVE STATE IS READ FROM THE `--value` ANSWER: srv4 answered `active` for a running edge (run
+// 40816615074), which the probe must hold; a failed unit is a finding and a blank answer is no observation.
+test fn the_unit_active_probe_reads_the_bare_state_word() -> Bool {
+  (match site_pxe_edge_unit_active_standing(capture: systemctl_show_property_value_from_stdout(success: true, stdout: "active\n")) {
+    SitePxeEdgeProbeHeld => true
+    SitePxeEdgeProbeObservedNegative { reason: _ } => false
+    SitePxeEdgeProbeUnobservable { reason: _ } => false
+    SitePxeEdgeProbeNotAttempted { reason: _ } => false
+  })
+    && (match site_pxe_edge_unit_active_standing(capture: systemctl_show_property_value_from_stdout(success: true, stdout: "failed\n")) {
+      SitePxeEdgeProbeObservedNegative { reason: r } => r == "unit gunbc-site-pxe-edge.service ActiveState=failed"
+      SitePxeEdgeProbeHeld => false
+      SitePxeEdgeProbeUnobservable { reason: _ } => false
+      SitePxeEdgeProbeNotAttempted { reason: _ } => false
+    })
+    && (match site_pxe_edge_unit_active_standing(capture: systemctl_show_property_value_from_stdout(success: true, stdout: "\n")) {
+      SitePxeEdgeProbeUnobservable { reason: _ } => true
+      SitePxeEdgeProbeHeld => false
+      SitePxeEdgeProbeObservedNegative { reason: _ } => false
+      SitePxeEdgeProbeNotAttempted { reason: _ } => false
+    })
 }
 
 // TWO HOSTS, TWO ROUTES: each host's grub configuration names its own seed's URL. This is routing only -- seeds are
