@@ -9,7 +9,7 @@ import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, a16_
 import extdeps.fans.types {RadialBlowerEnvelope}
 import extdeps.fans.delta {delta_bfb1012m_envelope}
 import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
-import extdeps.gpu.types {gpu_board_power_ceiling, GpuBoardPowerSpecification, RatedBoardPower, ConfigurableBoardPower}
+import extdeps.gpu.types {gpu_board_power_ceiling, GpuBoardPowerSpecification, RatedBoardPower, ConfigurableBoardPower, SystemDependentTgp}
 import std.measure {CelsiusDelta, MillilitrePerSecond, Watt, celsius_delta, celsius_delta_count, gram_per_cubic_metre_count, joule_per_kilogram_kelvin_count, micrometer_count, millilitre_per_second, millilitre_per_second_count, watt, watt_count}
 import extdeps.physics.dry_air {dry_air_at_20c}
 import product.printed_chassis.exhaust_thermal {exhaust_rise}
@@ -1179,11 +1179,23 @@ fn a16_power_points_w() -> List<String> {
   match nvidia_a16_board_facts.board_power {
     Absent => ["the A16's board row states no power window: nothing to size against"]
     Present { value: ConfigurableBoardPower { default: dd, minimum: lo, maximum: hi, named_points: _ } } =>
-      [join(["default ", to_string(value: watt_count(w: dd)), " W"], ""),
-       join(["maximum ", to_string(value: watt_count(w: hi)), " W"], ""),
-       join(["minimum ", to_string(value: watt_count(w: lo)), " W"], "")]
+      // #15315 made the published default an Optional, because that is what vendors do: the A16's row states
+      // 250 W, the A2's page states "40-60 W (configurable)" and no default at all. A report that printed
+      // "default 0 W" for the second case would be §5's fabricated output, so the absence is a line of its own.
+      concat(
+        match dd {
+          Present { value: d } => [join(["default ", to_string(value: watt_count(w: d)), " W"], "")]
+          Absent => ["the vendor states no published default: size against the maximum"]
+        },
+        [join(["maximum ", to_string(value: watt_count(w: hi)), " W"], ""),
+         join(["minimum ", to_string(value: watt_count(w: lo)), " W"], "")])
     Present { value: RatedBoardPower { rated: r } } =>
       [join(["rated ", to_string(value: watt_count(w: r)), " W (the vendor states one figure, not a window)"], "")]
+    // A laptop part's TGP span: the vendor states the range and the machine's maker picks the point, so no
+    // figure in it is THE board's power and the duct can only be sized against the top. The A16's row is not
+    // this arm; it exists because the type admits it and this report reads the row rather than quoting it.
+    Present { value: SystemDependentTgp { minimum: lo, maximum: hi } } =>
+      [join(["system-dependent TGP from ", to_string(value: watt_count(w: lo)), " W to ", to_string(value: watt_count(w: hi)), " W (the machine's maker sets the point; size against the top)"], "")]
   }
 }
 
@@ -1303,7 +1315,7 @@ fn cable_bend_is_still_owed() -> Bool {
 // cable that strays past the window's inboard edge would hit at the same depth, which is the seat.
 type CableBendPath
   = ClearOfPrintedMaterial {cable_depth_behind_face: Micrometer, cleared_to: Micrometer, why: NonEmptyStr}
-  | MeetsPrintedFloor {cable_depth_behind_face: Micrometer, seat_surface_behind_face: Micrometer, relief_edge_from_face_centre: Micrometer, which_wall: NonEmptyStr}
+  | MeetsPrintedSeat {cable_depth_behind_face: Micrometer, seat_surface_behind_face: Micrometer, relief_edge_from_face_centre: Micrometer, which_wall: NonEmptyStr}
   | PastTheReliefEdge {cable_depth_behind_face: Micrometer, relief_edge_from_face_centre: Micrometer, which_wall: NonEmptyStr}
 
 // A cable running sideways at `depth` behind the end face, inside the connector's band -- which is what the
@@ -1315,7 +1327,7 @@ fn cable_bend_path(depth: Micrometer, stays_across_the_window: Bool) -> CableBen
   let relief = plane_on_end_relief_back_reach(a16_wall_design())
   let seat = plane_on_end_blower_bottom_standoff(d: a16_wall_design())
   if !stays_across_the_window && um(m: depth) <= um(m: seat) {
-    MeetsPrintedFloor {
+    MeetsPrintedSeat {
       cable_depth_behind_face: depth,
       seat_surface_behind_face: seat,
       relief_edge_from_face_centre: plane_on_end_relief_inboard_x(a16_end_face, a16_wall_design()),

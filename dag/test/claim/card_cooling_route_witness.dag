@@ -15,7 +15,7 @@ import product.printed_chassis.card_cooling_route {
   card_intake, CardIntake, Facing, RowEmpty, NoSuchCard, BlockedSide, NeighbourCard, ChassisWall,
   required_flow, required_flow_rise_check, free_air_cfm_text, bfb1012m_flow_context,
   a16_blower, a16_wall_design, a16_route_report, outlet_alignment_obligation, mm_text, rear_of_end_room, rear_of_end_governing_room, plugged_head_reach, plugged_head_admits, plugged_head_margin, cable_bend_is_still_owed, route_admission_display,
-  cable_bend_path, CableBendPath, ClearOfPrintedMaterial, MeetsPrintedFloor, PastTheReliefEdge,
+  cable_bend_path, CableBendPath, ClearOfPrintedMaterial, MeetsPrintedSeat, PastTheReliefEdge,
   plane_on_end_head_vs_blower_overlap_without_the_seat, plane_on_end_original_seat_ceiling, plane_on_end_head_clearance, plane_on_end_plugged_head_clears_blower, plane_on_end_fan_standoff_required, plane_on_end_standoff_admits,
 }
 import product.printed_chassis.gpu_duct {a16_blower_duct_design, blower_reach_behind, um, plane_on_end_connector_protrusion_admits, plane_on_end_readme}
@@ -261,7 +261,7 @@ test fn w_the_cable_bend_is_discharged_by_the_relief_and_names_the_surface_it_wo
          _ => false
        }
     && match cable_bend_path(depth: micrometer(count: 3000), stays_across_the_window: false) {
-         MeetsPrintedFloor {cable_depth_behind_face: d, seat_surface_behind_face: f, relief_edge_from_face_centre: e, which_wall: _} =>
+         MeetsPrintedSeat {cable_depth_behind_face: d, seat_surface_behind_face: f, relief_edge_from_face_centre: e, which_wall: _} =>
            um(m: d) == 3000 && um(m: f) == um(m: plane_on_end_blower_bottom_standoff(d: a16_wall_design())) && um(m: f) == 7500 && um(m: e) == 22920
          _ => false
        }
