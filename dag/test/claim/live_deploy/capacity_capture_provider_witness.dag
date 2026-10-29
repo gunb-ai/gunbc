@@ -5,8 +5,7 @@ import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import std.scoped_authorization { AttemptIdentity, ClaimHeld, ClaimLost, ClaimUndecided, ClaimedBy }
 import std.durable_compare_and_set { cas_generation_first }
-import std.materialization_provider { CutoverCaptureRequest }
-import gunbc.live_deploy.capacity_capture_provider { capacity_capture_journal_admission, capacity_capture_claim_admission, capacity_capture_claim_key, capacity_capture_record_result, capacity_capture_manifest_complete }
+import gunbc.live_deploy.capacity_capture_provider { capacity_capture_claim_admission, capacity_capture_claim_key, capacity_capture_record_result, capacity_capture_manifest_complete }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityGenerationFile, CapacityCutoverRecord, CapacityCapturingGeneration, CapacityInstalling, capacity_generation_request }
 import gunbc.live_deploy.capacity_capture_store { capacity_capture_blob_path }
 import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverIntent, CapacityCaptureOperation }
@@ -19,53 +18,6 @@ fn capture_preparing_record() -> CapacityCutoverRecord {
     prior: record.prior, target: record.target, planned_paths: record.planned_paths,
     created_paths: [], artifacts: [], phase: CapacityCapturingGeneration }
 }
-
-test fn only_a_journal_retained_identity_can_be_captured() -> Bool {
-  let record = capture_preparing_record()
-  match capture_fixture_store(mode: "700") {
-    Err { value: _ } => false
-    Ok { value: store } => match first(record.prior) {
-      Absent => false
-      Present { value: file } => {
-        let request = capacity_generation_request(file: file)
-        (match capacity_capture_journal_admission(store: store, request: request, journal: Ok { value: record }) {
-          Ok { value: admitted } => admitted == request Err { value: _ } => false
-        }) && (match capacity_capture_journal_admission(store: store,
-          request: CutoverCaptureRequest { host: "other-host", source_unit: file.destination, digest: file.digest }, journal: Ok { value: record }) {
-          Err { value: _ } => true Ok { value: _ } => false
-        })
-      }
-    }
-  }
-}
-
-test fn an_absent_or_unreadable_journal_never_permits_capture() -> Bool {
-  let record = capture_preparing_record()
-  match capture_fixture_store(mode: "700") {
-    Err { value: _ } => false
-    Ok { value: store } => match first(record.prior) {
-      Absent => false
-      Present { value: file } => capacity_capture_journal_admission(store: store, request: capacity_generation_request(file: file),
-        journal: Err { value: "journal unavailable" }) == Err { value: "journal unavailable" }
-    }
-  }
-}
-
-test fn installation_cannot_recapture_the_already_changed_source() -> Bool {
-  let record = recovery_fixture_record()
-  match capture_fixture_store(mode: "700") {
-    Err { value: _ } => false
-    Ok { value: store } => match first(record.prior) {
-      Absent => false
-      Present { value: file } => match capacity_capture_journal_admission(store: store,
-        request: capacity_generation_request(file: file), journal: Ok { value: record }) {
-        Err { value: why } => why == "capture must finish before inhibition or installation begins"
-        Ok { value: _ } => false
-      }
-    }
-  }
-}
-
 
 test fn the_same_source_cannot_be_captured_twice_after_a_durable_claim() -> Bool {
   let attempt = "fixture-cutover" as NonEmptyStr as AttemptIdentity

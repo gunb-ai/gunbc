@@ -12,7 +12,7 @@ import std.fabric_blob { read_staged_fabric_blob, FabricBlobRead, FabricBlobRead
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import std.cache_identity { cutover_capture_artifact_kind }
-import std.materialization_provider { ArtifactRequest, CutoverCaptureRequest }
+import std.materialization_provider { CutoverCaptureRequest }
 import std.materialization_object { StoreCommit, StoreCommitSettled, StoreCommitRefused }
 import std.judgment_contract { output_fabric_blob }
 import extdeps.realization.materialization_store_local {
@@ -27,34 +27,6 @@ import gunbc.live_deploy.capacity_capture_store { CapacityCaptureStore, Captured
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityGenerationFile, CapacityCapturingGeneration, CapacityPreparingInhibition, capacity_generation_request, capacity_generation_install }
 import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode, capacity_cutover_record_encode }
 import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, CapacityCutoverIntent, CapacityCaptureOperation, capacity_cutover_capture_admission }
-
-// A supplied record is useful to hermetic witnesses; the production binding
-// below reads this same input from the durable CAS store INSIDE the family hold.
-// This checks a completed request against the journal. Publication itself first
-// requires an open capture-phase journal and pins family retention to that journal.
-// Result identity is learned under consent, then appended by CAS before success.
-fn capacity_capture_journal_admission(store: CapacityCaptureStore, request: ArtifactRequest,
-  journal: Result<CapacityCutoverRecord, String>) -> Result<ArtifactRequest, String> {
-  match journal {
-    Err { value: why } => Err { value: why }
-    Ok { value: record } => if record.attempt != store.attempt {
-      Err { value: "capture journal belongs to another cutover" }
-    } else if record.phase != CapacityCapturingGeneration {
-      Err { value: "capture must finish before inhibition or installation begins" }
-    } else if !fold(record.prior + record.target, init: false,
-      f: (found, file) => found || capacity_generation_request(file: file) == request) {
-      Err { value: "capture identity is not retained by the cutover journal" }
-    } else { Ok { value: request } }
-  }
-}
-
-fn capacity_capture_read_journal(journal: SlotStore, key: NonEmptyStr) -> Result<CapacityCutoverRecord, String> {
-  match slot_observe(store: journal, key: key) {
-    CasObservedUnreadable { cause: _ } => Err { value: "capture journal is unreadable; do not publish or reclaim" }
-    CasObservedReadable { readable: CasReadableAbsent } => Err { value: "capture journal is absent; do not publish or reclaim" }
-    CasObservedReadable { readable: CasReadablePresent { version: version } } => capacity_cutover_record_decode(text: version.value as String)
-  }
-}
 
 type CapacityCaptureFault
   = CapacityCaptureBoundaryRefused { detail: String }
