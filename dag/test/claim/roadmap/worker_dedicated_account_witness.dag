@@ -69,6 +69,8 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_automation_user, fleet_posix_root_user,
   fleet_srv1_observed_numeric_ids,
   fleet_posix_worker_supplementary_groups,
+  fleet_posix_revision_preparer_user, fleet_posix_materialization_writer_user,
+  fleet_posix_revision_preparer_supplementary_groups, fleet_posix_materialization_writer_supplementary_groups,
 }
 import gunbc.fleet.fleet_root_equivalent_groups { fleet_root_equivalent_group_names }
 
@@ -1486,4 +1488,21 @@ fn only_migration_group(
   } else {
     none
   }
+}
+
+// Declaration-level pairing only: deployment must independently observe the accounts and
+// directory ownership. These checks do not establish a live uid allocation or confinement.
+test fn revision_preparation_and_materialization_have_distinct_unprivileged_principals() -> Bool {
+  let preparer = fleet_posix_revision_preparer_user
+  let writer = fleet_posix_materialization_writer_user
+  let existing = [fleet_posix_root_user, fleet_posix_operator_user, fleet_automation_user, fleet_posix_worker_user]
+  preparer.uid != writer.uid && preparer.gid != writer.gid
+    && preparer.name != writer.name
+    && all(existing, account => account.uid != preparer.uid && account.gid != preparer.gid
+      && account.uid != writer.uid && account.gid != writer.gid)
+    && all(fleet_srv1_observed_numeric_ids, n => n != preparer.uid && n != preparer.gid && n != writer.uid && n != writer.gid)
+    && preparer.gid != fleet_posix_worker_shared_group_gid
+    && writer.gid != fleet_posix_worker_shared_group_gid
+    && all(fleet_posix_revision_preparer_supplementary_groups + fleet_posix_materialization_writer_supplementary_groups,
+      group => !any(fleet_root_equivalent_group_names, denied => group == denied))
 }
