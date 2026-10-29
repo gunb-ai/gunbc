@@ -1,0 +1,24 @@
+module test.claim.live_deploy.capacity_root_helper_witness
+
+import std.types { Bool }
+import std.decl_ref { declaration_ref_eq }
+import gunbc.auth.authorization_pattern_selection { PatternSelectionRefused }
+import gunbc.auth.privileged_effect_census { capacity_cutover_root_helper_row, srv1_root_mutation_approval_root, privileged_effect_census, site_verdict }
+import gunbc.live_deploy.capacity_root_helper { capacity_root_helper_selection }
+
+// The canonical root is consumed, not a copy whose scopes could drift. This red
+// must change only when the broker's actual granted scope population changes.
+test fn the_existing_srv1_root_grant_does_not_authorize_the_new_helper() -> Bool {
+  match capacity_root_helper_selection(root: srv1_root_mutation_approval_root) {
+    PatternSelectionRefused { defects: defects } => count(defects) > 0
+    _ => false
+  }
+}
+
+test fn the_census_executes_the_same_selection_for_the_planned_site() -> Bool {
+  count(filter(privileged_effect_census, row => declaration_ref_eq(a: row.site, b: capacity_cutover_root_helper_row.site))) == 1
+    && (match site_verdict(row: capacity_cutover_root_helper_row).selection {
+      PatternSelectionRefused { defects: defects } => count(defects) > 0
+      _ => false
+    })
+}

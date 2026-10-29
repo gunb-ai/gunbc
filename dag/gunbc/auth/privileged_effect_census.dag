@@ -1,5 +1,6 @@
 module gunbc.auth.privileged_effect_census
 
+import gunbc.live_deploy.capacity_root_helper { capacity_root_helper_effect }
 import gunbc.fleet.printer_federation {printer_service_account}
 import gunbc.auth.github_gcp_federation {federated_service_account_member}
 import gunbc.auth.standing_operator_grant {
@@ -1035,6 +1036,18 @@ data srv1_root_mutation_approval_root: ConvergenceRoot = ConvergenceRoot {
   approved_scopes: srv1_root_mutation_approved_scopes,
 }
 
+// Planned privileged entry. Unauthorized is deliberate until the selector
+// admits a plan-bound inherited scope AND the narrow helper is realized.
+data capacity_cutover_root_helper_row: PrivilegedEffectSite = PrivilegedEffectSite {
+  site: decl_ref(module_path: "gunbc.live_deploy.capacity_root_helper", decl_name: "capacity_root_helper_selection"),
+  effect: capacity_root_helper_effect(root: srv1_root_mutation_approval_root),
+  realized: RealizedUnauthorized,
+  divergence_reason: Present { value: DivergenceReason {
+    statement: "the closed cutover helper is not realized; the existing root approval does not grant execute-bound-plan, so inheritance must refuse before root execution" as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "a broker-approved job intent binds the exact cutover/helper digests and covers the closed helper execution scope; selection admits that lineage and the privileged helper consumes it under FleetHostLock" as NonEmptyStr)
+  } }
+}
+
 fn srv1_host_root_effect(subject: NonEmptyStr, required: List<AuthorizationScope>) -> PrivilegedEffect {
   PrivilegedEffect {
     subject: subject,
@@ -1184,6 +1197,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
   },
   srv1_root_mutation_approval_row,
+  capacity_cutover_root_helper_row,
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_workflow_run",decl_name:"run"),effect:printer_start_effect(),realized:RealizedFederatedGrant,divergence_reason:Present {value:printer_approval_enforced_in_reviewed_code}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_run",decl_name:"observe"),effect:recurring_credential_read(subject:"Read an existing printer credential version; no print effect"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_report",decl_name:"run"),effect:recurring_credential_read(subject:"Read pinned printer credential and request printer telemetry; no print start"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
