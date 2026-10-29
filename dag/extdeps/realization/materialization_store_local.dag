@@ -905,6 +905,7 @@ fn local_store_bind_retention(held: LocalStoreFamilyHeld, scope: NonEmptyStr) ->
     decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_publish_held"),
     decl_ref(module_path: "gunbc.live_deploy.capacity_generation_publish", decl_name: "capacity_generation_publish_held"),
     decl_ref(module_path: "gunbc.live_deploy.capacity_manager_reload", decl_name: "capacity_reload_journal_held"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_cleanup", decl_name: "capacity_cleanup_held"),
     decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_finish_held"),
   ]
 {
@@ -939,7 +940,8 @@ fn local_store_bind_retention(held: LocalStoreFamilyHeld, scope: NonEmptyStr) ->
 // same hold until their copy finishes. Mark doomed before unlinking, and keep
 // every unconfirmed deletion charged, exactly as capacity eviction does.
 fn local_store_reclaim_unreferenced(held: LocalStoreFamilyHeld, roots: List<ArtifactRequest>) -> LocalStoreRetentionRefusal?
-  admit_callers: [decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_collect_under")]
+  admit_callers: [decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_collect_under"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_cleanup", decl_name: "capacity_cleanup_held")]
 {
   let names = roots |> flat_map(q => match evaluation_store_address(req: q) {
     Admitted { address: address } => if request_kind(req: q) == held.family { [store_object_name(address: address)] } else { [] }
@@ -1458,6 +1460,7 @@ fn local_store_held_session<T>(capability: LocalStoreCapability, family: Artifac
     decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_publish"),
     decl_ref(module_path: "gunbc.live_deploy.capacity_generation_publish", decl_name: "capacity_generation_publish"),
     decl_ref(module_path: "gunbc.live_deploy.capacity_manager_reload", decl_name: "capacity_reload_from_journal"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_cleanup", decl_name: "capacity_cleanup_run"),
     decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_finish"),
     decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution"),
   ]

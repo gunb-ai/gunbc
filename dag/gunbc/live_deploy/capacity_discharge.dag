@@ -10,7 +10,7 @@ import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 import gunbc.live_deploy.capacity_inhibition_ownership { CapacityMaskEntry }
 import gunbc.live_deploy.capacity_migration_approval { CapacityAfterRemoval }
 import gunbc.live_deploy.capacity_manager_reload { CapacityReloadCompleted }
-import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityRemovingInhibition, capacity_recovery_has_artifact }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityCleanupOnly, CapacityRemovingInhibition, capacity_recovery_has_artifact }
 
 // Cleanup consumes this whole proof, never a Bool plus a separately supplied
 // journal. Foreign entries and other masks are findings, not unlink permissions.
@@ -24,6 +24,7 @@ fn capacity_discharge_admit(record: CapacityCutoverRecord, reloads: Result<List<
   read_entry: fn(CapacityInhibitionPath) -> Result<CapacityMaskEntry?, String>,
   read_unit: fn(CapacityManagedUnit) -> Result<ShellResponse, String>) -> Result<CapacityDischargeReady, String> {
   let done = match record.phase {
+    CapacityCleanupOnly => true
     CapacityRemovingInhibition { completed: completed } => count(record.created_paths) > 0 && completed == count(record.created_paths)
     _ => false
   }
@@ -31,10 +32,12 @@ fn capacity_discharge_admit(record: CapacityCutoverRecord, reloads: Result<List<
     || !all(record.created_paths, path => capacity_recovery_has_artifact(artifacts: record.artifacts, path: path)) {
     return Err { value: "journal removal requires completed owned-link removal receipts" }
   }
+  if record.phase != CapacityCleanupOnly {
   let completed = match reloads { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   if !all(completed, receipt => receipt.attempt == record.attempt && receipt.boundary == CapacityAfterRemoval)
     || !all(record.created_paths, path => count(filter(completed, receipt => receipt.manager == path.subject.manager)) == 1) {
     return Err { value: "journal removal requires a confirmed final reload for every touched manager" }
+  }
   }
   fold(record.artifacts, init: Ok { value: CapacityDischargeReady { record: record, foreign_entries: [], externally_masked: [] } },
     f: (prior, artifact) => match prior {

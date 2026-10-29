@@ -30,6 +30,8 @@ type CapacityCutoverPhase
   = CapacityCapturingGeneration
   | CapacityPreparingInhibition
   | CapacityInstalling { completed: Int }
+  | CapacityCleanupOnly
+  | CapacityClosed
   | CapacityGenerationVerified
   | CapacityRemovingInhibition { completed: Int }
 
@@ -58,16 +60,26 @@ type CapacityRecoveryLeg
   | CapacityRecoveryVerifyInhibition { paths: List<CapacityInhibitionPath> }
   | CapacityRecoveryVerifyDischarge { artifacts: List<CapacityInhibitionArtifact> }
   | CapacityRecoveryRemoveCaptures { files: List<CapacityGenerationFile> }
-  | CapacityRecoveryRemoveRecordedLinks { artifacts: List<CapacityInhibitionArtifact> }
+  | CapacityRecoveryPersistCleanupOnly
+  | CapacityRecoveryCloseRecordedLinks { artifacts: List<CapacityInhibitionArtifact> }
   | CapacityRecoveryVerifyDischarge { artifacts: List<CapacityInhibitionArtifact> }
   | CapacityRecoveryRemoveCaptures { files: List<CapacityGenerationFile> }
-  | CapacityRecoveryRemoveRecord
+  | CapacityRecoveryPersistCleanupOnly
+  | CapacityRecoveryCloseRecord
   | CapacityRecoveryReload
 
 // Reinstall every file: a crash can follow a write but precede its checkpoint.
 // The cursor is diagnostic, never authority to skip a file or trust a hash.
 // Both branches re-prove drain and the entire selected generation before removal.
 fn capacity_recovery_plan(record: CapacityCutoverRecord, choice: CapacityRecoveryChoice) -> Result<List<CapacityRecoveryLeg>, String> {
+  if record.phase == CapacityClosed { return Err { value: "cutover is closed; its apply identity cannot be reused" } }
+  if record.phase == CapacityCleanupOnly {
+    return match choice {
+      CapacityRollback => Err { value: "rollback is forbidden after cleanup-only; captured bytes may be reclaimed" }
+      CapacityResume => Ok { value: [CapacityRecoveryRequireApproval { attempt: record.attempt, choice: choice },
+        CapacityRecoveryVerifyDischarge { artifacts: record.artifacts }, CapacityRecoveryRemoveCaptures { files: record.prior + record.target }, CapacityRecoveryCloseRecord] }
+    }
+  }
   let selected = match choice { CapacityResume => record.target CapacityRollback => record.prior }
   if count(selected) == 0 { return Err { value: "recovery has no captured generation" } }
   if record.created_paths != record.planned_paths {
@@ -89,7 +101,7 @@ fn capacity_recovery_plan(record: CapacityCutoverRecord, choice: CapacityRecover
       CapacityRecoveryVerifyInhibition { paths: record.planned_paths },
       CapacityRecoveryRemoveRecordedLinks { artifacts: record.artifacts },
       CapacityRecoveryReload, CapacityRecoveryVerifyDischarge { artifacts: record.artifacts },
-      CapacityRecoveryRemoveCaptures { files: record.prior + record.target }, CapacityRecoveryRemoveRecord] }
+      CapacityRecoveryPersistCleanupOnly, CapacityRecoveryRemoveCaptures { files: record.prior + record.target }, CapacityRecoveryCloseRecord] }
 }
 
 fn capacity_recovery_has_artifact(artifacts: List<CapacityInhibitionArtifact>, path: CapacityInhibitionPath) -> Bool {
@@ -115,6 +127,7 @@ fn capacity_generation_same_subjects(left: List<CapacityGenerationFile>, right: 
 
 type CapacityRecoveryFinding
   = CapacityRecoveryClear
+  | CapacityRecoveryCompleted { record: CapacityCutoverRecord }
   | CapacityRecoveryRecordPresent { record: CapacityCutoverRecord, remedy: String }
   | CapacityRecoveryOrphanMasks { paths: List<CapacityInhibitionPath>, remedy: String }
   | CapacityRecoveryUnreadable { cause: String }
@@ -125,9 +138,13 @@ type CapacityRecoveryFinding
 fn capacity_recovery_finding(record: CasSlotObservation<CapacityCutoverRecord>, owned_masks: Result<List<CapacityInhibitionPath>, String>) -> CapacityRecoveryFinding {
   match record {
     CasObservedUnreadable { cause: _ } => CapacityRecoveryUnreadable { cause: "cutover record unreadable; retain inhibition and inspect the durable slot" }
-    CasObservedReadable { readable: CasReadablePresent { version: version } } => CapacityRecoveryRecordPresent {
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => if version.value.phase == CapacityClosed { match owned_masks {
+      Err { value: why } => CapacityRecoveryUnreadable { cause: why }
+      Ok { value: paths } => if count(paths) == 0 { CapacityRecoveryCompleted { record: version.value } }
+        else { CapacityRecoveryOrphanMasks { paths: paths, remedy: "closed cutover still has owned masks; preserve them and reconcile" } }
+    } } else { CapacityRecoveryRecordPresent {
       record: version.value, remedy: "inspect the recorded apply; explicitly approve resume or rollback; never recover automatically at boot",
-    }
+    } }
     CasObservedReadable { readable: CasReadableAbsent } => match owned_masks {
       Err { value: why } => CapacityRecoveryUnreadable { cause: why }
       Ok { value: paths } => if count(paths) == 0 { CapacityRecoveryClear }

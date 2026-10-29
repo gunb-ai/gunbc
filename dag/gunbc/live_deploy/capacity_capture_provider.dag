@@ -129,6 +129,7 @@ fn capacity_capture_record_replace(journal: SlotStore, key: NonEmptyStr, prior: 
     decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_record_commit"),
     decl_ref(module_path: "gunbc.live_deploy.capacity_generation_publish", decl_name: "capacity_generation_publish_held"),
     decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_finish_held"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_cleanup", decl_name: "capacity_cleanup_held"),
   ]
 {
   match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotGeneration { generation: prior.generation },
