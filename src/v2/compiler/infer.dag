@@ -3561,7 +3561,7 @@ fn infer_match_coproduct_rows(
         Present { value: unreachable } => outcome_rejected(infer_match_arm_unreachable_diagnostic(arm: unreachable))
         Absent =>
       match infer_coproduct_catch_all_binder_widening_over_a_nullary(rows: rows, coproduct: coproduct) {
-        Present { value: binder_arm } => outcome_rejected(infer_match_catch_all_binder_widens_over_a_nullary_diagnostic(arm: binder_arm))
+        Present { value: widens } => outcome_rejected(infer_match_catch_all_binder_widens_over_a_nullary_diagnostic(arm: widens.arm, nullary_remainder: widens.nullary_remainder))
         Absent =>
       match infer_coproduct_coverage_obligation(node: node, scrutinee_target: scrutinee_target, coproduct: coproduct, rows: rows) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -3621,7 +3621,7 @@ fn infer_match_coproduct_rows(
 // 2026-10-25, after review 86112; keen-heron-809 co-reviews. The residual (a misspelling over a singleton
 // remainder, accepted and behaviour-identical) is recorded on gunbc.recurring_failure_mode
 // a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder.
-fn infer_coproduct_catch_all_binder_widening_over_a_nullary(rows: List<InferCoproductArmRow>, coproduct: InferMatchCoproduct) -> Optional<Node> {
+fn infer_coproduct_catch_all_binder_widening_over_a_nullary(rows: List<InferCoproductArmRow>, coproduct: InferMatchCoproduct) -> Optional<InferCatchAllWidening> {
   let walked = fold(rows, init: InferBinderRemainderWalk { earlier: Empty, found: Absent }, f: fn(acc, row) {
     match acc.found {
       Present { value: _ } => acc
@@ -3636,7 +3636,41 @@ fn infer_coproduct_catch_all_binder_widening_over_a_nullary(rows: List<InferCopr
         }
     }
   })
-  walked.found
+  match walked.found {
+    // The refusal carries the nullary alternatives of the remainder AS FACTS, gathered from the
+    // same `earlier` list the widening test just used, so the repair's arm set comes from the
+    // judgement rather than being re-derived at the file surface. Rebuild the variants carrier
+    // (same node kind and set identity as the scrutinee's own sum set, by the existing
+    // node_rebuild-on-coproduct.variants precedent) filtered to the alternatives the earlier arms
+    // do not cover AND whose payload is the empty product. A payload-carrying alternative is not
+    // in the carrier: the binder arm catches it correctly, and the singleton exemption above is
+    // what keeps a lone alternative from being rewritten at all.
+    Present { value: arm } => optional_present(value: InferCatchAllWidening {
+      arm: arm,
+      nullary_remainder: node_rebuild(n: coproduct.variants, children: fold_list(xs: coproduct.variants.children, init: Empty, f: fn(acc, e) {
+        match e.label {
+          Authored { name: tag } =>
+            if !(contains(xs: walked.earlier, item: tag, eq: fn(x, y) { x == y })) && infer_empty_product_shape(node: e.target) {
+              list_snoc_item(xs: acc, item: e)
+            } else {
+              acc
+            }
+          StructuralLabel { label: _ } => acc
+          Positional => acc
+        }
+      }))
+    })
+    Absent => optional_absent()
+  }
+}
+
+// WHAT THE GATE REFUSES: the catch-all binder arm, plus the nullary alternatives of the
+// remainder it leaves uncovered — the exact set of arms the repair inserts. Carried in the
+// refusal so the codemod line reads its edit facts from the judgement (Manager 1 ruling
+// 2026-10-28: no text search, no string substitution; splice on parsed facts).
+type InferCatchAllWidening {
+  arm: Node
+  nullary_remainder: Node
 }
 
 type InferBinderRemainderWalk {
@@ -3665,14 +3699,7 @@ type InferRemainderTally {
   nullary: Bool
 }
 
-fn infer_match_catch_all_binder_widens_over_a_nullary_diagnostic(arm: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^infer_match_catch_all_binder_widens_over_a_nullary_variant,
-    at: node_locus(node: arm),
-    correction: Unavailable { reason: CorrectionNotModeled }
-  }
-}
-
+undefined
 // AN ARM AFTER A CATCH-ALL IS UNREACHABLE, AND REFUSES. A wildcard or a catch-all binder covers every
 // alternative (infer_coproduct_arm_row CoversAll), so a later arm can never be taken: the authored
 // program says something the match will never do. For a binder this is also the first defence against a
