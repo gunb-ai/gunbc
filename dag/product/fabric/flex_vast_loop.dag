@@ -26,7 +26,8 @@ import product.host_identity { HostIdentity }
 import product.fabric.flex_policy { FlexPolicy, FlexBidAdmission, FlexBidAdmitted, flex_liability_for_horizon }
 import product.fabric.flex_market {
   FlexOwnerLabel, FlexOwnedCard, FlexCapAssessment, FlexCapUnder,
-  FlexCleanupAction, FlexDestroy, FlexKeep, FlexReleasePlan, flex_release_pass,
+  FlexCleanupAction, FlexDestroy, FlexKeep, FlexReleasePlan, FlexReleaseNow,
+  flex_release_pass, flex_cleanup_dead,
 }
 import product.fabric.serving_recipe { ServingRecipe, ServingSelectionQuote, SelectionQuoteEstablished }
 import product.fabric.flex_vast_shadow {
@@ -566,6 +567,21 @@ fn flex_plan_pass(input: FlexPassInput) -> FlexPassPlan {
   let cap = flex_cap_from_roster(policy: input.policy, roster: ours)
   match ours {
     FlexInstancesComplete { roster: _ } =>
+      // DEAD FIRST. A card that is outbid or still loading past the launch's envelope is being paid for and
+      // is serving nothing, so it is destroyed before any release-for-value is considered and before any
+      // create: the cap and the room are computed over what we hold, and a dead card in that set makes both
+      // numbers wrong — it can hold the cap shut and stop a create that the fleet actually needs. This is
+      // flex_market's flex_cleanup_dead, and until this line it had no production caller: the pass could
+      // run forever next to a stuck-loading card without ever releasing it.
+      match flex_first_destroy(plan: FlexReleasePlan { actions: flex_cleanup_dead(cards: input.cards, ours: input.policy.owner), admit: FlexReleaseNow { because_over_cap: false, because_no_room: false, replacement_serving: false } }) {
+        Present { value: action } => flex_plan_destroy(input: input, action: action)
+        Absent => flex_plan_release_or_create(input: input, decision: decision, cap: cap)
+      }
+    _ => FlexPlanRefused { refusal: FlexPassRosterNotComplete { decision: decision } }
+  }
+}
+
+fn flex_plan_release_or_create(input: FlexPassInput, decision: FlexWriteDecision, cap: FlexCapAssessment) -> FlexPassPlan {
       match flex_first_destroy(plan: flex_release_pass(cards: input.cards, ours: input.policy.owner, cap: cap, no_room: input.no_room, replacement_serving: input.replacement_serving)) {
         Present { value: action } => flex_plan_destroy(input: input, action: action)
         Absent =>
@@ -583,8 +599,6 @@ fn flex_plan_pass(input: FlexPassInput) -> FlexPassPlan {
               }
           }
       }
-    _ => FlexPlanRefused { refusal: FlexPassRosterNotComplete { decision: decision } }
-  }
 }
 
 // ---- THE PASS RECORD.
