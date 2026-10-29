@@ -61,31 +61,31 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and refuse unbound at their own atoms; and the arm-block let's binder must stay readable from its rest,
 // which is what the plain `is_accepted` claim for that shape checks. A fix that dropped the binding, or
 // dropped either half, would flip one of these four.
-data lst_ctl_body_let_source: String = "module v2.test.lst_ctl_body_let\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = i\n  x\n}\n"
+data lst_ctl_body_let_source: String = "module v2.test.lst_ctl_body_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = i\n  x\n}\n"
 
-data lst_ctl_arm_expr_source: String = "module v2.test.lst_ctl_arm_expr\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => v\n  LstB => i\n} }\n"
+data lst_ctl_arm_expr_source: String = "module v2.test.lst_ctl_arm_expr\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => v\n  LstB => i\n} }\n"
 
-data lst_ctl_arm_block_source: String = "module v2.test.lst_ctl_arm_block\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => { v }\n  LstB => i\n} }\n"
+data lst_ctl_arm_block_source: String = "module v2.test.lst_ctl_arm_block\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => { v }\n  LstB => i\n} }\n"
 
-data lst_ctl_if_branch_source: String = "module v2.test.lst_ctl_if_branch\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(c: Bool, i: Int) -> Int { if c {\n    let x = i\n    x\n  } else { i } }\n"
+data lst_ctl_if_branch_source: String = "module v2.test.lst_ctl_if_branch\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(c: Bool, i: Int) -> Int { if c {\n    let x = i\n    x\n  } else { i } }\n"
 
-data lst_ctl_fn_value_source: String = "module v2.test.lst_ctl_fn_value\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let g = fn(x) {\n    let y = x\n    y\n  }\n  i\n}\n"
+data lst_ctl_fn_value_source: String = "module v2.test.lst_ctl_fn_value\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let g = fn(x) {\n    let y = x\n    y\n  }\n  i\n}\n"
 
-data lst_tail_let_source: String = "module v2.test.lst_tail_let\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = i\n}\n"
+data lst_tail_let_source: String = "module v2.test.lst_tail_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = i\n}\n"
 
-data lst_tail_let_after_let_source: String = "module v2.test.lst_tail_let_after_let\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int, j: Int) -> Int {\n  let a = i\n  let d = j\n}\n"
+data lst_tail_let_after_let_source: String = "module v2.test.lst_tail_let_after_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int, j: Int) -> Int {\n  let a = i\n  let d = j\n}\n"
 
-data lst_tail_let_match_source: String = "module v2.test.lst_tail_let_match\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int {\n  let j = i\n  let d = match s {\n    LstA { v: v } => v\n    LstB => j\n  }\n}\n"
+data lst_tail_let_match_source: String = "module v2.test.lst_tail_let_match\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int {\n  let j = i\n  let d = match s {\n    LstA { v: v } => v\n    LstB => j\n  }\n}\n"
 
-data lst_tail_let_und_source: String = "module v2.test.lst_tail_let_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = lst_undeclared_tail_value\n}\n"
+data lst_tail_let_und_source: String = "module v2.test.lst_tail_let_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = lst_undeclared_tail_value\n}\n"
 
-data lst_arm_block_let_source: String = "module v2.test.lst_arm_block_let\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    lst_uses(x: r)\n  }\n  LstB => i\n} }\n"
+data lst_arm_block_let_source: String = "module v2.test.lst_arm_block_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    lst_uses(x: r)\n  }\n  LstB => i\n} }\n"
 
-data lst_arm_block_two_let_source: String = "module v2.test.lst_arm_block_two_let\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int, y: Int) -> Int { x }\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    let q = i\n    lst_uses(x: r, y: q)\n  }\n  LstB => i\n} }\n"
+data lst_arm_block_two_let_source: String = "module v2.test.lst_arm_block_two_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int, y: Int) -> Int { x }\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    let q = i\n    lst_uses(x: r, y: q)\n  }\n  LstB => i\n} }\n"
 
-data lst_arm_tail_let_source: String = "module v2.test.lst_arm_tail_let\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n  }\n  LstB => i\n} }\n"
+data lst_arm_tail_let_source: String = "module v2.test.lst_arm_tail_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n  }\n  LstB => i\n} }\n"
 
-data lst_arm_rest_und_source: String = "module v2.test.lst_arm_rest_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    lst_undeclared_arm_rest\n  }\n  LstB => i\n} }\n"
+data lst_arm_rest_und_source: String = "module v2.test.lst_arm_rest_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    lst_undeclared_arm_rest\n  }\n  LstB => i\n} }\n"
 
 fn lst_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
