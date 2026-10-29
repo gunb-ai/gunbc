@@ -850,7 +850,13 @@ fn systemd_formatted_bytes_parse(text: String) -> SystemdFormattedBytesReading {
   } else {
     let suffix = substring(s: t, start: n - 1, end: n)
     let body = substring(s: t, start: 0, end: n - 1)
-    if suffix == "B" {
+    match parse_int(s: t) {
+      // THE PLAIN-BYTES FORM IS WHAT 'systemctl show -p MemoryMax/MemoryPeak' ACTUALLY PRINTS --
+      // whole bytes, not a formatted figure (the operator's srv1 receipts read 47244640256, not
+      // "44G"). The parser of what systemd prints owns that reading, so no caller re-implements it
+      // beside it (review 87640, delete-first). A negative byte count is not a reading at all.
+      Present { value: v } => if v < 0 { FormattedBytesUnparseable { text: t } } else { FormattedBytesRead { value: FormattedBytesExact { bytes: byte_size(count: v) } } }
+      Absent => if suffix == "B" {
       match parse_int(s: body) {
         Present { value: v } => if v < 0 { FormattedBytesUnparseable { text: t } } else { FormattedBytesRead { value: FormattedBytesExact { bytes: byte_size(count: v) } } }
         Absent => FormattedBytesUnparseable { text: t }
@@ -890,6 +896,7 @@ fn systemd_formatted_bytes_parse(text: String) -> SystemdFormattedBytesReading {
           }
       }
     }
+    }
   }
 }
 
@@ -897,6 +904,18 @@ fn systemd_formatted_bytes_upper(b: SystemdFormattedBytes) -> ByteSize {
   match b {
     FormattedBytesExact { bytes } => bytes
     FormattedBytesBounded { printed: _, lower: _, upper } => upper
+  }
+}
+
+// THE LOWER READING: what a printed figure CONSERVATIVELY guarantees. For a CAPACITY -- a cgroup
+// limit admission is checked against -- this is the safe direction: a budget must never be wider
+// than what was measured, or admission passes the byte the kernel stops at (review 87534). For a
+// CHARGE (a unit's peak, a request) the upper reading is the safe direction; the bounded form
+// carries both precisely so each use picks its own direction instead of trusting a print.
+fn systemd_formatted_bytes_lower(b: SystemdFormattedBytes) -> ByteSize {
+  match b {
+    FormattedBytesExact { bytes } => bytes
+    FormattedBytesBounded { printed: _, lower, upper: _ } => lower
   }
 }
 

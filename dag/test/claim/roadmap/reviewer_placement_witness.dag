@@ -1,0 +1,456 @@
+module test.claim.roadmap.reviewer_placement_witness
+
+// WITNESSES FOR THE REVIEWER'S LEASE (2026-10-28: seventeen unleased reviewers OOM-killed mid-
+// typecheck on srv1 while the slice held 44 GiB). Every control plants its input; none of them
+// touches a store, a unit or a ledger. Together they pin the four laws the fix carries: the
+// reviewer's identity, key and record bind the CRITERION (a reviewer is never readable as its
+// worker or as another criterion); room refusals are decisions about capacity, never about failure;
+// the peak sample reports what was measured and never invents a number; and the settlement table
+// releases only a slot bound to the reviewer's own composite key and review unit. The full chain --
+// reserve, cap, release -- is wet in reviewer_placement_wet_witness.dag; the worker witnesses
+// (session_placement_witness, session_placement_wet_witness) are the unchanged companion green set.
+
+import std.types { String, Int, Bool, List, NonEmptyStr, EpochSecs }
+import std.measure { kibibyte, kibibyte_count, kibibyte_to_byte_size, byte_size_count }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first }
+import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
+import product.capacity.event_chain { PartitionId }
+import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import extdeps.transports.shell { ShellOutcome, ShellExited, ShellSpawnRefused }
+import extdeps.filesystem.filesystem_io {
+  FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
+}
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, AttemptTerminal, AttemptReserved, AttemptRecovered, DispatchOwned, AttemptSlotReading, AttemptSlotHeld,
+  UnitLifecycle, UnitStillRunning, UnitTerminatedCauseUnknown, compute_pre_launch_ceiling_seconds,
+}
+import gunbc.compute.work_class_grant { WorkClassReviewerSession, GrantAtCeiling, ClassUnmeasured }
+import gunbc.compute.host_capacity {
+  SliceLimitReading, SliceLimitObserved, SliceLimitUnbounded, SliceLimitAbsent, SliceLimitUnreadable,
+  ReviewerSliceBudget, SliceBudgetObserved, SliceBudgetDeclared, SliceBudgetZero,
+  ComputeSliceLeg, ComputeSliceRoom, ComputeSliceRefusedForRoom, compute_slice_arithmetic,
+  reviewer_slice_budget_from_reading, slice_limit_from_shell, compute_slice_leg, reviewer_seat_ceiling,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_name, dispatch_review_unit_properties }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
+import extdeps.systemd.systemd_run { systemd_run_property_assignments, SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused }
+import gunbc.compute.work_class_grant { WorkClassGrantRow, WorkClassPeakSample, work_class_grant, GrantSized }
+import gunbc.roadmap.roadmap_session_placement {
+  SessionRole, SessionWorkerSessionRole, SessionReviewerSessionRole, session_role_token, session_role_durable_segment,
+  SessionReviewerName, session_reviewer_identity, session_reviewer_name_of, session_reviewer_placement_key,
+  session_reviewer_placement_basename, session_reviewer_release_basename, session_reviewer_attempt_record,
+  SessionReviewerGrant, session_reviewer_record_of, session_reviewer_grant_reading_of,
+  session_reviewer_release_observation_of, session_reviewer_settle_decide,
+  session_reviewer_peak_from_show, SessionReviewerPeakObserved, SessionReviewerPeakUnobserved,
+  session_unit_wire,
+  session_slot_ownership, SessionSlotOwnership, SlotOwnershipReviewer, SlotOwnershipWorker, SlotOwnershipUnrecognized,
+  session_attempt_identity, session_worker_role, session_reviewer_role,
+  SessionPlacementRecord, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
+  SessionReleaseObservation, SessionReleased, SessionReleaseNotRecorded, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
+  SessionSettleDecision, SettleDone, SettleKeep, SettleReleaseOnly, SettleTerminateAndRelease,
+}
+
+fn witness_cas_generation(n: Int) -> CasGeneration {
+  match cas_generation(n: n) {
+    Present { value: g } => g
+    Absent => cas_generation_first()
+  }
+}
+
+data rnode: String = "srv1w"
+data rattempt: String = "feedfacefeedface"
+data crit_a: String = "code-conformance"
+data crit_b: String = "risk-review"
+data rhost: String = "srv1"
+
+fn review_unit(node_id: String, attempt_key: String, criterion_key: String) -> NonEmptyStr {
+  dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key)
+}
+
+fn reviewer_grant(node_id: String, attempt_key: String, criterion_key: String) -> SessionReviewerGrant {
+  let unit = review_unit(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key)
+  SessionReviewerGrant {
+    node_id: node_id,
+    attempt_key: attempt_key,
+    criterion_key: criterion_key,
+    unit: unit,
+    lease: LeaseGrant {
+      reference: unit,
+      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: witness_cas_generation(n: 7) },
+      granted_at: 1000,
+      maximum_duration_seconds: 14400,
+      expires_at: 15400,
+    },
+    partition: "reviewer-memory-srv1" as NonEmptyStr as PartitionId,
+    amount: kibibyte(count: 8388608),
+    class_grant: GrantAtCeiling { class: WorkClassReviewerSession, amount: kibibyte(count: 8388608), reason: ClassUnmeasured },
+    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: "/state/capacity" as NonEmptyStr) },
+    slot: session_reviewer_attempt_record(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key, unit: unit, granted: kibibyte(count: 8388608), now: 1000),
+    slot_generation: cas_generation_first(),
+  }
+}
+
+fn name_a() -> SessionReviewerName {
+  SessionReviewerName { node_id: rnode, attempt_key: rattempt, criterion_key: crit_a }
+}
+
+fn planted(name: String, content: String) -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/state", success: true, entries: join(["unrelated", name], "\n"), error: ""),
+    name: name, path: join(["/state/", name], ""),
+    read: filesystem_read_outcome(content: content, success: true, error: ""),
+  )
+}
+
+fn record_bytes(grant: SessionReviewerGrant) -> String {
+  serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(
+    r: session_reviewer_record_of(host: rhost, grant: grant, unit_properties: ["MemoryMax=8589934592", "CPUQuota=800%"]),
+  ))
+}
+
+// THE IDENTITY IS FOUR-SEGUMENT AND STRICT. A canonical reviewer identity round-trips through the
+// parser; the WORKER's identity (two segments) is NOT a reviewer identity under any reading, a
+// foreign role token is refused, and a field carrying a segment boundary is refused rather than
+// merged -- the worker's parser may merge a colon-bearing node because its last segment is all it
+// needs; the reviewer's criterion and role segments must be exactly themselves, or the two passes
+// cannot divide slots between the roles.
+test fn the_reviewer_identity_round_trips_and_worker_forms_never_parse() -> Bool {
+  let good = match session_reviewer_name_of(identity: session_reviewer_identity(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a)) {
+    Present { value: n } => n.node_id == rnode && n.attempt_key == rattempt && n.criterion_key == crit_a
+    Absent => false
+  }
+  let worker_is_not_a_reviewer = match session_reviewer_name_of(identity: session_attempt_identity(node_id: rnode, attempt_key: rattempt)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let foreign_role = match session_reviewer_name_of(identity: join([rnode, ":", rattempt, ":", "auditor", ":", crit_a], "")) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let colon_bearing_field = match session_reviewer_name_of(identity: join([rnode, ":", rattempt, ":", session_reviewer_role, ":", "a:b"], "")) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  good && worker_is_not_a_reviewer && foreign_role && colon_bearing_field
+}
+
+// THE COMPOSITE KEY AND THE ROLE SEGMENT MAKE THE NAME UNIQUE PER LAUNCH. Two criteria of one
+// attempt, and the attempt's own worker, all share the attempt -- so all three durable names must
+// differ, and the reviewer's must name its criterion. The RED direction: had the reviewer reused
+// the worker's name, one attempt's two roles would settle each other's records.
+test fn one_attempt_hosts_the_worker_and_one_reviewer_per_criterion_without_shared_names() -> Bool {
+  let worker_name = gunbc.roadmap.roadmap_session_placement.session_placement_record_basename(node_id: rnode, attempt_key: rattempt)
+  let a = session_reviewer_placement_basename(name: name_a())
+  let b = session_reviewer_placement_basename(name: SessionReviewerName { node_id: rnode, attempt_key: rattempt, criterion_key: crit_b })
+  let rel = session_reviewer_release_basename(name: name_a())
+  a != worker_name && a != b && rel != a && rel != worker_name
+    && string_contains(s: a, pattern: session_reviewer_role)
+    && string_contains(s: a, pattern: crit_a)
+    && string_contains(s: a, pattern: session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_a))
+}
+
+// THE RECORD IS BOUND TO ITS CRITERION. The real encoder's reviewer record reads back Recorded;
+// a record naming the WORKER's unit, carrying the RAW attempt key, or naming another criterion's
+// unit, is Foreign and releases nothing. Positive control plus the three discriminating refusals.
+test fn a_reviewer_record_binds_composite_key_and_review_unit_and_nothing_else() -> Bool {
+  let g = reviewer_grant(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a)
+  let path = "/state/r"
+  let recorded = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: record_bytes(grant: g)), name: name_a(), host: rhost) {
+    SessionGrantRecorded { record } => record.grant_identity == "evt-7" && kibibyte_count(k: record.amount) == 8388608
+    SessionGrantNotRecorded { path: _ } => false
+    SessionGrantUnreadable { path: _, detail: _ } => false
+    SessionGrantForeign { path: _, detail: _ } => false
+  }
+  // THE DISCRIMINATING REFORGINGS ARE CONSTRUCTIONS, NOT TEXT SURGERY: DESIGN §4 keeps host text
+  // and code-point sequences apart at call arguments, so a witness does not splice a finished
+  // record -- it BUILDS the forged record the way a corrupt writer would, field by field. A raw
+  // (non-composite) attempt key, another criterion's composite key and review unit, and the
+  // worker's unit wire: each is Foreign to this name, and none of them is fabricated -- they are
+  // exactly the shapes the binder must refuse.
+  let raw_key = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(r: forged_record(attempt_key: rattempt, unit: forged_worker_unit(node_id: rnode, attempt_key: rattempt), grant_identity: "evt-7")))), name: name_a(), host: rhost) {
+    SessionGrantForeign { path: _, detail: _ } => true
+    _ => false
+  }
+  let g_b = reviewer_grant(node_id: rnode, attempt_key: rattempt, criterion_key: crit_b)
+  let other_criterion = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(r: forged_record(attempt_key: session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_b), unit: review_unit(node_id: rnode, attempt_key: rattempt, criterion_key: crit_b), grant_identity: "evt-7")))), name: name_a(), host: rhost) {
+    SessionGrantForeign { path: _, detail: _ } => true
+    _ => false
+  }
+  let worker_unit = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: serialize_json(v: gunbc.roadmap.roadmap_session_placement.session_placement_record_json(r: forged_record(attempt_key: session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_a), unit: forged_worker_unit(node_id: rnode, attempt_key: rattempt), grant_identity: "evt-7")))), name: name_a(), host: rhost) {
+    SessionGrantForeign { path: _, detail: _ } => true
+    _ => false
+  }
+  recorded && raw_key && other_criterion && worker_unit
+}
+
+// THE WORKER'S UNIT WIRE, UNMATCHED NOT CAST: session_unit_wire answers NonEmptyStr? -- the name
+// can be refused (empty stem, disallowed character, overlong) and a cast does not eliminate the
+// absence. These stems are ordinary, so the admitted arm is the only real one; the fallback is a
+// plainly-different string that still makes the forged unit foreign to a reviewer's name, so the
+// claim discriminates either way and no Optional is ever forced.
+fn forged_worker_unit(node_id: String, attempt_key: String) -> NonEmptyStr {
+  match gunbc.roadmap.roadmap_session_placement.session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    Present { value: u } => u
+    Absent => "gunbc-attempt-forged-worker-unit" as NonEmptyStr
+  }
+}
+
+// ONE FORGED RECORD, BUILT NOT SPLICED: the grant's fields with the identity-bearing members
+// (composite attempt key, unit wire) taken from the caller -- the way a mispointed writer would
+// emit them, without a text layer. The binder re-derives the identity from the NAME and compares
+// these members against it, so a forgery tampers with the members, not an identity field (the
+// record type has none).
+fn forged_record(attempt_key: String, unit: NonEmptyStr, grant_identity: String) -> SessionPlacementRecord {
+  let g = reviewer_grant(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a)
+  SessionPlacementRecord {
+    schema: gunbc.roadmap.roadmap_session_placement.session_placement_schema,
+    node_id: rnode,
+    attempt_key: attempt_key,
+    host: rhost,
+    unit: unit as String,
+    reference: g.lease.reference as String,
+    grant_identity: grant_identity,
+    fence_generation: g.lease.fence.generation,
+    granted_at: g.lease.granted_at,
+    expires_at: g.lease.expires_at,
+    partition: g.partition as String,
+    amount: g.amount,
+    class_grant: gunbc.compute.work_class_grant.work_class_grant_wire(g: g.class_grant),
+    unit_properties: ["MemoryMax=8589934592", "CPUQuota=800%"],
+  }
+}
+
+// THE SLICE LEG DECIDES ROOM, NOT FAILURE. An exactly-fitting request admits; one KiB over refuses
+// WITH A ROOM EXPLANATION; an unbounded or unreadable slice admits only at the declared row (with
+// its provenance in the detail); a reported zero holds nothing. These refusals are the inputs the
+// belt renders as ReviewDeferred -- a lack of room never reaches ReviewFailed.
+test fn the_slice_leg_admits_to_the_byte_and_refuses_for_room_never_for_failure() -> Bool {
+  let budget = kibibyte(count: 46137344)
+  let fits = match compute_slice_arithmetic(b: budget, sibling_committed: kibibyte(count: 23068672), own_committed: kibibyte(count: 0), request: kibibyte(count: 23068672)) {
+    ComputeSliceRoom { budget: _ } => true
+    ComputeSliceRefusedForRoom { detail: _ } => false
+  }
+  let one_over = match compute_slice_arithmetic(b: budget, sibling_committed: kibibyte(count: 23068672), own_committed: kibibyte(count: 0), request: kibibyte(count: 23068673)) {
+    ComputeSliceRefusedForRoom { detail } => string_contains(s: detail, pattern: "44") || string_contains(s: detail, pattern: "46137344")
+    ComputeSliceRoom { budget: _ } => false
+  }
+  let unreadable_refuses = match compute_slice_leg(budget: reviewer_slice_budget_from_reading(observed: SliceLimitUnreadable { detail: "manager unreachable" }, declared: budget), sibling_committed: kibibyte(count: 0), own_committed: kibibyte(count: 0), request: kibibyte(count: 1)) {
+    ComputeSliceRefusedForRoom { detail: d } => string_contains(s: d, pattern: "could not be read")
+    ComputeSliceRoom { budget: _ } => false
+  }
+  let absent_falls_declared = match reviewer_slice_budget_from_reading(observed: SliceLimitAbsent, declared: budget) {
+    SliceBudgetDeclared { budget: b, detail: d } => kibibyte_count(k: b) == 46137344 && string_contains(s: d, pattern: "not loaded")
+    _ => false
+  }
+  let zero_holds_nothing = match reviewer_slice_budget_from_reading(observed: SliceLimitObserved { limit: kibibyte(count: 0) }, declared: budget) {
+    SliceBudgetZero { detail: _ } => true
+    _ => false
+  }
+  let observed_below_declared = match reviewer_slice_budget_from_reading(observed: SliceLimitObserved { limit: kibibyte_to_byte_size(k: kibibyte(count: 1000)) }, declared: budget) {
+    SliceBudgetObserved { budget: b, detail: _ } => kibibyte_count(k: b) == 1000
+    _ => false
+  }
+  // THE SLICE CEILING TRAVELS INTO THE SEAT CAS (review 87576): with the slice free the seat keeps
+  // its plain backing figure (the worker-identical positive control); once a sibling has spent the
+  // slice the seat's ceiling is the REMAINING room, not the backing -- that is what refuses the
+  // second of two concurrent reviewers at commit time after both passed the same room snapshot;
+  // and a fully spent slice gives the seat no ceiling at all, which refuses as room, never failure.
+  let seat_keeps_backing = kibibyte_count(k: reviewer_seat_ceiling(backing: kibibyte(count: 23068672), budget: budget, sibling: kibibyte(count: 0))) == 23068672
+  let seat_tightens_to_room = kibibyte_count(k: reviewer_seat_ceiling(backing: kibibyte(count: 23068672), budget: budget, sibling: kibibyte(count: 44000000))) == 2137344
+  let seat_spent_is_zero = kibibyte_count(k: reviewer_seat_ceiling(backing: kibibyte(count: 23068672), budget: budget, sibling: kibibyte(count: 46137344))) == 0
+  fits && one_over && unreadable_refuses && absent_falls_declared && zero_holds_nothing && observed_below_declared && seat_keeps_backing && seat_tightens_to_room && seat_spent_is_zero
+}
+
+// THE INSTRUMENT NEVER INVENTS A NUMBER. Only an exited, successful, parseable reading is a peak;
+// blank (collected), unbounded and unparseable answers are recorded as unobserved with their
+// reason, and a refused spawn is unobserved too -- an unobserved sample counts toward no floor.
+test fn the_peak_fold_reports_only_what_the_manager_measured() -> Bool {
+  let read = match session_reviewer_peak_from_show(outcome: ShellExited, success: true, value: "8589934592") {
+    SessionReviewerPeakObserved { peak } => kibibyte_count(k: peak) == 8388608
+    SessionReviewerPeakUnobserved { reason: _ } => false
+  }
+  let collected = match session_reviewer_peak_from_show(outcome: ShellExited, success: true, value: "") {
+    SessionReviewerPeakUnobserved { reason } => string_contains(s: reason, pattern: "no memory peak")
+    SessionReviewerPeakObserved { peak: _ } => false
+  }
+  let unbounded = match session_reviewer_peak_from_show(outcome: ShellExited, success: true, value: "infinity") {
+    SessionReviewerPeakUnobserved { reason: _ } => true
+    SessionReviewerPeakObserved { peak: _ } => false
+  }
+  let refused = match session_reviewer_peak_from_show(outcome: ShellSpawnRefused { program: "systemctl" as NonEmptyStr, cause: "no manager" }, success: false, value: "") {
+    SessionReviewerPeakUnobserved { reason } => string_contains(s: reason, pattern: "could not run")
+    SessionReviewerPeakObserved { peak: _ } => false
+  }
+  read && collected && unbounded && refused
+}
+
+// THE TABLE RELEASES ONLY A BOUND REVIEWER SLOT. A terminal slot whose record and identity carry
+// this reviewer's composite key and review unit reaches release; with the release already recorded
+// it is Done; a slot whose identity names something else is KEPT forever under this binder (the
+// RED direction: the fix must not release a worker's hold, or another criterion's, or a corrupt
+// one, because the amounts happen to be right). A still-launching slot within its deadline waits.
+test fn the_settler_releases_a_bound_terminal_hold_and_keeps_everything_else() -> Bool {
+  let bound = session_reviewer_attempt_record(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a, unit: review_unit(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a), granted: kibibyte(count: 8388608), now: 1000)
+  let terminal = AttemptRecord { identity: bound.identity, reference: bound.reference, unit: bound.unit, granted: bound.granted, opened_at: bound.opened_at, launch_deadline: bound.launch_deadline, state: AttemptTerminal { verdict: AttemptRecovered, detail: "settled" }, owner: bound.owner }
+  let still_running = UnitStillRunning { detail: "in window" }
+  let dead_unknown = UnitTerminatedCauseUnknown { detail: "ended, cause not recorded" }
+  let key = review_unit(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a)
+  let release_only = match session_reviewer_settle_decide(key: key, name: name_a(), slot: AttemptSlotHeld { record: terminal, generation: cas_generation_first() }, lifecycle: dead_unknown, now: 2000, release_settled: false) {
+    SettleReleaseOnly { record: _, attempt, reason: _ } => attempt.attempt_key == session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_a)
+    _ => false
+  }
+  let done = match session_reviewer_settle_decide(key: key, name: name_a(), slot: AttemptSlotHeld { record: terminal, generation: cas_generation_first() }, lifecycle: dead_unknown, now: 2000, release_settled: true) {
+    SettleDone { why: _ } => true
+    _ => false
+  }
+  let misbound = match session_reviewer_settle_decide(key: key, name: name_a(), slot: AttemptSlotHeld { record: AttemptRecord { identity: session_attempt_identity(node_id: rnode, attempt_key: rattempt), reference: bound.reference, unit: bound.unit, granted: bound.granted, opened_at: bound.opened_at, launch_deadline: bound.launch_deadline, state: AttemptTerminal { verdict: AttemptRecovered, detail: "settled" }, owner: bound.owner }, generation: cas_generation_first() }, lifecycle: dead_unknown, now: 2000, release_settled: false) {
+    SettleKeep { why, explain: _ } => string_contains(s: why, pattern: "never released under this name")
+    _ => false
+  }
+  let waiting = match session_reviewer_settle_decide(key: key, name: name_a(), slot: AttemptSlotHeld { record: bound, generation: cas_generation_first() }, lifecycle: still_running, now: 1000, release_settled: false) {
+    SettleKeep { why: _, explain: _ } => true
+    _ => false
+  }
+  release_only && done && misbound && waiting
+}
+
+// WHO OWNS A HELD SLOT IS A DECLARED SUM, NOT A LUCKY PARSE (review 87553): the three planted
+// slots -- a reviewer's, a worker's, and one whose identity names neither -- each answer with
+// their own arm. The third is the discriminating one: under a Bool predicate "not a reviewer"
+// fell into the worker pass, where the lenient worker parser would reinterpret it; here it has
+// an arm of its own, and the pass that sees it keeps the hold instead of guessing.
+test fn a_reviewer_slot_is_recognised_by_the_pass_that_owns_it() -> Bool {
+  let bound = session_reviewer_attempt_record(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a, unit: review_unit(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a), granted: kibibyte(count: 8388608), now: 1000)
+  let reviewer_slot = AttemptSlotHeld { record: bound, generation: cas_generation_first() }
+  let worker_slot = AttemptSlotHeld { record: gunbc.roadmap.roadmap_session_placement.session_attempt_record(node_id: rnode, attempt_key: rattempt, unit: "gunbc-attempt-srv1w-afeedfacefeedface" as NonEmptyStr, granted: kibibyte(count: 8388608), now: 1000), generation: cas_generation_first() }
+  let stranger_record = AttemptRecord {
+    identity: "srv1w-feedfacefeedface",
+    reference: "gunbc-attempt-srv1w-astranger",
+    unit: "gunbc-attempt-srv1w-astranger",
+    granted: kibibyte(count: 1024),
+    opened_at: 1000,
+    launch_deadline: 1000 + compute_pre_launch_ceiling_seconds,
+    state: AttemptReserved,
+    owner: DispatchOwned { node_id: rnode, attempt_key: rattempt },
+  }
+  let stranger_slot = AttemptSlotHeld { record: stranger_record, generation: cas_generation_first() }
+  match session_slot_ownership(slot: reviewer_slot) {
+    SlotOwnershipReviewer { name } =>
+      match session_slot_ownership(slot: worker_slot) {
+        SlotOwnershipWorker { attempt } =>
+          match session_slot_ownership(slot: stranger_slot) {
+            SlotOwnershipUnrecognized { identity } =>
+              name.criterion_key == crit_a && attempt.attempt_key == rattempt && identity == "srv1w-feedfacefeedface"
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE ROLE COPRODUCT LANDS WITH THE SECOND ROLE: the token and the durable segment are read off
+// the role value, so the reviewer's filename carries its criterion without any caller re-spelling
+// the join, and the worker's segment stays exactly what it was.
+test fn the_role_coproduct_carries_the_criterion_in_the_durable_segment() -> Bool {
+  let worker_token = session_role_token(r: SessionWorkerSessionRole)
+  let reviewer_token = session_role_token(r: SessionReviewerSessionRole { criterion_key: crit_a })
+  let worker_segment = session_role_durable_segment(r: SessionWorkerSessionRole)
+  let reviewer_segment = session_role_durable_segment(r: SessionReviewerSessionRole { criterion_key: crit_a })
+  worker_token == session_worker_role && reviewer_token == session_reviewer_role
+    && worker_segment == session_worker_role
+    && reviewer_segment == join([session_reviewer_role, "-", crit_a], "")
+}
+
+// A MEASURED CLASS SIZES THE CAP; THE CEILING NEVER SILENTLY RETURNS. A grant row with the floor
+// met resolves to peak+headroom, the unit's MemoryMax IS that figure in bytes, and it is NOT the
+// ceiling -- the shape that killed srv1 was every reviewer capped at the ceiling. With no row the
+// class resolves at the ceiling (deferral then serializes; current behavior preserved).
+test fn a_measured_row_sizes_the_unit_cap_and_is_not_the_ceiling() -> Bool {
+  let ceiling = kibibyte(count: 23068672)
+  let sized = match work_class_grant(class: WorkClassReviewerSession, rows: [reviewer_row()], ceiling: ceiling) {
+    GrantSized { class: _, amount, samples: _, peak_upper: _, headroom: _, headroom_authority: _ } => kibibyte_count(k: amount) == 9437184
+    GrantAtCeiling { class: _, amount, reason } => false
+  }
+  let unmeasured = match work_class_grant(class: WorkClassReviewerSession, rows: [], ceiling: ceiling) {
+    GrantAtCeiling { class: _, amount, reason } => kibibyte_count(k: amount) == 23068672 && reason == ClassUnmeasured
+    GrantSized { class: _, amount: _, samples: _, peak_upper: _, headroom: _, headroom_authority: _ } => false
+  }
+  let too_few = match work_class_grant(class: WorkClassReviewerSession, rows: [reviewer_row_with(count: 24)], ceiling: ceiling) {
+    GrantAtCeiling { class: _, amount: _, reason } => true
+    GrantSized { class: _, amount: _, samples: _, peak_upper: _, headroom: _, headroom_authority: _ } => false
+  }
+  let ceiling_word = join(["MemoryMax=", to_string(value: byte_size_count(b: srv2_deploy_dashboard_instance().dispatch_worker_memory_max))], "")
+  let granted_bytes = kibibyte_to_byte_size(k: kibibyte(count: 9437184))
+  // THE CAP WORD IS THE GRANTED FIGURE, not a hand-typed one: the actuator prints MemoryMax as the
+  // granted ByteSize's own count, and the grant is sized in KiB -- one capacity, two renderings of
+  // the same figure, so the expected word is built from the grant, never transcribed.
+  let cap_word = join(["MemoryMax=", to_string(value: byte_size_count(b: granted_bytes))], "")
+  let words = match systemd_run_property_assignments(properties: dispatch_review_unit_properties(instance: srv2_deploy_dashboard_instance(), granted: granted_bytes, working_directory: "/w", log_path: "/l", review_dir: "/r", exit_hook: "sleep 1")) {
+    SystemdRunPropertyAssignmentsReady { assignments: words } => words
+    SystemdRunPropertyAssignmentsRefused { cause: _ } => [] as List<String>
+  }
+  let has_cap = list_length(items: filter(xs: words, predicate: fn(w) { string_contains(s: w, pattern: cap_word) })) == 1
+  let not_ceiling = list_length(items: filter(xs: words, predicate: fn(w) { string_contains(s: w, pattern: ceiling_word) })) == 0
+  sized && unmeasured && too_few && has_cap && not_ceiling
+}
+
+fn reviewer_sample(i: Int) -> WorkClassPeakSample {
+  WorkClassPeakSample { work_identity: "review-sample" as NonEmptyStr, operation: "review" as NonEmptyStr, host: "srv1" as NonEmptyStr, observed_at: 1762000000, peak_upper: kibibyte(count: 8388608) }
+}
+
+fn reviewer_row() -> WorkClassGrantRow {
+  WorkClassGrantRow { class: WorkClassReviewerSession, samples: reviewer_row_samples(count: 25), headroom: kibibyte(count: 1048576), headroom_authority: "declared by bright-moth-475 for WorkClassReviewerSession" as NonEmptyStr }
+}
+
+// THE SAME ROW ONE SAMPLE SHORT OF THE FLOOR: the too-few arm of the resolver, fed a row (a bare
+// sample list is not a row -- the resolver reads rows and asks each for its samples).
+fn reviewer_row_with(count: Int) -> WorkClassGrantRow {
+  WorkClassGrantRow { class: WorkClassReviewerSession, samples: reviewer_row_samples(count: count), headroom: kibibyte(count: 1048576), headroom_authority: "declared by bright-moth-475 for WorkClassReviewerSession" as NonEmptyStr }
+}
+
+fn reviewer_row_samples(count: Int) -> List<WorkClassPeakSample> {
+  match count {
+    0 => [] as List<WorkClassPeakSample>
+    _ => Cons { head: reviewer_sample(i: count), tail: reviewer_row_samples(count: count - 1) }
+  }
+}
+
+// A BUDGET IS NEVER WIDER THAN WHAT WAS MEASURED (review 87534). The slice's MemoryMax is a
+// capacity admission is checked against, so it converts DOWN -- a plain-bytes limit one byte past
+// a KiB boundary yields the floor budget, never the ceiling one that would admit past the byte the
+// cgroup kills at; a bounded fractional print yields its LOWER bound; an unparseable print falls to
+// the declared row with provenance, never a widened figure. The peak fold keeps the opposite
+// direction: a CHARGE is never understated. The old ceiling-rounded budget fails this control.
+test fn the_slice_budget_is_never_wider_than_what_the_cgroup_reports() -> Bool {
+  let plain_bytes = match reviewer_slice_budget_from_reading(observed: slice_limit_from_shell(outcome: ShellExited, success: true, value: "47244640001"), declared: kibibyte(count: 46137344)) {
+    SliceBudgetObserved { budget: b, detail: _ } => kibibyte_count(k: b) == 46137343
+    SliceBudgetDeclared { budget: _, detail: _ } => false
+    SliceBudgetZero { detail: _ } => false
+    SliceBudgetUnreadable { detail: _ } => false
+  }
+  let sub_kib_refuses = match reviewer_slice_budget_from_reading(observed: slice_limit_from_shell(outcome: ShellExited, success: true, value: "512"), declared: kibibyte(count: 46137344)) {
+    SliceBudgetObserved { budget: b, detail: _ } => match compute_slice_arithmetic(b: b, sibling_committed: kibibyte(count: 0), own_committed: kibibyte(count: 0), request: kibibyte(count: 1)) {
+      ComputeSliceRefusedForRoom { detail: _ } => true
+      ComputeSliceRoom { budget: _ } => false
+    }
+    SliceBudgetZero { detail: _ } => true
+    _ => false
+  }
+  let fractional_lower = match reviewer_slice_budget_from_reading(observed: slice_limit_from_shell(outcome: ShellExited, success: true, value: "1.5K"), declared: kibibyte(count: 46137344)) {
+    SliceBudgetObserved { budget: b, detail: _ } => kibibyte_count(k: b) == 1
+    _ => false
+  }
+  let unparseable_refuses_room = match compute_slice_leg(budget: reviewer_slice_budget_from_reading(observed: slice_limit_from_shell(outcome: ShellExited, success: true, value: "forty-four gigabytes"), declared: kibibyte(count: 46137344)), sibling_committed: kibibyte(count: 0), own_committed: kibibyte(count: 0), request: kibibyte(count: 1)) {
+    ComputeSliceRefusedForRoom { detail: d } => string_contains(s: d, pattern: "could not be read")
+    ComputeSliceRoom { budget: _ } => false
+  }
+  let charge_stays_up = match session_reviewer_peak_from_show(outcome: ShellExited, success: true, value: "1.5K") {
+    SessionReviewerPeakObserved { peak } => kibibyte_count(k: peak) == 2
+    SessionReviewerPeakUnobserved { reason: _ } => false
+  }
+  plain_bytes && sub_kib_refuses && fractional_lower && unparseable_refuses_room && charge_stays_up
+}

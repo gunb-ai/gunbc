@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_session_placement
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.measure { Kibibyte, kibibyte, kibibyte_count, millicore }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, kibibyte_ceiling, millicore }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_count, cas_generation_first }
 import product.capacity.lease { LeaseGrant }
 import product.capacity.event_chain { PartitionId }
@@ -22,14 +22,15 @@ import gunbc.compute.attempt_lifecycle {
   recovery_trigger, recovery_trigger_wire,
 }
 import gunbc.compute.host_capacity {
-  HostCapacityPool, AgentSessionPool, host_capacity_reserve, host_capacity_subject,
+  HostCapacityPool, AgentSessionPool, host_capacity_reserve, host_capacity_subject, host_capacity_pool_slots,
+  ReviewerSessionPool, host_capacity_reserve_reviewer,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, compute_reservation_wire,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_release_on,
   ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, compute_capacity_store,
   compute_memory_ceiling,
 }
 import gunbc.compute.work_class_grant {
-  WorkClassAgentSession, WorkClassGrant, work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_wire,
+  WorkClassAgentSession, WorkClassReviewerSession, WorkClassGrant, work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_wire,
 }
 import gunbc.compute.unit_bounds { UnitProcessBounds }
 import gunbc.roadmap.roadmap_belt { roadmap_belt_default_capacity }
@@ -38,7 +39,11 @@ import extdeps.systemd {
   systemd_unit_name_wire, systemd_unit_name_refusal_detail,
   SystemdUnitNameAdmission, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty,
   SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong,
+  systemd_service_unit_name, systemd_unit_property_wire, MemoryPeak,
 }
+import extdeps.systemd.systemctl
+import extdeps.systemd.systemd_run { systemd_formatted_bytes_parse, systemd_formatted_bytes_upper, FormattedBytesRead, FormattedBytesUnparseable }
+import extdeps.transports.shell { ShellOutcome, ShellExited, ShellSpawnRefused }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_unit_name,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation,
@@ -91,16 +96,52 @@ import extdeps.languages.json.parse {
 // BEFORE any new acquisition, which covers controller death and host reboot as well as returned
 // failures, because it starts from the store rather than from anything the dead process meant to do.
 //
-// DECLARED FRONTIER (DESIGN 3c), WITH ITS TRIGGER: reviewer, auditor and supervisor sessions still
-// start unleased at the instance ceiling. They join WorkClassAgentSession once a session grant row
-// (measured session peaks) sizes the class below the ceiling -- at the ceiling, fourteen reviewer
-// lanes per head cannot fit a pool sized to the belt's worker count. Vendor providers (claude, codex,
-// cursor) run in tmux, whose panes escape any unit's cgroup, so they hold no placement until they
-// move into a unit; their attempts read SessionPlacementAbsent, which is the truth.
+// DECLARED FRONTIER (DESIGN 3c), WITH ITS TRIGGER: THE REVIEWER SESSION IS NO LONGER UNLEASED
+// (still-hawk-558, 2026-10-28, after the srv1 OOM receipt: 17 unleased reviewers at the instance
+// ceiling blew the 44 GiB slice mid-typecheck). A reviewer launch now takes its grant from the same
+// capacity authority the workers use -- gunbc.compute.host_capacity's ReviewerSessionPool, its own
+// seats, its own partition, with the slice leg adjudicating the cgroup the units actually land in
+// (the section at the foot of this module). Its MemoryMax is the granted amount, one figure for
+// reservation and cap. What REMAINS at the frontier: auditor and supervisor sessions still start
+// unleased at the instance ceiling; they join the ledger as their own classes once measured peak
+// rows size them (the reviewer's producer, below, is the pattern they follow), and their belt arms
+// have no acquire call site yet. Vendor providers (claude, codex, cursor) run in tmux, whose panes
+// escape any unit's cgroup, so they hold no placement until they move into a unit; their attempts
+// read SessionPlacementAbsent, which is the truth.
 
-// THE ROLE SEGMENT OF THE RECORD NAME. Only the worker holds a placement in this change (see the
-// frontier above); a role coproduct lands with the second role rather than as a one-arm type.
+// THE ROLE SEGMENTS OF THE RECORD NAMES. Two roles hold placements now, so the coproduct the first
+// role's note promised lands here rather than as a second string constant: the segment is the
+// role's token, and the identity and every durable name are built FROM the role value, so a third
+// role adds an arm and not another pair of twins.
 data session_worker_role: String = "worker"
+data session_reviewer_role: String = "reviewer"
+
+// THE ROLES THAT HOLD PLACEMENTS, as a coproduct (the note above kept its promise with the second
+// role's arrival). A reviewer's identity is NOT just its role: one attempt runs one worker but one
+// reviewer PER CRITERION, so the reviewer arm carries the criterion it reviews, and equality of two
+// reviewer roles is equality of criteria. The role TOKENS above stay the wire vocabulary; this type
+// is what functions pass, so no caller re-spells the token-criterion join.
+type SessionRole
+  = SessionWorkerSessionRole
+  | SessionReviewerSessionRole { criterion_key: String }
+
+fn session_role_token(r: SessionRole) -> String {
+  match r {
+    SessionWorkerSessionRole => session_worker_role
+    SessionReviewerSessionRole { criterion_key: _ } => session_reviewer_role
+  }
+}
+
+// THE FILENAME SEGMENT THAT MAKES A DURABLE NAME UNIQUE PER LAUNCH. The worker has one launch per
+// attempt, so the bare token separates it from any other role; a reviewer has one per criterion, so
+// its segment carries the criterion too -- and because unit names forbid ':', a criterion key can
+// never be confused with a segment boundary in an identity.
+fn session_role_durable_segment(r: SessionRole) -> String {
+  match r {
+    SessionWorkerSessionRole => session_worker_role
+    SessionReviewerSessionRole { criterion_key } => join([session_reviewer_role, "-", criterion_key], "")
+  }
+}
 
 data session_placement_schema: String = "gunbc.session-placement/v1"
 
@@ -444,12 +485,24 @@ fn session_placement_abandon(stores: SessionPlacementStores, grant: SessionPlace
 // systemd-run -- written after the reservation and before the launch gate. It names its schema, its
 // node, its attempt, its host and its unit, and the reader refuses it unless every one of them is
 // the asking attempt's (ruling, finding 3).
+// THE KEY AND THE ROLE ARE BOTH PARTS OF THE NAME. A reviewer's hold belongs to a CRITERION of an
+// attempt while its worker's hold belongs to the attempt itself, so the two roles of one attempt
+// must never share a path: the key is the caller's placement key (the worker's is its attempt key)
+// and the role is the role token, both carried as given.
+fn session_placement_record_basename_key(node_id: String, key: String, role: String) -> String {
+  join(["session-placement-", node_id, "-", key, "-", role, ".json"], "")
+}
+
 fn session_placement_record_basename(node_id: String, attempt_key: String) -> String {
-  join(["session-placement-", node_id, "-a", attempt_key, "-", session_worker_role, ".json"], "")
+  session_placement_record_basename_key(node_id: node_id, key: join(["a", attempt_key], ""), role: session_worker_role)
+}
+
+fn session_placement_release_basename_key(node_id: String, key: String, role: String) -> String {
+  join(["session-placement-", node_id, "-", key, "-", role, ".release.json"], "")
 }
 
 fn session_placement_release_basename(node_id: String, attempt_key: String) -> String {
-  join(["session-placement-", node_id, "-a", attempt_key, "-", session_worker_role, ".release.json"], "")
+  session_placement_release_basename_key(node_id: node_id, key: join(["a", attempt_key], ""), role: session_worker_role)
 }
 
 fn session_placement_note_basename(unit: String) -> String {
@@ -1146,8 +1199,59 @@ fn session_release_settled_for_slot(stores: SessionPlacementStores, host: String
   }
 }
 
+// WHO OWNS A HELD SLOT, asked as a declared sum rather than a Bool. The role is not a second field
+// on the record (the identity already names it, and a parallel role field could drift from the name
+// it is supposed to copy -- two sources of one fact); it is RECOVERED from the identity, and every
+// outcome of that recovery is an arm here, including the ones a Bool would flatten into "not a
+// reviewer": an unreadable slot, and a slot whose identity names neither role. Neither pass may act
+// on a guess, so the worker pass releases only the Worker arm, the reviewer pass only the Reviewer
+// arm (via session_reviewer_name_of), and Unrecognized is KEPT by both -- a hold of unknown
+// ownership is left standing for a human, not guessed away.
+type SessionSlotOwnership
+  = SlotOwnershipReviewer { name: SessionReviewerName }
+  | SlotOwnershipWorker { attempt: SessionAttemptName }
+  | SlotOwnershipUnreadable { detail: String }
+  | SlotOwnershipAbsent
+  | SlotOwnershipUnrecognized { identity: String }
+
+fn session_slot_ownership(slot: AttemptSlotReading) -> SessionSlotOwnership {
+  match slot {
+    AttemptSlotAbsent => SlotOwnershipAbsent
+    AttemptSlotUnreadable { detail } => SlotOwnershipUnreadable { detail: detail }
+    AttemptSlotHeld { record: rec, generation: _ } =>
+      match session_reviewer_name_of(identity: rec.identity) {
+        Present { value: name } => SlotOwnershipReviewer { name: name }
+        Absent =>
+          match session_attempt_name_of(identity: rec.identity) {
+            Present { value: attempt } => SlotOwnershipWorker { attempt: attempt }
+            Absent => SlotOwnershipUnrecognized { identity: rec.identity }
+          }
+      }
+  }
+}
+
 fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmptyStr, lifecycle: UnitLifecycle, now: EpochSecs) -> SessionSettlement {
   let slot = attempt_slot_read(root: stores.slots_root, reference: key)
+  // A SLOT IS SETTLED ONLY BY THE PASS THAT OWNS IT. Ownership is a declared sum recovered from the
+  // identity (see session_slot_ownership): the worker pass acts on the Worker arm and on the two
+  // no-hold arms, refuses the Reviewer arm -- a reviewer's hold is released only by the reviewer
+  // binder, under the reviewer's role-named record -- and KEEPS the Unrecognized arm: an identity
+  // that names neither role is not this pass's to reinterpret, and its seat stays held.
+  match session_slot_ownership(slot: slot) {
+    SlotOwnershipReviewer { name: _ } =>
+      SessionSettlementKept { unit: key as String, why: "the reviewer settlement pass owns this slot: its identity names a criterion, and the roles of an attempt release independently" }
+    SlotOwnershipUnrecognized { identity } =>
+      SessionSettlementKept { unit: key as String, why: join(["no pass owns this slot: its identity names neither a worker attempt nor a review criterion, so its hold is kept for a human to read: ", identity], "") }
+    SlotOwnershipAbsent => session_settle_observed(stores: stores, host: host, key: key, slot: slot, lifecycle: lifecycle, now: now)
+    SlotOwnershipUnreadable { detail: _ } => session_settle_observed(stores: stores, host: host, key: key, slot: slot, lifecycle: lifecycle, now: now)
+    SlotOwnershipWorker { attempt: _ } => session_settle_observed(stores: stores, host: host, key: key, slot: slot, lifecycle: lifecycle, now: now)
+  }
+}
+
+// THE WORKER PASS'S OWN FOLD, reached only for the arms it owns. Unreadable and absent slots are
+// decided by session_settle_decide itself (an unreadable slot is kept, an absent one is done) --
+// routed here explicitly so the arm is visible rather than smuggled through a false Bool.
+fn session_settle_observed(stores: SessionPlacementStores, host: String, key: NonEmptyStr, slot: AttemptSlotReading, lifecycle: UnitLifecycle, now: EpochSecs) -> SessionSettlement {
   match session_settle_decide(key: key, slot: slot, lifecycle: lifecycle, now: now, release_settled: session_release_settled_for_slot(stores: stores, host: host, slot: slot)) {
     SettleDone { why } => SessionSettlementDone { unit: key as String, why: why }
     SettleKeep { why, explain } =>
@@ -1245,5 +1349,713 @@ fn session_placement_settle_pass(instance: HostDashboardInstance, stores: Sessio
   match now_epoch_seconds() {
     Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the reserved-state trigger compares against a deadline" }
     Present { value: now } => session_placement_settle_pass_at(stores: stores, host: instance.host_identity as String, lifecycle_of: u => session_worker_unit_lifecycle_for_instance(instance: instance, unit: u), now: now)
+  }
+}
+
+// ============================================================================================
+// THE REVIEWER: THE SECOND ROLE, LEASED THROUGH THE SAME AUTHORITY (2026-10-28)
+//
+// WHY THIS EXISTS. srv1, 2026-10-28 19:51 UTC: belt_review_spawn launched seventeen reviewers for
+// one head at once, every one of them unleased at the instance ceiling (22 GiB MemoryMax), and the
+// 44 GiB slice they all land in (gunbc-user-work.slice) OOM-killed all seventeen mid-typecheck,
+// before any of them reached a model call. The reviewers were the last role the DECLARED FRONTIER
+// above left unleased; this section closes that arm. The operator's approved fix is the ONE
+// authority: a reviewer leases through gunbc.compute.host_capacity exactly as a worker does.
+//
+// THE POOL DECISION, as DESIGN 3b requires it be stated. Reviewers get their OWN partition, from
+// HostCapacityPool::ReviewerSessionPool (gunbc.compute.host_capacity), rather than sharing the
+// workers' AgentSessionPool -- a DIVERGENCE from "one pool for agent sessions" WITH A REASON, and
+// it is the same law bold-bee-114 used to separate the build pool: separate pools exist so a class
+// cannot starve itself. A worker holds its agent seat for the whole attempt and the attempt only
+// ends after its head's reviews close; if reviewers competed for those same N agent seats, N busy
+// workers would hold every seat while the reviewers that must close their heads waited behind them
+// -- a permanent deadlock by construction, resolved by no timeout the reviewer could take. Within
+// the pool's own class the ledger is one authority with no double counting; across the shared
+// slice the SUM of the partitions is charged (the slice leg of host_capacity_reserve_reviewer),
+// which is how a separate pool stays accounted against one parent rather than becoming a second
+// 44 GiB entitlement.
+//
+// THE SAME LAWS, NOT A SECOND AUTHORITY: slot before reservation (the CAS attempt_open wins or
+// loses the slot before any ledger event), the same CAS chain for the slot's generations, release
+// through the same compute_release_on and the same settle decision table, and one figure for
+// reservation and cap -- the unit's MemoryMax IS the granted amount, and the grant amount comes
+// only from a WorkClassReviewerSession grant row or the ceiling fallback (gunbc.compute.
+// work_class_grant). A refusal for LACK OF ROOM is ReviewDeferred (the belt retries on a later
+// tick): waiting for room is not a failure, and the cap is never widened to get around it.
+//
+// THE COMPOSITE KEY. One attempt hosts ONE worker and up to N reviewers, so the reviewer's
+// placement key is the attempt key joined with its criterion (session_reviewer_placement_key), and
+// every durable name carries the role segment too (session_role_durable_segment). The composite,
+// not the raw attempt key, is what the placement and release records carry, so a reviewer's
+// record can never be read as its worker's or as another criterion's.
+//
+// THE CRASH LAW. A reviewer's holds are open before any unit exists and released only by the
+// settlement pass once the reviewer unit is terminal (observation, or the exit record the unit
+// writes for itself). A crash at any step leaves a slot a later pass resolves: opened but never
+// reserved (slot expires by the launch deadline), reserved but never launched (same), launched but
+// unreleased (terminal observation or exit record, then release). Release before record, or record
+// before slot close: each ordering leaves either an idempotent NothingToRelease or a later pass
+// that sees both sides and settles them.
+//
+// A FENCED DURABLE RELEASE PROVES ATTRIBUTION, NOT QUIESCENCE (bold-dove-340, #15300): the review
+// unit is a single-process transient service (KillMode=process, the worker's confinement law); the
+// pass releases when the LEADER is terminal -- observation or the exit record -- and does NOT
+// observe descendant quiescence. Consumers that must withhold seat reuse until descendants are
+// quiescent must adjudicate descendants themselves; this interface does not, and the residual is
+// stated as such in the PR and on #15300.
+//
+// THE RESIDUAL, STATED AS IT IS (manager ruling, 2026-10-28, with bold-dove-340's correction):
+// aggregate admission is NOT atomic across partitions, and work_provider_local's
+// compute_cold_build_cap leases are uncharged; both stay open until every charged population joins
+// one atomic parent admission with release after quiescence. Patient deferral reduces the exposure
+// but bounds nothing. Per-unit MemoryMax bounds a single job, not the sum. #15300 owns the atomic
+// commit; this change does not claim aggregate safety.
+// ============================================================================================
+
+// THE COMPOSITE PLACEMENT KEY OF A REVIEWER. The "r" separator is a letter, not a copy of any
+// delimiter the carried values could contain: both parts are unit-name-admissible segments, so
+// neither can forge the other's boundary by carrying a separator of its own.
+fn session_reviewer_placement_key(attempt_key: String, criterion_key: String) -> String {
+  join([attempt_key, "r", criterion_key], "")
+}
+
+// THE REVIEWER'S SLOT IDENTITY: node, attempt, ROLE, criterion. The worker's two-segment identity
+// is unchanged by this -- the role segment is what makes the two roles of one attempt readable as
+// different things, and the parser below accepts ONLY the four-segment shape, so a worker identity
+// never parses as a reviewer and the reverse likewise.
+fn session_reviewer_identity(node_id: String, attempt_key: String, criterion_key: String) -> String {
+  join([node_id, ":", attempt_key, ":", session_reviewer_role, ":", criterion_key], "")
+}
+
+type SessionReviewerName {
+  node_id: String
+  attempt_key: String
+  criterion_key: String
+}
+
+// THE FOUR-SEGMENT IDENTITY, parsed strictly. Each carried field must itself contain no ':': the
+// three of them are admitted into systemd unit names and the identity must round-trip, so a field
+// carrying a segment boundary is REFUSED (absent), never merged -- the worker's parser may merge a
+// colon-bearing node because its last segment is all it needs, but a reviewer's criterion and role
+// segments must be exactly themselves for two passes to divide slots between the roles correctly.
+fn session_reviewer_field_speakable(field: String) -> Bool {
+  count(field.split(delimiter: ":")) == 1
+}
+
+fn session_reviewer_name_of(identity: String) -> SessionReviewerName? {
+  let parts: List<String> = identity.split(delimiter: ":")
+  let node = match first(parts) { Present { value: v } => v Absent => "" }
+  let key = match first(skip(parts, 1)) { Present { value: v } => v Absent => "" }
+  let role = match first(skip(parts, 2)) { Present { value: v } => v Absent => "" }
+  let crit = match first(skip(parts, 3)) { Present { value: v } => v Absent => "" }
+  if count(parts) != 4 || role != session_reviewer_role
+    || !session_reviewer_field_speakable(field: node)
+    || !session_reviewer_field_speakable(field: key)
+    || !session_reviewer_field_speakable(field: crit) {
+    none
+  } else {
+    Present { value: SessionReviewerName { node_id: node, attempt_key: key, criterion_key: crit } }
+  }
+}
+
+// THE REVIEWER'S UNIT NAME, admitted before anything is written or started. dispatch_review_unit_name
+// is the spelling of record (gunbc.roadmap.roadmap_dispatch_actuator); admission is checked here
+// because placement is the last point a bad name can still be refused for free.
+fn session_reviewer_unit_name(node_id: String, attempt_key: String, criterion_key: String) -> SystemdUnitNameAdmission {
+  systemd_service_unit_name(stem: join(["gunbc-review-", node_id, "-", attempt_key, "-", criterion_key], ""))
+}
+
+// THE GRANT THE REVIEWER LAUNCH CARRIES, shaped like the worker's: lease, partition, one amount,
+// the class row it came from, and the slot it opened. The unit's MemoryMax is grant.amount --
+// the same figure the ledger charged.
+type SessionReviewerGrant {
+  node_id: String
+  attempt_key: String
+  criterion_key: String
+  unit: NonEmptyStr
+  lease: LeaseGrant
+  partition: PartitionId
+  amount: Kibibyte
+  class_grant: WorkClassGrant
+  store: FabricStorageBinding
+  slot: AttemptRecord
+  slot_generation: CasGeneration
+}
+
+// THE THREE OUTCOMES OF TRYING TO PLACE A REVIEWER, and the law that divides them. Deferred means
+// the room is not there yet and the belt re-tries on a later tick -- a LACK OF ROOM IS NEVER
+// Refused, and Refused means a bug refused it (a name that could not be spoken, a ledger that
+// refused for a reason other than fullness), not a question of capacity. The belt's own mapping
+// (gunbc.roadmap.roadmap_belt_actuate belt_review_spawn) keeps them apart: ReviewDeferred for the
+// first, ReviewFailed only for the second.
+type SessionReviewerAcquisition
+  = SessionReviewerPlacementGranted { grant: SessionReviewerGrant }
+  | SessionReviewerPlacementDeferred { detail: String }
+  | SessionReviewerPlacementRefused { detail: String }
+
+type SessionReviewerLaunchGate
+  = SessionReviewerLaunchAdmitted { grant: SessionReviewerGrant }
+  | SessionReviewerLaunchRefused { detail: String }
+
+// THE REVIEWER'S CAS ROOT, beside the worker's and not inside it: the two roles of one attempt
+// open slots under the same instance root, and each pass must enumerate exactly its own class.
+fn session_reviewer_slots_root(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([session_placement_records_dir(instance: instance), "/reviewer-attempts"], "") as NonEmptyStr
+}
+
+// THE REVIEWER'S LEDGER STORE AND CAS ROOT. The partition name is host-scoped and carries no slot
+// count (gunbc.compute.host_capacity), so the settlement pass and the spawn resolve the SAME store
+// without sharing a plan: how many reviewers a head may run is a property of the reservation
+// request (session_reviewer_placement_acquire's reviewer_slots), not of the identity. The zero here
+// says so -- no caller may read a seat limit out of it.
+fn session_reviewer_placement_stores(instance: HostDashboardInstance) -> SessionStoresResolution {
+  match host_capacity_subject(instance: instance, pool: ReviewerSessionPool { slots: 0 }, request: kibibyte(count: 0)) {
+    ComputeSubjectHostUnresolved { host } => SessionStoresUnresolved { detail: join(["no dashboard instance is declared for host ", host as String, ", so it has no reviewer ledger"], "") }
+    ComputeSubjectResolved { subject } =>
+      SessionStoresResolved { stores: SessionPlacementStores {
+        slots_root: session_reviewer_slots_root(instance: instance),
+        records_dir: session_placement_records_dir(instance: instance),
+        store: compute_capacity_store(subject: subject),
+        partition: subject.partition,
+      } }
+  }
+}
+
+// THE REVIEWER'S DURABLE NAMES: the worker's shape, with the composite key and the reviewer role
+// segment. The basename functions are the shared role-keyed cores; nothing re-spells the prefix.
+fn session_reviewer_placement_basename(name: SessionReviewerName) -> String {
+  session_placement_record_basename_key(
+    node_id: name.node_id,
+    key: join(["a", session_reviewer_placement_key(attempt_key: name.attempt_key, criterion_key: name.criterion_key)], ""),
+    role: session_role_durable_segment(r: SessionReviewerSessionRole { criterion_key: name.criterion_key }),
+  )
+}
+
+fn session_reviewer_release_basename(name: SessionReviewerName) -> String {
+  session_placement_release_basename_key(
+    node_id: name.node_id,
+    key: join(["a", session_reviewer_placement_key(attempt_key: name.attempt_key, criterion_key: name.criterion_key)], ""),
+    role: session_role_durable_segment(r: SessionReviewerSessionRole { criterion_key: name.criterion_key }),
+  )
+}
+
+// THE RECORD A REVIEWER LAUNCH WRITES, beside the unit's start. attempt_key carries the COMPOSITE,
+// unit and reference carry the review unit's wire -- the figure the unit is capped at and the
+// figure the ledger charged must be readable from one document.
+fn session_reviewer_record_of(host: String, grant: SessionReviewerGrant, unit_properties: List<String>) -> SessionPlacementRecord {
+  SessionPlacementRecord {
+    schema: session_placement_schema,
+    node_id: grant.node_id,
+    attempt_key: session_reviewer_placement_key(attempt_key: grant.attempt_key, criterion_key: grant.criterion_key),
+    host: host,
+    unit: grant.unit as String,
+    reference: grant.lease.reference as String,
+    grant_identity: grant.lease.fence.grant as String,
+    fence_generation: grant.lease.fence.generation,
+    granted_at: grant.lease.granted_at,
+    expires_at: grant.lease.expires_at,
+    partition: grant.partition as String,
+    amount: grant.amount,
+    class_grant: work_class_grant_wire(g: grant.class_grant),
+    unit_properties: unit_properties,
+  }
+}
+
+fn session_reviewer_placement_record_write(stores: SessionPlacementStores, host: String, grant: SessionReviewerGrant, unit_properties: List<String>) -> SessionPlacementWrite {
+  let name = SessionReviewerName { node_id: grant.node_id, attempt_key: grant.attempt_key, criterion_key: grant.criterion_key }
+  let path = join([stores.records_dir, "/", session_reviewer_placement_basename(name: name)], "")
+  let w = Filesystem.Write(path: path, content: serialize_json(v: session_placement_record_json(r: session_reviewer_record_of(host: host, grant: grant, unit_properties: unit_properties))))
+  if w.success { SessionPlacementWritten { path: path } } else { SessionPlacementWriteFailed { path: path, error: w.error } }
+}
+
+// WHAT A REVIEWER RECORD MUST AGREE WITH: its node, its COMPOSITE key, the review unit it was
+// capped as, and the host it was written on. A record that disagrees on any of these is not this
+// reviewer's placement, and nothing is released under it -- the worker's rule, restated for the
+// reviewer's expectations rather than loosened across roles.
+fn session_reviewer_record_binding_mismatch(r: SessionPlacementRecord, name: SessionReviewerName, host: String) -> String {
+  let expected = dispatch_review_unit_name(node_id: name.node_id, attempt_key: name.attempt_key, criterion_key: name.criterion_key) as String
+  let composite = session_reviewer_placement_key(attempt_key: name.attempt_key, criterion_key: name.criterion_key)
+  if r.schema != session_placement_schema {
+    join(["the reviewer placement record's schema is ", r.schema, ", not ", session_placement_schema], "")
+  } else if r.node_id != name.node_id || r.attempt_key != composite {
+    join(["the reviewer placement record belongs to ", r.node_id, ":", r.attempt_key, ", not ", name.node_id, ":", composite], "")
+  } else if r.unit != expected || r.reference != expected {
+    join(["the reviewer placement record names unit ", r.unit, " and reference ", r.reference, "; this reviewer's unit is ", expected], "")
+  } else if r.host != host {
+    join(["the reviewer placement record was written on host ", r.host, ", not ", host], "")
+  } else { "" }
+}
+
+fn session_reviewer_grant_reading_of(path: String, obs: FilesystemFileObservation, name: SessionReviewerName, host: String) -> SessionGrantReading {
+  match obs {
+    FilesystemFileAbsent(_) => SessionGrantNotRecorded { path: path }
+    FilesystemFileRead { path: _, content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap } => SessionGrantUnreadable { path: path, detail: json_document_gap_text(gap: gap) }
+        JsonDocumentParsed { value: doc } => {
+          let decoded = session_placement_record_decode(doc: doc)
+          match decoded.record {
+            Absent => SessionGrantUnreadable { path: path, detail: decoded.cause }
+            Present { value: r } => {
+              let mismatch = session_reviewer_record_binding_mismatch(r: r, name: name, host: host)
+              if mismatch == "" { SessionGrantRecorded { record: r } } else { SessionGrantForeign { path: path, detail: mismatch } }
+            }
+          }
+        }
+      }
+    FilesystemFileIndeterminate { cause: _ } => SessionGrantUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => SessionGrantUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => SessionGrantUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+  }
+}
+
+fn session_reviewer_grant_reading(stores: SessionPlacementStores, host: String, name: SessionReviewerName) -> SessionGrantReading {
+  let base = session_reviewer_placement_basename(name: name)
+  session_reviewer_grant_reading_of(
+    path: join([stores.records_dir, "/", base], ""),
+    obs: session_placement_file(dir: stores.records_dir, name: base),
+    name: name,
+    host: host,
+  )
+}
+
+// THE RELEASE RECORD A REVIEWER SETTLEMENT WRITES, and reads back: node, COMPOSITE key, the review
+// unit as reference, the release outcome, and the grant it settled when a grant was readable.
+fn session_reviewer_placement_release_write(stores: SessionPlacementStores, name: SessionReviewerName, grant_binding: SessionGrantBinding?, reason: NonEmptyStr, freed: ComputeRelease) -> SessionPlacementWrite {
+  let path = join([stores.records_dir, "/", session_reviewer_release_basename(name: name)], "")
+  let unit = dispatch_review_unit_name(node_id: name.node_id, attempt_key: name.attempt_key, criterion_key: name.criterion_key) as String
+  let w = Filesystem.Write(path: path, content: serialize_json(v: json_object(members: concat([
+    json_kv(key: "schema", value: json_string(s: session_placement_schema)),
+    json_kv(key: "node_id", value: json_string(s: name.node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: session_reviewer_placement_key(attempt_key: name.attempt_key, criterion_key: name.criterion_key))),
+    json_kv(key: "reference", value: json_string(s: unit)),
+    json_kv(key: "outcome", value: json_string(s: session_release_outcome_wire(r: freed))),
+    json_kv(key: "reason", value: json_string(s: reason as String)),
+    json_kv(key: "detail", value: json_string(s: session_release_detail(r: freed))),
+  ], match grant_binding {
+    Absent => []
+    Present { value: b } => [json_kv(key: "grant", value: json_object(members: [
+      json_kv(key: "grant_identity", value: json_string(s: b.grant_identity)),
+      json_kv(key: "fence_generation", value: json_int(n: cas_generation_count(g: b.fence_generation))),
+    ]))]
+  }))))
+  if w.success { SessionPlacementWritten { path: path } } else { SessionPlacementWriteFailed { path: path, error: w.error } }
+}
+
+fn session_reviewer_release_observation_of(path: String, obs: FilesystemFileObservation, name: SessionReviewerName, grant: SessionGrantReading) -> SessionReleaseObservation {
+  match obs {
+    FilesystemFileAbsent(_) => SessionReleaseNotRecorded { path: path }
+    FilesystemFileRead { path: _, content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap } => SessionReleaseUnreadable { path: path, detail: json_document_gap_text(gap: gap) }
+        JsonDocumentParsed { value: doc } => {
+          let nd = json_field_string(obj: doc, key: "node_id")
+          let ak = json_field_string(obj: doc, key: "attempt_key")
+          let rf = json_field_string(obj: doc, key: "reference")
+          let outcome = json_field_string(obj: doc, key: "outcome")
+          let reason = json_field_string(obj: doc, key: "reason")
+          let detail = json_field_string(obj: doc, key: "detail")
+          let causes = filter([
+            session_field_cause(key: "node_id", r: nd), session_field_cause(key: "attempt_key", r: ak),
+            session_field_cause(key: "reference", r: rf), session_field_cause(key: "outcome", r: outcome),
+            session_field_cause(key: "reason", r: reason), session_field_cause(key: "detail", r: detail),
+          ], c => c != "")
+          match causes.first() {
+            Present { value: c } => SessionReleaseUnreadable { path: path, detail: c }
+            Absent => {
+              let expected_unit = dispatch_review_unit_name(node_id: name.node_id, attempt_key: name.attempt_key, criterion_key: name.criterion_key) as String
+              let composite = session_reviewer_placement_key(attempt_key: name.attempt_key, criterion_key: name.criterion_key)
+              let mismatch = if session_string_or(r: nd) != name.node_id || session_string_or(r: ak) != composite {
+                join(["the reviewer release belongs to ", session_string_or(r: nd), ":", session_string_or(r: ak), ", not this reviewer's ", name.node_id, ":", composite], "")
+              } else if session_string_or(r: rf) != expected_unit {
+                join(["the reviewer release names reference ", session_string_or(r: rf), ", not this reviewer's unit"], "")
+              } else { session_release_grant_mismatch(doc: doc, grant: grant) }
+              if mismatch != "" {
+                SessionReleaseUnreadable { path: path, detail: mismatch }
+              } else if session_string_or(r: outcome) == "released" {
+                SessionReleased { reason: session_string_or(r: reason), detail: session_string_or(r: detail) }
+              } else if session_string_or(r: outcome) == "nothing-to-release" {
+                SessionReleaseNothingHeld { reason: session_string_or(r: reason), detail: session_string_or(r: detail) }
+              } else if session_string_or(r: outcome) == "refused" {
+                SessionReleaseRefused { reason: session_string_or(r: reason), detail: session_string_or(r: detail) }
+              } else {
+                SessionReleaseUnreadable { path: path, detail: join(["reviewer release outcome is not in the closed vocabulary: ", session_string_or(r: outcome)], "") }
+              }
+            }
+          }
+        }
+      }
+    FilesystemFileIndeterminate { cause: _ } => SessionReleaseUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => SessionReleaseUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => SessionReleaseUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+  }
+}
+
+fn session_reviewer_release_observation(stores: SessionPlacementStores, host: String, name: SessionReviewerName) -> SessionReleaseObservation {
+  let base = session_reviewer_release_basename(name: name)
+  session_reviewer_release_observation_of(
+    path: join([stores.records_dir, "/", base], ""),
+    obs: session_placement_file(dir: stores.records_dir, name: base),
+    name: name,
+    grant: session_reviewer_grant_reading(stores: stores, host: host, name: name),
+  )
+}
+
+// THE SLOT BEFORE THE LEDGER, in the worker's order with the worker's CAS chain. The slot carries
+// the COMPOSITE owner key so the attempt-side tools can attribute a reviewer's holds, and its
+// reference is the review unit's wire -- one token that keys the slot file, the lease and the
+// records. A pre-existing slot for the same unit is NOT a bug: it means a reviewer for that
+// criterion is already placed, and waiting on it is a room question, so it defers.
+fn session_reviewer_attempt_record(node_id: String, attempt_key: String, criterion_key: String, unit: NonEmptyStr, granted: Kibibyte, now: EpochSecs) -> AttemptRecord {
+  AttemptRecord {
+    identity: session_reviewer_identity(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+    reference: unit as String,
+    unit: unit as String,
+    granted: granted,
+    opened_at: now,
+    launch_deadline: now + compute_pre_launch_ceiling_seconds,
+    state: AttemptReserved,
+    owner: DispatchOwned { node_id: node_id, attempt_key: session_reviewer_placement_key(attempt_key: attempt_key, criterion_key: criterion_key) },
+  }
+}
+
+// THE ANSWER AFTER A SLOT WAS OPENED AND THE LEDGER SAID NO. `room` divides the law: no room is
+// DEFERRAL (a later tick may find room; the belt re-tries), a bug is REFUSAL. Either way the slot
+// is closed first -- a reservation that never landed must not leave a slot standing open to hold
+// the reference against the next tick's retry.
+fn session_reviewer_answer_after_open(stores: SessionPlacementStores, record: AttemptRecord, generation: CasGeneration, refusal: String, room: Bool) -> SessionReviewerAcquisition {
+  let closed = join([
+    refusal, "; reviewer slot ",
+    attempt_transition_wire(t: attempt_terminate(root: stores.slots_root, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join(["reservation refused: ", refusal], ""))),
+  ], "")
+  if room { SessionReviewerPlacementDeferred { detail: closed } } else { SessionReviewerPlacementRefused { detail: closed } }
+}
+
+// A REVIEWER LAUNCH TAKES ITS PLACEMENT. Same shape as the worker's acquire, with the reviewer's
+// partition (host_capacity_reserve_reviewer): the class grant is resolved first, the CAS slot wins
+// or loses the reference, and only then does the ledger see a request. reviewer_slots is how many
+// reviewers this head may run at once (its criteria count) and agent_slots how many workers the
+// belt runs -- both are needed because the slice leg charges the SUM of the partitions that land
+// in the shared parent, and a pool cannot bound its own share without knowing the others.
+fn session_reviewer_placement_acquire(
+  instance: HostDashboardInstance,
+  stores: SessionPlacementStores,
+  node_id: String,
+  attempt_key: String,
+  criterion_key: String,
+  reviewer_slots: Nat,
+) -> SessionReviewerAcquisition {
+  match session_reviewer_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key) {
+    SystemdUnitNameAdmitted { name: _ } =>
+      match now_epoch_seconds() {
+        Absent => SessionReviewerPlacementRefused { detail: "the host clock could not be read as epoch seconds, and a reviewer's slot carries a launch deadline" }
+        Present { value: now } =>
+      match session_placement_pool() {
+        // THE WORKERS' SEAT COUNT IS NEEDED TO CHARGE THE SHARED PARENT: the slice leg bills the
+        // sum of the partitions that land in the work slice, and the agent partition is one of them.
+        // No pool size means no honest sum, and an honest sum is what a refusal or a grant rests on.
+        Absent => SessionReviewerPlacementRefused { detail: "the session pool has no size, so the workers sharing the slice with the reviewers cannot be charged" }
+        Present { value: agent_pool } => {
+          let agent_slots = host_capacity_pool_slots(pool: agent_pool)
+          let class_grant = work_class_grant(class: WorkClassReviewerSession, rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
+          let record = session_reviewer_attempt_record(
+            node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key,
+            unit: dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+            granted: work_class_grant_amount(g: class_grant), now: now,
+          )
+          match attempt_open(root: stores.slots_root, record: record) {
+            AttemptLostRace { expected: e, observed: o } =>
+              SessionReviewerPlacementDeferred { detail: join(["a reviewer placement already holds ", record.reference, " (expected ", e, ", found ", o, "); its criterion is already being reviewed"], "") }
+            AttemptTransitionRefused { detail: d } =>
+              SessionReviewerPlacementRefused { detail: join(["the reviewer slot would not open, so nothing was reserved: ", d], "") }
+            AttemptAdvanced { state: _, generation: g } =>
+              match host_capacity_reserve_reviewer(instance: instance, reviewer_slots: reviewer_slots, agent_slots: agent_slots, reference: record.unit as NonEmptyStr, term_seconds: session_placement_term_seconds, request: record.granted) {
+                ComputeReserved { grant: lease, partition: p, amount: a, store: s } =>
+                  SessionReviewerPlacementGranted { grant: SessionReviewerGrant {
+                    node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key,
+                    unit: record.unit as NonEmptyStr,
+                    lease: lease, partition: p, amount: a, class_grant: class_grant, store: s,
+                    slot: record, slot_generation: g,
+                  } }
+                ComputeCapacityFull { wire: w } => session_reviewer_answer_after_open(stores: stores, record: record, generation: g, refusal: w, room: true)
+                ComputeHostBelowFloor { requested: _, available: _ } =>
+                  session_reviewer_answer_after_open(stores: stores, record: record, generation: g, refusal: "the host's free memory is below the floor every charged partition must share", room: true)
+                ComputeReservationRefused { detail: d } => session_reviewer_answer_after_open(stores: stores, record: record, generation: g, refusal: d, room: false)
+              }
+          }
+        }
+      }
+      }
+    SystemdUnitNameStemEmpty => SessionReviewerPlacementRefused { detail: join(["the review unit name for ", node_id, ":", attempt_key, ":", criterion_key, " is empty"], "") }
+    SystemdUnitNameDisallowedCharacter { stem: _, character: ch } => SessionReviewerPlacementRefused { detail: join(["the review unit name carries ", ch, ", which systemd refuses, so no unit could have run this review"], "") }
+    SystemdUnitNameOverlong { length: n } => SessionReviewerPlacementRefused { detail: join(["the review unit name is ", to_string(value: n), " characters, past systemd's limit"], "") }
+  }
+}
+
+// THE LAUNCH GATE, the worker's law on the reviewer's slot: only Reserved takes the launch
+// generation, and a slot settlement already closed refuses the start.
+fn session_reviewer_placement_begin_launch(stores: SessionPlacementStores, grant: SessionReviewerGrant) -> SessionReviewerLaunchGate {
+  match attempt_begin_launch(root: stores.slots_root, reference: grant.slot.reference as NonEmptyStr, expected: grant.slot_generation) {
+    AttemptAdvanced { state: s, generation: g } =>
+      SessionReviewerLaunchAdmitted { grant: SessionReviewerGrant {
+        node_id: grant.node_id, attempt_key: grant.attempt_key, criterion_key: grant.criterion_key, unit: grant.unit,
+        lease: grant.lease, partition: grant.partition, amount: grant.amount, class_grant: grant.class_grant, store: grant.store,
+        slot: attempt_record_with_state(r: grant.slot, state: s),
+        slot_generation: g,
+      } }
+    AttemptLostRace { expected: e, observed: o } => SessionReviewerLaunchRefused { detail: join(["the reviewer slot moved before launch (expected ", e, ", found ", o, "); settlement ended this review, so its unit is not started"], "") }
+    AttemptTransitionRefused { detail: d } => SessionReviewerLaunchRefused { detail: join(["the reviewer slot would not take the launch generation: ", d], "") }
+  }
+}
+
+// WHEN THE START ITSELF REFUSED, free what was granted. The slot's generation decides: a winner
+// closes it and releases; a loser or a refusal leaves the slot to the settlement pass, which reads
+// the same states and holds nothing back on the belt's word alone. The answer is the release note
+// the spawn outcome carries, in the worker's shape.
+fn session_reviewer_placement_abandon(stores: SessionPlacementStores, grant: SessionReviewerGrant, reason: NonEmptyStr) -> String {
+  match attempt_terminate(root: stores.slots_root, reference: grant.slot.reference as NonEmptyStr, expected: grant.slot_generation, verdict: AttemptRecovered, detail: reason as String) {
+    AttemptAdvanced { state: _, generation: _ } => {
+      let freed = compute_release_on(store: grant.store, partition: grant.partition, appropriation: kibibyte(count: 0), reference: grant.unit, reason: reason)
+      let write = session_reviewer_placement_release_write(
+        stores: stores,
+        name: SessionReviewerName { node_id: grant.node_id, attempt_key: grant.attempt_key, criterion_key: grant.criterion_key },
+        grant_binding: Present { value: SessionGrantBinding { grant_identity: grant.lease.fence.grant as String, fence_generation: grant.lease.fence.generation } },
+        reason: reason,
+        freed: freed,
+      )
+      join([reason as String, "; placement record close: ", session_write_note(w: write)], "")
+    }
+    AttemptLostRace { expected: e, observed: o } =>
+      join([reason as String, "; the reviewer slot moved while the start failed (expected ", e, ", found ", o, "); the settlement pass owns it from here"], "")
+    AttemptTransitionRefused { detail: d } =>
+      join([reason as String, "; the reviewer slot would not take the terminal generation: ", d], "")
+  }
+}
+
+// HOW A REVIEWER UNIT IS KNOWN TO HAVE ENDED, the worker's law restated for a unit whose name
+// encodes a criterion: the live manager observation first, and failing that the exit record the
+// unit wrote for ITSELF -- matched through the spool's own reviewer token prefix, never a
+// re-spelled format. A crash between launch and release lands here on the next pass.
+fn session_reviewer_unit_lifecycle_for_instance(instance: HostDashboardInstance, name: SessionReviewerName) -> UnitLifecycle {
+  let unit = dispatch_review_unit_name(node_id: name.node_id, attempt_key: name.attempt_key, criterion_key: name.criterion_key)
+  let loaded = attempt_unit_observation(unit: unit)
+  match loaded {
+    AttemptUnitAbsent =>
+      session_worker_unit_lifecycle(
+        unit: unit,
+        loaded: loaded,
+        record: attempt_exit_record_matching(
+          matches: (n, a, r) =>
+            n == name.node_id && a == name.attempt_key
+              && starts_with(s: r, prefix: attempt_reviewer_role_token_prefix(criterion_key: name.criterion_key)),
+          listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
+        ),
+      )
+    AttemptUnitActive => session_unit_lifecycle(o: loaded)
+    AttemptUnitFinished { exit_status: _ } => session_unit_lifecycle(o: loaded)
+    AttemptUnitUnreadable { reason: _ } => session_unit_lifecycle(o: loaded)
+  }
+}
+
+// THE INSTRUMENT THAT SIZES THE CLASS (the manager's ruling: the route that launches reviewers
+// also produces their samples, so a grant row is authored from recorded peaks and cites this
+// instrument, never a hand-transcribed number). The peak is read from the manager itself -- the
+// unit's MemoryPeak property, the same read the workspace metrics use -- at the moment the
+// settlement pass sees the unit terminal, BEFORE collection can take it. Absent or unreported
+// falls to the ceiling; it never invents a number. The sample lands as a durable record beside
+// the placement records, one per review unit, naming the instrument and the figures, from which
+// the WorkClassReviewerSession row is authored once enough OOM-free runs have accumulated.
+type SessionReviewerPeakSample
+  = SessionReviewerPeakObserved { peak: Kibibyte }
+  | SessionReviewerPeakUnobserved { reason: String }
+
+fn session_reviewer_peak_from_show(outcome: ShellOutcome, success: Bool, value: String) -> SessionReviewerPeakSample {
+  match outcome {
+    ShellSpawnRefused { program: _, cause: c } => SessionReviewerPeakUnobserved { reason: join(["systemctl --user show could not run: ", c], "") }
+    ShellExited =>
+      if !success {
+        SessionReviewerPeakUnobserved { reason: join(["systemctl --user show refused the peak read: ", value], "") }
+      } else if trim(s: value) == "" || trim(s: value) == "[not set]" {
+        SessionReviewerPeakUnobserved { reason: "the unit reports no memory peak (collected, or accounting is off)" }
+      } else if trim(s: value) == "infinity" || trim(s: value) == "max" {
+        SessionReviewerPeakUnobserved { reason: "the unit reports its memory peak as unbounded" }
+      } else {
+        match systemd_formatted_bytes_parse(text: trim(s: value)) {
+          FormattedBytesRead { value: b } => SessionReviewerPeakObserved { peak: kibibyte_ceiling(b: systemd_formatted_bytes_upper(b: b)) }
+          FormattedBytesUnparseable { text: t } => SessionReviewerPeakUnobserved { reason: join(["the peak ", t, " is not a byte figure"], "") }
+        }
+      }
+  }
+}
+
+fn session_reviewer_observe_peak(unit: NonEmptyStr) -> SessionReviewerPeakSample {
+  let shown = systemd.Systemctl.ShowUserProperty(unit: unit, property: systemd_unit_property_wire(property: MemoryPeak))
+  session_reviewer_peak_from_show(outcome: shown.outcome, success: shown.success, value: shown.value)
+}
+
+// THE SAMPLE RECORD, written beside the placement records. One per reviewer unit; the row author
+// reads these, cites the instrument, and the sample floor in gunbc.compute.work_class_grant decides
+// whether they are enough to size the class below the ceiling.
+fn session_reviewer_record_peak_sample(stores: SessionPlacementStores, host: String, name: SessionReviewerName, granted: Kibibyte, sample: SessionReviewerPeakSample, observed_at: EpochSecs) -> SessionPlacementWrite {
+  let path = join([stores.records_dir, "/session-placement-peak-", session_reviewer_placement_basename(name: name)], "")
+  let peak_field = match sample {
+    SessionReviewerPeakObserved { peak } => json_kv(key: "peak_kibibytes", value: json_int(n: kibibyte_count(k: peak))),
+    SessionReviewerPeakUnobserved { reason } => json_kv(key: "peak_absent_reason", value: json_string(s: reason)),
+  }
+  let body = json_object(members: [
+    json_kv(key: "unit", value: json_string(s: dispatch_review_unit_name(node_id: name.node_id, attempt_key: name.attempt_key, criterion_key: name.criterion_key) as String)),
+    json_kv(key: "node_id", value: json_string(s: name.node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: session_reviewer_placement_key(attempt_key: name.attempt_key, criterion_key: name.criterion_key))),
+    json_kv(key: "criterion_key", value: json_string(s: name.criterion_key)),
+    json_kv(key: "host", value: json_string(s: host)),
+    json_kv(key: "granted_kibibytes", value: json_int(n: kibibyte_count(k: granted))),
+    peak_field,
+    json_kv(key: "observed_at_seconds", value: json_int(n: observed_at)),
+    json_kv(key: "instrument", value: json_string(s: "gunbc.roadmap.roadmap_session_placement session_reviewer_observe_peak: systemctl --user show -p MemoryPeak, read at settle before collection")),
+  ])
+  let w = Filesystem.Write(path: path, content: serialize_json(v: body))
+  if w.success { SessionPlacementWritten { path: path } } else { SessionPlacementWriteFailed { path: path, error: w.error } }
+}
+
+// THE SAME DECISION TABLE, WITH THE REVIEWER'S BINDER. recovery_trigger and session_settle_by_trigger
+// are the worker's, reused unchanged: the trigger law does not care which role holds the seat, and
+// the decision arms do not either -- only the binding that says THIS slot belongs to THIS reviewer
+// is the reviewer's own. The attempt carried through the trigger is the COMPOSITE name, so any
+// release it leads to can only be written under the reviewer's role-named path.
+fn session_reviewer_settle_decide(
+  key: NonEmptyStr,
+  name: SessionReviewerName,
+  slot: AttemptSlotReading,
+  lifecycle: UnitLifecycle,
+  now: EpochSecs,
+  release_settled: Bool,
+) -> SessionSettleDecision {
+  match slot {
+    AttemptSlotAbsent => SettleDone { why: join(["no reviewer slot is held for ", key as String], "") }
+    AttemptSlotUnreadable { detail } => SettleKeep { why: join(["the reviewer slot for ", key as String, " is unreadable, and an unreadable slot is not an absent one, so its hold is kept: ", detail], ""), explain: true }
+    AttemptSlotHeld { record: rec, generation: g } => {
+      let expected = dispatch_review_unit_name(node_id: name.node_id, attempt_key: name.attempt_key, criterion_key: name.criterion_key) as String
+      let composite = session_reviewer_placement_key(attempt_key: name.attempt_key, criterion_key: name.criterion_key)
+      let mismatch = if (key as String) != rec.reference {
+        join(["the reviewer slot keyed ", key as String, " names reference ", rec.reference], "")
+      } else if rec.identity != session_reviewer_identity(node_id: name.node_id, attempt_key: name.attempt_key, criterion_key: name.criterion_key) {
+        join(["the reviewer slot ", key as String, " binds identity ", rec.identity, ", which is not this reviewer's"], "")
+      } else if rec.unit != expected {
+        join(["the reviewer slot ", key as String, " names unit ", rec.unit, ", not ", expected], "")
+      } else {
+        match rec.owner {
+          DispatchOwned { node_id: n, attempt_key: a } =>
+            if n != name.node_id || a != composite {
+              join(["the reviewer slot ", key as String, " is owned by ", n, ":", a, ", not this reviewer's composite key ", composite], "")
+            } else { "" }
+          DirectInvocation { why: w } => join(["the reviewer slot ", key as String, " belongs to no dispatch (", w, ")"], "")
+          OwnerUnrecorded { why: w } => join(["the reviewer slot ", key as String, " records no owner (", w, ")"], "")
+        }
+      }
+      if mismatch != "" {
+        SettleKeep { why: join(["the reviewer slot ", key as String, " is not bound consistently (", mismatch, "), so it is never released under this name"], ""), explain: true }
+      } else {
+        match rec.state {
+          AttemptTerminal { verdict: _, detail: d } =>
+            if release_settled { SettleDone { why: "closed and released" } } else { SettleReleaseOnly { record: rec, attempt: SessionAttemptName { node_id: name.node_id, attempt_key: composite }, reason: join(["the reviewer slot is closed (", d, ") and no settled release is recorded"], "") } }
+          AttemptReserved => session_settle_by_trigger(record: rec, generation: g, attempt: SessionAttemptName { node_id: name.node_id, attempt_key: composite }, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now))
+          AttemptLaunching => session_settle_by_trigger(record: rec, generation: g, attempt: SessionAttemptName { node_id: name.node_id, attempt_key: composite }, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now))
+        }
+      }
+    }
+  }
+}
+
+// A REVIEWER'S HOLD IS SETTLED once its own release record (composite key, review unit as
+// reference) says released or nothing-to-release -- the same closed vocabulary as the worker's,
+// read from the reviewer's role-named path.
+fn session_reviewer_release_settled_for_slot(stores: SessionPlacementStores, host: String, name: SessionReviewerName) -> Bool {
+  session_release_settled(r: session_reviewer_release_observation(stores: stores, host: host, name: name))
+}
+
+// THE RELEASE ITSELF, and the peak sample taken with it: the moment this pass sees the unit
+// terminal is the last moment the manager still holds its MemoryPeak, and the sample must be
+// recorded BEFORE the release note closes the story. One release attempt, one sample record.
+fn session_reviewer_settle_release(stores: SessionPlacementStores, host: String, unit: NonEmptyStr, name: SessionReviewerName, granted: Kibibyte, reason: String, now: EpochSecs) -> SessionSettlement {
+  let binding = match session_reviewer_grant_reading(stores: stores, host: host, name: name) {
+    SessionGrantRecorded { record } => Present { value: SessionGrantBinding { grant_identity: record.grant_identity, fence_generation: record.fence_generation } }
+    SessionGrantNotRecorded { path: _ } => none
+    SessionGrantUnreadable { path: _, detail: _ } => none
+    SessionGrantForeign { path: _, detail: _ } => none
+  }
+  let why = join(["settled: ", reason], "") as NonEmptyStr
+  let freed = compute_release_on(store: stores.store, partition: stores.partition, appropriation: kibibyte(count: 0), reference: unit, reason: why)
+  let write = session_reviewer_placement_release_write(stores: stores, name: name, grant_binding: binding, reason: why, freed: freed)
+  let sample = session_reviewer_observe_peak(unit: unit)
+  let noted = session_reviewer_record_peak_sample(stores: stores, host: host, name: name, granted: granted, sample: sample, observed_at: now)
+  let peak_note = match noted {
+    SessionPlacementWritten { path: p } => join(["; peak sample recorded at ", p], "")
+    SessionPlacementWriteFailed { path: p, error: e } => join(["; peak sample NOT written at ", p, ": ", e], "")
+  }
+  SessionSettlementReleaseAttempted { unit: unit as String, freed: freed, detail: join([reason, session_write_note(w: write), peak_note], "") }
+}
+
+fn session_reviewer_settle_one(
+  stores: SessionPlacementStores,
+  host: String,
+  key: NonEmptyStr,
+  name: SessionReviewerName,
+  lifecycle: UnitLifecycle,
+  now: EpochSecs,
+) -> SessionSettlement {
+  let slot = attempt_slot_read(root: stores.slots_root, reference: key)
+  match session_reviewer_settle_decide(key: key, name: name, slot: slot, lifecycle: lifecycle, now: now, release_settled: session_reviewer_release_settled_for_slot(stores: stores, host: host, name: name)) {
+    SettleDone { why } => SessionSettlementDone { unit: key as String, why: why }
+    SettleKeep { why, explain } =>
+      SessionSettlementKept { unit: key as String, why: if explain { session_settle_note(stores: stores, unit: key as String, why: why) } else { why } }
+    SettleReleaseOnly { record: rec, attempt: _, reason } =>
+      session_reviewer_settle_release(stores: stores, host: host, unit: key, name: name, granted: rec.granted, reason: reason, now: now)
+    SettleTerminateAndRelease { record, generation, attempt: _, reason } =>
+      match attempt_terminate(root: stores.slots_root, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join([reason, "; unit ", unit_lifecycle_wire(u: lifecycle), " (reviewer)"], "")) {
+        AttemptLostRace { expected: e, observed: o } =>
+          SessionSettlementRefused { unit: key as String, detail: join(["the reviewer slot moved while settlement was deciding (expected ", e, ", found ", o, "); the observation is stale, so nothing is released"], "") }
+        AttemptTransitionRefused { detail: d } => SessionSettlementRefused { unit: key as String, detail: join(["the reviewer slot would not take the terminal generation: ", d], "") }
+        AttemptAdvanced { state: _, generation: _ } =>
+          session_reviewer_settle_release(stores: stores, host: host, unit: key, name: name, granted: record.granted, reason: reason, now: now)
+      }
+  }
+}
+
+// THE REVIEWER SETTLEMENT PASS: enumerate the reviewer slot root, keep only identities that parse
+// as reviewers (the strict parser makes a worker identity and a corrupt one both unfixed by this
+// pass), and settle each through the shared decision table. A crash leaves a slot here for the
+// next pass; nothing about a reviewer's hold is ever resolved by guessing.
+fn session_reviewer_placement_settle_pass_at(
+  stores: SessionPlacementStores,
+  host: String,
+  lifecycle_of: fn(SessionReviewerName) -> UnitLifecycle,
+  now: EpochSecs,
+) -> SessionSettlePass {
+  match cas_slot_keys(root: stores.slots_root) {
+    CasSlotKeysListed { keys } =>
+      SessionSettlePassRan { settlements: flat_map(keys, k => match attempt_slot_read(root: stores.slots_root, reference: k) {
+        AttemptSlotHeld { record: rec, generation: _ } =>
+          match session_reviewer_name_of(identity: rec.identity) {
+            Present { value: name } => [session_reviewer_settle_one(stores: stores, host: host, key: k, name: name, lifecycle: lifecycle_of(name), now: now)]
+            Absent => [] as List<SessionSettlement>
+          }
+        AttemptSlotAbsent => [] as List<SessionSettlement>
+        AttemptSlotUnreadable { detail: d } =>
+          [SessionSettlementKept { unit: k as String, why: join(["the reviewer slot store entry ", k as String, " is unreadable, so its owner cannot be named and its hold is kept: ", d], "") }]
+      }) }
+    CasSlotKeysListingRefused { root: r, detail: d } => SessionSettlePassRefused { detail: join(["the reviewer slot store at ", r as String, " could not be listed: ", d], "") }
+    CasSlotKeysSubjectRefused { root: r, cause: c } => SessionSettlePassRefused { detail: join(["the reviewer slot store path ", r as String, " is not admissible: ", c], "") }
+  }
+}
+
+fn session_reviewer_placement_settle_pass(instance: HostDashboardInstance, stores: SessionPlacementStores) -> SessionSettlePass {
+  match now_epoch_seconds() {
+    Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and a reviewer settlement measures launch deadlines against it" }
+    Present { value: now } => session_reviewer_placement_settle_pass_at(
+      stores: stores,
+      host: instance.host_identity as String,
+      lifecycle_of: name => session_reviewer_unit_lifecycle_for_instance(instance: instance, name: name),
+      now: now,
+    )
   }
 }

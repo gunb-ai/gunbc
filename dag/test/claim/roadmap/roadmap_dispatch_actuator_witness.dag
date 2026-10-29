@@ -1331,6 +1331,7 @@ test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool 
     brief: "brief",
     head_sha: "abc123",
     criterion_key: "conformance-external-facts",
+    granted: srv1_lab_dashboard_instance().dispatch_worker_memory_max,
     exit_hook: "+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr,
   ) {
     SystemdRunCommandRefused { cause: _ } => false

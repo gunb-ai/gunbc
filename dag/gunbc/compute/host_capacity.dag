@@ -1,10 +1,18 @@
 module gunbc.compute.host_capacity
 
-import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, Duration }
 import std.nat { Nat }
-import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size_count }
+import std.algebra { Cons, Empty }
+import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size, byte_size_count }
 import extdeps.linux.procfs
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
+import extdeps.transports.shell { ShellOutcome, ShellExited, ShellSpawnRefused }
+import extdeps.systemd { systemd_memory_max_property }
+import extdeps.systemd.systemctl
+import extdeps.systemd.systemd_run {
+  SystemdFormattedBytes, SystemdFormattedBytesReading, FormattedBytesRead, FormattedBytesUnparseable,
+  systemd_formatted_bytes_parse, systemd_formatted_bytes_upper, systemd_formatted_bytes_lower,
+}
 import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
 import product.capacity.event_chain { PartitionId }
 import product.capacity.pool_events { SeatRequest, PoolReleased, pool_full_wire }
@@ -16,10 +24,14 @@ import gunbc.fabric.fabric_event_log {
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused,
   fabric_seat_acquire, seat_acquisition_wire,
   SeatStandingObservation, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved, SeatStandingStoreRefused, fabric_seat_observe,
+  SeatCommittedObservation, SeatCommitted, SeatCommittedUnobserved, SeatCommittedStoreRefused, fabric_seat_committed,
+  event_log_refusal_wire,
   SeatRelease, SeatReleased, SeatNotHeld, SeatReleaseContended, SeatReleaseRefused, fabric_seat_release, seat_release_wire,
   PoolEventAppend, PoolEventAppended, PoolEventContended, PoolEventAppendRefused, fabric_pool_event_append, pool_event_append_wire,
 }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
+import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, user_work_slice_memory_max_of }
+import gunbc.live_deploy.user_work_pool_slots { user_work_charged_slots }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_shared_directory,
@@ -140,14 +152,47 @@ fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {
 // compute_backing_ceiling closes WITHIN a pool is open BETWEEN pools. Trigger: the per-host read of
 // outstanding grants' resident share named at compute_backing_ceiling, whose second consumer is the
 // cross-pool sum.
+// THE THIRD POOL, AND THE RULING THAT MAKES IT NOT-REUSE (still-hawk-558, 2026-10-28; operator
+// decision msg_1c942fc4, manager ruling on the four decisions, 2026-10-28). A review criterion's
+// session is the SECOND ROLE, and it does NOT join AgentSessionPool. DESIGN 3b's "sessions share one
+// pool" is read as PER CLASS, exactly as build and agent sessions are two pools today: the bold-bee-114
+// two-pool ruling exists to stop a class starving itself, and worker seats and the seats of the
+// reviewers OF THOSE SAME WORKERS' heads starve each other permanently. A worker holds its agent
+// seat for the whole attempt and terminates only after its head's reviews close (the reviewer
+// verdict is what advances the attempt); reviewers need seats to start. Give them one pool and a
+// host running its full worker count holds every seat, admits no reviewer, closes no head, and
+// terminates no worker: deadlock with an impeccable ledger. Separate seats are therefore the
+// anti-starvation law, not a convenience.
+//
+// THE SEAT COUNT IS THE PER-HEAD CRITERIA, NOT THE WORKER COUNT (supplied by the belt), because
+// seats bound ARRIVALS while the slice leg below bounds MEMORY -- and memory, not seats, is what
+// killed the 19:51 fleet on srv1 (17 reviewers x the 22 GiB cap inside a 44 GiB slice). No seat
+// count fits the ceiling in that slice; the slice leg refuses the overflow and the belt defers.
+//
+// THE SLICE IS THE BOUND, NOT MemAvailable, and this is the correction the manager ruled in (msg
+// msg_e6a326b2). The reviewers died in gunbc-user-work.slice's memory.max while srv1 had ~160 GiB
+// MemAvailable free: a ledger fed by host availability admitted ~7 x 22 GiB into a 44 GiB cgroup.
+// So a reviewer reservation is adjudicated a third time -- against the SLICE its units will be
+// placed in, summed across the classes that share it (the agent pool's outstanding holds count,
+// because workers and reviewers land in the same slice). The slice figure is OBSERVED where a
+// readable limit exists and the two observations AGREE on the smaller; absent or unbounded readings
+// fall to the declared row (gunbc.live_deploy.slice_bounds user_work_slice_memory_max_of) with its
+// provenance carried, and a ZERO limit refuses admission -- a slice that cannot hold one unit is a
+// convergence failure, never a reason to widen a cap.
+//
+// SCOPE, BY RULING: the slice leg fires for THIS arm only. The agent pool's slice leg would be a
+// worker-path behavior change and is the declared frontier's trigger, not a side effect of this PR
+// (see the frontier paragraph above the reservation; amended here).
 type HostCapacityPool
   = ComputeBuildPool
   | AgentSessionPool { slots: Nat }
+  | ReviewerSessionPool { slots: Nat }
 
 fn host_capacity_pool_partition(pool: HostCapacityPool, host: NonEmptyStr) -> PartitionId {
   match pool {
     ComputeBuildPool => compute_memory_partition(host: host)
     AgentSessionPool { slots: _ } => join(["session-memory-", host as String], "") as PartitionId
+    ReviewerSessionPool { slots: _ } => join(["reviewer-memory-", host as String], "") as PartitionId
   }
 }
 
@@ -155,6 +200,7 @@ fn host_capacity_pool_slots(pool: HostCapacityPool) -> Nat {
   match pool {
     ComputeBuildPool => compute_pool_slots
     AgentSessionPool { slots } => slots
+    ReviewerSessionPool { slots } => slots
   }
 }
 
@@ -214,6 +260,191 @@ fn observe_host_memory() -> HostMemoryObservation {
   }
 }
 
+// ── THE SLICE A REVIEWER'S UNITS LAND IN, READ RATHER THAN ASSUMED ─────────────────────────────
+//
+// THE 2026-10-28 srv1 RECEIPT KILLED THE HOST-MEMORY-ONLY VIEW OF ADMISSION. Seventeen reviewers
+// started at once, gunbc-user-work.slice reached its memory.max, and every one was OOM-killed
+// mid-typecheck with ~160 GiB of MemAvailable on the machine. MemAvailable answers "can the host
+// take this"; the question that killed the fleet was "can the CGROUP take this", and only the
+// slice's own limit answers it. This is a THIRD figure next to the two above, and it answers yet
+// another question -- so it gets its own reading, its own arms, and its own leg.
+//
+// THE READING IS THE OWNING MANAGER'S ANSWER TO THE QUESTION THE ENFORCEMENT ANSWERS, not a path
+// re-spelled. The review units are user units (the confinement ruling of 2026-10-28), so the limit
+// is the user manager's MemoryMax property of the slice: `systemctl --user show
+// gunbc-user-work.slice --property=MemoryMax --value`, which on srv1 reads exactly the cgroup file
+// the kernel enforces (operator receipt, 2026-10-28: 47244640256 at
+// .../user@1000.service/gunbc.slice/gunbc-user.slice/gunbc-user-work.slice/memory.max, equal to the
+// property). A path constant here would re-spell a hierarchy systemd owns -- gunbc.slice,
+// gunbc-user.slice, the uid nesting -- and DESIGN 3 names that fork; the property read carries no
+// hierarchy to drift. The slice NAME comes from gunbc.live_deploy.slice_bounds and is never
+// re-spelled here either.
+type SliceLimitReading
+  = SliceLimitObserved { limit: ByteSize }
+  | SliceLimitUnbounded
+  | SliceLimitAbsent
+  | SliceLimitUnreadable { detail: String }
+
+// THE FOLD OVER THE MANAGER'S ANSWER, separated from the call so every arm is authorable by a
+// control (the work_provider_local precedent at `unit_property_from_shell` is the model: a spawn
+// refusal is not a false answer, and only an exited command is a reading at all). systemd prints
+// 'infinity' for a slice with no limit -- a REAL reading that must not be confused with a missing
+// one, because an unbounded slice enforces nothing and that is exactly the un-converged host this
+// leg exists to guard.
+fn slice_limit_from_shell(outcome: ShellOutcome, success: Bool, value: String) -> SliceLimitReading {
+  match outcome {
+    ShellSpawnRefused { program: _, cause: _ } => SliceLimitUnreadable { detail: "systemctl --user could not be run on this host" }
+    ShellExited =>
+      if !success {
+        SliceLimitUnreadable { detail: "the user manager refused the MemoryMax question for the reviewer slice" }
+      } else {
+        let text = trim(s: value)
+        if text == "" {
+          SliceLimitAbsent
+        } else if text == "infinity" || text == "max" {
+          SliceLimitUnbounded
+        } else {
+          // ONE PARSER FOR WHAT SYSTEMD PRINTS, its plain-bytes arm included (review 87640,
+          // delete-first: a caller's mirror of the exact-bytes reading was a second copy of the
+          // rule). The budget conversion rounds DOWN from the lower bound -- a limit like
+          // 47244640001 must yield a budget of floor bytes/1024, never the ceiling one, or
+          // admission passes the byte the cgroup stops at (review 87534's failure case, now a
+          // control).
+          match systemd_formatted_bytes_parse(text: text) {
+            FormattedBytesUnparseable { text: t } => SliceLimitUnreadable { detail: join(["MemoryMax is not a bytes figure: ", t], "") }
+            FormattedBytesRead { value: b } => SliceLimitObserved { limit: systemd_formatted_bytes_lower(b: b) }
+          }
+        }
+      }
+  }
+}
+
+// A REFUSAL IS NOT A FLOOR, AND A CAPACITY IS NOT A CHARGE (review 87534): a slice limit is the
+// byte the kernel stops AT, so the reading that sizes admission is the LOWER bound of the printed
+// figure -- a truncated print may overstate what is enforced, and an overstated budget is a silent
+// widen on the exact path this leg exists to close. The UPPER bound stays the safe direction for
+// CHARGES (a unit's observed peak: never understate what a unit used). extdeps.systemd.systemd_run
+// carries both bounds precisely so each side picks its own direction.
+
+// WHAT THE FILE SAYS, IN THE STATES ADMISSION NEEDS DISTINGUISHED. (Kept adjacent to the fold so
+// the arms and their reading are one fact, not a type in one file and an interpretation in another.)
+
+// THE BUDGET THE SLICE LEG ADMITS AGAINST, and its provenance is part of the answer because a
+// budget that silently re-spent an absent slice at the declared row would size admission by a row
+// while the enforcing limit was something else entirely -- so each arm says where its figure came
+// from, and the fold takes the SMALLER of what is observed and what is declared. Observed-below-
+// declared admits less than the row promises (the conservative direction); declared-below-observed
+// admits less than the cgroup would allow, which is patience, never a hazard.
+type ReviewerSliceBudget
+  = SliceBudgetObserved { budget: Kibibyte, detail: String }
+  | SliceBudgetDeclared { budget: Kibibyte, detail: String }
+  | SliceBudgetZero { detail: String }
+  | SliceBudgetUnreadable { detail: String }
+
+// THE DECLARED FIGURE THIS DEPLOYMENT INSTALLS, derived -- never transcribed (DESIGN 6): slots and
+// per-slot bytes are gunbc.live_deploy's own rows, the ones the emitter writes the slice with.
+fn reviewer_slice_declared_budget(slots: Nat) -> Kibibyte {
+  kibibyte_from_byte_size_floor(b: user_work_slice_memory_max_of(slots: slots))
+}
+
+// THE PURE RESOLUTION: observed reading, plus the DECLARED row. ABSENT and UNBOUNDED fall to the
+// declared figure WITH THE FALL STATED: a host whose slice has not been converged admits at the row
+// it is supposed to run -- which is what the wrap standing already refuses to launch outside of
+// (the operator's srv1 ruling: infinity/blank falls to the declared row with provenance; zero
+// refuses). UNREADABLE REFUSES (review 87545): "infinity"/"blank" are POSITIVE answers with a
+// known meaning; a failed read is the absence of an answer, and a drifted-or-unreachable manager
+// must not be papered over with the larger figure. Unknowns defer, they do not admit -- DESIGN 5:
+// a failure arm refuses, never widens, and the degradation is typed, located and countable in the
+// refusal detail the belt renders as ReviewDeferred.
+fn reviewer_slice_budget_from_reading(observed: SliceLimitReading, declared: Kibibyte) -> ReviewerSliceBudget {
+  match observed {
+    SliceLimitObserved { limit } =>
+      if byte_size_count(b: limit) == 0 {
+        SliceBudgetZero { detail: join([user_work_slice_unit_name as String, " reports MemoryMax of zero, which can hold no unit"], "") }
+      } else {
+        let observed_kib = kibibyte_from_byte_size_floor(b: limit)
+        if kibibyte_count(k: observed_kib) < kibibyte_count(k: declared) {
+          SliceBudgetObserved { budget: observed_kib, detail: "the slice's own MemoryMax, below the declared row" }
+        } else {
+          SliceBudgetDeclared { budget: declared, detail: "the declared slice row; the slice reports at least as much" }
+        }
+      }
+    SliceLimitUnbounded => SliceBudgetDeclared { budget: declared, detail: join([user_work_slice_unit_name as String, " is unbounded (MemoryMax infinity); admitting at the declared row -- the slice enforces nothing until converged"], "") }
+    SliceLimitAbsent => SliceBudgetDeclared { budget: declared, detail: join([user_work_slice_unit_name as String, " answered blank (the unit is not loaded under the user manager yet); admitting at the declared row the wrap standing installs"], "") }
+    SliceLimitUnreadable { detail: d } => SliceBudgetUnreadable { detail: join(["the slice limit could not be read (", d, "); admission is refused until it can be read"], "") }
+  }
+}
+
+// THE WET READING, ONE UNIT NAME WIDER THAN THE PRODUCTION CALLER: the same fold, the same
+// instrument arm, the same question -- asked of any unit the caller can name. The production
+// reader below pins the declared slice unit; a witness uses this one against a unit it created
+// itself, so the REAL instrument -- the manager's plain-bytes receipt included -- executes at
+// least once outside planted inputs (DESIGN 3: supplied inputs may not remove the last execution
+// of the real path). Nothing is written here: this is a show, not a set.
+fn observe_slice_limit_for(unit: NonEmptyStr) -> SliceLimitReading {
+  let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: systemd_memory_max_property)
+  slice_limit_from_shell(outcome: read.outcome, success: read.success, value: read.value)
+}
+
+// THE WET READING: ask the user manager the one question, in the one form.
+fn observe_reviewer_slice_limit() -> SliceLimitReading {
+  observe_slice_limit_for(unit: user_work_slice_unit_name)
+}
+
+// THE SLICE LEG ITSELF, as a fold over supplied figures: the seats a launch wants and what is
+// already committed in the SAME slice by every class that lands there (the reviewer pool's own
+// holds AND the agent pool's outstanding holds -- workers and reviewers share the cgroup), checked
+// against the budget. A refusal here is a ROOM answer: the belt defers and retries, and no cap is
+// ever widened because the room was not there.
+fn compute_slice_leg(budget: ReviewerSliceBudget, sibling_committed: Kibibyte, own_committed: Kibibyte, request: Kibibyte) -> ComputeSliceLeg {
+  match budget {
+    SliceBudgetZero { detail: d } => ComputeSliceRefusedForRoom { detail: join(["the slice's limit is zero: ", d], "") }
+    SliceBudgetUnreadable { detail: d } => ComputeSliceRefusedForRoom { detail: d }
+    SliceBudgetObserved { budget: b, detail: _ } => compute_slice_arithmetic(b: b, sibling_committed: sibling_committed, own_committed: own_committed, request: request)
+    SliceBudgetDeclared { budget: b, detail: _ } => compute_slice_arithmetic(b: b, sibling_committed: sibling_committed, own_committed: own_committed, request: request)
+  }
+}
+
+fn compute_slice_arithmetic(b: Kibibyte, sibling_committed: Kibibyte, own_committed: Kibibyte, request: Kibibyte) -> ComputeSliceLeg {
+  let wanted = kibibyte_count(k: sibling_committed) + kibibyte_count(k: own_committed) + kibibyte_count(k: request)
+  if wanted > kibibyte_count(k: b) {
+    ComputeSliceRefusedForRoom {
+      detail: join([
+        user_work_slice_unit_name as String, " holds ", to_string(value: kibibyte_count(k: sibling_committed)),
+        " KiB from the sessions already placed and ", to_string(value: kibibyte_count(k: own_committed)),
+        " KiB from reviewers already admitted; this unit needs ", to_string(value: kibibyte_count(k: request)),
+        " KiB and the slice is ", to_string(value: kibibyte_count(k: b)), " KiB",
+      ], ""),
+    }
+  } else {
+    ComputeSliceRoom { budget: b }
+  }
+}
+
+type ComputeSliceLeg
+  = ComputeSliceRoom { budget: Kibibyte }
+  | ComputeSliceRefusedForRoom { detail: String }
+
+// THE SLICE INEQUALITY BINDS AT THE GENERATION THE SEAT COMMITS (review 87576). The slice leg
+// above READS the committed standings and answers room; a read is not a lock -- two criteria of
+// one head acquire concurrently (their per-criterion attempt CAS at
+// roadmap_session_placement:attempt_open does not serialize them), so both can pass the same
+// snapshot, and the seat's own compare-and-set would otherwise be bounded only by the backing
+// ceiling, letting the committed total cross the slice silently while the ledger called every
+// admission justified. The room answer therefore hands its budget to the seat: ceiling =
+// min(backing, budget - sibling), which the CAS enforces as own_committed + request <= budget -
+// sibling -- the slice inequality itself, re-checked at the partition generation the seat commits
+// at, so the later contender is refused room (SeatFull -> deferral), not admitted on stale room.
+// SIBLINGS (agent and build partitions) cannot enter the CAS: their committed totals live in other
+// ledgers, so a sibling's growth after this read is the declared cross-partition residual, not a
+// bound this pool can give. The worker path is untouched (scope ruling: byte-identical); this
+// tightening is the reviewer arm's alone.
+fn reviewer_seat_ceiling(backing: Kibibyte, budget: Kibibyte, sibling: Kibibyte) -> Kibibyte {
+  let room = kibibyte_count(k: budget) - kibibyte_count(k: sibling)
+  let room_k = if room > 0 { kibibyte(count: room) } else { kibibyte(count: 0) }
+  if kibibyte_count(k: room_k) < kibibyte_count(k: backing) { room_k } else { backing }
+}
+
 // ── THE APPROPRIATION, AND WHAT IT REPLACES ────────────────────────────────────────────────────
 //
 // THE SHARE OF THE HOST THIS PROVIDER MAY COMMIT, denominated in the bytes the old count was
@@ -235,7 +466,20 @@ fn compute_memory_appropriation(instance: HostDashboardInstance) -> Kibibyte {
 }
 
 fn host_capacity_pool_appropriation(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {
-  kibibyte(count: kibibyte_count(k: kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)) * host_capacity_pool_slots(pool: pool))
+  let by_slots = kibibyte(count: kibibyte_count(k: kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)) * host_capacity_pool_slots(pool: pool))
+  match pool {
+    // THE REVIEWER SHARE IS CAPPED BY THE SLICE ITS UNITS ARE PLACED IN, at the declared row (the
+    // operator's user-work slot count x the runner cell). The pool is sized by ARRIVALS -- one seat
+    // per head criterion -- and reviewers are far lighter than workers, so slots x ceiling is an
+    // upper bound the machine may not back at all; the slice the wrap places these units into is
+    // what actually binds (the 2026-10-28 srv1 OOM: 17 seats x 22 GiB against a 44 GiB cgroup). A
+    // host too small for even that share is a configuration error refused BEFORE any seat, the same
+    // law the other pools obey. The live reading below can only tighten this, never widen it.
+    ReviewerSessionPool { slots: _ } =>
+      let slice_declared = reviewer_slice_declared_budget(slots: user_work_charged_slots)
+      if kibibyte_count(k: slice_declared) < kibibyte_count(k: by_slots) { slice_declared } else { by_slots }
+    _ => by_slots
+  }
 }
 
 // THE UNIT'S CEILING IS THE RESERVED AMOUNT, and that identity is the whole point rather than a
@@ -393,6 +637,155 @@ fn compute_reserve_against(
           Present { value: now } => compute_seat(subject: subject, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(subject: subject, available: available))
         }
     }
+  }
+}
+
+// THE SLICE-BOUNDED REVIEWER ENTRY (still-hawk-558). Same ledger, same lease policy, same clock and
+// store legs as the worker's reservation -- plus the third reading, adjudicated BEFORE the seat is
+// taken: a reviewer whose slice has no room must be refused without ever producing a unit, so that
+// the belt defers rather than learning about room from an OOM kill. The seat count alone cannot be
+// the bound: seats bound arrivals, and 17 arrivals x the ceiling blew a 44 GiB slice while a ledger
+// watching only MemAvailable called every one of them admissible (the 2026-10-28 srv1 receipt).
+//
+// UNKNOWNS DEFER, THEY DO NOT ADMIT. A committed standing that cannot be read is NOT treated as
+// zero -- treating it as zero is how a slice gets blown through by the very read that failed. Nor is
+// it a failure: the belt's patient arm re-tries on a later tick, and a ledger that was momentarily
+// unreadable resolves the same way the clock's does. What is NOT patient is a configuration error:
+// an appropriation the machine never backed, or a store that cannot be prepared, refuses outright,
+// because waiting changes neither.
+fn host_capacity_reserve_reviewer(
+  instance: HostDashboardInstance,
+  reviewer_slots: Nat,
+  agent_slots: Nat,
+  reference: NonEmptyStr,
+  // THE DURATION CARRIER AT THE NEW ENTRY POINT (review 87616): a lease term is a duration, and
+  // std.types declares the carrier -- this new public signature does not extend the raw-Nat path
+  // the base siblings sit on. The seat and lease policies downstream still take Nat seconds; that
+  // lane is named by the existing tracked marker at session_placement_term_seconds (its 🟡
+  // dissolve-on: names SeatRequest.term_seconds and LeasePolicy.maximum_duration_seconds as the
+  // lanes that retype when the measure duration lands) -- one place, already carried.
+  term_seconds: Duration,
+  request: Kibibyte,
+) -> ComputeReservation {
+  match host_capacity_subject(instance: instance, pool: ReviewerSessionPool { slots: reviewer_slots }, request: request) {
+    ComputeSubjectHostUnresolved { host: h } => ComputeReservationRefused { detail: join(["no dashboard instance is registered for host ", h as String], "") }
+    ComputeSubjectResolved { subject: subject } =>
+      match host_capacity_subject(instance: instance, pool: AgentSessionPool { slots: agent_slots }, request: request) {
+        ComputeSubjectHostUnresolved { host: h } => ComputeReservationRefused { detail: join(["no dashboard instance is registered for host ", h as String], "") }
+        ComputeSubjectResolved { subject: agent_subject } =>
+          match host_capacity_subject(instance: instance, pool: ComputeBuildPool, request: request) {
+            ComputeSubjectHostUnresolved { host: h } => ComputeReservationRefused { detail: join(["no dashboard instance is registered for host ", h as String], "") }
+            ComputeSubjectResolved { subject: build_subject } =>
+              match observe_host_memory() {
+                HostMemoryUnobserved { detail: d } => ComputeReservationRefused { detail: join(["the host's memory could not be observed, so nothing was reserved: ", d], "") }
+                HostMemoryObserved { total: total, available: available } =>
+                  if kibibyte_count(k: subject.appropriation) > kibibyte_count(k: total) {
+                    ComputeReservationRefused {
+                      detail: join([
+                        "the reviewer share is ", to_string(value: kibibyte_count(k: subject.appropriation)),
+                        " KiB and this host has ", to_string(value: kibibyte_count(k: total)),
+                        " KiB installed, so the share was never backed by the machine",
+                      ], ""),
+                    }
+                  } else if kibibyte_count(k: available) < kibibyte_count(k: subject.request) {
+                    ComputeHostBelowFloor { requested: subject.request, available: available }
+                  } else {
+                    match compute_capacity_store_ensure(subject: subject) {
+                      FabricStorageRootRefused { area: a, detail: d } => ComputeReservationRefused { detail: join(["the capacity ledger could not be prepared at ", a, ": ", d], "") }
+                      FabricStorageRootReady =>
+                        match now_epoch_seconds() {
+                          Absent => ComputeReservationRefused { detail: "the clock could not be read as epoch seconds" }
+                          Present { value: now } =>
+                            match reviewer_committed_standings(subject: subject, agent_subject: agent_subject, build_subject: build_subject, available: available, now: now) {
+                              ReviewerRoomUnestablished { why: w } => ComputeCapacityFull { wire: join(["slice room could not be established: ", w], "") }
+                              ReviewerRoomEstablished { budget: budget, sibling: sibling, own: own } =>
+                                match compute_slice_leg(budget: budget, sibling_committed: sibling, own_committed: own, request: subject.request) {
+                                  ComputeSliceRefusedForRoom { detail: d } => ComputeCapacityFull { wire: d }
+                                  ComputeSliceRoom { budget: b } => compute_seat(
+                                    subject: subject, reference: reference, now: now, term_seconds: term_seconds,
+                                    ceiling: reviewer_seat_ceiling(
+                                      backing: compute_backing_ceiling(subject: subject, available: available),
+                                      budget: b, sibling: sibling,
+                                    ),
+                                  )
+                                }
+                            }
+                        }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE COMMITTED STANDINGS THE SLICE LEG NEEDS, read from the ledgers that own them: the reviewer
+// partition's own holds, and EVERY OTHER host_capacity partition whose units land in the same
+// slice -- the build pool (verification seats, compiles) and the agent pool (workers of every head).
+// Summing all of them, rather than a chosen pair, is the amendment of 2026-10-28 (manager ruling
+// msg_bbfa00b3, bold-dove-340's coordination): independent partitions that each fit the parent
+// SEPARATELY still blow it together, so the parent is accounted once, over the whole family of
+// partitions it hosts. ALL MUST RESOLVE or the room is UNESTABLISHED, and an unestablished room
+// defers -- a sibling standing that cannot be read is the very state in which an optimistic sum
+// would oversubscribe the cgroup. Residuals, declared in the manager's words (2026-10-28):
+// AGGREGATE ADMISSION IS NOT ATOMIC ACROSS PARTITIONS -- several concurrent reservations can each
+// pass the same observation and every one commits -- and work_provider_local's compute_cold_build_cap
+// leases are UNCHARGED here; both stay open until every charged population joins one atomic parent
+// admission with release after quiescence (release of a seat waits for the unit's quiescence, which
+// includes its descendants, per the pool's release law -- a terminal leader alone frees nothing).
+// Patient deferral reduces the exposure but bounds nothing: a unit's MemoryMax bounds that job, not
+// the sum. Closing the window is the fabric placement executor's aggregate check-in-commit
+// (gunbc.fabric's shared admission, #15300), not a parent lock beside this ledger.
+type ReviewerRoomStanding
+  = ReviewerRoomEstablished { budget: ReviewerSliceBudget, sibling: Kibibyte, own: Kibibyte }
+  | ReviewerRoomUnestablished { why: String }
+
+type SiblingCommittedStanding
+  = SiblingCommittedTotal { total: Kibibyte }
+  | SiblingCommittedUnreadable { detail: String }
+
+fn reviewer_siblings_committed(store: FabricStorageBinding, subjects: List<ComputeCapacitySubject>, available: Kibibyte, now: EpochSecs) -> SiblingCommittedStanding {
+  match subjects {
+    Empty {} => SiblingCommittedTotal { total: kibibyte(count: 0) }
+    Cons { head: s, tail: rest } =>
+      match fabric_seat_committed(
+        store: store, partition: s.partition,
+        root: compute_memory_root_pool(subject: s, ceiling: compute_backing_ceiling(subject: s, available: available)),
+        at: now, budget: compute_partition_read_budget,
+      ) {
+        SeatCommitted { committed: c, generation: _ } =>
+          match reviewer_siblings_committed(store: store, subjects: rest, available: available, now: now) {
+            SiblingCommittedTotal { total: acc } => SiblingCommittedTotal { total: kibibyte(count: kibibyte_count(k: c) + kibibyte_count(k: acc)) }
+            SiblingCommittedUnreadable { detail: w } => SiblingCommittedUnreadable { detail: w }
+          }
+        SeatCommittedUnobserved { step: st, reason: r } => SiblingCommittedUnreadable { detail: join(["the ", s.partition as String, " standing is unreadable (", st, ": ", r, ")"], "") }
+        SeatCommittedStoreRefused { cause: c } => SiblingCommittedUnreadable { detail: join(["the ", s.partition as String, " store refused the read: ", event_log_refusal_wire(c)], "") }
+      }
+  }
+}
+
+fn reviewer_committed_standings(subject: ComputeCapacitySubject, agent_subject: ComputeCapacitySubject, build_subject: ComputeCapacitySubject, available: Kibibyte, now: EpochSecs) -> ReviewerRoomStanding {
+  let store = compute_capacity_store(subject: subject)
+  match fabric_seat_committed(
+    store: store, partition: subject.partition,
+    root: compute_memory_root_pool(subject: subject, ceiling: compute_backing_ceiling(subject: subject, available: available)),
+    at: now, budget: compute_partition_read_budget,
+  ) {
+    SeatCommittedUnobserved { step: s, reason: r } => ReviewerRoomUnestablished { why: join(["the reviewer pool standing is unreadable (", s, ": ", r, ")"], "") }
+    SeatCommittedStoreRefused { cause: c } => ReviewerRoomUnestablished { why: join(["the reviewer pool store refused the read: ", event_log_refusal_wire(c)], "") }
+    SeatCommitted { committed: own_c, generation: _ } =>
+      match reviewer_siblings_committed(store: store, subjects: [agent_subject, build_subject], available: available, now: now) {
+        SiblingCommittedUnreadable { detail: w } => ReviewerRoomUnestablished { why: w }
+        SiblingCommittedTotal { total: sibling_c } =>
+          ReviewerRoomEstablished {
+            budget: reviewer_slice_budget_from_reading(
+              observed: observe_reviewer_slice_limit(),
+              declared: reviewer_slice_declared_budget(slots: user_work_charged_slots),
+            ),
+            sibling: sibling_c,
+            own: own_c,
+          }
+      }
   }
 }
 
