@@ -201,7 +201,8 @@ import gunbc.typed_remote_file_write {
   DestinationUnchangedUntilRename,
   FleetHostLock,
 }
-import std.measure { Second, second }
+import std.measure { Second, second, byte_size_count }
+import extdeps.exec.exec_arg_limit { host_exec_arg_max_strlen }
 import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
 import extdeps.procps.pgrep {
   pgrep_user_argv,
@@ -1868,35 +1869,37 @@ data gpu_container_provision_subordinate_lock_conflict_exit_code: Int = 75
 // HOW MANY PROCESSES AN ACCOUNT MAY HAVE BEFORE THIS CONVERGE CERTIFIES THEM, AND WHAT THAT NUMBER BOUNDS.
 //
 // THE REASON 256 EXISTED IS GONE. The cap was set because the precheck used to ask every process of the
-// displaced account for its map -- one elevated exec per pid per map file, so the count chose the runtime and
-// an unbounded scan was a converge whose cost was picked by whatever the account happened to be running. The
-// fold below asks the KERNEL instead: one readlink(1) invocation per map file carrying one path word per pid,
-// which answers which namespace every one of those pids is in, and a process's map is read only if that
-// answer puts it in a CHILD user namespace. On a host where none of the account's processes is inside a user
-// namespace -- the state srv1 and srv3 are actually in -- the whole precheck costs three legs no matter how
-// many processes the account has: pgrep, the reference link of /proc/1, and the batch (a pid that vanishes
-// mid-batch is named by readlink -v and left out, so churn costs no further leg either).
+// displaced account for its map -- one elevated exec per pid per map file, so the count chose the runtime.
+// The fold below asks the KERNEL instead: one readlink -v invocation carrying one path word per pid answers
+// which namespace every pid is in, and a process's map is read only if that answer puts it in a CHILD user
+// namespace. A host where none of the account's processes is in a user namespace pays three legs however many
+// processes there are: pgrep, the reference link of /proc/1, and the batch. A pid that vanishes mid-batch is
+// named on stderr and left out, so churn costs no further leg either.
 //
-// WHAT STILL GROWS WITH THE COUNT, so the bound is not decorative:
-//   - The batch's word list and its report. MEASURED on this tree's coreutils 9.7: with 4096 operands the
-//     words are 65,536 bytes, the report is 73,728 bytes, and the invocation costs 13 ms. A word list has to
-//     fit the far side's execve argument budget, and `getconf ARG_MAX` measures 2,097,152 bytes here, so 4096
-//     pids spends 3% of it. The SSH leg hands the same words to the far side's shell
-//     (gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh), so that is the budget that binds;
-//     gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed governs which CHARACTERS may
-//     appear in a word, not how many words there are.
-//   - Each process in a CHILD user namespace pays one map leg per range set, since its rows have to be read.
-//     That cost scales with the account's child-namespace processes and not with its process count; a host
-//     with none pays nothing, and the pid bound is the ceiling on it.
+// WHAT STILL GROWS WITH THE COUNT is the batch's word list. It travels as ONE remote command string over the
+// fleet SSH route (gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh), and a single string is capped by
+// the execve per-argument ceiling, not by the total argv budget: extdeps.exec.exec_arg_limit
+// host_exec_arg_max_strlen. So the bound is DERIVED from that authority: half of the ceiling is given to the
+// words, the other half is left for the sudo and readlink prefix, quoting and transport framing, and a word
+// is the longest path this model builds -- the link of the largest pid Linux admits (proc(5) pid_max is
+// capped at 2^22) plus its separating space. The number moves with that ceiling and with the word, and
+// cannot be raised past what the ceiling holds, because it is not a literal.
 //
+// The other cost that grows is the map leg of each process in a CHILD namespace, one per range set; a host
+// with none pays nothing, and this bound is the ceiling on it.
+data gpu_container_provision_namespace_scan_largest_pid: Int = 4194304
+
+data gpu_container_provision_namespace_scan_word_bytes: Int =
+  string_length(s: user_namespace_link_path(pid: gpu_container_provision_namespace_scan_largest_pid)) + 1
+
 // THE RUN THAT KILLED 256. Fleet-converge run 40837033922 refused on srv1 with "briansrls has 556 processes;
 // this converge certifies at most 256". srv1 is a session host: the console account running several hundred
 // processes is its normal state, and restarting the host does not lower it, because the sessions come back. A
 // per-user process count is not a safety bound -- the hazard is a process in a non-init user namespace mapped
 // from the range being moved, and that question is now decided in three legs -- so the number moved to one
-// that admits a live session host with an order of magnitude of headroom: 556 sits at 14% of this bound.
-// Raising it further needs a measured leg rate, not a bigger digit.
-data gpu_container_provision_namespace_scan_pid_limit: Int = 4096
+// that admits a live session host: 556 sits at under a fifth of this bound.
+data gpu_container_provision_namespace_scan_pid_limit: Int =
+  (byte_size_count(b: host_exec_arg_max_strlen) as Int / 2) / gpu_container_provision_namespace_scan_word_bytes
 
 // ONE ROW OF /proc/<pid>/uid_map OR gid_map, READ AS "inner outer length" -- the three columns in the order
 // extdeps.linux.user_namespaces spells them (user_namespace_map_row_column_count,
@@ -1989,10 +1992,6 @@ type GpuContainerProvisionNamespaceScope
 type GpuContainerProvisionNamespaceLink
   = GpuContainerProvisionNamespaceLinkRead { target: String }
   | GpuContainerProvisionNamespaceLinkUnreadable { path: String, cause: String }
-
-// THE LINK OF THE HOST'S OWN NAMESPACE, read once per map scan and compared against every pid. /proc/1 is the
-// init task, which is in the initial user namespace on any Linux that has user namespaces at all.
-// THE LINK OF ONE PROCESS, by pid.
 
 // WHAT SCOPE A LINK SAYS AGAINST THE REFERENCE. Fail closed on the link: "cannot compare" is not "not
 // mapped", and it is reported rather than resolved in either direction.
