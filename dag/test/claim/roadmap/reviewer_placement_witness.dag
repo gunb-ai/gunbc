@@ -11,6 +11,7 @@ module test.claim.roadmap.reviewer_placement_witness
 // (session_placement_witness, session_placement_wet_witness) are the unchanged companion green set.
 
 import std.types { String, Int, Bool, List, NonEmptyStr, EpochSecs }
+import v2.std.text { string_replace }
 import std.measure { kibibyte, kibibyte_count, kibibyte_to_byte_size, byte_size_count }
 import std.optional { Present, Absent }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first }
@@ -24,15 +25,15 @@ import extdeps.filesystem.filesystem_io {
 }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.compute.attempt_lifecycle {
-  AttemptRecord, AttemptTerminal, AttemptSlotReading, AttemptSlotHeld,
-  UnitLifecycle, UnitStillRunning, UnitTerminatedCauseUnknown,
+  AttemptRecord, AttemptTerminal, AttemptReserved, DispatchOwned, AttemptSlotReading, AttemptSlotHeld,
+  UnitLifecycle, UnitStillRunning, UnitTerminatedCauseUnknown, compute_pre_launch_ceiling_seconds,
 }
 import gunbc.compute.work_class_grant { WorkClassReviewerSession, GrantAtCeiling, ClassUnmeasured }
 import gunbc.compute.host_capacity {
   SliceLimitReading, SliceLimitObserved, SliceLimitUnbounded, SliceLimitAbsent, SliceLimitUnreadable,
   ReviewerSliceBudget, SliceBudgetObserved, SliceBudgetDeclared, SliceBudgetZero,
   ComputeSliceLeg, ComputeSliceRoom, ComputeSliceRefusedForRoom, compute_slice_arithmetic,
-  reviewer_slice_budget_from_reading, kibibyte_from_byte_size_ceiling, slice_limit_from_shell, compute_slice_leg,
+  reviewer_slice_budget_from_reading, slice_limit_from_shell, compute_slice_leg,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_name, dispatch_review_unit_properties }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
@@ -46,7 +47,8 @@ import gunbc.roadmap.roadmap_session_placement {
   session_reviewer_release_observation_of, session_reviewer_settle_decide,
   session_reviewer_peak_from_show, SessionReviewerPeakObserved, SessionReviewerPeakUnobserved,
   session_unit_wire,
-  session_slot_is_reviewer, session_attempt_identity, session_worker_role, session_reviewer_role,
+  session_slot_ownership, SessionSlotOwnership, SlotOwnershipReviewer, SlotOwnershipWorker, SlotOwnershipUnrecognized,
+  session_attempt_identity, session_worker_role, session_reviewer_role,
   SessionPlacementRecord, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
   SessionReleaseObservation, SessionReleased, SessionReleaseNotRecorded, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
   SessionSettleDecision, SettleDone, SettleKeep, SettleReleaseOnly, SettleTerminateAndRelease,
@@ -146,9 +148,9 @@ test fn one_attempt_hosts_the_worker_and_one_reviewer_per_criterion_without_shar
   let b = session_reviewer_placement_basename(name: SessionReviewerName { node_id: rnode, attempt_key: rattempt, criterion_key: crit_b })
   let rel = session_reviewer_release_basename(name: name_a())
   a != worker_name && a != b && rel != a && rel != worker_name
-    && string_contains(s: a, pattern: session_reviewer_role)
-    && string_contains(s: a, pattern: crit_a)
-    && string_contains(s: a, pattern: session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_a))
+    && string_contains(s: a, needle: session_reviewer_role)
+    && string_contains(s: a, needle: crit_a)
+    && string_contains(s: a, needle: session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_a))
 }
 
 // THE RECORD IS BOUND TO ITS CRITERION. The real encoder's reviewer record reads back Recorded;
@@ -163,15 +165,15 @@ test fn a_reviewer_record_binds_composite_key_and_review_unit_and_nothing_else()
     SessionGrantUnreadable { path: _, detail: _ } => false
     SessionGrantForeign { path: _, detail: _ } => false
   }
-  let raw_key = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: string_replace(s: record_bytes(grant: g), pattern: session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_a), replacement: rattempt)), name: name_a(), host: rhost) {
+  let raw_key = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: string_replace(source: record_bytes(grant: g), needle: session_reviewer_placement_key(attempt_key: rattempt, criterion_key: crit_a), replacement: rattempt)), name: name_a(), host: rhost) {
     SessionGrantForeign { path: _, detail: _ } => true
     _ => false
   }
-  let other_criterion = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: string_replace(s: record_bytes(grant: g), pattern: crit_a, replacement: crit_b)), name: name_a(), host: rhost) {
+  let other_criterion = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: string_replace(source: record_bytes(grant: g), needle: crit_a, replacement: crit_b)), name: name_a(), host: rhost) {
     SessionGrantForeign { path: _, detail: _ } => true
     _ => false
   }
-  let worker_unit = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: string_replace(s: record_bytes(grant: g), pattern: dispatch_review_unit_name(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a) as String, replacement: gunbc.roadmap.roadmap_session_placement.session_unit_wire(node_id: rnode, attempt_key: rattempt) as String)), name: name_a(), host: rhost) {
+  let worker_unit = match session_reviewer_grant_reading_of(path: path, obs: planted(name: "r", content: string_replace(source: record_bytes(grant: g), needle: dispatch_review_unit_name(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a) as String, replacement: gunbc.roadmap.roadmap_session_placement.session_unit_wire(node_id: rnode, attempt_key: rattempt) as String)), name: name_a(), host: rhost) {
     SessionGrantForeign { path: _, detail: _ } => true
     _ => false
   }
@@ -189,15 +191,15 @@ test fn the_slice_leg_admits_to_the_byte_and_refuses_for_room_never_for_failure(
     ComputeSliceRefusedForRoom { detail: _ } => false
   }
   let one_over = match compute_slice_arithmetic(b: budget, sibling_committed: kibibyte(count: 23068672), own_committed: kibibyte(count: 0), request: kibibyte(count: 23068673)) {
-    ComputeSliceRefusedForRoom { detail } => string_contains(s: detail, pattern: "44") || string_contains(s: detail, pattern: "46137344")
+    ComputeSliceRefusedForRoom { detail } => string_contains(s: detail, needle: "44") || string_contains(s: detail, needle: "46137344")
     ComputeSliceRoom { budget: _ } => false
   }
   let unreadable_refuses = match compute_slice_leg(budget: reviewer_slice_budget_from_reading(observed: SliceLimitUnreadable { detail: "manager unreachable" }, declared: budget), sibling_committed: kibibyte(count: 0), own_committed: kibibyte(count: 0), request: kibibyte(count: 1)) {
-    ComputeSliceRefusedForRoom { detail: d } => string_contains(s: d, pattern: "could not be read")
+    ComputeSliceRefusedForRoom { detail: d } => string_contains(s: d, needle: "could not be read")
     ComputeSliceRoom { budget: _ } => false
   }
   let absent_falls_declared = match reviewer_slice_budget_from_reading(observed: SliceLimitAbsent, declared: budget) {
-    SliceBudgetDeclared { budget: b, detail: d } => kibibyte_count(k: b) == 46137344 && string_contains(s: d, pattern: "not loaded")
+    SliceBudgetDeclared { budget: b, detail: d } => kibibyte_count(k: b) == 46137344 && string_contains(s: d, needle: "not loaded")
     _ => false
   }
   let zero_holds_nothing = match reviewer_slice_budget_from_reading(observed: SliceLimitObserved { limit: kibibyte(count: 0) }, declared: budget) {
@@ -220,7 +222,7 @@ test fn the_peak_fold_reports_only_what_the_manager_measured() -> Bool {
     SessionReviewerPeakUnobserved { reason: _ } => false
   }
   let collected = match session_reviewer_peak_from_show(outcome: ShellExited, success: true, value: "") {
-    SessionReviewerPeakUnobserved { reason } => string_contains(s: reason, pattern: "no memory peak")
+    SessionReviewerPeakUnobserved { reason } => string_contains(s: reason, needle: "no memory peak")
     SessionReviewerPeakObserved { peak: _ } => false
   }
   let unbounded = match session_reviewer_peak_from_show(outcome: ShellExited, success: true, value: "infinity") {
@@ -228,7 +230,7 @@ test fn the_peak_fold_reports_only_what_the_manager_measured() -> Bool {
     SessionReviewerPeakObserved { peak: _ } => false
   }
   let refused = match session_reviewer_peak_from_show(outcome: ShellSpawnRefused { program: "systemctl" as NonEmptyStr, cause: "no manager" }, success: false, value: "") {
-    SessionReviewerPeakUnobserved { reason } => string_contains(s: reason, pattern: "could not run")
+    SessionReviewerPeakUnobserved { reason } => string_contains(s: reason, needle: "could not run")
     SessionReviewerPeakObserved { peak: _ } => false
   }
   read && collected && unbounded && refused
@@ -254,7 +256,7 @@ test fn the_settler_releases_a_bound_terminal_hold_and_keeps_everything_else() -
     _ => false
   }
   let misbound = match session_reviewer_settle_decide(key: key, name: name_a(), slot: AttemptSlotHeld { record: AttemptRecord { identity: session_attempt_identity(node_id: rnode, attempt_key: rattempt), reference: bound.reference, unit: bound.unit, granted: bound.granted, opened_at: bound.opened_at, launch_deadline: bound.launch_deadline, state: AttemptTerminal { verdict: "recovered" as NonEmptyStr, detail: "settled" }, owner: bound.owner }, generation: cas_generation_first() }, lifecycle: dead_unknown, now: 2000, release_settled: false) {
-    SettleKeep { why, explain: _ } => string_contains(s: why, pattern: "never released under this name")
+    SettleKeep { why, explain: _ } => string_contains(s: why, needle: "never released under this name")
     _ => false
   }
   let waiting = match session_reviewer_settle_decide(key: key, name: name_a(), slot: AttemptSlotHeld { record: bound, generation: cas_generation_first() }, lifecycle: still_running, now: 1000, release_settled: false) {
@@ -264,13 +266,39 @@ test fn the_settler_releases_a_bound_terminal_hold_and_keeps_everything_else() -
   release_only && done && misbound && waiting
 }
 
-// THE WORKER PASS AND THE REVIEWER PASS DIVIDE SLOTS BY IDENTITY, NOT BY LUCK: the worker pass's
-// routing predicate claims exactly the reviewer-identitied slot and none other.
+// WHO OWNS A HELD SLOT IS A DECLARED SUM, NOT A LUCKY PARSE (review 87553): the three planted
+// slots -- a reviewer's, a worker's, and one whose identity names neither -- each answer with
+// their own arm. The third is the discriminating one: under a Bool predicate "not a reviewer"
+// fell into the worker pass, where the lenient worker parser would reinterpret it; here it has
+// an arm of its own, and the pass that sees it keeps the hold instead of guessing.
 test fn a_reviewer_slot_is_recognised_by_the_pass_that_owns_it() -> Bool {
   let bound = session_reviewer_attempt_record(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a, unit: review_unit(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a), granted: kibibyte(count: 8388608), now: 1000)
   let reviewer_slot = AttemptSlotHeld { record: bound, generation: cas_generation_first() }
   let worker_slot = AttemptSlotHeld { record: gunbc.roadmap.roadmap_session_placement.session_attempt_record(node_id: rnode, attempt_key: rattempt, unit: "gunbc-attempt-srv1w-afeedfacefeedface" as NonEmptyStr, granted: kibibyte(count: 8388608), now: 1000), generation: cas_generation_first() }
-  session_slot_is_reviewer(slot: reviewer_slot) && !session_slot_is_reviewer(slot: worker_slot)
+  let stranger_record = AttemptRecord {
+    identity: "srv1w-feedfacefeedface",
+    reference: "gunbc-attempt-srv1w-astranger",
+    unit: "gunbc-attempt-srv1w-astranger",
+    granted: kibibyte(count: 1024),
+    opened_at: 1000,
+    launch_deadline: 1000 + compute_pre_launch_ceiling_seconds,
+    state: AttemptReserved,
+    owner: DispatchOwned { node_id: rnode, attempt_key: rattempt },
+  }
+  let stranger_slot = AttemptSlotHeld { record: stranger_record, generation: cas_generation_first() }
+  match session_slot_ownership(slot: reviewer_slot) {
+    SlotOwnershipReviewer { name } =>
+      match session_slot_ownership(slot: worker_slot) {
+        SlotOwnershipWorker { attempt } =>
+          match session_slot_ownership(slot: stranger_slot) {
+            SlotOwnershipUnrecognized { identity } =>
+              name.criterion_key == crit_a && attempt.attempt_key == rattempt && identity == "srv1w-feedfacefeedface"
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
 }
 
 // THE ROLE COPRODUCT LANDS WITH THE SECOND ROLE: the token and the durable segment are read off
@@ -309,8 +337,8 @@ test fn a_measured_row_sizes_the_unit_cap_and_is_not_the_ceiling() -> Bool {
     SystemdRunPropertyAssignmentsReady { assignments: words } => words
     SystemdRunPropertyAssignmentsRefused { cause: _ } => [] as List<String>
   }
-  let has_cap = list_length(items: filter(xs: words, predicate: (w) => string_contains(s: w, pattern: "MemoryMax=9437184"))) == 1
-  let not_ceiling = list_length(items: filter(xs: words, predicate: (w) => string_contains(s: w, pattern: ceiling_word))) == 0
+  let has_cap = list_length(items: filter(xs: words, predicate: (w) => string_contains(s: w, needle: "MemoryMax=9437184"))) == 1
+  let not_ceiling = list_length(items: filter(xs: words, predicate: (w) => string_contains(s: w, needle: ceiling_word))) == 0
   sized && unmeasured && too_few && has_cap && not_ceiling
 }
 
@@ -354,7 +382,7 @@ test fn the_slice_budget_is_never_wider_than_what_the_cgroup_reports() -> Bool {
     _ => false
   }
   let unparseable_refuses_room = match compute_slice_leg(budget: reviewer_slice_budget_from_reading(observed: slice_limit_from_shell(outcome: ShellExited, success: true, value: "forty-four gigabytes"), declared: kibibyte(count: 46137344)), sibling_committed: kibibyte(count: 0), own_committed: kibibyte(count: 0), request: kibibyte(count: 1)) {
-    ComputeSliceRefusedForRoom { detail: d } => string_contains(s: d, pattern: "could not be read")
+    ComputeSliceRefusedForRoom { detail: d } => string_contains(s: d, needle: "could not be read")
     ComputeSliceRoom { budget: _ } => false
   }
   let charge_stays_up = match session_reviewer_peak_from_show(outcome: ShellExited, success: true, value: "1.5K") {

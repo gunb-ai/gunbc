@@ -368,6 +368,17 @@ fn kibibyte_from_byte_size_floor(b: ByteSize) -> Kibibyte {
   kibibyte(count: byte_size_count(b: b) / kibi_factor())
 }
 
+// KI-B, CEILING -- FOR A CHARGE ONLY, never for a budget: a capacity must never be rounded UP (it
+// would spend room the cgroup does not have), but an observed consumption must never be rounded
+// DOWN either (it would understate what a unit held). The only sanctioned caller is the code that
+// charges an observed peak into a class sample; budgets use kibibyte_from_byte_size_floor.
+fn kibibyte_from_byte_size_ceiling(b: ByteSize) -> Kibibyte {
+  let bytes = byte_size_count(b: b)
+  let q = bytes / kibi_factor()
+  let r = bytes - q * kibi_factor()
+  if r > 0 { kibibyte(count: q + 1) } else { kibibyte(count: q) }
+}
+
 fn mebibyte_to_byte_size(m: Mebibyte) -> ByteSize {
   byte_size(count: mebibyte_count(m) * mebibyte_scale_factor_bytes())
 }

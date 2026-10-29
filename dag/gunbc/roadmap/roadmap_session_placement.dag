@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_session_placement
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.measure { Kibibyte, kibibyte, kibibyte_count, millicore }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_ceiling, millicore }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_count, cas_generation_first }
 import product.capacity.lease { LeaseGrant }
 import product.capacity.event_chain { PartitionId }
@@ -23,7 +23,7 @@ import gunbc.compute.attempt_lifecycle {
 }
 import gunbc.compute.host_capacity {
   HostCapacityPool, AgentSessionPool, host_capacity_reserve, host_capacity_subject, host_capacity_pool_slots,
-  ReviewerSessionPool, host_capacity_reserve_reviewer, kibibyte_from_byte_size_ceiling,
+  ReviewerSessionPool, host_capacity_reserve_reviewer,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, compute_reservation_wire,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_release_on,
   ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, compute_capacity_store,
@@ -1199,27 +1199,59 @@ fn session_release_settled_for_slot(stores: SessionPlacementStores, host: String
   }
 }
 
-fn session_slot_is_reviewer(slot: AttemptSlotReading) -> Bool {
+// WHO OWNS A HELD SLOT, asked as a declared sum rather than a Bool. The role is not a second field
+// on the record (the identity already names it, and a parallel role field could drift from the name
+// it is supposed to copy -- two sources of one fact); it is RECOVERED from the identity, and every
+// outcome of that recovery is an arm here, including the ones a Bool would flatten into "not a
+// reviewer": an unreadable slot, and a slot whose identity names neither role. Neither pass may act
+// on a guess, so the worker pass releases only the Worker arm, the reviewer pass only the Reviewer
+// arm (via session_reviewer_name_of), and Unrecognized is KEPT by both -- a hold of unknown
+// ownership is left standing for a human, not guessed away.
+type SessionSlotOwnership
+  = SlotOwnershipReviewer { name: SessionReviewerName }
+  | SlotOwnershipWorker { attempt: SessionAttemptName }
+  | SlotOwnershipUnreadable { detail: String }
+  | SlotOwnershipAbsent
+  | SlotOwnershipUnrecognized { identity: String }
+
+fn session_slot_ownership(slot: AttemptSlotReading) -> SessionSlotOwnership {
   match slot {
+    AttemptSlotAbsent => SlotOwnershipAbsent
+    AttemptSlotUnreadable { detail } => SlotOwnershipUnreadable { detail: detail }
     AttemptSlotHeld { record: rec, generation: _ } =>
       match session_reviewer_name_of(identity: rec.identity) {
-        Present { value: _ } => true
-        Absent => false
+        Present { value: name } => SlotOwnershipReviewer { name: name }
+        Absent =>
+          match session_attempt_name_of(identity: rec.identity) {
+            Present { value: attempt } => SlotOwnershipWorker { attempt: attempt }
+            Absent => SlotOwnershipUnrecognized { identity: rec.identity }
+          }
       }
-    AttemptSlotAbsent => false
-    AttemptSlotUnreadable { detail: _ } => false
   }
 }
 
 fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmptyStr, lifecycle: UnitLifecycle, now: EpochSecs) -> SessionSettlement {
   let slot = attempt_slot_read(root: stores.slots_root, reference: key)
-  // A REVIEWER SLOT IS NOT THIS PASS'S. The two roles keep separate slot roots, so a worker pass
-  // should never enumerate one; if a misconfiguration shares a root, the worker pass still refuses
-  // to touch it -- a reviewer's hold is released only by the reviewer binder, under the reviewer's
-  // role-named record. Kept quietly: this is routing, not a finding about the slot.
-  if session_slot_is_reviewer(slot: slot) {
-    SessionSettlementKept { unit: key as String, why: "the reviewer settlement pass owns this slot: its identity names a criterion, and the roles of an attempt release independently" }
-  } else {
+  // A SLOT IS SETTLED ONLY BY THE PASS THAT OWNS IT. Ownership is a declared sum recovered from the
+  // identity (see session_slot_ownership): the worker pass acts on the Worker arm and on the two
+  // no-hold arms, refuses the Reviewer arm -- a reviewer's hold is released only by the reviewer
+  // binder, under the reviewer's role-named record -- and KEEPS the Unrecognized arm: an identity
+  // that names neither role is not this pass's to reinterpret, and its seat stays held.
+  match session_slot_ownership(slot: slot) {
+    SlotOwnershipReviewer { name: _ } =>
+      SessionSettlementKept { unit: key as String, why: "the reviewer settlement pass owns this slot: its identity names a criterion, and the roles of an attempt release independently" }
+    SlotOwnershipUnrecognized { identity } =>
+      SessionSettlementKept { unit: key as String, why: join(["no pass owns this slot: its identity names neither a worker attempt nor a review criterion, so its hold is kept for a human to read: ", identity], "") }
+    SlotOwnershipAbsent => session_settle_observed(stores: stores, host: host, key: key, slot: slot, lifecycle: lifecycle, now: now)
+    SlotOwnershipUnreadable { detail: _ } => session_settle_observed(stores: stores, host: host, key: key, slot: slot, lifecycle: lifecycle, now: now)
+    SlotOwnershipWorker { attempt: _ } => session_settle_observed(stores: stores, host: host, key: key, slot: slot, lifecycle: lifecycle, now: now)
+  }
+}
+
+// THE WORKER PASS'S OWN FOLD, reached only for the arms it owns. Unreadable and absent slots are
+// decided by session_settle_decide itself (an unreadable slot is kept, an absent one is done) --
+// routed here explicitly so the arm is visible rather than smuggled through a false Bool.
+fn session_settle_observed(stores: SessionPlacementStores, host: String, key: NonEmptyStr, slot: AttemptSlotReading, lifecycle: UnitLifecycle, now: EpochSecs) -> SessionSettlement {
   match session_settle_decide(key: key, slot: slot, lifecycle: lifecycle, now: now, release_settled: session_release_settled_for_slot(stores: stores, host: host, slot: slot)) {
     SettleDone { why } => SessionSettlementDone { unit: key as String, why: why }
     SettleKeep { why, explain } =>
@@ -1233,7 +1265,6 @@ fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmpt
         AttemptTransitionRefused { detail: d } => SessionSettlementRefused { unit: key as String, detail: join(["the slot would not take the terminal generation: ", d], "") }
         AttemptAdvanced { state: _, generation: _ } => session_settle_release(stores: stores, host: host, unit: key, attempt: attempt, reason: reason)
       }
-  }
   }
 }
 

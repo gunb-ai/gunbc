@@ -348,18 +348,6 @@ type ReviewerSliceBudget
   | SliceBudgetZero { detail: String }
   | SliceBudgetUnreadable { detail: String }
 
-// KI-B, CEILING -- FOR A CHARGE ONLY (review 87534): never understate what a unit consumed, so an
-// observed MemoryPeak converts with the CEILING (its sole user is session_reviewer_peak_from_show,
-// recording a class sample). BUDGETS must never be rounded this way -- a budget is a capacity and
-// rounds DOWN via the existing std.measure kibibyte_from_byte_size_floor; the reviewer slice legs
-// below use the floor, never this function.
-fn kibibyte_from_byte_size_ceiling(b: ByteSize) -> Kibibyte {
-  let bytes = byte_size_count(b: b)
-  let q = bytes / 1024
-  let r = bytes - q * 1024
-  if r > 0 { kibibyte(count: q + 1) } else { kibibyte(count: q) }
-}
-
 // THE DECLARED FIGURE THIS DEPLOYMENT INSTALLS, derived -- never transcribed (DESIGN 6): slots and
 // per-slot bytes are gunbc.live_deploy's own rows, the ones the emitter writes the slice with.
 fn reviewer_slice_declared_budget(slots: Nat) -> Kibibyte {
