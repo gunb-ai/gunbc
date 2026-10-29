@@ -34,10 +34,10 @@ module gunbc.machine_intake.host_interface_inventory
 // over hosts, from a host nobody ever looked at.
 
 import std.types { Bool, List, NonEmptyStr }
-import std.list { first_where }
-import std.algebra { count_where, for_all, non_empty }
+import std.list { duplicated_by_key, first_where }
+import std.algebra { non_empty }
 import std.decl_ref { DeclarationRef, decl_field_ref, decl_ref }
-import extdeps.network.mac { mac_addresses_are_equal }
+import extdeps.network.mac { render_mac_address }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import extdeps.bmc.ipmi_channel { IpmiChannelNumber }
@@ -407,7 +407,8 @@ fn host_controller_interfaces(host: HostIdentity) -> List<HostNetworkInterface> 
 // broadcast domain, where a duplicate is a live outage rather than a data-quality smell.
 fn host_interface_addresses_are_disjoint() -> Bool {
   non_empty(xs: host_network_interfaces)
-    && for_all(xs: host_network_interfaces, predicate: row =>
-      count_where(xs: host_network_interfaces, predicate: other =>
-        mac_addresses_are_equal(left: lan_configured_address(lan: row.lan), right: lan_configured_address(lan: other.lan))) == 1)
+    && duplicated_by_key(
+      xs: host_network_interfaces,
+      key: row => render_mac_address(addr: lan_configured_address(lan: row.lan)) as String,
+    ).length() == 0
 }
