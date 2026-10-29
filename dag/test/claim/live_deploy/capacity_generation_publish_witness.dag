@@ -1,0 +1,66 @@
+module test.claim.live_deploy.capacity_generation_publish_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.scoped_authorization { ClaimLost, ClaimUndecided, AttemptIdentity }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import gunbc.live_deploy.capacity_generation_publish { CapacityPlannedGeneration, capacity_generation_plan, capacity_generation_render_admission, capacity_generation_claim_key, capacity_generation_diff_lines, capacity_generation_claim_admission }
+import gunbc.live_deploy.capacity_migration_approval { CapacityGenerationOperation }
+import test.claim.live_deploy.capacity_capture_store_witness { capture_fixture_store }
+import test.claim.live_deploy.capacity_controller_plan_witness { controller_fixture_install }
+import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
+
+// One inhabitance execution of the modeled document renderer establishes the
+// planned digest; the refusals below exercise consent at its supplied boundary.
+fn generation_fixture_plan() -> Result<CapacityPlannedGeneration, String> {
+  match capture_fixture_store(mode: "700") {
+    Err { value: why } => Err { value: why }
+    Ok { value: store } => capacity_generation_plan(store: store, install: controller_fixture_install())
+  }
+}
+
+test fn typed_rendering_has_a_stable_digest_and_single_use_identity() -> Bool {
+  match generation_fixture_plan() {
+    Err { value: _ } => false
+    Ok { value: plan } => capacity_generation_render_admission(plan: plan, approved: plan.operation) == Ok { value: plan }
+      && capacity_generation_claim_key(plan: plan) != (plan.store.attempt as String)
+      && plan.staging.destination != plan.install.destination
+  }
+}
+
+test fn target_consent_cannot_be_moved_to_another_destination() -> Bool {
+  match generation_fixture_plan() {
+    Err { value: _ } => false
+    Ok { value: plan } => capacity_generation_render_admission(plan: plan, approved: CapacityGenerationOperation {
+      subject: plan.operation.subject, destination: "/unapproved/unit.service", root: plan.operation.root, digest: plan.operation.digest
+    }) == Err { value: "rendered unit or digest differs from the approved target" }
+  }
+}
+
+test fn a_missing_old_capture_cannot_invent_a_diff_digest() -> Bool {
+  match generation_fixture_plan() {
+    Err { value: _ } => false
+    Ok { value: plan } => capacity_generation_diff_lines(plans: [plan], record: recovery_fixture_record())
+      == Err { value: "old unit capture is missing, ambiguous or belongs to another apply" }
+  }
+}
+
+test fn duplicate_or_unknown_publication_claim_refuses() -> Bool {
+  capacity_generation_claim_admission(outcome: ClaimLost { holder: "fixture" as NonEmptyStr as AttemptIdentity })
+    == Err { value: "target generation has already been claimed for publication" }
+    && capacity_generation_claim_admission(outcome: ClaimUndecided { reason: "claim outcome unknown" })
+      == Err { value: "claim outcome unknown" }
+}
+
+test fn rendered_digest_must_match_the_approved_digest() -> Bool {
+  match generation_fixture_plan() {
+    Err { value: _ } => false
+    Ok { value: plan } => match first(recovery_fixture_record().prior) {
+      Absent => false
+      Present { value: old } => old.digest != plan.operation.digest
+        && capacity_generation_render_admission(plan: plan, approved: CapacityGenerationOperation {
+          subject: plan.operation.subject, destination: plan.operation.destination, root: plan.operation.root, digest: old.digest
+        }) == Err { value: "rendered unit or digest differs from the approved target" }
+    }
+  }
+}

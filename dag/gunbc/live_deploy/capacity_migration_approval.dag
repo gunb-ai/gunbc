@@ -2,7 +2,8 @@ module gunbc.live_deploy.capacity_migration_approval
 
 import std.types { String, NonEmptyStr, List, CommitSha, Timestamp, ShellResponse }
 import std.error_primitives { Result, Ok, Err }
-import std.content_hash { content_hash_of_value }
+import std.content_hash { content_hash_of_value, Sha256Digest }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
 import std.scoped_authorization {
   AuthorizationScope, AuthorizedAction, AttemptIdentity, AuthorizationRequest, ScopedAuthorization,
   OperatorGrant, authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
@@ -55,6 +56,24 @@ fn capacity_capture_scope(intent: CapacityCutoverIntent, operation: CapacityCapt
     action: "capture-create" as NonEmptyStr as AuthorizedAction }
 }
 
+// Destination is included in the unit identity: consent for one unit must not
+// be reusable with a changed install path. Bytes are known from typed rendering.
+type CapacityGenerationOperation {
+  subject: CapacityManagedUnit
+  destination: NonEmptyStr
+  root: NonEmptyStr
+  digest: Sha256Digest
+}
+
+fn capacity_generation_scope(intent: CapacityCutoverIntent, operation: CapacityGenerationOperation) -> AuthorizationScope {
+  AuthorizationScope { verb: Execute,
+    resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc.cutover.generation" },
+      path: [intent.host as String, intent.attempt as String,
+        match operation.subject.manager { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) },
+        operation.subject.unit as String, operation.destination as String, operation.root as String, operation.digest.hex as String] },
+    action: "generation-publish" as NonEmptyStr as AuthorizedAction }
+}
+
 type CapacityCutoverIntent {
   host: NonEmptyStr
   revision: CommitSha
@@ -62,6 +81,7 @@ type CapacityCutoverIntent {
   operations: List<CapacityQuiescenceStep>
   file_operations: List<CapacityCutoverFileOperation>
   captures: List<CapacityCaptureOperation>
+  generations: List<CapacityGenerationOperation>
 }
 
 fn capacity_cutover_operation_action(operation: CapacityQuiescenceStep) -> AuthorizedAction {
@@ -90,7 +110,7 @@ fn capacity_cutover_operation_scope(intent: CapacityCutoverIntent, operation: Ca
 // JSON framing keeps identity inputs injective even when a name contains punctuation.
 // The full operation set is fixed before consent; late-discovered units cannot borrow it.
 fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
-  serialize_json(v: JsonArray { elements: [JsonString { value: "gunbc.capacity-cutover.v3" },
+  serialize_json(v: JsonArray { elements: [JsonString { value: "gunbc.capacity-cutover.v4" },
     JsonString { value: intent.host as String }, JsonString { value: intent.revision as String },
     JsonString { value: intent.attempt as String },
     JsonArray { elements: map(intent.operations, operation => {
@@ -100,6 +120,11 @@ fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
         UserManager { uid: uid } => concat("user:", to_string(uid))
       } }, JsonString { value: subject.unit as String }, JsonString { value: capacity_cutover_operation_action(operation: operation) as String }] }
     }) },
+    JsonArray { elements: map(intent.generations, operation => JsonArray { elements: [
+      JsonString { value: match operation.subject.manager { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) } },
+      JsonString { value: operation.subject.unit as String }, JsonString { value: operation.destination as String },
+      JsonString { value: operation.root as String }, JsonString { value: operation.digest.hex as String }
+    ] }) },
     JsonArray { elements: map(intent.captures, operation => JsonArray { elements: [
       JsonString { value: operation.source as String }, JsonString { value: operation.root as String }
     ] }) },
@@ -115,7 +140,8 @@ fn capacity_cutover_request(intent: CapacityCutoverIntent, escalation_id: NonEmp
     escalation_id: escalation_id, subject: intent, attempt: intent.attempt,
     scopes: map(intent.operations, operation => capacity_cutover_operation_scope(intent: intent, operation: operation))
       + map(intent.file_operations, operation => capacity_cutover_file_scope(operation: operation))
-      + map(intent.captures, operation => capacity_capture_scope(intent: intent, operation: operation)),
+      + map(intent.captures, operation => capacity_capture_scope(intent: intent, operation: operation))
+      + map(intent.generations, operation => capacity_generation_scope(intent: intent, operation: operation)),
     intent_hash: content_hash_of_value(value: capacity_cutover_intent_text(intent: intent)),
     purpose: "One capacity-writer cutover: inhibit and probe exactly the named manager/unit operations; contain a successful probe; install only after drain admission" as NonEmptyStr,
     destructive: true,
@@ -211,4 +237,16 @@ fn capacity_cutover_capture_admission(authorization: CapacityCutoverAuthorizatio
 fn capacity_cutover_capture_plan_lines(intent: CapacityCutoverIntent) -> List<String> {
   map(intent.captures, operation => join(["capture-create source=", operation.source as String,
     " root=", operation.root as String, " once-per-apply=", intent.attempt as String], ""))
+}
+
+
+fn capacity_cutover_generation_admission(authorization: CapacityCutoverAuthorization,
+  operation: CapacityGenerationOperation, at: Timestamp) -> Result<CapacityGenerationOperation, String> {
+  if count(filter(authorization.intent.generations, allowed => allowed == operation)) != 1 {
+    Err { value: "generation unit/root/digest is absent or repeated in the approved plan" }
+  } else { match authorize(authorization: AuthorizationGranted { grant: authorization.grant, claim: authorization.claim },
+    request: capacity_cutover_request(intent: authorization.intent, escalation_id: authorization.grant.escalation_id), observed_at: at) {
+    AuthorizationPermitted { grant: _ } => Ok { value: operation }
+    AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
+  } }
 }

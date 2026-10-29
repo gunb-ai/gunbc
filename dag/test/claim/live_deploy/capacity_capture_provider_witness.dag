@@ -2,13 +2,14 @@ module test.claim.live_deploy.capacity_capture_provider_witness
 
 import std.types { Bool, NonEmptyStr, String }
 import std.error_primitives { Result, Ok, Err }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
 import std.optional { Present, Absent }
 import std.scoped_authorization { AttemptIdentity, ClaimHeld, ClaimLost, ClaimUndecided, ClaimedBy }
 import std.durable_compare_and_set { cas_generation_first }
 import gunbc.live_deploy.capacity_capture_provider { capacity_capture_claim_admission, capacity_capture_claim_key, capacity_capture_record_result, capacity_capture_manifest_complete }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityGenerationFile, CapacityCutoverRecord, CapacityCapturingGeneration, CapacityInstalling, capacity_generation_request }
 import gunbc.live_deploy.capacity_capture_store { capacity_capture_blob_path }
-import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverIntent, CapacityCaptureOperation }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation }
 import test.claim.live_deploy.capacity_capture_store_witness { capture_fixture_store }
 import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
 
@@ -54,7 +55,7 @@ test fn recording_a_second_result_cannot_overwrite_the_first_capture() -> Bool {
 
 // This supplies record/address evidence, not fake provider verification. The wet
 // finish separately looks up every byte part before its phase transition.
-fn capture_manifest_fixture(outside: Bool, missing: Bool) -> Result<CapacityCutoverRecord, String> {
+fn capture_manifest_fixture(outside: Bool, missing: Bool, wrong_target: Bool) -> Result<CapacityCutoverRecord, String> {
   let record = capture_preparing_record()
   match capture_fixture_store(mode: "700") {
     Err { value: why } => Err { value: why }
@@ -69,7 +70,7 @@ fn capture_manifest_fixture(outside: Bool, missing: Bool) -> Result<CapacityCuto
             prior: if missing { [] } else { [captured] }, target: [captured], planned_paths: record.planned_paths,
             created_paths: [], artifacts: [], phase: record.phase }
           let intent = CapacityCutoverIntent { host: "srv1", revision: record.target_revision, attempt: store.attempt,
-            operations: [], file_operations: [], captures: [CapacityCaptureOperation { source: file.destination, root: store.root }] }
+            operations: [], file_operations: [], generations: [CapacityGenerationOperation { subject: CapacityManagedUnit { manager: file.manager, unit: file.unit }, destination: if wrong_target { "/etc/systemd/system/unapproved.service" } else { file.destination }, root: store.root, digest: file.digest }], captures: [CapacityCaptureOperation { source: file.destination, root: store.root }] }
           capacity_capture_manifest_complete(store: store, intent: intent, record: supplied)
         }
       }
@@ -78,13 +79,18 @@ fn capture_manifest_fixture(outside: Bool, missing: Bool) -> Result<CapacityCuto
 }
 
 test fn a_complete_capture_manifest_can_reach_byte_verification() -> Bool {
-  match capture_manifest_fixture(outside: false, missing: false) { Ok { value: _ } => true Err { value: _ } => false }
+  match capture_manifest_fixture(outside: false, missing: false, wrong_target: false) { Ok { value: _ } => true Err { value: _ } => false }
 }
 
 test fn an_unrecorded_capture_prevents_inhibition() -> Bool {
-  capture_manifest_fixture(outside: false, missing: true) == Err { value: "capture generation is incomplete" }
+  capture_manifest_fixture(outside: false, missing: true, wrong_target: false) == Err { value: "capture generation is incomplete" }
 }
 
 test fn a_provider_result_outside_the_apply_root_refuses() -> Bool {
-  capture_manifest_fixture(outside: true, missing: false) == Err { value: "capture result is outside its provider address or host" }
+  capture_manifest_fixture(outside: true, missing: false, wrong_target: false) == Err { value: "capture result is outside its provider address or host" }
+}
+
+test fn a_target_outside_generation_consent_prevents_inhibition() -> Bool {
+  capture_manifest_fixture(outside: false, missing: false, wrong_target: true)
+    == Err { value: "target generation does not match the approved digests exactly" }
 }
