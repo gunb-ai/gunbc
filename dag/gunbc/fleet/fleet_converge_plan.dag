@@ -209,12 +209,8 @@ import gunbc.runner.runner_slot_provision {
   runner_slot_member_key,
   runner_slot_provision_plan,
   RunnerSlotProvisionPlan,
+  fleet_runner_slot_artifact,
 }
-import extdeps.github.actions_runner {
-  actions_runner_release_2_336_0,
-  actions_runner_binary_artifact_for_arch,
-}
-import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_deploy {
   RunnerHostDeployFound,
@@ -1208,10 +1204,7 @@ fn fleet_converge_slot_family(
     RunnerHostDeployRefused { host: h, cause: c } => SlotFamilyHostRefused { host: h, cause: c }
     RunnerHostDeployFound { deploy: d } =>
       {
-        match actions_runner_binary_artifact_for_arch(
-          binary_release: actions_runner_release_2_336_0,
-          arch: altra_max_m12830_catalog.architecture,
-        ) {
+        match fleet_runner_slot_artifact() {
           Absent => SlotFamilyArtifactUnpublished { host: host as HostIdentity }
           Present { value: a } =>
             SlotFamilyPlanned {
