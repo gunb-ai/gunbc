@@ -297,6 +297,17 @@ fn mtcollins1_boot_branch_federation() -> DedicatedFederation? {
   mtcollins1_boot_branch_federation_with(state: boot_medium_reader_key_state())
 }
 
+// WHETHER THE BOOT IDENTITY CAN NAME AN ENVIRONMENT AT ALL. Named because that is the question the
+// refusal below asks; "is this optional empty" is a fact about a representation, and a reader of the
+// refusal should not have to invert a match to learn what is missing. One home for the law, so the pin
+// builder, the refusal, and the witness's equivalence all answer to the same predicate.
+fn mtcollins1_boot_trusted_environment_is_nameable() -> Bool {
+  match mtcollins1_boot_trusted_environment() {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
 // WHY THE ROUTE DOES NOT EXIST, OR NONE WHEN IT DOES. ONE function holds every refusal, so a refusal can
 // never name a reason that is not the reason, and the builder below cannot drift from the explanation it
 // gives. Each state is named because an operator reading a refusal should learn what to DO.
@@ -310,7 +321,7 @@ fn mtcollins1_boot_branch_route_refusal_cause_with(state: BootMediumReaderKeySta
         // is trusted, which is true by construction for an entry taken from the roster itself and would
         // read as a trust check while being an emptiness check.
         Present { value: "no branch is rostered for the approval-free boot, so the route is not declared at all" as NonEmptyStr }
-      } else if match mtcollins1_boot_trusted_environment() { Absent => true  Present { value: _ } => false } {
+      } else if !mtcollins1_boot_trusted_environment_is_nameable() {
         // NOT REDUNDANT WITH THE ARM ABOVE. The two states coincide TODAY -- an unprovisioned boot is
         // exactly the one with no environment -- and a guard that is only accidentally equivalent to the
         // thing it protects is the shape that lets the next refactor reopen the hole.
@@ -564,13 +575,6 @@ fn mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted() -> Bo
   match mtcollins1_boot_branch_federation() {
     Absent => true
     Present { value: _ } => boot_medium_reader_key_is_minted()
-  }
-}
-
-fn first_trusted_branch() -> String {
-  match mtcollins1_boot_trusted_branches.first() {
-    Present { value: b } => b as String
-    Absent => ""
   }
 }
 

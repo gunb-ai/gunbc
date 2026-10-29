@@ -47,8 +47,9 @@ import gunbc.auth.privileged_effect_census { mtcollins1_branch_boot_operator_rul
 import gunbc.auth.branch_dispatch_federation { branch_boot_credential_effect_approval_free }
 import gunbc.auth.mtcollins1_branch_boot_trust {
   mtcollins1_boot_trusted_branches, mtcollins1_boot_trusted_branch_ref, mtcollins1_boot_trusted_environment,
+  mtcollins1_boot_trusted_environment_is_nameable,
   mtcollins1_boot_branch_admits, mtcollins1_boot_branch_presented_claims, mtcollins1_boot_branch_is_trusted,
-  mtcollins1_boot_branch_service_account, mtcollins1_boot_branch_provider_resource, first_trusted_branch,
+  mtcollins1_boot_branch_service_account, mtcollins1_boot_branch_provider_resource,
   mtcollins1_boot_branch_claim_pins, mtcollins1_boot_branch_attribute_condition,
   mtcollins1_boot_branch_provider, mtcollins1_boot_branch_federation, mtcollins1_boot_trusted_environment_pin,
   mtcollins1_boot_branch_federation_with, mtcollins1_boot_branch_secret_grants_with,
@@ -419,13 +420,42 @@ test fn red_a_non_admitted_pattern_is_a_refused_boot_credential_source() -> Bool
 // approval-free" -- a branch can rewrite its own workflow file, so a check on workflow text would pass
 // for a bypass. They ask what the SELECTION returns, and what GCP's provider condition ADMITS.
 
-// A REPRESENTATIVE ENTRY, for the claim-level REDs that must present a concrete claim set. The accessor is
-// the modeled one; nothing here reimplements it. Note which REDs this is legitimate for (a claim set is
-// per-ref, so one entry is a complete example) and which it is NOT: the route's own gating asks every
-// entry, and the next test is the one that pins that.
-fn trusted_boot_branch() -> String {
-  let b = first_trusted_branch()
-  if (b as String).length() > 0 { b } else { "__gunbc_no_rostered_branch__" }
+// THE (BRANCH, ENVIRONMENT) CASE THESE CLAIMS PRESENT -- decided ONCE, and TYPED. Both halves are
+// optional at the source: the roster can be empty, and gunbc.auth.mtcollins1_branch_boot_trust
+// mtcollins1_boot_trusted_environment answers none when the boot identity cannot name its environment.
+// This module used to paper over both: it handed out "__gunbc_no_rostered_branch__" for an empty roster
+// and "" for an unnameable environment, so every claim below was silently judging a ref nobody can push
+// to and an environment no dispatch can carry. That is the fabricated default DESIGN §5 calls a hard
+// reject -- the same disease this PR cured in the pins, the provider condition and the workflow text,
+// smuggled back in through a test fixture, where it is invisible because a red claim looks like a green
+// one either way. Absence is Absent here: a claim that needs a concrete case is RED when there is none,
+// which is exactly what it means. (The reviewer's other suggestion -- a FreeSemigroup roster -- was not
+// taken: the roster's own consumers already refuse on empty, in the type, so an empty roster is not a
+// state the authorities can act on; the fix this module needed was to stop inventing an inhabitant.)
+type RosteredBootCase {
+  branch: String
+  environment: String
+}
+
+fn rostered_boot_case() -> RosteredBootCase? {
+  match mtcollins1_boot_trusted_branches.first() {
+    Absent => none
+    Present { value: b } => match mtcollins1_boot_trusted_environment() {
+      Absent => none
+      Present { value: e } =>
+        Present { value: RosteredBootCase { branch: b as String, environment: e as String } }
+    }
+  }
+}
+
+// THE CLAIM SET A ROSTERED BRANCH BOOT ACTUALLY PRESENTS. Optional at the source (review 87673): with no
+// pin set there is nothing to present -- and [] admits nothing, so a claim that needs a real claim set
+// goes red rather than passing vacuously over an empty list.
+fn branch_real_claims(case: RosteredBootCase) -> List<OidcPresentedClaim> {
+  match mtcollins1_boot_branch_presented_claims(branch: case.branch, environment: case.environment) {
+    Absent => []
+    Present { value: c } => c
+  }
 }
 
 // THE ROSTER IS ANSWERED AS A SET, NOT THROUGH A REPRESENTATIVE. For every entry, the wait-job rule must
@@ -450,23 +480,6 @@ test fn every_roster_entry_is_answered_on_its_own_ref() -> Bool {
         && fleet_converge_grant_required_at_ref(mode: FleetApply, branch: b as String))
 }
 
-// THE CLAIM SET A ROSTERED BRANCH BOOT ACTUALLY PRESENTS. Optional at the source now (review 87673): with
-// an empty roster or an unnameable environment there is NO pin set, so there is nothing to present -- and
-// [] admits nothing, which keeps every claim below honest: a claim that needs a real claim set goes red
-// rather than passing vacuously over an empty list.
-fn branch_real_claims() -> List<OidcPresentedClaim> {
-  match mtcollins1_boot_branch_presented_claims(branch: trusted_boot_branch(), environment: boot_environment()) {
-    Absent => []
-    Present { value: c } => c
-  }
-}
-
-fn boot_environment() -> String {
-  match mtcollins1_boot_trusted_environment() {
-    Present { value: e } => e as String
-    Absent => ""
-  }
-}
 
 // THE ROUTE CANNOT EXIST WITHOUT THE BOOT IDENTITY THAT NAMES ITS ENVIRONMENT. The provider pins the
 // job's `environment:` to the boot federation's own name, read from code, so an unprovisioned boot
@@ -480,9 +493,16 @@ test fn branch_boot_route_has_a_provisioned_boot_identity() -> Bool {
 // provider's ref condition into matching nothing, which is safe but silent; a roster is a code list, so
 // this asks the list directly.
 test fn branch_boot_roster_is_rostered_and_pinned() -> Bool {
-  mtcollins1_boot_trusted_branches.length() > 0
-    && starts_with(s: mtcollins1_boot_trusted_branch_ref(branch: trusted_boot_branch()), prefix: "refs/heads/")
-    && mtcollins1_boot_branch_is_trusted(branch: trusted_boot_branch())
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    mtcollins1_boot_trusted_branches.length() > 0
+      && starts_with(s: mtcollins1_boot_trusted_branch_ref(branch: c.branch), prefix: "refs/heads/")
+      && mtcollins1_boot_branch_is_trusted(branch: c.branch)
+    }
+  }
 }
 
 // THE WIDENING, STATED AS A FACT. A same-repository branch dispatch of mtcollins1_boot at a rostered ref
@@ -495,13 +515,20 @@ test fn branch_boot_roster_is_rostered_and_pinned() -> Bool {
 // would have been rung inflation of the opposite sign -- advertising the widening as delivered when the
 // credential that makes it complete does not exist yet.
 test fn branch_boot_selects_the_approval_free_identity() -> Bool {
-  match select_boot_credential_source_at_ref(on_reviewed_main: false, branch: trusted_boot_branch()) {
-    BootCredentialSourceSelected { source: TrustedBranchBootIdentity } =>
-      !boot_grant_required_at_ref(on_reviewed_main: false, branch: trusted_boot_branch())
-    // closed route: no approval-free selection, and the grant is still required -- degraded, never bypassed
-    BootCredentialSourceRefused { cause: _ } =>
-      boot_grant_required_at_ref(on_reviewed_main: false, branch: trusted_boot_branch())
-    BootCredentialSourceSelected { source: _ } => false
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    match select_boot_credential_source_at_ref(on_reviewed_main: false, branch: c.branch) {
+      BootCredentialSourceSelected { source: TrustedBranchBootIdentity } =>
+        !boot_grant_required_at_ref(on_reviewed_main: false, branch: c.branch)
+      // closed route: no approval-free selection, and the grant is still required -- degraded, never bypassed
+      BootCredentialSourceRefused { cause: _ } =>
+        boot_grant_required_at_ref(on_reviewed_main: false, branch: c.branch)
+      BootCredentialSourceSelected { source: _ } => false
+    }
+    }
   }
 }
 
@@ -525,13 +552,20 @@ test fn branch_boot_identity_is_a_distinct_principal() -> Bool {
 // RED: THE GRANT STILL GATES THE BOOT AT A BRANCH THE CODE DOES NOT NAME. The roster is the whole
 // permission; an arbitrary integration branch is not it.
 test fn an_unrostered_branch_boot_still_needs_the_grant() -> Bool {
-  let untrusted = concat(trusted_boot_branch(), "-not-rostered")
-  !mtcollins1_boot_branch_is_trusted(branch: untrusted)
-    && boot_grant_required_at_ref(on_reviewed_main: false, branch: untrusted)
-    && match select_boot_credential_source_at_ref(on_reviewed_main: false, branch: untrusted) {
-      BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false
-      _ => true
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let untrusted = concat(c.branch, "-not-rostered")
+    !mtcollins1_boot_branch_is_trusted(branch: untrusted)
+      && boot_grant_required_at_ref(on_reviewed_main: false, branch: untrusted)
+      && match select_boot_credential_source_at_ref(on_reviewed_main: false, branch: untrusted) {
+        BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false
+        _ => true
+      }
     }
+  }
 }
 
 // RED: MAIN IS UNCHANGED. The reviewed default branch keeps the dedicated boot identity and still needs
@@ -539,9 +573,16 @@ test fn an_unrostered_branch_boot_still_needs_the_grant() -> Bool {
 // MAIN IS UNCHANGED, and the roster buys nothing there: a run ON reviewed main selects the dedicated
 // boot identity even when the branch name it carries is a rostered one.
 test fn main_boot_still_selects_the_dedicated_identity() -> Bool {
-  match select_boot_credential_source_at_ref(on_reviewed_main: true, branch: trusted_boot_branch()) {
-    BootCredentialSourceSelected { source: s } => match s { TrustedBranchBootIdentity => false  _ => true }
-    BootCredentialSourceRefused { cause: _ } => false
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    match select_boot_credential_source_at_ref(on_reviewed_main: true, branch: c.branch) {
+      BootCredentialSourceSelected { source: s } => match s { TrustedBranchBootIdentity => false  _ => true }
+      BootCredentialSourceRefused { cause: _ } => false
+    }
+    }
   }
 }
 
@@ -549,61 +590,96 @@ test fn main_boot_still_selects_the_dedicated_identity() -> Bool {
 // mtcollins1_boot only. Read at the rostered ref, every other run-scoped mode must still be eligible for
 // a per-run grant, because the only credential the roster opens is the boot's.
 test fn another_mode_at_the_rostered_ref_still_needs_its_grant() -> Bool {
-  // THE BOOT ALONE DROPS ITS GRANT AT THE ROSTERED REF -- and only once the reader key exists. Asked on
-  // both sides, because eligibility reaches the boot's selection and the selection depends on the reader
-  // key: a one-sided claim here would also be satisfied by a rule that never required a grant for this mode.
-  match run_scoped_mode_eligible_with(state: Unminted, mode: mtcollins1_boot_mode_name as String, branch: trusted_boot_branch()) {
-    Present { value: _ } => true
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
     Absent => false
-  }
-    && match run_scoped_mode_eligible_with(state: minted_reader_state(), mode: mtcollins1_boot_mode_name as String, branch: trusted_boot_branch()) {
-      Absent => true
-      Present { value: _ } => false
+    Present { value: c } => {
+    // THE BOOT ALONE DROPS ITS GRANT AT THE ROSTERED REF -- and only once the reader key exists. Asked on
+    // both sides, because eligibility reaches the boot's selection and the selection depends on the reader
+    // key: a one-sided claim here would also be satisfied by a rule that never required a grant for this mode.
+    match run_scoped_mode_eligible_with(state: Unminted, mode: mtcollins1_boot_mode_name as String, branch: c.branch) {
+      Present { value: _ } => true
+      Absent => false
     }
-    // ...and every other run-scoped mode keeps the grant it already had, at that same ref
-    && all(run_scoped_modes(), m => m.mode == mtcollins1_boot_mode_name
-      || match run_scoped_mode_eligible(mode: m.mode as String, branch: trusted_boot_branch()) {
-        Present { value: got } => got.mode == m.mode
-        Absent => false
-      })
+      && match run_scoped_mode_eligible_with(state: minted_reader_state(), mode: mtcollins1_boot_mode_name as String, branch: c.branch) {
+        Absent => true
+        Present { value: _ } => false
+      }
+      // ...and every other run-scoped mode keeps the grant it already had, at that same ref
+      && all(run_scoped_modes(), m => m.mode == mtcollins1_boot_mode_name
+        || match run_scoped_mode_eligible(mode: m.mode as String, branch: c.branch) {
+          Present { value: got } => got.mode == m.mode
+          Absent => false
+        })
+    }
+  }
 }
 
 // RED: A FORK DISPATCH IS REFUSED -- asked of the PROVIDER, not of a workflow text. A fork is a different
 // NUMERIC repository identity, so the claim set it presents fails the condition before any job runs; and
 // no roster entry can rescue it, because the pins are conjunctive.
 test fn a_fork_dispatch_cannot_present_admissible_claims() -> Bool {
-  let real = branch_real_claims()
-  mtcollins1_boot_branch_admits(claims: real)
-    && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "repository_id", value: "999999999"))
-    && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "repository_owner_id", value: "999999999"))
-    && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "event_name", value: "push"))
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let real = branch_real_claims(case: c)
+    mtcollins1_boot_branch_admits(claims: real)
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "repository_id", value: "999999999"))
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "repository_owner_id", value: "999999999"))
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "event_name", value: "push"))
+    }
+  }
 }
 
 // RED: A BRANCH THAT RENAMES ITS OWN `environment:` GETS NOTHING. The boot job's environment is pinned to
 // the boot federation's NAME, which comes from code -- so editing the workflow file to drop or rename the
 // environment is refused by GCP, not by a step that could be deleted.
 test fn a_renamed_environment_is_refused() -> Bool {
-  let real = branch_real_claims()
-  !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: "mtcollins1-boot-but-not"))
-    && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: ""))
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let real = branch_real_claims(case: c)
+    !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: "mtcollins1-boot-but-not"))
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: ""))
+    }
+  }
 }
 
 // RED: A BRANCH THAT IS NOT THE ROSTERED ONE PRESENTS NOTHING ADMISSIBLE, even carrying every other
 // claim correctly -- the ref pin alone refuses. This is what makes the roster the permission.
 test fn an_unrostered_ref_presents_nothing_admissible() -> Bool {
-  let real = branch_real_claims()
-  !mtcollins1_boot_branch_admits(claims: with_presented_value(
-    claims: real,
-    claim: "ref",
-    value: mtcollins1_boot_trusted_branch_ref(branch: concat(trusted_boot_branch(), "-lookalike")),
-  ))
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let real = branch_real_claims(case: c)
+    !mtcollins1_boot_branch_admits(claims: with_presented_value(
+      claims: real,
+      claim: "ref",
+      value: mtcollins1_boot_trusted_branch_ref(branch: concat(c.branch, "-lookalike")),
+    ))
+    }
+  }
 }
 
 // RED: A JOB THAT IS NOT THE FLEET-CONVERGE WORKFLOW IS REFUSED, whatever ref it sits on. The condition
 // pins the workflow file itself, so a new workflow on the rostered branch cannot borrow this identity.
 test fn a_different_workflow_file_is_refused() -> Bool {
-  let real = branch_real_claims()
-  !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "workflow_ref", value: ".github/workflows/anything-else.yml"))
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let real = branch_real_claims(case: c)
+    !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "workflow_ref", value: ".github/workflows/anything-else.yml"))
+    }
+  }
 }
 
 // RED: THE APPROVAL-FREE ROUTE IS COUNTED IN THE CENSUS, on both sides of the mint, and counted honestly
@@ -708,27 +784,34 @@ test fn the_branch_boot_row_adds_no_new_discharge() -> Bool {
 // that (most branches DO need the grant), so the ref-aware admission is what makes this route legal
 // instead of a hole. Failure and cancellation are never admitted, at any ref.
 test fn the_approval_free_boot_admits_a_skipped_wait() -> Bool {
-  // POST-MINT, at the rostered ref: the skip the rendered pipeline performs is admitted, and so is a
-  // successful wait.
-  fleet_converge_grant_wait_admits_at_ref_with(state: minted_reader_state(), mode: MtCollins1Boot, branch: trusted_boot_branch(), result: GrantWaitSkipped)
-    && fleet_converge_grant_wait_admits_at_ref_with(state: minted_reader_state(), mode: MtCollins1Boot, branch: trusted_boot_branch(), result: GrantWaitSucceeded)
-    // CLOSED TODAY at that same ref: no skip is admitted. A shut route does not make the boot
-    // approval-free -- it keeps the grant wait, and a pipeline that skipped there is a run missing its
-    // authorization. This is the conjunct a rule admitting skips unconditionally would fail, which is why
-    // the claim asks both sides instead of only the flattering one.
-    && !fleet_converge_grant_wait_admits_at_ref_with(state: Unminted, mode: MtCollins1Boot, branch: trusted_boot_branch(), result: GrantWaitSkipped)
-    && fleet_converge_grant_wait_admits_at_ref_with(state: Unminted, mode: MtCollins1Boot, branch: trusted_boot_branch(), result: GrantWaitSucceeded)
-    // A HALF-MINTED KEY IS NOT A MINT: no skip on that either.
-    && !fleet_converge_grant_wait_admits_at_ref_with(state: half_minted_reader_state(), mode: MtCollins1Boot, branch: trusted_boot_branch(), result: GrantWaitSkipped)
-    && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: trusted_boot_branch(), result: GrantWaitFailed)
-    && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: trusted_boot_branch(), result: GrantWaitCancelled)
-    // an unrostered branch keeps the OLD admission: no grant, no boot
-    && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: concat(trusted_boot_branch(), "-not-rostered"), result: GrantWaitSkipped)
-    // and a different mode AT THE ROSTERED REF keeps the old admission. HetznerCloudServerRead is chosen
-    // because the measurement says it genuinely requires the grant off main (run_scoped_modes:
-    // MainUsesGrantedAccount); HostResetReturn was the earlier choice and it passed vacuously, since it
-    // has no row in that table and so never waits anywhere.
-    && !fleet_converge_grant_wait_admits_at_ref(mode: HetznerCloudServerRead, branch: trusted_boot_branch(), result: GrantWaitSkipped)
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    // POST-MINT, at the rostered ref: the skip the rendered pipeline performs is admitted, and so is a
+    // successful wait.
+    fleet_converge_grant_wait_admits_at_ref_with(state: minted_reader_state(), mode: MtCollins1Boot, branch: c.branch, result: GrantWaitSkipped)
+      && fleet_converge_grant_wait_admits_at_ref_with(state: minted_reader_state(), mode: MtCollins1Boot, branch: c.branch, result: GrantWaitSucceeded)
+      // CLOSED TODAY at that same ref: no skip is admitted. A shut route does not make the boot
+      // approval-free -- it keeps the grant wait, and a pipeline that skipped there is a run missing its
+      // authorization. This is the conjunct a rule admitting skips unconditionally would fail, which is why
+      // the claim asks both sides instead of only the flattering one.
+      && !fleet_converge_grant_wait_admits_at_ref_with(state: Unminted, mode: MtCollins1Boot, branch: c.branch, result: GrantWaitSkipped)
+      && fleet_converge_grant_wait_admits_at_ref_with(state: Unminted, mode: MtCollins1Boot, branch: c.branch, result: GrantWaitSucceeded)
+      // A HALF-MINTED KEY IS NOT A MINT: no skip on that either.
+      && !fleet_converge_grant_wait_admits_at_ref_with(state: half_minted_reader_state(), mode: MtCollins1Boot, branch: c.branch, result: GrantWaitSkipped)
+      && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: c.branch, result: GrantWaitFailed)
+      && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: c.branch, result: GrantWaitCancelled)
+      // an unrostered branch keeps the OLD admission: no grant, no boot
+      && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: concat(c.branch, "-not-rostered"), result: GrantWaitSkipped)
+      // and a different mode AT THE ROSTERED REF keeps the old admission. HetznerCloudServerRead is chosen
+      // because the measurement says it genuinely requires the grant off main (run_scoped_modes:
+      // MainUsesGrantedAccount); HostResetReturn was the earlier choice and it passed vacuously, since it
+      // has no row in that table and so never waits anywhere.
+      && !fleet_converge_grant_wait_admits_at_ref(mode: HetznerCloudServerRead, branch: c.branch, result: GrantWaitSkipped)
+    }
+  }
 }
 
 // ══ THE ENVIRONMENT STANDING CANNOT BE REMOVED WITHOUT SHUTTING THE ROUTE DOWN (side-chat
@@ -743,37 +826,44 @@ test fn the_approval_free_boot_admits_a_skipped_wait() -> Bool {
 // THE ENVIRONMENT CONJUNCT IS PRESENT, in both projections, unconditionally. Counted rather than
 // illustrated: the pins are the membership rule and the CEL is a fold over them.
 test fn the_environment_conjunct_is_never_droppable() -> Bool {
-  match mtcollins1_boot_branch_claim_pins() {
-    // NO PIN SET IS NOT A PASS: this claim is about the conjunct being undroppable from a rule that
-    // exists, and the rule exists exactly when the roster and the boot's environment both name
-    // themselves. mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted and
-    // branch_boot_environment_pin_tracks_the_standing cover the absent side; here, absence is red.
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
     Absent => false
-    Present { value: pins } =>
-      // exactly one environment conjunct, and it is the pin the trust module derives -- not a copy of it
-      match filter(pins, pin => (pin.claim as String) == "environment").first() {
-        Absent => false
-        Present { value: p } =>
-          p.value == boot_environment()
-            // THE CONDITION GCP STORES, not just the list it is folded from: dropping the pin would
-            // remove this conjunct from the CEL itself, which is the fail-open the review named.
-            && match mtcollins1_boot_branch_attribute_condition() {
-              Absent => false
-              Present { value: c } =>
-                string_contains(s: c, pattern: mtcollins1_boot_environment_conjunct(pin: p))
-                  // every conjunct survives: the condition is a fold, so one term per pin
-                  && pins.length() == split(s: c, delimiter: " && ").length()
-            }
-            // AND on the provisioned provider, the object converge actually creates. Optional since
-            // review 87673 -- no pins, no provider -- so its absence here is red rather than silent.
-            && match mtcollins1_boot_branch_provider() {
-              Absent => false
-              Present { value: provider } => match provider.attribute_condition {
+    Present { value: c } => {
+    match mtcollins1_boot_branch_claim_pins() {
+      // NO PIN SET IS NOT A PASS: this claim is about the conjunct being undroppable from a rule that
+      // exists, and the rule exists exactly when the roster and the boot's environment both name
+      // themselves. mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted and
+      // branch_boot_environment_pin_tracks_the_standing cover the absent side; here, absence is red.
+      Absent => false
+      Present { value: pins } =>
+        // exactly one environment conjunct, and it is the pin the trust module derives -- not a copy of it
+        match filter(pins, pin => (pin.claim as String) == "environment").first() {
+          Absent => false
+          Present { value: p } =>
+            p.value == c.environment
+              // THE CONDITION GCP STORES, not just the list it is folded from: dropping the pin would
+              // remove this conjunct from the CEL itself, which is the fail-open the review named.
+              && match mtcollins1_boot_branch_attribute_condition() {
                 Absent => false
-                Present { value: stored } => string_contains(s: stored, pattern: mtcollins1_boot_environment_conjunct(pin: p))
+                Present { value: c } =>
+                  string_contains(s: c, pattern: mtcollins1_boot_environment_conjunct(pin: p))
+                    // every conjunct survives: the condition is a fold, so one term per pin
+                    && pins.length() == split(s: c, delimiter: " && ").length()
               }
-            }
-      }
+              // AND on the provisioned provider, the object converge actually creates. Optional since
+              // review 87673 -- no pins, no provider -- so its absence here is red rather than silent.
+              && match mtcollins1_boot_branch_provider() {
+                Absent => false
+                Present { value: provider } => match provider.attribute_condition {
+                  Absent => false
+                  Present { value: stored } => string_contains(s: stored, pattern: mtcollins1_boot_environment_conjunct(pin: p))
+                }
+              }
+        }
+    }
+    }
   }
 }
 
@@ -790,22 +880,29 @@ fn mtcollins1_boot_environment_conjunct(pin: OidcClaimPin) -> String {
 // outright. That is precisely the claim set the old `Absent => base` arm admitted, because a pin list
 // without an environment conjunct is satisfied by a token that never mentions one.
 test fn a_boot_presenting_no_environment_is_refused() -> Bool {
-  let real = branch_real_claims()
-  mtcollins1_boot_branch_admits(claims: real)
-    // the exact fail-open: same claims, environment standing removed
-    && !mtcollins1_boot_branch_admits(claims: without_presented_claim(claims: real, claim: "environment"))
-    // and the same for every other environment-shaped value: nothing but the pinned name admits
-    && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: ""))
-    // a value no dispatch can carry, named as the fixture it is: the route no longer relies on any
-    // sentinel value to mean absence (review 87673), so the witness supplies its own impossible value
-    && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: "witness-environment-nobody-declared"))
-    // and the pinned name itself ADMITS, so the refusals above are about the pin and not about a
-    // broken comparison: the environment the boot federation declares (managed_host_boot_federation's
-    // own names.environment) is the one value that passes
-    && mtcollins1_boot_branch_admits(claims: with_presented_value(
-      claims: real, claim: "environment", value: boot_environment()))
-    // a near-miss on that name is refused, which is what an equality pin must do and a prefix pin would not
-    && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: concat(boot_environment(), "-else")))
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let real = branch_real_claims(case: c)
+    mtcollins1_boot_branch_admits(claims: real)
+      // the exact fail-open: same claims, environment standing removed
+      && !mtcollins1_boot_branch_admits(claims: without_presented_claim(claims: real, claim: "environment"))
+      // and the same for every other environment-shaped value: nothing but the pinned name admits
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: ""))
+      // a value no dispatch can carry, named as the fixture it is: the route no longer relies on any
+      // sentinel value to mean absence (review 87673), so the witness supplies its own impossible value
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: "witness-environment-nobody-declared"))
+      // and the pinned name itself ADMITS, so the refusals above are about the pin and not about a
+      // broken comparison: the environment the boot federation declares (managed_host_boot_federation's
+      // own names.environment) is the one value that passes
+      && mtcollins1_boot_branch_admits(claims: with_presented_value(
+        claims: real, claim: "environment", value: c.environment))
+      // a near-miss on that name is refused, which is what an equality pin must do and a prefix pin would not
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: concat(c.environment, "-else")))
+    }
+  }
 }
 
 // THE ROUTE IS NOT DECLARED WHEN THE BOOT IDENTITY CANNOT NAME ITS ENVIRONMENT. The federation returns
@@ -827,10 +924,7 @@ test fn a_boot_presenting_no_environment_is_refused() -> Bool {
 // is the §5 property the review asked for: removing the environment standing cannot leave a provider that
 // admits a branch boot.
 fn branch_boot_environment_is_nameable() -> Bool {
-  match mtcollins1_boot_trusted_environment() {
-    Present { value: _ } => true
-    Absent => false
-  }
+  mtcollins1_boot_trusted_environment_is_nameable()
 }
 
 // (1) the pin tracks the standing, in BOTH directions
@@ -847,7 +941,7 @@ fn branch_boot_environment_pin_tracks_the_standing() -> Bool {
 }
 
 // (2) the stored provider condition carries the environment term exactly when the standing exists
-fn branch_boot_provider_condition_tracks_the_standing() -> Bool {
+fn branch_boot_provider_condition_tracks_the_standing(case: RosteredBootCase) -> Bool {
   match mtcollins1_boot_branch_provider() {
     // NO PROVIDER IS THE HONEST ANSWER WHEN THERE IS NO RULE: no cloud object exists to admit a branch
     // boot, which is the property the review asked for -- not a provider whose condition happens to match
@@ -856,20 +950,20 @@ fn branch_boot_provider_condition_tracks_the_standing() -> Bool {
     Present { value: provider } => match provider.attribute_condition {
       Absent => false
       Present { value: c } =>
-        branch_boot_environment_is_nameable() == string_contains(s: c, pattern: boot_environment())
+        branch_boot_environment_is_nameable() == string_contains(s: c, pattern: case.environment)
           && string_contains(s: c, pattern: "environment")
     }
   }
 }
 
 // (3) and a federation that DOES exist says the same thing about its own condition
-fn branch_boot_federation_condition_tracks_the_standing() -> Bool {
+fn branch_boot_federation_condition_tracks_the_standing(case: RosteredBootCase) -> Bool {
   match mtcollins1_boot_branch_federation() {
     Present { value: f } => match mtcollins1_boot_branch_attribute_condition() {
       Absent => false
       Present { value: condition } =>
         f.attribute_condition == condition
-          && string_contains(s: f.attribute_condition, pattern: boot_environment())
+          && string_contains(s: f.attribute_condition, pattern: case.environment)
           && branch_boot_environment_is_nameable()
     }
     Absent => true
@@ -877,17 +971,24 @@ fn branch_boot_federation_condition_tracks_the_standing() -> Bool {
 }
 
 test fn an_unnameable_environment_leaves_no_federation_and_no_admissible_rule() -> Bool {
-  branch_boot_environment_pin_tracks_the_standing()
-    && branch_boot_provider_condition_tracks_the_standing()
-    && branch_boot_federation_condition_tracks_the_standing()
-  // (4) THE POINT OF IT ALL, INDEPENDENT OF WHAT ELSE IS CLOSED: with the environment claim carrying
-  // some value no dispatch can carry, no presented claim set admits -- and neither does one that
-  && !mtcollins1_boot_branch_admits(claims: with_presented_value(
-    claims: branch_real_claims(),
-    claim: "environment",
-    // a fixture value, not a sentinel the route depends on: the pin is the only name that admits
-    value: "witness-environment-nobody-declared",
-  ))
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    branch_boot_environment_pin_tracks_the_standing()
+      && branch_boot_provider_condition_tracks_the_standing(case: c)
+      && branch_boot_federation_condition_tracks_the_standing(case: c)
+    // (4) THE POINT OF IT ALL, INDEPENDENT OF WHAT ELSE IS CLOSED: with the environment claim carrying
+    // some value no dispatch can carry, no presented claim set admits -- and neither does one that
+    && !mtcollins1_boot_branch_admits(claims: with_presented_value(
+      claims: branch_real_claims(case: c),
+      claim: "environment",
+      // a fixture value, not a sentinel the route depends on: the pin is the only name that admits
+      value: "witness-environment-nobody-declared",
+    ))
+    }
+  }
 }
 
 // THE CLAIM THAT PRESENTS THE REAL ENVIRONMENT NAME STILL ADMITS (asserted above, in
@@ -1125,17 +1226,24 @@ test fn the_approval_free_branch_boot_rests_on_a_typed_ruling() -> Bool {
 // closed route from being a silent bypass: a branch boot that cannot get the narrowed identity falls back
 // to the approval-gated grant rather than booting unattended.
 test fn branch_boot_selects_the_approval_free_identity_once_the_key_is_minted() -> Bool {
-  let b = trusted_boot_branch()
-  // post-mint: the dedicated branch identity, and no grant required at that ref. THE BODY STARTS WITH A
-  // PRIMARY ON PURPOSE -- a leading '&&' here is parsed as a continuation of the let's initializer.
-  match select_boot_credential_source_at_ref_with(state: minted_reader_state(), on_reviewed_main: false, branch: b) {
-       BootCredentialSourceSelected { source: TrustedBranchBootIdentity } =>
-         !boot_grant_required_at_ref_with(state: minted_reader_state(), on_reviewed_main: false, branch: b)
-       _ => false
-     }
-  // today (route closed): the same ref still requires the grant -- closed means degraded to the old route,
-  // never means approved-free by accident
-  && boot_grant_required_at_ref_with(state: Unminted, on_reviewed_main: false, branch: b)
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let b = c.branch
+    // post-mint: the dedicated branch identity, and no grant required at that ref. THE BODY STARTS WITH A
+    // PRIMARY ON PURPOSE -- a leading '&&' here is parsed as a continuation of the let's initializer.
+    match select_boot_credential_source_at_ref_with(state: minted_reader_state(), on_reviewed_main: false, branch: b) {
+         BootCredentialSourceSelected { source: TrustedBranchBootIdentity } =>
+           !boot_grant_required_at_ref_with(state: minted_reader_state(), on_reviewed_main: false, branch: b)
+         _ => false
+       }
+    // today (route closed): the same ref still requires the grant -- closed means degraded to the old route,
+    // never means approved-free by accident
+    && boot_grant_required_at_ref_with(state: Unminted, on_reviewed_main: false, branch: b)
+    }
+  }
 }
 
 // ══ THE RUNTIME FACE: WHAT THE RENDERED PIPELINE ACTUALLY DOES ════════════════════════════
@@ -1164,39 +1272,46 @@ fn boot_job_off_main_grant_term(state: BootMediumReaderKeyState) -> String? {
 // test ANDED WITH A NEGATION of the rostered ref -- an exclusion, which is what "the wait job is skipped
 // for that ref" means when GitHub evaluates it. A positive equality there would be the opposite rule.
 test fn the_wait_job_condition_opens_only_with_the_mint() -> Bool {
-  let rostered = mtcollins1_boot_trusted_branch_ref(branch: trusted_boot_branch())
-  let rendered_wait_if = fleet_converge_branch_run_grant_wait_if()
-  match boot_job_off_main_grant_term(state: Unminted) {
-    // A TERM MUST EXIST ON BOTH SIDES. Its absence would mean the wait job never gates on this mode --
-    // which is the open route wearing the closed route's clothes, so it is red and not "vacuously fine".
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
     Absent => false
-    Present { value: today } => match boot_job_off_main_grant_term(state: minted_reader_state()) {
+    Present { value: c } => {
+    let rostered = mtcollins1_boot_trusted_branch_ref(branch: c.branch)
+    let rendered_wait_if = fleet_converge_branch_run_grant_wait_if()
+    match boot_job_off_main_grant_term(state: Unminted) {
+      // A TERM MUST EXIST ON BOTH SIDES. Its absence would mean the wait job never gates on this mode --
+      // which is the open route wearing the closed route's clothes, so it is red and not "vacuously fine".
       Absent => false
-      Present { value: minted } =>
-    string_contains(s: today, pattern: mtcollins1_boot_mode_name)
-    && string_contains(s: minted, pattern: mtcollins1_boot_mode_name)
-    // CLOSED TODAY: no exemption for the rostered ref appears anywhere in the term
-    && !string_contains(s: today, pattern: rostered)
-    // OPEN AFTER THE MINT: the ref appears, and only inside the negation
-    && string_contains(s: minted, pattern: rostered)
-    // NOTHING FABRICATED REACHES THE RENDERED TEXT (review 87673): the placeholder pins this PR replaced
-    // were well-formed comparisons against strings no dispatch could carry. No such value may survive
-    // into the condition the wait job is gated on -- not the two that were removed, nor a future one.
-    && !string_contains(s: today, pattern: "__GUNBC")
-    && !string_contains(s: minted, pattern: "__GUNBC")
-    // THE SHAPE IS AN EXCLUSION, not an inclusion: base AND NOT(ref == <rostered>)
-    && match fleet_converge_off_main_grant_required_term_with(state: minted_reader_state(), mode: MtCollins1Boot) {
-      Absent => false
-      // matched STRUCTURALLY as an AND whose right operand is a negation -- not by looking for a "!" in
-      // some serializer's spelling of one, which would make the claim's truth depend on punctuation
-      Present { value: LogicalAnd { left: l, right: LogicalNot { operand: o } } } =>
-        string_contains(s: serialize_expression(expression: l), pattern: mtcollins1_boot_mode_name)
-          && string_contains(s: serialize_expression(expression: o), pattern: rostered)
-      Present { value: _ } => false
+      Present { value: today } => match boot_job_off_main_grant_term(state: minted_reader_state()) {
+        Absent => false
+        Present { value: minted } =>
+      string_contains(s: today, pattern: mtcollins1_boot_mode_name)
+      && string_contains(s: minted, pattern: mtcollins1_boot_mode_name)
+      // CLOSED TODAY: no exemption for the rostered ref appears anywhere in the term
+      && !string_contains(s: today, pattern: rostered)
+      // OPEN AFTER THE MINT: the ref appears, and only inside the negation
+      && string_contains(s: minted, pattern: rostered)
+      // NOTHING FABRICATED REACHES THE RENDERED TEXT (review 87673): the placeholder pins this PR replaced
+      // were well-formed comparisons against strings no dispatch could carry. No such value may survive
+      // into the condition the wait job is gated on -- not the two that were removed, nor a future one.
+      && !string_contains(s: today, pattern: "__GUNBC")
+      && !string_contains(s: minted, pattern: "__GUNBC")
+      // THE SHAPE IS AN EXCLUSION, not an inclusion: base AND NOT(ref == <rostered>)
+      && match fleet_converge_off_main_grant_required_term_with(state: minted_reader_state(), mode: MtCollins1Boot) {
+        Absent => false
+        // matched STRUCTURALLY as an AND whose right operand is a negation -- not by looking for a "!" in
+        // some serializer's spelling of one, which would make the claim's truth depend on punctuation
+        Present { value: LogicalAnd { left: l, right: LogicalNot { operand: o } } } =>
+          string_contains(s: serialize_expression(expression: l), pattern: mtcollins1_boot_mode_name)
+            && string_contains(s: serialize_expression(expression: o), pattern: rostered)
+        Present { value: _ } => false
+      }
+      // AND THE WAIT JOB'S OWN RENDERED CONDITION, read from the world (so: today), still gates on
+      // something -- an empty condition would run the job unconditionally and hide the closed route.
+      && rendered_wait_if.length() > 0
+      }
     }
-    // AND THE WAIT JOB'S OWN RENDERED CONDITION, read from the world (so: today), still gates on
-    // something -- an empty condition would run the job unconditionally and hide the closed route.
-    && rendered_wait_if.length() > 0
     }
   }
 }
