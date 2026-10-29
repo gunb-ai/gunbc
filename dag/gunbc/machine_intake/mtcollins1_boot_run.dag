@@ -138,7 +138,7 @@ import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   BootParam5Clear, BootParam5ClearIssued, BootParam5ClearNotIssued, BootOverrideClears,
   BootOverrideClear, StaleOverrideClearance, StaleOverrideWouldNotClear,
   megarac_boot_param5_clear, megarac_override_release, megarac_stale_override_clearance,
-  megarac_handoff_issued_set, boot_param5_owes_clear,
+  megarac_handoff_issued_set, boot_param5_owes_clear, boot_param5_clear_not_required_reason,
   boot_override_clears_not_required, boot_override_clears_none_found,
   BootDiagnosticBundle, MegaRacRunRecord, MegaRacMediaAttach, MegaRacHandoff, MegaRacEndMedia, megarac_power_reading_not_taken, MegaRacMediaAttachNotAttempted, MegaRacHandoffNotReached, MegaRacEndMediaNotTaken, SelSnapshotReading, SelSnapshotNotTaken, SdrCacheReading, SdrCacheNotTaken, SensorsNotTaken, inventory_not_taken, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, BmcReachability, BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, bmc_reachability_text, harness_finding_text, bundle_write_receipt_line, recheck_text, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, megarac_ipmi_endpoint, megarac_boot_sdr_cache, megarac_boot_sel_snapshot, megarac_boot_sensors, megarac_boot_inventory, megarac_boot_hpm_check, megarac_boot_param5, megarac_boot_chassis_power, megarac_boot_bmc_reachability, megarac_boot_write_bundle, megarac_boot_outcome_after_bundle, megarac_boot_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_boot_override_consumption, megarac_power_after_from_observation, SdrCacheUnread, MegaRacHandoffAttempted, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacEndMediaObserved, megarac_boot_evidence,
   EndMediaRelease, EndReleaseKeptHostOn, EndReleaseWithheld, EndReleaseRan, EndReleaseGateKeep, EndReleaseGateWithhold, EndReleaseGateAdmit, end_release_gate, outcome_with_end_release, megarac_boot_build_reading, megarac_build_reading_receipt_line,
@@ -2297,18 +2297,18 @@ fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParam5Reading
 // boot_param5_owes_clear and megarac_stale_override_clearance). Not clearing an unread standing is not a
 // skip: nothing is written on a standing nobody read, and the clearance says 'unread' rather than 'none
 // found' in the receipt.
-fn mtcollins1_boot_param5_clear_under_hold(password_file: String, before: BootParam5Reading, selection: IpmiBootSelection) -> BootParam5Clear
+fn mtcollins1_boot_param5_clear_under_hold(password_file: String, before: BootParam5Reading) -> BootParam5Clear
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
-  if boot_param5_owes_clear(read: before, selection: selection) {
+  if boot_param5_owes_clear(read: before) {
     match mtcollins1_bmc_username {
       Absent => BootParam5ClearNotIssued { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to clear it with" }
       Present { value: user } => megarac_boot_param5_clear(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr)
     }
   } else {
-    BootParam5ClearNotIssued { reason: "the before-read showed no override pending for this attempt's selection" as NonEmptyStr }
+    BootParam5ClearNotIssued { reason: boot_param5_clear_not_required_reason(read: before) }
   }
 }
 
@@ -2640,8 +2640,8 @@ fn mtcollins1_boot_actuate(
       // reads could not say anything. `refuse_if_stale_would_not_clear` is the readback's answer honoured,
       // not a courtesy: an attempt that sets on top of an override it failed to remove cannot tell its own
       // consumption from the stale one's, so it stops here with the bytes in the receipt.
-      let stale_clear = mtcollins1_boot_param5_clear_under_hold(password_file: password_file, before: p5_before, selection: subject.selection)
-      let stale_clearance = megarac_stale_override_clearance(before: p5_before, clear: stale_clear, selection: subject.selection)
+      let stale_clear = mtcollins1_boot_param5_clear_under_hold(password_file: password_file, before: p5_before)
+      let stale_clearance = megarac_stale_override_clearance(before: p5_before, clear: stale_clear)
       let screen = mtcollins1_boot_screen_start(proof: proof, password_file: password_file, attempt: attempt, resolve_toolchain: resolve_toolchain)
       let before_attach = mtcollins1_sol_supervised(stage: SolLostBeforeAttach, pid_path: sol_pid_path, capture_path: sol_capture_path, password_file: password_file, last_live_at: acquired_at)
       // BOTH STEMS THIS LANE PUBLISHES: the runner medium it boots and the census medium earlier
@@ -2779,7 +2779,7 @@ fn mtcollins1_boot_actuate(
       let override_clears = BootOverrideClears {
         stale: stale_clearance,
         stale_read: match stale_clear { BootParam5ClearIssued { write_answered: _, readback: rb } => rb BootParam5ClearNotIssued { reason: r } => BootParam5NotTaken { reason: r } },
-        released: megarac_override_release(clear: release_clear, selection: subject.selection),
+        released: megarac_override_release(clear: release_clear),
         release_read: match release_clear { BootParam5ClearIssued { write_answered: _, readback: rb } => rb BootParam5ClearNotIssued { reason: r } => BootParam5NotTaken { reason: r } },
       }
       // THE SOL RELEASE FOLLOWS THE POWER READING AND PRECEDES THE END MEDIA LOOK AND RELEASE, on every path
