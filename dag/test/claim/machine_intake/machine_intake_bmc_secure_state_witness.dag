@@ -972,6 +972,7 @@ fn secured_read(census_value: IpmiControllerChannelCensus, account: PublishedAcc
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_a_deviation_and_the_plan_refuses_without_a_channel_access_route"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_closed_only_over_a_grounded_channel_access_route"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "one_approval_admits_exactly_the_convergence_it_names"),
   ]
 {
   read_with(w: world_secured(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, census_value: census_value, account: account, at: t_read)
