@@ -405,18 +405,20 @@ fn cloudflare_dns_record_key(record: CloudflareDnsRecord) -> String {
   join([domain_name_wire(name: record.name.name), cloudflare_dns_record_type_wire(record_type: record.record_type), record.content as String], "/")
 }
 
-// The two published six-value sets, one arm each, each with an Unknown{wire} arm — the same shape
-// CloudflareZoneStatus already has in this file. The vocabularies are the list route's own member lists
-// (ownership: pending / active / deactivated / blocked / error / unknown; ssl: initializing / pending /
-// active / deactivated / error / unknown). Modelling them makes a misspelled or new vendor value reach
-// a typed Unknown arm instead of quietly reading as "not serving": DESIGN section 5, "unwritable" beats
-// "detectable". Wire spelling lives on exactly one arm and is what decodes it.
+// The two published six-value sets, one arm each — every PUBLISHED value gets a named arm, including the
+// vendor's own "unknown", which is a REAL answer the vendor sends (it is in the list route's member
+// lists), not a missing one. Unknown{wire} therefore means exactly one thing: a value OUTSIDE the
+// published set, a value this model has not modelled. Squatting it for "the reader has not read" (the
+// manager blocker on this PR, same species as review 87415) conflated an unmade read with a stated
+// unknown and silently collided with the published value below. An unperformed read is absence, carried
+// by the observing layer, never a wire string here.
 type R2OwnershipStatus
   = OwnershipPending
   | OwnershipActive
   | OwnershipDeactivated
   | OwnershipBlocked
   | OwnershipError
+  | OwnershipVendorUnknown
   | OwnershipStatusUnknown { wire: NonEmptyStr }
 
 fn r2_ownership_status_wire(status: R2OwnershipStatus) -> NonEmptyStr {
@@ -426,6 +428,7 @@ fn r2_ownership_status_wire(status: R2OwnershipStatus) -> NonEmptyStr {
     OwnershipDeactivated => "deactivated"
     OwnershipBlocked => "blocked"
     OwnershipError => "error"
+    OwnershipVendorUnknown => "unknown"
     OwnershipStatusUnknown { wire } => wire
   }
 }
@@ -437,6 +440,7 @@ fn r2_ownership_status_of_text(text: String) -> R2OwnershipStatus {
     "deactivated" => OwnershipDeactivated
     "blocked" => OwnershipBlocked
     "error" => OwnershipError
+    "unknown" => OwnershipVendorUnknown
     other => OwnershipStatusUnknown { wire: other as NonEmptyStr }
   }
 }
@@ -447,6 +451,7 @@ type R2SslStatus
   | SslActive
   | SslDeactivated
   | SslError
+  | SslVendorUnknown
   | SslStatusUnknown { wire: NonEmptyStr }
 
 fn r2_ssl_status_wire(status: R2SslStatus) -> NonEmptyStr {
@@ -456,6 +461,7 @@ fn r2_ssl_status_wire(status: R2SslStatus) -> NonEmptyStr {
     SslActive => "active"
     SslDeactivated => "deactivated"
     SslError => "error"
+    SslVendorUnknown => "unknown"
     SslStatusUnknown { wire } => wire
   }
 }
@@ -467,6 +473,7 @@ fn r2_ssl_status_of_text(text: String) -> R2SslStatus {
     "active" => SslActive
     "deactivated" => SslDeactivated
     "error" => SslError
+    "unknown" => SslVendorUnknown
     other => SslStatusUnknown { wire: other as NonEmptyStr }
   }
 }

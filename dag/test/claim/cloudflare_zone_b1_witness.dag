@@ -28,7 +28,7 @@ import extdeps.cloudflare.zone {
   cloudflare_r2_custom_domain_matches, cloudflare_record_type_admits_proxy, cloudflare_dns_record_key,
   cloudflare_account_id_from_text, cloudflare_zone_id_from_text,
   CloudflareR2CustomDomainStatus,
-  OwnershipStatusUnknown, SslStatusUnknown,
+  OwnershipStatusUnknown, SslStatusUnknown, OwnershipVendorUnknown, SslVendorUnknown,
   r2_ownership_status_of_text, r2_ssl_status_of_text,
   OwnershipBlocked, SslActive,
   r2_ownership_status_wire, r2_ssl_status_wire,
@@ -47,7 +47,7 @@ import gunbc.cloudflare.zone {
   zone_record_copy_standing, CopyPendingRecordList,
   boot_origin_fqdn_decision, boot_origin_fqdn_is_decided,
   gunb_ai_bucket_account, boot_origin_bucket, gunb_ai_apex, boot_origin_hostname,
-  gunb_ai_delegated_nameservers, boot_origin_binding_readback_pending, boot_origin_nxdomain_answers,
+  gunb_ai_delegated_nameservers, boot_origin_bind_readback, ReadbackNotTaken, ReadbackOf, boot_origin_nxdomain_answers,
   boot_origin_zone_admissibility, boot_origin_zone_hold_observation, copied_record_of_type,
 }
 
@@ -369,23 +369,37 @@ test fn boot_hostname_is_absent_from_the_served_set() -> Bool {
 // status dimensions are required, so any one left at not-read keeps the verdict off Allocated. The binding
 // must also name the zone and bucket the fold is converging, or a readback of some other bucket's domain
 // would satisfy the arm.
-test fn pending_readback_neither_serves_nor_matches_the_zone() -> Bool {
-  !cloudflare_r2_custom_domain_is_serving(binding: boot_origin_binding_readback_pending)
-    && !cloudflare_r2_custom_domain_matches(binding: boot_origin_binding_readback_pending, zone: zone_in(account: same_account_id, active: true, paused: false), bucket: boot_origin_bucket)
+// NO READ, NO BINDING (manager blocker on 5218cdb). The pending readback used to be a constructed
+// CloudflareR2CustomDomainBinding with two Unknown { wire: "unobserved" } statuses — a fabricated response
+// for a call nobody made, which also collided with the vendor's PUBLISHED "unknown". Today's truth is the
+// readback sum's own absence arm, carrying the dispatch gap; there is no binding to serve, to match, or
+// to misread. The verdict derives BindingAwaitingDispatch from exactly this absence.
+test fn the_readback_is_absence_not_a_fabricated_binding() -> Bool {
+  match boot_origin_bind_readback {
+    ReadbackNotTaken { gap } => match gap {
+      BindDispatchUnmodeled { missing: _, basis: _ } => gap_reports(gap: gap) == 1
+      _ => false
+    }
+    ReadbackOf { binding: _, observed_at: _ } => false
+  }
 }
 
 // ABSENCE IS NOT AN ID THAT HAPPENS TO BE WRONG (review 87415). The pending readback carries Absent, and
 // Absent fails the match against EVERY zone — including the one whose id this witness could otherwise
 // have fabricated. A real read carrying the right id matches it, so the failure above is the absence and
 // not a broken rule: the two directions together are what make an in-band placeholder impossible.
-test fn an_unread_zone_identity_matches_no_zone_but_a_read_one_matches_its_own() -> Bool {
+// BOTH DIRECTIONS of the matches rule, now built ONLY from real shapes: a response that carries its zone
+// id matches that zone and no other bucket, and the readback's absence reaches the rule only through
+// ReadbackOf — the absence arm never hands a binding to the matcher at all. (The old third leg inspected
+// a fabricated binding's Absent zone_id; there is no such object any more, which is the point.)
+test fn a_read_identity_matches_its_own_zone_and_absence_hands_the_rule_nothing() -> Bool {
   let right_zone = zone_in(account: same_account_id, active: true, paused: false)
   let read_binding = binding_with(ownership: "active", ssl: "active", enabled: true)
   cloudflare_r2_custom_domain_matches(binding: read_binding, zone: right_zone, bucket: boot_origin_bucket)
     && !cloudflare_r2_custom_domain_matches(binding: read_binding, zone: right_zone, bucket: "some-other-bucket" as NonEmptyStr)
-    && match boot_origin_binding_readback_pending.zone_id {
-         Absent => true
-         Present { value: _ } => false
+    && match boot_origin_bind_readback {
+         ReadbackNotTaken { gap: _ } => true
+         ReadbackOf { binding: _, observed_at: _ } => false
        }
 }
 
@@ -489,6 +503,8 @@ test fn awaiting_dispatch_is_not_not_serving() -> Bool {
          // and the readback that reaches this arm is one the vendor RETURNED (zone identity Present).
          // Read the receipt through the type: the blocking dimension is the Blocked arm, the other is
          // Active, and that is exactly why serving fails — no sentence needed to say it.
+         // NOT-SERVING requires a real response: the receipt is read through the type, and the blocking
+         // dimension is the vendor's Blocked arm while ssl is Active.
          BindingNotServing { binding: reported } => {
            match reported.status.ownership {
              OwnershipBlocked => true
@@ -570,6 +586,29 @@ test fn status_wires_round_trip() -> Bool {
     && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "pending")) == "pending"
     && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "active")) == "active"
     && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "deactivated")) == "deactivated"
+}
+
+// THE VENDOR'S "unknown" IS A REAL ANSWER, not a missing one (the manager blocker found this): it is
+// PUBLISHED in both status vocabularies, so it decodes to its OWN arms — never to Unknown { wire }, which
+// is reserved for values OUTSIDE the published set — and it never serves, because the vendor did not say
+// it serves. The old pending binding squatted on Unknown{wire:"unobserved"} precisely because this
+// distinction did not exist; the fabricated wire string was indistinguishable from an unmodeled value.
+test fn published_unknown_is_its_own_arm_not_an_unmodeled_value() -> Bool {
+  match r2_ownership_status_of_text(text: "unknown") {
+    OwnershipVendorUnknown => true
+    OwnershipStatusUnknown { wire: _ } => false
+    _ => false
+  }
+    && match r2_ssl_status_of_text(text: "unknown") {
+         SslVendorUnknown => true
+         SslStatusUnknown { wire: _ } => false
+         _ => false
+       }
+    && r2_ownership_status_wire(status: r2_ownership_status_of_text(text: "unknown")) == "unknown"
+    && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "unknown")) == "unknown"
+    // And a vendor that says unknown has not said active: fail-closed in both directions.
+    && !cloudflare_r2_custom_domain_is_serving(binding: binding_with(ownership: "unknown", ssl: "active", enabled: true))
+    && !cloudflare_r2_custom_domain_is_serving(binding: binding_with(ownership: "active", ssl: "unknown", enabled: true))
 }
 
 test fn serving_needs_enabled_and_both_active() -> Bool {

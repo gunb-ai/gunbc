@@ -23,7 +23,7 @@ module gunbc.cloudflare.zone
 // authorization pattern (WIF / ntfy approval / explicit refusal), and no token ever passes through here.
 
 import std.types { Bool, Duration, Int, List, NonEmptyStr }
-import std.optional { Absent, Optional, optional_is_absent }
+import std.optional { Absent, Optional }
 import std.algebra { FreeSemigroup, non_empty_singleton, non_empty_append, non_empty_to_list }
 import std.human_intervention { HumanInterventionIdentity }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
@@ -36,8 +36,7 @@ import extdeps.cloudflare.zone {
   RecordTypeTXT, RecordTypeMX, RecordTypeNS, RecordTypeSOA,
   cloudflare_dns_record_key, cloudflare_record_type_admits_proxy, cloudflare_record_type_wire_eq,
   cloudflare_account_id_from_text,
-  CloudflareR2CustomDomainBinding, CloudflareR2CustomDomainStatus,
-  OwnershipStatusUnknown, SslStatusUnknown,
+  CloudflareR2CustomDomainBinding,
   cloudflare_r2_custom_domain_is_serving,
   r2_custom_domain_requires_zone_citation, dns_record_api_citation,
 }
@@ -419,23 +418,35 @@ fn fleet_gunb_ai_zone_standing() -> FleetGunbAiZoneStanding {
   }
 }
 
-// The readback the bind will eventually produce, in the vendor's own field spellings. Nothing is claimed
-// about it: the two Unknown { wire: "unobserved" } arms are what an unperformed read looks like — a value
-// the reader has not seen, which the typed status sums already distinguish from any vendor vocabulary word
-// — and the only way out of them is a read that happened. The zone id is Absent (review 87415): the
-// vendor's list response carries a zone id ONLY once a binding exists, so "the read has not happened" is
-// std.optional::Optional's Absent — §3b, dag_absence_is_one_meaning — not an in-band id that a real read
-// could collide with. The matches rule requires Present on both sides, so absence can never match a zone.
-data boot_origin_binding_readback_pending: CloudflareR2CustomDomainBinding = CloudflareR2CustomDomainBinding {
-  domain: boot_origin_hostname,
-  bucket: boot_origin_bucket,
-  zone_id: Absent,
-  enabled: false,
-  status: CloudflareR2CustomDomainStatus {
-    ownership: OwnershipStatusUnknown { wire: "unobserved" as NonEmptyStr },
-    ssl: SslStatusUnknown { wire: "unobserved" as NonEmptyStr },
-  },
-}
+// --------------------------------------------------------------------------------
+// (7) THE READBACK, as what it is: a receipt or its absence.
+//
+// The blocker this replaces (manager, on 5218cdb) was a fabricated CloudflareR2CustomDomainBinding for a
+// read nobody performed, wearing OwnershipStatusUnknown / SslStatusUnknown { wire: "unobserved" }. That
+// was wrong twice over: those arms mean a value OUTSIDE the vendor's published set — and the manager
+// caught that Cloudflare PUBLISHES "unknown" in both status vocabularies (r2_custom_domain_status_api_read
+// ing), so the fabricated value silently collided with a real vendor answer; and a binding is what the
+// custom-domain endpoint RETURNS, so constructing one without a response invents enabled, a zone id and
+// two statuses out of nothing. §5 again: no plausible output is fabricated.
+//
+// So the binding type now has exactly one producer path — a response — and the reading itself is a sum in
+// the OBSERVING layer with absence as one of its arms: ReadbackNotTaken is not a weird binding, it is no
+// binding, and it names its own remedy (dispatch the bind). Only ReadbackOf carries a receipt.
+// --------------------------------------------------------------------------------
+
+type BootOriginBindReadback
+  // No read has been made and none may be until the bind runs: absence with its reason, never a
+  // placeholder binding. This is today's state.
+  = ReadbackNotTaken { gap: BootOriginBindEffectGap }
+  // The response path: exists only by construction from a real GET of the custom domain. zone_id keeps
+  // its OPTIONAL meaning honestly here (the response carries it), and neither status can be faked,
+  // because R2OwnershipStatus / R2SslStatus are built by the vendor-vocabulary decoder in extdeps.
+  | ReadbackOf { binding: CloudflareR2CustomDomainBinding, observed_at: Rfc3339Timestamp }
+
+// Today: no credential route, no bind, therefore no response. The dispatch gap is the same one the
+// standing carries, so one fact still lives in one place.
+data boot_origin_bind_readback: BootOriginBindReadback = ReadbackNotTaken { gap: bind_dispatch_gap() }
+
 
 // --------------------------------------------------------------------------------
 // THE VERDICT THE B1 ARM NEEDS — computed, never asserted. Allocated requires all three:
@@ -504,29 +515,22 @@ fn boot_origin_verdict_for_zone(zone: CloudflareZone, observed_at: Rfc3339Timest
     CopyRefused { outstanding, gap } => BindingAwaitingCompleteCopy { outstanding: outstanding, gap: gap }
     CopyPendingRecordList { outstanding, gap, copied: _, unproxied_contents_agree: _, observed_at: _, basis: _ } =>
       BindingAwaitingCompleteCopy { outstanding: outstanding, gap: gap }
-    CopyCompleteAgainstRecordList { copied: _, observed_at: _, basis: _ } => {
-      if cloudflare_r2_custom_domain_readback_serving() {
-        BindingAllocated { binding: boot_origin_binding_readback_pending, observed_at: observed_at }
-      } else if optional_is_absent(boot_origin_binding_readback_pending.zone_id) {
-        // AWAITING DISPATCH, not "not serving" (review 87595 closes the last prose-inferred arm): the
-        // readback carries no zone identity, so NO BINDING EXISTS — the honest statement is that the
-        // bind has never been dispatched, and why: a privileged Cloudflare write has no ad-hoc site and
-        // no fleet-converge mode covers the custom domain. This is bind_dispatch_gap()'s real route.
-        BindingAwaitingDispatch { gap: bind_dispatch_gap() }
-      } else {
-        // Reachable only with a real readback (zone identity Present, statuses from an actual read):
-        // the domain exists and reports itself, and it does not serve.
-        BindingNotServing { binding: boot_origin_binding_readback_pending }
+    // AwaitingDispatch is DERIVED from the readback's absence (manager blocker), not from an invented
+    // binding whose zone id happens to be Absent. Absence is the readback sum's own arm, and it carries
+    // its own remedy — the dispatch gap — so the verdict adds nothing.
+    CopyCompleteAgainstRecordList { copied: _, observed_at: _, basis: _ } =>
+      match boot_origin_bind_readback {
+        ReadbackNotTaken { gap } => BindingAwaitingDispatch { gap: gap }
+        // Only a real response reaches the other two arms, and it is read through the single serving
+        // rule in extdeps. Not serving requires a binding that EXISTS and reports itself so.
+        ReadbackOf { binding, observed_at: read_at } =>
+          if cloudflare_r2_custom_domain_is_serving(binding: binding) {
+            BindingAllocated { binding: binding, observed_at: read_at }
+          } else {
+            BindingNotServing { binding: binding }
+          }
       }
-    }
   }
-}
-
-// NO SECOND "active" COMPARISON HERE (review 38602): the serving question has exactly one home,
-// cloudflare_r2_custom_domain_is_serving in extdeps, and this fold calls it. The previous copy re-derived
-// the two string comparisons and gave the fleet two sources for one fact.
-fn cloudflare_r2_custom_domain_readback_serving() -> Bool {
-  cloudflare_r2_custom_domain_is_serving(binding: boot_origin_binding_readback_pending)
 }
 
 // --------------------------------------------------------------------------------
