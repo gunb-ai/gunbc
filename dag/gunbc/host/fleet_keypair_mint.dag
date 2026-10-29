@@ -569,12 +569,11 @@ data fleet_keypair_unknown_outcome_guidance: String = "A RETRY IS SAFE AND NOT S
 // scaffold's: a mint that succeeds without it has produced a credential nothing can use.
 data fleet_keypair_pin_commit_rule: String = "Pin the public row AND the fingerprint, in the same commit. A minted key nobody records is a key that does not exist for any consumer; a minted private half with no recorded public is worse: a live credential in Secret Manager that nothing can prove it holds."
 
-// THE OPERATOR'S OWN WORDS, AS DATA, because the reason this mint exists is a decision no code proves
-// (DESIGN section 16). The design_ruling row carries the same text; this is what the mint's own module
-// asserts so a reader of the mint cannot miss why a human step was removed from beside it.
-data fleet_keypair_mint_ruling_words: String = "i don't see why a human needs to do this - this seems just like normal account creation"
-
-data fleet_keypair_mint_ruling_date: String = "2026-10-28"
+// THE OPERATOR'S WORDS AND DATE ARE NOT STORED HERE. They live once, in gunbc.design_ruling
+// `the_mint_of_a_fleet_ssh_keypair_is_account_creation` -- provenance carries the quote, `decided` the
+// date -- and a consumer cites the ROW (review 88000, DESIGN §3: a second declaration holding the same
+// fact can drift from it independently). What the mint asserts about the ruling is witnessed against
+// the row itself in dag/test/claim/host/fleet_keypair_mint_witness.dag.
 
 // ── THE argv ───────────────────────────────────────────────────────────────────────────────────────
 // THE ARGV OF THE FOUR COMMANDS ONE MINT ISSUES, from the subject row, so the two mints cannot drift apart

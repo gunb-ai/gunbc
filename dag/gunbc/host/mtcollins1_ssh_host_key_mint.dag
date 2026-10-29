@@ -14,8 +14,9 @@ import gunbc.host.fleet_keypair_mint {
   mtcollins1_host_keypair_mint_subject, fleet_keypair_generate_pair, fleet_keypair_generation_verdict,
   fleet_keypair_mint_dir_verdict, fleet_keypair_store_verdict, fleet_keypair_mint_verdict,
   redact_fleet_keypair_private, fleet_keypair_receipt_line, fleet_keypair_mint_word_holds,
-  fleet_keypair_mint_ruling_words, fleet_keypair_mint_ruling_date, fleet_keypair_unknown_outcome_guidance,
+  fleet_keypair_unknown_outcome_guidance,
 }
+import gunbc.design_ruling { the_mint_of_a_fleet_ssh_keypair_is_account_creation }
 import gunbc.host.anchored_host_transport { mtcollins1_host_key_anchor }
 
 // ── MINTING mtcollins1's SSH HOST KEY, AS A ROW OF THE ONE FLEET-KEYPAIR POLICY ────────────────────
@@ -253,9 +254,11 @@ fn redact_host_private_material(text: String, private_half: String) -> String {
 // improvised.
 data mtcollins1_host_key_unknown_outcome_guidance: String = fleet_keypair_unknown_outcome_guidance
 
-// THE OPERATOR'S OWN WORDS, attached to the mint they authorized, so a reader of the mint cannot miss why a
-// human step was removed from beside it (DESIGN §16: a decision no code proves is recorded as data).
-data mtcollins1_host_key_mint_ruling: String = concat(fleet_keypair_mint_ruling_words, concat(" (operator, ", concat(fleet_keypair_mint_ruling_date, ", relayed by merry-fox-82; design_ruling the_mint_of_a_fleet_ssh_keypair_is_account_creation)")))
+// THE OPERATOR'S DECISION, CITED AND NOT COPIED (review 88000; DESIGN §3: a fact lives in exactly one
+// place). The words are in the ruling row's `provenance` and the date in its `decided` -- both read from
+// the row, so this line cannot drift from the ruling it points at. test.claim.host.fleet_keypair_mint_witness
+// witnesses the quote and date against THAT row, not against a copy.
+data mtcollins1_host_key_mint_ruling: String = concat("operator ruling ", concat(the_mint_of_a_fleet_ssh_keypair_is_account_creation.decided, concat(" -- gunbc.design_ruling.", concat(the_mint_of_a_fleet_ssh_keypair_is_account_creation.reference.decl_name as String, "; the operator's own words live in that row's provenance"))))
 
 // THE COMMIT RULE, stated where the receipt that satisfies it is produced.
 data mtcollins1_host_key_pin_commit_rule: String = "Pin the anchor row's public half AND its SHA256 fingerprint, in the same commit as the mint's receipt names the version."

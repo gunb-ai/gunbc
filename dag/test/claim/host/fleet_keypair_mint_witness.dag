@@ -16,8 +16,8 @@ import gunbc.host.fleet_keypair_mint {
   fleet_keypair_receipt_line, fleet_keypair_mint_word_holds, fleet_keypair_mint_argv,
   fleet_keypair_mint_key_file, fleet_keypair_mint_public_file, fleet_keypair_privkey_resource,
   fleet_keypair_unknown_outcome_guidance, fleet_keypair_pin_commit_rule,
-  fleet_keypair_mint_ruling_words, fleet_keypair_mint_ruling_date,
 }
+import gunbc.design_ruling { the_mint_of_a_fleet_ssh_keypair_is_account_creation }
 import extdeps.github.actions { Step, RunStep, UsesStep, workflow_dispatch_max_inputs }
 import extdeps.filesystem.filesystem_io
 import gunbc.repo.repo_self_build { repo_self_build_command }
@@ -387,15 +387,34 @@ test fn an_unknown_outcome_carries_guidance_that_a_human_can_act_on() -> Bool {
     && string_contains(s: fleet_keypair_unknown_outcome_guidance, pattern: "same commit")
 }
 
-// WHY A HUMAN STEP WAS REMOVED FROM BESIDE THIS KEY, RECORDED AS DATA AND NOT AS NARRATION (DESIGN §16). The
-// operator's words, the date, and the fact that both mints answer to the same ruling are asserted so that a
-// later reader of the mint cannot miss the decision that produced it -- and so that a rewrite that quietly
-// dropped the provenance fails.
-test fn the_mint_of_a_fleet_keypair_is_recorded_as_account_creation_on_the_operator_s_words() -> Bool {
-  fleet_keypair_mint_ruling_words == "i don't see why a human needs to do this - this seems just like normal account creation"
-    && fleet_keypair_mint_ruling_date == "2026-10-28"
-    && string_contains(s: mtcollins1_host_key_mint_ruling, pattern: "normal account creation")
-    && string_contains(s: mtcollins1_host_key_mint_ruling, pattern: "the_mint_of_a_fleet_ssh_keypair_is_account_creation")
+// WHY A HUMAN STEP WAS REMOVED FROM BESIDE THIS KEY, WITNESSED BY CROSS-REFERENCE (DESIGN §3, §16; review
+// 88000). The operator's words and the date live in exactly ONE place -- the gunbc.design_ruling row -- and
+// NOTHING copies them: the old shape kept a second `data` pair beside the mint that could drift from the
+// ruling independently, and a test comparing those copies to literals of themselves proved nothing. So each
+// arm is its own test, named for the fact it holds: (a) the ROW carries the operator's own words, (b) the
+// ROW carries the date, (c) the mint's ruling line reads the date FROM the row, (d) the mint's ruling line
+// cites the row by the name the row itself declares -- a rename or a dropped provenance fails here rather
+// than silently re-pointing the mint at a different decision.
+test fn the_ruling_row_carries_the_operator_s_own_words() -> Bool {
+  string_contains(
+    s: the_mint_of_a_fleet_ssh_keypair_is_account_creation.provenance,
+    pattern: "i don't see why a human needs to do this"
+  )
+}
+
+test fn the_ruling_row_carries_the_date_it_was_decided() -> Bool {
+  string_contains(s: the_mint_of_a_fleet_ssh_keypair_is_account_creation.decided, pattern: "2026-10-28")
+}
+
+test fn the_mint_ruling_line_reads_its_date_from_the_ruling_row() -> Bool {
+  string_contains(s: mtcollins1_host_key_mint_ruling, pattern: the_mint_of_a_fleet_ssh_keypair_is_account_creation.decided)
+}
+
+test fn the_mint_ruling_line_cites_the_ruling_row_by_its_own_declared_name() -> Bool {
+  string_contains(
+    s: mtcollins1_host_key_mint_ruling,
+    pattern: the_mint_of_a_fleet_ssh_keypair_is_account_creation.reference.decl_name as String
+  )
 }
 
 // THE VALIDATORS ARE ONE PAIR, NOT ONE PER KEY (RED, against drift). Both mints admit a public line and a
