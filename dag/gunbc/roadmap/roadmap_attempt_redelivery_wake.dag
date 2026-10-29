@@ -117,6 +117,19 @@ fn attempt_redelivery_wake_unit_name(node_id: String, attempt_key: String, insta
   join([attempt_redelivery_wake_unit_stem(node_id: node_id, attempt_key: attempt_key, instant: instant) as String, ".timer"], "") as NonEmptyStr
 }
 
+// DECLARED FRONTIER (DESIGN §5: a gap is declared, never silent). This builder PROJECTS the armed
+// command's argv; the witnesses prove the wake carries --property=WorkingDirectory=<repo root> at both
+// the builder and the SpawnRouteWake fold, and that a multiline value refuses. What NO in-suite claim
+// executes is the ARMED COMMAND ITSELF -- that the transient service the timer spawns actually starts in
+// that working directory and runs to success. A wet claim for that would have to arm a real
+// systemd-run --user --on-calendar timer and await the fired .service's exit status: there is no
+// synchronous wet harness for systemd-run timers in the suite (no sleep/await primitive, no .timer->.service
+// status read), so an async timer claim is DEFERRED AS FLAKY rather than added and left to red the merge.
+// TRIGGER FOR THE FRONTIER: a synchronous wet harness for systemd-run timers -- when one exists, add the
+// claim that arms attempt_redelivery_wake_command with a near-future on_calendar and ExecStart 'git rev-parse
+// HEAD' (succeeds only if the service really started in the checkout, so it fails without this fix) and
+// awaits its ExecMainStatus == 0. Until it lands, the execution evidence is off-suite (the srv1 placement
+// probe re-run at this head, firing the same oneshot shape with --property=WorkingDirectory).
 // THE WAKE COMMAND THE TIMER ARMS. A user-manager --on-calendar --collect timer for the instant-keyed
 // unit name, at the calendar spelling of the decision's instant (`next_delivery`, admitted at a typed
 // EpochSecs position -- never a brand cast). The route it fires -- the argv and the node/instance
