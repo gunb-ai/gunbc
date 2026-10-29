@@ -38,6 +38,7 @@ import v1.compiler.infer_env {
   lookup_type, lookup_type_by_name, lookup_type_for,
   symbol_index_lookup,
   declaration_ref_of_type_node, declaration_ref_of_declaration_node,
+  settled_type, declaration_node_of_ref,
   substitute_type_slots, substitute_type_slots_scoped
 }
 
@@ -46,10 +47,13 @@ import v1.compiler.infer_resolve {
 }
 
 fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node> {
-  let decl = resolve_generic_use_decl(env: env, n: scrut_node)
+  declaration_slot_bindings(decl: resolve_generic_use_decl(env: env, n: scrut_node), args: scrut_node.children, env: env)
+}
+
+fn declaration_slot_bindings(decl: Node, args: List<Node>, env: TypeEnv) -> Map<String, Node> {
   fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
     let slot = generic_param_name_at(n: pair.second, source_indices: env.source_indices)
-    match scrut_node.children |> skip(pair.first) |> first {
+    match args |> skip(pair.first) |> first {
       Present { value: arg } => map_insert(acc, slot, arg)
       Absent => acc
     }
@@ -126,6 +130,75 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
   }
 }
 
+// A NON-GENERIC SCRUTINEE TYPE EXPANDS TO THE DECLARATION IT SETTLES TO, read from the env's one alias
+// authority (v1.compiler.infer_env settled_type, which chases TypeBinding.alias_rhs in the alias's own
+// scope) and never from a declaration's `inferred` link, which an alias to a record does not carry. So
+// `type Revision = Rev1_0` over `type Rev1_0 {}` expands to the record, whose own name is then a
+// zero-field destructure (lookup_variant_in_type), instead of staying a bare leaf whose variant lookup
+// failed with no diagnostic. A head applied to arguments (`type A = B<C>`) has them bound to its own
+// slots. A record is taken only for a bare leaf: a use site that already carries structure keeps it.
+fn expand_settled_scrut_type(scrut_node: Node, env: TypeEnv) -> Node {
+  let is_bare_leaf = scrut_node.connective == NoConnective && (scrut_node.children |> count) == 0
+  match settled_type(n: scrut_node, source_indices: env.source_indices, env: env, fuel: 16) {
+    Present { value: settled } =>
+      match declaration_node_of_ref(d: settled.head, env: env) {
+        Present { value: target } =>
+          if target.connective == Disj && (target.params |> count) > 0 && (settled.args |> count) > 0 {
+            substitute_type_slots_scoped(
+              n: target,
+              slot_bindings: declaration_slot_bindings(decl: target, args: settled.args, env: env),
+              decl_name: authored_name_at(source_indices: env.source_indices, node: target),
+              source_indices: env.source_indices,
+              bind_type_variables: true
+            )
+          } else if target.connective == Disj {
+            target
+          } else if target.connective == Conj && is_bare_leaf {
+            target
+          } else { scrut_node }
+        Absent => scrut_node
+      }
+    Absent => scrut_node
+  }
+}
+
+// A PARAMETERIZED DECLARATION EXPANDS THROUGH ITS OWN `inferred` LINK, because the alias authority
+// expand_settled_scrut_type reads does not cover it: resolve retains TypeBinding.alias_rhs only for a
+// non-parameterized alias (v1.compiler.infer_env settled_type), and it is the parameterized alias
+// (`type List<element> = FreeMonoid<element>`) that carries the link. The two routes partition aliases
+// by a declared fact, the parameter count, so no alias is read by both. DIVERGENCE, STATED: this is a
+// second carrier of the alias relation; it dissolves when alias_rhs is retained for parameterized
+// aliases and settled_type binds the use-site arguments, at which point this function is deleted.
+fn expand_parameterized_alias_scrut(decl: Node, scrut_node: Node, name: String, env: TypeEnv) -> Node {
+  let def_is_disj = decl.connective == Disj
+  let has_inferred_body = decl.inferred != none && decl.connective == NoConnective
+  if def_is_disj {
+    decl
+  } else if has_inferred_body {
+    match decl.inferred {
+      Present { value: Resolved { node: target } } =>
+        let target_is_disj = target.connective == Disj
+        let target_is_generic_use = target.connective == NoConnective && target.children |> count > 0
+        if target_is_disj {
+          target
+        } else if target_is_generic_use {
+          let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+          let substituted = substitute_type_slots_scoped(
+            n: target,
+            slot_bindings: subst,
+            decl_name: name,
+            source_indices: env.source_indices,
+            bind_type_variables: true
+          )
+          expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
+        } else { scrut_node }
+      _ => scrut_node
+    }
+  } else {
+    scrut_node
+  }
+}
+
 fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
   let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
   let is_generic_use = scrut_node.connective == NoConnective && scrut_node.children |> count > 0
@@ -134,36 +207,14 @@ fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
     Present { value: decl } =>
       if is_generic_use {
         expand_scrut_from_decl(decl: decl, scrut_node: scrut_node, name: name, env: env)
+      } else if (decl.params |> count) > 0 {
+        expand_parameterized_alias_scrut(decl: decl, scrut_node: scrut_node, name: name, env: env)
       } else {
-        let def_is_disj = decl.connective == Disj
-        let has_inferred_body = decl.inferred != none && decl.connective == NoConnective
-        if def_is_disj {
-          decl
-        } else if has_inferred_body {
-          match decl.inferred {
-            Present { value: Resolved { node: target } } =>
-              let target_is_disj = target.connective == Disj
-              let target_is_generic_use = target.connective == NoConnective && target.children |> count > 0
-              if target_is_disj {
-                target
-              } else if target_is_generic_use {
-                let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
-                let substituted = substitute_type_slots_scoped(
-                  n: target,
-                  slot_bindings: subst,
-                  decl_name: name,
-                  source_indices: env.source_indices,
-        bind_type_variables: true
-                )
-                expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
-              } else { scrut_node }
-            _ => scrut_node
-          }
-        } else {
-          scrut_node
-        }
+        expand_settled_scrut_type(scrut_node: scrut_node, env: env)
       }
-    Absent => scrut_node
+    // The type is not visible by its spelling here (a value imported without its type), but the node
+    // still names the declaration it resolved to, and that identity is what it expands to.
+    Absent => expand_settled_scrut_type(scrut_node: scrut_node, env: env)
   }
 }
 
@@ -307,7 +358,7 @@ fn variant_not_found_result(scrut: Node, variant_name: String, site: SourceSpan,
 // is where the bound NODE comes from once admission succeeds -- the scrutinee
 // when it carries that variant, the declaration otherwise, which is the
 // pre-existing answer for a scrutinee that does not.
-fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: SourceSpan, module_name: String, env: TypeEnv, field_binding_count: Int) -> NodeLookupResult {
+fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: SourceSpan, module_name: String, env: TypeEnv) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
@@ -357,8 +408,9 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: Sou
             && (variant_name == "Present" || variant_name == "Absent")
           let direct_match = find_variant_child_keyed(n: scrut_node, variant_name: variant_name, source_indices: source_indices)
 
-          let record_destructure = field_binding_count > 0
-            && scrut_node.connective == Conj
+          // A record matched by its own name destructures it, with any number of field bindings --
+          // zero for a fieldless record (`type Rev1_0 {}` matched as `Rev1_0 => ..`).
+          let record_destructure = scrut_node.connective == Conj
             && qualified_last_segment(name: scrut_name) == variant_name
           let fallback = if record_destructure {
             node_lookup_resolved(node: scrut_node)
@@ -653,7 +705,7 @@ fn is_uninhabited_sum(resolved: Node, env: TypeEnv) -> Bool {
 // of the coproduct declaration.
 fn constructor_fields(type_node: Node, ctor: String, env: TypeEnv, module_name: String) -> List<ConstructorField> {
   let subject = pattern_subject_from_node(n: resolve_scrutinee_type(type_node: type_node, env: env))
-  let lookup = lookup_variant_in_type(scrut: subject, variant_name: ctor, site: type_node.span, module_name: module_name, env: env, field_binding_count: 0)
+  let lookup = lookup_variant_in_type(scrut: subject, variant_name: ctor, site: type_node.span, module_name: module_name, env: env)
   match lookup.status {
     LookupFailed => []
     LookupResolved { node: variant_node } =>

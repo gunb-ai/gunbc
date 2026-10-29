@@ -1,0 +1,102 @@
+module test.claim.scrutinee_declared_type_expansion_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTED EVIDENCE THAT A MATCH SUBJECT'S DECLARED TYPE EXPANDS TO WHAT IT NAMES, on the
+// source -> .dag-acceptance path. Two links, one question (what a scrutinee's declared type expands to):
+//
+// (c0) An annotation that names no type refuses there, and the position is typed CompilerError
+// (v1.compiler.infer_resolve, the UnitVariantPhantomAbsent arm), so later uses of the value read it as
+// blocked by that one refusal. The REDs read a field of the value and call a method on it; against
+// the bare leaf the annotation used to leave, each reported a second, derived error.
+//
+// (c1) A transparent alias to a record or a coproduct expands through the env's alias authority
+// (v1.compiler.infer_patterns expand_settled_scrut_type over v1.compiler.infer_env settled_type), so
+// a match over it looks variants up in the declaration the alias names. Before, an alias to a record
+// stayed a bare leaf and every arm name, right or wrong, passed with no diagnostic. Each RED names an
+// arm the declaration does not have and must refuse; each control names the right arm and must
+// compile clean, so the refusal is the arm name and not the match.
+//
+// PATH SCOPE (DESIGN section 4b): this measures compile acceptance only.
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data unresolved_annotation_method_call_source: String = "module probe_c0_unresolved_method_call\nimport std.types { Int }\nfn f(x: NoSuchDeclaredType) -> Int {\n  x.count()\n}\n"
+
+data unresolved_annotation_field_read_source: String = "module probe_c0_unresolved_field_read\nimport std.types { Int }\nfn f(x: NoSuchDeclaredType) -> Int {\n  x.size\n}\n"
+
+data resolved_annotation_field_and_method_source: String = "module probe_c0_resolved_annotation\nimport std.types { Int, List }\ntype Box { size: Int }\nfn f(x: Box, xs: List<Int>) -> Int {\n  x.size + xs.count()\n}\n"
+
+data record_alias_wrong_arm_source: String = "module probe_c1_record_alias_wrong_arm\nimport std.types { String }\ntype Rev1_0 {}\ntype Revision = Rev1_0\nfn label(r: Revision) -> String {\n  match r {\n    Rev2_0 => \"2.0\"\n  }\n}\n"
+
+data record_alias_right_arm_source: String = "module probe_c1_record_alias_right_arm\nimport std.types { String }\ntype Rev1_0 {}\ntype Revision = Rev1_0\nfn label(r: Revision) -> String {\n  match r {\n    Rev1_0 => \"1.0\"\n  }\n}\n"
+
+data coproduct_alias_wrong_arm_source: String = "module probe_c1_coproduct_alias_wrong_arm\nimport std.types { String }\ntype Light = Red | Green\ntype Signal = Light\nfn label(s: Signal) -> String {\n  match s {\n    Red => \"red\"\n    Blue => \"blue\"\n  }\n}\n"
+
+data coproduct_alias_right_arm_source: String = "module probe_c1_coproduct_alias_right_arm\nimport std.types { String }\ntype Light = Red | Green\ntype Signal = Light\nfn label(s: Signal) -> String {\n  match s {\n    Red => \"red\"\n    Green => \"green\"\n  }\n}\n"
+
+data list_through_parameterized_alias_source: String = "module probe_c1_list_parameterized_alias\nimport std.types { Int, List }\nfn first_or_zero(xs: List<Int>) -> Int {\n  match xs {\n    Empty => 0\n    Cons { head: h, tail: _ } => h\n  }\n}\n"
+
+data list_wrong_arm_source: String = "module probe_c1_list_wrong_arm\nimport std.types { Int, List }\nfn first_or_zero(xs: List<Int>) -> Int {\n  match xs {\n    Empty => 0\n    Snoc { head: h, tail: _ } => h\n  }\n}\n"
+
+test fn c0_a_method_call_on_an_unresolved_annotation_refuses_once() -> Bool {
+  blocking_count(source: unresolved_annotation_method_call_source) == 1
+}
+
+test fn c0_a_field_read_on_an_unresolved_annotation_refuses_once() -> Bool {
+  blocking_count(source: unresolved_annotation_field_read_source) == 1
+}
+
+test fn c0_control_a_field_read_and_a_method_call_on_resolved_annotations_are_accepted() -> Bool {
+  blocking_count(source: resolved_annotation_field_and_method_source) == 0
+}
+
+test fn c1_a_wrong_arm_over_an_alias_to_a_record_is_refused() -> Bool {
+  blocking_count(source: record_alias_wrong_arm_source) >= 1
+}
+
+test fn c1_control_the_records_own_name_over_its_alias_is_accepted() -> Bool {
+  blocking_count(source: record_alias_right_arm_source) == 0
+}
+
+test fn c1_a_wrong_arm_over_an_alias_to_a_coproduct_is_refused() -> Bool {
+  blocking_count(source: coproduct_alias_wrong_arm_source) >= 1
+}
+
+test fn c1_control_the_coproducts_arms_over_its_alias_are_accepted() -> Bool {
+  blocking_count(source: coproduct_alias_right_arm_source) == 0
+}
+
+// The parameterized half of the partition (v1.compiler.infer_patterns expand_parameterized_alias_scrut):
+// `List<element> = FreeMonoid<element>` still expands, so its arms resolve and a wrong one refuses.
+test fn c1_control_a_list_match_through_its_parameterized_alias_is_accepted() -> Bool {
+  blocking_count(source: list_through_parameterized_alias_source) == 0
+}
+
+test fn c1_a_wrong_arm_over_a_list_is_refused() -> Bool {
+  blocking_count(source: list_wrong_arm_source) >= 1
+}
+
+// NOT AUTHORABLE HERE, STATED (DESIGN section 4b): the Absent arm of expand_scrut_from_type_name (a value
+// whose type is not visible by its spelling, reached through the global bare-name fallback by a module
+// with no imports) has no RED in this file. A probe compiled by compile_dag_diagnostic_census cannot
+// reach a corpus value by a bare name, and a multi_module_compile_fixture closure has no corpus roots,
+// while an importing module already resolves the type -- so every attempt refused for a reason
+// unrelated to the arm, at base and head alike. Its evidence is the corpus census, by name: the
+// cascade at test.claim.srv3.srv3_subsumption_witness (`fold` not found) disappears. TRIGGER: a probe
+// harness that compiles a caller-authored module against the corpus roots.

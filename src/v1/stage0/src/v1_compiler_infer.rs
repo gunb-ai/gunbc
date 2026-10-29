@@ -11192,76 +11192,90 @@ pub fn method_existence_decision(
                 recv_rt.clone(),
             ),
         ) != std::option::Option::None);
-        if recv_surface_established.clone() {
+        let recv_already_refused = if (recv_rt.inferred.clone() != std::option::Option::None) {
+            crate::v1_std_core::is_compiler_error(recv_rt.inferred.clone().clone().unwrap())
+        } else {
+            false
+        };
+        if recv_already_refused.clone() {
             Rc::new(MethodPipeFallback {
                 result_ty: error_type(),
-                kernel_diags: Rc::new(vec![crate::v1_std_core::make_error_node(
-                    Rc::new(CompilerDiagnostic::MethodNotFound {
-                        method: method_name.clone(),
-                        receiver_type: recv_shape.clone(),
-                        span: span.clone(),
-                    }),
-                    scope.module_name.clone(),
-                )]),
+                kernel_diags: Rc::new(vec![]),
             })
         } else {
-            {
-                let peeled = peel_where_refinement_base(recv_rt.clone(), scope.type_env.clone());
-                let peeled_lookup = crate::v1_compiler_infer_lookup::lookup_structural_method(
-                    peeled.clone(),
-                    method_name.clone(),
-                    scope.type_env.source_indices.clone(),
-                );
-                match peeled_lookup.resolution.clone() {
-                    Some(mfr) => Rc::new(MethodPipeFallback {
-                        result_ty: mfr.result_type.clone(),
-                        kernel_diags: peeled_lookup.kernel_diagnostics.clone(),
-                    }),
-                    std::option::Option::None => {
-                        let peeled_shape = crate::v1_compiler_infer_types::node_type_shape(
-                            peeled.clone(),
-                            scope.type_env.source_indices.clone(),
-                        );
-                        let peeled_surface_established =
-                            (crate::v1_compiler_infer_types::kernel_profile_lookup(
-                                crate::v1_std_core::authored_name_at(
-                                    scope.type_env.source_indices.clone(),
-                                    peeled.clone(),
-                                ),
-                            ) != std::option::Option::None);
-                        if peeled_surface_established.clone() {
-                            Rc::new(MethodPipeFallback {
-                                result_ty: error_type(),
-                                kernel_diags: Rc::new(vec![crate::v1_std_core::make_error_node(
-                                    Rc::new(CompilerDiagnostic::MethodNotFound {
-                                        method: method_name.clone(),
-                                        receiver_type: peeled_shape.clone(),
-                                        span: span.clone(),
-                                    }),
-                                    scope.module_name.clone(),
-                                )]),
-                            })
-                        } else {
-                            match unresolved_method_frontier_trigger(
-                                scope.module_name.clone(),
-                                method_name.clone(),
-                                recv_shape.clone(),
-                            ) {
-                                Some(trigger) => {
-                                    if (crate::v1_std_core::authored_name_at(
+            if recv_surface_established.clone() {
+                Rc::new(MethodPipeFallback {
+                    result_ty: error_type(),
+                    kernel_diags: Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::MethodNotFound {
+                            method: method_name.clone(),
+                            receiver_type: recv_shape.clone(),
+                            span: span.clone(),
+                        }),
+                        scope.module_name.clone(),
+                    )]),
+                })
+            } else {
+                {
+                    let peeled =
+                        peel_where_refinement_base(recv_rt.clone(), scope.type_env.clone());
+                    let peeled_lookup = crate::v1_compiler_infer_lookup::lookup_structural_method(
+                        peeled.clone(),
+                        method_name.clone(),
+                        scope.type_env.source_indices.clone(),
+                    );
+                    match peeled_lookup.resolution.clone() {
+                        Some(mfr) => Rc::new(MethodPipeFallback {
+                            result_ty: mfr.result_type.clone(),
+                            kernel_diags: peeled_lookup.kernel_diagnostics.clone(),
+                        }),
+                        std::option::Option::None => {
+                            let peeled_shape = crate::v1_compiler_infer_types::node_type_shape(
+                                peeled.clone(),
+                                scope.type_env.source_indices.clone(),
+                            );
+                            let peeled_surface_established =
+                                (crate::v1_compiler_infer_types::kernel_profile_lookup(
+                                    crate::v1_std_core::authored_name_at(
                                         scope.type_env.source_indices.clone(),
-                                        recv_rt.clone(),
-                                    ) == "".to_string())
-                                    {
-                                        Rc::new(MethodPipeFallback {
+                                        peeled.clone(),
+                                    ),
+                                ) != std::option::Option::None);
+                            if peeled_surface_established.clone() {
+                                Rc::new(MethodPipeFallback {
+                                    result_ty: error_type(),
+                                    kernel_diags: Rc::new(vec![
+                                        crate::v1_std_core::make_error_node(
+                                            Rc::new(CompilerDiagnostic::MethodNotFound {
+                                                method: method_name.clone(),
+                                                receiver_type: peeled_shape.clone(),
+                                                span: span.clone(),
+                                            }),
+                                            scope.module_name.clone(),
+                                        ),
+                                    ]),
+                                })
+                            } else {
+                                match unresolved_method_frontier_trigger(
+                                    scope.module_name.clone(),
+                                    method_name.clone(),
+                                    recv_shape.clone(),
+                                ) {
+                                    Some(trigger) => {
+                                        if (crate::v1_std_core::authored_name_at(
+                                            scope.type_env.source_indices.clone(),
+                                            recv_rt.clone(),
+                                        ) == "".to_string())
+                                        {
+                                            Rc::new(MethodPipeFallback {
     result_ty: error_type(),
     kernel_diags: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ReceiverTypeUnestablished {
     method: method_name.clone(),
     span: span.clone(),
 }), scope.module_name.clone())]),
 })
-                                    } else {
-                                        Rc::new(MethodPipeFallback {
+                                        } else {
+                                            Rc::new(MethodPipeFallback {
     result_ty: error_type(),
     kernel_diags: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::MethodExistenceFrontierAdmitted {
     method: method_name.clone(),
@@ -11270,21 +11284,24 @@ pub fn method_existence_decision(
     span: span.clone(),
 }), scope.module_name.clone())]),
 })
+                                        }
                                     }
+                                    std::option::Option::None => Rc::new(MethodPipeFallback {
+                                        result_ty: error_type(),
+                                        kernel_diags: Rc::new(vec![
+                                            crate::v1_std_core::make_error_node(
+                                                Rc::new(
+                                                    CompilerDiagnostic::MethodExistenceUndecided {
+                                                        method: method_name.clone(),
+                                                        receiver_type: recv_shape.clone(),
+                                                        span: span.clone(),
+                                                    },
+                                                ),
+                                                scope.module_name.clone(),
+                                            ),
+                                        ]),
+                                    }),
                                 }
-                                std::option::Option::None => Rc::new(MethodPipeFallback {
-                                    result_ty: error_type(),
-                                    kernel_diags: Rc::new(vec![
-                                        crate::v1_std_core::make_error_node(
-                                            Rc::new(CompilerDiagnostic::MethodExistenceUndecided {
-                                                method: method_name.clone(),
-                                                receiver_type: recv_shape.clone(),
-                                                span: span.clone(),
-                                            }),
-                                            scope.module_name.clone(),
-                                        ),
-                                    ]),
-                                }),
                             }
                         }
                     }
@@ -12426,7 +12443,6 @@ pub fn annotate_pattern_parent_enums(
                     site,
                     scope.module_name.clone(),
                     scope.type_env.clone(),
-                    (bindings.clone().len() as i64),
                 );
                 let variant_subject =
                     crate::v1_compiler_infer_patterns::lookup_result_subject(variant_lookup);
@@ -13000,7 +13016,6 @@ pub fn extend_scope_with_pattern_node(
                     site,
                     scope.module_name.clone(),
                     scope.type_env.clone(),
-                    (bindings.clone().len() as i64),
                 );
                 let variant_subject = crate::v1_compiler_infer_patterns::lookup_result_subject(
                     variant_lookup.clone(),
@@ -20973,9 +20988,19 @@ Rc::new(FieldInferResult {
                         parent_enum: local_variant_parent.clone(),
                     }),
                     typed_field_nodes2,
-                    Some(Rc::new(InferredNode::Resolved {
-                        node: resolved_node.clone(),
-                    })),
+                    if ((type_diags.clone().len() as i64) > 0) {
+                        Some(Rc::new(InferredNode::CompilerError {
+                            message: v1_rt::concat(
+                                "unresolved type '".to_string(),
+                                v1_rt::concat(type_name.clone().unwrap(), "'".to_string()),
+                            ),
+                            span: span.clone(),
+                        }))
+                    } else {
+                        Some(Rc::new(InferredNode::Resolved {
+                            node: resolved_node.clone(),
+                        }))
+                    },
                     span.clone(),
                     name_span.clone(),
                 );

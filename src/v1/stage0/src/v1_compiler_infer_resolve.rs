@@ -25,9 +25,10 @@ pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, declaration_ref_of_declaration_node,
     env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
-    lookup_unit_variant_phantom_type, substitute_type_slots, substitute_type_slots_scoped,
-    symbol_index_lookup, type_ref_measure_binding_authority, width_resolution_declaration,
-    TypeBinding, TypeEnv, TypeRefMeasureBinding, UnitVariantContribution, UnitVariantPhantomLookup,
+    lookup_unit_variant_phantom_type, node_with_inferred, substitute_type_slots,
+    substitute_type_slots_scoped, symbol_index_lookup, type_ref_measure_binding_authority,
+    width_resolution_declaration, TypeBinding, TypeEnv, TypeRefMeasureBinding,
+    UnitVariantContribution, UnitVariantPhantomLookup,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
@@ -2138,7 +2139,10 @@ Rc::new(NodeResolveResult {
     diagnostics: Rc::new(vec![]),
 }),
     UnitVariantPhantomLookup::UnitVariantPhantomAbsent => Rc::new(NodeResolveResult {
-    resolved: n.clone(),
+    resolved: crate::v1_compiler_infer_env::node_with_inferred(n.clone(), Some(Rc::new(InferredNode::CompilerError {
+    message: v1_rt::concat("unresolved type '".to_string(), v1_rt::concat(crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()), "'".to_string())),
+    span: n.span.clone(),
+}))),
     diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(crate::v1_compiler_infer_env::bare_name_miss_diagnostic(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()), n.span.clone()), module_name.clone())]),
 }),
     UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => Rc::new(NodeResolveResult {

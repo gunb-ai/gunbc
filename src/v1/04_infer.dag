@@ -7642,10 +7642,16 @@ type MethodPipeFallback {
   kernel_diags: List<ErrorNode>
 }
 
+// A RECEIVER TYPED CompilerError IS ALREADY REFUSED where its type failed (an unresolved annotation, an
+// undeclared builtin result), so the method on it answers the error type with no second, derived
+// diagnostic -- the terminal rule a field read on the same receiver already obeys.
 fn method_existence_decision(recv_rt: Node, method_name: String, scope: InferScope, span: SourceSpan) -> MethodPipeFallback {
   let recv_shape = node_type_shape(n: recv_rt, source_indices: scope.type_env.source_indices)
   let recv_surface_established = kernel_profile_lookup(name: authored_name_at(source_indices: scope.type_env.source_indices, node: recv_rt)) != none
-  if recv_surface_established {
+  let recv_already_refused = if recv_rt.inferred != none { is_compiler_error(inferred: recv_rt.inferred.value) } else { false }
+  if recv_already_refused {
+    MethodPipeFallback { result_ty: error_type, kernel_diags: [] }
+  } else if recv_surface_established {
     MethodPipeFallback {
       result_ty: error_type,
       kernel_diags: [make_error_node(
@@ -8333,7 +8339,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       let inferred_parent = parent_reading.parent_enum
       let parent_identity = parent_reading.identity
       let annotated_variant_name = variant_name
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, site: site, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, site: site, module_name: scope.module_name, env: scope.type_env)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let annotated_bindings = bindings |> map(binding =>
         let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), module_name: scope.module_name, source_indices: scope.type_env.source_indices)
@@ -8554,7 +8560,7 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
     LitPattern { value: _ } => PatternScopeResult { scope: scope, emissions: infer_emissions_empty() }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, site: site, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, site: site, module_name: scope.module_name, env: scope.type_env)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let variant_diags = variant_lookup.diagnostics
       fold(bindings, init: PatternScopeResult { scope: scope, emissions: infer_emissions_of_diagnostics(diagnostics: variant_diags) }, f: (acc, fb) =>
@@ -13016,7 +13022,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       name: rl_name,
       expr_data: ExprRecordLit { parent_enum: local_variant_parent },
       children: typed_field_nodes2,
-      inferred: Present { value: Resolved { node: resolved_node } },
+      inferred: if (type_diags |> count) > 0 { Present { value: CompilerError { message: concat("unresolved type '", concat(type_name.value, "'")), span: span } } } else { Present { value: Resolved { node: resolved_node } } },
       span: span,
       name_span: name_span
     )

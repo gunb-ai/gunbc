@@ -50,7 +50,7 @@ import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, substitute_type_slots, substitute_type_slots_scoped, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
-  env_with_type_variable_bindings, bare_name_miss_diagnostic,
+  env_with_type_variable_bindings, bare_name_miss_diagnostic, node_with_inferred,
   type_ref_measure_binding_authority, TypeRefMeasureBinding, TypeRefMeasureBound, TypeRefMeasureDisagreesWithProduction, TypeRefMeasureUnbound,
   width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
   UnitVariantContribution
@@ -850,8 +850,13 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
             match lookup_unit_variant_phantom_type(env: env, variant_name: authored_name(env: env, node: n)) {
               UnitVariantPhantomPresent { variant: phantom } => NodeResolveResult { resolved: phantom, diagnostics: [] }
               UnitVariantPhantomAbsent =>
+                // THE REFUSAL IS TERMINAL. The position is typed CompilerError rather than left the bare
+                // leaf it was spelled as, so a match over a value of this type reads its subject as
+                // blocked by this refusal (v1.compiler.infer_patterns pattern_subject_from_node) instead of
+                // looking variants up in a leaf and reporting a second, derived error -- the rule
+                // v1.compiler.infer builtin_result_at_call applies to an undeclared builtin result.
                 NodeResolveResult {
-                  resolved: n,
+                  resolved: node_with_inferred(n: n, inferred: Present { value: CompilerError { message: concat("unresolved type '", concat(authored_name(env: env, node: n), "'")), span: n.span } }),
                   diagnostics: [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: authored_name(env: env, node: n), span: n.span), module_name: module_name)]
                 }
               UnitVariantPhantomEvidenceUnavailable =>
