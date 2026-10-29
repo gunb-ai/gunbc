@@ -201,7 +201,7 @@ type WorkflowRunList {
 // tree already meet: extdeps.google.drive models DrivePermissionRole as a coproduct with a wire fold
 // so "Content manager" cannot be written where the wire needs fileOrganizer, extdeps.google.sheets
 // carries SheetsValueRenderOption the same way, and extdeps.github.pulls already defaults a typed
-// input as `state: PullRequestState = Open`. Two variants and a fold make the bad spelling
+// input as `state: PullRequestListStateFilter = ListStateOpen`. Two variants and a fold make the bad spelling
 // unwritable rather than validated.
 //
 // THE FOLD BELOW IS REQUIRED AND AN EARLIER REVISION OF THIS ANNOTATION DENIED IT. That revision

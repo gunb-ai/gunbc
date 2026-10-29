@@ -2,7 +2,7 @@ module gunbc.machine_intake.chassis_fan_establishment
 
 import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.measure { rpm_count, sdr_undecoded_line_count_value }
+import std.measure { rpm_count }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import extdeps.bmc.ipmi_sdr { SdrTemperaturePublication, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows, SdrTypeLine, SdrEmptyReadingRow, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
@@ -44,7 +44,7 @@ type PostPowerFanRefusal
   | PostPowerChassisUndecodable { cause: NonEmptyStr }
   | PostPowerThermalUnreadable
   | PostPowerThermalNotPublished { publication: SdrTemperaturePublication }
-  | PostPowerThermalRowsUndecoded { undecoded_line_count: Int }
+  | PostPowerThermalRowsUndecoded { texts: List<String> }
   | PostPowerThermalReadingUnrecognised { texts: List<String> }
   | FanReadUnreadable
   | FanRowsUndecoded { texts: List<String> }
@@ -178,9 +178,9 @@ fn first_failure_sensor_refusal(lines: List<SdrTypeLine>, failure_rows: List<Sdr
 fn thermal_refusal(thermal: ThermalObservation) -> PostPowerFanRefusal? {
   match thermal {
     ThermalUnreadable => Present { value: PostPowerThermalUnreadable }
-    ThermalRead { publication: p, undecoded_line_count: u, unrecognised_readings: r } => match p {
-      TemperaturePublished => if (sdr_undecoded_line_count_value(c: u) as Int) > 0 {
-        Present { value: PostPowerThermalRowsUndecoded { undecoded_line_count: sdr_undecoded_line_count_value(c: u) as Int } }
+    ThermalRead { publication: p, undecoded_texts: u, unrecognised_readings: r } => match p {
+      TemperaturePublished => if u.length() > 0 {
+        Present { value: PostPowerThermalRowsUndecoded { texts: u } }
       } else if r.length() > 0 {
         Present { value: PostPowerThermalReadingUnrecognised { texts: r } }
       } else { Absent }

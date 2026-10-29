@@ -2,6 +2,7 @@ module gunbc.runner.runner_jit_mint_binding
 
 import std.types { String, NonEmptyStr }
 import std.decl_ref { decl_ref }
+import std.optional { Absent, Present }
 import extdeps.auth.jws { JwsSigningKeyRef }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, gunbai_ci_declared_installation_id }
 import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_plane }
@@ -9,8 +10,8 @@ import gunbc.fleet.app_control_plane_inspection { gunbai_ci_registration_goal }
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
 import gunbc.fleet.fleet_runner_connectivity { github_organization_ref }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
-import gunbc.runner.jit_registration_subject { JitRegistrationSubjectStanding }
-import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of, JitSlotExit, JitDeregistration, ensure_jit_runner_deregistered, JitDeregistrationSubject, AuthorizedDispatchRegistration }
+import gunbc.runner.jit_registration_subject { JitRegistrationSubjectStanding, JitRegistrationSubjectProven, JitRegistrationSubjectRefused }
+import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of, JitSlotExit, JitDeregistration, ensure_jit_runner_deregistered, JitDeregistrationSubject, AuthorizedDispatchRegistration, StoppingServiceUnitRegistration, stopping_service_registration_of }
 import gunbc.runner.runner_jit_perform { JitMintDispatch, dispatch_jit_mint, JitMintDispatchRefused, JitMintDispatchAuthorized, DispatchRefusedRunnerGroupUnrestricted }
 import gunbc.runner.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved,
@@ -149,6 +150,17 @@ type JitBindingDeregistration
 fn deregister_binding_registration(binding: JitMintBinding, state: GitHubAppControlPlaneState, registration: JitRegistration, exit: JitSlotExit) -> JitBindingDeregistration
   uses net: Network
 {
+  deregister_binding_subject(binding: binding, state: state, subject: AuthorizedDispatchRegistration { registration: registration }, exit: exit)
+}
+
+// ONE TOKEN, ONE AUTHORITY, ONE ENSURE, whatever the subject: the dispatch's own registration or the stopping unit's.
+fn deregister_binding_subject(binding: JitMintBinding, state: GitHubAppControlPlaneState, subject: JitDeregistrationSubject, exit: JitSlotExit) -> JitBindingDeregistration
+  uses net: Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.runner.runner_jit_mint_binding", decl_name: "deregister_binding_registration"),
+    decl_ref(module_path: "gunbc.runner.runner_jit_mint_binding", decl_name: "deregister_binding_stopping_unit"),
+  ]
+{
   match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: binding.signer) {
     ControllerTokenNotMinted { performance: p } => JitBindingDeregistrationTokenRefused { performance: p }
     ControllerTokenMinted { token: t } =>
@@ -157,9 +169,42 @@ fn deregister_binding_registration(binding: JitMintBinding, state: GitHubAppCont
           token: t,
           authority: jit_mint_credential_authority(),
           control_plane: state,
-          subject: AuthorizedDispatchRegistration { registration: registration },
+          subject: subject,
           exit: exit,
         ),
       }
+  }
+}
+
+// THE STOPPING UNIT'S SUBJECT IS THE BINDING'S OWN (gunbc.plans.mtcollins1_ci_service_legs F3): the registration
+// subject the mint would register under this binding, so a stop deletes exactly the name its own slot registers and
+// nothing a caller names. A binding whose subject did not prove has no registration to stop.
+type JitBindingStoppingSubject
+  = BindingStoppingSubject { subject: JitDeregistrationSubject }
+  | BindingStoppingSubjectUnproven { cause: NonEmptyStr }
+
+fn binding_stopping_subject(binding: JitMintBinding) -> JitBindingStoppingSubject {
+  match binding.subject {
+    JitRegistrationSubjectRefused { refusal: _ } => BindingStoppingSubjectUnproven { cause: "the binding's registration subject did not prove" as NonEmptyStr }
+    JitRegistrationSubjectProven { subject: s } =>
+      match stopping_service_registration_of(organization: github_organization_ref(), subject: s, authority: jit_mint_credential_authority()) {
+        Absent => BindingStoppingSubjectUnproven { cause: "the credential authority names no App installation" as NonEmptyStr }
+        Present { value: r } => BindingStoppingSubject { subject: StoppingServiceUnitRegistration { stopping: r } }
+      }
+  }
+}
+
+type JitBindingStopDeregistration
+  = JitBindingStopRan { deregistration: JitBindingDeregistration }
+  | JitBindingStopSubjectUnproven { cause: NonEmptyStr }
+
+// THE DEREGISTRATION A STOP PERFORMS, admitted only to the service slot's stop entry.
+fn deregister_binding_stopping_unit(binding: JitMintBinding, state: GitHubAppControlPlaneState, exit: JitSlotExit) -> JitBindingStopDeregistration
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_stop_with")]
+{
+  match binding_stopping_subject(binding: binding) {
+    BindingStoppingSubjectUnproven { cause: c } => JitBindingStopSubjectUnproven { cause: c }
+    BindingStoppingSubject { subject: sub } => JitBindingStopRan { deregistration: deregister_binding_subject(binding: binding, state: state, subject: sub, exit: exit) }
   }
 }

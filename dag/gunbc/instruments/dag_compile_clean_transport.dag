@@ -1,6 +1,7 @@
 module gunbc.instruments.dag_compile_clean_transport
 
 import extdeps.shell
+import extdeps.rust.cargo { cargo_default_target_dir }
 import extdeps.filesystem.filesystem_io
 import extdeps.git
 import extdeps.git.inspect
@@ -143,7 +144,7 @@ fn dcc_perturb_compile_expecting(module_file: String, source: String, expect_suc
 
 fn dcc_fixture_perturb_compile_staged(root: String, module_file: String, source: String, expect_success: Bool) -> Bool {
   let tmp = shell.Mktemp.DirWithTemplate(
-    template: concat(root, "/target/dcc_perturb_fixture_XXXXXX")
+    template: concat(cargo_default_target_dir(build_root: root), "/dcc_perturb_fixture_XXXXXX")
   )
   if tmp.success {
     dcc_perturb_compile_with_args(

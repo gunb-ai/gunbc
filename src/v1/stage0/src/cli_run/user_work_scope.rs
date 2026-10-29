@@ -75,6 +75,8 @@ pub(crate) enum UserWorkScopeStanding {
     ExternallyBoundedExecutor {
         run_id: String,
     },
+    // DAG: gunbc.compute.unit_bounds OperatorHostWithoutCgroups (user_work_host_facility_standing).
+    OperatorHostWithoutCgroups,
 }
 
 pub fn reexec_into_user_work_slice_if_owed() {
@@ -145,6 +147,9 @@ pub(crate) fn standing_wire(s: &UserWorkScopeStanding) -> String {
         }
         UserWorkScopeStanding::ExternallyBoundedExecutor { run_id } => {
             format!("ExternallyBoundedExecutor:{run_id}")
+        }
+        UserWorkScopeStanding::OperatorHostWithoutCgroups => {
+            "OperatorHostWithoutCgroups:no memory bound on this host".to_string()
         }
     }
 }
@@ -695,6 +700,14 @@ pub(crate) fn user_work_scope_standing() -> UserWorkScopeStanding {
     let cg = cg_read.as_deref().ok();
     let systemd_manager = Path::new(SYSTEMD_MANAGER_DIR).exists();
     let github_actions = std::env::var_os(USER_WORK_SCOPE_CI_ENV).is_some();
+    // SEED MIRROR of `gunbc.compute.unit_bounds user_work_host_facility_standing`.
+    if cfg!(target_os = "macos") {
+        return if !github_actions && std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+            UserWorkScopeStanding::OperatorHostWithoutCgroups
+        } else {
+            UserWorkScopeStanding::CgroupUnreadable
+        };
+    }
     let xdg_runtime_dir = std::env::var_os(USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV).is_some();
     let buildbuddy_run_id = buildbuddy_run_id_from_env();
     let namespaced_root = cg.is_some_and(cgroup_text_is_root) && !systemd_manager;

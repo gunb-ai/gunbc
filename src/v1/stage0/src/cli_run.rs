@@ -18798,7 +18798,10 @@ fn serve_handler_args(
         .collect()
 }
 
-fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String> {
+// The kernel-attested peer uid of a unix-socket connection. Linux answers through SO_PEERCRED; macOS
+// has no SO_PEERCRED and answers the same fact through getpeereid. Any other target refuses.
+#[cfg(target_os = "linux")]
+fn serve_peer_uid(s: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {
     use std::os::unix::io::AsRawFd;
     let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
@@ -18814,15 +18817,39 @@ fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String
     if rc != 0 {
         return Err(std::io::Error::last_os_error());
     }
+    Ok(cred.uid)
+}
+
+#[cfg(target_os = "macos")]
+fn serve_peer_uid(s: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {
+    use std::os::unix::io::AsRawFd;
+    let mut uid: libc::uid_t = 0;
+    let mut gid: libc::gid_t = 0;
+    if unsafe { libc::getpeereid(s.as_raw_fd(), &mut uid, &mut gid) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(uid)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn serve_peer_uid(_s: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "unix-socket peer credentials are not modeled for this target",
+    ))
+}
+
+fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String> {
+    let peer_uid = serve_peer_uid(s)?;
     let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
     let mut buf = vec![0 as libc::c_char; 4096];
     let mut result: *mut libc::passwd = std::ptr::null_mut();
     let rc =
-        unsafe { libc::getpwuid_r(cred.uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
+        unsafe { libc::getpwuid_r(peer_uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
     if rc != 0 || result.is_null() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
-            format!("peer uid {} resolves to no account", cred.uid),
+            format!("peer uid {} resolves to no account", peer_uid),
         ));
     }
     let name = unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) };
@@ -25991,7 +26018,7 @@ fn project_layer_import_syntax_facts(
 
 /// Layer-scoped dependency edges for `v2.std.layer` (`LayerImportFact`) and sibling consumers.
 ///
-/// Transitional producer (namespace terminal step, docs/plans/layering-imports-reference-repoint-design.md §3.1):
+/// Transitional producer consumed by `v2.std.layer_import_scan.layer_import_facts_live`:
 /// import-syntax facts for import-bearing files, plus `reference_edges_as_import_facts(..., strict=true)`
 /// for import-less files in the scan roots. Import-syntax wins on `(path, target_module)` collision.
 pub fn layer_import_facts(
@@ -30888,7 +30915,7 @@ pub fn shell_transport_operation_declaration(
         let fallback_transport = if let Some(t) = item.transport.as_ref() {
             t.clone()
         } else {
-            crate::v1_std_core::local_transport_node(
+            crate::v1_std_core::undeclared_transport_node(
                 Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
                 ),
@@ -31329,7 +31356,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
         let fallback_transport = if let Some(t) = item.transport.as_ref() {
             t.clone()
         } else {
-            crate::v1_std_core::local_transport_node(
+            crate::v1_std_core::undeclared_transport_node(
                 Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
                 ),

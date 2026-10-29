@@ -116,16 +116,17 @@ fn rust_bound_declaration_refs() -> List<DeclarationRef> {
 //
 // WHAT "KERNEL MINT" MEANS HERE, checkably: a reference the compiler creates with no declaration
 // behind it, reaching v1.compiler.coercion lookup_checkpoint with decl_file == "" -- a literal's type
-// (v1.compiler.types: LitStr, LitSymbol -> string_type; LitInt -> int_type; LitBool -> bool_type), a
+// (v1.compiler.infer_types: LitStr -> string_type, LitSymbol -> symbol_type; LitInt -> int_type; LitBool -> bool_type), a
 // synthesized unit, a builtin's signature. Those callers hold a spelling and nothing else, so the bare
 // row is their only authority and it survives for exactly them. A NAME'S DECLARATIONS never ride that
 // arm once threaded: they carry a DeclarationRef and answer from the exact rows above.
 //
 // Symbol is Migrated and DELETED rather than kept for a kernel mint, although a Symbol literal is
-// kernel-minted: v1.compiler.types types `^x` as string_type, and v1.compiler.emit's LitSymbol arm
-// already reads its suffix from the String row when no Symbol row exists (its authored fallback), so
-// the literal mint never needed a Symbol row -- it needed the kernel String row, which is what its
-// type says. Nothing else reached the Symbol row with an empty decl_file: the seed's generated
+// kernel-minted: v1.compiler.infer_types types `^x` as symbol_type, and v1.compiler.emit's LitSymbol arm
+// already reads its suffix from the String row when no Symbol row exists (its authored fallback).
+// The checker types the mint as Symbol; emit still realizes the lexeme through the kernel String
+// row. That is host representation, not a second checker type. Nothing else reached the Symbol row
+// with an empty decl_file: the seed's generated
 // modules carry no v2.std.node Symbol reference (measured at authorship: the only seed files spelling
 // a Symbol type are the hand-retained v2 pilot oracles, which the emitter does not produce).
 fn checkpoint_row_migration_rows() -> List<CheckpointRowMigration> {

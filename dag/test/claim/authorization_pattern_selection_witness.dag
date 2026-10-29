@@ -40,7 +40,7 @@ import std.human_intervention {
 }
 import gunbc.auth.privileged_effect_census {
   manual_api_effect_beside_unlanded_approval_adapter, srv1_root_step_by_hand_beside_the_broker_route,
-  github_environment_gate_is_not_the_approval_route, fleet_host_file_converge_edge_beside_the_broker_route,
+  fleet_host_file_converge_edge_beside_the_broker_route,
 }
 import gunbc.cloudflare.r2_origin { cloudflare_account_allocation_intervention }
 import gunbc.spark.dgx_pxe_boot { spark_pxe_firmware_enablement_intervention }
@@ -586,16 +586,23 @@ fn site_inherits_the_root_mutation_approval_and_diverges_with_reason(decl: Strin
       && match v.conformance { DivergesWithReason { reason: _ } => true _ => false })
 }
 
+fn site_inherits_the_root_mutation_approval_and_conforms(decl: String) -> Bool {
+  any(census_verdicts(), v =>
+    (v.site.decl_name as String) == decl
+      && selected_approved_convergence_grant(s: v.selection)
+      && match v.conformance { Conforms => true _ => false })
+}
+
 // THE INHABITANCE CLAIM: the real roster through the real fold. Operator ruling 2026-10-25
 // (the_initial_convergence_is_the_only_approval): the four srv1 host-root writes inherit the approval of
-// the root-mutation job that entails them, so each selects ApprovedConvergenceGrant, never the edge, and
-// diverges under its stated reason until a site realizes the inherited approval. The per-unit systemctl
-// effect still selects the federated scoped grant.
+// the root-mutation job that entails them, so each selects ApprovedConvergenceGrant, never the edge. The
+// three deploy writes diverge under their stated reason; the microVM controller install realizes the
+// inherited approval and conforms. The per-unit systemctl effect still selects the federated scoped grant.
 test fn the_srv1_host_root_deploy_effects_inherit_the_root_mutation_approval() -> Bool {
   site_inherits_the_root_mutation_approval_and_diverges_with_reason(decl: "deploy_stage_install_command")
     && site_inherits_the_root_mutation_approval_and_diverges_with_reason(decl: "deploy_stage_visudo_check_command")
     && site_inherits_the_root_mutation_approval_and_diverges_with_reason(decl: "deploy_access_apt_get_privileged_command")
-    && site_inherits_the_root_mutation_approval_and_diverges_with_reason(decl: "microvm_controller_staged_write_steps")
+    && site_inherits_the_root_mutation_approval_and_conforms(decl: "microvm_controller_staged_write_steps")
 }
 
 // ── THE INITIAL CONVERGENCE IS THE ONLY APPROVAL (operator ruling 2026-10-25) ─────────────────
@@ -759,8 +766,11 @@ test fn manual_operator_api_effects_select_the_approval_route_for_the_unlanded_a
     && row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_publisher_token_mint_intervention", expected: manual_api_effect_beside_unlanded_approval_adapter, selects_approved: true)
 }
 
-test fn the_srv1_production_protection_row_selects_the_approval_route_for_the_github_gate_reason() -> Bool {
-  row_diverges_for_exactly(key: "gunbc.auth.github_deployment_environment::srv1_production_protection_standing", expected: github_environment_gate_is_not_the_approval_route, selects_approved: true)
+// THE ENVIRONMENT IS ONLY ITS BRANCH RULE NOW (operator, 2026-10-28): the GitHub-gate reason dissolved
+// when the required reviewer was removed after the device approval was witnessed approving and denying.
+// What remains is a repository-admin setting applied by hand, the manual-API reason.
+test fn the_srv1_production_protection_row_selects_the_approval_route_for_the_by_hand_setting_reason() -> Bool {
+  row_diverges_for_exactly(key: "gunbc.auth.github_deployment_environment::srv1_production_protection_standing", expected: manual_api_effect_beside_unlanded_approval_adapter, selects_approved: true)
 }
 
 // OPERATOR RULING 2026-10-22 (one_approval_route_for_every_privileged_action): host-root reach that a
