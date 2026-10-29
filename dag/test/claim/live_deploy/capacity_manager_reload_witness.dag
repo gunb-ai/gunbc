@@ -7,9 +7,9 @@ import std.durable_compare_and_set { cas_generation_first }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverIntent, CapacityCutoverAuthorization, CapacityManagerReload,
   CapacityAfterInhibition, CapacityAfterInstall, CapacityAfterRemoval,
-  capacity_cutover_request, capacity_cutover_claim, capacity_cutover_reload_admission, capacity_cutover_reload_plan_lines }
+  capacity_cutover_claim, capacity_cutover_reload_admission, capacity_cutover_reload_plan_lines }
 import gunbc.live_deploy.capacity_manager_reload { capacity_reload_record_admission, capacity_reload_claim_admission, capacity_reload_claim_key }
-import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent }
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent, approval_fixture_request, approval_fixture_grant }
 import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityInstalling }
 
@@ -22,12 +22,11 @@ fn reload_fixture_intent(rows: List<CapacityManagerReload>) -> CapacityCutoverIn
 }
 
 fn reload_fixture_approval(rows: List<CapacityManagerReload>) -> Result<CapacityCutoverAuthorization, String> {
-  let request = capacity_cutover_request(intent: reload_fixture_intent(rows: rows), escalation_id: "reload-fixture")
-  capacity_cutover_claim(request: request, authorization: AuthorizationGranted { grant: OperatorGrant {
-    escalation_id: request.escalation_id, scopes: request.scopes, subject: request.subject,
-    purpose: request.purpose, attempt: request.attempt, intent_hash: request.intent_hash,
-    granted_by: "fixture-operator", granted_at: "2026-10-29T00:00:00Z", expires_at: "2026-10-29T01:00:00Z"
-  }, claim: Unclaimed }, at: "2026-10-29T00:01:00Z",
+  let intent = reload_fixture_intent(rows: rows)
+  let request = match approval_fixture_request(intent: intent, escalation_id: "reload-fixture") {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  capacity_cutover_claim(intent: intent, request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z",
     claim: (id, attempt, at) => ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() })
 }
 

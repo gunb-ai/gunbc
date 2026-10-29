@@ -2,7 +2,13 @@ module gunbc.live_deploy.capacity_migration_approval
 
 import std.types { String, NonEmptyStr, List, CommitSha, Timestamp, ShellResponse }
 import std.error_primitives { Result, Ok, Err }
-import std.content_hash { content_hash_of_value, Sha256Digest }
+import std.content_hash { Sha256Digest, sha256_hex_of_text, sha256_hex_digest }
+import std.optional { Present, Absent }
+import gunbc.live_deploy.capacity_root_helper { capacity_root_helper_scope }
+import gunbc.fleet.srv1_root_mutation_approval_run {
+  Srv1CutoverRequest, Srv1RootMutationApproval, CapacityCutoverJob, CapacityCutoverRequest,
+  srv1_root_mutation_request_for_kind
+}
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
 import std.scoped_authorization {
   AuthorizationScope, AuthorizedAction, AttemptIdentity, AuthorizationRequest, ScopedAuthorization,
@@ -169,38 +175,68 @@ fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
   ] }) as NonEmptyStr
 }
 
-fn capacity_cutover_request(intent: CapacityCutoverIntent, escalation_id: NonEmptyStr) -> AuthorizationRequest<CapacityCutoverIntent> {
-  AuthorizationRequest {
-    escalation_id: escalation_id, subject: intent, attempt: intent.attempt,
-    scopes: map(intent.operations, operation => capacity_cutover_operation_scope(intent: intent, operation: operation))
-      + map(intent.file_operations, operation => capacity_cutover_file_scope(operation: operation))
-      + map(intent.captures, operation => capacity_capture_scope(intent: intent, operation: operation))
-      + map(intent.generations, operation => capacity_generation_scope(intent: intent, operation: operation))
-      + map(intent.reloads, row => capacity_reload_scope(intent: intent, manager: row.manager)),
-    intent_hash: content_hash_of_value(value: capacity_cutover_intent_text(intent: intent)),
-    purpose: "One capacity-writer cutover: inhibit and probe exactly the named manager/unit operations; contain a successful probe; install only after drain admission" as NonEmptyStr,
-    destructive: true,
+// This canonical operation manifest is the plan input signed by the fleet
+// request. Every internal operation and target content digest is included; source
+// roster/placement remains derived from the pinned helper revision, not input code.
+fn capacity_cutover_plan_digest(intent: CapacityCutoverIntent) -> Result<Sha256Digest, String> {
+  match sha256_hex_digest(hex: sha256_hex_of_text(text: capacity_cutover_intent_text(intent: intent) as String)) {
+    Present { value: digest } => Ok { value: digest }
+    Absent => Err { value: "cutover plan digest is unreadable" }
+  }
+}
+
+fn capacity_cutover_internal_scopes(intent: CapacityCutoverIntent) -> List<AuthorizationScope> {
+  map(intent.operations, operation => capacity_cutover_operation_scope(intent: intent, operation: operation))
+    + map(intent.file_operations, operation => capacity_cutover_file_scope(operation: operation))
+    + map(intent.captures, operation => capacity_capture_scope(intent: intent, operation: operation))
+    + map(intent.generations, operation => capacity_generation_scope(intent: intent, operation: operation))
+    + map(intent.reloads, row => capacity_reload_scope(intent: intent, manager: row.manager))
+}
+
+fn capacity_cutover_request(intent: CapacityCutoverIntent, escalation_id: NonEmptyStr,
+  helper_digest: Sha256Digest) -> Result<Srv1CutoverRequest, String> {
+  if intent.host != "srv1" { return Err { value: "srv1 cutover approval cannot authorize another host" } }
+  match capacity_cutover_plan_digest(intent: intent) {
+    Err { value: why } => Err { value: why }
+    Ok { value: digest } => match srv1_root_mutation_request_for_kind(kind: CapacityCutoverJob {
+      plan_digest: digest, helper_digest: helper_digest, internal_scopes: capacity_cutover_internal_scopes(intent: intent) },
+      escalation_id: escalation_id, execution_revision: intent.revision as NonEmptyStr, selects: []) {
+      Err { value: why } => Err { value: why }
+      Ok { value: CapacityCutoverRequest { cutover: cutover } } => Ok { value: cutover }
+      _ => Err { value: "cutover request did not use the fleet cutover job kind" }
+    }
   }
 }
 
 type CapacityCutoverAuthorization sole_constructor {
   intent: CapacityCutoverIntent
-  grant: OperatorGrant<CapacityCutoverIntent>
+  request: AuthorizationRequest<Srv1RootMutationApproval>
+  grant: OperatorGrant<Srv1RootMutationApproval>
   claim: AuthorizationClaimState
 }
 
 // Broker redemption grants consent; this existing CAS claim consumes execution.
 // A repeated call loses even for the same attempt. No lease expiry grants takeover.
 fn capacity_cutover_claim(
-  request: AuthorizationRequest<CapacityCutoverIntent>, authorization: ScopedAuthorization<CapacityCutoverIntent>, at: Timestamp,
+  intent: CapacityCutoverIntent, request: Srv1CutoverRequest,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
   claim: fn(NonEmptyStr, AttemptIdentity, Timestamp) -> AuthorizationClaimOutcome,
 ) -> Result<CapacityCutoverAuthorization, String> {
-  match authorize(authorization: authorization, request: request, observed_at: at) {
+  let digest = match capacity_cutover_plan_digest(intent: intent) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  if intent.host != "srv1" || request.plan_digest != digest
+    || request.request.subject.execution_revision != (intent.revision as NonEmptyStr)
+    || request.request.scopes != [capacity_root_helper_scope] + capacity_cutover_internal_scopes(intent: intent) {
+    return Err { value: "cutover intent does not match the approved plan, revision and exact internal scopes" }
+  }
+  match authorize(authorization: authorization, request: request.request, observed_at: at) {
     AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
-    AuthorizationPermitted { grant: grant } => match claim(request.escalation_id, request.attempt, at) {
+    AuthorizationPermitted { grant: grant } => match claim(request.request.escalation_id, request.request.attempt, at) {
       ClaimLost { holder: holder } => Err { value: concat("cutover approval already consumed: ", holder as String) }
       ClaimUndecided { reason: reason } => Err { value: reason as String }
-      ClaimHeld { state: state, generation: _ } => Ok { value: CapacityCutoverAuthorization { intent: request.subject, grant: grant, claim: state } }
+      ClaimHeld { state: state, generation: _ } => Ok { value: CapacityCutoverAuthorization {
+        intent: intent, request: request.request, grant: grant, claim: state } }
     }
   }
 }
@@ -208,7 +244,7 @@ fn capacity_cutover_claim(
 fn capacity_cutover_operation_admission(authorization: CapacityCutoverAuthorization, operation: CapacityQuiescenceStep, at: Timestamp) -> Result<CapacityQuiescenceStep, String> {
   if fold(authorization.intent.operations, init: false, f: (found, allowed) => found || allowed == operation) {
     match authorize(authorization: AuthorizationGranted { grant: authorization.grant, claim: authorization.claim },
-      request: capacity_cutover_request(intent: authorization.intent, escalation_id: authorization.grant.escalation_id), observed_at: at) {
+      request: authorization.request, observed_at: at) {
       AuthorizationPermitted { grant: _ } => Ok { value: operation }
       AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
     }
@@ -238,7 +274,7 @@ fn capacity_cutover_file_admission(authorization: CapacityCutoverAuthorization,
   operation: CapacityCutoverFileOperation, at: Timestamp) -> Result<CapacityCutoverFileOperation, String> {
   if fold(authorization.intent.file_operations, init: false, f: (found, allowed) => found || allowed == operation) {
     match authorize(authorization: AuthorizationGranted { grant: authorization.grant, claim: authorization.claim },
-      request: capacity_cutover_request(intent: authorization.intent, escalation_id: authorization.grant.escalation_id), observed_at: at) {
+      request: authorization.request, observed_at: at) {
       AuthorizationPermitted { grant: _ } => Ok { value: operation }
       AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
     }
@@ -263,7 +299,7 @@ fn capacity_cutover_capture_admission(authorization: CapacityCutoverAuthorizatio
   if count(filter(authorization.intent.captures, allowed => allowed == operation)) != 1 {
     Err { value: "capture source/root is absent or repeated in the approved plan" }
   } else { match authorize(authorization: AuthorizationGranted { grant: authorization.grant, claim: authorization.claim },
-    request: capacity_cutover_request(intent: authorization.intent, escalation_id: authorization.grant.escalation_id), observed_at: at) {
+    request: authorization.request, observed_at: at) {
     AuthorizationPermitted { grant: _ } => Ok { value: operation }
     AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
   } }
@@ -280,7 +316,7 @@ fn capacity_cutover_generation_admission(authorization: CapacityCutoverAuthoriza
   if count(filter(authorization.intent.generations, allowed => allowed == operation)) != 1 {
     Err { value: "generation unit/root/digest is absent or repeated in the approved plan" }
   } else { match authorize(authorization: AuthorizationGranted { grant: authorization.grant, claim: authorization.claim },
-    request: capacity_cutover_request(intent: authorization.intent, escalation_id: authorization.grant.escalation_id), observed_at: at) {
+    request: authorization.request, observed_at: at) {
     AuthorizationPermitted { grant: _ } => Ok { value: operation }
     AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
   } }
@@ -299,7 +335,7 @@ fn capacity_cutover_reload_admission(authorization: CapacityCutoverAuthorization
     return Err { value: "reload boundary is absent or repeated in approved plan" }
   }
   match authorize(authorization: AuthorizationGranted { grant: authorization.grant, claim: authorization.claim },
-    request: capacity_cutover_request(intent: authorization.intent, escalation_id: authorization.grant.escalation_id), observed_at: at) {
+    request: authorization.request, observed_at: at) {
     AuthorizationPermitted { grant: _ } => Ok { value: boundary }
     AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
   }
