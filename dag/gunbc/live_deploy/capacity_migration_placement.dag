@@ -1,0 +1,41 @@
+module gunbc.live_deploy.capacity_migration_placement
+
+import std.types { String, NonEmptyStr, List }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.linux.proc_self_cgroup { read_unified_cgroup_membership, CurrentCgroupObserved }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+
+// Both paths are readings from this host, not reconstructed from unit names.
+// A missing parent ControlGroup cannot prove separation and therefore refuses.
+fn capacity_cutover_parent_separation(current: NonEmptyStr, parent: CapacityManagedUnit, path: Result<String, String>) -> Result<NonEmptyStr, String> {
+  match path {
+    Err { value: why } => Err { value: join([parent.unit as String, ": ", why], "") }
+    Ok { value: enclosing } => {
+      if enclosing == "" || !starts_with(s: enclosing, prefix: "/") {
+        Err { value: concat("unreadable drain parent ControlGroup: ", parent.unit as String) }
+      } else if enclosing == "/" || current as String == enclosing || starts_with(s: current as String, prefix: concat(enclosing, "/")) {
+        Err { value: concat("cutover executes inside drain parent: ", parent.unit as String) }
+      } else { Ok { value: current } }
+    }
+  }
+}
+
+// Read-only precondition, before mask, stop, planted START or installation.
+// The caller supplies the complete parent projection; unknown placement refuses
+// before this function is reached. Membership uses the procfs owner's parser.
+fn capacity_cutover_placement(content: Result<String, String>, parents: List<CapacityManagedUnit>, read_parent: fn(CapacityManagedUnit) -> Result<String, String>) -> Result<NonEmptyStr, String> {
+  match content {
+    Err { value: why } => Err { value: why }
+    Ok { value: body } => match read_unified_cgroup_membership(content: body) {
+      CurrentCgroupObserved { relative_path: current } => {
+        if !starts_with(s: current as String, prefix: "/") { return Err { value: "current process cgroup is not an absolute hierarchy path" } }
+        if count(parents) == 0 { return Err { value: "cutover has no declared drain parents" } }
+        fold(parents, init: Ok { value: current }, f: (prior, parent) => match prior {
+          Err { value: why } => Err { value: why }
+          Ok { value: path } => capacity_cutover_parent_separation(current: path, parent: parent, path: read_parent(parent))
+        })
+      }
+      _ => Err { value: "current process unified cgroup membership is missing, ambiguous or malformed" }
+    }
+  }
+}

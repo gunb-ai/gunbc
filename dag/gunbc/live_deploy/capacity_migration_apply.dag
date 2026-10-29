@@ -4,6 +4,7 @@ import std.types { String, List, CommitSha, NonEmptyStr, ShellResponse }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import extdeps.systemd.manager { SystemdManager }
+import gunbc.live_deploy.capacity_migration_placement { capacity_cutover_placement }
 import gunbc.compute.capacity_migration {
   CapacityManagedUnit, CapacityTransientFamily, CapacityFamilyParents, CapacityActivationFamily,
   CapacityMigrationPopulation, CapacityMigrationChild, CapacityMigrationAdmission, CapacityUnitDrain,
@@ -30,6 +31,8 @@ type CapacityMigrationApplyRequest {
 }
 
 type CapacityMigrationApplyPorts {
+  self_cgroup: fn() -> Result<String, String>
+  parent_cgroup: fn(CapacityManagedUnit) -> Result<String, String>
   run: fn(CapacityQuiescenceStep) -> Result<ShellResponse, String>
   descendants: fn(String) -> RecordedCgroupPathStanding
   list_matches: fn(SystemdManager, List<NonEmptyStr>) -> Result<List<CapacityManagedUnit>, String>
@@ -76,6 +79,11 @@ fn capacity_migration_apply(request: CapacityMigrationApplyRequest, ports: Capac
     }
   })
   match bad_placement { Present { value: why } => { return Err { value: why } } Absent => {} }
+  let parents = flat_map(requirements, row => match row.parents { Ok { value: units } => units Err { value: _ } => [] })
+  match capacity_cutover_placement(content: ports.self_cgroup(), parents: parents, read_parent: ports.parent_cgroup) {
+    Err { value: why } => { return Err { value: why } }
+    Ok { value: _ } => {}
+  }
   let required = request.population.installed + flat_map(request.population.transients, family => family.activators)
     + flat_map(requirements, row => match row.parents { Ok { value: parents } => parents Err { value: _ } => [] })
   if any(required, unit => !any(request.bindings, binding => binding.subject == unit)) {

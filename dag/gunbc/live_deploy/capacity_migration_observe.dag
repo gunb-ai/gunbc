@@ -6,12 +6,14 @@ import std.optional { Present, Absent }
 import std.algebra { trim }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.manager { SystemdManager }
-import extdeps.systemd.systemctl { systemctl_managed_list_units_command }
+import extdeps.systemd.systemctl { systemctl_managed_list_units_command, systemctl_show_property_value }
+import extdeps.linux.procfs { ProcSelfCgroup, procfs_path_literal }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.runner.runner_slot_population_census { list_units_field }
 import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityMigrationChild }
 import gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityStanding, ComputeCapacityStandingUnread, compute_capacity_standing_on }
 import gunbc.compute.recorded_cgroup_drain { observe_recorded_cgroup_path }
-import gunbc.live_deploy.capacity_quiescence { capacity_quiescence_step_command }
+import gunbc.live_deploy.capacity_quiescence { capacity_quiescence_step_command, CapacityReadUnit }
 import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyRequest, CapacityMigrationApplyPorts }
 
 // Reuse the existing systemctl row-field reader; globs remain systemd's. An
@@ -49,6 +51,18 @@ fn capacity_migration_read_child(child: CapacityMigrationChild, subjects: List<C
 // local owners. No read initializes a missing store or replaces an unreadable child.
 fn capacity_migration_apply_ports(request: CapacityMigrationApplyRequest, run: fn(ArgvCommand) -> Result<ShellResponse, String>) -> CapacityMigrationApplyPorts {
   CapacityMigrationApplyPorts {
+    self_cgroup: fn() {
+      let reading = Filesystem.Read(path: procfs_path_literal(p: ProcSelfCgroup) as String)
+      if reading.success { Ok { value: reading.content } } else { Err { value: reading.error } }
+    },
+    parent_cgroup: subject => match run(capacity_quiescence_step_command(step: CapacityReadUnit { subject: subject })) {
+      Err { value: why } => Err { value: why }
+      Ok { value: response } => if response.exit_code != 0 { Err { value: response.stderr } }
+        else { match systemctl_show_property_value(text: response.stdout, key: "ControlGroup") {
+          Absent => Err { value: "parent ControlGroup absent from systemctl reading" }
+          Present { value: path } => Ok { value: path }
+        } }
+    },
     run: step => run(capacity_quiescence_step_command(step: step)),
     descendants: path => observe_recorded_cgroup_path(control_group: path),
     list_matches: (manager, patterns) => capacity_migration_read_matches(manager: manager, patterns: patterns, run: run),
