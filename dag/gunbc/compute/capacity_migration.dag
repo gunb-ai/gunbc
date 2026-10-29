@@ -89,7 +89,7 @@ fn capacity_migration_enumerate_family(
           if any(included + excluded, unit => unit.manager != family.manager) {
             Err { value: "family selector reading came from a different manager" }
           } else {
-            Ok { value: filter(included, unit => !any(excluded, other => other == unit)) }
+            Ok { value: filter(included, unit => fold(excluded, init: true, f: (keep, other) => keep && other != unit)) }
           }
         }
       }
@@ -178,7 +178,7 @@ fn capacity_migration_admit(
   if any(drained_families, family => match family.placement {
     CapacityFamilyParents { parents: _ } => false
     CapacityActivationFamily { targets: targets } => count(targets) == 0
-      || any(targets, target => !any(population.installed, unit => unit == target))
+      || fold(targets, init: false, f: (missing, target) => missing || fold(population.installed, init: true, f: (absent, unit) => absent && unit != target))
   }) { return Err { value: "activation family destination is absent from the installed drain" } }
   let requirements = capacity_migration_parent_requirements(population: population)
   let placement_refusal = fold(requirements, init: none, f: (prior, family) => match prior {
