@@ -1,5 +1,16 @@
 module v2.test.claim.namespace_xl0.probe_17_fn_lst_ingest
+
 import v2.compiler.source_root_eval {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeCensusModuleOutcome,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
 import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.artifact { Artifact, SourceFile }
