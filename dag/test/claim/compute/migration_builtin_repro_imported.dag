@@ -1,0 +1,9 @@
+module test.claim.compute.migration_builtin_repro_imported
+
+import std.types { Bool }
+import std.error_primitives { Ok }
+import gunbc.compute.migration_builtin_repro { selected }
+
+test fn repro() -> Bool {
+  selected(read: fn() { Ok { value: ["x"] } }) == Ok { value: [] }
+}
