@@ -87,6 +87,10 @@ fn fabric_storage_head_publication(root: FabricStorageFileRoot) -> CasGeneration
 }
 
 // ONE CREATE-NEW PUBLICATION EITHER WAY; the declared mode only decides the published bits.
+// CasExpectation, stated: this is the ExpectSlotAbsent arm done by the filesystem (O_EXCL create-new) over a
+// CONTENT-ADDRESSED name, so a lost race publishes identical bytes and no generation line exists to advance. It DIVERGES from
+// std.durable_compare_and_set on purpose: an immutable object has no head to compare. Every MUTABLE fact here (the head)
+// advances through fabric_storage_cas_expectation -> file_compare_and_set_windowed, the one CAS authority.
 fn fabric_storage_object_create(root: FabricStorageFileRoot, path: String, content: String) -> FilesystemCreateNew {
   match root.entry_mode {
     Absent => {
