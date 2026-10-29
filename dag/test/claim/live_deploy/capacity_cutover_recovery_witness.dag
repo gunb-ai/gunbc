@@ -22,7 +22,7 @@ fn recovery_fixture_file(name: NonEmptyStr, digest: NonEmptyStr) -> CapacityGene
     Absent => none
     Present { value: hash } => Present { value: CapacityGenerationFile { manager: SystemManager, unit: name,
       destination: concat("/etc/systemd/system/", name as String) as NonEmptyStr,
-      host: "srv1", digest: hash } }
+      host: "srv1", address: "/fixture/provider-part", digest: hash } }
   }
 }
 
@@ -68,6 +68,6 @@ test fn recovery_generation_membership_includes_the_source_host() -> Bool {
   match recovery_fixture_file(name: "fixture.service", digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
     Absent => false
     Present { value: file } => !capacity_generation_same_subjects(left: [file], right: [CapacityGenerationFile {
-      host: "other-host", manager: file.manager, unit: file.unit, destination: file.destination, digest: file.digest }])
+      host: "other-host", manager: file.manager, unit: file.unit, destination: file.destination, address: file.address, digest: file.digest }])
   }
 }

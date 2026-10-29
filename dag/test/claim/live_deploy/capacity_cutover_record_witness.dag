@@ -21,7 +21,7 @@ test fn a_truncated_record_cannot_authorize_recovery() -> Bool {
 }
 
 test fn duplicate_schema_fields_are_refused_by_the_json_owner() -> Bool {
-  match capacity_cutover_record_decode(text: "{\"schema\":\"gunbc.capacity-cutover.v2\",\"schema\":\"other\"}") {
+  match capacity_cutover_record_decode(text: "{\"schema\":\"gunbc.capacity-cutover.v3\",\"schema\":\"other\"}") {
     Err { value: why } => why != "unknown cutover record schema"
     Ok { value: _ } => false
   }

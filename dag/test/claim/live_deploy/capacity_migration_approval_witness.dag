@@ -14,7 +14,8 @@ import gunbc.host.host_operation_exec { SystemctlMaskNow }
 import gunbc.live_deploy.capacity_quiescence { CapacityPlantStart, CapacityContainStart, CapacityInhibitUnit }
 import gunbc.live_deploy.capacity_migration_approval {
   CapacityCutoverIntent, capacity_cutover_request, capacity_cutover_claim,
-  CapacityCutoverFileOperation, CapacityCaptureCreate, CapacityCaptureRemove, capacity_cutover_file_admission, capacity_cutover_file_run_authorized,
+  CapacityCaptureOperation, capacity_cutover_capture_admission, capacity_cutover_capture_plan_lines,
+  CapacityCutoverFileOperation, CapacityInhibitionCreate, CapacityCaptureRemove, capacity_cutover_file_admission, capacity_cutover_file_run_authorized,
   capacity_cutover_operation_admission, capacity_cutover_run_authorized,
 }
 
@@ -22,7 +23,8 @@ fn approval_fixture_intent() -> CapacityCutoverIntent {
   CapacityCutoverIntent {
     host: "srv1", revision: "1111111111111111111111111111111111111111",
     attempt: "cutover-fixture" as NonEmptyStr as AttemptIdentity,
-    file_operations: [CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityCaptureCreate }],
+    captures: [CapacityCaptureOperation { source: "/etc/systemd/system/fixture.service", root: "/var/lib/gunbc/cutover-capture/cutover-fixture" }],
+    file_operations: [CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityInhibitionCreate }],
     operations: [CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" } },
       CapacityInhibitUnit { subject: CapacityManagedUnit { manager: SystemManager, unit: "actions-runner@srv1-02.service" } }],
   }
@@ -135,9 +137,9 @@ test fn captured_file_consent_does_not_cover_another_path_or_removal() -> Bool {
     Err { value: _ } => false
     Ok { value: approval } => {
       let allowed = capacity_cutover_file_admission(authorization: approval,
-        operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityCaptureCreate }, at: "2026-10-29T00:02:00Z")
+        operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityInhibitionCreate }, at: "2026-10-29T00:02:00Z")
       let other = capacity_cutover_file_admission(authorization: approval,
-        operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/other/prior", verb: CapacityCaptureCreate }, at: "2026-10-29T00:02:00Z")
+        operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/other/prior", verb: CapacityInhibitionCreate }, at: "2026-10-29T00:02:00Z")
       let removal = capacity_cutover_file_admission(authorization: approval,
         operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityCaptureRemove }, at: "2026-10-29T00:02:00Z")
       (match allowed { Ok { value: _ } => true Err { value: _ } => false })
@@ -153,10 +155,27 @@ test fn unreadable_clock_refuses_before_a_capture_effect() -> Bool {
     claim: (id, attempt, at) => ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() }) {
     Err { value: _ } => false
     Ok { value: approval } => match capacity_cutover_file_run_authorized(authorization: approval,
-      operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityCaptureCreate },
+      operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityInhibitionCreate },
       now: () => Err { value: "clock unavailable" }, run: operation => Err { value: "effect dispatched" }) {
       Err { value: why } => why == "clock unavailable"
       Ok { value: _ } => false
+    }
+  }
+}
+
+
+test fn capture_consent_names_the_source_and_apply_root_before_reading_bytes() -> Bool {
+  let intent = approval_fixture_intent()
+  let request = capacity_cutover_request(intent: intent, escalation_id: "fixture-approval")
+  match capacity_cutover_claim(request: request, authorization: approval_fixture_grant(), at: "2026-10-29T00:01:00Z",
+    claim: (id, attempt, at) => ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() }) {
+    Err { value: _ } => false
+    Ok { value: approval } => {
+      let good = CapacityCaptureOperation { source: "/etc/systemd/system/fixture.service", root: "/var/lib/gunbc/cutover-capture/cutover-fixture" }
+      (match capacity_cutover_capture_admission(authorization: approval, operation: good, at: "2026-10-29T00:02:00Z") { Ok { value: _ } => true Err { value: _ } => false })
+        && (match capacity_cutover_capture_admission(authorization: approval, operation: CapacityCaptureOperation { source: "/etc/secret", root: good.root }, at: "2026-10-29T00:02:00Z") { Err { value: _ } => true Ok { value: _ } => false })
+        && (match capacity_cutover_capture_admission(authorization: approval, operation: CapacityCaptureOperation { source: good.source, root: "/other" }, at: "2026-10-29T00:02:00Z") { Err { value: _ } => true Ok { value: _ } => false })
+        && capacity_cutover_capture_plan_lines(intent: intent) == ["capture-create source=/etc/systemd/system/fixture.service root=/var/lib/gunbc/cutover-capture/cutover-fixture once-per-apply=cutover-fixture"]
     }
   }
 }

@@ -20,7 +20,7 @@ import gunbc.live_deploy.capacity_quiescence {
 // Filesystem mutations are separate from systemd lifecycle probes. Consent is
 // exact per path and operation, never permission for a whole capture directory.
 // Ownership, create-only publication and inode checks remain provider obligations.
-type CapacityCutoverFileVerb = CapacityCaptureCreate | CapacityCaptureRemove | CapacityInhibitionCreate | CapacityInhibitionRemove
+type CapacityCutoverFileVerb = CapacityCaptureRemove | CapacityInhibitionCreate | CapacityInhibitionRemove
 
 type CapacityCutoverFileOperation {
   path: NonEmptyStr
@@ -29,7 +29,6 @@ type CapacityCutoverFileOperation {
 
 fn capacity_cutover_file_action(operation: CapacityCutoverFileOperation) -> AuthorizedAction {
   (match operation.verb {
-    CapacityCaptureCreate => "capture-create"
     CapacityCaptureRemove => "capture-remove"
     CapacityInhibitionCreate => "inhibit-create"
     CapacityInhibitionRemove => "inhibit-remove"
@@ -42,12 +41,27 @@ fn capacity_cutover_file_scope(operation: CapacityCutoverFileOperation) -> Autho
     action: capacity_cutover_file_action(operation: operation) }
 }
 
+// Capture approves one closed provider operation. The byte digest and result
+// address are learned under this consent, never prerequisites to requesting it.
+type CapacityCaptureOperation {
+  source: NonEmptyStr
+  root: NonEmptyStr
+}
+
+fn capacity_capture_scope(intent: CapacityCutoverIntent, operation: CapacityCaptureOperation) -> AuthorizationScope {
+  AuthorizationScope { verb: Execute,
+    resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc.cutover.capture" },
+      path: [intent.host as String, intent.attempt as String, operation.source as String, operation.root as String] },
+    action: "capture-create" as NonEmptyStr as AuthorizedAction }
+}
+
 type CapacityCutoverIntent {
   host: NonEmptyStr
   revision: CommitSha
   attempt: AttemptIdentity
   operations: List<CapacityQuiescenceStep>
   file_operations: List<CapacityCutoverFileOperation>
+  captures: List<CapacityCaptureOperation>
 }
 
 fn capacity_cutover_operation_action(operation: CapacityQuiescenceStep) -> AuthorizedAction {
@@ -76,7 +90,7 @@ fn capacity_cutover_operation_scope(intent: CapacityCutoverIntent, operation: Ca
 // JSON framing keeps identity inputs injective even when a name contains punctuation.
 // The full operation set is fixed before consent; late-discovered units cannot borrow it.
 fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
-  serialize_json(v: JsonArray { elements: [JsonString { value: "gunbc.capacity-cutover.v2" },
+  serialize_json(v: JsonArray { elements: [JsonString { value: "gunbc.capacity-cutover.v3" },
     JsonString { value: intent.host as String }, JsonString { value: intent.revision as String },
     JsonString { value: intent.attempt as String },
     JsonArray { elements: map(intent.operations, operation => {
@@ -86,6 +100,9 @@ fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
         UserManager { uid: uid } => concat("user:", to_string(uid))
       } }, JsonString { value: subject.unit as String }, JsonString { value: capacity_cutover_operation_action(operation: operation) as String }] }
     }) },
+    JsonArray { elements: map(intent.captures, operation => JsonArray { elements: [
+      JsonString { value: operation.source as String }, JsonString { value: operation.root as String }
+    ] }) },
     JsonArray { elements: map(intent.file_operations, operation => JsonArray { elements: [
       JsonString { value: operation.path as String },
       JsonString { value: capacity_cutover_file_action(operation: operation) as String },
@@ -97,7 +114,8 @@ fn capacity_cutover_request(intent: CapacityCutoverIntent, escalation_id: NonEmp
   AuthorizationRequest {
     escalation_id: escalation_id, subject: intent, attempt: intent.attempt,
     scopes: map(intent.operations, operation => capacity_cutover_operation_scope(intent: intent, operation: operation))
-      + map(intent.file_operations, operation => capacity_cutover_file_scope(operation: operation)),
+      + map(intent.file_operations, operation => capacity_cutover_file_scope(operation: operation))
+      + map(intent.captures, operation => capacity_capture_scope(intent: intent, operation: operation)),
     intent_hash: content_hash_of_value(value: capacity_cutover_intent_text(intent: intent)),
     purpose: "One capacity-writer cutover: inhibit and probe exactly the named manager/unit operations; contain a successful probe; install only after drain admission" as NonEmptyStr,
     destructive: true,
@@ -176,4 +194,21 @@ fn capacity_cutover_file_run_authorized(authorization: CapacityCutoverAuthorizat
       Ok { value: admitted } => run(admitted)
     }
   }
+}
+
+
+fn capacity_cutover_capture_admission(authorization: CapacityCutoverAuthorization,
+  operation: CapacityCaptureOperation, at: Timestamp) -> Result<CapacityCaptureOperation, String> {
+  if count(filter(authorization.intent.captures, allowed => allowed == operation)) != 1 {
+    Err { value: "capture source/root is absent or repeated in the approved plan" }
+  } else { match authorize(authorization: AuthorizationGranted { grant: authorization.grant, claim: authorization.claim },
+    request: capacity_cutover_request(intent: authorization.intent, escalation_id: authorization.grant.escalation_id), observed_at: at) {
+    AuthorizationPermitted { grant: _ } => Ok { value: operation }
+    AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
+  } }
+}
+
+fn capacity_cutover_capture_plan_lines(intent: CapacityCutoverIntent) -> List<String> {
+  map(intent.captures, operation => join(["capture-create source=", operation.source as String,
+    " root=", operation.root as String, " once-per-apply=", intent.attempt as String], ""))
 }

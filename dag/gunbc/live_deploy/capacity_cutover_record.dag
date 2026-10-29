@@ -73,6 +73,7 @@ fn capacity_generation_file_wire(file: CapacityGenerationFile) -> JsonValue {
     json_kv(key: "unit", value: json_string(s: file.unit as String)),
     json_kv(key: "destination", value: json_string(s: file.destination as String)),
     json_kv(key: "host", value: json_string(s: file.host as String)),
+    json_kv(key: "provider_path", value: json_string(s: file.address as String)),
     json_kv(key: "digest", value: json_string(s: file.digest.hex as String)),
   ])
 }
@@ -83,10 +84,11 @@ fn capacity_generation_file_read(obj: JsonValue) -> Result<CapacityGenerationFil
   let unit = match capacity_record_text(obj: obj, key: "unit") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   let destination = match capacity_record_text(obj: obj, key: "destination") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   let host = match capacity_record_text(obj: obj, key: "host") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let address = match capacity_record_text(obj: obj, key: "provider_path") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   let digest = match capacity_record_text(obj: obj, key: "digest") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   match sha256_hex_digest(hex: digest as String) {
     Absent => Err { value: "cutover content digest is not SHA-256" }
-    Present { value: hash } => Ok { value: CapacityGenerationFile { manager: manager, unit: unit, destination: destination, host: host, digest: hash } }
+    Present { value: hash } => Ok { value: CapacityGenerationFile { manager: manager, unit: unit, destination: destination, host: host, address: address, digest: hash } }
   }
 }
 
@@ -139,7 +141,7 @@ fn capacity_cutover_phase_read(obj: JsonValue) -> Result<CapacityCutoverPhase, S
 }
 
 fn capacity_cutover_record_encode(record: CapacityCutoverRecord) -> NonEmptyStr {
-  serialize_json(v: json_object(members: [json_kv(key: "schema", value: json_string(s: "gunbc.capacity-cutover.v2")),
+  serialize_json(v: json_object(members: [json_kv(key: "schema", value: json_string(s: "gunbc.capacity-cutover.v3")),
     json_kv(key: "attempt", value: json_string(s: record.attempt as String)), json_kv(key: "revision", value: json_string(s: record.target_revision as String)),
     json_kv(key: "prior", value: json_array(elements: map(record.prior, file => capacity_generation_file_wire(file: file)))),
     json_kv(key: "target", value: json_array(elements: map(record.target, file => capacity_generation_file_wire(file: file)))),
@@ -156,7 +158,7 @@ fn capacity_cutover_record_decode(text: String) -> Result<CapacityCutoverRecord,
     JsonDocumentParsed { value: value } => value
   }
   let schema = match capacity_record_text(obj: obj, key: "schema") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
-  if (schema as String) != "gunbc.capacity-cutover.v2" { return Err { value: "unknown cutover record schema" } }
+  if (schema as String) != "gunbc.capacity-cutover.v3" { return Err { value: "unknown cutover record schema" } }
   let attempt = match capacity_record_text(obj: obj, key: "attempt") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   let revision = match capacity_record_text(obj: obj, key: "revision") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   match sha1_hex_digest(hex: revision as String) { Absent => { return Err { value: "cutover revision is not a full git commit" } } Present { value: _ } => {} }

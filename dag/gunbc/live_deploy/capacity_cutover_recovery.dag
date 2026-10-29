@@ -5,7 +5,7 @@ import std.error_primitives { Result, Ok, Err }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
-import std.fabric_blob { fabric_blob_reading_digest }
+import std.fabric_blob { fabric_blob_reading_digest, fabric_blob_reading_path }
 import std.materialization_provider { ArtifactRequest, CutoverCaptureRequest }
 import extdeps.systemd.manager { SystemdManager }
 import gunbc.live_deploy.capacity_capture_store { CapturedUnitBlob }
@@ -22,6 +22,7 @@ type CapacityGenerationFile {
   unit: NonEmptyStr
   destination: NonEmptyStr
   host: NonEmptyStr
+  address: NonEmptyStr
   digest: Sha256Digest
 }
 
@@ -142,7 +143,7 @@ fn capacity_generation_install(file: CapacityGenerationFile,
   let request = capacity_generation_request(file: file)
   match read(request) {
     Err { value: why } => Err { value: why }
-    Ok { value: capture } => if capture.request != request || !content_hash_eq_cryptographic(left: file.digest, right: fabric_blob_reading_digest(reading: capture.reading)) {
+    Ok { value: capture } => if fabric_blob_reading_path(reading: capture.reading) != file.address || capture.request != request || !content_hash_eq_cryptographic(left: file.digest, right: fabric_blob_reading_digest(reading: capture.reading)) {
       Err { value: "retained unit blob does not match the recorded capture identity" }
     } else { Ok { value: DeploymentUnitInstall { manager: file.manager, unit: file.unit, destination: file.destination,
       file: CapturedUnitDocument { capture: capture } } } }

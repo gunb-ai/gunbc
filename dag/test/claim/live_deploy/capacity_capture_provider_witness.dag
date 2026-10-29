@@ -3,9 +3,10 @@ module test.claim.live_deploy.capacity_capture_provider_witness
 import std.types { Bool, NonEmptyStr }
 import std.error_primitives { Ok, Err }
 import std.optional { Present, Absent }
-import std.scoped_authorization { AttemptIdentity }
+import std.scoped_authorization { AttemptIdentity, ClaimHeld, ClaimLost, ClaimUndecided, ClaimedBy }
+import std.durable_compare_and_set { cas_generation_first }
 import std.materialization_provider { CutoverCaptureRequest }
-import gunbc.live_deploy.capacity_capture_provider { capacity_capture_journal_admission }
+import gunbc.live_deploy.capacity_capture_provider { capacity_capture_journal_admission, capacity_capture_claim_admission, capacity_capture_claim_key, capacity_capture_record_result }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityCapturingGeneration, CapacityInstalling, capacity_generation_request }
 import test.claim.live_deploy.capacity_capture_store_witness { capture_fixture_store }
 import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
@@ -60,5 +61,38 @@ test fn installation_cannot_recapture_the_already_changed_source() -> Bool {
         Ok { value: _ } => false
       }
     }
+  }
+}
+
+
+test fn the_same_source_cannot_be_captured_twice_after_a_durable_claim() -> Bool {
+  let attempt = "fixture-cutover" as NonEmptyStr as AttemptIdentity
+  (match capacity_capture_claim_admission(outcome: ClaimHeld {
+    state: ClaimedBy { attempt: attempt, claimed_at: "2026-10-29T00:00:00Z" }, generation: cas_generation_first() }) {
+    Ok { value: _ } => true Err { value: _ } => false
+  }) && capacity_capture_claim_admission(outcome: ClaimLost { holder: attempt })
+    == Err { value: "this source has already been claimed for capture in this apply" }
+    && (match capacity_capture_claim_admission(outcome: ClaimUndecided { reason: "claim write outcome unknown" }) {
+      Err { value: why } => why == "claim write outcome unknown" Ok { value: _ } => false
+    })
+}
+
+test fn a_source_claim_is_stable_without_the_capture_digest_or_approval_id() -> Bool {
+  match capture_fixture_store(mode: "700") {
+    Err { value: _ } => false
+    Ok { value: store } => {
+      let key = capacity_capture_claim_key(store: store, host: "srv1", source: "/etc/systemd/system/a.service")
+      key == capacity_capture_claim_key(store: store, host: "srv1", source: "/etc/systemd/system/a.service")
+        && key != capacity_capture_claim_key(store: store, host: "srv1", source: "/etc/systemd/system/b.service")
+    }
+  }
+}
+
+test fn recording_a_second_result_cannot_overwrite_the_first_capture() -> Bool {
+  let record = capture_preparing_record()
+  match first(record.prior) {
+    Absent => false
+    Present { value: file } => capacity_capture_record_result(record: record, file: file)
+      == Err { value: "capture result already recorded for this source" }
   }
 }
