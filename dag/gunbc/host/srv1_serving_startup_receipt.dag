@@ -100,9 +100,10 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   // `docker inspect --format {{.Image}} lil-flash-next` — the digest the RUNNING container resolves
   // to, not the mutable tag. The tag the operator's launcher pulls is
   // karmic-kraken-beta-spark-20261007-d071fb3dde0ba979; the digest is the identity.
-  // 2026-10-29 12:55: the LMCache delete-repaired local build (gunbc.serving.srv1_serving_launch
-  // srv1_serving_image_derivation); 10:58-12:55 srv1 ran the unpatched base af14f1a9 by mistake.
-  image_digest_sha256: "da08aaf9d967bebc0fa053f59b087249cd0fd4719cd6e0ae76e7c1b432c2cd8b" as NonEmptyStr,
+  // 2026-10-29 14:22: the checkpoint lost-retry build over the delete-repaired one (gunbc.serving.
+  // srv1_serving_launch srv1_serving_image_derivation). 12:55-14:22 it ran da08aaf9 (delete repair only);
+  // 10:58-12:55 the unpatched base af14f1a9, by mistake.
+  image_digest_sha256: "236aa2f2dc64266e2239f03aaa0e66d52d57a2a6405ece8dfb92a5ae9547f881" as NonEmptyStr,
   host: "srv1 (100.69.18.126)" as NonEmptyStr,
   // The engine's own version banner in its startup log.
   engine_version: "0.1.dev22105+g5009fa56b" as NonEmptyStr,
@@ -138,7 +139,7 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   // (the engine version is the base's: one Python file differs), checkpoint revision, max_model_len, max_num_seqs, max_num_batched_tokens, gpu_memory_utilization,
   // block_size, kv_cache_dtype and kv_connector were re-read from the new startup log and are unchanged.
   // speculative_acceptance_length was NOT re-read; its own date field says so.
-  wrapper_sha256_hex: "9df0384f3b92d46443bb1a8cf0862d9c911c58341b30074e4b990bd38c71eca8" as NonEmptyStr,
+  wrapper_sha256_hex: "db922b3992cadea7f897a7f1eb9d2f2d67e4d1ab496f5c750d5fddf45fc83d07" as NonEmptyStr,
   observed_on: "2026-10-29" as NonEmptyStr,
   probes: [
     "docker inspect --format {{.Image}} lil-flash-next",
