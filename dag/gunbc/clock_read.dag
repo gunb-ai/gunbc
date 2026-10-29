@@ -82,6 +82,13 @@ fn observer_clock_modeled(millis: EpochMs, realization: NonEmptyStr) -> Observer
     // it names itself in every realization string so a modeled lockout read can never
     // be mistaken for a measured one.
     decl_ref(module_path: "test.fixture.machine_intake.bmc_lockout", decl_name: "lockout_fixture_instant"),
+    // The served-lockout witness's own dry passes: each test below mints the instants its
+    // plan is made at, so a budget refusal is timed like the plan it refuses.
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "threshold_three_refuses_three_failing_logins_and_admits_two"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "an_unread_threshold_refuses_the_failing_logins_a_served_one_admits"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "declared_retries_are_charged_as_logins"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "the_forced_change_path_costs_no_failed_login_on_the_surface_it_is_grounded_for"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "a_served_never_locked_threshold_licenses_what_an_unread_one_refuses"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_prior_life_instant"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "the_root_rotation_is_one_write_and_a_second_published_write_refuses"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "the_root_rotation_applies_reads_back_and_converges"),
