@@ -1905,9 +1905,10 @@ data gpu_container_provision_namespace_scan_pid_limit: Int = 4096
 // extdeps.linux.user_namespaces spells them (user_namespace_map_row_column_count,
 // user_namespace_map_outside_column, user_namespace_map_length_column).
 //
-// The OUTER column is the one this converge asks about, and it is a range in the PARENT namespace of the
-// namespace the row belongs to (extdeps.linux.user_namespaces,
-// the PARENT-relative outside column) -- a row whose outer range reaches into the subordinate
+// The OUTER column is the one this converge asks about, and it is a range in the READER'S user namespace
+// when the reader is in a different namespace from the process, which is the case here: every read is a
+// sudo read from the initial namespace (extdeps.linux.user_namespaces, the reader-relative outside
+// column) -- a row whose outer range reaches into the subordinate
 // range being moved is a namespace reading subordinate ids out of that range RIGHT NOW, and moving the range
 // under it reassigns what its uids mean. Whether a given process's rows mean anything at all is decided
 // BEFORE this row is read, by the namespace identity fold below: a process in the initial user namespace has
@@ -2170,9 +2171,9 @@ fn gpu_container_provision_namespace_batch(
 }
 
 // WHAT THE MAP SAYS ABOUT ONE RANGE SET, for one process. The rows are compared ONLY for a process the
-// namespace evidence puts in a CHILD user namespace, because the outside column is relative to that child's
-// parent and only there can it reach an id of the range being moved (extdeps.linux.user_namespaces,
-// the PARENT-relative outside column). A process in the host's own namespace is certified clear
+// namespace evidence puts in a CHILD user namespace, because read from the initial namespace its outside column
+// is host-relative and only there can it reach an id of the range being moved (extdeps.linux.user_namespaces,
+// the reader-relative outside column). A process in the host's own namespace is certified clear
 // WITHOUT its rows being consulted -- not because its rows look harmless, but because a namespace with no
 // parent maps nothing FROM anywhere.
 //

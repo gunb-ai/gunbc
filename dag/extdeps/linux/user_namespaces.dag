@@ -47,7 +47,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // THE SHAPE OF ONE MAPPING LINE. user_namespaces(7): each of /proc/[pid]/uid_map and /proc/[pid]/gid_map
 // consists of a THREE-COLUMN table, each line specifying the mapping for a contiguous range of ids: the
-// start of the range INSIDE the user namespace of <pid>, the start of the corresponding range IN THE PARENT
+// start of the range INSIDE the user namespace of <pid>, the start of the corresponding range IN THE PARENT OR READER'S
 // USER NAMESPACE, and the LENGTH of the range. The three indices below are that order, and a reader that
 // names them takes the column choice off the caller.
 data user_namespace_map_row_column_count: Int = 3
@@ -58,15 +58,17 @@ data user_namespace_map_outside_column: Int = 1
 
 data user_namespace_map_length_column: Int = 2
 
-// WHICH NAMESPACE THE OUTSIDE COLUMN IS RELATIVE TO. It is the PARENT of the namespace of the process whose
-// file is read -- not the namespace of whoever reads the file, and not the initial namespace. The consequence
-// that srv3 paid for: a process in the INITIAL user namespace has no parent to be relative to, and its row
-// covers the whole id space to itself; the range in that column is therefore nobody's subordinate range, and
-// comparing it against one answers no question. The second consequence, stated so a reader does not assume
-// more than the contract gives: for a namespace nested two levels deep the outside column is relative to its
-// IMMEDIATE parent, so relating that namespace to the host's ids needs the maps of the namespaces between
-// them COMPOSED, which no single read of one /proc/<pid>/uid_map supplies.
-// (user_namespaces(7)): the second column of uid_map and gid_map is a range of ids in the PARENT user namespace, not the reader's and not the initial one.
+// WHICH NAMESPACE THE OUTSIDE COLUMN IS RELATIVE TO (user_namespaces(7), the account of the second and
+// third fields of /proc/[pid]/uid_map): it depends on WHO READS THE FILE.
+//   - If the reader is in the SAME user namespace as <pid>, the outside column is a range in the PARENT of
+//     that namespace.
+//   - If the reader is in a DIFFERENT user namespace, the outside column is a range in the READER'S own
+//     user namespace.
+// This converge reads every map through sudo from the INITIAL user namespace, which is different from any
+// child's, so for a process in a child or grandchild namespace one read already yields ids relative to the
+// host: no composition of intermediate maps is needed. The consequence that srv3 paid for: a process in the
+// INITIAL namespace has no parent, and its row covers the whole id space to itself; that range is nobody's
+// subordinate range, and comparing it against one answers no question.
 
 // THE NAMESPACE ITSELF IS NAMED BY A LINK, NOT BY A ROW (namespaces(7)). /proc/<pid>/ns/user is a symbolic
 // link whose target is `user:[<inode>]`, and that target identifies the namespace: two processes are in the
