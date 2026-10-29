@@ -124,6 +124,10 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
 // until their carrier is typed.
 fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
   admit_callers: [
+    // shadow account creation, fixed-ID typed builders; execution inherits the
+    // microVM controller's operator-approved root convergence, not a new grant.
+    decl_ref(module_path: "extdeps.tools.shadow_accounts", decl_name: "groupadd_fixed_command"),
+    decl_ref(module_path: "extdeps.tools.shadow_accounts", decl_name: "useradd_fixed_command"),
     decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_stats_query_command"),
     decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program"),
     decl_ref(module_path: "gunbc.host.cursor_agent_realization", decl_name: "cursor_agent_pinned_program"),

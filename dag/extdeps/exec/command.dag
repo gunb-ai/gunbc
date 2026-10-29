@@ -79,6 +79,15 @@ type ArgvCommand sole_constructor {
 // the same way production does -- the rule extdeps.shell.exec transport_script_seal already sets.
 fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvCommand
   admit_callers: [
+    // Read-only account observations: passwd/name-group builders cannot answer these
+    // database-group and numeric-membership questions without changing their contracts.
+    decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_group_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_groups_of_command"),
+    // Fixed-ID shadow operations have no existing typed builder. This admits argv
+    // construction, not execution: fleet_revision_accounts executes creation only
+    // under microvm_controller_install_root_scopes and the existing convergence grant.
+    decl_ref(module_path: "extdeps.tools.shadow_accounts", decl_name: "groupadd_fixed_command"),
+    decl_ref(module_path: "extdeps.tools.shadow_accounts", decl_name: "useradd_fixed_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_port_forwarding", decl_name: "ssh_stdio_forward_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_owned_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_mode_command"),

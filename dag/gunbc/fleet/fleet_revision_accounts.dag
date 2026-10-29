@@ -12,6 +12,16 @@ import extdeps.tools.shadow_accounts { groupadd_fixed_command, useradd_fixed_com
 import extdeps.sudo.elevation { sudo_elevate_command }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_revision_principal_home }
 
+// AUTHORIZATION: getent_group_command and id_groups_of_command observe the account
+// database; neither mutates or requires elevation. The shadow fixed-ID builders are
+// distinct operations from existing passwd/name-group reads, and no existing typed
+// account-create builder implements them. Their constructor admission is NOT execution
+// permission. Creation is part of microvm_controller_install_wet's inherited grant,
+// checked against microvm_controller_install_root_scopes (including /etc writes).
+// gunbc.auth.privileged_effect_census classifies that controller effect with
+// srv1_host_root_effect / EntailedByApprovedConvergence: the selector keeps the existing
+// operator-approved root, never a new unattended root entitlement. No host actuation
+// is authorized by the pure plan or its hermetic witnesses.
 // Exact account convergence over the controller's existing elevated transport. Only getent's
 // located key-not-found result permits creation. A conflicting account is never modified;
 // a creation exit is never the evidence of convergence: the database is read back.
