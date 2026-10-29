@@ -33,15 +33,15 @@ test fn a_foreign_runner_is_not_added_to_the_hosts_interruption_scope() -> Bool 
 }
 
 test fn a_fabric_slot_is_not_a_desired_github_listener() -> Bool {
-  match capacity_runner_units_from_roster(host: "srv3", committed: CommittedPopulationDerived { members: [srv3_fabric_first_slot] }, observed: Ok { value: [] }) {
+  match capacity_runner_units_from_roster(host: "srv3", committed: CommittedPopulationDerived { members: [srv3_fabric_first_slot()] }, observed: Ok { value: [] }) {
     Err { value: _ } => false
     Ok { value: units } => units == []
   }
 }
 
 test fn an_observed_legacy_listener_in_a_fabric_slot_is_still_drained() -> Bool {
-  let unit = runner_slot_unit_name(slot: srv3_fabric_first_slot)
-  match capacity_runner_units_from_roster(host: "srv3", committed: CommittedPopulationDerived { members: [srv3_fabric_first_slot] },
+  let unit = runner_slot_unit_name(slot: srv3_fabric_first_slot())
+  match capacity_runner_units_from_roster(host: "srv3", committed: CommittedPopulationDerived { members: [srv3_fabric_first_slot()] },
     observed: Ok { value: [ObservedRunnerUnit { unit: unit, active: true }] }) {
     Err { value: _ } => false
     Ok { value: units } => map(units, row => row.unit) == [unit]
