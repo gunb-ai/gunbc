@@ -1,11 +1,12 @@
 module test.claim.live_deploy.capacity_generation_publish_witness
 
 import std.types { Bool, String, NonEmptyStr }
-import std.scoped_authorization { ClaimLost, ClaimUndecided, AttemptIdentity }
+import std.scoped_authorization { ClaimLost, ClaimUndecided, AttemptIdentity, AuthorizationGranted, OperatorGrant, Unclaimed, ClaimHeld, ClaimedBy }
+import std.durable_compare_and_set { cas_generation_first }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
-import gunbc.live_deploy.capacity_generation_publish { CapacityPlannedGeneration, capacity_generation_plan, capacity_generation_render_admission, capacity_generation_claim_key, capacity_generation_diff_lines, capacity_generation_claim_admission }
-import gunbc.live_deploy.capacity_migration_approval { CapacityGenerationOperation }
+import gunbc.live_deploy.capacity_generation_publish { CapacityPlannedGeneration, capacity_generation_plan, capacity_generation_render_admission, capacity_generation_claim_key, capacity_generation_diff_lines, capacity_generation_claim_admission, capacity_generation_target_admit }
+import gunbc.live_deploy.capacity_migration_approval { CapacityGenerationOperation, CapacityCutoverIntent, CapacityCutoverAuthorization, capacity_cutover_request, capacity_cutover_claim }
 import test.claim.live_deploy.capacity_capture_store_witness { capture_fixture_store }
 import test.claim.live_deploy.capacity_controller_plan_witness { controller_fixture_install }
 import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
@@ -61,6 +62,32 @@ test fn rendered_digest_must_match_the_approved_digest() -> Bool {
         && capacity_generation_render_admission(plan: plan, approved: CapacityGenerationOperation {
           subject: plan.operation.subject, destination: plan.operation.destination, root: plan.operation.root, digest: old.digest
         }) == Err { value: "rendered unit or digest differs from the approved target" }
+    }
+  }
+}
+
+fn generation_fixture_approval(plan: CapacityPlannedGeneration) -> Result<CapacityCutoverAuthorization, String> {
+  let intent = CapacityCutoverIntent { host: "srv1", revision: "1111111111111111111111111111111111111111",
+    attempt: plan.store.attempt, operations: [], file_operations: [], captures: [], generations: [plan.operation] }
+  let request = capacity_cutover_request(intent: intent, escalation_id: "generation-fixture")
+  let authorization = AuthorizationGranted { grant: OperatorGrant {
+    escalation_id: request.escalation_id, scopes: request.scopes, subject: request.subject,
+    purpose: request.purpose, attempt: request.attempt, intent_hash: request.intent_hash,
+    granted_by: "fixture-operator", granted_at: "2026-10-29T00:00:00Z", expires_at: "2026-10-29T01:00:00Z"
+  }, claim: Unclaimed }
+  capacity_cutover_claim(request: request, authorization: authorization, at: "2026-10-29T00:01:00Z",
+    claim: (id, attempt, at) => ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() })
+}
+
+test fn an_unpublished_target_cannot_become_an_installable_generation() -> Bool {
+  match generation_fixture_plan() {
+    Err { value: _ } => false
+    Ok { value: plan } => match generation_fixture_approval(plan: plan) {
+      Err { value: _ } => false
+      Ok { value: approval } => match capacity_generation_target_admit(plan: plan, approval: approval,
+        at: "2026-10-29T00:02:00Z", published: Err { value: "target was not published" }) {
+        Err { value: why } => why == "target was not published" Ok { value: _ } => false
+      }
     }
   }
 }
