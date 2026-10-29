@@ -1555,7 +1555,7 @@ fn run_attempt_with_param5_unreadable(world: MtCollins1BootWorld) -> WitnessEval
 // the way out because this attempt never drove the controller. The stale words name the failure the operator
 // would have to fix -- an unreadable parameter 5 -- rather than 'none found'.
 test fn an_unreadable_parameter_five_read_sets_nothing() -> Bool {
-  match run_attempt_with_param5_unreadable(world: world_with_stale_override(lines: mtcollins1_console_boot_prompt_lines_with_login_prompt())) {
+  match run_attempt_with_param5_unreadable(world: world_with_stale_override(lines: [])) {
     WitnessReturned { value, route } =>
       count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") == 0
         && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") == 1

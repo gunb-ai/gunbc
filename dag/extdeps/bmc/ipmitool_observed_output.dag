@@ -170,14 +170,39 @@ data ipmitool_bootdev_none_reply_standing: BootdevEchoStanding = BootdevEchoDeri
   read_obligation: "a retained stdout of `ipmitool chassis bootdev none` against the Mt. Collins BMC on MegaRAC 0.32, cited by digest and by the run that took it" as NonEmptyStr
 }
 
-// The derived row itself. Kept apart from the captures above by the standing, and by nothing else: same
-// layout, same trailing newline, the device word the command was given.
-data ipmitool_bootdev_none_reply: String = "Set Boot Device to none\n"
+// A LINE OF ipmitool OUTPUT WITH ITS STANDING IN THE SAME VALUE. Bytes and standing may not travel apart:
+// separated, a consumer can quote a guess as a capture, and DESIGN §4d puts the defect on that reader --
+// 'an inference is a bet: typed as a bet, neither deleted nor promoted'. So the row IS { bytes, standing },
+// and the only way to the bytes is through the value that says what they are (bootdev_echo_bytes_of).
+type ObservedBootdevReply {
+  bytes: String
+  standing: BootdevEchoStanding
+}
 
-// THE FIRMWARE THESE ECHO BYTES WERE READ ON. Both shape captures are MegaRAC 0.32 output: the 32-DIMM
-// capture is that build's own bootdev block, and the pxe exercise predates the 2026-10-02 reflash to
-// 0.45.x (extdeps.bmc.ipmitool_observed_output ipmitool_hpm_upgrade_app_row_bmc0_45_3 shows 0.32 as the
-// image being replaced).
+// THE DERIVED ROW ITSELF -- same layout, same trailing newline, the device word the command was given, and
+// the standing naming the two captures its shape came from. It is not a capture and its type says so.
+data ipmitool_bootdev_none_reply: ObservedBootdevReply = ObservedBootdevReply {
+  bytes: "Set Boot Device to none\n",
+  standing: ipmitool_bootdev_none_reply_standing,
+}
+
+// THE BYTES, ASKED OF THEIR CARRIER. The standing must be handed over to get them -- matched, not ignored --
+// so nothing downstream can receive a derived line without the value that labels it. NOTHING may judge a
+// verdict from these bytes: the clear's verdict is the parameter-5 readback the route takes after it, which
+// is grounded by ipmitool_bootparam5_no_override; this line is at most logged.
+fn bootdev_echo_bytes_of(reply: ObservedBootdevReply) -> String {
+  match reply.standing {
+    BootdevEchoTranscribed { capture: _ } => reply.bytes
+    BootdevEchoDerivedFromShape { shape_captures: _, read_obligation: _ } => reply.bytes
+  }
+}
+
+// THE FIRMWARE THESE ECHO BYTES WERE READ ON -- AND THE FIRMWARE THE DRY BMC CLAIMS TO BE, which is the same
+// fact written exactly once (DESIGN §3). Both shape captures are MegaRAC 0.32 output: the 32-DIMM capture is
+// that build's own bootdev block, and the pxe exercise predates the 2026-10-02 reflash to 0.45.x
+// (ipmitool_hpm_upgrade_app_row_bmc0_45_3 below shows 0.32 as the image being replaced). The dry world's
+// firmware release (gunbc.bmc_dry_realization bmc_dry_bmc_firmware_release) REFERENCES this one rather than
+// retyping it, and ipmitool_mc_info_prints_release keeps it honest against the committed `mc info` bytes.
 data bootdev_echo_firmware_release: NonEmptyStr = "0.32"
 
 // DOES THIS MODEL'S BMC PRINT THAT RELEASE -- asked of the committed `mc info` bytes above rather than of
@@ -190,7 +215,7 @@ fn ipmitool_mc_info_prints_release(firmware_release: NonEmptyStr) -> Bool {
 // any other release, which is the whole point of keying it: the caller gets Absent and decides what a
 // missing shape means (gunbc.bmc_dry_realization bmc_bootdev_clear_reply answers BmcReplyFault there,
 // rather than guessing a print for a controller this corpus never read).
-fn ipmitool_bootdev_none_reply_for(firmware_release: NonEmptyStr) -> String? {
+fn ipmitool_bootdev_none_reply_for(firmware_release: NonEmptyStr) -> ObservedBootdevReply? {
   if (firmware_release as String) == (bootdev_echo_firmware_release as String) && ipmitool_mc_info_prints_release(firmware_release: firmware_release) {
     Present { value: ipmitool_bootdev_none_reply }
   } else {

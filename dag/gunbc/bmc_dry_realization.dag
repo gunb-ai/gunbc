@@ -34,7 +34,7 @@ import extdeps.bmc.ipmitool_observed_output {
   ipmitool_fru_print_0_mt_collins,
   ipmitool_mc_info_mt_collins,
   ipmitool_bootparam5_no_override, ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootdev_cdrom_reply,
-  ipmitool_bootdev_none_reply_for,
+  ipmitool_bootdev_none_reply_for, bootdev_echo_bytes_of, bootdev_echo_firmware_release,
   ipmitool_sel_elist_line,
 }
 
@@ -135,7 +135,11 @@ fn bmc_bootdev_clear_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   } else {
     match ipmitool_bootdev_none_reply_for(firmware_release: bmc_dry_bmc_firmware_release) {
       Absent => BmcReplyFault { reason: "no retained bootdev echo shape for this controller's firmware release; the clear's readback would still answer, but its stdout would be invented" as NonEmptyStr }
-      Present { value: reply } => BmcReplied { stdout: reply, world: bmc_with_override(world: world, over: BootOverrideNone) }
+      // The standing travels WITH the bytes: bootdev_echo_bytes_of will not hand them over unless the
+      // caller passes the carrier that says what they are, so a derived echo cannot arrive here looking
+      // like a capture (review 87698, DESIGN §4d). What it is not used for matters as much: no verdict is
+      // judged from this stdout -- the clear's verdict is the parameter-5 readback the route takes next.
+      Present { value: reply } => BmcReplied { stdout: bootdev_echo_bytes_of(reply: reply), world: bmc_with_override(world: world, over: BootOverrideNone) }
     }
   }
 }
@@ -168,12 +172,13 @@ fn bmc_hpm_check_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   BmcReplied { stdout: ipmitool_hpm_check_bmc0_32, world: world }
 }
 
-// THE FIRMWARE THE DRY BMC IS, stated once: it answers `hpm check` and `mc info` with MegaRAC 0.32's
-// committed bytes, so 0.32 is what this world says about itself and this is the only place the model
-// names it as a value. Rows whose bytes were read on that release key on it (extdeps.bmc.ipmitool_observed_output
-// ipmitool_bootdev_none_reply_for), and a witness pins this against the `mc info` bytes it is read from --
-// if the model's own answer ever changes release, that witness reds instead of this number drifting.
-data bmc_dry_bmc_firmware_release: NonEmptyStr = "0.32"
+// THE FIRMWARE THE DRY BMC IS -- ONE FACT, ONE PLACE (DESIGN §3, review 87698). The literal lives with the
+// captures it describes, in extdeps.bmc.ipmitool_observed_output (bootdev_echo_firmware_release): this world
+// answers `hpm check` and `mc info` with that release's committed bytes, and the rows keyed to it
+// (ipmitool_bootdev_none_reply_for) are keyed to the same value, so the model's self-description and the
+// fixture key cannot drift apart. ipmitool_mc_info_prints_release keeps the pair honest against the `mc info`
+// bytes themselves, and a witness reds if the model's own answer ever changes release.
+data bmc_dry_bmc_firmware_release: NonEmptyStr = bootdev_echo_firmware_release
 
 
 // THE BOARD INVENTORY AS THE CONTROLLER PRINTED IT: the one retained capture, of boot run

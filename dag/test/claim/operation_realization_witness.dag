@@ -41,12 +41,13 @@ import gunbc.bmc_model {
 }
 import gunbc.bmc_dry_realization {
   bmc_dry_realization, bmc_ipmi_operation, bmc_chassis_power_control_handler,
-  bmc_lift, bmc_chassis_status_reply, bmc_bootparam_get_reply,
+  bmc_lift, bmc_chassis_status_reply, bmc_bootparam_get_reply, bmc_dry_bmc_firmware_release,
 }
 import extdeps.bmc.ipmi_boot_selection { ipmi_boot_device_none }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_bootdev_none_reply, ipmitool_bootdev_none_reply_for, ipmitool_bootdev_none_reply_standing,
-  BootdevEchoStanding, BootdevEchoDerivedFromShape, BootdevEchoTranscribed, bootdev_echo_firmware_release,
+  bootdev_echo_bytes_of, bootdev_echo_firmware_release, ipmitool_mc_info_prints_release,
+  BootdevEchoStanding, BootdevEchoDerivedFromShape, BootdevEchoTranscribed,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -783,7 +784,7 @@ fn lying_clear_realization(initial: BmcWorld) -> OperationRealization<BmcWorld> 
         at: bmc_ipmi_operation(operation: "ChassisBootDev"),
         handler: fn(world, call) {
           OperationObserved {
-            observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: ipmitool_bootdev_none_reply, stderr: "" } },
+            observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: bootdev_echo_bytes_of(reply: ipmitool_bootdev_none_reply), stderr: "" } },
             state: world,
             elapsed: second(count: 1),
           }
@@ -833,6 +834,14 @@ test fn the_clears_echo_is_a_firmware_keyed_derived_row() -> Bool {
          Absent => true
          Present { value: _ } => false
        }
+  // THE BYTES COME OUT OF THE CARRIER, and the carrier is the only way to them: a consumer that wants the
+  // line has to hold the value that says it is derived (review 87698, DESIGN §4d).
+    && (bootdev_echo_bytes_of(reply: ipmitool_bootdev_none_reply) == "Set Boot Device to none\n")
+  // ONE FACT, ONE PLACE (DESIGN §3, review 87698): the firmware the dry BMC says it is IS the release these
+  // bytes were read on -- one literal in extdeps -- and it is the release the committed `mc info` capture
+  // actually prints, so the key cannot drift from the model's own self-description.
+    && (bmc_dry_bmc_firmware_release == bootdev_echo_firmware_release)
+    && ipmitool_mc_info_prints_release(firmware_release: bmc_dry_bmc_firmware_release)
 }
 
 // THE CLEAR'S DEVICE WORD IS THE ONE THE MODEL CARRIES, and the plain operation carries nothing else: a
