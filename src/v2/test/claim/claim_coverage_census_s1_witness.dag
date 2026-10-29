@@ -54,6 +54,17 @@ import gunbc.claim_coverage_census_live {
   claim_coverage_composed_standing, claim_coverage_composed_exit, claim_coverage_composed_exit_code
 }
 import gunbc.cli_wire { CliWirePrintable }
+// THE THIRD CHANNEL, imported so the composition fixtures can name the neutral arm explicitly. A fixture
+// that omitted it would not compile -- the arity is the point: a new source cannot be quietly left out of
+// an existing precedence claim.
+import v2.workflow.outside_discovery_roots_census_live {
+  OutsideRootsChannel, OutsideChannelHeld, OutsideChannelFinding, OutsideChannelUnread,
+  outside_roots_channel
+}
+import v2.workflow.outside_discovery_roots_census {
+  OutsideRootsOutcome, CensusUnread, CensusObserved, OutsideDiscoveryRoots, outside_roots_cause,
+  IndexUnread, MarkerUnread, ReadProcessAbsent, ReadProcessRefused, ReadNoAnswer
+}
 import std.process { ExitSuccess, ExitFailure }
 import v2.workflow.claim_coverage_census_s1 { s1_exit_code_did_not_hold, s1_exit_code_unread }
 
@@ -875,7 +886,8 @@ test fn a_definite_finding_beside_an_unread_input_exits_one_not_two() -> Bool {
   // right for the wrong reason, this arm is where it shows.
   (match claim_coverage_composed_standing(
     wet: finding_wet_standing,
-    s1: S1Unread { reason: "the acquisition index could not be read" }
+    s1: S1Unread { reason: "the acquisition index could not be read" },
+    outside: OutsideChannelHeld
   ) {
     ComposedFinding { reasons: reasons } => !is_empty(reasons)
     ComposedUnread { cause: _ } => false
@@ -884,7 +896,8 @@ test fn a_definite_finding_beside_an_unread_input_exits_one_not_two() -> Bool {
   && match claim_coverage_composed_exit(
     bytes: "receipt",
     wet: finding_wet_standing,
-    s1: S1Unread { reason: "the acquisition index could not be read" }
+    s1: S1Unread { reason: "the acquisition index could not be read" },
+    outside: OutsideChannelHeld
   ) {
     CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
       (code == 1)
@@ -903,7 +916,8 @@ test fn an_unread_input_with_no_finding_exits_two_and_names_the_cause() -> Bool 
   match claim_coverage_composed_exit(
     bytes: "receipt",
     wet: ClaimCoverageHeld,
-    s1: S1Unread { reason: "the acquisition index could not be read" }
+    s1: S1Unread { reason: "the acquisition index could not be read" },
+    outside: OutsideChannelHeld
   ) {
     CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
       (code == 2)
@@ -919,7 +933,8 @@ test fn an_s1_finding_alone_exits_one() -> Bool {
   match claim_coverage_composed_exit(
     bytes: "receipt",
     wet: ClaimCoverageHeld,
-    s1: S1DidNotHold { reason: "a discovered claim is executed by no required job" }
+    s1: S1DidNotHold { reason: "a discovered claim is executed by no required job" },
+    outside: OutsideChannelHeld
   ) {
     CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
       (code == 1) && string_contains(s: reason, pattern: "executed by no required job")
@@ -933,7 +948,8 @@ test fn two_findings_keep_both_reasons_and_stay_at_one() -> Bool {
   match claim_coverage_composed_exit(
     bytes: "receipt",
     wet: finding_wet_standing,
-    s1: S1DidNotHold { reason: "the discovered universe did not hold" }
+    s1: S1DidNotHold { reason: "the discovered universe did not hold" },
+    outside: OutsideChannelHeld
   ) {
     CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
       (code == 1)
@@ -945,7 +961,7 @@ test fn two_findings_keep_both_reasons_and_stay_at_one() -> Bool {
 
 // THE CLEAN CASE: both standings hold, exit 0, and nothing is reported as a failure.
 test fn two_held_standings_exit_zero() -> Bool {
-  match claim_coverage_composed_exit(bytes: "receipt", wet: ClaimCoverageHeld, s1: S1Held) {
+  match claim_coverage_composed_exit(bytes: "receipt", wet: ClaimCoverageHeld, s1: S1Held, outside: OutsideChannelHeld) {
     CliWirePrintable { bytes: bytes, exit: ExitSuccess } => bytes == "receipt"
     _ => false
   }
@@ -960,4 +976,154 @@ test fn the_exit_code_is_derived_from_the_composed_standing() -> Bool {
     && (claim_coverage_composed_exit_code(standing: ComposedUnread { cause: "b" }) == s1_exit_code_unread)
     && (s1_exit_code_did_not_hold == 1)
     && (s1_exit_code_unread == 2)
+}
+
+// ---------------------------------------------------------------------------
+// THE THIRD CHANNEL (warm-wolf-570's one-instrument ruling): the outside-discovery-roots census reaches the
+// exit only as a row of THIS census. These claims hold the fold over the third sum at the same grain as the
+// wet and S1 channels: a source that found something decides against an unread source; an unread source with
+// nothing found is the exit-2 population; all three held is the exit-0 population. A composition that simply
+// dropped the third argument, or defaulted it, fails the finding claim below -- that is its RED.
+// ---------------------------------------------------------------------------
+
+// A FINDING FROM THE THIRD SOURCE ALONE is exit 1 and names the source: the reason must carry the census's
+// own prefix so a reader is sent to the outside-roots instrument, not told only that "something" failed.
+test fn an_outside_finding_alone_exits_one_and_names_the_source() -> Bool {
+  match claim_coverage_composed_exit(
+    bytes: "receipt",
+    wet: ClaimCoverageHeld,
+    s1: S1Held,
+    outside: OutsideChannelFinding {
+      reasons: ["outside-discovery-roots-census: src/v1/tests/claim/ghost_claim.dag is governed by neither root"]
+    }
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 1)
+        && string_contains(s: reason, pattern: "outside-discovery-roots-census")
+        && string_contains(s: reason, pattern: "ghost_claim")
+    _ => false
+  }
+}
+
+// THE THIRD SOURCE UNREAD WITH NOTHING FOUND is the exit-2 population, and its cause is printed bare: an
+// unread census measured nothing, and a census that measured nothing cannot certify a hold (DESIGN 5: the
+// no-observation exit exists so a silent empty run is never mistaken for a green one).
+test fn an_outside_unread_with_no_finding_exits_two_and_names_the_cause() -> Bool {
+  match claim_coverage_composed_exit(
+    bytes: "receipt",
+    wet: ClaimCoverageHeld,
+    s1: S1Held,
+    outside: OutsideChannelUnread { cause: IndexUnread { failure: ReadProcessRefused { exit_code: 127, stderr: "git missing" } } }
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 2)
+        && string_contains(s: reason, pattern: "git missing")
+        && !(string_contains(s: reason, pattern: "does not change the exit"))
+    _ => false
+  }
+}
+
+// A FINDING OUTRANKS AN UNREAD, ACROSS THE THIRD CHANNEL TOO: the outside census found definite claims while
+// the S1 census could not read its index -- exit 1, with the unread cause travelling as a note so the reader
+// fixes the broken input without being told the whole census is unmeasured.
+test fn an_outside_finding_beside_an_s1_unread_exits_one_not_two() -> Bool {
+  match claim_coverage_composed_exit(
+    bytes: "receipt",
+    wet: ClaimCoverageHeld,
+    s1: S1Unread { reason: "the acquisition index could not be read" },
+    outside: OutsideChannelFinding { reasons: ["outside-discovery-roots-census: a located claim"] }
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 1)
+        && string_contains(s: reason, pattern: "a located claim")
+        && string_contains(s: reason, pattern: "could not be read")
+    _ => false
+  }
+}
+
+// AN UNREAD OUTRANKS A HOLD BUT NOT A FINDING FROM EITHER OF THE OTHER TWO: wet found something while the
+// outside census could not read -- exit 1, outside cause as the note. Together with the two claims above this
+// pins "a finding anywhere beats unread everywhere", over all three channels.
+test fn an_outside_unread_beside_a_wet_finding_exits_one_and_keeps_the_cause() -> Bool {
+  match claim_coverage_composed_exit(
+    bytes: "receipt",
+    wet: finding_wet_standing,
+    s1: S1Held,
+    outside: OutsideChannelUnread { cause: MarkerUnread { failure: ReadProcessAbsent } }
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 1)
+        && string_contains(s: reason, pattern: "gunbc.fixture_claim_does_not_hold")
+        && string_contains(s: reason, pattern: "the marker read was never answered")
+        && string_contains(s: reason, pattern: "does not change the exit")
+    _ => false
+  }
+}
+
+// ALL THREE HOLDING IS THE ONLY EXIT-0 POPULATION: adding the third channel to the two-holds case makes the
+// zero-exit claim specific to "nothing found, everything read". If a mutation held on an unread third channel,
+// the exit-2 claim above catches it; this one catches a mutation that flipped the clean case.
+test fn three_held_channels_exit_zero() -> Bool {
+  match claim_coverage_composed_standing(
+    wet: ClaimCoverageHeld,
+    s1: S1Held,
+    outside: OutsideChannelHeld
+  ) {
+    ComposedHeld => true
+    _ => false
+  }
+}
+
+// THREE REASONS, NONE DROPPED: all three channels finding at once keeps all three reasons -- the reader has
+// to be able to act on every one. A composition that kept only the first finding (the cheap bug) fails here.
+test fn three_findings_keep_all_three_reasons() -> Bool {
+  match claim_coverage_composed_exit(
+    bytes: "receipt",
+    wet: finding_wet_standing,
+    s1: S1DidNotHold { reason: "the discovered universe did not hold" },
+    outside: OutsideChannelFinding { reasons: ["outside-discovery-roots-census: a located claim"] }
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 1)
+        && string_contains(s: reason, pattern: "gunbc.fixture_claim_does_not_hold")
+        && string_contains(s: reason, pattern: "the discovered universe did not hold")
+        && string_contains(s: reason, pattern: "a located claim")
+    _ => false
+  }
+}
+
+// THE FIRST UNREAD CAUSE IS DETERMINISTIC WHEN TWO INPUTS ARE UNREAD: S1's cause leads so the located,
+// established cause stays the one a reader is trained to find. Non-determinism here (a map iteration order)
+// would make the exit-2 line drift between runs.
+test fn two_unread_inputs_report_the_s1_cause_first() -> Bool {
+  match claim_coverage_composed_standing(
+    wet: ClaimCoverageHeld,
+    s1: S1Unread { reason: "the S1 index could not be read" },
+    outside: OutsideChannelUnread { cause: IndexUnread { failure: ReadNoAnswer } }
+  ) {
+    ComposedUnread { cause: cause } => cause == "the S1 index could not be read"
+    _ => false
+  }
+}
+
+// THE CHANNEL IS DERIVED, NEVER CHOSEN: `outside_roots_channel` maps what the fold observed to the sum. A
+// definite finding beside an unread input is still a finding (a read that partially worked still saw
+// something -- suppressing it would let a broken input hide a real finding); with nothing found, an unread
+// fold is the typed no-observation; only a clean read with nothing found holds. Each arm of the if/else-if
+// is exercised, so a mutation that reordered them (unread before findings) is caught by the first conjunct.
+test fn the_channel_is_derived_from_what_was_observed() -> Bool {
+  let finding_arm = match outside_roots_channel(outcome: CensusObserved { rows: [OutsideDiscoveryRoots { path: "src/v2/test/claim/a_claim_outside_the_roots.dag", cause: outside_roots_cause }] }) {
+    OutsideChannelFinding { reasons: reasons } =>
+      !is_empty(reasons) && any(reasons, r => string_contains(s: r, pattern: "outside-discovery-roots-census"))
+    _ => false
+  }
+  let unread_arm = match outside_roots_channel(outcome: CensusUnread { cause: IndexUnread { failure: ReadProcessAbsent } }) {
+    OutsideChannelUnread { cause: IndexUnread { failure: ReadProcessAbsent } } => true
+    _ => false
+  }
+  let held_arm = match outside_roots_channel(outcome: CensusObserved { rows: [] }) {
+    OutsideChannelHeld => true
+    _ => false
+  }
+  finding_arm && unread_arm && held_arm
 }

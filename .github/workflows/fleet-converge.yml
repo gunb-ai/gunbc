@@ -2727,7 +2727,7 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'site_pxe_edge_converge'
-        timeout-minutes: 15
+        timeout-minutes: 45
       - name: Upload site PXE edge converge receipt
         id: site_pxe_edge_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

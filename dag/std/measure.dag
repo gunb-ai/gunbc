@@ -484,12 +484,6 @@ type PowerCordCount = Measure<Count, One, Nat>
 // 2026-09-11.
 type MemoryControllerCount = Measure<Count, One, Nat>
 
-// A count of SDR text lines a decoder could not structure. Same Count axis as its siblings,
-// different thing counted: an undecoded line is parse residue, not a sensor and not a reading, and
-// the distinction is the whole point of counting them -- a truncated read and a machine with no
-// fans are different facts and the count is what separates them.
-type SdrUndecodedLineCount = Measure<Count, One, Nat>
-
 // A count of ROUNDS in an observation series -- how many times a producer sampled, not how long it
 // sampled for (that is Second) and not which sample this is (an index is an ordinal position, not a
 // cardinality, and deliberately does not live on this axis).
@@ -1538,14 +1532,6 @@ fn cpu_core_count(count: Nat) -> CpuCoreCount {
 }
 
 fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
-  measure_count(c)
-}
-
-fn sdr_undecoded_line_count(count: Nat) -> SdrUndecodedLineCount {
-  Measure { count: count }
-}
-
-fn sdr_undecoded_line_count_value(c: SdrUndecodedLineCount) -> Nat {
   measure_count(c)
 }
 

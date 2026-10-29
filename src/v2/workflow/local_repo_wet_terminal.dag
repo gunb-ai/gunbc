@@ -3474,6 +3474,49 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "the_live_index_agrees_with_the_emitted_subject_population_by_real_execution" },
+      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
+      function: "the_live_index_agrees_with_the_emitted_subject_population_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "the_live_reads_produce_an_observed_population_rather_than_a_refusal_by_real_execution" },
+      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
+      function: "the_live_reads_produce_an_observed_population_rather_than_a_refusal_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "the_scan_dir_gap_is_observed_on_the_real_route_by_real_execution" },
+      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
+      function: "the_scan_dir_gap_is_observed_on_the_real_route_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "every_expected_subject_path_is_emitted_by_its_declared_module_by_real_execution" },
+      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
+      function: "every_expected_subject_path_is_emitted_by_its_declared_module_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "every_printed_citation_resolves_against_the_live_index_by_real_execution" },
+      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
+      function: "every_printed_citation_resolves_against_the_live_index_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "a_citation_to_a_symbol_that_does_not_exist_is_refused_by_real_execution" },
+      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
+      function: "a_citation_to_a_symbol_that_does_not_exist_is_refused_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "v2.test.claim.outside_discovery_roots_census_real_execution", function: "every_citation_the_receipt_prints_is_a_citation_the_resolver_checks_by_real_execution" },
+      entry: "src/v2/test/claim/outside_discovery_roots_census_real_execution.dag",
+      function: "every_citation_the_receipt_prints_is_a_citation_the_resolver_checks_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.repository_convergence_wet_witness", function: "a_legacy_derived_roster_file_is_retired_and_read_back_absent" },
       entry: "dag/test/claim/repository_convergence_wet_witness.dag",
       function: "a_legacy_derived_roster_file_is_retired_and_read_back_absent",
@@ -3793,6 +3836,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.claim_batch_exit_two_unobserved_witness", function: "a_held_claim_exits_0_and_prints_pass" },
       entry: "dag/test/claim/claim_batch_exit_two_unobserved_witness.dag",
       function: "a_held_claim_exits_0_and_prints_pass",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_outcomes_out_witness", function: "an_outcomes_out_run_of_a_code_2_claim_writes_the_unobserved_row" },
+      entry: "dag/test/claim/claim_batch_outcomes_out_witness.dag",
+      function: "an_outcomes_out_run_of_a_code_2_claim_writes_the_unobserved_row",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_outcomes_out_witness", function: "an_outcomes_out_run_of_a_held_claim_writes_the_held_row_and_exits_0" },
+      entry: "dag/test/claim/claim_batch_outcomes_out_witness.dag",
+      function: "an_outcomes_out_run_of_a_held_claim_writes_the_held_row_and_exits_0",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
