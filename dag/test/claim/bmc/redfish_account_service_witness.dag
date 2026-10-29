@@ -1,0 +1,257 @@
+module test.claim.bmc.redfish_account_service_witness
+
+// WITNESSES FOR THE REDFISH ACCOUNT SERVICE SHAPES in extdeps.bmc.redfish: the ManagerAccountCollection
+// census, the ManagerAccount resource read, the password PATCH body, and the 403 forced-change body the
+// 03.22.00 factory build serves. These are the shapes the dry BmcWorld (gunbc.bmc_model) and the dry
+// Redfish read/apply (gunbc.machine_intake.bmc_secure) are built against, so a shape that lies here
+// corrupts the O1b rehearsal downstream. Each check names its rung, carries a discriminating RED, and --
+// where the field is grounded -- a positive control on the REAL committed capture body.
+//
+// THE CAPTURES ARE GROUNDING, NOT INPUTS OF CONVENIENCE. srv13's ManagerAccountCollection and its 403
+// body are reproduced here byte-for-byte (whitespace removed) from artifacts/bmc/srv13-first-contact-
+// 2026-10-07/ with SHA256SUMS; the census and the inhabitance checks run against those exact bytes. The
+// ManagerAccount RESOURCE bodies below are the witness's own inputs (no resource body is captured), and
+// the tests say so by what they assert: an absent property is read as absent, never as a value.
+
+import std.types { Bool, String, list_length }
+import std.optional { Present, Absent }
+import std.algebra { list_head }
+import extdeps.bmc.types { AccountRoleAdministrator }
+import extdeps.languages.json.parse {
+  parse_json_document, json_field_string, JsonDocumentParsed, JsonDocumentUnreadable, FieldRead, FieldAbsent, FieldMalformed,
+}
+import extdeps.languages.json.emit { JsonValue, JsonString }
+import extdeps.bmc.redfish {
+  redfish_manager_account_collection_from_json, RedfishAccountCollection, RedfishAccountCollectionUnreadable,
+  redfish_manager_account_from_json, RedfishAccountResource, RedfishAccountResourceUnreadable,
+  redfish_read_role_id, RedfishRoleIdAbsent, RedfishRoleIdServed, RedfishRoleIdUnknown, RedfishRoleIdMalformed,
+  redfish_manager_account_name_from_odata_id, redfish_account_password_patch_body,
+  redfish_password_change_required_body, redfish_password_change_verdict, RedfishPasswordChangeVerdict,
+  RedfishPasswordChangeRequired, RedfishPasswordChangeNotIndicated, RedfishResponseBodyUnreadable,
+}
+
+// srv13's ManagerAccountCollection, byte-for-byte (whitespace removed) from
+// artifacts/bmc/srv13-first-contact-2026-10-07/AccountService_Accounts.json -- the REAL served census.
+data srv13_accounts_collection: String = "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts\",\"@odata.type\":\"#ManagerAccountCollection.ManagerAccountCollection\",\"Description\":\"BMC User Accounts\",\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"}],\"Members@odata.count\":1,\"Name\":\"Accounts Collection\"}"
+
+// srv13's factory-login 403 body, byte-for-byte (whitespace removed) from
+// artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00-factory-login-403.json.
+data srv13_factory_login_403_body: String = "{\"@Message.ExtendedInfo\":[{\"@odata.type\":\"#Message.v1_1_1.Message\",\"Message\":\"The password provided for this account must be changed before access is granted.  PATCH the Password property for this account located at the target URI '/redfish/v1/AccountService/Accounts/root' to complete this process.\",\"MessageArgs\":[\"/redfish/v1/AccountService/Accounts/root\"],\"MessageId\":\"Base.1.16.0.PasswordChangeRequired\",\"MessageSeverity\":\"Critical\",\"Resolution\":\"Change the password for this account using a PATCH to the Password property at the URI provided.\"}]}"
+
+data root_odata_id: String = "/redfish/v1/AccountService/Accounts/root"
+data base_1_16_0_message_id: String = "Base.1.16.0.PasswordChangeRequired"
+
+// ── THE CENSUS ──────────────────────────────────────────────────────────────────────────────────
+
+// POSITIVE CONTROL ON THE REAL CAPTURE: srv13's collection reads as a census of exactly one member, the
+// root account's @odata.id, and its Members@odata.count is read as served (1). This is the reading the
+// dry root-account state is built on; if it did not hold, the forced-first-login rehearsal could not name
+// the one account it forces.
+test fn the_committed_collection_reads_as_one_root_member() -> Bool {
+  match redfish_manager_account_collection_from_json(body: srv13_accounts_collection) {
+    RedfishAccountCollection { member_odata_ids: members, members_odata_count: count } =>
+      let one_member = list_length(items: members) == 1
+      let is_root = match list_head(xs: members) {
+        Present { value: first } => first == root_odata_id
+        Absent => false
+      }
+      let count_is_one = match count {
+        FieldRead { value: n } => n == 1
+        FieldAbsent => false
+        FieldMalformed { cause: _ } => false
+      }
+      one_member && is_root && count_is_one
+    RedfishAccountCollectionUnreadable { cause: _ } => false
+  }
+}
+
+// THE COLLECTION DECIDES THE CENSUS; an unreadable one is not an empty one. Each input below would, if
+// silently accepted as "no members," authorize planning against a controller whose accounts nobody saw.
+// The RED is that none of them may read as an (empty) RedfishAccountCollection.
+test fn an_unreadable_collection_never_reads_as_an_empty_census() -> Bool {
+  let garbage = match redfish_manager_account_collection_from_json(body: "<html>login</html>") {
+    RedfishAccountCollectionUnreadable { cause: _ } => true
+    RedfishAccountCollection { member_odata_ids: _, members_odata_count: _ } => false
+  }
+  let no_members = match redfish_manager_account_collection_from_json(body: "{\"Name\":\"Accounts\"}") {
+    RedfishAccountCollectionUnreadable { cause: _ } => true
+    RedfishAccountCollection { member_odata_ids: _, members_odata_count: _ } => false
+  }
+  let null_members = match redfish_manager_account_collection_from_json(body: "{\"Members\":null}") {
+    RedfishAccountCollectionUnreadable { cause: _ } => true
+    RedfishAccountCollection { member_odata_ids: _, members_odata_count: _ } => false
+  }
+  let members_not_array = match redfish_manager_account_collection_from_json(body: "{\"Members\":\"root\"}") {
+    RedfishAccountCollectionUnreadable { cause: _ } => true
+    RedfishAccountCollection { member_odata_ids: _, members_odata_count: _ } => false
+  }
+  let member_without_id = match redfish_manager_account_collection_from_json(body: "{\"Members\":[{\"Name\":\"root\"}]}") {
+    RedfishAccountCollectionUnreadable { cause: _ } => true
+    RedfishAccountCollection { member_odata_ids: _, members_odata_count: _ } => false
+  }
+  garbage && no_members && null_members && members_not_array && member_without_id
+}
+
+// THE ACCOUNT NAME A MEMBER PUBLISHES is the segment after the final `/` of its @odata.id. The capture's
+// member (".../Accounts/root") yields "root" -- the grounding for a ManagerAccount UserName where no
+// resource body was captured. The RED: an id ending in a slash names nothing, so it yields nothing.
+test fn the_member_name_is_the_odata_id_tail_and_an_empty_tail_names_nobody() -> Bool {
+  let root_is_root = match redfish_manager_account_name_from_odata_id(id: root_odata_id) {
+    Present { value: name } => name == "root"
+    Absent => false
+  }
+  let trailing_slash = match redfish_manager_account_name_from_odata_id(id: "/redfish/v1/AccountService/Accounts/") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  root_is_root && trailing_slash
+}
+
+// ── THE MANAGER ACCOUNT RESOURCE ──────────────────────────────────────────────────────────────
+
+// A resource body that carries the fields is read field-by-field, and the RoleId wire word resolves to
+// the published role through the single role authority (extdeps.bmc.types).
+test fn a_served_resource_reads_its_fields_and_its_role() -> Bool {
+  match redfish_manager_account_from_json(body: "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"Administrator\",\"Locked\":false}") {
+    RedfishAccountResource { account } =>
+      let name_is_root = match account.user_name {
+        FieldRead { value: n } => n == "root"
+        _ => false
+      }
+      let enabled_true = match account.enabled {
+        FieldRead { value: b } => b
+        _ => false
+      }
+      let not_locked = match account.locked {
+        FieldRead { value: b } => !b
+        _ => false
+      }
+      let role_is_admin = match account.role_id {
+        RedfishRoleIdServed { role } => match role {
+          AccountRoleAdministrator => true
+          _ => false
+        }
+        _ => false
+      }
+      let id_is_root = match account.odata_id {
+        FieldRead { value: i } => i == root_odata_id
+        _ => false
+      }
+      name_is_root && enabled_true && not_locked && role_is_admin && id_is_root
+    RedfishAccountResourceUnreadable { cause: _ } => false
+  }
+}
+
+// NO FABRICATED DEFAULTS (DESIGN §5). A resource that carries only its @odata.id must read Enabled,
+// Locked, and RoleId as ABSENT -- not false, not ReadOnly. The RED is that none of them may be a value.
+test fn an_unserved_resource_field_stays_absent_and_is_never_a_default() -> Bool {
+  match redfish_manager_account_from_json(body: "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"}") {
+    RedfishAccountResource { account } =>
+      let enabled_absent = match account.enabled {
+        FieldAbsent => true
+        _ => false
+      }
+      let locked_absent = match account.locked {
+        FieldAbsent => true
+        _ => false
+      }
+      let role_absent = match account.role_id {
+        RedfishRoleIdAbsent => true
+        _ => false
+      }
+      enabled_absent && locked_absent && role_absent
+    RedfishAccountResourceUnreadable { cause: _ } => false
+  }
+}
+
+// A RoleId outside the three published words is REPORTED as unknown, not filed under the nearest role.
+// The RED distinguishes it from both an absent RoleId and a malformed one, so a device serving an OEM
+// role cannot be mistaken for one serving none.
+test fn an_outside_schema_role_is_reported_not_rounded_to_the_nearest() -> Bool {
+  let unknown = match redfish_manager_account_from_json(body: "{\"RoleId\":\"Superuser\"}") {
+    RedfishAccountResource { account } => match account.role_id {
+      RedfishRoleIdUnknown { word } => word == "Superuser"
+      _ => false
+    }
+    RedfishAccountResourceUnreadable { cause: _ } => false
+  }
+  let malformed_is_distinct = match redfish_read_role_id(doc: parse_json_body("{\"RoleId\":true}")) {
+    RedfishRoleIdMalformed { cause: _ } => true
+    _ => false
+  }
+  unknown && malformed_is_distinct
+}
+
+// A document that is not JSON is Unreadable, not an all-absent account.
+test fn a_non_json_resource_is_unreadable_not_an_empty_account() -> Bool {
+  match redfish_manager_account_from_json(body: "401 Unauthorized") {
+    RedfishAccountResourceUnreadable { cause: _ } => true
+    RedfishAccountResource { account: _ } => false
+  }
+}
+
+// ── THE PASSWORD PATCH AND THE FORCED-CHANGE BODY ─────────────────────────────────────────────
+
+// The password PATCH body carries exactly the Password member -- the single member the build admits while
+// the forced change stands. It is re-parsed to prove the value is present and nothing else leaked in.
+test fn the_password_patch_body_carries_only_the_password() -> Bool {
+  let body = redfish_account_password_patch_body(password: "correct horse battery staple")
+  match parse_json_document(s: body) {
+    JsonDocumentParsed { value } =>
+      let password_written = match json_field_string(obj: value, key: "Password") {
+        FieldRead { value: p } => p == "correct horse battery staple"
+        _ => false
+      }
+      let no_username = match json_field_string(obj: value, key: "UserName") {
+        FieldAbsent => true
+        _ => false
+      }
+      password_written && no_username
+    JsonDocumentUnreadable { gap: _ } => false
+  }
+}
+
+// INHABITANCE. The 403 body the world emits (redfish_password_change_required_body, the builder the dry
+// BmcWorld will answer a forced-change request with) parses through redfish_password_change_verdict to the
+// SAME verdict the committed srv13 capture parses to -- both a change required under the build's message
+// id. The world's body is not a stand-in that merely "looks like" the device: the reader that decides the
+// rehearsal reaches the identical verdict on both.
+test fn the_world_forced_change_body_inhabits_the_verdict_the_capture_inhabits() -> Bool {
+  let from_capture = redfish_password_change_verdict(body: srv13_factory_login_403_body)
+  let from_world = redfish_password_change_verdict(body: redfish_password_change_required_body(account_odata_id: root_odata_id, message_id: base_1_16_0_message_id))
+  let capture_says_required = match from_capture {
+    RedfishPasswordChangeRequired { message_id } => message_id == base_1_16_0_message_id
+    _ => false
+  }
+  let world_says_required = match from_world {
+    RedfishPasswordChangeRequired { message_id } => message_id == base_1_16_0_message_id
+    _ => false
+  }
+  // The two verdicts must be the SAME verdict, not merely both true-shaped: a body that failed to reach
+  // the reader (unreadable) must never be counted as agreeing with the capture.
+  capture_says_required && world_says_required && same_verdict(left: from_capture, right: from_world)
+}
+
+fn same_verdict(left: RedfishPasswordChangeVerdict, right: RedfishPasswordChangeVerdict) -> Bool {
+  match left {
+    RedfishPasswordChangeRequired { message_id: l } => match right {
+      RedfishPasswordChangeRequired { message_id: r } => l == r
+      _ => false
+    }
+    RedfishPasswordChangeNotIndicated => match right {
+      RedfishPasswordChangeNotIndicated => true
+      _ => false
+    }
+    RedfishResponseBodyUnreadable { cause: _ } => match right {
+      RedfishResponseBodyUnreadable { cause: _ } => true
+      _ => false
+    }
+  }
+}
+
+fn parse_json_body(s: String) -> JsonValue {
+  match parse_json_document(s: s) {
+    JsonDocumentParsed { value } => value
+    JsonDocumentUnreadable { gap: _ } => JsonString { value: "" }
+  }
+}

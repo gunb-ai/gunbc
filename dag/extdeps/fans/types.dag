@@ -345,11 +345,19 @@ type RadialBlowerEnvelope {
   mounting_hole_diameter: Micrometer
 }
 
-// THE OUTLET IS A SEPARATE ROW BECAUSE ITS STANDING IS SEPARATE: a drawing can print the housing in
-// text while its outlet dimensions stay unattributed to any feature. The printed figures are kept as
-// they appear, with no feature assigned, until a reading attributes them.
-type RadialBlowerOutletCandidates {
-  printed_figures: List<Micrometer>
+// THE OUTLET IS A SEPARATE ROW BECAUSE ITS STANDING IS SEPARATE: a sheet can print the housing in its
+// text while the outlet is dimensioned only on the drawing. The outlet lies on ONE housing edge -- the
+// length edge (housing_length long) or the depth edge (housing_depth long) -- and runs from the corner
+// that edge shares with the other edge. Its opening is measured along that edge and across the
+// thickness; the frame around it along the edge is the outer extent a socket has to take.
+type RadialBlowerHousingEdge = BlowerLengthEdge | BlowerDepthEdge
+
+type RadialBlowerOutlet {
+  edge: RadialBlowerHousingEdge
+  opening_along_edge: Micrometer
+  opening_across_thickness: Micrometer
+  frame_along_edge: Micrometer
+  frame_along_edge_tolerance: Micrometer
 }
 
 // THE PUBLISHED RATING, each figure on its std.measure carrier. Flow and pressure are carried at the

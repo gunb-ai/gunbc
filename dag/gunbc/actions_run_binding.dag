@@ -2,10 +2,12 @@ module gunbc.actions_run_binding
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim }
+import std.optional { Present }
 import extdeps.shell
 import extdeps.github.actions_environment {
   github_sha_variable_name,
   github_run_id_variable_name,
+  github_run_attempt_variable_name,
   github_repository_variable_name,
   github_workflow_ref_variable_name,
 }
@@ -67,6 +69,21 @@ fn actions_variable_trimmed(name: NonEmptyStr) -> String {
     ActionsVariablePresent { value: v } => v
     ActionsVariableAbsent { variable: _, detail: _ } => ""
   }
+}
+
+// ONE LABEL PER RUN AND RUN ATTEMPT, for a fleet-converge mode that owns per-run names or paths (the qualification
+// attempt's branch and SSH context, the lost-boot sweep dry run's SSH context). The prefix names the mode and a re-run
+// is a different label; it is a single ref and path segment. An unset coordinate is no label, never a default.
+fn actions_run_attempt_label(prefix: String, run_id: String, run_attempt: String) -> NonEmptyStr? {
+  if trim(s: run_id) == "" || trim(s: run_attempt) == "" { none } else { Present { value: join([prefix, "-", trim(s: run_id), "-", trim(s: run_attempt)], "") as NonEmptyStr } }
+}
+
+fn actions_run_attempt_label_of_run(prefix: String) -> NonEmptyStr? {
+  actions_run_attempt_label(
+    prefix: prefix,
+    run_id: actions_variable_trimmed(name: github_run_id_variable_name as NonEmptyStr),
+    run_attempt: actions_variable_trimmed(name: github_run_attempt_variable_name as NonEmptyStr),
+  )
 }
 
 fn observe_actions_run_binding() -> ActionsRunBindingObservation {

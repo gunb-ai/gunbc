@@ -13,11 +13,21 @@ import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedF
 // effect either (DESIGN §4d, §5; 2026-10-24).
 //
 // On 2026-10-24 the operator ruled: this unit's OS goes on BY HAND this time -- the install is an
-// effect performed at the physical console, OUTSIDE any modeled route. No modeled route produced it:
-// the x86 autoinstall seed does not exist (gunbc.provisioning.ubuntu_autoinstall_seed admits
-// Aarch64 targets only), the install-to-disk actuator is srv3/MegaRAC-scoped
-// (gunbc.srv3.srv3_os_install_actuate), and there is no x86 network-boot admission at the srv4 PXE
-// edge (gunbc.network_boot_delivery admits Aarch64 clients only). Recording the finished install as
+// effect performed at the physical console, OUTSIDE any modeled route. AS RECORDED THAT DAY, no
+// modeled route produced it: the x86 autoinstall seed did not exist (the module then named
+// gunbc.provisioning.altra_autoinstall_seed admitted Aarch64 targets only), the install-to-disk
+// actuator was srv3/MegaRAC-scoped (gunbc.srv3.srv3_os_install_actuate), and there was no x86
+// network-boot admission at the srv4 PXE edge (gunbc.network_boot_delivery admitted Aarch64 clients
+// only). THOSE THREE CLAUSES ARE A DATED SNAPSHOT OF 2026-10-24, not the state today, and they are
+// deliberately in the past tense: the modules they name have since moved, so reading them as present
+// tense would state a fact the named module contradicts. gunbc.provisioning.ubuntu_autoinstall_seed
+// (that module, renamed in the 2b-seed generalization) admits X86_64 as rows, and phase 2a put
+// X86_64 in gunbc.network_boot_delivery's uefi_pxe_admitted_architectures. Whether a route exists
+// NOW is answered in exactly one place -- the frontier rows of
+// gunbc.machine_intake.h11ssl_x86_bringup_frontier -- and this receipt does not answer it; a receipt
+// of a past event must not become a second, drifting authority for present capability (§3 meaning
+// fork, §4d). What HAS not changed, and is the point of this module: the install that happened was
+// performed at the console by a person, and no route realized it. Recording the finished install as
 // an OsInstalled standing or a host_identity_assimilation converged state would claim an effect no
 // route realized, which §4d forbids. What is TRUE is narrower and is what this module holds: THE
 // OPERATOR DECLARED THE INSTALL, and relayed the facts below; each relayed figure is carried by the

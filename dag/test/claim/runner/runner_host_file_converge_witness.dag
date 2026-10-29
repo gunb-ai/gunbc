@@ -62,7 +62,7 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
-import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, NoValidation, remote_file_mode_octal }
+import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, DestinationUnchangedUntilRename, NoValidation, remote_file_mode_octal }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
 import gunbc.runner.runner_slot_cap_converge { SlotCapUnitStanding, SlotCapsAtDesired }
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
@@ -70,6 +70,7 @@ import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
 import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent }
 import gunbc.runner.runner_host_file_converge {
+  HostHasNoDeploySlot,
   CapPhaseObserved,
   runner_host_cap_phase_not_owed,
   FleetHostFileDesired,
@@ -150,6 +151,8 @@ import gunbc.runner.runner_host_file_converge {
   SlotFabricMemberRunsARunner,
   classify_root_only_paths,
   FleetHostFileObservation,
+  AncestorPresence, AncestorTail, AncestorTailNone, AncestorTailAbsent, AncestorTailUndetermined,
+  classify_fleet_host_ancestor_presence, fleet_host_ancestor_directory_argv,
   HostFileLeaveInPlace,
   HostFileWrite,
   HostFileActionRefused,
@@ -690,12 +693,89 @@ test fn a_path_find_did_not_print_is_not_root_only() -> Bool {
 }
 
 fn action_of(content: FleetHostFileStanding, file_metadata: FleetHostPathMetadata, ancestors: FleetHostPathMetadata) -> FleetHostFileAction {
-  fleet_host_file_action(observation: FleetHostFileObservation { content: content, file_metadata: file_metadata, ancestors: ancestors })
+  fleet_host_file_action(observation: FleetHostFileObservation { content: content, file_metadata: file_metadata, ancestors: ancestors, absent_ancestors: [] })
 }
 
 fn is_leave(a: FleetHostFileAction) -> Bool { match a { HostFileLeaveInPlace => true HostFileWrite => false HostFileActionRefused { reason: _ } => false } }
 fn is_write(a: FleetHostFileAction) -> Bool { match a { HostFileWrite => true HostFileLeaveInPlace => false HostFileActionRefused { reason: _ } => false } }
 fn is_refused(a: FleetHostFileAction) -> Bool { match a { HostFileActionRefused { reason: _ } => true HostFileWrite => false HostFileLeaveInPlace => false } }
+
+// A DROP-IN DIRECTORY THAT WAS NEVER CREATED IS AN OBSERVED ABSENCE WITH A DECLARED REPAIR (L2 run
+// 40859129849: srv1-02's role drop-in refused "ancestors=UNOBSERVABLE" because its .service.d did not
+// exist and find exited 1). Presence is read per ancestor by listing its parent; only an absent TAIL
+// is admitted, and an undetermined answer or an absent ancestor above a present one refuses.
+fn presence_at(path: String, p: EntryPresence) -> AncestorPresence { AncestorPresence { path: path, presence: p } }
+
+fn tail_absent_of(t: AncestorTail) -> List<String> {
+  match t {
+    AncestorTailAbsent { present: _, absent: ab } => ab
+    AncestorTailNone => []
+    AncestorTailUndetermined { cause: _ } => []
+  }
+}
+
+fn tail_undetermined(t: AncestorTail) -> Bool {
+  match t {
+    AncestorTailUndetermined { cause: _ } => true
+    AncestorTailAbsent { present: _, absent: _ } => false
+    AncestorTailNone => false
+  }
+}
+
+test fn only_an_absent_tail_of_the_ancestor_chain_is_an_observed_absence() -> Bool {
+  let chain = ["/etc/systemd", "/etc/systemd/system", "/etc/systemd/system/actions-runner@srv1-02.service.d"]
+  let tail = classify_fleet_host_ancestor_presence(chain: chain, presence: [
+    presence_at(path: "/etc/systemd", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system/actions-runner@srv1-02.service.d", p: EntryAbsent),
+  ])
+  let all_present = classify_fleet_host_ancestor_presence(chain: chain, presence: [
+    presence_at(path: "/etc/systemd", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system/actions-runner@srv1-02.service.d", p: EntryPresent),
+  ])
+  let hole = classify_fleet_host_ancestor_presence(chain: chain, presence: [
+    presence_at(path: "/etc/systemd", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system", p: EntryAbsent),
+    presence_at(path: "/etc/systemd/system/actions-runner@srv1-02.service.d", p: EntryPresent),
+  ])
+  let unknown = classify_fleet_host_ancestor_presence(chain: chain, presence: [
+    presence_at(path: "/etc/systemd", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system", p: EntryPresenceIndeterminate { cause: "ls exit=2" }),
+    presence_at(path: "/etc/systemd/system/actions-runner@srv1-02.service.d", p: EntryAbsent),
+  ])
+  tail_absent_of(t: tail) == ["/etc/systemd/system/actions-runner@srv1-02.service.d"]
+    && (match all_present { AncestorTailNone => true AncestorTailAbsent { present: _, absent: _ } => false AncestorTailUndetermined { cause: _ } => false })
+    && tail_undetermined(t: hole)
+    && tail_undetermined(t: unknown)
+}
+
+// AN ABSENT TAIL PLANS A WRITE ONLY FOR AN ABSENT FILE BELOW ROOT-ONLY PARENTS. A file reading present
+// below an absent directory contradicts the walk, and a writable parent refuses as it always did.
+fn action_under_absent(content: FleetHostFileStanding, ancestors: FleetHostPathMetadata) -> FleetHostFileAction {
+  fleet_host_file_action(observation: FleetHostFileObservation {
+    content: content, file_metadata: PathsNotApplicable, ancestors: ancestors,
+    absent_ancestors: ["/etc/systemd/system/actions-runner@srv1-02.service.d"],
+  })
+}
+
+test fn an_absent_dropin_directory_plans_its_creation_and_the_write_only_beneath_root_only_parents() -> Bool {
+  is_write(a: action_under_absent(content: HostFileAbsent, ancestors: PathsRootOnly))
+    && is_refused(a: action_under_absent(content: HostFileIdentical, ancestors: PathsRootOnly))
+    && is_refused(a: action_under_absent(content: HostFileAbsent, ancestors: PathsNotRootOnly { paths: ["/etc/systemd/system"], detail: "writable" }))
+    && is_refused(a: action_under_absent(content: HostFileAbsent, ancestors: PathsUnobservable { reason: "find exit=1" }))
+}
+
+// THE CREATED DIRECTORY IS ROOT'S, AT A MODE WITH NO GROUP OR OTHER WRITE, so the root-only readback that
+// follows admits it; and the leg crosses the fleet SSH edge's portability admission.
+test fn an_absent_ancestor_is_created_root_owned_and_its_leg_crosses_the_edge() -> Bool {
+  let argv = fleet_host_ancestor_directory_argv(path: "/etc/systemd/system/actions-runner@srv1-02.service.d")
+  let line = join(argv, " ")
+  string_contains(s: line, pattern: "-o root -g root")
+    && string_contains(s: line, pattern: "-m 00755")
+    && string_contains(s: line, pattern: "/etc/systemd/system/actions-runner@srv1-02.service.d")
+    && (match portable_remote_words(raws: argv) { Present { value: _ } => true Absent => false })
+}
 
 data unsafe_file_metadata: FleetHostPathMetadata = PathsNotRootOnly { paths: ["/etc/needrestart/conf.d/50-gunbc-actions-runner.conf"], detail: "owned by ghrunner" }
 
@@ -878,7 +958,7 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
             results: [FleetHostFileResult {
               planned: FleetHostFilePlanned {
                 file: f,
-                observation: FleetHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly },
+                observation: FleetHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly, absent_ancestors: [] },
                 action: HostFileLeaveInPlace,
               },
               outcome: match mode { FleetHostFilesObserveOnly => HostFileNotAppliedObserveOnly FleetHostFilesApply => HostFileLeftInPlace },
@@ -899,6 +979,8 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
               FleetHostFilesObserveOnly => CapPhaseObserved { readings: [SlotCapUnitStanding { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: SlotCapsAtDesired }] }
               FleetHostFilesApply => runner_host_cap_phase_not_owed
             },
+            deploy_account: HostHasNoDeploySlot,
+            deploy_trees: [],
           })
       }
   }
@@ -1501,6 +1583,8 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
       })
   }
 }
@@ -1623,7 +1707,7 @@ fn fixture_result(outcome: FleetHostFileOutcome) -> List<FleetHostFileResult> {
   match teardown_desired() {
     Absent => []
     Present { value: f } => [FleetHostFileResult {
-      planned: FleetHostFilePlanned { file: f, observation: FleetHostFileObservation { content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly }, action: HostFileWrite },
+      planned: FleetHostFilePlanned { file: f, observation: FleetHostFileObservation { content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly, absent_ancestors: [] }, action: HostFileWrite },
       outcome: outcome,
     }]
   }
@@ -1659,6 +1743,8 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
       })
       && runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
@@ -1673,6 +1759,8 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
       })
   }
 }
@@ -1698,7 +1786,7 @@ test fn the_sudoers_row_is_the_rendered_body_at_the_sudoers_path_validated_and_0
           f.content == c
             && (f.path as String) == "/etc/sudoers.d/gunbc-ghrunner"
             && remote_file_mode_octal(mode: f.mode) == "440"
-            && (match f.validation { VisudoCheck => true NoValidation => false })
+            && (match f.validation { VisudoCheck => true NoValidation => false DestinationUnchangedUntilRename { expected: _ } => false })
         RunnerHostSudoersBodyRefused { reason: _ } => false
       }
   }
@@ -1710,7 +1798,7 @@ test fn only_the_sudoers_row_is_visudo_validated() -> Bool {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
-      all(fs, f => ((f.subject as String) == "runner-host-sudoers") == (match f.validation { VisudoCheck => true NoValidation => false }))
+      all(fs, f => ((f.subject as String) == "runner-host-sudoers") == (match f.validation { VisudoCheck => true NoValidation => false DestinationUnchangedUntilRename { expected: _ } => false }))
   }
 }
 

@@ -101,12 +101,47 @@ test fn a_key_only_seed_is_admitted_as_the_rendering_of_its_audited_tree() -> Bo
   })
 }
 
-// INHABITANCE OF THE REAL PRODUCER, AS A RED: the seed renderer's own document for the committed srv4 payload carries
-// a sha512crypt hash in identity.password. The closed schema refuses the identity section, and names the credential
-// field beneath it.
-test fn the_real_renderers_password_bearing_document_is_refused_on_its_password_field() -> Bool {
+// INHABITANCE OF THE REAL PRODUCER: the seed renderer's own document for the committed srv4 payload is the
+// key-only document, and the contract ADMITS it. srv4's payload is what the BMC netboot edge serves over the
+// network (gunbc.bmc.bmc_netboot_serve.bmc_netboot_user_seed_admission), so this row is the one that says the
+// bytes that edge puts on the wire are admitted bytes: no identity section, no credential field, the account's
+// password locked, ssh password auth off, and the meta-data derived from the client MAC alone.
+test fn the_real_renderers_key_only_document_is_admitted() -> Bool {
   with_mac(claim: m => {
     let a = admit_public_nocloud_seed(client_mac: m, user_data: autoinstall_user_data_document(payload: srv4_ubuntu_autoinstall_on_iso))
+    match a {
+      PublicSeedRefused { findings: _ } => false
+      PublicSeedAdmitted { seed: sd } =>
+        let ud = public_nocloud_seed_user_data(seed: sd)
+        string_contains(s: ud, pattern: "lock_passwd: true")
+          && string_contains(s: ud, pattern: "allow-pw: false")
+          && !string_contains(s: ud, pattern: "identity:")
+          && !string_contains(s: ud, pattern: "password")
+          && public_nocloud_seed_meta_data(seed: sd) == "instance-id: iid-ac-1f-6b-e3-f7-fe\n"
+    }
+  })
+}
+
+// THE RED THAT KEEPS THE DOOR SHUT (dashboard node adhoc-dfa3a487): put an identity section back on the very
+// document above — same shape, same producer, with the password field its deleted rows once carried — and the
+// closed schema refuses it TWICE over: the identity section is not a public-seed field, and the credential
+// field beneath it is named. Any edit that reintroduces a credential path into the emitter's document tree
+// reddens here, whether or not anyone routes it at the edge.
+test fn the_real_producers_identity_password_shape_still_refuses_by_name() -> Bool {
+  with_mac(claim: m => {
+    let with_identity = yaml_mapping(entries: [kv(key: "autoinstall", value: yaml_mapping(entries: concat([
+      kv(key: "version", value: yaml_int(n: 1)),
+      kv(key: "locale", value: yaml_string(s: "en_US.UTF-8")),
+      kv(key: "keyboard", value: yaml_mapping(entries: [kv(key: "layout", value: yaml_string(s: "us"))])),
+      kv(key: "identity", value: yaml_mapping(entries: [
+        kv(key: "hostname", value: yaml_string(s: "srv4")),
+        kv(key: "username", value: yaml_string(s: "ubuntu")),
+        kv(key: "realname", value: yaml_string(s: "gunbc fleet node srv4")),
+        kv(key: "password", value: yaml_string(s: "$6$saltsalt$0123456789abcdefghijABCDEFGHIJ./0123456789abcdefghijABCDEFGHIJ./0123456789abcdefghij")),
+      ])),
+      ssh_section(allow_pw: false, keys: [yaml_string(s: public_key_line)]),
+    ])))])
+    let a = admit_public_nocloud_seed(client_mac: m, user_data: with_identity)
     refused_with(a: a, finding: SeedKeyNotAdmitted { document: SeedUserData, path: "autoinstall.identity" })
       && refused_with(a: a, finding: SeedCredentialField { document: SeedUserData, path: "autoinstall.identity.password" })
   })

@@ -4,14 +4,14 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count }
-import std.checked_arithmetic { prefixed_line_last_space_nat, PrefixedLineMiss, PrefixedLineNatUnreadable, PrefixedLineNat }
+import std.prefixed_line { prefixed_line_last_space_nat, PrefixedLineMiss, PrefixedLineNatUnreadable, PrefixedLineNat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.ninfer.ninfer_serve { extdeps_external_authority_anchor, ninfer_upstream_read_obligation }
 
 // NINFER'S REPLAYED-TOKEN COUNTER LINE, not a gpu-bench kit schema. The metric name is
 // ninfer_replayed_tokens_total; later snapshots overwrite earlier ones (phase counter).
-// A candidate line STARTS WITH the marker prefix (`std.checked_arithmetic`
+// A candidate line STARTS WITH the marker prefix (`std.prefixed_line`
 // `prefixed_line_last_space_nat`). A `# TYPE …` comment does not.
 
 data ninfer_replayed_tokens_total_marker: NonEmptyStr = "ninfer_replayed_tokens_total" as NonEmptyStr

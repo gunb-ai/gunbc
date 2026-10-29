@@ -1,23 +1,34 @@
 module gunbc.fleet.srv1_root_mutation_approval_run
 
 import std.optional { Absent, Present }
-import std.types { Bool, Int, NonEmptyStr, String, List }
+import std.types { Bool, Int, NonEmptyStr, String, List, Timestamp }
 import std.algebra { list_map }
 import std.measure { Second, second, second_count, Minute, minute }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.integer { int_to_decimal_string }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.effect_grant { Write, Execute, filesystem_position }
+import std.filesystem_path_grant { absolute_path_position }
+import std.filesystem { path_parent_directory }
+import extdeps.sudo.visudo { visudo_binary_path }
+import extdeps.systemd.unit_file { systemd_system_unit_directory }
+import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
+import gunbc.runner.runner_revision_job_unit { revision_job_state_root }
+import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_path }
 import std.scoped_authorization {
-  AttemptIdentity, AuthorizationScope, AuthorizationRequest, AuthorizedAction,
+  AttemptIdentity, AuthorizationScope, AuthorizationRequest, AuthorizedAction, OperatorGrant,
   authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
+  first_uncovered_scope, authorization_scope_wire,
 }
-import extdeps.github.actions_environment { github_run_id_variable_name, github_run_attempt_variable_name, github_sha_variable_name, github_job_variable_name }
+
+import extdeps.github.actions_environment { github_run_id_variable_name, github_run_attempt_variable_name, github_sha_variable_name, github_job_variable_name, github_runner_temp_variable_name }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.github.expressions { ExpressionTemplate, LiteralText, Interpolation, runner_temp, serialize_template }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.auth.approval_gate {
   ApprovalGate, GateAdmitted, GateRefused, approval_refusal_text,
+  approval_standing_read, StandingReadAt, StandingClockUnreadable, approval_gate_from_poll,
   approval_instant_now, approval_expires_at, approval_poll_ticks, approval_gate_from_outcome,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
 }
@@ -56,8 +67,31 @@ import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 // files its own request and an approval of one job is never spent on another. The execution revision
 // is part of the approved intent: an approval is for this job at this commit.
 
-data srv1_root_mutation_approval_receipt_path: String = "artifacts/srv1-root-mutation-approval-receipt.txt"
-data srv1_root_mutation_approval_artifact_glob: String = "artifacts/srv1-root-mutation-approval-*"
+// THE RECEIPT IS WRITTEN UNDER RUNNER_TEMP, NOT INTO THE CHECKOUT. The root steps that follow ship the
+// checkout's working tree and refuse one that does not equal HEAD (CandidateCheckoutNotClean), so a
+// receipt in the tree stopped the first approved run (fleet-converge run 40556605128) after admission.
+data srv1_root_mutation_approval_receipt_file_name: String = "srv1-root-mutation-approval-receipt.txt"
+// ONE TEMPLATE, READ TWO WAYS: serialized it is the upload step's path; realized with runner.temp bound
+// to RUNNER_TEMP (the same directory, GitHub's runner context) it is the path the gate writes. A
+// template naming any other expression has no realization here and refuses.
+data srv1_root_mutation_approval_receipt_template: ExpressionTemplate = {
+  segments: [
+    Interpolation { expression: runner_temp() },
+    LiteralText { text: concat("/", srv1_root_mutation_approval_receipt_file_name) },
+  ]
+}
+
+data srv1_root_mutation_approval_artifact_glob: String = serialize_template(template: srv1_root_mutation_approval_receipt_template)
+
+fn srv1_root_mutation_approval_receipt_path(runner_temp_dir: String) -> String? {
+  fold(srv1_root_mutation_approval_receipt_template.segments, init: Present { value: "" }, f: (acc, seg) => match acc {
+    Absent => Absent
+    Present { value: sofar } => match seg {
+      LiteralText { text: t } => Present { value: concat(sofar, t) }
+      Interpolation { expression: e } => if e == runner_temp() { Present { value: concat(sofar, runner_temp_dir) } } else { Absent }
+    }
+  })
+}
 data srv1_root_mutation_submit_body_file_name: String = "srv1-root-mutation-approval-submit.json"
 
 // THE SELECTION, CARRIED AS INDEXED PAIRS: the workflow sets NAME_i and VALUE_i for i from 0, and the
@@ -89,22 +123,56 @@ fn srv1_root_mutation_approval_step_timeout_minutes() -> Minute {
 }
 
 // ── What the approval grants ──────────────────────────────────────────────────────────────────
-// Writes under /etc and /usr/local (units, slices, release files, sudoers drop-ins) and the apt-get
-// package install. Each inheriting write states the narrower scopes it exercises, and selection
-// refuses one this set does not cover, so a write outside these trees cannot inherit the approval.
+// Writes under /etc and /usr/local (units, slices, release files, sudoers drop-ins), the gunbc trees
+// under /opt and /var/lib (the microVM controller's release locus and the revision job's state),
+// the apt-get package install, and the two root reads-and-reloads a unit or grant install ends
+// with (visudo's policy check, systemd's daemon-reload). Each inheriting write states the narrower
+// scopes it exercises, and selection refuses one this set does not cover, so a write outside these
+// trees cannot inherit the approval.
 data srv1_root_install_action: AuthorizedAction = "install" as AuthorizedAction
 data srv1_root_package_action: AuthorizedAction = "install-package" as AuthorizedAction
+data srv1_root_policy_check_action: AuthorizedAction = "check" as AuthorizedAction
+data srv1_root_daemon_reload_action: AuthorizedAction = "daemon-reload" as AuthorizedAction
 
 fn srv1_root_write_scope(path: List<String>) -> AuthorizationScope {
   AuthorizationScope { verb: Write, resource: filesystem_position(path: path), action: srv1_root_install_action }
+}
+
+fn srv1_root_write_scope_at(path: String) -> AuthorizationScope {
+  AuthorizationScope { verb: Write, resource: absolute_path_position(path: path), action: srv1_root_install_action }
 }
 
 data srv1_root_apt_get_scope: AuthorizationScope = AuthorizationScope {
   verb: Execute, resource: filesystem_position(path: ["usr", "bin", "apt-get"]), action: srv1_root_package_action,
 }
 
+data srv1_root_visudo_check_scope: AuthorizationScope = AuthorizationScope {
+  verb: Execute, resource: absolute_path_position(path: visudo_binary_path as String), action: srv1_root_policy_check_action,
+}
+
+data srv1_root_daemon_reload_scope: AuthorizationScope = AuthorizationScope {
+  verb: Execute, resource: filesystem_position(path: ["usr", "bin", "systemctl"]), action: srv1_root_daemon_reload_action,
+}
+
 data srv1_root_mutation_approved_scopes: List<AuthorizationScope> = [
-  srv1_root_write_scope(path: ["etc"]), srv1_root_write_scope(path: ["usr", "local"]), srv1_root_apt_get_scope,
+  srv1_root_write_scope(path: ["etc"]), srv1_root_write_scope(path: ["usr", "local"]),
+  srv1_root_write_scope(path: ["opt", "gunbc"]), srv1_root_write_scope(path: ["var", "lib", "gunbc"]),
+  srv1_root_apt_get_scope, srv1_root_visudo_check_scope, srv1_root_daemon_reload_scope,
+]
+
+// THE SCOPES THE microVM CONTROLLER INSTALL EXERCISES, read off the paths its plan writes
+// (gunbc.host.host_effect_realize microvm_controller_install_steps): the unit directory, the dispatch
+// grant's sudoers directory, the controller's release locus and the revision job's state root, plus
+// the grant's policy check and the closing daemon-reload. The census row and the install's own
+// authorize both read this one value, so what the census says the effect needs and what the run
+// asks the grant for cannot drift apart.
+data microvm_controller_install_root_scopes: List<AuthorizationScope> = [
+  srv1_root_write_scope_at(path: systemd_system_unit_directory as String),
+  srv1_root_write_scope_at(path: path_parent_directory(path: workspace_dispatch_grant_path)),
+  srv1_root_write_scope_at(path: microvm_controller_root),
+  srv1_root_write_scope_at(path: revision_job_state_root),
+  srv1_root_visudo_check_scope,
+  srv1_root_daemon_reload_scope,
 ]
 
 // ── The request the operator approves ─────────────────────────────────────────────────────────
@@ -160,6 +228,7 @@ fn srv1_root_mutation_request(
 fn srv1_root_mutation_after_gate(
   gate: ApprovalGate<Srv1RootMutationApproval>,
   request: AuthorizationRequest<Srv1RootMutationApproval>,
+  receipt_path: String,
 ) -> ProcessExit {
   match gate {
     GateRefused { cause: c } =>
@@ -170,7 +239,7 @@ fn srv1_root_mutation_after_gate(
         AuthorizationRefused { cause: c } =>
           exit_failure(reason: concat("srv1 root mutation: not approved; no root step runs: ", authorization_refusal_reason(cause: c)))
         AuthorizationPermitted { grant: g } => {
-          let kept = Filesystem.Write(path: srv1_root_mutation_approval_receipt_path, content: join([
+          let kept = Filesystem.Write(path: receipt_path, content: join([
             "srv1-root-mutation=approved job=", g.subject.job as String,
             " execution_revision=", g.subject.execution_revision as String,
             " escalation_id=", g.escalation_id as String,
@@ -183,7 +252,7 @@ fn srv1_root_mutation_after_gate(
   }
 }
 
-fn srv1_root_mutation_file_and_wait(request: AuthorizationRequest<Srv1RootMutationApproval>) -> ProcessExit
+fn srv1_root_mutation_file_and_wait(request: AuthorizationRequest<Srv1RootMutationApproval>, receipt_path: String) -> ProcessExit
   uses net: std.resources.Network
 {
   match approval_instant_now() {
@@ -207,6 +276,7 @@ fn srv1_root_mutation_file_and_wait(request: AuthorizationRequest<Srv1RootMutati
             request: request,
           ),
           request: request,
+          receipt_path: receipt_path,
         )
       }
     }
@@ -239,27 +309,117 @@ fn srv1_root_mutation_selects_from(index: Int, acc: List<Srv1RootMutationSelect>
   }
 }
 
-fn srv1_root_mutation_approval_on_srv1() -> ProcessExit
-  uses net: std.resources.Network
-{
+// THE REQUEST THIS JOB ATTEMPT FILES, rebuilt from the run's own variables. The gate step files it and
+// an inheriting step rebuilds the same value from the same variables, so the two cannot name
+// different escalations, revisions or selections.
+type Srv1RootMutationRequestRead
+  = Srv1RootMutationRequestBuilt { request: AuthorizationRequest<Srv1RootMutationApproval> }
+  | Srv1RootMutationRequestRefused { reason: String }
+
+fn srv1_root_mutation_request_from_run() -> Srv1RootMutationRequestRead {
   let job = run_variable(name: github_job_variable_name)
   let run_id = run_variable(name: github_run_id_variable_name)
   let run_attempt = run_variable(name: github_run_attempt_variable_name)
   let sha = run_variable(name: github_sha_variable_name)
   if job == "" || run_id == "" || run_attempt == "" || sha == "" {
-    return exit_failure(reason: "srv1 root mutation: GITHUB_JOB, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT or GITHUB_SHA is unset; the escalation id and the approved intent bind them; nothing filed")
+    Srv1RootMutationRequestRefused { reason: "GITHUB_JOB, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT or GITHUB_SHA is unset; the escalation id and the approved intent bind them" }
+  } else {
+    match srv1_root_mutation_selects_from(index: 0, acc: []) {
+      SelectsRefused { reason: r } => Srv1RootMutationRequestRefused { reason: concat("selection unreadable: ", r) }
+      SelectsRead { selects: selects } => Srv1RootMutationRequestBuilt { request: srv1_root_mutation_request(
+        job: job as NonEmptyStr,
+        escalation_id: srv1_root_mutation_escalation_id(job: job as NonEmptyStr, run_id: run_id as NonEmptyStr, run_attempt: run_attempt as NonEmptyStr),
+        execution_revision: sha as NonEmptyStr,
+        selects: selects,
+      ) }
+    }
+  }
+}
+
+fn srv1_root_mutation_approval_on_srv1() -> ProcessExit
+  uses net: std.resources.Network
+{
+  let runner_temp = run_variable(name: github_runner_temp_variable_name)
+  if runner_temp == "" {
+    return exit_failure(reason: "srv1 root mutation: RUNNER_TEMP is unset, so the receipt has no place outside the deployed checkout; nothing filed")
+  }
+  let receipt_path = match srv1_root_mutation_approval_receipt_path(runner_temp_dir: runner_temp) {
+    Present { value: rp } => rp
+    Absent => ""
+  }
+  if receipt_path == "" {
+    return exit_failure(reason: "srv1 root mutation: the receipt template names an expression with no realization on the runner; nothing filed")
   }
   if actions_variable_trimmed(name: approval_submission_mac_key_path_env) == "" {
     return exit_failure(reason: concat("srv1 root mutation: ", concat(approval_submission_mac_key_path_env as String, " is unset, so no approval can be filed; no root step runs")))
   }
-  match srv1_root_mutation_selects_from(index: 0, acc: []) {
-    SelectsRefused { reason: r } => exit_failure(reason: concat("srv1 root mutation: selection unreadable; nothing filed: ", r))
-    SelectsRead { selects: selects } => srv1_root_mutation_file_and_wait(request: srv1_root_mutation_request(
-      job: job as NonEmptyStr,
-      escalation_id: srv1_root_mutation_escalation_id(job: job as NonEmptyStr, run_id: run_id as NonEmptyStr, run_attempt: run_attempt as NonEmptyStr),
-      execution_revision: sha as NonEmptyStr,
-      selects: selects,
-    ))
+  match srv1_root_mutation_request_from_run() {
+    Srv1RootMutationRequestRefused { reason: r } => exit_failure(reason: join(["srv1 root mutation: ", r, "; nothing filed"], ""))
+    Srv1RootMutationRequestBuilt { request: request } => srv1_root_mutation_file_and_wait(request: request, receipt_path: receipt_path)
+  }
+}
+
+// ── An inheriting step's grant (operator ruling 2026-10-25, the_initial_convergence_is_the_only_approval) ──
+// A later step of the same job attempt performs a host-root write under the approval its gate step
+// claimed. The grant is a value of the gate step's process, so the inheriting step re-reads the
+// committed decision ONCE for the same request, admits it through the same gate fold at a fresh
+// instant, authorizes it, and then requires that the grant's scopes cover every scope the write
+// exercises. It never files and never waits: an undecided standing is read at the instant itself as
+// its expiry, so pending and unfiled both refuse rather than hold the job.
+type Srv1InheritedGrant
+  = Srv1InheritedGrantAdmitted { grant: OperatorGrant<Srv1RootMutationApproval> }
+  | Srv1InheritedGrantRefused { reason: String }
+
+// THE DECISION OVER ONE READ, pure. An empty required list refuses: a write that states no scope would
+// otherwise be covered vacuously, which is std.scoped_authorization's own rule.
+fn srv1_root_mutation_inheritance(
+  gate: ApprovalGate<Srv1RootMutationApproval>,
+  request: AuthorizationRequest<Srv1RootMutationApproval>,
+  required: List<AuthorizationScope>,
+  observed_at: Timestamp,
+) -> Srv1InheritedGrant {
+  match gate {
+    GateRefused { cause: c } => Srv1InheritedGrantRefused { reason: concat("the job's approval does not admit: ", approval_refusal_text(cause: c)) }
+    GateAdmitted { authorization: auth } => match authorize(authorization: auth, request: request, observed_at: observed_at) {
+      AuthorizationRefused { cause: c } => Srv1InheritedGrantRefused { reason: concat("the job's approval is not authorized now: ", authorization_refusal_reason(cause: c)) }
+      AuthorizationPermitted { grant: g } =>
+        if count(required) == 0 {
+          Srv1InheritedGrantRefused { reason: "the inheriting write states no scope, so no approval can cover it" }
+        } else {
+          match first_uncovered_scope(granted: g.scopes, required: required) {
+            Present { value: u } => Srv1InheritedGrantRefused { reason: join([
+              "the job's approval does not cover the scope ",
+              match authorization_scope_wire(scope: u) {
+                Present { value: w } => w as String
+                Absent => "(unrenderable scope)"
+              },
+              "; an insufficient approval is a fresh request, never a widening",
+            ], "") }
+            Absent => Srv1InheritedGrantAdmitted { grant: g }
+          }
+        }
+    }
+  }
+}
+
+fn srv1_root_mutation_inherited_grant(required: List<AuthorizationScope>) -> Srv1InheritedGrant
+  uses net: std.resources.Network
+{
+  match srv1_root_mutation_request_from_run() {
+    Srv1RootMutationRequestRefused { reason: r } => Srv1InheritedGrantRefused { reason: r }
+    Srv1RootMutationRequestBuilt { request: request } => match approval_instant_now() {
+      Absent => Srv1InheritedGrantRefused { reason: "clock unreadable; refusing to judge the approval against a fabricated instant" }
+      Present { value: now } => match approval_standing_read(escalation_id: request.escalation_id, expires_at: now) {
+        StandingClockUnreadable => Srv1InheritedGrantRefused { reason: "clock unreadable; refusing to judge the approval against a fabricated instant" }
+        StandingReadAt { standing: standing, observed_at: at } =>
+          srv1_root_mutation_inheritance(
+            gate: approval_gate_from_poll(poll: standing, request: request, observed_at: at),
+            request: request,
+            required: required,
+            observed_at: at,
+          )
+      }
+    }
   }
 }
 
