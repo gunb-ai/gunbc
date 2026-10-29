@@ -19,7 +19,7 @@ import gunbc.compute.work_provider_local { compute_layout, compute_unit_properti
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptReserved, AttemptLaunching, AttemptTerminal,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
-  attempt_open, attempt_begin_launch, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+  attempt_open, attempt_begin_launch, attempt_terminate, AttemptRecovered, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
@@ -36,6 +36,7 @@ import gunbc.roadmap.roadmap_session_placement {
   SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide,
   SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at,
   SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused,
+  SessionPlacementOpen, SessionPlacementOpened, SessionPlacementOpenRefused, session_placement_open_for_acquisition,
 }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
@@ -473,54 +474,89 @@ test fn a_reacquisition_of_an_unsettled_slot_collides() -> Bool {
   charged && launched && collides
 }
 
-// GREEN (delivered) -- the route runs the settlement pass before acquiring; the dead worker's unit is
-// terminal (absent), so the pass CLOSES the slot and RETURNS its seat. This is the G5 law the gate
-// restores. It does NOT yet make a same-key re-acquisition succeed -- see the next leg.
-test fn the_settlement_closes_a_dead_workers_slot_and_returns_its_seat() -> Bool {
-  let dir = fresh_dir(tag: "g5-settle-release-seat")
+// GREEN (end-to-end) -- the dead worker's seat is returned AND a same-key resume reopens the closed
+// slot at the NEXT generation instead of opening a second one. A placement record is written first (as
+// in CONTROL 3) so the settle pass returns the seat bound to its grant and session_release_settled_for
+// reads it back as returned -- that is the gate the reopen admits on. The reopened slot comes back at
+// closed generation + 1 and in the Reserved state: the generation line (the placement audit trail) is
+// never deleted, it just grows by the resume.
+test fn the_settlement_reopens_a_closed_slot_so_the_same_attempt_re_acquires_at_the_next_generation() -> Bool {
+  let dir = fresh_dir(tag: "g5-reopen-acquire")
   let stores = stores_at(dir: dir)
   let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
-  let launched = launched_ok(dir: dir, rec: slot_a(opened: 1000))
-  let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999))
-  let released = released_unit(s: s) == unit_a() && slot_is_terminal(dir: dir)
-  charged && launched && released
+  let rec = slot_a(opened: 1000)
+  let opened = opened_ok(dir: dir, rec: rec)
+  let wrote = session_placement_record_write(stores: stores, host: host, grant: grant_for(node_id: node_a, attempt_key: key_a, slot: rec), unit_properties: ["MemoryMax=8589934592"])
+  let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: rec.launch_deadline + 1))
+  let seat_returned = released_unit(s: s) == unit_a() && slot_is_terminal(dir: dir)
+  let closed_gen = match attempt_slot_read(root: dir as NonEmptyStr, reference: unit_a() as NonEmptyStr) {
+    AttemptSlotHeld { record: _, generation: g } => cas_generation_count(g: g)
+    AttemptSlotAbsent => 0
+    AttemptSlotUnreadable { detail: _ } => 0
+  }
+  match session_placement_open_for_acquisition(stores: stores, host: host, record: slot_a(opened: rec.launch_deadline + 1), resume: true) {
+    SessionPlacementOpened { slot: reopened, generation: g } =>
+      charged && opened && seat_returned && cas_generation_count(g: g) == closed_gen + 1
+        && (match reopened.state { AttemptReserved => true  AttemptLaunching => false  AttemptTerminal { verdict: _, detail: _ } => false })
+    SessionPlacementOpenRefused { detail: _ } => false
+  }
 }
 
-// DISCRIMINATING GAP (documents the live wedge's remaining cause) -- after the pass closes and
-// releases the dead worker's slot, a create-only re-open of the SAME key STILL loses the race, because
-// SettleTerminateAndRelease leaves the slot PRESENT in a terminal state and attempt_open is CAS
-// ExpectSlotAbsent (std.durable_compare_and_set cas_expectation_admits: ExpectSlotAbsent against a
-// present slot is false). So the same-key re-delivery is refused "a session slot already exists" even
-// though its seat was returned. Closing the wedge fully needs the fully-settled dead-worker slot
-// REAPED at the re-delivery, which is a placement-lifecycle decision outside the gate. See PR #15357.
-test fn a_settled_terminal_slot_still_blocks_a_create_only_re_open_until_reaped() -> Bool {
-  let dir = fresh_dir(tag: "g5-settle-reopen-collides")
+// DISCRIMINATOR -- the reopen is ONLY for a resume. A FRESH dispatch of the same key takes the
+// create-only path and is still refused by the closed slot; it never reopens, so a fresh attempt can
+// never silently adopt a prior attempt's slot. This is the case that keeps create-only create-only.
+test fn a_fresh_dispatch_never_reopens_a_closed_slot() -> Bool {
+  let dir = fresh_dir(tag: "g5-reopen-fresh")
   let stores = stores_at(dir: dir)
   let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
-  let launched = launched_ok(dir: dir, rec: slot_a(opened: 1000))
-  let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999))
+  let rec = slot_a(opened: 1000)
+  let opened = opened_ok(dir: dir, rec: rec)
+  let wrote = session_placement_record_write(stores: stores, host: host, grant: grant_for(node_id: node_a, attempt_key: key_a, slot: rec), unit_properties: ["MemoryMax=8589934592"])
+  let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: rec.launch_deadline + 1))
   let seat_returned = released_unit(s: s) == unit_a() && slot_is_terminal(dir: dir)
-  let still_collides = match attempt_open(root: dir as NonEmptyStr, record: slot_a(opened: 1000)) {
-    AttemptLostRace { expected: _, observed: _ } => true
-    AttemptAdvanced { state: _, generation: _ } => false
+  match session_placement_open_for_acquisition(stores: stores, host: host, record: slot_a(opened: rec.launch_deadline + 1), resume: false) {
+    SessionPlacementOpenRefused { detail: _ } => charged && opened && seat_returned
+    SessionPlacementOpened { slot: _, generation: _ } => false
+  }
+}
+
+// SAFETY, the second face of the gate -- a slot CLOSED but whose seat the ledger has NOT been returned
+// is never reopened. The slot is closed directly (no settlement pass, so no release record and no
+// placement record); a resume must refuse it, because reopening would double-spend a seat still held.
+test fn a_terminal_but_unsettled_slot_refuses_the_resume_reopen() -> Bool {
+  let dir = fresh_dir(tag: "g5-reopen-unsettled")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let opened = opened_ok(dir: dir, rec: slot_a(opened: 1000))
+  let g = match attempt_slot_read(root: dir as NonEmptyStr, reference: unit_a() as NonEmptyStr) {
+    AttemptSlotHeld { record: _, generation: gg } => gg
+    AttemptSlotAbsent => cas_generation_first()
+    AttemptSlotUnreadable { detail: _ } => cas_generation_first()
+  }
+  let terminated = match attempt_terminate(root: dir as NonEmptyStr, reference: unit_a() as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "witness closes the slot without the settlement pass") {
+    AttemptAdvanced { state: _, generation: _ } => true
+    AttemptLostRace { expected: _, observed: _ } => false
     AttemptTransitionRefused { detail: _ } => false
   }
-  charged && launched && seat_returned && still_collides
+  let terminal_now = slot_is_terminal(dir: dir)
+  match session_placement_open_for_acquisition(stores: stores, host: host, record: slot_a(opened: 99999), resume: true) {
+    SessionPlacementOpenRefused { detail: _ } => charged && opened && terminated && terminal_now
+    SessionPlacementOpened { slot: _, generation: _ } => false
+  }
 }
 
-// SAFETY -- a still-running worker's seat is KEPT by the pass, so the same-key acquisition still
-// collides: a re-delivery never displaces a live worker.
-test fn a_still_running_slot_is_kept_so_the_same_attempt_still_refuses() -> Bool {
+// SAFETY -- a still-running worker's slot is KEPT by the pass and its LIVE state is never reopened by a
+// resume: a resume may not displace a running worker. The slot is launched and the unit reports still
+// running, so the pass keeps the seat; the resume reopen must refuse the Launching slot.
+test fn a_still_running_slot_is_kept_so_the_resume_never_displaces_it() -> Bool {
   let dir = fresh_dir(tag: "g5-settle-keep-refuse")
   let stores = stores_at(dir: dir)
   let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
   let launched = launched_ok(dir: dir, rec: slot_a(opened: 1000))
   let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_running, now: 99999))
   let kept_seat = kept(s: s)
-  let still_collides = match attempt_open(root: dir as NonEmptyStr, record: slot_a(opened: 1000)) {
-    AttemptLostRace { expected: _, observed: _ } => true
-    AttemptAdvanced { state: _, generation: _ } => false
-    AttemptTransitionRefused { detail: _ } => false
+  match session_placement_open_for_acquisition(stores: stores, host: host, record: slot_a(opened: 99999), resume: true) {
+    SessionPlacementOpenRefused { detail: _ } => charged && launched && kept_seat
+    SessionPlacementOpened { slot: _, generation: _ } => false
   }
-  charged && launched && kept_seat && still_collides
 }

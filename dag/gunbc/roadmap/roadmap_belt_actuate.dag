@@ -1734,7 +1734,7 @@ type BeltSessionPlacement
   | BeltPlacementNotHeld
   | BeltPlacementRefused { detail: String }
 
-fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id: String, attempt_key: String, container: DispatchSessionContainer) -> BeltSessionPlacement {
+fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id: String, attempt_key: String, container: DispatchSessionContainer, resume: Bool) -> BeltSessionPlacement {
   match container {
     TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => BeltPlacementNotHeld
     SystemdUnitContainer { plan: _ } =>
@@ -1744,7 +1744,7 @@ fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id
           match belt_session_slots_ensure(instance: instance, stores: stores) {
             Present { value: why } => BeltPlacementRefused { detail: why }
             Absent =>
-              match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key) {
+              match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key, resume: resume) {
                 SessionPlacementGranted { grant } => BeltPlacementHeld { held: BeltHeldPlacement { grant: grant, stores: stores } }
                 SessionPlacementRefused { detail } => BeltPlacementRefused { detail: detail }
               }
@@ -3103,7 +3103,10 @@ fn belt_actuate_spawn_with_origin(
             fingerprint: alignment_chain_fingerprint(chain: chain),
           }
           let process_fingerprint = prepared_attempt_process_fingerprint(prepared: prepared)
-  match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, container: cmds.session_container) {
+  // The continuation route already decided this spawn RESUMES the prior attempt (it re-delivers the
+  // same attempt key the continuation named) or starts FRESH; the placement layer takes that from the
+  // already-resolved `run` rather than re-deriving it, so there is one decision path beside the door.
+  match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, container: cmds.session_container, resume: match run { DispatchWorkerFirst => false  DispatchWorkerResumed { ordinal: _ } => true }) {
     BeltPlacementRefused { detail } =>
       SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
     BeltPlacementNotHeld =>
