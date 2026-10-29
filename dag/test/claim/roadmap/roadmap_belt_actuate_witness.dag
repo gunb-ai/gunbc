@@ -269,6 +269,7 @@ import gunbc.roadmap.roadmap_verification_receipt {
 }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_addressing }
+import gunbc.roadmap.roadmap_belt_actuate { belt_function_run_argv }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_launch, DispatchWorkerFirst, dispatch_worktree_path_for_instance, dispatch_attempt_state_path_for_instance, DispatchSpawnReady, DispatchSpawnRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
 import gunbc.dispatch_attempt { DispatchAttempt }
@@ -3223,4 +3224,15 @@ test fn the_seat_discharge_pass_reaches_the_tick_receipt_typed_and_counted() -> 
     && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [noop, refused] }) { BeltPassRefused { reason: r } => string_contains(s: r, pattern: "r2") && string_contains(s: r, pattern: "charge kept")  _ => false })
     && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [refused, red, noop] }) { BeltPassFailed { reason: r } => string_contains(s: r, pattern: "r3")  _ => false })
     && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRefused { reason: "stage unreadable" }) { BeltPassRefused { reason: r } => string_contains(s: r, pattern: "stage unreadable")  _ => false })
+}
+
+// THE SHARED RUN-ARGV BUILDER (review 87607, §6b): belt_obligation_unit_command and the wake's
+// SpawnRouteWake fold arm now share ONE builder. Its production callers run behind an exec
+// (belt_obligation_start, the modeled spawn fold), so the builder itself is witnessed directly and
+// hermetically -- DESIGN §5 green by execution for the fact "the run/--source-root/--entry/--function
+// shape is spelled exactly once". Pins the two source-roots, the repo_root-prefixed entry, and that
+// each trailing arg becomes an --arg pair.
+test fn the_shared_function_run_argv_builds_the_run_shape_once() -> Bool {
+  let argv = belt_function_run_argv(program: "serve-binary", repo_root: "/repo", entry: "dag/x.dag", function: "f", args: ["a", "b"])
+  join(argv, "|") == "serve-binary|run|--source-root|/repo/dag|--source-root|/repo/src/v2|--entry|/repo/dag/x.dag|--function|f|--arg|a|--arg|b"
 }
