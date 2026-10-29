@@ -1,0 +1,499 @@
+module test.claim.runner.store_provisioning_plan_refusal_witness
+
+// WITNESS FOR THE PROVISIONING PLAN OVER DECLARED DIRECTORY TARGETS
+// (gunbc.executor_privileged_operation ExecutorPrivilegedProvisioningPlan), review 86390 as corrected
+// by review 86921. The three host-plan sites used to map a mode-refused target to [] -- the host
+// converged WITHOUT the directory, the rendered plan recorded nothing, and the store's mint later
+// reported the directory unready with a "not converged yet" that was false, because the plan had never
+// asked for it. The fix carries the refusal in the plan as its own typed population (NOT as a fake
+// operation variant: a refusal is not an authorization, has no principal and no argv), and stops the
+// line through two channels the repo already owns -- the sudoers artifact is withheld, and the grant
+// census gets a standing GrantBlocking row so the apply refuses before its first mutation.
+//
+// Eight conjuncts, one per obligation the fix owes:
+//   1 POSITIVE CONTROL  an admitted target still contributes exactly one directory row.
+//   2 THE RED           a refused target contributes one located refusal and no rows -- under `=> []`
+//                       this witness is red, because the plan carried no trace of the directory.
+//   3 NO FAKE OPERATION the refusal population can never be rendered as a sudoers rule, an apply
+//                       command or a `sudo -n` query, because no renderer receives refusals at all.
+//   4 REFUSAL SURVIVES  merging a refused plan with a later admitted plan keeps the refusal.
+//   5 SUDOERS STOP      the gate withholds the whole artifact, naming path and cause.
+//   6 CENSUS STOP       the census blocks on the directory, and the blocking text is countable.
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.algebra { length, string_contains, for_all }
+import std.optional { Present, Absent }
+import std.effect_grant { Read, Write, Execute }
+import extdeps.access.posix { PosixUser, LoginShellUnobserved }
+import gunbc.ownership { Owned }
+import gunbc.managed_directory {
+  ManagedDirectory,
+  DirectoryDependent,
+  EntriesUnmanaged,
+}
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryManaged }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation,
+  ExecutorPrivilegedProvisioningPlan,
+  OwnedDirectoryPlanRefusal,
+  EnsureOwnedDirectory,
+  executor_privileged_owned_directory_plan,
+  executor_privileged_owned_directory_plans,
+  executor_privileged_plan_rows,
+  executor_privileged_plan_merge,
+  executor_privileged_empty_provisioning_plan,
+  executor_privileged_plan_with_rows,
+  executor_privileged_operations_sudoers_body,
+}
+import gunbc.runner.runner_host_grants {
+  runner_host_sudoers_body_guard,
+  RunnerHostSudoersBodyProduced,
+  RunnerHostSudoersBodyRefused,
+  runner_host_wide_plan,
+  runner_host_provisioning_plan_refusals,
+  printer_state_store_plan,
+}
+import gunbc.runner.runner_host_deploy {
+  RunnerHostSpec,
+  RunnerHostSpecFound,
+  RunnerHostSpecAbsent,
+  runner_host_spec_for,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.printer_workflow_artifact { printer_state_directories, printer_start_claim_directory }
+import gunbc.owned_directory { owned_directory_path }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_verdict_all, census_exit }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.fleet.fleet_host_grant_coverage {
+  host_grant_provisioning_target_rows_of,
+  host_grant_blocking_texts,
+  host_grant_awaiting_capability,
+  host_grant_plan_lines,
+  host_grant_queries,
+}
+
+fn owner_user() -> PosixUser {
+  PosixUser { name: "owner", uid: 4001, gid: 4001, shell: LoginShellUnobserved }
+}
+
+fn stranger_user() -> PosixUser {
+  PosixUser { name: "outsider", uid: 4002, gid: 4002, shell: LoginShellUnobserved }
+}
+
+// A SYNTHETIC MANAGED TARGET. Admitted when its only writer is the owner; refused by
+// managed_directory_admit when a writer is neither owner nor in group -- the ONE route that makes
+// owned_directory_install_plan_of answer EnsurePlanUnavailable, so the refusal is not a scenario
+// invented for the test.
+fn managed_with(writers: List<PosixUser>) -> OwnedDirectoryTarget {
+  managed_at(path: "/synthetic/store-root", writers: writers)
+}
+
+// THE SAME SYNTHETIC TARGET AT A DECLARED PATH, so one plan can carry TWO distinct targets and the
+// countability of a SECOND refusal can be pinned (conjunct 4b), not just the presence of a first.
+fn managed_at(path: String, writers: List<PosixUser>) -> OwnedDirectoryTarget {
+  OwnedDirectoryManaged {
+    directory: ManagedDirectory {
+      member: "synthetic-store",
+      path: path,
+      owner: owner_user(),
+      group_principal: owner_user(),
+      dependents: map(writers, w => DirectoryDependent { who: w, needs: [Read, Write, Execute] }),
+      ownership: Owned,
+      entries: EntriesUnmanaged,
+    },
+  }
+}
+
+fn refused_plan() -> ExecutorPrivilegedProvisioningPlan {
+  executor_privileged_owned_directory_plan(t: managed_with(writers: [stranger_user()]))
+}
+
+fn second_refused_plan() -> ExecutorPrivilegedProvisioningPlan {
+  executor_privileged_owned_directory_plan(t: managed_at(path: "/synthetic/second-root", writers: [stranger_user()]))
+}
+
+fn admitted_plan() -> ExecutorPrivilegedProvisioningPlan {
+  executor_privileged_owned_directory_plan(t: managed_with(writers: [owner_user()]))
+}
+
+// 1. THE POSITIVE CONTROL. The projection cannot pass by refusing everything: an admitted target still
+// yields exactly one directory row over the declared path, owned as declared, with no refusal.
+test fn the_admitted_target_contributes_one_directory_row() -> Bool {
+  let plan = admitted_plan()
+  count(executor_privileged_plan_rows(plan: plan)) == 1
+    && length(xs: plan.refusals) == 0
+    && match executor_privileged_plan_rows(plan: plan).first() {
+      Absent => false
+      Present { value: row } =>
+        match row {
+          EnsureOwnedDirectory { path: p, owner: o, group: g, mode: _ } =>
+            (p as String) == "/synthetic/store-root" && (o as String) == "owner" && (g as String) == "owner"
+          _ => false
+        }
+    }
+}
+
+// 2. THE RED THE FIX ANSWERS. A target whose mode cannot be resolved contributes EXACTLY ONE refusal,
+// located by path and caused by the stray writer managed_directory_admit named -- and NO rows. Under the
+// deleted `=> []` arms this is red twice over: no refusal existed, and the type to carry it did not.
+test fn the_refused_target_contributes_a_located_refusal_and_no_rows() -> Bool {
+  let plan = refused_plan()
+  count(executor_privileged_plan_rows(plan: plan)) == 0
+    && length(xs: plan.refusals) == 1
+    && match plan.refusals.first() {
+      Absent => false
+      Present { value: r } =>
+        (r.path as String) == "/synthetic/store-root"
+          && string_contains(s: r.reason as String, pattern: "outsider")
+    }
+}
+
+// 3. A REFUSAL IS NOT AN OPERATION, and the model makes that structural rather than a convention: the
+// renderer receives ONLY rows, so there is no refusal to render -- the sudoers body over a refused plan
+// is empty text, never a grant line, never an argv. (The rejected design stored the refusal inside
+// ExecutorPrivilegedOperation and needed a placeholder principal, an empty argv and a census exclusion;
+// this is the witness that would not exist in that shape.)
+test fn a_refusal_can_never_be_rendered_as_a_grant() -> Bool {
+  let body = executor_privileged_operations_sudoers_body(grantee: "ghrunner", ops: executor_privileged_plan_rows(plan: refused_plan()))
+  !string_contains(s: body, pattern: "NOPASSWD")
+    && !string_contains(s: body, pattern: "/synthetic/store-root")
+    // THE DIFFERENTIAL THAT SHOWS THE SPLIT DOES THE WORK, rather than the synthetic path simply being
+    // uninteresting: the SAME projection over an admitted target yields a row that IS rendered as a
+    // sudoers rule and IS asked about by the census; over the refused target it yields neither.
+    && string_contains(
+      s: executor_privileged_operations_sudoers_body(grantee: "ghrunner", ops: executor_privileged_plan_rows(plan: admitted_plan())),
+      pattern: "/synthetic/store-root",
+    )
+    && count(host_grant_queries(host: "no-such-host" as NonEmptyStr, lease_owner: "lease", invoker_ops: executor_privileged_plan_rows(plan: admitted_plan()))) == 1
+    && length(xs: host_grant_queries(host: "no-such-host" as NonEmptyStr, lease_owner: "lease", invoker_ops: executor_privileged_plan_rows(plan: refused_plan()))) == 0
+}
+
+// 4. A REFUSAL IS NEVER LOST BEHIND LATER ROWS. A refused plan merged with an admitted one stays a
+// refused plan -- the rows of the admitted plan do not overwrite the refusal, which is how the fold in
+// executor_privileged_owned_directory_plans keeps one located cause per host plan.
+test fn a_refusal_survives_a_merge_with_a_later_admitted_plan() -> Bool {
+  let merged = executor_privileged_plan_merge(a: refused_plan(), b: admitted_plan())
+  length(xs: merged.refusals) == 1
+    && match merged.refusals.first() {
+      Absent => false
+      Present { value: r } => (r.path as String) == "/synthetic/store-root"
+    }
+    // and the reverse order agrees, so the stop does not depend on which target refused first.
+    && length(xs: executor_privileged_plan_merge(a: admitted_plan(), b: refused_plan()).refusals) == 1
+    // an empty plan contributes nothing to either population: distinguishable from a refusal.
+    && length(xs: executor_privileged_plan_merge(a: executor_privileged_empty_provisioning_plan(), b: admitted_plan()).refusals) == 0
+}
+
+// 4b. EVERY REFUSAL IS COUNTED, NOT JUST THE FIRST (review 87063). A host with two refused directory
+// targets must report TWO blocking rows -- one per refused target is what makes the degradation
+// countable (DESIGN section 5); truncating to the first let the apply block anyway, but the operator
+// learned about missing directories one per run and the census undercounted. Pins all three places the
+// population is combined: the fold over targets, the merge of site plans, and the census rows derived
+// from either. Under the first-refusal fold/merge this conjunct is red: each produced one.
+test fn every_refused_target_is_counted() -> Bool {
+  // the fold over two refused targets and one admitted target: two refusals, located by both paths, and
+  // the admitted target's row is still there to be provisioned if the host is fixed.
+  let folded = executor_privileged_owned_directory_plans(targets: [
+    managed_at(path: "/synthetic/store-root", writers: [stranger_user()]),
+    managed_at(path: "/synthetic/second-root", writers: [owner_user()]),
+    managed_at(path: "/synthetic/third-root", writers: [stranger_user()]),
+  ])
+  length(xs: folded.refusals) == 2
+    && count(executor_privileged_plan_rows(plan: folded)) == 1
+    && match folded.refusals.first() {
+      Absent => false
+      Present { value: r } => (r.path as String) == "/synthetic/store-root"
+    }
+    && match folded.refusals.skip(n: 1).first() {
+      Absent => false
+      Present { value: r } => (r.path as String) == "/synthetic/third-root"
+    }
+    // the merge of two refused site plans keeps both, in order.
+    && length(xs: executor_privileged_plan_merge(a: refused_plan(), b: second_refused_plan()).refusals) == 2
+    // and the census turns them into one blocking row EACH, with both paths in the plan text.
+    && match host_grant_awaiting_capability(rows: host_grant_provisioning_target_rows_of(refusals: folded.refusals, lease_owner: "lease")) {
+      Absent => false
+      Present { value: _ } => true
+    }
+    && count(host_grant_blocking_texts(rows: host_grant_provisioning_target_rows_of(refusals: folded.refusals, lease_owner: "lease"))) == 2
+    && any(xs: host_grant_plan_lines(rows: host_grant_provisioning_target_rows_of(refusals: folded.refusals, lease_owner: "lease")), predicate: fn(line) {
+      string_contains(s: line, pattern: "provisioning-target-refused (2): /synthetic/store-root; /synthetic/third-root")
+    })
+}
+
+// 5. THE SUDOERS CHANNEL STOPS. With a refusal the gate withholds the WHOLE artifact -- the content that
+// would have been installed is not installed, and the refusal names the directory and its cause. Without
+// one, the same gate installs the content unchanged (the control that keeps the gate from being "refuse
+// everything").
+test fn the_sudoers_gate_withholds_the_artifact_on_a_refusal() -> Bool {
+  match runner_host_sudoers_body_guard(refusals: refused_plan().refusals, content: "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true") {
+    RunnerHostSudoersBodyProduced { content: _ } => false
+    RunnerHostSudoersBodyRefused { reason: why } =>
+      string_contains(s: why, pattern: "/synthetic/store-root")
+        && string_contains(s: why, pattern: "outsider")
+        && !string_contains(s: why, pattern: "NOPASSWD")
+  }
+    && match runner_host_sudoers_body_guard(refusals: admitted_plan().refusals, content: "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true") {
+      RunnerHostSudoersBodyProduced { content: c } => (c as String) == "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true"
+      RunnerHostSudoersBodyRefused { reason: _ } => false
+    }
+}
+
+// 6. THE CENSUS CHANNEL STOPS BEFORE ANY MUTATION. The refused target earns a standing blocking row
+// whose text names the directory, so host_grant_awaiting_capability refuses the apply as
+// ApplyAwaitingCapability -- the same channel a missing sudoers rule uses, so the host never converges
+// with the directory silently absent. Countable: exactly one blocking text, one plan line.
+test fn the_census_blocks_the_apply_on_a_refused_target() -> Bool {
+  let rows = host_grant_provisioning_target_rows_of(refusals: refused_plan().refusals, lease_owner: "lease")
+  let texts = host_grant_blocking_texts(rows: rows)
+  count(texts) == 1
+    && match texts.first() {
+      Absent => false
+      Present { value: t } =>
+        string_contains(s: t, pattern: "/synthetic/store-root") && string_contains(s: t, pattern: "outsider")
+    }
+    && match host_grant_awaiting_capability(rows: rows) {
+      Absent => false
+      Present { value: cap } => string_contains(s: cap, pattern: "/synthetic/store-root")
+    }
+    // it shows in the plan a human reads, under its own label, with its count -- not only in the
+    // capability the apply later refuses on.
+    && any(xs: host_grant_plan_lines(rows: rows), predicate: fn(line) {
+      string_contains(s: line, pattern: "host-grants provisioning-target-refused (1): /synthetic/store-root")
+    })
+}
+
+// 6b. THE CONTROL FOR THE CENSUS. An admitted target produces NO blocking row and NO capability, so the
+// blocking above is caused by the refusal and not by the row shape.
+test fn an_admitted_target_blocks_nothing() -> Bool {
+  let rows = host_grant_provisioning_target_rows_of(refusals: admitted_plan().refusals, lease_owner: "lease")
+  count(rows) == 0
+    && count(host_grant_blocking_texts(rows: rows)) == 0
+    && match host_grant_awaiting_capability(rows: rows) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+// ---------------------------------------------------------------------------
+// THE ONE REFUSAL POPULATION AND THE SEALED PLAN (the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94); DESIGN §3 "each fact
+// lives in exactly one place", §5 "a refusal that fires -> the line stops").
+//
+// THE BUG: gunbc.fleet.fleet_host_grant_coverage built its blocking rows from the host-WIDE refusal
+// population alone, while the sudoers gate consumed the COMBINED population that also carries the
+// printer-state directories. One fact, two populations -- so a refused printer-state directory withheld
+// the sudoers artifact but produced no blocking row, and the apply reached its first mutation without
+// the directory. Both channels now call runner_host_provisioning_plan_refusals; the host-wide-only
+// accessor is deleted, so there is no second name to pick.
+//
+// WHAT CAN AND CANNOT BE PINNED HERE, stated rather than hidden: every provisioning target in the model
+// today is OwnedDirectoryDeclared, and owned_directory_install_plan_of refuses only a target whose
+// managed-directory admission fails (OwnedDirectoryManaged with a writer who is neither owner nor group).
+// So for a REAL host spec BOTH populations are empty, and a claim phrased as "the combined population
+// contains the printer site's refusals" would read 0 == 0 -- vacuous, and it would still pass with the
+// printer term deleted. That claim is therefore NOT what is claimed. What is pinned, non-vacuously:
+//   claims 7-8  the census reads the one exported population and CANNOT name the deleted host-wide one
+//               (a compile probe whose MissingExport count IS the deletion's own diagnostic), and a
+//               refusal over the REAL printer-state path produces the blocking row, the apply stop and
+//               the withheld sudoers -- over the synthetic managed target, the only route by which any
+//               provisioning target refuses at all;
+//   claims 9-10 the printer host really demands all three printer-state directories and a non-printer
+//               host demands none, which is the premise that made the omission a stop-the-host defect;
+//   claim 11    the sealed plan cannot be built with its refusals dropped (item 2 below).
+// ---------------------------------------------------------------------------
+
+// THE RED'S FIXTURE: the SAME managed-target route the earlier conjuncts use (managed_directory_admit
+// refusing a writer who is neither owner nor group -- the one route by which any provisioning target
+// refuses), placed at the REAL printer-state path so the blocking row names a directory the host needs.
+fn refused_printer_target() -> OwnedDirectoryTarget {
+  managed_at(path: printer_start_claim_directory as String, writers: [stranger_user()])
+}
+
+data census_reads_combined_source: String = "module probe_census_reads_combined\nimport std.types { NonEmptyStr }\nimport std.algebra { length }\nimport gunbc.runner.runner_host_deploy { srv1_runner_host_spec }\nimport gunbc.runner.runner_host_grants { runner_host_provisioning_plan_refusals }\nfn f() -> Int {\n  length(xs: runner_host_provisioning_plan_refusals(spec: srv1_runner_host_spec))\n}\n"
+
+// THE FORK'S OTHER SIDE, as the compiler sees it: the name the census used to read no longer exists, so
+// importing it is a MissingExport naming that very name. That diagnostic IS the deletion -- the fork
+// cannot be reintroduced by choosing the other population, because there is no other population.
+data census_reads_forked_source: String = "module probe_census_reads_forked\nimport std.types { NonEmptyStr }\nimport std.algebra { length }\nimport gunbc.runner.runner_host_deploy { srv1_runner_host_spec }\nimport gunbc.runner.runner_host_grants { runner_host_wide_plan_refusals }\nfn f() -> Int {\n  length(xs: runner_host_wide_plan_refusals(spec: srv1_runner_host_spec))\n}\n"
+
+// 7. ONE POPULATION, BOTH CHANNELS. The combined name resolves (no MissingExport for it) and the deleted
+// host-wide name does not (exactly one MissingExport, naming it).
+test fn the_census_reads_the_combined_refusal_population() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(
+      census: blocking_subject_census(
+        source: census_reads_combined_source,
+        wanted_class: "MissingExport",
+        wanted_subject: "runner_host_provisioning_plan_refusals",
+      ),
+      holds: fn(n) { n == 0 },
+    ),
+    census_verdict(
+      census: blocking_subject_census(
+        source: census_reads_forked_source,
+        wanted_class: "MissingExport",
+        wanted_subject: "runner_host_wide_plan_refusals",
+      ),
+      holds: fn(n) { n == 1 },
+    ),
+  ])
+}
+
+// 8. A REFUSED PRINTER-STATE TARGET REACHES THE CENSUS, and the apply refuses before its first mutation.
+// The blocking row names the directory the host actually needs (the real /var/lib/gunbc/printer-starts),
+// host_grant_awaiting_capability refuses the apply as ApplyAwaitingCapability -- the channel that runs
+// BEFORE any host mutation -- and the same refusal withholds the sudoers artifact, so one refusal stops
+// both channels rather than one.
+test fn a_refused_printer_state_target_blocks_the_apply() -> Bool {
+  let refusals = executor_privileged_owned_directory_plan(t: refused_printer_target()).refusals
+  let rows = host_grant_provisioning_target_rows_of(refusals: refusals, lease_owner: "lease")
+  count(rows) == 1
+    && match host_grant_blocking_texts(rows: rows).first() {
+      Absent => false
+      Present { value: t } =>
+        string_contains(s: t, pattern: "/var/lib/gunbc/printer-starts")
+          && string_contains(s: t, pattern: "outsider")
+    }
+    && match host_grant_awaiting_capability(rows: rows) {
+      Absent => false
+      Present { value: cap } => string_contains(s: cap, pattern: "/var/lib/gunbc/printer-starts")
+    }
+    && match runner_host_sudoers_body_guard(refusals: refusals, content: "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true") {
+      RunnerHostSudoersBodyProduced { content: _ } => false
+      RunnerHostSudoersBodyRefused { reason: why } =>
+        string_contains(s: why, pattern: "/var/lib/gunbc/printer-starts")
+    }
+}
+
+// 8b. THE CONTROL FOR CLAIM 8: an ADMITTED target over the same real path blocks nothing, so the stop
+// above is caused by the refusal and not by the path or the row shape.
+test fn an_admitted_printer_state_target_blocks_nothing() -> Bool {
+  let admitted = executor_privileged_owned_directory_plans(targets: printer_state_directories())
+  let rows = host_grant_provisioning_target_rows_of(refusals: admitted.refusals, lease_owner: "lease")
+  count(rows) == 0
+    && match host_grant_awaiting_capability(rows: rows) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match runner_host_sudoers_body_guard(refusals: admitted.refusals, content: "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true") {
+      RunnerHostSudoersBodyProduced { content: c } => (c as String) == "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true"
+      RunnerHostSudoersBodyRefused { reason: _ } => false
+    }
+}
+
+// 9. THE PRINTER HOST REALLY DEMANDS THE DIRECTORIES THAT THE CENSUS WAS MISSING -- the premise of the
+// defect. Falsifiable two ways: delete the site and the count drops to zero; key it on the wrong host and
+// claim 10 fails.
+test fn the_printer_host_demands_every_printer_state_directory() -> Bool {
+  match runner_host_spec_for(host: operator_host_srv1) {
+    RunnerHostSpecAbsent { host: _ } => false
+    RunnerHostSpecFound { spec: spec } =>
+      count(executor_privileged_plan_rows(plan: printer_state_store_plan(spec: spec)))
+        == count(printer_state_directories())
+      // and each demanded directory is its own row, matched BY PATH -- a count two unrelated
+      // directories could not satisfy.
+      && for_all(
+        xs: map(printer_state_directories(), t => owned_directory_path(t: t) as String),
+        predicate: fn(p) {
+          any(
+            xs: executor_privileged_plan_rows(plan: printer_state_store_plan(spec: spec)),
+            predicate: fn(row) {
+              match row {
+                EnsureOwnedDirectory { path: q, owner: _, group: _, mode: _ } => (q as String) == p
+                _ => false
+              }
+            },
+          )
+        },
+      )
+  }
+}
+
+// 10. A HOST THAT IS NOT THE PRINTER HOST DEMANDS NONE OF THEM, and its population is exactly the
+// host-wide one -- the control for claim 9, and the reason the printer term is per-host rather than global.
+test fn a_non_printer_host_demands_no_printer_state_directory() -> Bool {
+  match runner_host_spec_for(host: operator_host_srv2) {
+    RunnerHostSpecAbsent { host: _ } => false
+    RunnerHostSpecFound { spec: spec } =>
+      count(executor_privileged_plan_rows(plan: printer_state_store_plan(spec: spec))) == 0
+        && length(xs: runner_host_provisioning_plan_refusals(spec: spec))
+        == length(xs: runner_host_wide_plan(spec: spec).refusals)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE PLAN CANNOT BE BUILT WITH ITS REFUSALS DROPPED (the lane lead's second side-chat item,
+// jolly-hawk-60 msg_4690f1b7).
+//
+// executor_privileged_plan_of_rows was PUBLIC and manufactured `refusals: []`, so any module could
+// re-house a plan's rows in a fresh plan and silently lose the refusals -- the seal on
+// ExecutorPrivilegedProvisioningPlan proved nothing about PRESERVING them. It is DELETED (the required-
+// parameter variant was rejected for the same reason: a caller could still pass []). The one public
+// builder over caller-supplied rows is now executor_privileged_plan_with_rows, which takes a PLAN and can
+// only ADD rows: the refusal population always comes from the plan the caller was handed, and there is no
+// route to a plan from outside this module except the builders that derive refusals from the one decision,
+// the merge that concatenates both sides, and the empty plan.
+//
+// THE EXACT DIAGNOSTIC ASSERTED (as asked): constructing the sealed record from a foreign module is
+// `CompilerDiagnostic::SoleConstructorViolation` with type_name = "ExecutorPrivilegedProvisioningPlan"
+// (rendered "sole_constructor type 'ExecutorPrivilegedProvisioningPlan' cannot be constructed outside its
+// defining module"), one occurrence per construction site. The refusal record is pinned the same way with
+// type_name = "OwnedDirectoryPlanRefusal": a caller cannot even fabricate the population it would pass.
+// ---------------------------------------------------------------------------
+
+// THE DROPPING ATTEMPT, as the compiler sees it: re-house a refused plan's rows in a plan with no
+// refusals. Blocked at construction, before inference.
+data plan_refusals_dropped_source: String = "module probe_plan_refusals_dropped\nimport std.types { NonEmptyStr, List }\nimport gunbc.executor_privileged_operation { ExecutorPrivilegedProvisioningPlan, OwnedDirectoryPlanRefusal, executor_privileged_plan_rows }\nfn f(plan: ExecutorPrivilegedProvisioningPlan) -> ExecutorPrivilegedProvisioningPlan {\n  ExecutorPrivilegedProvisioningPlan { rows: executor_privileged_plan_rows(plan: plan), refusals: [] }\n}\n"
+
+// THE REFUSAL FORGERY: a plan whose refusals are not the ones the one decision derived, made by hand.
+// Blocked too -- so the population a caller passes is always one the decision produced.
+data refusal_forged_source: String = "module probe_refusal_forged\nimport std.types { List }\nimport gunbc.executor_privileged_operation { ExecutorPrivilegedProvisioningPlan, OwnedDirectoryPlanRefusal }\nimport gunbc.fleet.printer_workflow_artifact { printer_start_claim_directory }\nfn f() -> ExecutorPrivilegedProvisioningPlan {\n  ExecutorPrivilegedProvisioningPlan { rows: [], refusals: [OwnedDirectoryPlanRefusal { path: printer_start_claim_directory, reason: printer_start_claim_directory }] }\n}\n"
+
+// THE CONTROL: the SAME module shape, going through the exported builders only, compiles with no seal
+// violation -- so what fails above is the construction, not the probe.
+data plan_refusals_preserved_source: String = "module probe_plan_refusals_preserved\nimport std.types { NonEmptyStr, List }\nimport gunbc.executor_privileged_operation { ExecutorPrivilegedProvisioningPlan, OwnedDirectoryPlanRefusal, executor_privileged_plan_rows, executor_privileged_plan_with_rows, executor_privileged_plan_merge, executor_privileged_empty_provisioning_plan }\nfn f(plan: ExecutorPrivilegedProvisioningPlan, other: ExecutorPrivilegedProvisioningPlan) -> ExecutorPrivilegedProvisioningPlan {\n  executor_privileged_plan_merge(a: executor_privileged_plan_with_rows(plan: plan, rows: []), b: other)\n}\n"
+
+fn plan_seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+// 11. A FOREIGN MODULE CANNOT DROP A PLAN'S REFUSALS. Both sealed records are refused at construction
+// (exactly one violation each), and the control that only builds through the exported builders is clean.
+test fn a_foreign_module_cannot_drop_a_plans_refusals() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(
+      census: plan_seal_violations(source: plan_refusals_dropped_source, subject: "ExecutorPrivilegedProvisioningPlan"),
+      holds: fn(n) { n == 1 },
+    ),
+    census_verdict(
+      census: plan_seal_violations(source: refusal_forged_source, subject: "ExecutorPrivilegedProvisioningPlan"),
+      holds: fn(n) { n == 1 },
+    ),
+    census_verdict(
+      census: plan_seal_violations(source: refusal_forged_source, subject: "OwnedDirectoryPlanRefusal"),
+      holds: fn(n) { n == 1 },
+    ),
+    census_verdict(
+      census: plan_seal_violations(source: plan_refusals_preserved_source, subject: "ExecutorPrivilegedProvisioningPlan"),
+      holds: fn(n) { n == 0 },
+    ),
+  ])
+}
+
+// 12. THE DELETED BUILDER IS GONE BY NAME, from production and from the tests: importing it is a
+// MissingExport naming it. This is what makes the fix a deletion rather than a deprecation -- a name that
+// still exists is a name a later caller can pick up.
+data plan_of_rows_removed_source: String = "module probe_plan_of_rows_removed\nimport std.types { NonEmptyStr, List }\nimport gunbc.executor_privileged_operation { ExecutorPrivilegedProvisioningPlan, executor_privileged_plan_of_rows }\nfn f(rows: List<ExecutorPrivilegedOperation>) -> ExecutorPrivilegedProvisioningPlan {\n  executor_privileged_plan_of_rows(rows: rows)\n}\n"
+
+test fn the_refusal_dropping_builder_is_deleted() -> ProcessExit {
+  census_exit(
+    census_verdict(
+      census: blocking_subject_census(
+        source: plan_of_rows_removed_source,
+        wanted_class: "MissingExport",
+        wanted_subject: "executor_privileged_plan_of_rows",
+      ),
+      holds: fn(n) { n == 1 },
+    )
+  )
+}

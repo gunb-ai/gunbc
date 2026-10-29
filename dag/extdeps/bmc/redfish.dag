@@ -2,6 +2,7 @@ module extdeps.bmc.redfish
 
 
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.firmware.types { FirmwareSemanticVersion }
 import extdeps.uri { Uri, Https }
 import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot, FanTachSensor, RedfishMemorySummary, RedfishPowerControl, RedfishPowerState, RedfishPowerSubsystem, RedfishProcessorSummary, RedfishSensorReading, RedfishSystemInventory, TemperatureSensor }
 import std.measure { ByteSize, Gibibyte, HardwareThreadCount, gibibyte_to_byte_size, watt, watt_count }
@@ -166,6 +167,18 @@ fn redfish_system_total_memory_bytes(inv: RedfishSystemInventory) -> ByteSize {
 //     of its own notebook (§4d: do not assert as deduced what is only inferred). This module used to fold the
 //     unreadable case into RedfishPasswordChangeNotIndicated, which is exactly that inference, made silently,
 //     by a function whose name promises a verdict about the service.
+// A BUILD THAT FORCES THE PUBLISHED CREDENTIAL'S CHANGE ON FIRST LOGIN, as the vendor's catalogue
+// records it: the exact MessageId the build answers with and the version it was read on. Rows live in the
+// vendor's module beside the release they describe (extdeps.boards.asrock_rack
+// asrock_altrad8ud_bmc_3_22_00_first_login_password_change), so the next unit on that build inherits the
+// fact; a build with no row asserts nothing. Which of our controllers answered it is a receipt in the
+// observing layer, not a field here.
+type RedfishFirstLoginPasswordChange {
+  message_id: NonEmptyStr
+  read_on: FirmwareSemanticVersion
+  authority: ExternalAuthority
+}
+
 type RedfishPasswordChangeVerdict
   = RedfishPasswordChangeRequired { message_id: String }
   | RedfishPasswordChangeNotIndicated
