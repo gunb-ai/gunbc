@@ -7,7 +7,13 @@ import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
 import gunbc.host.export_host_reader_converge { boot_medium_reader_login }
 import extdeps.github.actions { Job, RunStep, UsesStep }
+import extdeps.filesystem.filesystem_io
+import extdeps.languages.yaml.types { YamlValue, YamlMapping, kv, yaml_string }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
+import extdeps.languages.yaml.gha_workflow { steps_yaml, concurrency_yaml, string_list_flow }
+import std.algebra { skip, take_prefix }
 import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_job, fleet_converge_mode_options,
   fleet_converge_jobs, fleet_converge_boot_medium_reader_probe_step,
   fleet_converge_boot_medium_reader_probe_receipt_upload_step,
 }
@@ -486,4 +492,86 @@ test fn the_probe_is_one_gated_step_in_one_job_and_its_receipt_uploads_under_alw
     && jobs_with.first().value.id == uploads.first().value.id
     && probe_step_if(st: fleet_converge_boot_medium_reader_probe_step()) == "github.event.inputs.mode == 'boot_medium_reader_probe'"
     && probe_step_if(st: fleet_converge_boot_medium_reader_probe_receipt_upload_step()) == "always() && github.event.inputs.mode == 'boot_medium_reader_probe'"
+}
+
+// THE COMMITTED PROBE YAML IS THE MODEL'S EMISSION (review of #15383: the probe hunks of fleet-converge.yml
+// were a hand-carried projection nothing compared). The model's own YAML writer renders each probe-specific
+// piece -- the mode option, the shared job's admission and concurrency, the probe step, the receipt-upload
+// step -- and the committed file must contain that rendering line for line at the indent its position gives.
+// Unlike the seed-build fold, none of these pieces needs a capable interpreter: the writer is plain Dag, so
+// the equality is STRICT on every interpreter and there is no disclosed-gap arm. A writer refusal renders
+// "" and so matches nothing (a refusal cannot pass).
+
+fn committed_probe_lines() -> List<String> {
+  filesystem_read(path: ".github/workflows/fleet-converge.yml").content.split(delimiter: "\n")
+}
+
+fn emitted_probe_text(v: YamlValue) -> String {
+  match emit_yaml(v: v) {
+    EmittedYaml { text: t } => t
+    YamlEmitRefused { path: _, reason: _ } => ""
+  }
+}
+
+fn emitted_probe_block(v: YamlValue, indent: String) -> List<String> {
+  map(filter(emitted_probe_text(v: v).split(delimiter: "\n"), l => l != ""), l => concat(indent, l))
+}
+
+fn probe_block_at(lines: List<String>, block: List<String>, i: Int) -> Bool {
+  take_prefix(xs: skip(xs: lines, n: i), n: count(block)) == block
+}
+
+fn committed_contains_block(block: List<String>) -> Bool {
+  match block.first() {
+    Absent => false
+    Present { value: head } => any(enumerate(committed_probe_lines()), p => p.second == head && probe_block_at(lines: committed_probe_lines(), block: block, i: p.first))
+  }
+}
+
+fn committed_probe_step_block(step: Step) -> List<String> {
+  emitted_probe_block(v: steps_yaml(steps: [step]), indent: "      ")
+}
+
+test fn the_committed_probe_step_is_the_models_emission_line_for_line() -> Bool {
+  let block = committed_probe_step_block(step: fleet_converge_boot_medium_reader_probe_step())
+  count(block) > 5 && committed_contains_block(block: block)
+}
+
+test fn the_committed_receipt_upload_step_is_the_models_emission_line_for_line() -> Bool {
+  let block = committed_probe_step_block(step: fleet_converge_boot_medium_reader_probe_receipt_upload_step())
+  count(block) > 5 && committed_contains_block(block: block)
+}
+
+test fn the_committed_mode_option_list_is_the_models_dispatch_modes() -> Bool {
+  let block = emitted_probe_block(v: YamlMapping { entries: [kv(key: "options", value: string_list_flow(items: fleet_converge_mode_options))] }, indent: "        ")
+  count(block) == 1 && committed_contains_block(block: block) && any(fleet_converge_mode_options, o => o == "boot_medium_reader_probe")
+}
+
+test fn the_committed_shared_job_admission_is_the_models_if_condition() -> Bool {
+  match fleet_converge_job().if_condition {
+    Absent => false
+    Present { value: c } => {
+      let block = emitted_probe_block(v: YamlMapping { entries: [kv(key: "if", value: yaml_string(s: c))] }, indent: "    ")
+      count(block) == 1 && committed_contains_block(block: block) && string_contains(s: c, pattern: "boot_medium_reader_probe")
+    }
+  }
+}
+
+test fn the_committed_shared_job_concurrency_is_the_models_and_serializes_the_probe_on_srv2() -> Bool {
+  match fleet_converge_job().concurrency {
+    Absent => false
+    Present { value: spec } => {
+      let block = emitted_probe_block(v: YamlMapping { entries: [kv(key: "concurrency", value: concurrency_yaml(spec: spec))] }, indent: "    ")
+      count(block) > 2 && committed_contains_block(block: block)
+        && any(block, l => string_contains(s: l, pattern: "'boot_medium_reader_probe' && 'gunbc-host-mutation-srv2'"))
+    }
+  }
+}
+
+// THE RED: the comparison discriminates. The same block with its last line (the timeout) changed is not in
+// the committed file, so an equality that were vacuous (an empty emission, a match on a prefix) would fail here.
+test fn a_probe_block_with_one_line_changed_is_not_the_committed_file() -> Bool {
+  let block = committed_probe_step_block(step: fleet_converge_boot_medium_reader_probe_step())
+  committed_contains_block(block: block)
+    && !committed_contains_block(block: append(take_prefix(xs: block, n: count(block) - 1), items: ["        timeout-minutes: 6"]))
 }
