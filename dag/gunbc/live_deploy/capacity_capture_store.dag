@@ -2,6 +2,12 @@ module gunbc.live_deploy.capacity_capture_store
 
 import std.types { String, NonEmptyStr, List, FilePath }
 import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.materialization_provider { ArtifactRequest, CutoverCaptureRequest, addressed_request, RequestAddressed, RequestAddressRefused }
+import std.materialization_object { store_object_name, store_lookup_is_hit }
+import std.materialization_store_grant { CutoverCaptureRoot, materialization_store_root_path, materialization_store_cutover_capture_base }
+import std.judgment_contract { output_fabric_blob }
+import extdeps.realization.materialization_store_local { LocalStoreCapability, local_store_binding_path, local_store_lookup_parts, local_store_part_name, store_path }
 import std.scoped_authorization { AttemptIdentity }
 import std.content_hash { Sha256Digest }
 import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path, fabric_blob_reading_digest }
@@ -17,7 +23,7 @@ import gunbc.runner.runner_microvm_cell_readiness_store { StoreOwnershipReading,
 // Fleet provisioning must ensure root:root 0700 for the base and each attempt
 // directory, with protected ancestors, before any capture. These declarations
 // name the provider boundary; a directory's mere existence is not admission.
-data capacity_capture_base: NonEmptyStr = "/var/lib/gunbc/cutover-capture"
+data capacity_capture_base: NonEmptyStr = materialization_store_cutover_capture_base as NonEmptyStr
 
 type CapacityCaptureStore sole_constructor {
   attempt: AttemptIdentity
@@ -27,7 +33,7 @@ type CapacityCaptureStore sole_constructor {
 fn capacity_capture_root(attempt: AttemptIdentity) -> Result<NonEmptyStr, String> {
   match attempt_segment(spelling: attempt as String) {
     AttemptSegmentRefused { refusal: why } => Err { value: attempt_segment_refusal_text(r: why) }
-    AttemptSegmentAccepted { segment: segment } => Ok { value: join([capacity_capture_base as String, "/", segment.value as String], "") as NonEmptyStr }
+    AttemptSegmentAccepted { segment: segment } => Ok { value: materialization_store_root_path(root: CutoverCaptureRoot { attempt: segment }) as NonEmptyStr }
   }
 }
 
@@ -52,22 +58,53 @@ fn capacity_capture_store_admit(attempt: AttemptIdentity, ownership: StoreOwners
   }
 }
 
-fn capacity_capture_blob_path(store: CapacityCaptureStore, digest: Sha256Digest) -> NonEmptyStr {
-  join([store.root as String, "/", digest.hex as String], "") as NonEmptyStr
+// Names are owned by the materialization provider, not a second root/digest layout.
+fn capacity_capture_blob_path(store: CapacityCaptureStore, request: ArtifactRequest) -> Result<NonEmptyStr, String> {
+  match request {
+    CutoverCaptureRequest { host: _, source_unit: _, digest: _ } => match addressed_request(req: request) {
+      RequestAddressRefused { components: _, scope: _ } => Err { value: "cutover capture identity is not addressable" }
+      RequestAddressed { addressed: addressed } => Ok { value: store_path(root_path: store.root as String,
+        name: local_store_part_name(record: store_object_name(address: addressed.address), id: output_fabric_blob)) as NonEmptyStr }
+    }
+    _ => Err { value: "captured unit requires the cutover capture request family" }
+  }
 }
 
 type CapturedUnitBlob sole_constructor {
   store: CapacityCaptureStore
+  request: ArtifactRequest
   reading: FabricBlobReading
 }
 
-// The provider must publish create-only at this direct-child content address,
-// as root, and retain it through recovery/discharge. A mutable staging reading
-// cannot be turned into a root install merely by carrying a matching digest.
-fn capacity_capture_blob_admit(store: CapacityCaptureStore, reading: FabricBlobReading) -> Result<CapturedUnitBlob, String> {
-  if fabric_blob_reading_path(reading: reading) != capacity_capture_blob_path(store: store, digest: fabric_blob_reading_digest(reading: reading)) {
-    Err { value: "unit blob is outside the admitted root-owned capture address" }
-  } else { Ok { value: CapturedUnitBlob { store: store, reading: reading } } }
+fn capacity_capture_blob_admit(store: CapacityCaptureStore, request: ArtifactRequest, reading: FabricBlobReading) -> Result<CapturedUnitBlob, String> {
+  match capacity_capture_blob_path(store: store, request: request) {
+    Err { value: why } => Err { value: why }
+    Ok { value: path } => if fabric_blob_reading_path(reading: reading) != path {
+      Err { value: "unit blob is outside the admitted provider part address" }
+    } else { match request {
+      CutoverCaptureRequest { host: _, source_unit: _, digest: digest } => if fabric_blob_reading_digest(reading: reading) != digest {
+        Err { value: "captured unit bytes differ from the capture request" }
+      } else { Ok { value: CapturedUnitBlob { store: store, request: request, reading: reading } } }
+      _ => Err { value: "captured unit requires the cutover capture request family" }
+    } }
+  }
+}
+
+// Provider lookup verifies the record AND its byte parts before installation.
+// A capability for some other store cannot borrow this root ownership reading.
+fn capacity_capture_blob_lookup(store: CapacityCaptureStore, request: ArtifactRequest,
+  provider: LocalStoreCapability) -> Result<CapturedUnitBlob, String> {
+  if local_store_binding_path(b: provider.binding) != (store.root as String) {
+    Err { value: "capture provider root differs from the ownership admission" }
+  } else {
+    let found = local_store_lookup_parts(capability: provider, req: request)
+    if !store_lookup_is_hit(l: found.lookup) || count(found.parts) != 1 {
+      Err { value: "capture provider did not return one verified unit blob" }
+    } else { match first(found.parts) {
+      Absent => Err { value: "capture provider returned no unit blob" }
+      Present { value: reading } => capacity_capture_blob_admit(store: store, request: request, reading: reading)
+    } }
+  }
 }
 
 // Provision through the existing owned-directory realization. A foreign owner

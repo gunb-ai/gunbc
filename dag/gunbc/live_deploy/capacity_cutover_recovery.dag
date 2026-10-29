@@ -5,9 +5,10 @@ import std.error_primitives { Result, Ok, Err }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
-import std.fabric_blob { FabricBlobAddress, FabricBlobReadingOutcome, FabricBlobRead, FabricBlobReadRefused, fabric_blob_reading_digest, fabric_blob_fault_text }
+import std.fabric_blob { fabric_blob_reading_digest }
+import std.materialization_provider { ArtifactRequest, CutoverCaptureRequest }
 import extdeps.systemd.manager { SystemdManager }
-import gunbc.live_deploy.capacity_capture_store { CapacityCaptureStore, capacity_capture_blob_admit }
+import gunbc.live_deploy.capacity_capture_store { CapturedUnitBlob }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall, CapturedUnitDocument }
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact }
@@ -20,7 +21,7 @@ type CapacityGenerationFile {
   manager: SystemdManager
   unit: NonEmptyStr
   destination: NonEmptyStr
-  address: FabricBlobAddress
+  host: NonEmptyStr
   digest: Sha256Digest
 }
 
@@ -131,15 +132,14 @@ fn capacity_recovery_finding(record: CasSlotObservation<CapacityCutoverRecord>, 
 // Recovery rehydrates bytes through the existing blob provider, then binds the
 // observed content to the durable manifest before constructing the typed install.
 // The record never stores a caller-asserted live path or serialized unit AST.
-fn capacity_generation_install(file: CapacityGenerationFile, store: CapacityCaptureStore,
-  read: fn(FabricBlobAddress) -> FabricBlobReadingOutcome) -> Result<DeploymentUnitInstall, String> {
-  match read(file.address) {
-    FabricBlobReadRefused { fault: fault } => Err { value: fabric_blob_fault_text(fault: fault) as String }
-    FabricBlobRead { reading: blob } => if content_hash_eq_cryptographic(left: file.digest, right: fabric_blob_reading_digest(reading: blob)) {
-      match capacity_capture_blob_admit(store: store, reading: blob) {
-        Err { value: why } => Err { value: why }
-        Ok { value: capture } => Ok { value: DeploymentUnitInstall { manager: file.manager, unit: file.unit, destination: file.destination, file: CapturedUnitDocument { capture: capture } } }
-      }
-    } else { Err { value: "retained unit blob does not match the recorded generation digest" } }
+fn capacity_generation_install(file: CapacityGenerationFile,
+  read: fn(ArtifactRequest) -> Result<CapturedUnitBlob, String>) -> Result<DeploymentUnitInstall, String> {
+  let request = CutoverCaptureRequest { host: file.host, source_unit: file.destination, digest: file.digest }
+  match read(request) {
+    Err { value: why } => Err { value: why }
+    Ok { value: capture } => if capture.request != request || !content_hash_eq_cryptographic(left: file.digest, right: fabric_blob_reading_digest(reading: capture.reading)) {
+      Err { value: "retained unit blob does not match the recorded capture identity" }
+    } else { Ok { value: DeploymentUnitInstall { manager: file.manager, unit: file.unit, destination: file.destination,
+      file: CapturedUnitDocument { capture: capture } } } }
   }
 }

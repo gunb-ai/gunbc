@@ -5,7 +5,6 @@ import std.error_primitives { Ok, Err }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { CasObservedReadable, CasReadableAbsent }
 import std.content_hash { sha256_hex_digest }
-import std.fabric_blob { FabricBlobAddress }
 import extdeps.filesystem.posix { PosixFileIdentity }
 import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact }
 import std.optional { Present, Absent }
@@ -23,7 +22,7 @@ fn recovery_fixture_file(name: NonEmptyStr, digest: NonEmptyStr) -> CapacityGene
     Absent => none
     Present { value: hash } => Present { value: CapacityGenerationFile { manager: SystemManager, unit: name,
       destination: concat("/etc/systemd/system/", name as String) as NonEmptyStr,
-      address: FabricBlobAddress { key: hash }, digest: hash } }
+      host: "srv1", digest: hash } }
   }
 }
 

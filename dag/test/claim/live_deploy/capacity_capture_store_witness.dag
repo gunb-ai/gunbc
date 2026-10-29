@@ -4,6 +4,7 @@ import std.types { Bool, NonEmptyStr, String }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import std.scoped_authorization { AttemptIdentity }
+import std.materialization_provider { CutoverCaptureRequest }
 import std.content_hash { sha256_hex_digest }
 import std.fabric_blob { read_staged_fabric_blob, FabricBlobRead, FabricBlobReadRefused }
 import extdeps.access.posix { FilePermissions, FileOwnership, file_mode_of_octal_text }
@@ -27,10 +28,15 @@ fn capture_fixture_blob() -> Result<CapturedUnitBlob, String> {
     Err { value: why } => Err { value: why }
     Ok { value: store } => match sha256_hex_digest(hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") {
       Absent => Err { value: "fixture digest malformed" }
-      Present { value: digest } => match read_staged_fabric_blob(path: capacity_capture_blob_path(store: store, digest: digest)) {
+      Present { value: digest } => {
+        let request = CutoverCaptureRequest { host: "srv1", source_unit: "/etc/systemd/system/fixture.service", digest: digest }
+        match capacity_capture_blob_path(store: store, request: request) {
+          Err { value: why } => Err { value: why }
+          Ok { value: path } => match read_staged_fabric_blob(path: path) {
         FabricBlobReadRefused { fault: _ } => Err { value: "fixture blob reading unavailable" }
-        FabricBlobRead { reading: reading } => capacity_capture_blob_admit(store: store, reading: reading)
+        FabricBlobRead { reading: reading } => capacity_capture_blob_admit(store: store, request: request, reading: reading)
       }
+      } }
     }
   }
 }
@@ -54,8 +60,8 @@ test fn an_unprivileged_staging_blob_cannot_become_a_captured_unit() -> Bool {
     Err { value: _ } => false
     Ok { value: store } => match read_staged_fabric_blob(path: "dag/test/fixture/fabric_blob/empty.bin") {
       FabricBlobReadRefused { fault: _ } => false
-      FabricBlobRead { reading: reading } => match capacity_capture_blob_admit(store: store, reading: reading) {
-        Err { value: why } => why == "unit blob is outside the admitted root-owned capture address"
+      FabricBlobRead { reading: reading } => match capacity_capture_blob_admit(store: store, request: CutoverCaptureRequest { host: "srv1", source_unit: "/etc/systemd/system/fixture.service", digest: reading.digest }, reading: reading) {
+        Err { value: why } => why == "unit blob is outside the admitted provider part address"
         Ok { value: _ } => false
       }
     }
