@@ -1,0 +1,132 @@
+module gunbc.compute.migration_builtin_repro_no_siblings
+
+import std.types { String, NonEmptyStr, List, CommitSha }
+import std.optional { Present, Absent }
+import std.error_primitives { Result, Ok, Err }
+import std.decl_ref { DeclarationRef }
+import std.measure { kibibyte_count }
+import extdeps.systemd.manager { SystemdManager }
+import product.capacity.event_chain { PartitionId }
+import gunbc.deploy_transition_bootstrap {
+  ExternalQuiescence, QuiescenceInForce, QuiescenceRefused, unit_quiescence_admission,
+}
+import gunbc.compute.recorded_cgroup_drain {
+  RecordedCgroupPathStanding, RecordedCgroupMaySeal, RecordedCgroupPreserve, recorded_cgroup_drain,
+}
+import gunbc.compute.host_capacity {
+  ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread,
+}
+
+// Source reachability readings are supplied, never recomputed during activation.
+// Unknown is included in the drain, not mistaken for a negative reading.
+type CapacityWriterStanding
+  = CapacityConfirmedWriter
+  | CapacityConfirmedNonWriter
+  | CapacityUnclassified { detail: String }
+
+type CapacityWriterReading {
+  source: DeclarationRef
+  standing: CapacityWriterStanding
+}
+
+// DECLARED FRONTIER: the drain over-approximates writers by unclassified roots.
+// A positive hit from v2.std.fn_index.call_reachable_decls_from_root is useful today;
+// its service-call blind spot prevents a sound negative for uncovered roots. The
+// trigger that shrinks this set is service-call-edge coverage in that existing owner,
+// as recorded by gunbc.instruments.roster_reach_inhabitance. No parser or reachability
+// walk is added to activation; longer quiet windows are the cost of this uncertainty.
+type CapacityManagedUnit {
+  manager: SystemdManager
+  unit: NonEmptyStr
+}
+
+// One row per naming authority, not one copied prefix per consumer. The source owner
+// derives patterns from its own name producer. Enumeration belongs to that owner too;
+// an unreadable or incomplete population must be supplied as Err, never as [].
+type CapacityFamilyPlacement
+  = CapacityFamilyParents { parents: Result<List<CapacityManagedUnit>, String> }
+  | CapacityActivationFamily { targets: List<CapacityManagedUnit> }
+
+type CapacityTransientFamily {
+  standing: CapacityWriterStanding
+  manager: SystemdManager
+  source: DeclarationRef
+  patterns: List<NonEmptyStr>
+  exclude_patterns: List<NonEmptyStr>
+  activators: List<CapacityManagedUnit>
+  // Includes destinations of self-wrap/relaunch, not only the initial service cgroup.
+  placement: CapacityFamilyPlacement
+}
+
+// Drain scheduling consumes this projection, including unresolved placements. It cannot
+// schedule a host quiet window from only the successfully resolved subset.
+type CapacityMigrationParentRequirement {
+  standing: CapacityWriterStanding
+  source: DeclarationRef
+  parents: Result<List<CapacityManagedUnit>, String>
+}
+
+
+
+// The manager owns glob matching. Read inclusions and exclusions through that same
+// reader after inhibition; never implement a second glob parser here. A failed
+// exclusion read is not an empty exclusion set. Both readings carry manager identity.
+fn capacity_migration_enumerate_family(
+  family: CapacityTransientFamily,
+  read_matches: fn(SystemdManager, List<NonEmptyStr>) -> Result<List<CapacityManagedUnit>, String>,
+) -> Result<List<CapacityManagedUnit>, String> {
+  match read_matches(family.manager, family.patterns) {
+    Err { value: why } => Err { value: why }
+    Ok { value: included } => {
+      let exclusion = if count(family.exclude_patterns) == 0 { Ok { value: [] } }
+        else { read_matches(family.manager, family.exclude_patterns) }
+      match exclusion {
+        Err { value: why } => Err { value: why }
+        Ok { value: excluded } => {
+          if any(included + excluded, unit => unit.manager != family.manager) {
+            Err { value: "family selector reading came from a different manager" }
+          } else {
+            Ok { value: filter(included, unit => fold(excluded, init: true, f: (keep, other) => keep && other != unit)) }
+          }
+        }
+      }
+    }
+  }
+}
+
+// Each parent is a whole manager-scoped slice: inhibition and emptiness cover every
+// session on that host using it, not just the producer whose row requires it.
+
+
+type CapacityMigrationChild {
+  root: NonEmptyStr
+  partition: PartitionId
+}
+
+type CapacityMigrationPopulation {
+  source: DeclarationRef
+  installed: List<CapacityManagedUnit>
+  writer_parents: List<CapacityMigrationParentRequirement>
+  transients: List<CapacityTransientFamily>
+  children: List<CapacityMigrationChild>
+}
+
+type CapacityUnitDrain {
+  subject: CapacityManagedUnit
+  quiescence: ExternalQuiescence
+  descendants: RecordedCgroupPathStanding
+}
+
+// This is a pure admission, not a deployment receipt or a marker writer. Its production
+// consumer remains the source-owned lab activation transaction. In particular, supplying
+// a roster here does not assert that a hand-written list describes the live deployment.
+// Parent slices are inhibited as well as their activators: an empty reading alone must
+// never open a window in which an old-generation writer can start again.
+type CapacityMigrationAdmission sole_constructor {
+  population: CapacityMigrationPopulation
+  target_revision: CommitSha
+}
+
+
+
+

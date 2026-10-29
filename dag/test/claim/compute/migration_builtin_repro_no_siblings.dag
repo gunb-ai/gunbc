@@ -1,0 +1,26 @@
+module test.claim.compute.migration_builtin_repro_no_siblings
+
+import std.types { Bool }
+import std.error_primitives { Ok, Err }
+import std.decl_ref { decl_ref }
+import extdeps.systemd.manager { SystemManager }
+import gunbc.compute.migration_builtin_repro_no_siblings {
+  CapacityManagedUnit, CapacityTransientFamily, CapacityFamilyParents,
+  CapacityConfirmedWriter, capacity_migration_enumerate_family,
+}
+
+// Isolation baseline: the actual failing production module at ee5ce7d0379,
+// with only its module identity changed. Not claimed as a repro until executed.
+test fn real_module_without_sibling_functions() -> Bool {
+  let unit = CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }
+  let family = CapacityTransientFamily {
+    standing: CapacityConfirmedWriter, manager: SystemManager,
+    source: decl_ref(module_path: "test.claim.compute.migration_builtin_repro_no_siblings", decl_name: "real_module_without_sibling_functions"),
+    patterns: ["fixture.service"], exclude_patterns: [], activators: [],
+    placement: CapacityFamilyParents { parents: Ok { value: [] } },
+  }
+  match capacity_migration_enumerate_family(family: family, read_matches: (manager, patterns) => Ok { value: [unit] }) {
+    Ok { value: units } => units == [unit]
+    Err { value: _ } => false
+  }
+}
