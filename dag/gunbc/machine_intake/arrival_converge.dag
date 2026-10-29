@@ -6,6 +6,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { content_hash_equal }
 import std.scoped_authorization { ScopedAuthorization }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -105,6 +106,8 @@ import gunbc.machine_intake.bmc_rotation_route {
 }
 import gunbc.machine_intake.bmc_credential_policy {
   BmcCredentialPolicyKey,
+  FactoryLoginBehaviour,
+  FactoryLoginForcesPasswordChange,
   PublishedCredentialChangeForced,
   bmc_credential_policy_key_eq,
 }
@@ -1150,7 +1153,10 @@ type PriorLifeInputs {
 // The domain executes its steps in the admitted order, each consuming only the receipt its
 // precondition produced in this run; a step whose precondition did not establish is not executed and
 // the fold records it NotReached. Then the fold composes the outcomes into the run's ledger.
-fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs, locked: InBandRecoveryStanding?) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>> {
+// The prefix ladder, ONCE. `across` is Absent for every ordinary unit; a run that took the
+// ForcedFirstRotationPrecedesPriorLife row passes its sealed pre-write capture (item 6), and the
+// BmcSecure step then carries the row's build-confirmation precondition. There is no second ladder.
+fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs, across: PriorLifeForcedWriteContext?, locked: InBandRecoveryStanding?) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>> {
   let access = access_discover(key: step_instance_key(run: run, step: access_discover_step_ref, subject: subject), read: read, locked: locked)
   match step_outcome_receipt(outcome: access) {
     Absent => [access]
@@ -1162,7 +1168,7 @@ fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read:
             Present { value: ir } =>
               match ir {
                 IdentityBindReceipt { receipt: i } =>
-                  [access, identity, prior_life_boundary(key: step_instance_key(run: run, step: prior_life_boundary_step_ref, subject: subject), identity: i, platform: prior_life.platform, world: prior_life.world, across: none)]
+                  [access, identity, prior_life_boundary(key: step_instance_key(run: run, step: prior_life_boundary_step_ref, subject: subject), identity: i, platform: prior_life.platform, world: prior_life.world, across: across)]
                 AccessDiscoverReceipt { receipt: _ } => [access, identity]
                 PriorLifeBoundaryReceipt { receipt: _ } => [access, identity]
                 BmcSecureReceipt { receipt: _ } => [access, identity]
@@ -1177,8 +1183,8 @@ fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read:
   }
 }
 
-fn arrival_prefix_outcomes_through_bmc_secure(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs, bmc: BmcSecureInputs, locked: InBandRecoveryStanding?) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>> {
-  let prefix = arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, locked: locked)
+fn arrival_prefix_outcomes_through_bmc_secure(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs, bmc: BmcSecureInputs, across: PriorLifeForcedWriteContext?, forced: ForcedFirstRotationPrecedesPriorLife?, locked: InBandRecoveryStanding?) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>> {
+  let prefix = arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, across: across, locked: locked)
   match prefix.last() {
     Absent => prefix
     Present { value: last } =>
@@ -1194,8 +1200,28 @@ fn arrival_prefix_outcomes_through_bmc_secure(run: ConvergenceRunId, subject: St
                     Absent => prefix
                     Present { value: ir } =>
                       match ir {
-                        IdentityBindReceipt { receipt: i } =>
-                          concat(prefix, [bmc_secure(key: step_instance_key(run: run, step: bmc_secure_step_ref, subject: subject), identity: i, prior: p, inputs: bmc)])
+                        IdentityBindReceipt { receipt: i } => {
+                          let bmc_key = step_instance_key(run: run, step: bmc_secure_step_ref, subject: subject)
+                          // THE FORCED BUILD AND THE AUTHENTICATED READ MUST AGREE (item 5), BEFORE BmcSecure runs.
+                          // On a forcing build the 403 inferred the firmware (ForcedBuildInferredFromTheResponse) and
+                          // the post-write authenticated read is its ONLY confirmation (bmc_rotation_route
+                          // forced_first_rotation_apply_frontier). With the row taken, the read's build is joined to
+                          // the inferred build as a precondition of the step: a read naming any other build means the
+                          // credential was written on a controller that is not the one the 403 came from, and
+                          // BmcSecure refuses with its own arm -- never establishing on an unconfirmed inference, and
+                          // the refusal is located (both builds named) rather than folded into a domain refusal. This
+                          // check is the row's alone; with no row (every ordinary unit) it never runs.
+                          let bs = match forced {
+                            Absent => bmc_secure(key: bmc_key, identity: i, prior: p, inputs: bmc)
+                            Present { value: row } =>
+                              if !bmc_firmware_release_identity_eq(a: bmc.reading.firmware, b: row.write.forced.key.firmware) {
+                                StepRefused { key: bmc_key, cause: BmcSecureForcedBuildDisagreesWithForcedResponse { inferred: row.write.forced.key.firmware, read: bmc.reading.firmware } }
+                              } else {
+                                bmc_secure(key: bmc_key, identity: i, prior: p, inputs: bmc)
+                              }
+                          }
+                          concat(prefix, [bs])
+                        }
                         AccessDiscoverReceipt { receipt: _ } => prefix
                         PriorLifeBoundaryReceipt { receipt: _ } => prefix
                         BmcSecureReceipt { receipt: _ } => prefix
@@ -1222,7 +1248,7 @@ fn converge_arrival_prefix(run: ConvergenceRunId, subject: StepSubjectKey, read:
   match arrival_prefix_steps(phases: arrival_prefix_through(last: arrival_prefix_last)) {
     ArrivalPrefixPhaseUnstepped { phase: p } => ArrivalPrefixUnstepped { phase: p }
     ArrivalPrefixStepped { steps: steps } =>
-      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, locked: locked), discharges: [])
+      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, across: none, locked: locked), discharges: [])
   }
 }
 
@@ -1248,7 +1274,7 @@ fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubje
           }
         Absent => []
       }
-      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes_through_bmc_secure(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, bmc: bmc, locked: locked), discharges: discharges)
+      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes_through_bmc_secure(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, bmc: bmc, across: none, forced: none, locked: locked), discharges: discharges)
     }
   }
 }
@@ -1320,19 +1346,29 @@ fn converge_mtjade1_arrival_through_bmc_secure(run: ConvergenceRunId, prior_life
 // of this inference is the row below (its `reason`) and, through the row, the forced driver; the frontier
 // that would let it be asserted as fact is the vendor-grounded fact of the build's non-destructive
 // first-login change (recorded per firmware under extdeps.bmc.*), and until then it stays an inference.
+// The fields are the ground, not a paraphrase of it: `vendor_row` names the credential-policy row whose
+// FactoryLoginForcesPasswordChange behaviour stands behind the inference, `vendor_behaviour` carries that
+// behaviour as the vendor module serves it, and `write` is the effect taken on it. The commentary above
+// the type is the classification (§4c); no prose field.
 type ForcedWritePreservesArchiveInference sole_constructor {
   write: BmcAccountWriteRequest
-  premise: NonEmptyStr
+  vendor_row: BmcCredentialPolicyKey
+  vendor_behaviour: FactoryLoginBehaviour
 }
 
-fn forced_write_preserves_archive_inference(write: BmcAccountWriteRequest) -> ForcedWritePreservesArchiveInference
+fn forced_write_preserves_archive_inference(
+  write: BmcAccountWriteRequest,
+  vendor_row: BmcCredentialPolicyKey,
+  vendor_behaviour: FactoryLoginBehaviour,
+) -> ForcedWritePreservesArchiveInference
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "admit_forced_first_rotation_precedes_prior_life"),
   ]
 {
   ForcedWritePreservesArchiveInference {
     write: write,
-    premise: "inferred, not observed: this build's credential-policy row says the first-login change is a password change, so the managed root write is taken not to erase the prior-life archive; the post-write read must still confirm it and a disagreement is BmcSecure refusing, never an assumption of survival",
+    vendor_row: vendor_row,
+    vendor_behaviour: vendor_behaviour,
   }
 }
 
@@ -1351,7 +1387,8 @@ type ForcedFirstRotationPrecedesPriorLife sole_constructor {
 // authenticated read answered the build's measured 403; that is the run's own forced state. It is NOT
 // established -- there is no secured reading to stand on until the admitted forced write is made -- so it
 // is a typed pending, and the row admission consumes it. The established AccessDiscover standing for a
-// forced unit comes from the authenticated read the forced driver runs AFTER the write.
+// forced unit comes from the authenticated read the forced driver runs AFTER the write. Its executing route
+// is the declared frontier forced_change_arrival_route_frontier below (§3c).
 type AccessForcedChangePending sole_constructor {
   key: StepInstanceKey
   forced: PublishedCredentialChangeForced
@@ -1368,6 +1405,21 @@ fn access_forced_change_pending(key: StepInstanceKey, forced: PublishedCredentia
 {
   AccessForcedChangePending { key: key, forced: forced }
 }
+
+// THE EXECUTING ROUTE FOR THE FORCED ARRIVAL, declared (§3c): the CONSUMERS of the pending and the row are
+// converge_arrival_forced_through_bmc_secure and admit_forced_first_rotation_precedes_prior_life above, and
+// the fold that consults them. What is missing is the PRODUCTION MINT of the pending on the AccessDiscover
+// route: minting it needs the unauthenticated service-root read plus the build's measured 403 from the SAME
+// run, and on a forced build the authenticated read that follows the write comes from the redfish_accounts
+// BmcAccountStateObservation -- which is still IPMI-modeled on main. The named later change is crisp-gull-572's
+// dry Redfish observation in gunbc.machine_intake.bmc_secure (item 3, PR #15370), the faithful read surface for
+// ASRock ALTRAD8UD 03.22.00; when it lands, the AccessDiscover route mints the pending from that run's own 403
+// and calls the forced driver, and the witnesses below become the regression pair rather than the only route.
+// Until then the forced path is realized only under test.claim.machine_intake.machine_intake_arrival_converge_witness,
+// which declares every minter it uses.
+data forced_change_arrival_route_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when a production route in gunbc.machine_intake mints AccessForcedChangePending from the run's own unauthenticated service-root read and measured 403 on the AccessDiscover step and calls converge_arrival_forced_through_bmc_secure -- reached by crisp-gull-572's dry Redfish observation in gunbc.machine_intake.bmc_secure (item 3, PR #15370) replacing the IPMI-modeled redfish_accounts read at 03.22.00; NOT satisfied by a witness minting the pending itself" as NonEmptyStr,
+)
 
 // THE ROW ADMISSION -- THE SINGLE AUTHORITY FOR TAKING THE DIVERGENCE.
 //
@@ -1410,83 +1462,19 @@ fn admit_forced_first_rotation_precedes_prior_life(
         row: forced.key,
         forced: forced,
         write: write,
-        reason: forced_write_preserves_archive_inference(write: write.request),
+        reason: forced_write_preserves_archive_inference(
+          write: write.request,
+          vendor_row: forced.key,
+          vendor_behaviour: FactoryLoginForcesPasswordChange {
+            requirement: write.forced.requirement,
+            evidence: write.forced.policy_evidence,
+          },
+        ),
       },
     }
   }
 }
 
-// THE FORCED-CHANGE PREFIX, BUILT THROUGH THE SAME STEPS AND THE SAME FOLD as the ordinary prefix, with
-// two differences the admitted row authorises: PriorLifeBoundary runs across the write (its archive arm
-// re-decided for the post-write archive), and BmcSecure is obliged to confirm the post-write read names
-// the build the 403 inferred. The plan is the untouched arrival_phases_all prefix through BmcSecure; the
-// fold is gunbc.fleet.convergence_fold fold_convergence_run with arrival_receipt_projection, exactly as
-// the non-forced run. Nothing here reorders a standing.
-fn arrival_forced_prefix_outcomes_through_bmc_secure(
-  run: ConvergenceRunId,
-  subject: StepSubjectKey,
-  read: CurrentManagerRead,
-  inputs: IdentityBindInputs,
-  prior_life: PriorLifeInputs,
-  across: PriorLifeForcedWriteContext,
-  bmc: BmcSecureInputs,
-  row: ForcedFirstRotationPrecedesPriorLife,
-  locked: InBandRecoveryStanding?,
-) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>> {
-  let access = access_discover(key: step_instance_key(run: run, step: access_discover_step_ref, subject: subject), read: read, locked: locked)
-  match step_outcome_receipt(outcome: access) {
-    Absent => [access]
-    Present { value: r } =>
-      match r {
-        AccessDiscoverReceipt { receipt: a } => {
-          let identity = identity_bind_provisional(key: step_instance_key(run: run, step: identity_bind_provisional_step_ref, subject: subject), access: a, inputs: inputs)
-          match step_outcome_receipt(outcome: identity) {
-            Present { value: ir } =>
-              match ir {
-                IdentityBindReceipt { receipt: i } => {
-                  let life = prior_life_boundary(key: step_instance_key(run: run, step: prior_life_boundary_step_ref, subject: subject), identity: i, platform: prior_life.platform, world: prior_life.world, across: Present { value: across })
-                  match step_outcome_receipt(outcome: life) {
-                    Present { value: lr } =>
-                      match lr {
-                        PriorLifeBoundaryReceipt { receipt: p } => {
-                          let bmc_key = step_instance_key(run: run, step: bmc_secure_step_ref, subject: subject)
-                          // THE FORCED BUILD AND THE AUTHENTICATED READ MUST AGREE (item 5), BEFORE BmcSecure runs.
-                          // On a forcing build the 403 inferred the firmware (ForcedBuildInferredFromTheResponse) and
-                          // the post-write authenticated read is its ONLY confirmation (bmc_rotation_route
-                          // forced_first_rotation_apply_frontier). So the read's build is joined to the inferred build
-                          // as a precondition of the step: a read that names any other build means the credential was
-                          // written on a controller that is not the one the 403 came from, and BmcSecure refuses with
-                          // its own arm -- it never establishes on an unconfirmed inference, and the refusal is located
-                          // (both builds named) rather than folded into a domain refusal. This check is the row's
-                          // alone; the non-forced path never runs it.
-                          let bs =
-                            if !bmc_firmware_release_identity_eq(a: bmc.reading.firmware, b: row.write.forced.key.firmware) {
-                              StepRefused { key: bmc_key, cause: BmcSecureForcedBuildDisagreesWithForcedResponse { inferred: row.write.forced.key.firmware, read: bmc.reading.firmware } }
-                            } else {
-                              bmc_secure(key: bmc_key, identity: i, prior: p, inputs: bmc)
-                            }
-                          concat([access, identity, life], [bs])
-                        }
-                        AccessDiscoverReceipt { receipt: _ } => [access, identity, life]
-                        IdentityBindReceipt { receipt: _ } => [access, identity, life]
-                        BmcSecureReceipt { receipt: _ } => [access, identity, life]
-                      }
-                    Absent => [access, identity, life]
-                  }
-                }
-                AccessDiscoverReceipt { receipt: _ } => [access, identity]
-                PriorLifeBoundaryReceipt { receipt: _ } => [access, identity]
-                BmcSecureReceipt { receipt: _ } => [access, identity]
-              }
-            Absent => [access, identity]
-          }
-        }
-        IdentityBindReceipt { receipt: _ } => [access]
-        PriorLifeBoundaryReceipt { receipt: _ } => [access]
-        BmcSecureReceipt { receipt: _ } => [access]
-      }
-  }
-}
 
 // THE FORCED-CHANGE RUN. Entered ONLY with the run's own unauthenticated pending and the admitted forced
 // write; the row admission gates it. If the row is not admitted -- a non-forcing build, or a write
@@ -1535,7 +1523,7 @@ fn converge_arrival_forced_through_bmc_secure(
             steps: steps,
             run: run,
             subject: subject,
-            outcomes: arrival_forced_prefix_outcomes_through_bmc_secure(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, across: across, bmc: bmc, row: row, locked: locked),
+            outcomes: arrival_prefix_outcomes_through_bmc_secure(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, bmc: bmc, across: Present { value: across }, forced: Present { value: row }, locked: locked),
             discharges: discharges,
           )
         }

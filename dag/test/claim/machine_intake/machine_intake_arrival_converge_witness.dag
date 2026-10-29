@@ -2092,7 +2092,7 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_on_the_rea
         match admit_forced_first_rotation_precedes_prior_life(forced: write.forced, write: write) {
           Absent => false
           Present { value: row } =>
-            match arrival_forced_prefix_outcomes_through_bmc_secure(
+            match arrival_prefix_outcomes_through_bmc_secure(
               run: run_a,
               subject: mtjade1_key,
               read: read_mtjade1_current_manager_read(),
@@ -2100,7 +2100,7 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_on_the_rea
               prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
               across: across,
               bmc: bmc,
-              row: row,
+              forced: Present { value: row },
               locked: none,
             ).last() {
               Present { value: o } =>
@@ -2155,7 +2155,7 @@ test fn w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_s
                 }
               _ => false
             }
-          let outcomes = arrival_forced_prefix_outcomes_through_bmc_secure(
+          let outcomes = arrival_prefix_outcomes_through_bmc_secure(
             run: run_a,
             subject: mtjade1_key,
             read: read_mtjade1_current_manager_read(),
@@ -2163,7 +2163,7 @@ test fn w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_s
             prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
             across: match forced_pre_capture() { Absent => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }  Present { value: cap } => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: Present { value: cap } } },
             bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: foreign_read),
-            row: row,
+            forced: Present { value: row },
             locked: none,
           )
           stopped && length(xs: outcomes) == 4 && match outcomes.last() {

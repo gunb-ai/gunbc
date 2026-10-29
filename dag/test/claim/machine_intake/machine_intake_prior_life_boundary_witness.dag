@@ -487,7 +487,7 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the
         PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } =>
           v.write_instant == t_returned_p
             && length(xs: v.options) == 2
-            && (match first(xs: v.options) { Present { value: ConfirmFactoryFresh { confirm_receipt: _ } } => true  _ => false })
+            && (match first(xs: v.options) { ConfirmFactoryFresh {} => true  _ => false })
             && (match v.standing { NoPriorLifeEntries {} => true  _ => false })
         _ => false
       }

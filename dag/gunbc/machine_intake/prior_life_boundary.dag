@@ -2,6 +2,7 @@ module gunbc.machine_intake.prior_life_boundary
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.measure { positive_millisecond, PositiveMeasureSuccessor }
 import std.algebra { FreeSemigroup, Empty, length }
@@ -964,10 +965,21 @@ fn prior_life_pre_write_standing(post: List<ArchivedEntryIdentity>, pre: List<Ar
 }
 
 // THE TWO RESOLUTIONS THE OPERATOR MUST CHOOSE BETWEEN, named on the verdict so the run says WHICH
-// decision it needs rather than failing with a bare no (item 6).
+// decision it needs rather than failing with a bare no (item 6). NULLARY: the variants ARE the decision;
+// the operator's confirmation or quarantine lands as its own sealed fact through the operator's decision
+// route when one exists, and prose receipts prefilled here would be commentary stored as data (§4c).
+// Consumer: the third outcome below; trigger for receipts: an operator decision surface (frontier below).
 type FactoryFreshOrQuarantine
-  = ConfirmFactoryFresh { confirm_receipt: NonEmptyStr }
-  | QuarantineUnit { quarantine_reason: NonEmptyStr }
+  = ConfirmFactoryFresh {}
+  | QuarantineUnit {}
+
+// The operator decision this third outcome asks for has no minting surface yet: no production caller
+// reads a PriorLifeArchiveIndeterminateAcrossForcedWrite and answers it. Until one exists the verdict
+// stands (it blocks fleet admission by being an incomplete the fold never establishes), and the options
+// stay nullary -- a prefilled receipt would fabricate the very decision the operator owes.
+data prior_life_operator_decision_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when an operator decision surface consumes PriorLifeIndeterminateAcrossForcedWrite.options -- an authenticated operator route that records ConfirmFactoryFresh or QuarantineUnit for the named subject as its own sealed fact (with the deciding operator and instant) and admits or quarantines the unit accordingly; NOT satisfied by any run minting either variant itself" as NonEmptyStr,
+)
 
 // THE RUN'S FORCED-WRITE CONTEXT, supplied by the arrival step ONLY when the run took the
 // ForcedFirstRotationPrecedesPriorLife row: the instant THIS run's forced root write returned (the
@@ -996,7 +1008,6 @@ type PriorLifeIndeterminateAcrossForcedWrite sole_constructor {
   write_instant: EpochMs
   standing: PostWriteEntryStanding
   options: List<FactoryFreshOrQuarantine>
-  question: NonEmptyStr
 }
 
 fn prior_life_indeterminate_across_forced_write(
@@ -1016,11 +1027,7 @@ fn prior_life_indeterminate_across_forced_write(
     subject: subject,
     write_instant: write_instant,
     standing: standing,
-    options: [
-      ConfirmFactoryFresh { confirm_receipt: "confirm the controller was factory-fresh before the forced write (its prior life was empty before the write, not erased by it)" },
-      QuarantineUnit { quarantine_reason: "the controller held prior-life entries none of which this run held in a pre-write capture; quarantine until their fate is established" },
-    ],
-    question: "the post-write archive has no entry this run held in a pre-write capture; is this controller factory-fresh, or did the forced root write erase its prior life?" as NonEmptyStr,
+    options: [ConfirmFactoryFresh {}, QuarantineUnit {}],
   }
 }
 
