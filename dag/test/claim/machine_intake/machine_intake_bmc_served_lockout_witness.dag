@@ -16,13 +16,17 @@ module test.claim.machine_intake.machine_intake_bmc_served_lockout_witness
 // test.fixture.machine_intake.bmc_lockout, which is the only place a witness may
 // shape one.
 //
-// WHAT EACH TEST'S RUNG IS, stated where it is used: the N-1 boundary, the
-// unread-threshold refusal, retries as spendable logins, attribution to the
-// account a login authenticates as, derived retirement costing nothing against
-// the probed path costing one per LAN member, and the forced-change path being an
-// AUTHENTICATED answer (403 Base.1.16.0.PasswordChangeRequired) rather than a
-// failed login — exempt, and exempt only on the surface the sealed record is
-// grounded for.
+// WHAT EACH TEST'S RUNG IS, stated where it is used: the N-1 boundary against the
+// SERVED counter window (the reading's own rejected probe is a counted failure
+// while it is inside it and is not once the served window has passed it away, and
+// a threshold served WITHOUT a window counts it — fail closed), the
+// unread-threshold refusal by typed cause, retries as spendable logins, attribution
+// to the account a login authenticates as, judgement by the surface the plan will
+// actually authenticate on, derived retirement costing nothing against the probed
+// path costing one per LAN member, the forced-change path being an AUTHENTICATED
+// answer (403 Base.1.16.0.PasswordChangeRequired) rather than a failed login —
+// exempt, and exempt only on the surface the sealed record is grounded for — and a
+// served never-locked threshold licensing what an unread one refuses.
 //
 // NOTHING HERE TOUCHES A BMC. These are dry passes over a forged world and a
 // fixture's served reading; the live read that would replace the fixture is
@@ -63,7 +67,9 @@ import gunbc.machine_intake.bmc_secure {
   dry_read_bmc_account_state, plan_bmc_account_action, dry_bmc_account_instant, dry_evidence,
 }
 import test.fixture.machine_intake.bmc_lockout {
-  lockout_both_served, lockout_redfish_only, lockout_redfish_never_locked, lockout_unread,
+  lockout_both_served, lockout_redfish_only, lockout_redfish_window,
+  lockout_redfish_never_locked, lockout_unread,
+  lockout_redfish_served_ipmi_unread, lockout_ipmi_served_redfish_unread,
 }
 import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write }
 import test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness {
@@ -284,7 +290,40 @@ test fn declared_retries_are_charged_as_logins() -> Bool {
       FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
     }
   }
+  // And the same plan is refused when the controller serves the THRESHOLD but not
+  // the counter window: with nothing served that would pass the reading's rejected
+  // probe away, it counts, and a gate that assumed a window it never read would
+  // admit here. The 1 s window above is what makes this discriminating — the
+  // identical plan with the identical threshold is admitted there.
+  let no_window = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_only(read_at: t_read, redfish_threshold: 4))
+  let dark_one_declared = plan_lock(reading: no_window, forced_change: none, declared_retries: [retry(account: "root" as NonEmptyStr, surface: RedfishAccountServiceLogin, times: 1)], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
   planned(none_declared) && refused_by_budget(two_declared) && says_four_over_three
+    && refused_by_budget(dark_one_declared)
+}
+
+// RUNG: the budget is per surface, and the surface that judges a plan is the one it
+// will AUTHENTICATE ON. A controller that will not answer on the surface the plan
+// never touches must not refuse it, and a controller that will not answer on the
+// surface it does touch must refuse it however generous the other surface is. A
+// gate that consulted whichever surface happened to answer would pass the first
+// half by accident and fail the second outright.
+test fn the_surface_the_plan_will_authenticate_on_is_the_one_that_judges_it() -> Bool {
+  let store_at = observer_clock_modeled(millis: t_store, realization: lockout_schedule)
+  let fetch_at = observer_clock_modeled(millis: t_fetch, realization: lockout_schedule)
+  let plan_at = observer_clock_modeled(millis: t_plan, realization: lockout_schedule)
+  // The root rotation writes over Redfish, so Redfish is the surface under test.
+  let ipmi_dark = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_served_ipmi_unread(read_at: t_read, redfish_threshold: 4, reset_after_secs: 1, ipmi_detail: "the LAN configuration parameters were not answered" as NonEmptyStr))
+  let redfish_dark = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_ipmi_served_redfish_unread(read_at: t_read, ipmi_threshold: 20, redfish_detail: "no authenticated read is answered before the forced change" as NonEmptyStr))
+  let on_served = plan_lock(reading: ipmi_dark, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
+  let on_dark = plan_lock(reading: redfish_dark, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
+  let says_no_served_threshold = match list_head(budget_blocks(on_dark)) {
+    Absent => false
+    Present { value: b } => match b {
+      CostExceedsTheServedHeadroom { cost: _, may_fail: _, threshold: _, known_failures_in_window: _ } => false
+      FailingLoginsWithNoServedThreshold { cost: c, cause: _ } => c == 2
+    }
+  }
+  planned(on_served) && refused_by_budget(on_dark) && says_no_served_threshold
 }
 
 // RUNG: a login is charged to the account it authenticates as. A retry declared

@@ -230,3 +230,59 @@ fn lockout_redfish_never_locked(read_at: EpochMs) -> BmcControllerLockoutReading
 fn lockout_unread(read_at: EpochMs, detail: NonEmptyStr) -> BmcControllerLockoutReading {
   bmc_lockout_reading_not_read(detail: detail, read_at: lockout_fixture_instant(millis: read_at))
 }
+// ONE SURFACE SERVED, THE OTHER NOT READ. The gate judges a plan against the
+// threshold of the surface it will actually authenticate on, so a witness needs to
+// serve one surface and withhold the other — otherwise "the plan was admitted" and
+// "the gate looked at whichever surface happened to answer" are the same shape.
+// The unread half is lockout_surface_unread, so the cause it carries is the typed
+// one the product layer names, not a string.
+fn lockout_redfish_served_ipmi_unread(read_at: EpochMs, redfish_threshold: Int, reset_after_secs: Int, ipmi_detail: NonEmptyStr) -> BmcControllerLockoutReading {
+  bmc_lockout_reading(
+    surfaces: [
+      bmc_lockout_surface(
+        surface: RedfishAccountServiceLogin,
+        policy: LockoutPolicyServed {
+          served: ServedFromRedfishAccountService {
+            properties: redfish_account_service_lockout_served(
+              account_lockout_threshold: redfish_threshold,
+              account_lockout_duration: Present { value: 300 },
+              account_lockout_counter_reset_after: Present { value: reset_after_secs },
+              account_lockout_counter_reset_enabled: Present { value: true },
+            ),
+          },
+        },
+        evidence: lockout_fixture_evidence(what: join(["redfish-threshold-", to_string(redfish_threshold), "-window-", to_string(reset_after_secs)], "")),
+        read_at: lockout_fixture_instant(millis: read_at),
+      ),
+      lockout_surface_unread(surface: IpmiLanPlusLogin { channel: 1 }, detail: ipmi_detail, serves_no_parameter: false, read_at: read_at),
+    ],
+    read_at: lockout_fixture_instant(millis: read_at),
+  )
+}
+
+// THE MIRROR: the IPMI LAN channel answers generously and Redfish — the surface the
+// root rotation authenticates on — does not. Nothing licenses a potentially-failing
+// login on root's Redfish counter, however healthy the other surface looks.
+fn lockout_ipmi_served_redfish_unread(read_at: EpochMs, ipmi_threshold: Int, redfish_detail: NonEmptyStr) -> BmcControllerLockoutReading {
+  bmc_lockout_reading(
+    surfaces: [
+      lockout_surface_unread(surface: RedfishAccountServiceLogin, detail: redfish_detail, serves_no_parameter: false, read_at: read_at),
+      bmc_lockout_surface(
+        surface: IpmiLanPlusLogin { channel: 1 },
+        policy: LockoutPolicyServed {
+          served: ServedFromIpmiLanBadPasswordThreshold {
+            parameters: ipmi_lan_bad_password_threshold_served(
+              invalid_password_disable: true,
+              bad_password_threshold: ipmi_threshold,
+              attempt_count_reset_secs: 300,
+              user_lockout_interval_secs: 300,
+            ),
+          },
+        },
+        evidence: lockout_fixture_evidence(what: join(["ipmi-threshold-", to_string(ipmi_threshold)], "")),
+        read_at: lockout_fixture_instant(millis: read_at),
+      ),
+    ],
+    read_at: lockout_fixture_instant(millis: read_at),
+  )
+}
