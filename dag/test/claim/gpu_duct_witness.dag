@@ -10,12 +10,13 @@ import product.printed_chassis.gpu_duct {
   GpuDuctWindowDeeperThanFan, GpuDuctPlugPassageClosed, EndFaceMeasurement, DuctCardMount, DuctExtent,
   PlugAndFlange, SleeveOverCardEnd, FullDuct, CardFitRing, admit_gpu_duct, a16_end_face, a16_duct_design, duct_design, CardEnvelope, card_envelope_of,
   BlowerDuctAdmission, BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard,
-  BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, OutletOnLengthEdge, blower_face_clearance_loosest, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,
+  BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, blower_face_clearance_loosest, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,
 }
 import extdeps.gpu.nvidia_a16 { a16_card_row }
 import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy, DuctFitPolicy, RingExercisedDims, UnqualifiedAllowances }
 import extdeps.fans.noctua { noctua_nf_a9_pwm_mounting_pattern, noctua_nf_a9_pwm_frame_depth }
-import extdeps.fans.types { RadialBlowerEnvelope, RadialBlowerHousingEdge, BlowerDepthEdge }
+import extdeps.fans.types { RadialBlowerEnvelope, RadialBlowerHousingEdge, BlowerDepthEdge, BlowerLengthEdge }
+import std.optional { Present, Absent }
 import extdeps.fans.delta { delta_bfb1012m_outlet }
 
 // The A16 card envelope as a supplied value (the vendor-stated 10.5 inch class, off the A16 row), so no claim
@@ -413,7 +414,7 @@ test fn w_the_open_band_covers_the_cited_outlet_whichever_end_the_builder_turns(
 test fn w_the_face_fit_is_derived_per_outlet_edge() -> Bool {
   let read = BlowerDuctDesign {
     blower: a16_blower_duct_design.blower,
-    outlet_edge: OutletOnLengthEdge,
+    outlet_edge: Present { value: BlowerLengthEdge },
     socket_clearance: a16_blower_duct_design.socket_clearance,
     socket_depth: a16_blower_duct_design.socket_depth,
     screw_tool_clearance_radius: a16_blower_duct_design.screw_tool_clearance_radius,
@@ -422,7 +423,7 @@ test fn w_the_face_fit_is_derived_per_outlet_edge() -> Bool {
   }
   let unread = BlowerDuctDesign {
     blower: read.blower,
-    outlet_edge: OutletEdgeUnread,
+    outlet_edge: Absent,
     socket_clearance: read.socket_clearance,
     socket_depth: read.socket_depth,
     screw_tool_clearance_radius: read.screw_tool_clearance_radius,
