@@ -57,13 +57,27 @@ ad-hoc binding has no journal entry, so the next converge reads it as drift and 
 3. **A fresh run identity.** `iam_bootstrap_apply` refuses without `GUNBC_IAM_BOOTSTRAP_RECEIPT`, and it
    writes `target/gcp-iam-bootstrap-<receipt>-started.txt` with `WriteCreateNew` — the same receipt twice
    refuses ("bootstrap receipt already exists"). Make it unique per attempt.
-4. **Only if a pool is empty and needs its first policy** (a brand-new project): the exclusive-window
-   confirmation `GUNBC_IAM_BOOTSTRAP_POOL_WINDOW` must equal `data iam_bootstrap_pool_window` in
-   `gunbc.auth.gcp_iam_bootstrap`, or `pool_init_admission` refuses with *"empty pool initialization
-   requires the operator-confirmed exclusive maintenance window"*. On an estate whose pools already exist
-   — srv1's case — do not set it; nothing in this run initializes a pool policy.
-   `GUNBC_IAM_BOOTSTRAP_PROBE_ID` / `GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT` are likewise *not* required:
-   both cleanup arms no-op when the pair is absent.
+4. **The exclusive pool-window confirmation, when a ceremony-owned pool has no policy yet.** A pool whose
+   policy read answers no etag (an empty policy) is initialized only under
+   `GUNBC_IAM_BOOTSTRAP_POOL_WINDOW`, which must equal `data iam_bootstrap_pool_window` in
+   `gunbc.auth.gcp_iam_bootstrap`. Without it the post-run proof reports the pool cell as *"pool policy
+   publication prerequisite unmet: successful read has no concurrency token"*. On 2026-10-28
+   `github-gcp-iam-bootstrap` was such a pool, so srv1's estate needs it; set it only while nothing else
+   writes those pools' policies.
+5. **The temporary deny-administration authority pair.** `GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID` /
+   `GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT` are required by the deny stage
+   (`iam_bootstrap_authority_converge`), with the same shape rules as the probe pair below; without them
+   the deny stage refuses *"dependency unsatisfied: temporary deny administration needs an authority
+   operation ID and absolute expiry"*.
+   `GUNBC_IAM_BOOTSTRAP_PROBE_ID` / `GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT` **are required** — the pair,
+   together, not optionally: `iam_bootstrap_probe_authority_converge` (granting arm) refuses without a
+   pinned probe identity and expiry ("probe token authority requires a pinned operation identity and
+   absolute expiry"), and the probe-authority stage is in the folded stage list, so the whole ceremony
+   refuses. Set both: `GUNBC_IAM_BOOTSTRAP_PROBE_ID` is an operation tag safe as a path segment (≤ 48
+   characters) and `GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT` is a canonical UTC instant
+   (`YYYY-MM-DDTHH:MM:SSZ`, exactly that shape — `bootstrap_authority_intent_valid` refuses anything
+   else) strictly in the future and at most one hour ahead. An absent *or half-supplied* pair refuses on
+   the granting arm; only the two withdrawal arms (`BootstrapProbeCleanup`, end-of-run) no-op without it.
 
 ## Step 1 — plan first (refuses, effects nothing)
 

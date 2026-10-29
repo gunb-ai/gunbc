@@ -319,7 +319,7 @@ pub struct MapIntroductionEntry<K: Clone, V: Clone> {
     pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
-pub fn map_from_entries<K: Clone + std::cmp::Eq + std::hash::Hash + 'static, V: Clone + 'static>(
+pub fn map_from_entries<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     entries: Rc<FreeMonoid<Rc<MapIntroductionEntry<K, V>>>>,
 ) -> Rc<HashMap<K, V>> {
     {
@@ -331,7 +331,7 @@ pub fn map_from_entries<K: Clone + std::cmp::Eq + std::hash::Hash + 'static, V: 
     }
 }
 
-pub fn map_entry_insert<K: Clone + std::cmp::Eq + std::hash::Hash + 'static, V: Clone + 'static>(
+pub fn map_entry_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     acc: Rc<HashMap<K, V>>,
     entry: Rc<MapIntroductionEntry<K, V>>,
 ) -> Rc<HashMap<K, V>> {
@@ -1083,17 +1083,15 @@ pub fn carrier_spelling_row_present(m: Rc<CarrierRowMembership>) -> bool {
     }
 }
 
-pub fn kernel_algebra_profile_value() -> Rc<FinitelySupportedFunction<String, AlgebraProfile>> {
+pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
     {
         let carrier_seed = v1_rt::rc_empty_map::<_, _>();
         algebra_carriers().iter().cloned().fold(
             carrier_seed.clone(),
-            |acc: Rc<FinitelySupportedFunction<String, AlgebraProfile>>,
-             carrier: Rc<AlgebraCarrier>| {
+            |acc: Rc<HashMap<String, AlgebraProfile>>, carrier: Rc<AlgebraCarrier>| {
                 carrier.spellings.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<FinitelySupportedFunction<String, AlgebraProfile>>,
-                     spelling: Rc<CarrierSpelling>| {
+                    |inner: Rc<HashMap<String, AlgebraProfile>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.method_surface.clone()) {
                             v1_rt::rc_map_insert(
                                 inner,
@@ -1110,16 +1108,15 @@ pub fn kernel_algebra_profile_value() -> Rc<FinitelySupportedFunction<String, Al
     }
 }
 
-pub fn carrier_container_algebra_rows() -> Rc<FinitelySupportedFunction<String, String>> {
+pub fn carrier_container_algebra_rows() -> Rc<HashMap<String, String>> {
     {
         let carrier_seed = v1_rt::rc_empty_map::<_, _>();
         algebra_carriers().iter().cloned().fold(
             carrier_seed.clone(),
-            |acc: Rc<FinitelySupportedFunction<String, String>>, carrier: Rc<AlgebraCarrier>| {
+            |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
                 carrier.spellings.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<FinitelySupportedFunction<String, String>>,
-                     spelling: Rc<CarrierSpelling>| {
+                    |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
                             v1_rt::rc_map_insert(inner, spelling.text.clone(), carrier.name.clone())
                         } else {
@@ -1132,16 +1129,15 @@ pub fn carrier_container_algebra_rows() -> Rc<FinitelySupportedFunction<String, 
     }
 }
 
-pub fn carrier_container_alias_rows() -> Rc<FinitelySupportedFunction<String, String>> {
+pub fn carrier_container_alias_rows() -> Rc<HashMap<String, String>> {
     {
         let carrier_seed = v1_rt::rc_empty_map::<_, _>();
         algebra_carriers().iter().cloned().fold(
             carrier_seed.clone(),
-            |acc: Rc<FinitelySupportedFunction<String, String>>, carrier: Rc<AlgebraCarrier>| {
+            |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
                 carrier.spellings.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<FinitelySupportedFunction<String, String>>,
-                     spelling: Rc<CarrierSpelling>| {
+                    |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_alias_row.clone()) {
                             v1_rt::rc_map_insert(inner, spelling.text.clone(), carrier.name.clone())
                         } else {
@@ -1154,16 +1150,15 @@ pub fn carrier_container_alias_rows() -> Rc<FinitelySupportedFunction<String, St
     }
 }
 
-pub fn carrier_container_roster_map() -> Rc<FinitelySupportedFunction<String, bool>> {
+pub fn carrier_container_roster_map() -> Rc<HashMap<String, bool>> {
     {
         let carrier_seed = v1_rt::rc_empty_map::<_, _>();
         algebra_carriers().iter().cloned().fold(
             carrier_seed.clone(),
-            |acc: Rc<FinitelySupportedFunction<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+            |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
                 carrier.spellings.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<FinitelySupportedFunction<String, bool>>,
-                     spelling: Rc<CarrierSpelling>| {
+                    |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_roster_name.clone()) {
                             v1_rt::rc_map_insert(inner, spelling.text.clone(), true)
                         } else {
@@ -1176,16 +1171,15 @@ pub fn carrier_container_roster_map() -> Rc<FinitelySupportedFunction<String, bo
     }
 }
 
-pub fn carrier_container_arity_rows() -> Rc<FinitelySupportedFunction<String, i64>> {
+pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
     {
         let carrier_seed = v1_rt::rc_empty_map::<_, _>();
         algebra_carriers().iter().cloned().fold(
             carrier_seed.clone(),
-            |acc: Rc<FinitelySupportedFunction<String, i64>>, carrier: Rc<AlgebraCarrier>| {
+            |acc: Rc<HashMap<String, i64>>, carrier: Rc<AlgebraCarrier>| {
                 carrier.spellings.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<FinitelySupportedFunction<String, i64>>,
-                     spelling: Rc<CarrierSpelling>| {
+                    |inner: Rc<HashMap<String, i64>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_arity_row.clone()) {
                             v1_rt::rc_map_insert(
                                 inner,
@@ -1274,16 +1268,15 @@ pub fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> bool {
     }
 }
 
-pub fn carrier_container_equality_rows() -> Rc<FinitelySupportedFunction<String, bool>> {
+pub fn carrier_container_equality_rows() -> Rc<HashMap<String, bool>> {
     {
         let carrier_seed = v1_rt::rc_empty_map::<_, _>();
         algebra_carriers().iter().cloned().fold(
             carrier_seed.clone(),
-            |acc: Rc<FinitelySupportedFunction<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+            |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
                 carrier.spellings.clone().iter().cloned().fold(
                     acc,
-                    |inner: Rc<FinitelySupportedFunction<String, bool>>,
-                     spelling: Rc<CarrierSpelling>| {
+                    |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
                             v1_rt::rc_map_insert(
                                 inner,
@@ -1300,13 +1293,13 @@ pub fn carrier_container_equality_rows() -> Rc<FinitelySupportedFunction<String,
     }
 }
 
-pub fn kernel_algebra_profile() -> Rc<FinitelySupportedFunction<String, AlgebraProfile>> {
+pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
     thread_local! {
-        static CACHED: Rc<FinitelySupportedFunction<String, AlgebraProfile>> = {
+        static CACHED: Rc<HashMap<String, AlgebraProfile>> = {
             kernel_algebra_profile_value()
         };
     }
-    CACHED.with(|c: &Rc<FinitelySupportedFunction<String, AlgebraProfile>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, AlgebraProfile>>| c.clone())
 }
 
 pub fn total_order_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
@@ -2780,22 +2773,15 @@ pub fn list_sort_by_key<T: Clone, K: Clone>(
     )
 }
 
-pub fn empty_map_primitive_delegate<
-    K: Clone + std::cmp::Eq + std::hash::Hash + 'static,
-    V: Clone + 'static,
->() -> Rc<HashMap<K, V>> {
+pub fn empty_map_primitive_delegate<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
     v1_rt::rc_empty_map()
 }
 
-pub fn empty_map<K: Clone + std::cmp::Eq + std::hash::Hash + 'static, V: Clone + 'static>(
-) -> Rc<HashMap<K, V>> {
+pub fn empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
     v1_rt::rc_empty_map()
 }
 
-pub fn map_insert_primitive_delegate<
-    K: Clone + std::cmp::Eq + std::hash::Hash + 'static,
-    V: Clone + 'static,
->(
+pub fn map_insert_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     m: Rc<HashMap<K, V>>,
     key: K,
     value: V,
@@ -2803,7 +2789,7 @@ pub fn map_insert_primitive_delegate<
     v1_rt::rc_map_insert(m, key, value)
 }
 
-pub fn map_insert<K: Clone + std::cmp::Eq + std::hash::Hash + 'static, V: Clone + 'static>(
+pub fn map_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     m: Rc<HashMap<K, V>>,
     key: K,
     value: V,
@@ -3114,38 +3100,55 @@ pub fn non_empty_to_list<T: Clone>(xs: Rc<FreeSemigroup<T>>) -> Rc<FreeMonoid<T>
     })
 }
 
-pub fn list_init<T: Clone>(mut __tco_loop_xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
-    {
-        let mut __trmc_out = Rc::new(vec![]);
-        let mut __tco_cursor_xs: usize = 0;
-        #[allow(unused_labels)]
-        let __tco_result = '__tco_rebase: loop {
-            let __tco_base_xs = __tco_loop_xs.clone();
-            #[allow(unused_mut, unused_variables)]
-            let mut __tco_focus_xs = __tco_base_xs.focus();
-            break loop {
-                {
-                    let __fm = __tco_base_xs.clone();
-                    if (__fm.len() - __tco_cursor_xs) == 0 {
-                        break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
-                    } else if (__fm.len() - __tco_cursor_xs) == 1 {
-                        break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
-                    } else {
-                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
-                        {
-                            __trmc_out = v1_rt::rc_list_push(__trmc_out, h.clone());
-                            {
-                                let __tco_0 = __tco_cursor_xs + 1;
-                                __tco_cursor_xs = __tco_0;
-                                continue;
-                            }
-                        }
-                    }
-                }
-            };
-        };
-        __tco_result
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
+pub struct ListInitLag<T> {
+    pub kept: Rc<FreeMonoid<T>>,
+    pub pending: Option<T>,
+    pub _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ListInitLag<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ListInitLag")
+            .field("kept", &self.kept)
+            .field("pending", &self.pending)
+            .finish()
     }
+}
+
+impl<T: Clone + PartialEq> PartialEq for ListInitLag<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.kept == other.kept && self.pending == other.pending
+    }
+}
+
+pub fn list_init<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
+    fold_list(
+        xs,
+        Rc::new(ListInitLag {
+            kept: Rc::new(vec![]),
+            pending: std::option::Option::None,
+            _phantom: std::marker::PhantomData,
+        }),
+        |acc, item| match acc.pending.clone() {
+            std::option::Option::None => Rc::new(ListInitLag {
+                kept: acc.kept.clone(),
+                pending: Some(item.clone()),
+                _phantom: std::marker::PhantomData,
+            }),
+            Some(p) => Rc::new(ListInitLag {
+                kept: v1_rt::rc_list_push(acc.kept.clone(), p.clone()),
+                pending: Some(item.clone()),
+                _phantom: std::marker::PhantomData,
+            }),
+        },
+    )
+    .kept
+    .clone()
 }
 
 pub fn bag_eq<T: Clone>(
@@ -3163,37 +3166,74 @@ pub fn bag_eq<T: Clone>(
     }
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
+pub struct ZipEqWalk<T> {
+    pub rest: Rc<FreeMonoid<T>>,
+    pub agreed: bool,
+    pub _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ZipEqWalk<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ZipEqWalk")
+            .field("rest", &self.rest)
+            .field("agreed", &self.agreed)
+            .finish()
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq for ZipEqWalk<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.rest == other.rest && self.agreed == other.agreed
+    }
+}
+
 pub fn zip_eq<T: Clone>(
     a: Rc<FreeMonoid<T>>,
     b: Rc<FreeMonoid<T>>,
     eq: impl Fn(T, T) -> bool + Clone,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = a.clone();
-        if __fm.is_empty() {
-            {
-                let __fm = b.clone();
+    {
+        let walk = fold_list(
+            a,
+            Rc::new(ZipEqWalk {
+                rest: b.clone(),
+                agreed: true,
+                _phantom: std::marker::PhantomData,
+            }),
+            |acc, item| {
+                let __fm = acc.rest.clone();
                 if __fm.is_empty() {
-                    true
-                } else {
-                    false
-                }
-            }
-        } else {
-            let ha = (*__fm)[0].clone();
-            let ta: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            {
-                let __fm = b.clone();
-                if __fm.is_empty() {
-                    false
+                    Rc::new(ZipEqWalk {
+                        rest: Rc::new(vec![]),
+                        agreed: false,
+                        _phantom: std::marker::PhantomData,
+                    })
                 } else {
                     let hb = (*__fm)[0].clone();
                     let tb: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                    (eq(ha.clone(), hb.clone()) && zip_eq(ta.clone(), tb.clone(), eq.clone()))
+                    if acc.agreed.clone() {
+                        Rc::new(ZipEqWalk {
+                            rest: tb.clone(),
+                            agreed: eq(item, hb.clone()),
+                            _phantom: std::marker::PhantomData,
+                        })
+                    } else {
+                        Rc::new(ZipEqWalk {
+                            rest: tb.clone(),
+                            agreed: false,
+                            _phantom: std::marker::PhantomData,
+                        })
+                    }
                 }
-            }
-        }
-    })
+            },
+        );
+        (walk.agreed.clone() && is_empty(walk.rest.clone()))
+    }
 }
 
 pub fn zip_map<A: Clone, B: Clone, C: Clone>(

@@ -74,6 +74,9 @@ import v2.extdeps.languages.bash_build {
 }
 import std.types { List, String, Int, NonEmptyStr }
 
+// THE SEED-BUILD ENVIRONMENT, consumed where this file's build steps compose their `run:` text.
+import gunbc.repo.repo_self_build { repo_self_seed_build_step_run }
+
 import gunbc.roadmap.roadmap_execution_contract {
   CargoCapability,
   RustcCapability,
@@ -323,7 +326,7 @@ fn ci_release_build_step() -> Step {
   RunStep {
     name: Present { value: "Build release bins (claim_executor + gunbc)" },
     id: Present { value: "release_build" },
-    run: ci_release_build_script(),
+    run: repo_self_seed_build_step_run(command: ci_release_build_script()),
     shell: none,
     env: none,
     working_directory: none,
@@ -386,7 +389,7 @@ fn ci_release_build_step_for(pair_modes: List<String>) -> Step {
   RunStep {
     name: Present { value: "Build release bins (the dispatched mode's product)" },
     id: Present { value: "release_build" },
-    run: release_bins_build_script_dispatch(pair_modes: pair_modes, fleet_build: ci_release_build_script()),
+    run: repo_self_seed_build_step_run(command: release_bins_build_script_dispatch(pair_modes: pair_modes, fleet_build: ci_release_build_script())),
     shell: none,
     env: Present { value: [release_bins_mode_env_kv()] },
     working_directory: none,
@@ -818,6 +821,16 @@ DISSOLVE-ON: the first successful guest_image_converge on a cold host produces t
 // consumer for the same reason: its first srv1 run (39197581454) was still typechecking its closure when
 // the aux 5m killed it (workspace discovered 04:11:19, killed 04:16:31), before any Vast call.
 data gunbc_ci_gunbc_run_resolve_step_timeout_minutes: Duration = 15
+
+// THE SITE PXE EDGE CONVERGE STEP PLACES MEDIA, which the runner-host-file budget above was never sized for: in apply
+// mode gunbc.fleet.site_pxe_edge_converge fetches each pinned Ubuntu ISO onto srv4, checks it against Canonical's
+// SHA256SUMS and extracts the chain members. Its first apply (run 40750438900, 2026-10-28) spent the step's 15 minutes
+// resolving and observing (step start to pre-entry about 14 minutes) and was killed 11 seconds into the first ISO
+// fetch. It stays below the Spark serving step, the mode gunbc_ci_fleet_job_backstop_timeout_minutes already
+// budgets as the job's worst case, so the backstop holds unchanged.
+// STATED AS AN ENVELOPE, NOT A MEASUREMENT. DISSOLVE-ON: the first site_pxe_edge_converge run that places both
+// media chains produces the measurement this stands in for -- replace it with that receipt, dated and cited.
+data gunbc_ci_site_pxe_edge_converge_step_timeout_minutes: Duration = 45
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 

@@ -1,27 +1,29 @@
 module test.claim.fleet.site_pxe_edge_converge_witness
 
-import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, public_nocloud_seed_user_data }
+import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, public_nocloud_seed_user_data, public_nocloud_seed_client_mac, PublicSeedFinding, SeedCredentialField, SeedUserData }
 import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_grub_kernel_cmdline_net }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_kernel_arg }
 import extdeps.bootloader.grub { grub_cmdline_arg_render }
 import extdeps.uri { Uri, Http }
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, Int }
 import std.algebra { FreeSemigroup, non_empty_to_list, skip }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, content_hash_equal }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64 }
 import extdeps.provisioning.network_boot { NotAuthenticated, network_boot_loader_chain_is_chainloader_only }
-import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_amd64_uefi_network_boot_chain, noble_numbat_2404_3_live_server_amd64, noble_numbat_2404_5_live_server_arm64 }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_amd64_uefi_network_boot_chain, noble_numbat_2404_3_live_server_amd64, noble_numbat_2404_5_live_server_arm64, noble_numbat_2404_3_live_server_arm64 }
 import std.decl_ref { decl_ref }
+import gunbc.systemctl_show_read { systemctl_show_property_value_from_stdout }
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
-import gunbc.site_pxe_edge { SiteEdgeRoster, BootNetworkProbe, BootNetworkProbeSucceeded, BootNetworkProbeUnobserved, first_onboarding_known_client_mac, site_edge_served_loader_chain }
+import gunbc.machine_intake.srv14_host_nic_observation { srv14_host_nic_mac }
+import gunbc.site_pxe_edge { SiteEdgeRoster, BootNetworkProbe, BootNetworkProbeSucceeded, BootNetworkProbeFailed, BootNetworkProbeUnobserved, first_onboarding_known_client_mac, site_edge_served_loader_chain, EveryKnownClient, InstallBoundClients }
 import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64_network_boot_member_pins }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount }
-import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
+import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
   SitePxeEdgeChainloaderPinned,
@@ -107,6 +109,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   EmbeddedRevisionRead,
   EmbeddedRevisionUnobservable,
   site_pxe_edge_desired_inputs,
+  site_pxe_edge_known_client_observations,
   site_pxe_edge_desired_files,
   site_pxe_edge_roster,
   site_pxe_edge_unit_file,
@@ -132,6 +135,8 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_image_standing,
   site_pxe_edge_install_standing,
   site_pxe_edge_install_files,
+  site_pxe_edge_unit_active_standing,
+  site_pxe_edge_file_parent_argv,
   site_pxe_edge_host_grub_cfg,
   site_pxe_edge_http_unit_file,
   site_pxe_edge_http_listen_standing,
@@ -142,12 +147,30 @@ import gunbc.fleet.site_pxe_edge_converge {
   HttpListenUnobservable,
   HttpLegNotNeeded,
   HttpLegActivation,
-  site_pxe_edge_install_bindings,
+  site_pxe_edge_install_requests,
+  SitePxeEdgeInstallRequest,
+  SitePxeEdgeRequestAdmission,
+  RequestBound,
+  RequestWithheld,
+  RequestClientUnparseable,
+  site_pxe_edge_request_admission,
+  site_pxe_edge_request_bindings,
+  site_pxe_edge_request_withheld,
+  site_pxe_edge_request_gate_causes,
+  InstallSeedRefused,
+  InstallRequestClientUnparseable,
   site_pxe_edge_seed_origin_resolution,
+  site_pxe_edge_seed_origin_probe,
+  srv14_install_client,
   PlacementNotNeeded,
   PlacementRefused,
   PlacementVerified,
   site_pxe_edge_withheld_only_on_members,
+  SitePxeEdgeInstallChain,
+  SitePxeEdgeInstallServe,
+  SitePxeEdgeFile,
+  site_pxe_edge_install_chain_of,
+  site_pxe_edge_install_chain,
   site_pxe_edge_chain_media,
   ChainMediaOne,
   ChainMediaRefused,
@@ -236,7 +259,7 @@ fn ipxe_causes(pin: SitePxeEdgeChainloaderPin, digest: SitePxeEdgeChainloaderObs
 fn causes_of(standing: SitePxeEdgeChainStanding) -> List<SitePxeEdgeChainCause> {
   match standing {
     SitePxeEdgeChainServable { chain: _ } => []
-    SitePxeEdgeChainWithheld { architecture: _, causes: cs } => non_empty_to_list(xs: cs)
+    SitePxeEdgeChainWithheld { architecture: _, audience: _, causes: cs } => non_empty_to_list(xs: cs)
   }
 }
 
@@ -251,7 +274,7 @@ fn gate(servable: List<SitePxeEdgePinnedChain>, dnsmasq_binary: SitePxeEdgeProbe
   site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
+    known: [first_onboarding_known_client_mac],
     servable: servable,
     collisions: [],
     dnsmasq_binary: dnsmasq_binary,
@@ -313,7 +336,7 @@ test fn secure_boot_acceptance_is_derived_and_each_standing_has_its_own_cause() 
 test fn mismatched_digest_closes_the_gate() -> Bool {
   ipxe_causes(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b }) == [MemberDigestMismatch { served_path: "snponly.efi", observed: digest_b, pinned: digest_a }]
     && length(servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b })) == 0
-    && (match site_pxe_edge_desired_inputs(servable: servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b }), roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
+    && (match site_pxe_edge_desired_inputs(servable: servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b }), known: [first_onboarding_known_client_mac], bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
       Absent => true
       Present { value: _ } => false
     })
@@ -346,14 +369,14 @@ test fn failed_sha256sum_is_unobservable_not_a_digest() -> Bool {
 fn arm_chain(pin: SitePxeEdgeChainloaderPin) -> List<SitePxeEdgePinnedChain> {
   match site_pxe_edge_arm64_ipxe_chain_pin(pin: pin) {
     SitePxeEdgeChainPinned { chain: c } => [c]
-    SitePxeEdgeChainUnpinned { architecture: _, obligation: _ } => []
+    SitePxeEdgeChainUnpinned { architecture: _, audience: _, obligation: _ } => []
   }
 }
 
 fn roster_of_chains(chains: List<SitePxeEdgePinnedChain>) -> SiteEdgeRoster? {
   match chains.first() {
     Absent => Absent
-    Present { value: h } => site_pxe_edge_roster(chains: FreeSemigroup { head: h, tail: skip(xs: chains, n: 1) }, known_client_macs: known_macs(), tftp_server_address: edge_server)
+    Present { value: h } => site_pxe_edge_roster(chains: FreeSemigroup { head: h, tail: skip(xs: chains, n: 1) }, known_client_macs: known_macs(), install_client_macs: [], tftp_server_address: edge_server)
   }
 }
 
@@ -398,7 +421,7 @@ test fn an_unparseable_roster_closes_the_gate() -> Bool {
   site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
-    roster: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } },
+    known: [MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }],
     servable: arm_chain(pin: pinned(digest: digest_a)),
     collisions: [],
     dnsmasq_binary: SitePxeEdgeProbeHeld,
@@ -454,7 +477,7 @@ fn apply_run(post: SitePxeEdgePostActivation) -> SitePxeEdgeRun {
 }
 
 fn withheld(cause: SitePxeEdgeChainCause) -> SitePxeEdgeChainStanding {
-  SitePxeEdgeChainWithheld { architecture: Aarch64, causes: FreeSemigroup { head: cause, tail: [] } }
+  SitePxeEdgeChainWithheld { architecture: Aarch64, audience: EveryKnownClient, causes: FreeSemigroup { head: cause, tail: [] } }
 }
 
 // OBSERVE REPORTS FINDINGS BUT REFUSES WHAT IT COULD NOT SEE: an unpinned chain is a finding and observe
@@ -489,7 +512,7 @@ test fn an_unparseable_tftp_server_address_closes_the_gate() -> Bool {
   site_pxe_edge_gate_causes(
     tftp_server: Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: 3 } },
     segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
+    known: [first_onboarding_known_client_mac],
     servable: arm_chain(pin: pinned(digest: digest_a)),
     collisions: [],
     dnsmasq_binary: SitePxeEdgeProbeHeld,
@@ -502,7 +525,7 @@ test fn an_unparseable_segment_network_closes_the_gate() -> Bool {
   site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: 1 } },
-    roster: first_onboarding_known_client_mac,
+    known: [first_onboarding_known_client_mac],
     servable: arm_chain(pin: pinned(digest: digest_a)),
     collisions: [],
     dnsmasq_binary: SitePxeEdgeProbeHeld,
@@ -515,7 +538,7 @@ test fn a_served_path_collision_closes_the_gate() -> Bool {
   site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
-    roster: first_onboarding_known_client_mac,
+    known: [first_onboarding_known_client_mac],
     servable: arm_chain(pin: pinned(digest: digest_a)),
     collisions: ["grub/grub.cfg"],
     dnsmasq_binary: SitePxeEdgeProbeHeld,
@@ -569,9 +592,9 @@ test fn an_executed_privilege_refusal_is_a_finding_observe_still_succeeds() -> B
 // Present, and no servable chain or a failed roster parse leaves both closed.
 test fn an_open_gate_implies_the_desired_config_inputs_exist() -> Bool {
   let servable = servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a })
-  let open_inputs = site_pxe_edge_desired_inputs(servable: servable, roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
-  let none_inputs = site_pxe_edge_desired_inputs(servable: [], roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
-  let unparsed_inputs = site_pxe_edge_desired_inputs(servable: servable, roster: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  let open_inputs = site_pxe_edge_desired_inputs(servable: servable, known: [first_onboarding_known_client_mac], bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  let none_inputs = site_pxe_edge_desired_inputs(servable: [], known: [first_onboarding_known_client_mac], bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  let unparsed_inputs = site_pxe_edge_desired_inputs(servable: servable, known: [MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }], bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
   length(gate(servable: servable, dnsmasq_binary: SitePxeEdgeProbeHeld, privilege: SitePxeEdgeProbeHeld)) == 0
     && (match open_inputs { Present { value: _ } => true  Absent => false })
     && (match none_inputs { Present { value: _ } => false  Absent => true })
@@ -662,6 +685,7 @@ data fixture_grub_cfg: String = "set timeout=1\nmenuentry \"gunbc autoinstall\" 
 fn amd64_pin(rendering: String?) -> SitePxeEdgeChainPin {
   site_pxe_edge_ubuntu_chain_pin(
     row_architecture: X86_64,
+    audience: EveryKnownClient,
     chain: noble_numbat_2404_3_amd64_uefi_network_boot_chain,
     pins: ubuntu_noble_amd64_network_boot_member_pins(),
     rendered_configuration: rendering,
@@ -672,7 +696,7 @@ fn amd64_pin(rendering: String?) -> SitePxeEdgeChainPin {
 fn amd64_chain() -> SitePxeEdgePinnedChain? {
   match amd64_pin(rendering: Present { value: fixture_grub_cfg }) {
     SitePxeEdgeChainPinned { chain: c } => Present { value: c }
-    SitePxeEdgeChainUnpinned { architecture: _, obligation: _ } => Absent
+    SitePxeEdgeChainUnpinned { architecture: _, audience: _, obligation: _ } => Absent
   }
 }
 
@@ -705,8 +729,8 @@ test fn the_landed_amd64_row_is_pinned_on_the_fallback_configuration() -> Bool {
 
 // A ROW WHOSE MEDIA BUILDS FOR ANOTHER ARCHITECTURE IS UNPINNED: the amd64 media under an Aarch64 row.
 test fn an_arm64_row_over_amd64_media_is_unpinned() -> Bool {
-  match site_pxe_edge_ubuntu_chain_pin(row_architecture: Aarch64, chain: noble_numbat_2404_3_amd64_uefi_network_boot_chain, pins: ubuntu_noble_amd64_network_boot_member_pins(), rendered_configuration: Present { value: fixture_grub_cfg }, citation: "fixture") {
-    SitePxeEdgeChainUnpinned { architecture: a, obligation: o } => a == Aarch64 && contains(o as String, "another architecture")
+  match site_pxe_edge_ubuntu_chain_pin(row_architecture: Aarch64, audience: InstallBoundClients, chain: noble_numbat_2404_3_amd64_uefi_network_boot_chain, pins: ubuntu_noble_amd64_network_boot_member_pins(), rendered_configuration: Present { value: fixture_grub_cfg }, citation: "fixture") {
+    SitePxeEdgeChainUnpinned { architecture: a, audience: _, obligation: o } => a == Aarch64 && contains(o as String, "another architecture")
     SitePxeEdgeChainPinned { chain: _ } => false
   }
 }
@@ -753,7 +777,7 @@ test fn an_amd64_member_with_other_bytes_withholds_only_its_chain() -> Bool {
           Absent => false
         })
         && length(served) == 1
-        && (match site_pxe_edge_desired_inputs(servable: served, roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
+        && (match site_pxe_edge_desired_inputs(servable: served, known: [first_onboarding_known_client_mac], bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
           Absent => false
           Present { value: i } =>
             match site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains).first() {
@@ -790,7 +814,7 @@ fn fixture_user_data() -> YamlValue {
 
 fn binding(mac: Eui48Address) -> SitePxeEdgeInstallBinding? {
   match admit_public_nocloud_seed(client_mac: mac, user_data: fixture_user_data()) {
-    PublicSeedAdmitted { seed: sd } => Present { value: SitePxeEdgeInstallBinding { seed: sd } }
+    PublicSeedAdmitted { seed: sd } => Present { value: SitePxeEdgeInstallBinding { seed: sd, architecture: X86_64 } }
     PublicSeedRefused { findings: _ } => Absent
   }
 }
@@ -805,7 +829,33 @@ fn with_binding(mac: Eui48Address, claim: fn(SitePxeEdgeInstallBinding) -> Bool)
 fn x86_roster(macs: List<Eui48Address>) -> SiteEdgeRoster? {
   match amd64_chain() {
     Absent => Absent
-    Present { value: c } => site_pxe_edge_roster(chains: FreeSemigroup { head: c, tail: [] }, known_client_macs: macs, tftp_server_address: edge_server)
+    Present { value: c } => site_pxe_edge_roster(chains: FreeSemigroup { head: c, tail: [] }, known_client_macs: macs, install_client_macs: [], tftp_server_address: edge_server)
+  }
+}
+
+fn x86_install() -> SitePxeEdgeInstallChain? {
+  match amd64_chain() {
+    Absent => Absent
+    Present { value: c } => site_pxe_edge_install_chain_of(chain: c)
+  }
+}
+
+fn grub_of(b: SitePxeEdgeInstallBinding) -> String {
+  match x86_install() {
+    Present { value: ic } => site_pxe_edge_host_grub_cfg(binding: b, install: ic)
+    Absent => ""
+  }
+}
+
+// The install files a run renders for one binding: a serve exists only over a servable image.
+fn install_files_of(b: SitePxeEdgeInstallBinding, image: SitePxeEdgeImageStanding) -> List<SitePxeEdgeFile> {
+  match x86_install() {
+    Absent => site_pxe_edge_install_files(serves: [], bind: edge_server)
+    Present { value: ic } => match image {
+      InstallerImageServable { image: _ } => site_pxe_edge_install_files(serves: [SitePxeEdgeInstallServe { binding: b, install: ic }], bind: edge_server)
+      InstallerImageUnplaced { reason: _ } => site_pxe_edge_install_files(serves: [], bind: edge_server)
+      InstallerImageDigestMismatch { observed: _, pinned: _ } => site_pxe_edge_install_files(serves: [], bind: edge_server)
+    }
   }
 }
 
@@ -854,9 +904,9 @@ test fn an_admitted_binding_renders_its_own_grub_configuration_and_seed() -> Boo
       match image() {
         Absent => false
         Present { value: i } => with_binding(mac: x86_mac, claim: b => {
-          let st = site_pxe_edge_install_standing(binding: b, roster: r, image: servable_image(), name_resolution: resolved)
-          let files = site_pxe_edge_install_files(admitted: [b], image: servable_image(), bind: edge_server)
-          let grub = site_pxe_edge_host_grub_cfg(binding: b, image: i)
+          let st = site_pxe_edge_install_standing(binding: b, roster: r, install: x86_install(), image: servable_image(), name_resolution: resolved)
+          let files = install_files_of(b: b, image: servable_image())
+          let grub = grub_of(b: b)
           admitted(st: st)
             && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg-01-ac-1f-6b-e3-f7-fe")
             && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/user-data")
@@ -875,14 +925,48 @@ test fn an_admitted_binding_renders_its_own_grub_configuration_and_seed() -> Boo
   }
 }
 
+// EVERY WRITE CREATES ITS OWN PARENT: a binding's seed documents sit in a per-client directory nothing else
+// creates (srv4 refused both on its first apply), so each file's write starts with that directory.
+test fn each_install_file_write_creates_its_own_parent_directory() -> Bool {
+  with_binding(mac: x86_mac, claim: b => {
+    let files = install_files_of(b: b, image: servable_image())
+    any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/user-data" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe"])
+      && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg-01-ac-1f-6b-e3-f7-fe" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/tftp/grub"])
+      && any(files, f => f.path == "/etc/systemd/system/gunbc-site-pxe-edge-http.service" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/etc/systemd/system"])
+  })
+}
+
+// THE UNIT'S ACTIVE STATE IS READ FROM THE `--value` ANSWER: srv4 answered `active` for a running edge (run
+// 40816615074), which the probe must hold; a failed unit is a finding and a blank answer is no observation.
+test fn the_unit_active_probe_reads_the_bare_state_word() -> Bool {
+  (match site_pxe_edge_unit_active_standing(capture: systemctl_show_property_value_from_stdout(success: true, stdout: "active\n")) {
+    SitePxeEdgeProbeHeld => true
+    SitePxeEdgeProbeObservedNegative { reason: _ } => false
+    SitePxeEdgeProbeUnobservable { reason: _ } => false
+    SitePxeEdgeProbeNotAttempted { reason: _ } => false
+  })
+    && (match site_pxe_edge_unit_active_standing(capture: systemctl_show_property_value_from_stdout(success: true, stdout: "failed\n")) {
+      SitePxeEdgeProbeObservedNegative { reason: r } => r == "unit gunbc-site-pxe-edge.service ActiveState=failed"
+      SitePxeEdgeProbeHeld => false
+      SitePxeEdgeProbeUnobservable { reason: _ } => false
+      SitePxeEdgeProbeNotAttempted { reason: _ } => false
+    })
+    && (match site_pxe_edge_unit_active_standing(capture: systemctl_show_property_value_from_stdout(success: true, stdout: "\n")) {
+      SitePxeEdgeProbeUnobservable { reason: _ } => true
+      SitePxeEdgeProbeHeld => false
+      SitePxeEdgeProbeObservedNegative { reason: _ } => false
+      SitePxeEdgeProbeNotAttempted { reason: _ } => false
+    })
+}
+
 // TWO HOSTS, TWO ROUTES: each host's grub configuration names its own seed's URL. This is routing only -- seeds are
 // public, and any host on the segment can fetch either URL.
 test fn each_hosts_configuration_routes_to_its_own_seed() -> Bool {
   match image() {
     Absent => false
     Present { value: i } => with_binding(mac: x86_mac, claim: ba => with_binding(mac: other_x86_mac, claim: bb => {
-      let a = site_pxe_edge_host_grub_cfg(binding: ba, image: i)
-      let b = site_pxe_edge_host_grub_cfg(binding: bb, image: i)
+      let a = grub_of(b: ba)
+      let b = grub_of(b: bb)
       contains(a, "seed/ac-1f-6b-e3-f7-fe/") && !contains(a, "seed/ac-1f-6b-e3-f7-ff/")
         && contains(b, "seed/ac-1f-6b-e3-f7-ff/") && !contains(b, "seed/ac-1f-6b-e3-f7-fe/")
     }))
@@ -893,7 +977,7 @@ test fn each_hosts_configuration_routes_to_its_own_seed() -> Bool {
 test fn a_binding_for_a_mac_off_the_roster_is_withheld() -> Bool {
   match x86_roster(macs: [x86_mac]) {
     Absent => false
-    Present { value: r } => with_binding(mac: stranger_mac, claim: b => refusals_of(st: site_pxe_edge_install_standing(binding: b, roster: r, image: servable_image(), name_resolution: resolved)) == [InstallClientNotOnRoster { mac: stranger_mac }])
+    Present { value: r } => with_binding(mac: stranger_mac, claim: b => refusals_of(st: site_pxe_edge_install_standing(binding: b, roster: r, install: x86_install(), image: servable_image(), name_resolution: resolved)) == [InstallClientNotOnRoster { mac: stranger_mac }])
   }
 }
 
@@ -909,8 +993,8 @@ test fn an_installer_image_with_other_bytes_withholds_every_binding() -> Bool {
           let bad = site_pxe_edge_image_standing(image: i, observation: ChainloaderDigestObserved { digest: digest_b })
           (match bad { InstallerImageDigestMismatch { observed: o, pinned: _ } => o == digest_b InstallerImageServable { image: _ } => false InstallerImageUnplaced { reason: _ } => false })
             && with_binding(mac: x86_mac, claim: b =>
-              !admitted(st: site_pxe_edge_install_standing(binding: b, roster: r, image: bad, name_resolution: resolved))
-                && length(site_pxe_edge_install_files(admitted: [b], image: bad, bind: edge_server)) == 0)
+              !admitted(st: site_pxe_edge_install_standing(binding: b, roster: r, install: x86_install(), image: bad, name_resolution: resolved))
+                && length(install_files_of(b: b, image: bad)) == 0)
         }
       }
   }
@@ -921,14 +1005,96 @@ test fn an_unresolved_seed_origin_name_withholds_the_binding() -> Bool {
   match x86_roster(macs: [x86_mac]) {
     Absent => false
     Present { value: r } =>
-      with_binding(mac: x86_mac, claim: b => refusals_of(st: site_pxe_edge_install_standing(binding: b, roster: r, image: servable_image(), name_resolution: BootNetworkProbeUnobserved))
+      with_binding(mac: x86_mac, claim: b => refusals_of(st: site_pxe_edge_install_standing(binding: b, roster: r, install: x86_install(), image: servable_image(), name_resolution: BootNetworkProbeUnobserved))
         == [SeedOriginNameUnresolved { name: "srv4", probe: BootNetworkProbeUnobserved }])
   }
 }
 
-// THE PRODUCTION HEAD SERVES NO INSTALL: no binding is handed over and the name resolution is unobserved.
-test fn the_landed_edge_has_no_install_binding() -> Bool {
-  length(site_pxe_edge_install_bindings) == 0 && site_pxe_edge_seed_origin_resolution == BootNetworkProbeUnobserved
+// THE PRODUCTION HEAD'S ONE REQUEST, srv14, is admitted by the public seed authority, which refuses any credential
+// field by name, and binds its measured NIC to the arm64 chain: nothing is withheld and no gate cause is raised.
+test fn the_production_request_binds_srv14_from_an_admitted_seed() -> Bool {
+  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r))
+  length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
+    && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
+    && (match srv14_install_client {
+      MacParsed { address: srv14 } =>
+        length(filter(site_pxe_edge_request_bindings(admissions: admissions), b => public_nocloud_seed_client_mac(seed: b.seed) == srv14 && b.architecture == Aarch64)) == 1
+      MacParseFailed { error: _ } => false
+    })
+}
+
+// THE SEGMENT ANSWERS FOR THE SEED ORIGIN WITH THE EDGE'S OWN ADDRESS, so the production probe is a success.
+test fn the_segment_resolves_the_seed_origin_to_the_edge() -> Bool {
+  match site_pxe_edge_seed_origin_resolution {
+    BootNetworkProbeSucceeded { observation: _, observed_at: _ } => true
+    BootNetworkProbeFailed { observation: _, observed_at: _ } => false
+    BootNetworkProbeUnobserved => false
+  }
+}
+
+// RED: a resolver answering with any other address fails the probe rather than passing a name that reaches
+// another host.
+test fn a_resolver_answer_other_than_the_edge_fails_the_probe() -> Bool {
+  let o = decl_ref(module_path: "test.claim.fleet.site_pxe_edge_converge_witness", decl_name: "a_resolver_answer_other_than_the_edge_fails_the_probe")
+  match site_pxe_edge_seed_origin_probe(answer: parse_ipv4_address(text: "192.168.1.197"), origin: parse_ipv4_address(text: "192.168.1.196"), observation: o, observed_at: 1793190171000) {
+    BootNetworkProbeFailed { observation: _, observed_at: _ } => true
+    BootNetworkProbeSucceeded { observation: _, observed_at: _ } => false
+    BootNetworkProbeUnobserved => false
+  }
+}
+
+// ── Install requests: admission is the only route to a binding ──────────────────────────────────
+
+fn password_user_data() -> YamlValue {
+  yaml_mapping(entries: [kv(key: "autoinstall", value: yaml_mapping(entries: [
+    kv(key: "version", value: yaml_int(n: 1)),
+    kv(key: "identity", value: yaml_mapping(entries: [
+      kv(key: "username", value: yaml_string(s: "ubuntu")),
+      kv(key: "password", value: yaml_string(s: "$6$x$y")),
+    ])),
+  ]))])
+}
+
+fn request(client: MacParseResult, user_data: YamlValue) -> SitePxeEdgeInstallRequest {
+  SitePxeEdgeInstallRequest { client: client, user_data: user_data, architecture: Aarch64 }
+}
+
+// An admitted request becomes a binding for the same client and architecture, and nothing is withheld or gated.
+test fn an_admitted_request_binds_its_client_and_architecture() -> Bool {
+  let admissions = [site_pxe_edge_request_admission(request: request(client: MacParsed { address: x86_mac }, user_data: fixture_user_data()))]
+  length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
+    && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
+    && length(site_pxe_edge_request_bindings(admissions: admissions)) == 1
+    && (match site_pxe_edge_request_bindings(admissions: admissions).first() {
+      Present { value: b } => public_nocloud_seed_client_mac(seed: b.seed) == x86_mac && b.architecture == Aarch64
+      Absent => false
+    })
+}
+
+// RED: a seed carrying a password is not dropped. It withholds that one host's install, naming the field.
+test fn a_refused_seed_withholds_that_host_by_name() -> Bool {
+  let admissions = [site_pxe_edge_request_admission(request: request(client: MacParsed { address: x86_mac }, user_data: password_user_data()))]
+  length(site_pxe_edge_request_bindings(admissions: admissions)) == 0
+    && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
+    && length(site_pxe_edge_request_withheld(admissions: admissions)) == 1
+    && (match site_pxe_edge_request_withheld(admissions: admissions).first() {
+      Absent => false
+      Present { value: st } => match st {
+        InstallAdmitted { mac: _ } => false
+        InstallWithheld { mac: m, refusals: rs } => m == x86_mac && length(non_empty_to_list(xs: rs)) == 1 && (match rs.head {
+          InstallSeedRefused { findings: fs } => any(non_empty_to_list(xs: fs), f => f == SeedCredentialField { document: SeedUserData, path: "autoinstall.identity.password" })
+          _ => false
+        })
+      }
+    })
+}
+
+// RED: a request whose client MAC does not parse names no host to withhold, so it closes the edge's gate.
+test fn an_unparseable_request_client_closes_the_gate() -> Bool {
+  let admissions = [site_pxe_edge_request_admission(request: request(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }, user_data: fixture_user_data()))]
+  length(site_pxe_edge_request_bindings(admissions: admissions)) == 0
+    && length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
+    && site_pxe_edge_request_gate_causes(admissions: admissions) == [InstallRequestClientUnparseable { error: MacWrongOctetCount { observed_count: 5 } }]
 }
 
 // THE HTTP UNIT BINDS THE ONBOARDING ADDRESS, never every interface.
@@ -989,19 +1155,19 @@ test fn an_apply_whose_placement_refused_is_not_converged() -> Bool {
 // a chain withheld only because its members are unplaced or differ from their pins. A chain withheld for any other
 // cause, a servable chain, or a chain of another architecture is never placed into.
 test fn placement_runs_only_for_a_chain_withheld_on_its_own_members() -> Bool {
-  let unplaced = SitePxeEdgeChainWithheld { architecture: X86_64, causes: FreeSemigroup { head: MemberUnobservable { served_path: "vmlinuz", reason: "No such file" }, tail: [MemberDigestMismatch { served_path: "initrd", observed: digest_a, pinned: digest_b }] } }
-  site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: [unplaced])
+  let unplaced = SitePxeEdgeChainWithheld { architecture: X86_64, audience: EveryKnownClient, causes: FreeSemigroup { head: MemberUnobservable { served_path: "vmlinuz", reason: "No such file" }, tail: [MemberDigestMismatch { served_path: "initrd", observed: digest_a, pinned: digest_b }] } }
+  site_pxe_edge_withheld_only_on_members(architecture: X86_64, audience: EveryKnownClient, standings: [unplaced])
 }
 
 test fn placement_refuses_a_chain_withheld_for_another_cause() -> Bool {
-  let mixed = SitePxeEdgeChainWithheld { architecture: X86_64, causes: FreeSemigroup { head: MemberUnobservable { served_path: "vmlinuz", reason: "No such file" }, tail: [ChainUnpinned { obligation: "no rendering" }] } }
-  site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: [mixed]) == false
+  let mixed = SitePxeEdgeChainWithheld { architecture: X86_64, audience: EveryKnownClient, causes: FreeSemigroup { head: MemberUnobservable { served_path: "vmlinuz", reason: "No such file" }, tail: [ChainUnpinned { obligation: "no rendering" }] } }
+  site_pxe_edge_withheld_only_on_members(architecture: X86_64, audience: EveryKnownClient, standings: [mixed]) == false
 }
 
 test fn placement_does_not_cross_architectures() -> Bool {
-  let arm = SitePxeEdgeChainWithheld { architecture: Aarch64, causes: FreeSemigroup { head: MemberUnobservable { served_path: "snponly.efi", reason: "No such file" }, tail: [] } }
-  site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: [arm]) == false
-    && site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: []) == false
+  let arm = SitePxeEdgeChainWithheld { architecture: Aarch64, audience: EveryKnownClient, causes: FreeSemigroup { head: MemberUnobservable { served_path: "snponly.efi", reason: "No such file" }, tail: [] } }
+  site_pxe_edge_withheld_only_on_members(architecture: X86_64, audience: EveryKnownClient, standings: [arm]) == false
+    && site_pxe_edge_withheld_only_on_members(architecture: X86_64, audience: EveryKnownClient, standings: []) == false
 }
 
 // THE IMAGE IS THE CHAIN'S OWN MEDIA (review 86920): placement and the install surface read which ISO holds the
@@ -1022,6 +1188,7 @@ test fn a_chain_mixing_two_isos_has_no_image() -> Bool {
     Present { value: c } => {
       let swapped = SitePxeEdgePinnedChain {
         architecture: c.architecture,
+        audience: c.audience,
         members: FreeSemigroup {
           head: c.members.head,
           tail: map(c.members.tail, m => match m.source {
@@ -1043,5 +1210,100 @@ test fn the_ipxe_chain_has_no_install_media() -> Bool {
   match arm_chain(pin: pinned(digest: digest_a)).first() {
     Present { value: c } => site_pxe_edge_chain_media(chain: c) == ChainMediaRefused { cause: ChainMediaNone }
     Absent => false
+  }
+}
+
+// ── The arm64 install chain (merry-fox-82's conditions, msg_4496c5c6) ──────────────────────────────
+// The PRODUCTION rows: the third pin is the arm64 Ubuntu chain, offered only to install-bound clients. Its image
+// is the arm64 ISO under Canonical's SHA256SUMS line, and its kernel and initrd are members taken from that same
+// ISO (casper/vmlinuz and casper/initrd, served under arm64/), never fetched separately.
+fn production_pinned(index: Int) -> SitePxeEdgePinnedChain? {
+  match skip(xs: site_pxe_edge_chain_pins, n: index).first() {
+    Present { value: SitePxeEdgeChainPinned { chain: c } } => Present { value: c }
+    Present { value: SitePxeEdgeChainUnpinned { architecture: _, audience: _, obligation: _ } } => Absent
+    Absent => Absent
+  }
+}
+
+test fn the_arm64_install_chain_is_pinned_from_the_verified_arm64_iso() -> Bool {
+  match production_pinned(index: 2) {
+    Absent => false
+    Present { value: c } =>
+      c.architecture == Aarch64 && c.audience == InstallBoundClients
+        && (match site_pxe_edge_install_chain_of(chain: c) {
+          Absent => false
+          Present { value: ic } =>
+            (ic.kernel as String) == "arm64/vmlinuz" && (ic.initrd as String) == "arm64/initrd"
+              && (ic.image.served_path as String) == "iso/ubuntu-24.04.3-live-server-arm64.iso"
+              && content_hash_equal(left: ic.image.digest, right: Sha256Hash(Sha256Digest { hex: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555" }))
+              && site_pxe_edge_chain_media(chain: c) == ChainMediaOne { media: noble_numbat_2404_3_live_server_arm64 }
+        })
+  }
+}
+
+// CONTROL: the default rows are unchanged by the arm64 install row. The first pin is still the iPXE chain for every
+// known arm64 client, and the amd64 chain still serves every known x86 client.
+test fn the_default_rows_keep_their_audience() -> Bool {
+  (match skip(xs: site_pxe_edge_chain_pins, n: 0).first() {
+    Present { value: SitePxeEdgeChainPinned { chain: c } } => c.architecture == Aarch64 && c.audience == EveryKnownClient && length(c.members.tail) == 0
+    Present { value: SitePxeEdgeChainUnpinned { architecture: a, audience: au, obligation: _ } } => a == Aarch64 && au == EveryKnownClient
+    Absent => false
+  }) && (match production_pinned(index: 1) {
+    Present { value: c } => c.architecture == X86_64 && c.audience == EveryKnownClient
+    Absent => false
+  })
+}
+
+// EACH ARCHITECTURE INSTALLS THROUGH ITS OWN CHAIN: the resolution reads the binding's architecture, and the iPXE
+// chain, which carries no media, is never an install chain.
+test fn the_install_chain_resolves_per_architecture() -> Bool {
+  match production_pinned(index: 1) {
+    Absent => false
+    Present { value: x } => match production_pinned(index: 2) {
+      Absent => false
+      Present { value: a } => {
+        let chains = arm_chain(pin: pinned(digest: digest_a)) + [x, a]
+        (match site_pxe_edge_install_chain(architecture: X86_64, chains: chains) { Present { value: ic } => (ic.image.served_path as String) == "iso/ubuntu-24.04.3-live-server-amd64.iso" Absent => false })
+          && (match site_pxe_edge_install_chain(architecture: Aarch64, chains: chains) { Present { value: ic } => (ic.image.served_path as String) == "iso/ubuntu-24.04.3-live-server-arm64.iso" Absent => false })
+          && (match site_pxe_edge_install_chain(architecture: Aarch64, chains: arm_chain(pin: pinned(digest: digest_a))) { Present { value: _ } => false Absent => true })
+      }
+    }
+  }
+}
+
+// AN ARM64 BINDING BOOTS THE ARM64 KERNEL: its grub.cfg-01-<mac> names arm64/vmlinuz and arm64/initrd and the arm64
+// ISO, not the amd64 members at the TFTP root.
+test fn an_arm64_binding_renders_the_arm64_members() -> Bool {
+  match production_pinned(index: 2) {
+    Absent => false
+    Present { value: a } => match site_pxe_edge_install_chain_of(chain: a) {
+      Absent => false
+      Present { value: ic } => match admit_public_nocloud_seed(client_mac: x86_mac, user_data: fixture_user_data()) {
+        PublicSeedRefused { findings: _ } => false
+        PublicSeedAdmitted { seed: sd } => {
+          let grub = site_pxe_edge_host_grub_cfg(binding: SitePxeEdgeInstallBinding { seed: sd, architecture: Aarch64 }, install: ic)
+          contains(grub, "/arm64/vmlinuz") && contains(grub, "/arm64/initrd")
+            && contains(grub, "iso/ubuntu-24.04.3-live-server-arm64.iso")
+            && !contains(grub, "amd64")
+        }
+      }
+    }
+  }
+}
+
+// The edge's own known-client rows, not a supplied list. Inputs are Present only when every row parses
+// (site_pxe_edge_parsed_macs), and the rendered daemon config tags each named host NIC as known, by identity
+// rather than by count. Dropping srv14's row (or mistyping it) turns this red.
+test fn the_production_known_clients_are_tagged_known_in_the_rendered_config() -> Bool {
+  let servable = servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a })
+  match site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
+    Absent => false
+    Present { value: i } =>
+      match site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains).first() {
+        Absent => false
+        Present { value: cfg } =>
+          contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
+            && contains(cfg.content, concat(concat("dhcp-host=", srv14_host_nic_mac as String), ",set:onboarding-known"))
+      }
   }
 }

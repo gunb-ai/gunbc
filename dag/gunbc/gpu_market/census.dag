@@ -109,14 +109,15 @@ data census_judged_rows: List<CensusJudgedRow> = [
 
 // NOT A DISCRETE CARD, read off the page's own structure. A heading marker names a section of mobile,
 // integrated, console or embedded parts. NVIDIA files workstation and mobile workstation parts under one
-// heading, so there the row's model text decides: it names the part Mobile or Laptop, or ends in "M" or
-// "Max-Q" (Quadro K5100M, Quadro P4000 Max-Q). The suffix is the END of the name, which is why the
-// desktop "RTX PRO 6000 Blackwell Max-Q Workstation Edition" stays a card.
+// heading, so there the row's model text decides: it names the part Mobile or Laptop, or ends in a digit
+// followed by "M", or in "Max-Q" (Quadro K5100M, Quadro P4000 Max-Q). The suffix is the END of the name,
+// which is why the desktop "RTX PRO 6000 Blackwell Max-Q Workstation Edition" stays a card; the digit is
+// why "GeForce RTX 3050 OEM", a desktop card that ends in "M", does too.
 data census_not_discrete_heading_markers: List<NonEmptyStr> = [
   "Mobile GPUs", "Mobile workstation GPUs", "> Mobile", "IGP", "Integrated", "Console", "Embedded", "Handheld",
 ]
 data census_not_discrete_model_markers: List<NonEmptyStr> = ["Mobile", "Laptop", "MXM"]
-data census_not_discrete_model_suffixes: List<NonEmptyStr> = ["M", "Max-Q"]
+data census_not_discrete_model_suffixes: List<NonEmptyStr> = ["0M", "1M", "2M", "3M", "4M", "5M", "6M", "7M", "8M", "9M", "Max-Q"]
 
 type CensusExclusion
   = ModelUnread

@@ -1,58 +1,9 @@
-# Preregistered prediction — Mt. Collins unit 1, 2DRx4 socket swap
+# Mt. Collins socket-swap prediction, 2026-09-12
 
-**Committed BEFORE the hardware is touched.** Round 2 of the spare bisection, and
-simultaneously the second controlled test of the OEM socket-selector hypothesis.
+**Question:** move the same 2DRx4 quartet from socket 1 to socket 0 (J1/J3/J5/J7), filling socket 1's odd connectors with originals and retaining eight modules per socket. The preceding socket-1 round restarted after 4m50s with `0fde703b1102`.
 
-## What round 1 established
+**Prediction, committed before intervention:** failure, with byte 3 changing from `3b` to `33`. These are separately falsifiable claims. The candidate schema was stage = byte>>4, socket = (byte>>3)&1, status = byte&7; only the socket hypothesis had experimental support.
 
-12 originals + 4 x 2DRx4, with the 2DRx4 group installed ENTIRELY IN SOCKET 1
-(operator-confirmed placement; socket 0 held 8 originals). Restart at 4m50s, OEM payload
-`0fde703b1102`.
+**Original alternatives:** `33` was predicted to follow the quartet; `3b` to track location; training would show an interaction; another payload required stopping interpretation. The [outcome](mtcollins1_socket_swap_outcome_2026-09-12.md) corrects this table's overclaim: companion populations changed too, and a configuration restriction can follow the quartet exactly as a defect would. No result isolates one module or establishes a physical fault. Supported shape had not been proved necessary, and no payload-to-DIMM mapping existed.
 
-That was the first `3b` of the session; every prior failure was `33`. Under the candidate
-schema (stage = byte>>4, socket = (byte>>3)&1, status = byte&7), `33` is socket 0 and `3b`
-socket 1, both stage 3 / status 3. The socket bit therefore tracked a variable we controlled.
-
-## Configuration to be tested
-
-The same sixteen modules, SIDES EXCHANGED:
-
-- 4 x `2DRx4` moved to **socket 0** connectors (odd: J1, J3, J5, J7)
-- originals filling **socket 1** connectors (odd: J17 .. J31)
-- 8 per socket, one per channel, unchanged otherwise
-
-## The prediction
-
-**It will fail, and the OEM payload will report `33` (socket 0) rather than `3b`.**
-
-This is a conjunction and both halves can fail independently:
-1. that it fails at all
-2. that the socket field follows the modules
-
-## What each outcome earns
-
-- **Fails with `33`** -> the fault FOLLOWS THE MODULES, and the socket-selector reading has a
-  second controlled confirmation. Strongest single result available from this test.
-- **Fails with `3b`** -> the fault is tied to the socket-1 LOCATION -- channel path, connector,
-  memory controller -- and NOT to the 2DRx4 modules. This would falsify the "modules
-  implicated" reading that round 1 suggested, and it would also break the module-following
-  interpretation of the socket bit.
-- **Trains** -> those modules are functional in socket 0 but not socket 1: an interaction
-  between module and location. Both simple readings would be wrong.
-- **Fails with a payload in neither form** -> the schema is worse than we think; preserve the
-  bytes and stop interpreting.
-
-## What NO outcome earns
-
-None of these identifies WHICH of the four 2DRx4 modules contributes, and none establishes a
-physical defect in any module. Four change together. A module that is merely untolerated in
-this platform's population is indistinguishable here from one that is broken.
-
-The socket-selector schema remains a HYPOTHESIS with two controlled confirmations at best. It
-is not a decoder, and it must not be used to name a DIMM. The vendor mapping from payload
-bytes to physical slots is still unobtained.
-
-## Standing disjunction, carried forward
-
-Round 1's falsification (2026-09-11) established that population shape alone is NOT
-SUFFICIENT. It did not establish that supported shape is NECESSARY. Both remain open.
+[Original dated account](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/probes/mtcollins1_socket_swap_prediction_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.

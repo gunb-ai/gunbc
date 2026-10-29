@@ -1380,8 +1380,10 @@ fn roster_rows_label_plan(sides: List<RosterHomeSide>,
               LabelsSelected { edits: es3 } =>
                 match roster_rename_plan(sides: sides, text: text, parse_root: parse_root, pipe_index: pipe_index, spans: spans, normalized_root: normalized_root, imported: imported, row: row, to: to, positional: positional) {
                   LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es3, right: more) }
+                  LabelsAmbiguous => LabelsAmbiguous
                   other => other
                 }
+              LabelsAmbiguous => LabelsAmbiguous
               other => other
             }
         }
@@ -1493,8 +1495,10 @@ fn roster_rename_plan(
         LabelsSelected { edits: es } =>
           match roster_rename_call_edits(text: text, selected: selected, spans: spans, row: row, to: to, positional: positional) {
             LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es, right: more) }
+            LabelsAmbiguous => LabelsAmbiguous
             other => other
           }
+        LabelsAmbiguous => LabelsAmbiguous
         other => other
       }
     })
@@ -1803,6 +1807,7 @@ fn roster_rename_direct_call_edits(head: Node, spans: SpanIndex, row: RosterHead
               cons: fn(acc, pair) {
                 match acc {
                   LabelsSelected { edits: es } => roster_positional_label_edit(edits: es, pair: pair, spans: spans, call: row.call)
+                  LabelsAmbiguous => LabelsAmbiguous
                   other => other
                 }
               }
@@ -1896,6 +1901,7 @@ fn roster_with_pending_labels(sides: List<RosterHomeSide>,
               Absent => RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: labels }
             }
           }
+        RosterClean => RosterClean
         other => other
       }
   }

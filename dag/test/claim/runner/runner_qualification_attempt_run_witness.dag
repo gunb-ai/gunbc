@@ -13,7 +13,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { argv_words }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.anchored_host_transport { anchored_host_transport_live, AnchoredBindingAnchorAbsent }
-import gunbc.runner.runner_host_unit_slot { host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt }
+import gunbc.runner.runner_host_unit_slot { host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt, ListenerOwnLifetime }
 import gunbc.runner.runner_service_slot_controller { ListenerRun, ListenerExited, ListenerEndedUnclean, ListenerOutcomeUnobserved, ListenerNotLaunched }
 import gunbc.runner.runner_qualification_attempt_run {
   attempt_listener_run_of, qualification_attempt_label, qualification_attempt_verdict, AttemptQualified, AttemptNotQualified,
@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data grounded_version: String = "systemd 255 (255.4-1ubuntu8)"
 
 fn run_over(version_line: String, stderr: String) -> ListenerRun? {
-  match host_unit_listener_wait(listener_unit: "gunbc-qualification-fixture-q-1.service" as NonEmptyStr, user: "gunbc-runner" as NonEmptyStr, root: "/opt/actions-runner/slots/q-1" as NonEmptyStr) {
+  match host_unit_listener_wait(listener_unit: "gunbc-qualification-fixture-q-1.service" as NonEmptyStr, user: "gunbc-runner" as NonEmptyStr, root: "/opt/actions-runner/slots/q-1" as NonEmptyStr, lifetime: ListenerOwnLifetime) {
     HostUnitListenerUnbuilt { cause: _ } => none
     HostUnitListenerReady { wait: w } => Present { value: attempt_listener_run_of(launcher: w, version_line: version_line, stderr: stderr) }
   }
@@ -71,7 +71,7 @@ test fn a_missing_or_ungrounded_summary_is_unobserved() -> Bool {
 // THE ATTEMPT UNIT IS THE SLOT SHAPE AS THE RUNNER USER, WAITING AND NOT QUIET: --quiet would suppress the very summary
 // the exit is read from, and a unit without User= would run the job as root. The JIT configuration is in no argument.
 test fn the_attempt_unit_runs_as_the_runner_user_and_prints_its_summary() -> Bool {
-  match host_unit_listener_wait(listener_unit: "gunbc-qualification-fixture-q-1.service" as NonEmptyStr, user: "gunbc-runner" as NonEmptyStr, root: "/opt/actions-runner/slots/q-1" as NonEmptyStr) {
+  match host_unit_listener_wait(listener_unit: "gunbc-qualification-fixture-q-1.service" as NonEmptyStr, user: "gunbc-runner" as NonEmptyStr, root: "/opt/actions-runner/slots/q-1" as NonEmptyStr, lifetime: ListenerOwnLifetime) {
     HostUnitListenerUnbuilt { cause: _ } => false
     HostUnitListenerReady { wait: w } => {
       let text = join(argv_words(command: w.command), " ")
