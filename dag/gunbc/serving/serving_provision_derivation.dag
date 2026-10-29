@@ -7,11 +7,11 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import gunbc.serving.rented_ninfer_source { RentedArtifactSource, NinferEngineRelease }
-import extdeps.vllm.local_inference_lab_build { VllmEngineRelease, VllmServingImage }
+import extdeps.vllm.local_inference_lab_build { VllmEngineRelease }
 import extdeps.vllm.lil_serve { LilServeLaunch }
 import extdeps.huggingface.hub { HubCheckpointManifest, HubFileDigest }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_pin_roster }
-import gunbc.serving.srv1_serving_launch { srv1_serving_launch_for_port }
+import gunbc.serving.srv1_serving_launch { srv1_serving_launch_for_port, srv1_serving_image, Srv1ServingImageDerivation }
 import extdeps.ninfer.ninfer_serve { NinferServeLaunch }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
 import product.fabric.serving_recipe {
@@ -37,13 +37,15 @@ type ServingProvisionInputs {
 }
 
 // The inputs a vLLM provision takes, derived from the recipe: the build is the recipe's, the image is
-// the build's own pin (extdeps.vllm.local_inference_lab_build VllmServingImage), the checkpoint is the
+// the DEPLOYMENT's (gunbc.serving.srv1_serving_launch srv1_serving_image: the LMCache delete-repaired
+// derivation of the build's image, not the build's image itself -- installing the build's pin is the
+// regression of 2026-10-29 10:58, when srv1 was relaunched on the unpatched base), the checkpoint is the
 // recipe's Hub pin, and the launch is the modeled srv1 lil-serve launch (gunbc.serving.srv1_serving_launch)
 // at the recipe's published port. As with ServingProvisionInputs, this keeps no copies: every field
 // reads its one authority.
 type VllmServingProvisionInputs {
   build: VllmEngineRelease
-  image: VllmServingImage
+  image: Srv1ServingImageDerivation
   weights: HubCheckpointManifest
   // Per-file digests the checkpoint is made of, read from the Hub-pinned revision (the
   // extdeps.local_inference_lab.qwen3_8_flash_next roster, folded against the manifest in its own
@@ -149,7 +151,7 @@ fn serving_provision_from_vllm(recipe: ServingRecipe, build: VllmEngineRelease) 
             ServingProvisionDerivedVllm {
               inputs: VllmServingProvisionInputs {
                 build: build,
-                image: build.image,
+                image: srv1_serving_image(),
                 weights: c,
                 weights_digests: qwen3_8_flash_next_pin_roster(),
                 launch: srv1_serving_launch_for_port(port: recipe.published_tcp_port),
