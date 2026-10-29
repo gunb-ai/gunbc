@@ -610,8 +610,9 @@ fn boot_origin_bind_gap_names(gap: BootOriginBindEffectGap) -> List<NonEmptyStr>
 // (4) THE FQDN DECISION, as the pending thing it is.
 //
 // gunbc.cloudflare.boot_origin's own instruction says the zone and FQDN "is an operator decision this
-// repository cannot derive", and its intervention carries completion_evidence NoDischargeSiteModeled — so
-// no agent may flip boot_origin_hostname_standing from here, and this module does not.
+// repository cannot derive", and its standing is derived — never declarable — from this module's verdict
+// plus this carrier's Decided arm, so no agent may flip boot_origin_hostname_standing from here, and this
+// module does not.
 //
 // Modelled (review 87595) instead of stored as a sentence: a decision status is a status, and §4c puts a
 // status in a typed carrier. Pending carries the candidate plus WHO recommended it and WHEN; Decided

@@ -15,13 +15,6 @@ import extdeps.dns.domain_name { HostName, domain_name_wire }
 import std.optional { Absent, Optional, Present }
 import std.content_hash { content_hash_validate_lower_hex_syntax }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "developers.cloudflare.com/r2/buckets/public-buckets/"
-  }
-}
-
 // THE OPEN ITEM, CLOSED AT THE VENDOR'S OWN WORDS. Transcribed verbatim from the page's Enable custom
 // domains section (front-matter dateModified 2026-09-25), read 2026-10-27, so a reader can diff the
 // transcription against the page without re-fetching it.
@@ -41,6 +34,16 @@ data r2_custom_domain_requires_zone_authority: ExternalAuthority = ExternalAutho
     locator: "developers.cloudflare.com/r2/buckets/public-buckets/"
   }
 }
+
+// ONE ROW PER URI, ALIASED UNDER THE CONVENTION NAME (review 87750): every extdeps module carries
+// extdeps_external_authority_anchor, and this module's anchor is now an ALIAS of the requirement page's
+// row rather than a second ExternalAuthority literal for the same locator — two literals for one page can
+// drift apart independently, which is §3's nicknaming (a second name for one concept was fine; a second
+// FACT for one thing is not). The sibling precedent is extdeps.cloudflare.r2_buckets
+// (anchor = r2_get_bucket_authority), and the canonical row keeps the descriptive name because the
+// citation and the model scope both address it as the requirement authority.
+data extdeps_external_authority_anchor: ExternalAuthority = r2_custom_domain_requires_zone_authority
+
 
 // The route and the exact wire shapes, transcribed from the vendor's own API pages (read 2026-10-27). The
 // member spellings matter: the create body is {domain, enabled, zoneId} — camelCase zoneId, and no
@@ -126,11 +129,24 @@ data dns_record_api_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// The hold endpoint, as the API reference publishes it: zones.holds is a subresource whose model is
-// zone_hold, holding a single `hold` field (a boolean). Cited next to the requirement page's own warning
-// because the two together are the rule: a custom domain needs an active zone, AND the hold page adds
-// that a hold under the zone blocks adding a custom domain or custom hostname even inside the same
-// account — which is why the admissibility rule below consults the hold at all.
+// --------------------------------------------------------------------------------
+// THE HOLD, AS THREE DISTINCT FACTS — one per page, none doubling as another (review 87750 split).
+//
+// Earlier this file carried two authorities and let both float as the source of "a hold blocks the
+// custom domain". They never supported the same claim, and pretending otherwise meant a reader could not
+// tell which page backed what:
+//
+//   (1) the WIRE — zones.holds is a subresource whose model is zone_hold { hold: boolean } — is the API
+//       reference's fact, and it is what ZoneHold's two arms model (zone_hold_api_citation);
+//   (2) the POLICY — what a hold IS (an Enterprise-only account-security measure that stops another
+//       account from adding an active zone) and its release remedy — is the fundamentals page's fact, and
+//       it is what the admissibility refusal's next_action cites (zone_hold_policy_citation);
+//   (3) the CONSEQUENCE for this fleet — "release the zone hold before adding the custom domain", "a zone
+//       hold would prevent the custom subdomain from activating" — is published ONLY on the public-buckets
+//       requirement page, and its citation is r2_custom_domain_requires_zone_citation, which is the basis
+//       the admissibility rule actually carries. Nothing below restates it.
+// --------------------------------------------------------------------------------
+
 data zone_hold_api_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -145,6 +161,22 @@ data zone_hold_api_citation: FactCitation = FactCitation {
     field: WholeDeclaration
   },
   authority: zone_hold_api_authority
+}
+
+data zone_hold_policy_reading: NonEmptyStr = "Zone holds prevent other teams in your organization from adding zones that are already active in another account. Zone holds are enabled by default for all Enterprise zones; availability is Enterprise only (Free/Pro/Business: No). Dashboard: zone homepage > Quick Actions > Zone Hold toggle; enabling it disallows adding the zone to another account ('The zone name provided is subject to a hold which disallows the creation of this zone'). Read 2026-10-28."
+data zone_hold_policy_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/fundamentals/account/account-security/zone-holds/"
+  }
+}
+data zone_hold_policy_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.zone",
+    decl_name: "zone_hold_policy_reading",
+    field: WholeDeclaration
+  },
+  authority: zone_hold_policy_authority
 }
 
 // A proxied record resolves to Cloudflare's addresses; these are the vendor's published ranges, cited
@@ -166,14 +198,6 @@ data zone_partial_setup_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// The zone hold, which the requirement page itself names as the thing that silently blocks activation.
-data zone_hold_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "developers.cloudflare.com/fundamentals/account/account-security/zone-holds/"
-  }
-}
-
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -190,7 +214,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     dns_record_api_authority,
     cloudflare_proxy_ranges_authority,
     zone_partial_setup_authority,
-    zone_hold_authority,
+    zone_hold_policy_authority,
   ]
 }
 
@@ -286,10 +310,13 @@ fn cloudflare_zone_status_wire(status: CloudflareZoneStatus) -> NonEmptyStr {
 // therefore receives the hold as an Optional from the observing module, and refuses for its own reason
 // when the read has not been made, instead of this file inventing a stand-in for it.
 //
-// paused and hold also stay distinct from each other: the pause switch is the account owner's, while a
-// hold is an account-security measure that the requirement page names as the thing which silently
-// blocks a custom domain from activating (authority member zone_hold_authority), and the hold page adds
-// that it blocks adding a custom domain or custom hostname under the hold even inside the same account.
+// paused and hold also stay distinct from each other: the pause switch is the account owner's toggle,
+// while a hold is an Enterprise-only account-security measure. WHY the admissibility rule below consults
+// it at all is the requirement page's own instruction ("release the zone hold ... before adding the
+// custom domain"; "A zone hold would prevent the custom subdomain from activating"), cited through
+// r2_custom_domain_requires_zone_citation — the CONSEQUENCE, which that page alone publishes; the hold's
+// own page supplies the policy and the release remedy (zone_hold_policy_citation), and this endpoint
+// supplies the wire (zone_hold_api_citation). The three facts are kept apart above.
 type ZoneHold
   = ZoneHeld
   | ZoneNotHeld
