@@ -1,5 +1,6 @@
 module gunbc.machine_intake.arrival_converge
 
+import extdeps.board_authority { BoardAuthorityRef }
 import std.optional { Absent, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { content_hash_equal }
@@ -824,8 +825,8 @@ fn bound_bmc_secure_host(key: StepInstanceKey) -> HostIdentity? {
 // discharge admits the route. A held row refuses in dry and wet runs alike unless the inputs carry the
 // assessment its hold names. Nothing produces that assessment from a real run yet (gunbc.runner
 // runner_throughput_qualification qualification_run_producer_frontier).
-fn bound_host_controller_admits(host: HostIdentity, endpoint: BmcControllerEndpoint, route: BmcWriteRoute, qualification: RunnerThroughputAssessment<HostIdentity>?) -> Bool {
-  match select_bmc_write_controller(host: host, target: endpoint, route: route, qualification: qualification) {
+fn bound_host_controller_admits(host: HostIdentity, endpoint: BmcControllerEndpoint, board: BoardAuthorityRef?, route: BmcWriteRoute, qualification: RunnerThroughputAssessment<HostIdentity>?) -> Bool {
+  match select_bmc_write_controller(host: host, target: endpoint, board: board, route: route, qualification: qualification) {
     BmcWriteControllerSelected { row: _ } => true
     BmcWriteControllerRefused { cause: _ } => false
   }
@@ -884,7 +885,7 @@ fn discharge_bmc_secure_apply(
     match bound_bmc_secure_host(key: key) {
       Absent => none
       Present { value: host } => {
-        let by_capability = if bound_host_controller_admits(host: host, endpoint: standing.endpoint, route: ByPerWriteApproval, qualification: inputs.hold_release) {
+        let by_capability = if bound_host_controller_admits(host: host, endpoint: standing.endpoint, board: inputs.reading.board, route: ByPerWriteApproval, qualification: inputs.hold_release) {
           capability_discharge(key: key, inputs: inputs, standing: standing, request: request)
         } else {
           none
@@ -892,7 +893,7 @@ fn discharge_bmc_secure_apply(
         match inputs.grant {
           Present { value: g } =>
             if grant_discharges_bmc_secure_account_write(g: g, host: host)
-              && bound_host_controller_admits(host: host, endpoint: standing.endpoint, route: ByStandingGrant, qualification: inputs.hold_release) {
+              && bound_host_controller_admits(host: host, endpoint: standing.endpoint, board: inputs.reading.board, route: ByStandingGrant, qualification: inputs.hold_release) {
               Present { value: instance_authorization(key: key, principal: g.principal) }
             } else {
               by_capability

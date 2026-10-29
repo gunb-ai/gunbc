@@ -18,9 +18,10 @@ import std.goal_assessment {
   GoalObservationRefused,
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
-import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.board_authority { BoardAuthorityRef }
 import gunbc.machine_intake.bmc_credential_policy {
-  BmcCredentialPolicyKey, CredentialSurface, SharedCredentialSurface, shared_store_surfaces, bmc_credential_policy_for,
+  BmcCredentialPolicyKey, CredentialSurface, SharedCredentialSurface, shared_store_surfaces, bmc_credential_policy_for, bmc_credential_policy_key_eq,
 }
 import extdeps.cloud.gcp.secret_manager {
   SmResolvedVersionIdentity,
@@ -1323,9 +1324,14 @@ fn observed_published_account(kind: PublishedAccountKind, evidence: EvidenceRef,
 // firmware is the release the controller reported in the same read. It is the build a route must be
 // grounded for: the plan reads it from here and takes no build argument, so a current reading cannot be
 // admitted over a route for a build the controller no longer runs (O1a's stale-route crossing).
+// board is the controller's declared board (gunbc.machine_intake.bmc_write_controller row), Absent where no
+// row declares one. With firmware it is the credential-policy key (gunbc.machine_intake
+// bmc_credential_policy BmcCredentialPolicyKey) a derived retirement must have been grounded by: the key is
+// read from here, never supplied beside the reading, and an undeclared board grounds no derivation.
 type BmcAccountStateObservation sole_constructor {
   subject: MachineIntakeSubject
   endpoint: BmcControllerEndpoint
+  board: BoardAuthorityRef?
   firmware: BmcFirmwareReleaseIdentity
   managed: ManagedCredentialReference
   managed_user: IpmiUserId
@@ -1346,6 +1352,7 @@ type BmcAccountStateObservation sole_constructor {
 fn observed_bmc_account_state(
   subject: MachineIntakeSubject,
   endpoint: BmcControllerEndpoint,
+  board: BoardAuthorityRef?,
   firmware: BmcFirmwareReleaseIdentity,
   managed: ManagedCredentialReference,
   managed_user: IpmiUserId,
@@ -1370,6 +1377,7 @@ fn observed_bmc_account_state(
   BmcAccountStateObservation {
     subject: subject,
     endpoint: endpoint,
+    board: board,
     firmware: firmware,
     managed: managed,
     managed_user: managed_user,
@@ -1418,6 +1426,7 @@ fn observation_with_controller_clock(base: BmcAccountStateObservation, controlle
   observed_bmc_account_state(
     subject: base.subject,
     endpoint: base.endpoint,
+    board: base.board,
     firmware: base.firmware,
     managed: base.managed,
     managed_user: base.managed_user,
@@ -1622,8 +1631,11 @@ fn retired_on_the_managed_account(
 ) -> BmcSecureOutcome {
   if (observed.published_user as Int) != (observed.managed_user as Int) || (derivation.account as String) != (observed.managed.account as String) {
     BmcSecureRefused { cause: PublishedCredentialRetirementUnestablished { detail: "the derived retirement names an account the managed probe did not authenticate as" as NonEmptyStr } }
-  } else if !bmc_firmware_release_identity_eq(a: derivation.policy.firmware, b: observed.firmware) {
-    BmcSecureRefused { cause: PublishedCredentialRetirementUnestablished { detail: "the derived retirement was grounded by another build's policy than the build this reading observed" as NonEmptyStr } }
+  } else if !(match observed.board {
+      Absent => false
+      Present { value: b } => bmc_credential_policy_key_eq(a: derivation.policy, b: BmcCredentialPolicyKey { board: b, firmware: observed.firmware })
+    }) {
+    BmcSecureRefused { cause: PublishedCredentialRetirementUnestablished { detail: "the derived retirement was grounded by another board's or build's policy than the controller this reading observed" as NonEmptyStr } }
   } else {
     match observed.published_account.kind {
       PublishedAccountRetired =>
@@ -2519,12 +2531,14 @@ fn dry_published_lan_probes(
 // exactly as sound as the row it cites -- which is why the row, not the world, is what it names.
 type DryPublishedReading
   = DryProbePublished
-  | DryDerivePublishedRetirement { policy: BmcCredentialPolicyKey, published_account: NonEmptyStr, served: List<CredentialSurface> }
+  | DryDerivePublishedRetirement { published_account: NonEmptyStr, served: List<CredentialSurface> }
 
 // A derivation the policy refuses is read as an unestablished published state on the one LAN member the
-// probes would have covered first, never as a retirement.
+// probes would have covered first, never as a retirement. The policy key is the read's own board and build.
 fn dry_published_credential(
   world: BmcWorld,
+  board: BoardAuthorityRef?,
+  firmware: BmcFirmwareReleaseIdentity,
   census: IpmiControllerChannelCensus,
   managed: ManagedCredentialReference,
   managed_password: String,
@@ -2540,15 +2554,20 @@ fn dry_published_credential(
   match reading {
     DryProbePublished =>
       PublishedCredentialProbed { probes: dry_published_lan_probes(world: world, census: census, published_user: published_user, published_password: published_password, at: at) }
-    DryDerivePublishedRetirement { policy: k, published_account: acct, served: sv } =>
-      match derive_shared_store_retirement(policy: k, published_account: acct, managed_account: managed.account, served: sv, generation_is_published_password: managed_password == published_password) {
-        SharedStoreRetirementDerived { derivation: d } => PublishedCredentialRetiredOnTheManagedAccount { derivation: d }
-        SharedStoreRetirementRefused { cause: _ } =>
-          PublishedCredentialProbed {
-            probes: map(dry_published_lan_probes(world: world, census: census, published_user: published_user, published_password: published_password, at: at), x =>
-              ObservedPublishedLanProbe { channel: x.channel, address: x.address, probe: ObservedCredentialUnestablished { detail: "the published retirement could not be derived under the build's credential policy" as NonEmptyStr } }),
+    DryDerivePublishedRetirement { published_account: acct, served: sv } => {
+      let unestablished = PublishedCredentialProbed {
+        probes: map(dry_published_lan_probes(world: world, census: census, published_user: published_user, published_password: published_password, at: at), x =>
+          ObservedPublishedLanProbe { channel: x.channel, address: x.address, probe: ObservedCredentialUnestablished { detail: "the published retirement could not be derived under the controller's credential policy" as NonEmptyStr } }),
+      }
+      match board {
+        Absent => unestablished
+        Present { value: b } =>
+          match derive_shared_store_retirement(policy: BmcCredentialPolicyKey { board: b, firmware: firmware }, published_account: acct, managed_account: managed.account, served: sv, generation_is_published_password: managed_password == published_password) {
+            SharedStoreRetirementDerived { derivation: d } => PublishedCredentialRetiredOnTheManagedAccount { derivation: d }
+            SharedStoreRetirementRefused { cause: _ } => unestablished
           }
       }
+    }
   }
 }
 
@@ -2562,6 +2581,7 @@ fn dry_read_bmc_account_state(
   world: BmcWorld,
   subject: MachineIntakeSubject,
   endpoint: BmcControllerEndpoint,
+  board: BoardAuthorityRef?,
   firmware: BmcFirmwareReleaseIdentity,
   managed: ManagedCredentialReference,
   managed_user: IpmiUserId,
@@ -2591,6 +2611,7 @@ fn dry_read_bmc_account_state(
   observed_bmc_account_state(
     subject: subject,
     endpoint: endpoint,
+    board: board,
     firmware: firmware,
     managed: managed,
     managed_user: managed_user,
@@ -2600,7 +2621,7 @@ fn dry_read_bmc_account_state(
     channel_census: ipmi_controller_channel_census(members: census.members, user_access: world.ipmi_user_access),
     census_evidence: dry_evidence(text: join(["dry channel census of ", endpoint.host as String, " at ", to_string(read_at_millis as Int)], "")),
     census_observed_at: at,
-    published_credential: dry_published_credential(world: world, census: census, managed: managed, managed_password: managed_password, published_user: published_user, published_password: published_password, reading: published_reading, at: at),
+    published_credential: dry_published_credential(world: world, board: board, firmware: firmware, census: census, managed: managed, managed_password: managed_password, published_user: published_user, published_password: published_password, reading: published_reading, at: at),
     published_user: published_user,
     published_account: observed_published_account(
       kind: published_account,

@@ -2,6 +2,7 @@ module gunbc.machine_intake.bmc_write_controller
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
+import extdeps.board_authority { BoardAuthorityRef, board_authority_ref_eq }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, bmc_controller_of_endpoint }
 import gunbc.fleet.fleet_intent { srv13_baseboard, srv15_baseboard }
@@ -42,9 +43,14 @@ type BmcWriteAdmission
   = WritesAdmitted { discharge: BmcWriteDischarge }
   | WritesHeld { reason: NonEmptyStr, until: BmcWriteHoldRelease, discharge_on_release: BmcWriteDischarge }
 
+// board is the controller's board as its baseboard row declares it (the same row its endpoint is read
+// from), Absent where no baseboard row exists. It is half of the credential-policy key a reading of this
+// controller is judged under (gunbc.machine_intake.bmc_credential_policy BmcCredentialPolicyKey), so the
+// selection refuses a reading that names another board.
 type BmcWriteControllerRow {
   host: HostIdentity
   endpoint: BmcControllerEndpoint
+  board: BoardAuthorityRef?
   admission: BmcWriteAdmission
 }
 
@@ -56,6 +62,7 @@ type BmcWriteControllerRow {
 data mtjade1_bmc_write_controller: BmcWriteControllerRow = BmcWriteControllerRow {
   host: operator_host_mtjade1,
   endpoint: sol_session_controller(a: mtjade1_smbios_sol_attribution),
+  board: none,
   admission: WritesHeld {
     reason: "merry-fox-82, 2026-10-28: mtjade1 stays off and untouched until mtcollins1 serves CI" as NonEmptyStr,
     until: UntilRunnerQualified { host: operator_host_mtcollins1 },
@@ -67,6 +74,7 @@ data mtjade1_bmc_write_controller: BmcWriteControllerRow = BmcWriteControllerRow
 data srv13_bmc_write_controller: BmcWriteControllerRow = BmcWriteControllerRow {
   host: operator_host_srv13,
   endpoint: bmc_controller_of_endpoint(endpoint: srv13_baseboard.bmc),
+  board: Present { value: srv13_baseboard.catalog.model },
   admission: WritesAdmitted { discharge: PerWriteApprovalOnly },
 }
 
@@ -76,6 +84,7 @@ data srv13_bmc_write_controller: BmcWriteControllerRow = BmcWriteControllerRow {
 data srv15_bmc_write_controller: BmcWriteControllerRow = BmcWriteControllerRow {
   host: operator_host_srv15,
   endpoint: bmc_controller_of_endpoint(endpoint: srv15_baseboard.bmc),
+  board: Present { value: srv15_baseboard.catalog.model },
   admission: WritesAdmitted { discharge: PerWriteApprovalOnly },
 }
 
@@ -94,6 +103,7 @@ type BmcWriteRoute
 type BmcWriteControllerRefusal
   = NoControllerRowForHost { host: HostIdentity }
   | ControllerRowIsAnotherEndpoint { host: HostIdentity, row_endpoint: BmcControllerEndpoint, target: BmcControllerEndpoint }
+  | ControllerRowIsAnotherBoard { host: HostIdentity, row_board: BoardAuthorityRef?, read_board: BoardAuthorityRef? }
   | ControllerWritesHeld { host: HostIdentity, reason: NonEmptyStr, until: BmcWriteHoldRelease }
   | StandingGrantNotAdmittedForController { host: HostIdentity }
 
@@ -153,11 +163,20 @@ fn admitted_by(row: BmcWriteControllerRow, route: BmcWriteRoute, qualification: 
   }
 }
 
-// THE SELECTION. The bound host's row, at the endpoint the write targets, admitting the route the write
-// is discharged by.
+// Whether two optional boards name the same board; both undeclared is the same (no row was claimed).
+fn same_declared_board(a: BoardAuthorityRef?, b: BoardAuthorityRef?) -> Bool {
+  match a {
+    Absent => match b { Absent => true  Present { value: _ } => false }
+    Present { value: x } => match b { Absent => false  Present { value: y } => board_authority_ref_eq(a: x, b: y) }
+  }
+}
+
+// THE SELECTION. The bound host's row, at the endpoint the write targets and the board its reading names,
+// admitting the route the write is discharged by.
 fn select_bmc_write_controller(
   host: HostIdentity,
   target: BmcControllerEndpoint,
+  board: BoardAuthorityRef?,
   route: BmcWriteRoute,
   qualification: RunnerThroughputAssessment<HostIdentity>?,
 ) -> BmcWriteControllerSelection {
@@ -166,6 +185,8 @@ fn select_bmc_write_controller(
     Present { value: row } =>
       if (row.endpoint.host as String) != (target.host as String) {
         BmcWriteControllerRefused { cause: ControllerRowIsAnotherEndpoint { host: host, row_endpoint: row.endpoint, target: target } }
+      } else if !same_declared_board(a: row.board, b: board) {
+        BmcWriteControllerRefused { cause: ControllerRowIsAnotherBoard { host: host, row_board: row.board, read_board: board } }
       } else {
         admitted_by(row: row, route: route, qualification: qualification)
       }
