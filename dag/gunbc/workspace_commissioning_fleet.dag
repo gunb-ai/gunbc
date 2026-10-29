@@ -233,7 +233,10 @@ fn workspace_commissioning_basis_observe(provenance: WorkspaceCommissioningProve
 // Only the adapter that just captured the exact installed privileged observer may decode its
 // response into a basis. This is not a fixture/text constructor exposed to planner consumers.
 fn workspace_commissioning_basis_from_privileged(text: String, host: NonEmptyStr, revision: CommitSha) -> WorkspaceCommissioningFleetObservation
-  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_dispatch_transport", decl_name: "workspace_dispatch_observe")]
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_commissioning_dispatch_transport", decl_name: "workspace_dispatch_observe"),
+    decl_ref(module_path: "test.claim.workspace_commissioning_plan_credential_witness", decl_name: "witness_privileged_basis"),
+  ]
 {
   if starts_with(s: text, prefix: host_kernel_dependency_row_prefix) {
     let slots = filter(workspace_execution_slot_identities(), slot => slot.host == host)

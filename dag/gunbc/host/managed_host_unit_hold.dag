@@ -87,7 +87,7 @@ import extdeps.posix.identity { PosixOwnerNames }
 // (unit_hold_store_directory) and the path every consumer reads (unit_hold_store_path) all derive from
 // THIS data -- there is no second literal. THE MODE IS THE OBSERVED FACT: provisioning/srv1/gunbc-ghrunner.sudoers
 // creates the directory `install -d -m 00755 -o ghrunner -g ghrunner`, and the executor row that creates
-// it (gunbc.runner.runner_host_grants unit_hold_store_operations) uses the executor's managed mode,
+// it (gunbc.runner.runner_host_grants unit_hold_store_plan) uses the executor's managed mode,
 // which is 0755 (DirectoryOwnerAllEveryoneTraverse). Owner-ONLY would be wrong here: the acquisition
 // entry runs in ghrunner's group and the hold library's DefaultAccessCreateOnly publication relies on
 // the directory being group-reachable, so the historical mode is carried, not invented.
@@ -138,7 +138,7 @@ fn unit_hold_store_on_production_host() -> UnitHoldStoreReading {
 }
 
 // THE STORE ROOT IS A DEMANDED DIRECTORY, derived from the same declaration as the path above and
-// enrolled where the tree's children are (gunbc.runner.runner_host_grants unit_hold_store_operations).
+// enrolled where the tree's children are (gunbc.runner.runner_host_grants unit_hold_store_plan).
 // The mint refuses a root it cannot list rather than reading it as empty, so a root nothing creates
 // refuses every take, release and boot: the creator the corpus names for a store root
 // (gunbc.dispatch_credential_acquisition credential_acquisition_slots_directory).
@@ -757,7 +757,7 @@ fn kvm_observer_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr, tree:
 // refuses without this hold's proof (gunbc.runner.runner_qualification_dispatch hold_covers_slot_host). Its owner
 // names its process, so a run that dies holding it is recovered by the next acquirer once observed dead, and a
 // cancelled run is released by process_held_run_release_decision for its own kind and run.
-fn qualification_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr, tree: HostStateTree) -> UnitHoldAcquisition
+fn qualification_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> UnitHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_under_hold"),
   ]
@@ -771,7 +771,7 @@ fn qualification_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr, tree
         SelfUnidentified { cause: c } =>
           UnitHoldRefused { reason: join(["this qualification run cannot name its own process (", c as String, "), and a hold it could never be shown dead in would lock the unit out if it died; nothing started"], "") as NonEmptyStr }
         SelfIdentified { process: p, pid_namespace: n } =>
-          unit_hold_acquire(subject: subject, owner: unit_hold_owner_ref(o: ProcessHeldRun { kind: QualificationRunKind, run_id: run_id, process: p, pid_namespace: n }), tree: tree)
+          unit_hold_acquire(subject: subject, owner: unit_hold_owner_ref(o: ProcessHeldRun { kind: QualificationRunKind, run_id: run_id, process: p, pid_namespace: n }), tree: host_state_tree())
       }
   }
 }

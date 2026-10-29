@@ -27,7 +27,7 @@ import extdeps.filesystem.filesystem_io { filesystem_listing_observation, Filesy
 // THE MODE IS THE OBSERVED FACT, NOW ENFORCED: the directory was historically created by the fetching
 // handler at its umask 0755 (gunbc.url_file_acquisition ensure_url_file_parent, mkdir -p); this PR moves
 // creation to the demanded provisioning row (gunbc.runner.runner_host_grants
-// install_media_store_operations), which creates it at that same 0755 with the job user owning it (the
+// install_media_store_plan), which creates it at that same 0755 with the job user owning it (the
 // actuator host's fetch, seeded publish and resolve all run as that account).
 // DirectoryOwnerAllEveryoneTraverse is exactly 0755.
 type InstallMediaSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
@@ -69,7 +69,7 @@ type InstallMediaStoreReading
 // also the open of the READ paths (srv3_seeded_install_media_artifact srv3_seeded_install_media_resolve
 // and ..._publish), and a read that creates a directory is a write in disguise. The derived directory
 // is instead a DEMANDED PROVISIONING DIRECTORY: install_media_store_directory is enrolled where the
-// tree's children are (gunbc.runner.runner_host_grants unit_hold_store_operations), exactly like the
+// tree's children are (gunbc.runner.runner_host_grants unit_hold_store_plan), exactly like the
 // boot-attempt and unit-hold roots -- so on a converged host the directory already exists, the listing
 // lists, and a host where it does not is a host that has not converged yet and is refused, not
 // silently built.
@@ -118,9 +118,10 @@ fn install_media_parent_directory(store: InstallMediaStore) -> NonEmptyStr {
 
 // THE STORE ROOT IS A DEMANDED PROVISIONING DIRECTORY, derived from the same member declaration as
 // the path above. Its consumer is the provisioning roster: gunbc.runner.runner_host_grants
-// install_media_store_operations enrolls exactly this target (projected through the shared
-// OwnedDirectoryTarget accessors, like its two sibling store rows) on the one host where the fetch,
-// the seeded publish and the resolve run -- the derived srv1 actuator. That enrollment is WHY the mint
+// install_media_store_plan enrolls exactly this target (through the one shared projection,
+// gunbc.executor_privileged_operation executor_privileged_owned_directory_plans, like its two sibling
+// store rows) on the one host where the fetch, the seeded publish and the resolve run -- the derived
+// srv1 actuator. That enrollment is WHY the mint
 // above can be a pure observer: the executor creates the directory at convergence, so a host where it
 // is absent has not converged and the mint refuses it -- the store is never self-provisioned by a read
 // or a mint (reviews 86297, 86365), only demanded, listed and refused.

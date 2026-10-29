@@ -113,7 +113,7 @@ test fn media_bytes_written_before_the_cutover_read_back_through_the_sealed_stor
 
 // CONTROL (reviews 86279 / 86297 / 86365), unconverged host on the REAL filesystem: with the
 // artifacts directory absent the mint REFUSES -- it is a pure observer, and the directory is a
-// DEMANDED provisioning directory (gunbc.runner.runner_host_grants install_media_store_operations
+// DEMANDED provisioning directory (gunbc.runner.runner_host_grants install_media_store_plan
 // creates it at convergence). A converged tree (directory present, as the demanded row leaves it)
 // mints Ready; the refusal here is what an unconverged host gets, and NOTHING was created by the
 // mint: the listing of the artifacts path still fails after the mint ran.

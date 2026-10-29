@@ -67,7 +67,7 @@ import extdeps.github.actions {
   RunnerSpec, RunsOnExpression, SelfHosted, HostedRunner, Ubuntu2404Arm,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
 }
-import gunbc.repo.repo_self_build { repo_self_build_command }
+import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_seed_build_step_run }
 import gunbc.action_use_admission {
   admit_workflow_checkout_refs, checkout_ref_entry, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason,
   checkout_action, download_artifact_action, upload_artifact_action, google_auth_action,
@@ -114,7 +114,7 @@ import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build { bash_build_with_redir, bash_build_command_with_words, bash_build_word_lit, bash_build_exit }
 import gunbc.fleet.fleet_workflow_steps {
-  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
+  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_site_pxe_edge_converge_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
 }
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host.host_reset_return_run { host_reset_dispatch_mode_env }
@@ -197,6 +197,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_microvm_runner_group_ensure_invoke,
   gunbc_ci_srv1_root_mutation_approval_invoke,
   gunbc_ci_service_runner_lost_boot_sweep_invoke,
+  gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke,
   gunbc_ci_qualification_attempt_invoke,
   gunbc_ci_mtcollins1_boot_admit_invoke,
   gunbc_ci_gcp_iam_converge_request_invoke,
@@ -404,6 +405,7 @@ type FleetConvergeWorkflowMode
   | MtCollins1CensusQemuToolchainConverge
   | MicrovmRunnerGroupEnsure
   | ServiceRunnerLostBootSweep
+  | ServiceRunnerLostBootSweepDryRun
   | OrgRunnerRosterObserve
   | GcpIamConverge
   | NamecheapObserve
@@ -496,6 +498,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     MtCollins1CensusQemuToolchainConverge => "mtcollins1_census_qemu_toolchain_converge"
     MicrovmRunnerGroupEnsure => "microvm_runner_group_ensure"
     ServiceRunnerLostBootSweep => "service_runner_lost_boot_sweep"
+    ServiceRunnerLostBootSweepDryRun => "service_runner_lost_boot_sweep_dry_run"
     OrgRunnerRosterObserve => "org_runner_roster_observe"
   }
 }
@@ -521,7 +524,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -611,6 +614,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     FabricWriterIdentityObserve => SixteenBinaryPack
     MicrovmRunnerGroupEnsure => SixteenBinaryPack
     ServiceRunnerLostBootSweep => SixteenBinaryPack
+    ServiceRunnerLostBootSweepDryRun => SixteenBinaryPack
     GcpIamConverge => SixteenBinaryPack
     NamecheapObserve => SixteenBinaryPack
     ReviewSheetConverge => SixteenBinaryPack
@@ -734,6 +738,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     MtCollins1CensusQemuToolchainConverge => none
     MicrovmRunnerGroupEnsure => none
     ServiceRunnerLostBootSweep => none
+    ServiceRunnerLostBootSweepDryRun => none
     OrgRunnerRosterObserve => none
   }
 }
@@ -926,6 +931,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     MtCollins1CensusQemuToolchainConverge => FleetSshKeyNotConsumed
     MicrovmRunnerGroupEnsure => FleetSshKeyNotConsumed
     ServiceRunnerLostBootSweep => FleetSshKeyNotConsumed
+    ServiceRunnerLostBootSweepDryRun => FleetSshKeyConsumed
     GcpIamConverge => FleetSshKeyNotConsumed
     NamecheapObserve => FleetSshKeyNotConsumed
     ReviewSheetConverge => FleetSshKeyNotConsumed
@@ -1386,7 +1392,7 @@ fn fleet_converge_plan_revision_pair_build_step() -> Step {
   RunStep {
     name: Present { value: "Build the compiler pair that resolves the plan's revision (claim_executor + gunbc)" },
     id: Present { value: "pair_build" },
-    run: concat(compiler_pair_release_product().build_line, "\n"),
+    run: repo_self_seed_build_step_run(command: compiler_pair_release_product().build_line),
     shell: none,
     env: none,
     working_directory: none,
@@ -1804,6 +1810,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     MtCollins1CensusQemuToolchainConverge => ExecutorDomain
     MicrovmRunnerGroupEnsure => ExecutorDomain
     ServiceRunnerLostBootSweep => ExecutorDomain
+    ServiceRunnerLostBootSweepDryRun => OwnRunConfined
     OrgRunnerRosterObserve => ExecutorDomain
     GcpIamConverge => ExecutorDomain
     NamecheapObserve => ExecutorDomain
@@ -2228,6 +2235,10 @@ fn fleet_converge_microvm_host_standing_upload_step() -> Step {
 // and see what a converge would write before any root-evaluated file changes. Both reach the target
 // over the job's fleet-key agent as the declared administrator; the job user gains no grant.
 fn fleet_converge_runner_host_file_step(id: String, name: String, invoke: String, if_condition: String) -> Step {
+  fleet_converge_runner_host_file_step_within(id: id, name: name, invoke: invoke, if_condition: if_condition, timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes)
+}
+
+fn fleet_converge_runner_host_file_step_within(id: String, name: String, invoke: String, if_condition: String, timeout_minutes: Duration) -> Step {
   RunStep {
     name: Present { value: name },
     id: Present { value: id },
@@ -2241,7 +2252,7 @@ fn fleet_converge_runner_host_file_step(id: String, name: String, invoke: String
     working_directory: none,
     if_condition: Present { value: if_condition },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
+    timeout_minutes: Present { value: timeout_minutes }
   }
 }
 
@@ -2532,11 +2543,12 @@ fn fleet_converge_site_pxe_edge_observe_step() -> Step {
 }
 
 fn fleet_converge_site_pxe_edge_converge_step() -> Step {
-  fleet_converge_runner_host_file_step(
+  fleet_converge_runner_host_file_step_within(
     id: "site_pxe_edge_converge",
     name: "Site PXE edge: if the gate is open, write what differs, restart the unit, read its active state back",
     invoke: gunbc_ci_site_pxe_edge_converge_invoke(),
     if_condition: fleet_converge_site_pxe_edge_converge_step_if,
+    timeout_minutes: gunbc_ci_site_pxe_edge_converge_step_timeout_minutes,
   )
 }
 
@@ -3607,6 +3619,8 @@ data fleet_converge_mtcollins1_boot_step_if_observed: String = join([fleet_conve
 
 data fleet_converge_service_runner_lost_boot_sweep_step_if: String = fleet_converge_mode_step_if(mode: ServiceRunnerLostBootSweep)
 
+data fleet_converge_service_runner_lost_boot_sweep_dry_run_step_if: String = fleet_converge_mode_step_if(mode: ServiceRunnerLostBootSweepDryRun)
+
 data fleet_converge_microvm_runner_group_ensure_step_if: String = fleet_converge_mode_step_if(mode: MicrovmRunnerGroupEnsure)
 
 // THE MICROVM RUNNER GROUP ENSURE (gunbc.runner.runner_group_restriction_ensure_run). It reaches GitHub over
@@ -3620,7 +3634,7 @@ data fleet_converge_microvm_runner_group_ensure_step_if: String = fleet_converge
 // mode admits it only through an independent current-boot observation and refuses while no such route exists.
 fn fleet_converge_service_runner_lost_boot_sweep_step() -> Step {
   RunStep {
-    name: Present { value: "service runner lost-boot sweep: deregister runner registrations of a boot that is not the current one, read each back absent" },
+    name: Present { value: "service runner lost-boot sweep (GATED until the operator's go): deregister runner registrations of a boot that is not the current one, read each back absent" },
     id: Present { value: "service_runner_lost_boot_sweep" },
     run: gunbc_ci_service_runner_lost_boot_sweep_invoke(),
     shell: none,
@@ -3633,6 +3647,48 @@ fn fleet_converge_service_runner_lost_boot_sweep_step() -> Step {
     if_condition: Present { value: fleet_converge_service_runner_lost_boot_sweep_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(lost_boot_sweep_step_timeout_minutes()) }
+  }
+}
+
+// THE LOST-BOOT SWEEP'S DRY RUN (gunbc.runner.runner_lost_boot_sweep_run lost_boot_sweep_dry_run_wet;
+// gunbc.plans.mtcollins1_ci_service_legs F4). A mode value rather than a dispatch input on the deleting mode, because the
+// workflow already declares GitHub's limit of 25 workflow_dispatch inputs; it adds no job. It admits sweep_host's
+// current boot over the anchored fleet SSH transport (hence FleetSshKeyConsumed), plans against the real organization
+// runner listing under the gunbai-ci installation token it mints, and records the admitted boot and the selection; it
+// requests no deletion and writes no host state, so it is confined to its own run.
+fn fleet_converge_service_runner_lost_boot_sweep_dry_run_step() -> Step {
+  RunStep {
+    name: Present { value: "service runner lost-boot sweep, dry run: admit the current boot over the anchored transport, plan against the organization runner listing, record, delete nothing" },
+    id: Present { value: "service_runner_lost_boot_sweep_dry_run" },
+    run: gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: lost_boot_sweep_host_env_name, value: yaml_string(s: "${{ github.event.inputs.sweep_host }}")),
+      kv(key: lost_boot_sweep_capture_path_env_name, value: yaml_string(s: "${{ github.event.inputs.host_capture_path }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_service_runner_lost_boot_sweep_dry_run_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: minute_count(lost_boot_sweep_step_timeout_minutes()) }
+  }
+}
+
+fn fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the service runner lost-boot sweep dry-run receipt" },
+    id: Present { value: "service_runner_lost_boot_sweep_dry_run_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "service-runner-lost-boot-sweep-dry-run-receipts")),
+      kv(key: "path", value: yaml_string(s: lost_boot_sweep_artifact_glob)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_service_runner_lost_boot_sweep_dry_run_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }
 
@@ -4898,7 +4954,7 @@ fn fleet_converge_in_job_compiler_pair_build_step(name: String) -> Step {
   RunStep {
     name: Present { value: name },
     id: Present { value: "pair_build" },
-    run: concat(compiler_pair_release_product().build_line, "\n"),
+    run: repo_self_seed_build_step_run(command: compiler_pair_release_product().build_line),
     shell: none,
     env: none,
     working_directory: none,
@@ -5189,6 +5245,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_qualification_attempt_step(),
         fleet_converge_qualification_attempt_receipt_upload_step(),
         fleet_converge_service_runner_lost_boot_sweep_receipt_upload_step(),
+        fleet_converge_service_runner_lost_boot_sweep_dry_run_step(),
+        fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step(),
         fleet_converge_guest_image_observe_step(),
         fleet_converge_guest_image_converge_step(),
         fleet_converge_guest_image_receipt_upload_step(),
@@ -5488,6 +5546,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     FabricWriterIdentityObserve => fleet_converge_shared_job_id
     MicrovmRunnerGroupEnsure => fleet_converge_shared_job_id
     ServiceRunnerLostBootSweep => fleet_converge_shared_job_id
+    ServiceRunnerLostBootSweepDryRun => fleet_converge_shared_job_id
     GcpIamConverge => "gcp-iam-converge" as NonEmptyStr
     NamecheapObserve => "namecheap-observe" as NonEmptyStr
     ReviewSheetConverge => "review-sheet-converge" as NonEmptyStr
@@ -5661,7 +5720,7 @@ fn fleet_converge_hosted_gunbc_build_step(purpose: String) -> Step {
   RunStep {
     name: Present { value: join(["Build the gunbc binary ", purpose, " runs"], "") },
     id: none,
-    run: concat(repo_self_build_command(bins: ["gunbc"]), "\n"),
+    run: repo_self_seed_build_step_run(command: repo_self_build_command(bins: ["gunbc"])),
     shell: none,
     env: none,
     working_directory: none,
@@ -6540,14 +6599,14 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   },
   DispatchInput {
     name: "sweep_host",
-    description: Present { value: "service_runner_lost_boot_sweep only: the managed_host whose runner registrations are swept (its gunbc.host.managed_host row; not the executor host)" },
+    description: Present { value: "service_runner_lost_boot_sweep and service_runner_lost_boot_sweep_dry_run only: the managed_host whose runner registrations are swept or planned (its gunbc.host.managed_host row; not the executor host)" },
     required: false,
     default: none,
     type: InputString,
   },
   DispatchInput {
     name: "host_capture_path",
-    description: Present { value: "service_runner_lost_boot_sweep only: checkout-relative path of sweep_host's closed runner-host-up capture envelope, which records a boot but does not establish the current one: the mode joins it to an independent current-boot observation of sweep_host, refuses on a missing or mismatched one (and refuses every dispatch until the mtcollins1 enrolment supplies that observation route), and only then deregisters registrations of any other boot. Required, never defaulted, no boot id is typed" },
+    description: Present { value: "service_runner_lost_boot_sweep and service_runner_lost_boot_sweep_dry_run only: checkout-relative path of sweep_host's closed runner-host-up capture envelope, which records a boot but does not establish the current one: both modes join it to an independent current-boot observation of sweep_host over its anchored SSH transport and refuse every dispatch on a missing or mismatched one. The dry run then records the plan and deletes nothing; the deleting mode, gated until the operator's go, deregisters registrations of any other boot. Required, never defaulted, no boot id is typed" },
     required: false,
     default: none,
     type: InputString,
