@@ -8,7 +8,7 @@ import std.algebra { length }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, SupermicroAten, BmcControllerEndpoint }
 import product.host_identity { HostIdentity, host_identity_eq }
 import std.scoped_authorization { ScopedAuthorization }
-import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write }
+import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write, approved_bmc_convergence }
 import gunbc.machine_intake.phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, BootDeliveryEstablish, IntakePhase, machine_qualification_policy }
 import gunbc.machine_intake.subject {
   AssemblyManifest, BoardSerialObservation, BmcFru, HostSmbios, ChassisComponent, ComponentIdentity, BoardSerialAbsent,
@@ -83,6 +83,7 @@ import gunbc.machine_intake.arrival_converge {
   bmc_secure_bound,
 }
 import gunbc.machine_intake.bmc_secure {
+  bmc_secure_convergence_approval,
   PublishedWriteInputs,
   DryProbePublished,
   BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, dry_apply_bmc_account_plan, plan_bmc_account_action,
@@ -407,10 +408,6 @@ fn mtjade1_fetched_generation(
   }
 }
 
-fn mtjade1_rotation_approval(s: BmcRotationRouteStanding, user: IpmiUserId) -> ScopedAuthorization<BmcAccountWriteApproval> {
-  approved_bmc_write(standing: s, request: IpmiSetUserPassword { user: user }, purpose: RotateCredential, attempt: "o1c1-witness-run-a" as NonEmptyStr)
-}
-
 fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInputs?
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
@@ -469,15 +466,16 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
         Present { value: bg } => {
           let managed_route = cited_mtjade1_managed_route()
           let published_route = cited_mtjade1_published_route()
+          let published = PublishedWriteInputs { route: published_route, generation: bg }
           match plan_bmc_account_action(
             subject: subject,
             goal: mtjade1_bmc_goal(),
             reading: reading,
             managed_user: mtjade1_managed_ipmi_user,
             managed_route: managed_route,
-            managed_approval: mtjade1_rotation_approval(s: managed_route, user: mtjade1_managed_ipmi_user),
+            approval: approved_bmc_convergence(approval: bmc_secure_convergence_approval(goal: mtjade1_bmc_goal(), reading: reading, managed_user: mtjade1_managed_ipmi_user, managed_route: managed_route, published: published), attempt: "o1c1-witness-run-a" as NonEmptyStr),
             managed_generation: mg,
-            published: PublishedWriteInputs { route: published_route, approval: mtjade1_rotation_approval(s: published_route, user: mtjade1_published_ipmi_user), generation: bg },
+            published: published,
             channel_close: none,
             planned_at: dry_bmc_account_instant(millis: mtjade1_bmc_plan_at),
           ) {

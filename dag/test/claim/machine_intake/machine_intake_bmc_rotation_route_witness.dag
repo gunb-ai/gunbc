@@ -37,8 +37,8 @@ import gunbc.machine_intake.bmc_rotation_route {
   ModeledQualificationWouldQualify, ModeledQualificationRefused, RouteQualificationRefusal,
   QualificationSubjectNotACandidate, QualificationApprovalRefused,
   BmcAccountWriteApproval, BmcAccountWritePurpose, BmcWriteApprovalRefusal, QualifyRoute, RotateCredential, QualifyByRotation, bmc_account_write_authorization_request,
-  BmcWriteApprovalNotGranted, BmcWriteApprovalDenied, BmcWriteApprovalForAnotherPurpose, BmcWriteApprovalForAnotherSubject, BmcWriteApprovalIntentNotItsSubject, BmcWriteApprovalScopesNotItsSubject,
-  bmc_account_write_identity, bmc_account_write_intent_schema, bmc_account_write_scopes,
+  BmcWriteApprovalNotGranted, BmcWriteApprovalDenied, BmcWriteApprovalForAnotherPurpose, BmcWriteApprovalForAnotherSubject, BmcWriteApprovalIntentNotItsSubject, BmcWriteApprovalScopesNotItsSubject, BmcWriteNotEntailedByTheApproval, BmcWriteApprovalQualifyByRotationIsOneWrite,
+  bmc_account_write_identity, bmc_account_write_intent_schema, bmc_account_write_scopes, bmc_account_write_approval_of,
   QualificationResponseForAnotherSubject, QualificationRequestUnrealized,
   QualificationRequestNotCompleted, QualificationReadbackRefused,
   RotationApplyAdmitted, RotationApplyRouteNotGrounded, RotationApplyRouteForAnotherController,
@@ -127,6 +127,8 @@ fn approval_refusal_name(c: BmcWriteApprovalRefusal) -> String {
     BmcWriteApprovalForAnotherSubject { approved: _, requested: _ } => "another-subject"
     BmcWriteApprovalIntentNotItsSubject { approved: _ } => "intent-not-its-subject"
     BmcWriteApprovalScopesNotItsSubject { approved: _ } => "scopes-not-its-subject"
+    BmcWriteNotEntailedByTheApproval { approved: _, requested: _ } => "not-entailed"
+    BmcWriteApprovalQualifyByRotationIsOneWrite { approved: _ } => "qualify-by-rotation-is-one-write"
   }
 }
 
@@ -321,7 +323,7 @@ test fn a_response_for_another_controller_is_refused() -> Bool {
 
 // REQUEST IDENTITY IS STRUCTURAL (item 3). Two Redfish account writes differing ONLY in the transport
 // operation's declaration field, or ONLY in the action shape, are different requests: unequal, with
-// different approval identities, and an approval for one refuses the other.
+// different approval identities, and an approval for one does not entail the other.
 fn redfish_write(op_field: NonEmptyStr, action_field: NonEmptyStr) -> BmcAccountWriteRequest {
   RedfishAccountPasswordWrite {
     account: "root" as NonEmptyStr,
@@ -339,8 +341,8 @@ test fn requests_differing_only_in_transport_or_action_shape_are_different_reque
   account_write_request_eq(a: base, b: base)
     && !account_write_request_eq(a: base, b: other_transport)
     && !account_write_request_eq(a: base, b: other_action)
-    && classify_names(candidate: c_transport, approval_value: qualification_approval_for(standing: c_transport, request: base)) == "another-subject"
-    && classify_names(candidate: c_action, approval_value: qualification_approval_for(standing: c_action, request: base)) == "another-subject"
+    && classify_names(candidate: c_transport, approval_value: qualification_approval_for(standing: c_transport, request: base)) == "not-entailed"
+    && classify_names(candidate: c_action, approval_value: qualification_approval_for(standing: c_action, request: base)) == "not-entailed"
 }
 
 fn classify_names(candidate: BmcRotationRouteStanding, approval_value: ScopedAuthorization<BmcAccountWriteApproval>) -> String {
@@ -418,7 +420,7 @@ fn access_write(user: Int, channel: Int, privilege: IpmiChannelPrivilegeLimit) -
 
 // EVERY FIELD IS IN THE IDENTITY. Set User Access requests differing ONLY in the channel, ONLY in the
 // privilege limit, or ONLY in the user are different requests: unequal, and an approval for the base
-// request refuses each as another request.
+// request entails none of them.
 test fn channel_access_requests_differing_in_any_one_field_are_different_requests() -> Bool {
   let base = access_write(user: 2, channel: 2, privilege: IpmiPrivilegeNoAccess)
   let other_channel = access_write(user: 2, channel: 3, privilege: IpmiPrivilegeNoAccess)
@@ -431,9 +433,9 @@ test fn channel_access_requests_differing_in_any_one_field_are_different_request
     && !account_write_request_eq(a: base, b: other_channel)
     && !account_write_request_eq(a: base, b: other_privilege)
     && !account_write_request_eq(a: base, b: other_user)
-    && classify_names(candidate: c_channel, approval_value: qualification_approval_for(standing: c_channel, request: base)) == "another-subject"
-    && classify_names(candidate: c_privilege, approval_value: qualification_approval_for(standing: c_privilege, request: base)) == "another-subject"
-    && classify_names(candidate: c_user, approval_value: qualification_approval_for(standing: c_user, request: base)) == "another-subject"
+    && classify_names(candidate: c_channel, approval_value: qualification_approval_for(standing: c_channel, request: base)) == "not-entailed"
+    && classify_names(candidate: c_privilege, approval_value: qualification_approval_for(standing: c_privilege, request: base)) == "not-entailed"
+    && classify_names(candidate: c_user, approval_value: qualification_approval_for(standing: c_user, request: base)) == "not-entailed"
 }
 
 // mtcollins1's channel-access route is a candidate on its CURRENT controller and build (0.45.3, not
@@ -707,7 +709,7 @@ test fn a_grant_whose_subject_was_edited_after_the_decision_is_refused() -> Bool
         grant: OperatorGrant {
           escalation_id: g.escalation_id,
           scopes: g.scopes,
-          subject: BmcAccountWriteApproval { subject: subject_at(endpoint: lab_endpoint_b, request: request), purpose: g.subject.purpose },
+          subject: bmc_account_write_approval_of(subject: subject_at(endpoint: lab_endpoint_b, request: request), purpose: g.subject.purpose),
           purpose: g.purpose,
           attempt: g.attempt,
           intent_hash: g.intent_hash,
@@ -734,7 +736,7 @@ test fn each_purpose_covers_exactly_what_it_names() -> Bool {
   let request = IpmiSetUserPassword { user: 3 }
   let grounded = cited_password_route_at(endpoint: lab_endpoint)
   let candidate = lab_candidate(request: request)
-  let pending: ScopedAuthorization<BmcAccountWriteApproval> = match bmc_account_write_authorization_request(escalation_id: "attempt-1" as NonEmptyStr, approval: BmcAccountWriteApproval { subject: subject_at(endpoint: lab_endpoint, request: request), purpose: RotateCredential }) {
+  let pending: ScopedAuthorization<BmcAccountWriteApproval> = match bmc_account_write_authorization_request(escalation_id: "attempt-1" as NonEmptyStr, approval: bmc_account_write_approval_of(subject: subject_at(endpoint: lab_endpoint, request: request), purpose: RotateCredential)) {
     Present { value: r } => AuthorizationPending { request: r }
     Absent => AuthorizationDenied { escalation_id: "attempt-1" as NonEmptyStr, denied_by: "witness" as NonEmptyStr, denied_at: "2026-10-03T00:00:00Z", reason: "unframed" as NonEmptyStr }
   }
@@ -756,7 +758,7 @@ test fn each_purpose_covers_exactly_what_it_names() -> Bool {
 fn lab_password_request() -> AuthorizationRequest<BmcAccountWriteApproval>? {
   bmc_account_write_authorization_request(
     escalation_id: "attempt-1" as NonEmptyStr,
-    approval: BmcAccountWriteApproval { subject: subject_at(endpoint: lab_endpoint, request: IpmiSetUserPassword { user: 3 }), purpose: RotateCredential },
+    approval: bmc_account_write_approval_of(subject: subject_at(endpoint: lab_endpoint, request: IpmiSetUserPassword { user: 3 }), purpose: RotateCredential),
   )
 }
 

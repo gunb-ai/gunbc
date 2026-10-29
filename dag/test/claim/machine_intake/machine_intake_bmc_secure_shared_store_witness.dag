@@ -24,16 +24,17 @@ import gunbc.machine_intake.subject {
 import gunbc.deployment_risk { TestRisk }
 import gunbc.machine_intake.phase { machine_qualification_policy }
 import std.scoped_authorization { AttemptIdentity }
-import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write }
+import test.fixture.machine_intake.bmc_write_approval { approved_bmc_convergence }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady }
 import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import gunbc.machine_intake.bmc_credential_policy { RedfishBasicOrSession, IpmiLanplus, CredentialSurface, asrock_altrad8ud_openbmc_3_22_00_key }
 import gunbc.machine_intake.bmc_rotation_route {
-  BmcRotationRouteStanding, RotateCredential, rotation_route_from_citation, redfish_account_password_write,
+  BmcRotationRouteStanding, rotation_route_from_citation, redfish_account_password_write,
 }
 import gunbc.machine_intake.bmc_secure {
+  bmc_secure_convergence_approval,
   BmcSecureGoal, BmcAccountActionDue, BmcAccountStateObservation, ManagedCredentialReference, ManagedCredentialGenerationFetched,
   BmcSecureStateInspected, BmcSecureStateUnobserved, PublishedAccountRetired,
   PublishedCredentialProbed, PublishedCredentialRetiredOnTheManagedAccount,
@@ -236,10 +237,11 @@ fn generation_v2(store_at: ObserverClockInstant, fetch_at: ObserverClockInstant)
 // Apply (the account action remedies it), and the plan is computed over the cited Redfish root route.
 fn plan_root(reading: BmcAccountStateObservation, separate: Bool, store_at: ObserverClockInstant, fetch_at: ObserverClockInstant, plan_at: ObserverClockInstant) -> BmcAccountPlanOutcome? {
   let route = cited_root_route()
-  let go = approved_bmc_write(standing: route, request: redfish_account_password_write(account: "root" as NonEmptyStr), purpose: RotateCredential, attempt: "attempt-1" as NonEmptyStr)
   match generation_v2(store_at: store_at, fetch_at: fetch_at) {
     Absent => none
-    Present { value: g } =>
+    Present { value: g } => {
+      let published = if separate { PublishedWriteInputs { route: route, generation: g } } else { PublishedAccountIsTheManagedAccount }
+      let go = approved_bmc_convergence(approval: bmc_secure_convergence_approval(goal: goal_v1(), reading: reading, managed_user: root_user, managed_route: route, published: published), attempt: "attempt-1" as NonEmptyStr)
       Present {
         value: plan_bmc_account_action(
           subject: lab_subject(),
@@ -247,13 +249,14 @@ fn plan_root(reading: BmcAccountStateObservation, separate: Bool, store_at: Obse
           reading: reading,
           managed_user: root_user,
           managed_route: route,
-          managed_approval: go,
+          approval: go,
           managed_generation: g,
-          published: if separate { PublishedWriteInputs { route: route, approval: go, generation: g } } else { PublishedAccountIsTheManagedAccount },
+          published: published,
           channel_close: none,
           planned_at: plan_at,
         ),
       }
+    }
   }
 }
 

@@ -16,7 +16,7 @@ import gunbc.machine_intake.bmc_credential_policy {
 import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, BmcAccountWriteRequest, BmcAccountWritePurpose, BmcAccountWriteApproval, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit,
   ObservedSurfaceRead, QualifyByRotation, RotateCredential, QualifyRoute,
-  BmcWriteApprovalNotGranted, BmcWriteApprovalDenied, BmcWriteApprovalForAnotherPurpose, BmcWriteApprovalForAnotherSubject, BmcWriteApprovalIntentNotItsSubject, BmcWriteApprovalScopesNotItsSubject,
+  BmcWriteApprovalNotGranted, BmcWriteApprovalDenied, BmcWriteApprovalForAnotherPurpose, BmcWriteApprovalForAnotherSubject, BmcWriteApprovalIntentNotItsSubject, BmcWriteApprovalScopesNotItsSubject, BmcWriteNotEntailedByTheApproval, BmcWriteApprovalQualifyByRotationIsOneWrite,
   ForcedFirstRotationAdmitted, ForcedFirstRotationRefused,
   ForcedStateForAnotherController, ForcedStateForAnotherBuild, ForcedStateFromAnotherAttempt, ForcedWriteIsNotTheFactoryAccountsPasswordWrite,
   ForcedRouteDoesNotNameThisWrite, ForcedWriteApprovalRefused,
@@ -24,7 +24,7 @@ import gunbc.machine_intake.bmc_rotation_route {
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import std.content_hash { content_hash_of_value }
-import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write, denied_bmc_write }
+import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write, approved_bmc_convergence, denied_bmc_write }
 import test.claim.machine_intake.machine_intake_bmc_credential_policy_witness { srv13_forced_change_body, srv13_capture, controller_reading }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
 
@@ -112,6 +112,8 @@ fn verdict_in(read_in: AttemptIdentity, standing: BmcRotationRouteStanding, requ
                 BmcWriteApprovalForAnotherSubject { approved: _, requested: _ } => "another-subject"
                 BmcWriteApprovalIntentNotItsSubject { approved: _ } => "intent-not-its-subject"
                 BmcWriteApprovalScopesNotItsSubject { approved: _ } => "scopes-not-its-subject"
+                BmcWriteNotEntailedByTheApproval { approved: _, requested: _ } => "not-entailed"
+                BmcWriteApprovalQualifyByRotationIsOneWrite { approved: _ } => "qualify-by-rotation-is-one-write"
               }
           }
       }
@@ -171,4 +173,16 @@ test fn the_route_must_name_the_forced_write() -> Bool {
 test fn a_forced_state_from_another_run_admits_nothing() -> Bool {
   let route = candidate(endpoint: srv13(), firmware: build_3_22(), request: root_write())
   verdict_in(read_in: "attempt-0" as AttemptIdentity, standing: route, request: root_write(), approval: go(standing: route, request: root_write(), purpose: QualifyByRotation)) == "another-attempt"
+}
+
+// QUALIFY-BY-ROTATION IS ONE WRITE. The forced first rotation's go names exactly the factory account's password
+// write: a QualifyByRotation convergence that also names another write is refused, even though it entails the
+// forced write (paired with the positive control, whose approval names only that write).
+test fn a_qualify_by_rotation_go_naming_more_than_one_write_admits_nothing() -> Bool {
+  let route = candidate(endpoint: srv13(), firmware: build_3_22(), request: root_write())
+  let both = approved_bmc_convergence(
+    approval: BmcAccountWriteApproval { controller: srv13(), firmware: build_3_22(), writes: [root_write(), redfish_account_password_write(account: "admin" as NonEmptyStr)], purpose: QualifyByRotation },
+    attempt: "attempt-1" as NonEmptyStr,
+  )
+  verdict(standing: route, request: root_write(), approval: both) == "qualify-by-rotation-is-one-write"
 }

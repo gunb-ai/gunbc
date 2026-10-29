@@ -4,7 +4,7 @@ import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_leng
 import std.decl_ref { decl_ref }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.algebra { FreeSemigroup, list_head }
+import std.algebra { FreeSemigroup, length, list_head }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -62,8 +62,7 @@ import gunbc.machine_intake.bmc_rotation_route {
   ManagedAdministratorReadback,
   managed_administrator_readback_projected,
   BmcAccountWriteApproval,
-  route_subject_of,
-  route_subject_identity,
+  RotateCredential,
   account_write_request_text,
   account_write_request_eq,
   grounded_request,
@@ -1945,11 +1944,10 @@ type PlannedPublishedWrite
   = PublishedWrittenSeparately { write: PlannedAccountWrite }
   | PublishedIsTheManagedWrite
 
-// What the caller supplies for that write, in the same two shapes.
+// What the caller supplies for that write, in the same two shapes. Its approval is the plan's one approval.
 type PublishedWriteInput
   = PublishedWriteInputs {
       route: BmcRotationRouteStanding
-      approval: ScopedAuthorization<BmcAccountWriteApproval>
       generation: ManagedCredentialGenerationFetched
     }
   | PublishedAccountIsTheManagedAccount
@@ -1983,7 +1981,7 @@ type BmcAccountPlanRefusal
   | PlanPrecedesReading { planned_at: ObserverClockInstant }
   | ManagedUserNotTheAuthenticatedAccount { supplied: IpmiUserId, authenticated: IpmiUserId }
   | ChannelCloseRouteNotSupplied { channels: List<IpmiChannelNumber> }
-  | ChannelCloseApprovalAbsent { channel: IpmiChannelNumber }
+  | PlanWritesAreNotTheApprovedConvergence { approved: List<BmcAccountWriteRequest>, planned: List<BmcAccountWriteRequest> }
   | ChannelWriteNotAdmitted { channel: IpmiChannelNumber, admission: RotationApplyAdmission }
 
 type BmcAccountPlanOutcome
@@ -2006,6 +2004,15 @@ fn password_write_over(route: BmcRotationRouteStanding, user: IpmiUserId, accoun
   }
 }
 
+// The password write a plan asks a route for: the route's own operation for this account, or, over a route
+// grounding no password operation, the IPMI write its admission then refuses as another operation.
+fn wanted_account_write(route: BmcRotationRouteStanding, user: IpmiUserId, account: NonEmptyStr) -> BmcAccountWriteRequest {
+  match password_write_over(route: route, user: user, account: account) {
+    Present { value: r } => r
+    Absent => IpmiSetUserPassword { user: user }
+  }
+}
+
 fn admitted_account_write(
   target: AccountWriteTarget,
   user: IpmiUserId,
@@ -2017,10 +2024,7 @@ fn admitted_account_write(
   generation: ManagedCredentialGenerationFetched,
   planned_at: ObserverClockInstant,
 ) -> PlannedAccountWriteAdmission {
-  let wanted = match password_write_over(route: route, user: user, account: account) {
-    Present { value: r } => r
-    Absent => IpmiSetUserPassword { user: user }
-  }
+  let wanted = wanted_account_write(route: route, user: user, account: account)
   let admission = admit_rotation_apply(standing: route, target_endpoint: endpoint, target_firmware: firmware, request: wanted, managed_readback: none, approval: approval)
   match admission {
     RotationApplyAdmitted { standing: s, request: req, decided_by: by } =>
@@ -2061,7 +2065,6 @@ type PlannedChannelAccessWrite {
 
 type ChannelCloseInput {
   route: BmcRotationRouteStanding
-  approvals: List<ScopedAuthorization<BmcAccountWriteApproval>>
 }
 
 fn census_member_channel(m: IpmiChannelCensusMember) -> IpmiChannelNumber {
@@ -2135,26 +2138,15 @@ fn managed_probe_instant(probe: ObservedCredentialProbe, fallback: ObserverClock
 // The supplied grant whose approved subject is this write. Its purpose and intent are read by the
 // admission (read_bmc_write_approval), so a grant selected here for its subject is still refused
 // there if it approves another purpose.
-fn approval_for_request(route: BmcRotationRouteStanding, request: BmcAccountWriteRequest, approvals: List<ScopedAuthorization<BmcAccountWriteApproval>>) -> ScopedAuthorization<BmcAccountWriteApproval>? {
-  let wanted = route_subject_identity(subject: route_subject_of(standing: route, request: request))
-  let none_yet: ScopedAuthorization<BmcAccountWriteApproval>? = none
-  fold(approvals, init: none_yet, f: (acc, a) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match a {
-          AuthorizationGranted { grant: g, claim: _ } => if route_subject_identity(subject: g.subject.subject) == wanted { Present { value: a } } else { acc }
-          AuthorizationPending { request: _ } => acc
-          AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => acc
-        }
-    })
-}
-
 type ChannelWritesAdmission
   = ChannelWritesAdmitted { writes: List<PlannedChannelAccessWrite> }
   | ChannelWritesRefused { cause: BmcAccountPlanRefusal }
 
-fn admitted_channel_writes(observed: BmcAccountStateObservation, input: ChannelCloseInput?) -> ChannelWritesAdmission {
+fn channel_close_request(observed: BmcAccountStateObservation, channel: IpmiChannelNumber) -> BmcAccountWriteRequest {
+  IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: channel, user: observed.published_user, privilege: IpmiPrivilegeNoAccess) }
+}
+
+fn admitted_channel_writes(observed: BmcAccountStateObservation, input: ChannelCloseInput?, approval: ScopedAuthorization<BmcAccountWriteApproval>) -> ChannelWritesAdmission {
   let open = published_channels_left_open(observed: observed)
   if list_length(items: open) == 0 {
     ChannelWritesAdmitted { writes: [] }
@@ -2166,31 +2158,26 @@ fn admitted_channel_writes(observed: BmcAccountStateObservation, input: ChannelC
           match acc {
             ChannelWritesRefused { cause: _ } => acc
             ChannelWritesAdmitted { writes: done } => {
-              let request = IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: ch, user: observed.published_user, privilege: IpmiPrivilegeNoAccess) }
-              match approval_for_request(route: inp.route, request: request, approvals: inp.approvals) {
-                Absent => ChannelWritesRefused { cause: ChannelCloseApprovalAbsent { channel: ch } }
-                Present { value: approval } => {
-                  let readback = project_managed_administrator_readback(observed: observed)
-                  let admission = admit_rotation_apply(
-                    standing: inp.route,
-                    target_endpoint: observed.endpoint,
-                    target_firmware: observed.firmware,
-                    request: request,
-                    managed_readback: readback,
-                    approval: approval,
-                  )
-                  match admission {
-                    RotationApplyAdmitted { standing: st, request: req, decided_by: by } =>
-                      ChannelWritesAdmitted { writes: concat(done, [PlannedChannelAccessWrite { channel: ch, route: st, request: req, decided_by: by }]) }
-                    RotationApplyRouteNotGrounded { standing: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyRouteEffectUnobserved { standing: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyApprovalRefused { cause: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyWouldLeaveNoAdministrator { channel: _, cause: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                  }
-                }
+              let request = channel_close_request(observed: observed, channel: ch)
+              let readback = project_managed_administrator_readback(observed: observed)
+              let admission = admit_rotation_apply(
+                standing: inp.route,
+                target_endpoint: observed.endpoint,
+                target_firmware: observed.firmware,
+                request: request,
+                managed_readback: readback,
+                approval: approval,
+              )
+              match admission {
+                RotationApplyAdmitted { standing: st, request: req, decided_by: by } =>
+                  ChannelWritesAdmitted { writes: concat(done, [PlannedChannelAccessWrite { channel: ch, route: st, request: req, decided_by: by }]) }
+                RotationApplyRouteNotGrounded { standing: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                RotationApplyRouteEffectUnobserved { standing: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                RotationApplyApprovalRefused { cause: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                RotationApplyWouldLeaveNoAdministrator { channel: _, cause: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
               }
             }
           })
@@ -2202,6 +2189,57 @@ type PlannedAccountWriteAdmission
   = PlannedAccountWriteAdmitted { write: PlannedAccountWrite }
   | PlannedAccountWriteRefused { cause: BmcAccountPlanRefusal }
 
+// WHAT A RUN ASKS THE OPERATOR TO APPROVE: the convergence the reading entails, computed by the same
+// helpers the plan admits its writes with (wanted_account_write, channel_close_request), so the request and the
+// plan cannot name different writes -- and if the controller changes between the request and the plan, the
+// plan's exactness check below refuses. The run files it through gunbc.machine_intake.bmc_rotation_route
+// bmc_account_write_authorization_request: one request, one tap, per controller.
+fn bmc_secure_convergence_approval(
+  goal: BmcSecureGoal,
+  reading: BmcAccountStateObservation,
+  managed_user: IpmiUserId,
+  managed_route: BmcRotationRouteStanding,
+  published: PublishedWriteInput,
+) -> BmcAccountWriteApproval {
+  let managed = wanted_account_write(route: managed_route, user: managed_user, account: goal.managed.account)
+  let published_requests: List<BmcAccountWriteRequest> = match published {
+    PublishedWriteInputs { route: r, generation: _ } => [wanted_account_write(route: r, user: reading.published_user, account: goal.published_break_glass.account)]
+    PublishedAccountIsTheManagedAccount => []
+  }
+  BmcAccountWriteApproval {
+    controller: reading.endpoint,
+    firmware: reading.firmware,
+    writes: concat(concat([managed], published_requests), map(published_channels_left_open(observed: reading), ch => channel_close_request(observed: reading, channel: ch))),
+    purpose: RotateCredential,
+  }
+}
+
+// THE PLAN IS THE APPROVED CONVERGENCE, NO MORE AND NO LESS (operator ruling 2026-10-25, gunbc.design_ruling
+// the_initial_convergence_is_the_only_approval). Each write was admitted against the one approval above; a
+// plan that entails fewer writes than were approved is another convergence than the operator approved (the
+// controller changed since the request was filed), and is refused for a fresh request rather than run in part.
+fn planned_write_requests(managed: PlannedAccountWrite, published: PlannedPublishedWrite, channels: List<PlannedChannelAccessWrite>) -> List<BmcAccountWriteRequest> {
+  let published_requests: List<BmcAccountWriteRequest> = match published {
+    PublishedWrittenSeparately { write: w } => [w.request]
+    PublishedIsTheManagedWrite => []
+  }
+  concat(concat([managed.request], published_requests), map(channels, c => c.request))
+}
+
+fn approved_write_requests(approval: ScopedAuthorization<BmcAccountWriteApproval>) -> List<BmcAccountWriteRequest> {
+  match approval {
+    AuthorizationGranted { grant: g, claim: _ } => g.subject.writes
+    AuthorizationPending { request: _ } => []
+    AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => []
+  }
+}
+
+fn same_write_requests(a: List<BmcAccountWriteRequest>, b: List<BmcAccountWriteRequest>) -> Bool {
+  length(a) == length(b)
+    && all(a, x => any(b, y => account_write_request_eq(a: x, b: y)))
+    && all(b, y => any(a, x => account_write_request_eq(a: x, b: y)))
+}
+
 // THE PLAN MINT RUNS THE DECISION ITSELF. A caller supplies the reading, the goal and the route
 // inputs; it does not supply a decision, so an Apply cannot be planned over a Noop or a refusal.
 fn plan_bmc_account_action(
@@ -2210,7 +2248,7 @@ fn plan_bmc_account_action(
   reading: BmcAccountStateObservation,
   managed_user: IpmiUserId,
   managed_route: BmcRotationRouteStanding,
-  managed_approval: ScopedAuthorization<BmcAccountWriteApproval>,
+  approval: ScopedAuthorization<BmcAccountWriteApproval>,
   managed_generation: ManagedCredentialGenerationFetched,
   published: PublishedWriteInput,
   channel_close: ChannelCloseInput?,
@@ -2237,15 +2275,20 @@ fn plan_bmc_account_action(
             } else if next.credential_epoch <= in_force.credential_epoch {
               BmcAccountPlanRefused { cause: ManagedGenerationNotAdvanced { in_force: in_force.credential_epoch, generation: next.credential_epoch } }
             } else {
-              match admitted_account_write(target: ManagedAccountTarget, user: managed_user, account: in_force.account, route: managed_route, endpoint: o.endpoint, firmware: o.firmware, approval: managed_approval, generation: managed_generation, planned_at: planned_at) {
+              match admitted_account_write(target: ManagedAccountTarget, user: managed_user, account: in_force.account, route: managed_route, endpoint: o.endpoint, firmware: o.firmware, approval: approval, generation: managed_generation, planned_at: planned_at) {
                 PlannedAccountWriteRefused { cause: c } => BmcAccountPlanRefused { cause: c }
                 PlannedAccountWriteAdmitted { write: mw } =>
-                  match admitted_published_write(goal: goal, observed: o, managed_user: managed_user, next: next, published: published, planned_at: planned_at) {
+                  match admitted_published_write(goal: goal, observed: o, managed_user: managed_user, next: next, published: published, approval: approval, planned_at: planned_at) {
                     PublishedWriteRefused { cause: c } => BmcAccountPlanRefused { cause: c }
                     PublishedWriteAdmitted { write: pw, published_goal: pg } =>
-                      match admitted_channel_writes(observed: o, input: channel_close) {
+                      match admitted_channel_writes(observed: o, input: channel_close, approval: approval) {
                         ChannelWritesRefused { cause: c } => BmcAccountPlanRefused { cause: c }
-                        ChannelWritesAdmitted { writes: cw } =>
+                        ChannelWritesAdmitted { writes: cw } => {
+                          let planned = planned_write_requests(managed: mw, published: pw, channels: cw)
+                          let approved = approved_write_requests(approval: approval)
+                          if !same_write_requests(a: approved, b: planned) {
+                            BmcAccountPlanRefused { cause: PlanWritesAreNotTheApprovedConvergence { approved: approved, planned: planned } }
+                          } else {
                           BmcAccountPlanned {
                             plan: BmcAccountActionPlan {
                               subject: subject,
@@ -2260,6 +2303,8 @@ fn plan_bmc_account_action(
                               planned_at: planned_at,
                             },
                           }
+                          }
+                        }
                       }
                   }
               }
@@ -2284,6 +2329,7 @@ fn admitted_published_write(
   managed_user: IpmiUserId,
   next: ManagedCredentialReference,
   published: PublishedWriteInput,
+  approval: ScopedAuthorization<BmcAccountWriteApproval>,
   planned_at: ObserverClockInstant,
 ) -> PublishedWriteAdmission {
   let same_account = (observed.published_user as Int) == (managed_user as Int)
@@ -2296,13 +2342,13 @@ fn admitted_published_write(
       } else {
         PublishedWriteAdmitted { write: PublishedIsTheManagedWrite, published_goal: next }
       }
-    PublishedWriteInputs { route: r, approval: a, generation: g } =>
+    PublishedWriteInputs { route: r, generation: g } =>
       if same_account {
         PublishedWriteRefused { cause: PublishedWriteWouldRepeatTheManagedWrite { user: managed_user } }
       } else if !managed_reference_same(a: fetched_generation_reference(fetched: g), b: goal.published_break_glass) {
         PublishedWriteRefused { cause: PublishedGenerationNotGoalBound { generation: fetched_generation_reference(fetched: g), goal: goal.published_break_glass } }
       } else {
-        match admitted_account_write(target: PublishedAccountTarget, user: observed.published_user, account: goal.published_break_glass.account, route: r, endpoint: observed.endpoint, firmware: observed.firmware, approval: a, generation: g, planned_at: planned_at) {
+        match admitted_account_write(target: PublishedAccountTarget, user: observed.published_user, account: goal.published_break_glass.account, route: r, endpoint: observed.endpoint, firmware: observed.firmware, approval: approval, generation: g, planned_at: planned_at) {
           PlannedAccountWriteRefused { cause: c } => PublishedWriteRefused { cause: c }
           PlannedAccountWriteAdmitted { write: w } => PublishedWriteAdmitted { write: PublishedWrittenSeparately { write: w }, published_goal: goal.published_break_glass }
         }

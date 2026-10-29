@@ -367,9 +367,28 @@ type BmcAccountWritePurpose
   | RotateCredential
   | QualifyByRotation
 
+// WHAT THE OPERATOR APPROVES: ONE CONVERGENCE (operator ruling 2026-10-25, gunbc.design_ruling
+// the_initial_convergence_is_the_only_approval). One controller, one build, and every account write the
+// convergence entails, under one purpose: one tap per controller, never one per write. Each write is then
+// admitted against this one approval exactly (read_bmc_write_approval): its controller and build are the
+// approval's, it is one of the approved writes, and the approved scopes are exactly the approved writes'
+// own. An approval too narrow for a plan is a fresh request, never a widening; an approval naming a write
+// the plan no longer entails is another convergence (gunbc.machine_intake.bmc_secure plan_bmc_account_action
+// refuses it). QualifyByRotation names exactly one write: the forced first rotation.
 type BmcAccountWriteApproval {
-  subject: RouteQualificationSubject
+  controller: BmcControllerEndpoint
+  firmware: BmcFirmwareReleaseIdentity
+  writes: List<BmcAccountWriteRequest>
   purpose: BmcAccountWritePurpose
+}
+
+// The approval of one write: a convergence that entails only `subject`'s request.
+fn bmc_account_write_approval_of(subject: RouteQualificationSubject, purpose: BmcAccountWritePurpose) -> BmcAccountWriteApproval {
+  BmcAccountWriteApproval { controller: subject.endpoint, firmware: subject.firmware, writes: [subject.request], purpose: purpose }
+}
+
+fn approved_write_subject(approval: BmcAccountWriteApproval, request: BmcAccountWriteRequest) -> RouteQualificationSubject {
+  RouteQualificationSubject { endpoint: approval.controller, firmware: approval.firmware, request: request }
 }
 
 fn bmc_account_write_purpose_text(purpose: BmcAccountWritePurpose) -> NonEmptyStr {
@@ -406,15 +425,22 @@ fn bmc_account_write_purpose_covers(approved: BmcAccountWritePurpose, required: 
   }
 }
 
-// THE IDENTITY the operator approves, and what the request's intent hash is taken over: the purpose,
-// then the controller, build and request (route_subject_identity's injective encoding).
+// THE IDENTITY the operator approves, and what the request's intent hash is taken over: the purpose, then
+// the controller and build, then the number of writes and each write, every part length-prefixed so the
+// encoding is injective.
 fn bmc_account_write_identity(approval: BmcAccountWriteApproval) -> NonEmptyStr {
   join(
-    [
-      bmc_account_write_purpose_text(purpose: approval.purpose) as String,
-      ";",
-      route_subject_identity(subject: approval.subject) as String,
-    ],
+    concat(
+      [
+        bmc_account_write_purpose_text(purpose: approval.purpose) as String,
+        ";gunbc.bmc.account-convergence/v1;",
+        canonical_component(text: approval.controller.host as String),
+        canonical_component(text: canonical_firmware_family(family: approval.firmware.family)),
+        canonical_component(text: approval.firmware.raw_version as String),
+        canonical_component(text: to_string(length(approval.writes))),
+      ],
+      map(approval.writes, w => canonical_component(text: canonical_account_write_request(request: w))),
+    ),
     "",
   ) as NonEmptyStr
 }
@@ -448,8 +474,9 @@ fn bmc_account_write_scope(subject: RouteQualificationSubject) -> AuthorizationS
   }
 }
 
+// One scope per approved write, in the approved order.
 fn bmc_account_write_scopes(approval: BmcAccountWriteApproval) -> List<AuthorizationScope> {
-  [bmc_account_write_scope(subject: approval.subject)]
+  map(approval.writes, w => bmc_account_write_scope(subject: approved_write_subject(approval: approval, request: w)))
 }
 
 data bmc_account_write_intent_schema: NonEmptyStr = "gunbc.machine_intake.bmc-account-write/v1" as NonEmptyStr
@@ -457,8 +484,17 @@ data bmc_account_write_intent_schema: NonEmptyStr = "gunbc.machine_intake.bmc-ac
 // THE INTENT IS FRAMED (std.scoped_authorization intent_frame_head): the schema line, then the derived
 // scopes, then the write's identity. The hash is taken over all of it, so a request carrying other
 // scopes is another intent. Absent when a scope has no wire (a path segment with a space or a slash):
-// such a write has no intent the gate can bind, and no request is built for it.
+// such a write has no intent the gate can bind, and no request is built for it. A convergence entailing no
+// write has nothing to approve, and is Absent too.
 fn bmc_account_write_intent_text(approval: BmcAccountWriteApproval) -> NonEmptyStr? {
+  if length(approval.writes) == 0 {
+    none
+  } else {
+    bmc_account_write_framed(approval: approval)
+  }
+}
+
+fn bmc_account_write_framed(approval: BmcAccountWriteApproval) -> NonEmptyStr? {
   match intent_frame_head(schema: bmc_account_write_intent_schema, scopes: bmc_account_write_scopes(approval: approval)) {
     Absent => none
     Present { value: head } => Present { value: join([head, "\n", bmc_account_write_identity(approval: approval) as String], "") as NonEmptyStr }
@@ -493,7 +529,7 @@ fn bmc_account_write_authorization_request(
           escalation_id: escalation_id,
           scopes: bmc_account_write_scopes(approval: approval),
           subject: approval,
-          purpose: join(["Approve one BMC account write: ", bmc_account_write_identity(approval: approval) as String], "") as NonEmptyStr,
+          purpose: join(["Approve one BMC account convergence: ", bmc_account_write_identity(approval: approval) as String], "") as NonEmptyStr,
           attempt: escalation_id as AttemptIdentity,
           intent_hash: h,
           destructive: false,
@@ -510,15 +546,18 @@ type BmcWriteApprovalRefusal
   | BmcWriteApprovalForAnotherSubject { approved: NonEmptyStr, requested: NonEmptyStr }
   | BmcWriteApprovalIntentNotItsSubject { approved: NonEmptyStr }
   | BmcWriteApprovalScopesNotItsSubject { approved: NonEmptyStr }
+  | BmcWriteNotEntailedByTheApproval { approved: NonEmptyStr, requested: NonEmptyStr }
+  | BmcWriteApprovalQualifyByRotationIsOneWrite { approved: NonEmptyStr }
 
 type BmcWriteApprovalReading
   = BmcWriteApproved { attempt: AttemptIdentity, granted_by: NonEmptyStr }
   | BmcWriteApprovalRefused { cause: BmcWriteApprovalRefusal }
 
-// THE ONE READING OF A GRANT, for every admission in this module and its consumers. The grant's own
-// window and claim are std.scoped_authorization authorize's, run by the gate at the instant the run
-// proceeds; this reads what was approved. The intent hash must be the hash of the grant's own subject,
-// so a grant whose subject was edited after the decision is refused rather than read.
+// THE ONE READING OF A GRANT FOR ONE WRITE, for every admission in this module and its consumers. The
+// grant's own window and claim are std.scoped_authorization authorize's, run by the gate at the instant the
+// run proceeds; this reads what was approved. The write must be at the approved controller and build and be
+// one of the approved writes; the intent hash must be the hash of the grant's own subject, so a grant whose
+// subject was edited after the decision is refused rather than read.
 fn read_bmc_write_approval(
   approval: ScopedAuthorization<BmcAccountWriteApproval>,
   subject: RouteQualificationSubject,
@@ -530,8 +569,12 @@ fn read_bmc_write_approval(
     AuthorizationGranted { grant: g, claim: _ } =>
       if !bmc_account_write_purpose_covers(approved: g.subject.purpose, required: required) {
         BmcWriteApprovalRefused { cause: BmcWriteApprovalForAnotherPurpose { approved: bmc_account_write_purpose_text(purpose: g.subject.purpose), required: bmc_account_write_purpose_text(purpose: required) } }
-      } else if route_subject_identity(subject: g.subject.subject) != route_subject_identity(subject: subject) {
-        BmcWriteApprovalRefused { cause: BmcWriteApprovalForAnotherSubject { approved: route_subject_identity(subject: g.subject.subject), requested: route_subject_identity(subject: subject) } }
+      } else if (g.subject.controller.host as String) != (subject.endpoint.host as String) || !bmc_firmware_release_identity_eq(a: g.subject.firmware, b: subject.firmware) {
+        BmcWriteApprovalRefused { cause: BmcWriteApprovalForAnotherSubject { approved: bmc_account_write_identity(approval: g.subject), requested: route_subject_identity(subject: subject) } }
+      } else if (match g.subject.purpose { QualifyByRotation => length(g.subject.writes) != 1  QualifyRoute => false  RotateCredential => false }) {
+        BmcWriteApprovalRefused { cause: BmcWriteApprovalQualifyByRotationIsOneWrite { approved: bmc_account_write_identity(approval: g.subject) } }
+      } else if !any(g.subject.writes, w => account_write_request_eq(a: w, b: subject.request)) {
+        BmcWriteApprovalRefused { cause: BmcWriteNotEntailedByTheApproval { approved: bmc_account_write_identity(approval: g.subject), requested: route_subject_identity(subject: subject) } }
       } else if !(match bmc_account_write_intent_hash(approval: g.subject) { Absent => false  Present { value: h } => content_hash_equal(left: g.intent_hash, right: h) }) {
         BmcWriteApprovalRefused { cause: BmcWriteApprovalIntentNotItsSubject { approved: bmc_account_write_identity(approval: g.subject) } }
       } else if !scopes_are_exactly(granted: g.scopes, derived: bmc_account_write_scopes(approval: g.subject)) {
