@@ -1,6 +1,6 @@
 module gunbc.megarac_media_model
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second, second_count }
 import std.algebra { list_snoc_item }
 
@@ -23,6 +23,37 @@ type MegaRacShare {
   source_path: String
   share_type: String
 }
+
+// WHETHER THIS FIRMWARE'S NFS `server_address` FIELD ACCEPTS A HOSTNAME, as a per-firmware reading.
+//
+// WHY THIS IS A READING AND NOT A BOOLEAN. The BMC's NFS `cd_remote_server_address` (Settings/CD) can be
+// filled either with the segment holder's LAN IPv4 or with its allocated member name. Which of the two the
+// firmware accepts is a fact about the controller, not about the fleet, and it is NOT observed on the
+// Mt. Collins build we run: gunbc.plans.boot_origin_bmc_media item B3 is the open observation ("does
+// MegaRAC NFS server_address accept a hostname"). DESIGN 4d forbids promoting a deduced answer into a
+// decision and DESIGN 5 forbids a default that stands in for the missing reading, so the unobserved case is
+// its own arm -- not `true`, not `false`. An arm is adopted only with the cited live observation that
+// grounds it; until then the resolver in gunbc.machine_intake.bmc_media_share_endpoint (its consumer, §3c)
+// yields the holder's LAN IPv4 through a typed endpoint resolution and NEVER treats the open question as yes.
+type MegaRacNfsServerAddressFormality
+  // A cited live mount proved the controller presents the census image with `server_address` filled by the
+  // member's allocated NAME. This arm licenses the resolver to hand out the name -- and only once a grounded
+  // name-resolution also exists, which it does not yet (the EndpointResolutionEvidence frontier in
+  // gunbc.fleet.fleet_endpoint), so the resolver still refuses the name form for now.
+  = NfsServerAddressHostnameAccepted { observed_via: NonEmptyStr }
+  // A cited live mount proved the controller REJECTS a hostname and needs a literal IPv4 in the field.
+  | NfsServerAddressHostnameRefused { observed_via: NonEmptyStr }
+  // THE OPEN OBSERVATION: nobody has mounted the field with a hostname on this firmware. Carries what would
+  // discharge it, so a reader sees the missing observation rather than a silent assumption.
+  | NfsServerAddressHostnameUnobserved { what_would_ground_it: NonEmptyStr }
+
+// THE STANDING FOR THE LAB'S Mt. Collins / MegaRAC SP-X build: the hostname form is unobserved. This is the
+// single row a firmware census must replace with an Accepted/Refused arm and its cited observation; nothing
+// may invent a value here (DESIGN 5). Consumer: gunbc.machine_intake.bmc_media_share_endpoint.
+data megarac_mtcollins1_nfs_server_address_formality: MegaRacNfsServerAddressFormality =
+  NfsServerAddressHostnameUnobserved {
+    what_would_ground_it: "a live MegaRAC Settings/CD mount of this build with cd_remote_server_address filled by srv2's allocated member name presenting the census image (and the mirror test with a literal IPv4) -- gunbc.plans.boot_origin_bmc_media item B3; until it is read the resolver yields the holder's LAN IPv4 through the endpoint resolution and never assumes the hostname is accepted",
+  }
 
 // THE PRESENTED CD, as one configurations row. redirection_status on this firmware: 0 stopped, 100
 // connecting, 1 started (extdeps.bmc.megarac). A start moves the row to connecting and, after the

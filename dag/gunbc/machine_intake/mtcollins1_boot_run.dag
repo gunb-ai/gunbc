@@ -35,8 +35,7 @@ import gunbc.host.managed_host_unit_hold {
 import gunbc.host_state_root { host_state_tree }
 import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation, megarac_release_boot_session }
 import gunbc.machine_intake.megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs, MegaRacAttachResult }
-import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
-import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.machine_intake.bmc_media_share_endpoint { srv2_bmc_media_share_server_address }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text, megarac_operation_evidence }
 import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill }
 import gunbc.machine_intake.megarac_media_attach { PresentationStillReady, presentation_still_served }
@@ -216,7 +215,7 @@ data mtcollins1_sol_notice_ready_allowance: Second = second(count: 900)
 data mtcollins1_bmc_username: NonEmptyStr? = managed_host_account_driving(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr), endpoint: mtcollins1_endpoint)
 
 data mtcollins1_media_share: MegaRacShareBinding = MegaRacShareBinding {
-  server_address: render_ipv4_address(addr: srv2_lan_ipv4),
+  server_address: srv2_bmc_media_share_server_address(),
   source_path: bmc_boot_image_export.dir,
   share_type: MegaRacShareNfs,
 }

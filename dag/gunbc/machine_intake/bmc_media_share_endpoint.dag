@@ -1,0 +1,196 @@
+module gunbc.machine_intake.bmc_media_share_endpoint
+
+// THE BMC NFS SHARE AS AN ENDPOINT, RESOLVED THROUGH THE FLEET ENDPOINT AUTHORITY.
+//
+// WHAT THIS MODULE IS (DESIGN 3c -- named at its declaration). The Mtcollins1 boot flow attaches a virtual
+// CD whose NFS backing lives on the lab's segment holder (srv2). Until now its `server_address` was filled by
+// rendering srv2's LAN IPv4 row straight into the binding (gunbc.machine_intake.mtcollins1_boot_run), and the
+// boot test fixtures repeated the address as a literal. This module is the single authority that turns "the
+// BMC's fabric-storage share" into the string the binding carries: the share is modeled as a
+// gunbc.fleet.fleet_endpoint ServiceEndpointIdentity in the FabricStorageShare role, its NAME is derived from
+// srv2's HostnameAllocation through the naming policy (gunbc.fleet.fleet_naming), and its ADDRESS is produced
+// by a TYPED endpoint resolution that cites the address authority's grounded row -- never a literal, never a
+// hand-copied address. It adds no new address vocabulary: the IPv4 stays Ipv4Address in
+// gunbc.fleet.fleet_reach, the name stays a ProviderEndpoint in gunbc.fleet.fleet_naming, the port stays a
+// std.types Port. Consumers (§3c): gunbc.machine_intake.mtcollins1_boot_run (mtcollins1_media_share),
+// dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix (the real_share / healthy-media fixtures),
+// and dag/test/claim/machine_intake/bmc_media_share_endpoint_witness (its witness).
+//
+// WHY THE ADDRESS AND THE NAME ARE NOT THE SAME ROUTE. FabricStorageShare is an EXPORT role: it is refused a
+// URL by the endpoint authority (service_endpoint_https_url -> UrlFormAbsent) and it is not one of the HTTPS
+// API roles, so -- as the endpoint authority's own comment says -- it is addressed by host and port alone and
+// the transport is the NFS mount itself, not something the identity asserts. That leaves two possible host
+// forms for `server_address`: the holder's LAN IPv4, or its allocated member NAME. WHICH ONE THE FIRMWARE
+// ACCEPTS IS THE OPEN OBSERVATION B3 of gunbc.plans.boot_origin_bmc_media. DESIGN 4d/5 forbid guessing it, so
+// the reading is typed in gunbc.megarac_media_model and, while it is Unobserved, the resolver yields the
+// holder's LAN IPv4 through this typed resolution -- and refuses the hostname form even for the Accepted arm,
+// because serving a name needs a grounded name-resolution (the EndpointResolutionEvidence frontier in
+// gunbc.fleet.fleet_endpoint) that does not exist yet. Fail-closed both ways: an unobserved question is never
+// read as "yes", and a name is never fabricated.
+
+import std.types { NonEmptyStr, Port }
+import std.optional { Absent, Present, Optional }
+import std.error_primitives { Err, Ok, Result }
+import gunbc.fleet.fleet_endpoint {
+  FabricStorageShare,
+  FleetDns,
+  ServiceEndpointIdentity,
+  service_endpoint_identity,
+}
+import gunbc.fleet.fleet_naming { provider_endpoint, provider_endpoint_text }
+import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
+import gunbc.fleet.host_identity { HostIdentity }
+import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.megarac_media_model {
+  MegaRacNfsServerAddressFormality,
+  NfsServerAddressHostnameAccepted,
+  NfsServerAddressHostnameRefused,
+  NfsServerAddressHostnameUnobserved,
+}
+
+// THE TYPED RESOLUTION THE ENDPOINT AUTHORITY RETURNS FOR THE SHARE. `ByHolderIpv4` is the holder's LAN IPv4
+// with its source cited; `ByAllocatedName` is the holder's allocated member name (the form a hostname-accepting
+// firmware would take, once a grounded name-resolution exists). Carrying the source beside the value is what
+// makes this an endpoint resolution and not a bare string a consumer could hand-copy. Consumers:
+// resolve_fabric_storage_share_server_address and its witness.
+type BmcMediaServerAddress
+  = ByHolderIpv4 { address: NonEmptyStr, source: NonEmptyStr }
+  | ByAllocatedName { name: NonEmptyStr, source: NonEmptyStr }
+
+// WHY A RESOLUTION CAN BE REFUSED. Each arm is a distinct way the endpoint fails to license the BMC share --
+// the resolver never falls through to a default value (DESIGN 5). Consumers: srv2_fabric_storage_share_endpoint,
+// resolve_fabric_storage_share_server_address, and the witness (one claim per refusal arm).
+type BmcMediaShareRefusal
+  = MemberSourceUnallocated { slot: HostIdentity, cause: NonEmptyStr }
+  | MemberNamingRefused { slot: HostIdentity, cause: NonEmptyStr }
+  | IdentityConstructionRefused { slot: HostIdentity, cause: NonEmptyStr }
+  // The endpoint dials some other service, not the fabric-storage share: wrong-role, wrong-share.
+  | RoleNotFabricStorageShare { slot: HostIdentity }
+  // The endpoint names a member that is not the segment holder: an address could not be honestly attributed to
+  // it, so the resolver will not hand out the holder's LAN address for a foreign member.
+  | MemberNotSegmentHolder { slot: HostIdentity, expected: HostIdentity }
+  // The firmware is read as accepting a hostname, but no grounded name-resolution exists to serve it; the
+  // resolver refuses rather than fabricate a name (DESIGN 5).
+  | HostFormNeedsResolutionEvidence { member: NonEmptyStr, what_would_ground_it: NonEmptyStr }
+
+// THE SEGMENT HOLDER, as the boot-origin plan names it (gunbc.plans.boot_origin_bmc_media P1: the segment
+// holder relays the image to NFS-only controllers). In the lab that holder is srv2; its identity is grounded in
+// gunbc.fleet.fleet_host_identity, not invented here. Consumer: srv2_fabric_storage_share_endpoint (below).
+data bmc_media_segment_holder: HostIdentity = operator_host_srv2
+
+// THE NFS PORT, as the endpoint authority requires a FabricStorageShare identity to carry one. This is the
+// IANA-assigned NFS-over-TCP port; a bare literal would be a fabricated default (DESIGN 5), so it is declared
+// once, cited to its source. FabricStorageShare is refused a canonical port by
+// service_endpoint_preferred_port (it is an export, not an API role), so the caller supplies it here.
+// Consumers: srv2_fabric_storage_share_endpoint and the witness that builds the identity.
+data bmc_media_nfs_port: Port = 2049
+
+// srv2's allocation row, read from the fleet roster (gunbc.hostname_allocation) by its slot identity. This is
+// the carrier the naming policy turns into a member name; no name is spelled here (DESIGN 3). Consumer:
+// srv2_fabric_storage_share_endpoint.
+fn srv2_hostname_allocation() -> Optional<HostnameAllocation> {
+  match filter(gunbc_fleet_hostname_allocations, a => a.fleet_slot == bmc_media_segment_holder).first() {
+    Absent => Absent
+    Present { value: row } => Present { value: row }
+  }
+}
+
+// THE SHARE, AS A SERVICE ENDPOINT IDENTITY (Do-step 1). A FabricStorageShare endpoint whose member name is
+// derived from srv2's HostnameAllocation through the naming policy, carried under the FleetDns authority --
+// the only authority under which a name built by gunbc.fleet.fleet_naming is addressable -- on the NFS port.
+// Construction is not asserted to succeed: it is a Result, and its inhabitation for srv2 is what the witness
+// claims. Consumers: resolve_fabric_storage_share_server_address (below) and
+// dag/test/claim/machine_intake/bmc_media_share_endpoint_witness.
+fn srv2_fabric_storage_share_endpoint() -> Result<ServiceEndpointIdentity, BmcMediaShareRefusal> {
+  match srv2_hostname_allocation() {
+    Absent => Err {
+      value: MemberSourceUnallocated {
+        slot: bmc_media_segment_holder,
+        cause: "the fleet roster holds no allocation row for the segment holder" as NonEmptyStr,
+      },
+    }
+    Present { value: row } =>
+      match provider_endpoint(allocation: row) {
+        Err { value: _ } => Err {
+          value: MemberNamingRefused {
+            slot: bmc_media_segment_holder,
+            cause: "the naming policy refused to form a member name for the holder's allocation" as NonEmptyStr,
+          },
+        }
+        Ok { value: member } =>
+          match service_endpoint_identity(
+            authority: FleetDns,
+            service: FabricStorageShare,
+            member: member,
+            port: bmc_media_nfs_port,
+          ) {
+            Ok { value: identity } => Ok { value: identity }
+            Err { value: _ } => Err {
+              value: IdentityConstructionRefused {
+                slot: bmc_media_segment_holder,
+                cause: "the endpoint authority refused to bind the holder's name to a FabricStorageShare service" as NonEmptyStr,
+              },
+            }
+          }
+      }
+  }
+}
+
+// THE SINGLE ROUTE TO THE HOLDER'S LAN IPv4, cited. This is the address authority's grounded row
+// (gunbc.fleet.fleet_reach.srv2_lan_ipv4, whose authority is extdeps.network.endpoint) rendered once; nothing
+// else in the corpus turns the share into an address, so there is no second path (DESIGN 3). The value equals
+// the row exactly -- the continuity the convergence witness already guards. Consumers:
+// resolve_fabric_storage_share_server_address and srv2_bmc_media_share_server_address.
+fn srv2_fabric_storage_share_holder_ipv4() -> BmcMediaServerAddress {
+  ByHolderIpv4 {
+    address: render_ipv4_address(addr: srv2_lan_ipv4),
+    source: "gunbc.fleet.fleet_reach.srv2_lan_ipv4 -- the grounded census observation of the segment holder's LAN IPv4 (address authority extdeps.network.endpoint), cited not copied",
+  }
+}
+
+// THE ENDPOINT RESOLVER (Do-step 2). Given the share's endpoint identity and the per-firmware hostname
+// reading, it yields the string the binding's `server_address` takes -- or refuses, typed. It gates on the
+// FabricStorageShare role and on the member being the segment holder (so no foreign or raw endpoint can be
+// dressed up as the share and no address is attributed to the wrong host), then dispatches on the reading:
+// Unobserved or Refused -> the holder's LAN IPv4 through the cited resolution; Accepted -> refused until a
+// grounded name-resolution exists. Consumers: srv2_bmc_media_share_server_address and the witness.
+fn resolve_fabric_storage_share_server_address(
+  share: ServiceEndpointIdentity,
+  formality: MegaRacNfsServerAddressFormality,
+) -> Result<BmcMediaServerAddress, BmcMediaShareRefusal> {
+  if share.service != FabricStorageShare {
+    Err { value: RoleNotFabricStorageShare { slot: share.member.source.fleet_slot } }
+  } else if share.member.source.fleet_slot != bmc_media_segment_holder {
+    Err {
+      value: MemberNotSegmentHolder {
+        slot: share.member.source.fleet_slot,
+        expected: bmc_media_segment_holder,
+      },
+    }
+  } else {
+    match formality {
+      NfsServerAddressHostnameUnobserved { what_would_ground_it: _ } =>
+        Ok { value: srv2_fabric_storage_share_holder_ipv4() }
+      NfsServerAddressHostnameRefused { observed_via: _ } =>
+        Ok { value: srv2_fabric_storage_share_holder_ipv4() }
+      NfsServerAddressHostnameAccepted { observed_via: _ } => Err {
+        value: HostFormNeedsResolutionEvidence {
+          member: provider_endpoint_text(endpoint: share.member),
+          what_would_ground_it: "the endpoint authority's grounded name-resolution (EndpointResolutionEvidence in gunbc.fleet.fleet_endpoint) for this member; until it is grounded the hostname form is refused rather than a name fabricated (DESIGN 5)",
+        },
+      }
+    }
+  }
+}
+
+// THE BINDING'S `server_address` (Do-step 3, what mtcollins1_boot_run and the fixtures read). The share is the
+// srv2 FabricStorageShare endpoint, and while the firmware's hostname standing is the one the corpus holds
+// (Unobserved) the resolution is the holder's cited LAN IPv4, produced through the typed endpoint resolution
+// above -- never a literal. bmc_media_share_endpoint_witness binds this value to the resolver run on the real
+// srv2 endpoint, so the two cannot silently diverge; if a cited observation ever moves the standing to
+// Accepted, the Accepted arm and this line move together under that witness.
+fn srv2_bmc_media_share_server_address() -> NonEmptyStr {
+  srv2_fabric_storage_share_holder_ipv4().address
+}
