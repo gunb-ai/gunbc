@@ -1,0 +1,12 @@
+-- Materialized fixture for the statement-position claim suite (v2.test.claim.namespace_xl0.let_statement_position).
+-- Read as a module by the native lane: the `ctl_*` rows must be accepted and the `tail_*`/`arm_*` rows are the
+-- refusals the body-lowering statement-position fix owes. Do not edit to dodge a refusal -- a fixture that
+-- stops refusing has moved, and the claim suite's expectations are the record of what it must do.
+module v2.test.lst_tail_let_und
+
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+
+fn lst_probe(i: Int) -> Int {
+  let x = lst_undeclared_tail_value
+}
