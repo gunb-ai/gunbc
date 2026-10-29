@@ -51,7 +51,7 @@ pub use crate::v1_compiler_dag_collect_support::{connective_name};
 pub use crate::v1_compiler_emit::{BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_container, emit_keyed_container_type, keyed_container_has_target_inhabitant, render_tuple_parts, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node, emit_data_value_json, emit_declared_optional_row_json, EmitterOutcome, is_null_coalesce, has_service_items, order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared, emit_typed_let_shared, child_from_key, BoundOperation, ShellResultField, ShellResultChannel, shell_emission_refusal_fact, shell_result_channel_key, shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy, bind_operation_transport, transport_binding_refusal_fact, NativeEffectRealizationAdmission, NativeEffectDeclSite, native_effect_resolution, admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal, FileVerb, FileResultField, FileResultChannel, ShellEmissionRefusal, NativeEffectContract, NativeEffectHandler};
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection, escape_json_string, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent, to_snake, to_screaming_snake, is_upper, sanitize_service_name, capitalize_first, service_var_name, to_pascal, escape_string_literal_body, unique_strings, to_string, to_string_helper, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_type_alias_return_node, is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item, has_mock_prefix, extract_test_projections};
 pub use crate::v1_compiler_infer::{is_lambda_expr, InferScope, build_params_scope, extend_scope, build_emit_graph_info, declared_return_type_node, match_unguarded_absent_arm_index, optional_match_arm_sees_present_value, expr_span, resolved_type_name, expand_type_for_field_access, is_where_refinement_type, call_args_by_name, caller_resource_requirements, established_resource_binding};
-pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling};
+pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling, TypeDeclOccurrenceBinding};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences, TypeSurfaceOccurrence, TypeRepr, TypeDeclResolution};
 pub use crate::v1_compiler_infer_env::{is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup, UnitVariantPhantomLookup};
 pub use crate::v1_compiler_infer_items::{ItemLookup, ResolvedGraph, TypedModule, ItemInfo, item_kind, item_is_effectful_callee, ItemKind};
@@ -108,11 +108,12 @@ use crate::v1_compiler_emit::NativeEffectRealizationAdmission::{NativeEffectHand
 use crate::v1_compiler_emit::ShellEmissionRefusal::{ShellChannelNotRealizedByTarget, ShellCapturePolicyInputAbsent};
 use crate::v1_compiler_emit::ShellResultChannel::{ShellChanStdout, ShellChanStderr, ShellChanExitSuccess, ShellChanExitCode, ShellChanStdoutLines, ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes};
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
+use crate::v1_compiler_infer_emit_info::TypeDeclOccurrenceBinding::*;
 use crate::v1_compiler_infer_emit_info::TypeDeclResolution::{TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared};
 use crate::v1_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared};
 use crate::v1_compiler_infer_emit_info::TypeSummaryQuestion::{QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared};
-use crate::v1_compiler_infer_env::BareOccurrenceBinding::{BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided};
+use crate::v1_compiler_infer_env::BareOccurrenceBinding::{BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{GlobalBareUniqueBinding, GlobalBareAmbiguousBinding};
 use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, TypeItem, OtherItem};
@@ -133,14 +134,15 @@ use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v1_std_core::ParsedModuleItemKind::{ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue, ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem};
 use crate::v1_std_core::StringPart::{Text, Interpolation};
-use crate::v1_std_core::UnaryOpKind::{Neg};
+use crate::v1_std_core::UnaryOpKind::{Not, Neg};
 use crate::v1_std_core::VarBindingKind::{LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding};
 use self::WitnessCtorPathVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
 use self::AliasDeclArityVerdict::*;
+use self::PhantomMarkerDecision::*;
+use self::PhantomZstMarker::*;
 use self::RecordLiteralPhantom::*;
 use self::SealReading::*;
-use self::ForwardedBoundClass::*;
 use self::HostOptionArmReading::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::FmLoweringRefusal::*;
@@ -858,6 +860,7 @@ pub fn unstamped_reference_is_host_option(
                     } => false,
                 }
             }
+            BareOccurrenceBinding::BareOccurrenceUnbound => false,
             BareOccurrenceBinding::BareOccurrenceUndecided => false,
         }
     }
@@ -6064,55 +6067,172 @@ pub fn rust_phantom_zst_marker_def(vname: String, indexed: bool) -> String {
     }
 }
 
-pub fn phantom_marker_name_shadowed_by_real_type_item(
-    items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PhantomMarkerDecision {
+    PhantomMarkerOwed { indexed: bool },
+    PhantomMarkerArmDenotesDeclaration,
+    PhantomMarkerNotDemanded,
+    PhantomMarkerUndecided { cause: String },
+}
+
+pub fn phantom_marker_decision(
+    coproduct: Rc<Node>,
+    arm: Rc<Node>,
     vname: String,
-) -> bool {
+    env: Rc<TypeEnv>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<PhantomMarkerDecision> {
+    match (*crate::v1_compiler_infer_emit_info::type_decl_occurrence_binding(emit_info.type_decl_items.clone(), vname.clone(), arm.clone())).clone() {
+    TypeDeclOccurrenceBinding::OccurrenceDeclaredHere { identity: identity, .. } => phantom_marker_for_bound_arm(identity.clone(), coproduct.clone(), arm.clone(), vname.clone(), env.clone(), emit_info.clone()),
+    TypeDeclOccurrenceBinding::OccurrenceImported { identity: identity, .. } => phantom_marker_for_bound_arm(identity.clone(), coproduct.clone(), arm.clone(), vname.clone(), env.clone(), emit_info.clone()),
+    TypeDeclOccurrenceBinding::OccurrenceIsKernelName => phantom_marker_for_unbound_arm(coproduct.clone(), arm.clone(), vname.clone(), env.clone()),
+    TypeDeclOccurrenceBinding::OccurrenceUnbound => phantom_marker_for_unbound_arm(coproduct.clone(), arm.clone(), vname.clone(), env.clone()),
+    TypeDeclOccurrenceBinding::OccurrenceUndecided => Rc::new(PhantomMarkerDecision::PhantomMarkerUndecided {
+    cause: "the arm's name binds ambiguously, or binds a declaration the type-declaration index does not identify".to_string(),
+}),
+}
+}
+
+pub fn phantom_marker_for_bound_arm(
+    identity: String,
+    coproduct: Rc<Node>,
+    arm: Rc<Node>,
+    vname: String,
+    env: Rc<TypeEnv>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<PhantomMarkerDecision> {
+    match (*crate::v1_compiler_infer_emit_info::type_decl_resolution_at_identity(
+        emit_info.type_decl_items.clone(),
+        identity,
+    ))
+    .clone()
     {
-        let mut __found = false;
-        for item in items.iter().cloned() {
-            if ((crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
-                == vname.clone())
-                && (crate::v1_compiler_emit_core_support::is_type_alias_item(
-                    item.clone(),
-                    source_indices.clone(),
-                ) || crate::v1_compiler_emit_core_support::is_type_decl_item(
-                    item.clone(),
-                    source_indices.clone(),
-                )))
-            {
-                __found = true;
-                break;
+        TypeDeclResolution::TypeDeclResolved { decl, .. } => {
+            if ((decl.connective.clone() == Connective::Disj) && {
+                let mut __found = false;
+                for c in decl.children.clone().iter().cloned() {
+                    if (((c.children.clone().len() as i64) == 0)
+                        && (crate::v1_std_core::authored_name_at(
+                            env.source_indices.clone(),
+                            c.clone(),
+                        ) == vname.clone()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }) {
+                phantom_marker_for_unbound_arm(coproduct, arm, vname.clone(), env.clone())
+            } else {
+                Rc::new(PhantomMarkerDecision::PhantomMarkerArmDenotesDeclaration)
             }
         }
-        __found
+        TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: leaf, .. } => {
+            Rc::new(PhantomMarkerDecision::PhantomMarkerUndecided {
+                cause: v1_rt::concat("more than one declaration of ".to_string(), leaf.clone()),
+            })
+        }
+        TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: leaf, .. } => {
+            Rc::new(PhantomMarkerDecision::PhantomMarkerUndecided {
+                cause: v1_rt::concat("kernel spelling undecided for ".to_string(), leaf.clone()),
+            })
+        }
+        TypeDeclResolution::TypeDeclNotDeclared => {
+            Rc::new(PhantomMarkerDecision::PhantomMarkerUndecided {
+                cause: "the scope binding names no indexed declaration".to_string(),
+            })
+        }
+    }
+}
+
+pub fn phantom_marker_for_unbound_arm(
+    coproduct: Rc<Node>,
+    arm: Rc<Node>,
+    vname: String,
+    env: Rc<TypeEnv>,
+) -> Rc<PhantomMarkerDecision> {
+    match (*crate::v1_compiler_infer_env::lookup_unit_variant_phantom_type(
+        env.clone(),
+        vname.clone(),
+    ))
+    .clone()
+    {
+        UnitVariantPhantomLookup::UnitVariantPhantomPresent {
+            variant: variant, ..
+        } => {
+            if (crate::v1_compiler_infer_emit_info::declaring_span_key(variant.span.clone())
+                == crate::v1_compiler_infer_emit_info::declaring_span_key(arm.span.clone()))
+            {
+                Rc::new(PhantomMarkerDecision::PhantomMarkerOwed {
+                    indexed: crate::v1_compiler_infer_env::is_static_width_index_arm(
+                        env.clone(),
+                        coproduct,
+                        vname.clone(),
+                    ),
+                })
+            } else {
+                Rc::new(PhantomMarkerDecision::PhantomMarkerUndecided {
+                    cause: "the unit-variant index names a different variant of this name"
+                        .to_string(),
+                })
+            }
+        }
+        UnitVariantPhantomLookup::UnitVariantPhantomAbsent => {
+            Rc::new(PhantomMarkerDecision::PhantomMarkerNotDemanded)
+        }
+        UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => {
+            Rc::new(PhantomMarkerDecision::PhantomMarkerUndecided {
+                cause: "unit-variant evidence unavailable".to_string(),
+            })
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct PhantomZstMarker {
-    pub name: String,
-    pub indexed: bool,
+#[serde(tag = "_variant")]
+pub enum PhantomZstMarker {
+    PhantomZstMarkerOwed { name: String, indexed: bool },
+    PhantomZstMarkerRefused { name: String, cause: String },
+}
+impl PhantomZstMarker {
+    pub fn name(&self) -> String {
+        match self {
+            PhantomZstMarker::PhantomZstMarkerOwed { name: __val, .. } => __val.clone(),
+            PhantomZstMarker::PhantomZstMarkerRefused { name: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn phantom_zst_marker_name(marker: Rc<PhantomZstMarker>) -> String {
+    match (*marker.clone()).clone() {
+        PhantomZstMarker::PhantomZstMarkerOwed { name, .. } => name.clone(),
+        PhantomZstMarker::PhantomZstMarkerRefused { name, .. } => name.clone(),
+    }
 }
 
 pub fn collect_phantom_zst_markers(
     items: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<Vec<Rc<PhantomZstMarker>>> {
     Rc::new({
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
-            if (crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) && {
-                let mut __all = true;
-                for c in item.children.clone().iter().cloned() {
-                    if !((c.children.clone().len() as i64) == 0) {
-                        __all = false;
-                        break;
+            if ((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                && (item.connective.clone() == Connective::Disj))
+                && {
+                    let mut __all = true;
+                    for c in item.children.clone().iter().cloned() {
+                        if !((c.children.clone().len() as i64) == 0) {
+                            __all = false;
+                            break;
+                        }
                     }
-                }
-                __all
-            }) {
+                    __all
+                })
+            {
                 __result.push(item);
             }
         }
@@ -6132,37 +6252,58 @@ pub fn collect_phantom_zst_markers(
                                 env.clone(),
                                 child.clone(),
                             );
-                            if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
-                                && !{
-                                    let mut __found = false;
-                                    for m in inner.iter().cloned() {
-                                        if (m.name.clone() == vname.clone()) {
-                                            __found = true;
-                                            break;
-                                        }
+                            if {
+                                let mut __found = false;
+                                for m in inner.iter().cloned() {
+                                    if (phantom_zst_marker_name(m.clone()) == vname.clone()) {
+                                        __found = true;
+                                        break;
                                     }
-                                    __found
-                                })
-                                && !phantom_marker_name_shadowed_by_real_type_item(
-                                    items.clone(),
-                                    env.source_indices.clone(),
-                                    vname.clone(),
-                                ))
-                            {
-                                v1_rt::concat(
-                                    inner.clone(),
-                                    Rc::new(vec![Rc::new(PhantomZstMarker {
-                                        name: vname.clone(),
-                                        indexed:
-                                            crate::v1_compiler_infer_env::is_static_width_index_arm(
-                                                env.clone(),
-                                                item.clone(),
-                                                vname.clone(),
-                                            ),
-                                    })]),
-                                )
-                            } else {
+                                }
+                                __found
+                            } {
                                 inner.clone()
+                            } else {
+                                match (*phantom_marker_decision(
+                                    item.clone(),
+                                    child.clone(),
+                                    vname.clone(),
+                                    env.clone(),
+                                    emit_info.clone(),
+                                ))
+                                .clone()
+                                {
+                                    PhantomMarkerDecision::PhantomMarkerOwed {
+                                        indexed: indexed,
+                                        ..
+                                    } => v1_rt::concat(
+                                        inner.clone(),
+                                        Rc::new(vec![Rc::new(
+                                            PhantomZstMarker::PhantomZstMarkerOwed {
+                                                name: vname.clone(),
+                                                indexed: indexed.clone(),
+                                            },
+                                        )]),
+                                    ),
+                                    PhantomMarkerDecision::PhantomMarkerUndecided {
+                                        cause: cause,
+                                        ..
+                                    } => v1_rt::concat(
+                                        inner.clone(),
+                                        Rc::new(vec![Rc::new(
+                                            PhantomZstMarker::PhantomZstMarkerRefused {
+                                                name: vname.clone(),
+                                                cause: cause.clone(),
+                                            },
+                                        )]),
+                                    ),
+                                    PhantomMarkerDecision::PhantomMarkerArmDenotesDeclaration => {
+                                        inner.clone()
+                                    }
+                                    PhantomMarkerDecision::PhantomMarkerNotDemanded => {
+                                        inner.clone()
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -6174,14 +6315,52 @@ pub fn collect_phantom_zst_markers(
     )
 }
 
-pub fn emit_module_phantom_zst_markers(items: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> String {
+pub fn phantom_zst_marker_owed_name(marker: Rc<PhantomZstMarker>) -> Rc<Vec<String>> {
+    match (*marker.clone()).clone() {
+        PhantomZstMarker::PhantomZstMarkerOwed { name, .. } => Rc::new(vec![name.clone()]),
+        PhantomZstMarker::PhantomZstMarkerRefused { .. } => Rc::new(vec![]),
+    }
+}
+
+pub fn phantom_zst_marker_owed_names(markers: Rc<Vec<Rc<PhantomZstMarker>>>) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for m in collect_phantom_zst_markers(items, env).iter().cloned() {
-            __result.push(rust_phantom_zst_marker_def(
-                m.name.clone(),
-                m.indexed.clone(),
-            ));
+        for m in markers.iter().cloned() {
+            __result.extend((*phantom_zst_marker_owed_name(m.clone())).iter().cloned());
+        }
+        __result
+    })
+}
+
+pub fn rust_phantom_zst_marker_item(marker: Rc<PhantomZstMarker>) -> String {
+    match (*marker.clone()).clone() {
+        PhantomZstMarker::PhantomZstMarkerOwed { name, indexed, .. } => {
+            rust_phantom_zst_marker_def(name.clone(), indexed.clone())
+        }
+        PhantomZstMarker::PhantomZstMarkerRefused { name, cause, .. } => {
+            emit_rust_compile_error_item(v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat("whether unit variant ".to_string(), name.clone()),
+                    " owes a phantom marker is undecided: ".to_string(),
+                ),
+                cause.clone(),
+            ))
+        }
+    }
+}
+
+pub fn emit_module_phantom_zst_markers(
+    items: Rc<Vec<Rc<Node>>>,
+    env: Rc<TypeEnv>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for m in collect_phantom_zst_markers(items, env, emit_info)
+            .iter()
+            .cloned()
+        {
+            __result.push(rust_phantom_zst_marker_item(m.clone()));
         }
         __result
     })
@@ -6765,6 +6944,10 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
                 base_info.fn_decl_items.clone(),
                 base_info.type_decl_items.clone(),
                 map_key_bounded.clone(),
+                closure_source_indices.clone(),
+            ),
+            fn_equality_bounds: v1_fn_equality_bound_table(
+                base_info.fn_decl_items.clone(),
                 closure_source_indices.clone(),
             ),
             recursive_type_set: base_info.recursive_type_set.clone(),
@@ -8065,6 +8248,10 @@ pub fn emit_module(
                 base_info.fn_decl_items.clone(),
                 base_info.type_decl_items.clone(),
                 map_key_bounded.clone(),
+                merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
+            ),
+            fn_equality_bounds: v1_fn_equality_bound_table(
+                base_info.fn_decl_items.clone(),
                 merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
             ),
             recursive_type_set: base_info.recursive_type_set.clone(),
@@ -10692,6 +10879,7 @@ pub fn emit_module_full(
             fn_decl_items: emit_info.fn_decl_items.clone(),
             fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
             fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
+            fn_equality_bounds: emit_info.fn_equality_bounds.clone(),
             recursive_type_set: emit_info.recursive_type_set.clone(),
             fielded_variants: emit_info.fielded_variants.clone(),
             positional_payload_variants: emit_info.positional_payload_variants.clone(),
@@ -10776,17 +10964,11 @@ pub fn emit_module_full(
                 }
                 __result
             }),
-            Rc::new({
-                let mut __result = Vec::new();
-                for m in
-                    collect_phantom_zst_markers(typed_module.items.clone(), scope.type_env.clone())
-                        .iter()
-                        .cloned()
-                {
-                    __result.push(m.name.clone());
-                }
-                __result
-            }),
+            phantom_zst_marker_owed_names(collect_phantom_zst_markers(
+                typed_module.items.clone(),
+                scope.type_env.clone(),
+                emit_info.clone(),
+            )),
         );
         let module_import_items = crate::v1_std_core::module_imports(m.clone());
         let this_module_name =
@@ -11144,8 +11326,11 @@ pub fn emit_module_full(
                 local_enum_uses.clone().join(&"\n".to_string()),
             )
         };
-        let phantom_zst_markers =
-            emit_module_phantom_zst_markers(typed_module.items.clone(), scope.type_env.clone());
+        let phantom_zst_markers = emit_module_phantom_zst_markers(
+            typed_module.items.clone(),
+            scope.type_env.clone(),
+            emit_info.clone(),
+        );
         let phantom_section = if (phantom_zst_markers.clone() == "".to_string()) {
             "".to_string()
         } else {
@@ -16472,6 +16657,7 @@ pub fn emit_typed_item(
                         fn_decl_items: emit_info.fn_decl_items.clone(),
                         fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
                         fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
+                        fn_equality_bounds: emit_info.fn_equality_bounds.clone(),
                         recursive_type_set: emit_info.recursive_type_set.clone(),
                         fielded_variants: emit_info.fielded_variants.clone(),
                         positional_payload_variants: emit_info.positional_payload_variants.clone(),
@@ -20164,21 +20350,11 @@ pub fn v1_call_site_static_forwarded_param_names(
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum ForwardedBoundClass {
-    EqualityForwarded,
-    MapKeyForwarded,
-}
-
 pub fn v1_call_forwarding_bound_param_names(
-    bound_class: ForwardedBoundClass,
     generic_param_names: Rc<Vec<String>>,
     body: Rc<Node>,
     fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    declared_map_key_bounds: Rc<HashMap<String, Rc<Vec<String>>>>,
+    callee_bounds: Rc<HashMap<String, Rc<Vec<String>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -20187,11 +20363,10 @@ pub fn v1_call_forwarding_bound_param_names(
         }
         let here = match (*body.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => v1_call_site_forwarded_param_names(
-                bound_class.clone(),
                 body.clone(),
                 generic_param_names.clone(),
                 fn_decl_items.clone(),
-                declared_map_key_bounds.clone(),
+                callee_bounds.clone(),
                 source_indices.clone(),
             ),
             _ => Rc::new(vec![]),
@@ -20202,11 +20377,10 @@ pub fn v1_call_forwarding_bound_param_names(
                 crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
                     acc,
                     v1_call_forwarding_bound_param_names(
-                        bound_class.clone(),
                         generic_param_names.clone(),
                         child.clone(),
                         fn_decl_items.clone(),
-                        declared_map_key_bounds.clone(),
+                        callee_bounds.clone(),
                         source_indices.clone(),
                     ),
                 )
@@ -20216,11 +20390,10 @@ pub fn v1_call_forwarding_bound_param_names(
 }
 
 pub fn v1_call_site_forwarded_param_names(
-    bound_class: ForwardedBoundClass,
     call: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
     fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    declared_map_key_bounds: Rc<HashMap<String, Rc<Vec<String>>>>,
+    callee_bounds: Rc<HashMap<String, Rc<Vec<String>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     {
@@ -20230,7 +20403,7 @@ pub fn v1_call_site_forwarded_param_names(
             std::option::Option::None => Rc::new(vec![]),
             Some(callee_item) => match callee_item.body.clone() {
                 std::option::Option::None => Rc::new(vec![]),
-                Some(callee_body) => {
+                Some(_) => {
                     let callee_params = callee_item.params.clone();
                     let callee_generic_param_names = Rc::new({
                         let mut __result = Vec::new();
@@ -20242,25 +20415,15 @@ pub fn v1_call_site_forwarded_param_names(
                         }
                         __result
                     });
-                    let callee_bound_param_names = match bound_class.clone() {
-                        ForwardedBoundClass::EqualityForwarded => {
-                            v1_fn_body_equality_bound_param_names(
-                                callee_body.clone(),
-                                callee_generic_param_names.clone(),
-                                si.clone(),
-                            )
-                        }
-                        ForwardedBoundClass::MapKeyForwarded => {
-                            match v1_rt::map_get(&declared_map_key_bounds, callee_name.clone()) {
-                                Some(declared) => declared.clone(),
-                                std::option::Option::None => Rc::new(vec![]),
-                            }
-                        }
-                    };
+                    let callee_bound_param_names =
+                        match v1_rt::map_get(&callee_bounds, callee_name.clone()) {
+                            Some(bound) => bound.clone(),
+                            std::option::Option::None => Rc::new(vec![]),
+                        };
                     v1_call_forwarding_forwarded_param_names(
                         call.clone(),
                         function_value_params(callee_params.clone()),
-                        callee_generic_param_names.clone(),
+                        callee_generic_param_names,
                         callee_bound_param_names,
                         generic_param_names,
                         si.clone(),
@@ -20313,7 +20476,7 @@ pub fn v1_fn_map_key_bound_table(
                 std::option::Option::None => acc.clone(),
             },
         );
-        v1_fn_map_key_bound_fixpoint(
+        v1_fn_bound_fixpoint(
             names.clone(),
             fn_decl_items.clone(),
             source_indices.clone(),
@@ -20323,7 +20486,57 @@ pub fn v1_fn_map_key_bound_table(
     }
 }
 
-pub fn v1_fn_map_key_bound_total(table: Rc<HashMap<String, Rc<Vec<String>>>>) -> i64 {
+pub fn v1_fn_equality_bound_table(
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    {
+        let names = Rc::new(v1_rt::sorted_map_keys(&fn_decl_items));
+        let seed = names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(
+                &fn_decl_items,
+                n.clone(),
+            ) {
+                Some(item) => match item.body.clone() {
+                    std::option::Option::None => acc.clone(),
+                    Some(body) => {
+                        let generics = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in function_type_params(item.params.clone()).iter().cloned() {
+                                __result.push(crate::v1_std_core::generic_param_name_at(
+                                    p.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        });
+                        let bound = v1_fn_body_equality_bound_param_names(
+                            body.clone(),
+                            generics.clone(),
+                            source_indices.clone(),
+                        );
+                        if ((bound.clone().len() as i64) > 0) {
+                            v1_rt::rc_map_insert(acc.clone(), n.clone(), bound.clone())
+                        } else {
+                            acc.clone()
+                        }
+                    }
+                },
+                std::option::Option::None => acc.clone(),
+            },
+        );
+        v1_fn_bound_fixpoint(
+            names.clone(),
+            fn_decl_items.clone(),
+            source_indices.clone(),
+            seed,
+            (names.clone().len() as i64),
+        )
+    }
+}
+
+pub fn v1_fn_bound_total(table: Rc<HashMap<String, Rc<Vec<String>>>>) -> i64 {
     Rc::new(v1_rt::map_values(&table))
         .iter()
         .cloned()
@@ -20332,7 +20545,7 @@ pub fn v1_fn_map_key_bound_total(table: Rc<HashMap<String, Rc<Vec<String>>>>) ->
         })
 }
 
-pub fn v1_fn_map_key_bound_fixpoint(
+pub fn v1_fn_bound_fixpoint(
     mut __tco_loop_names: Rc<Vec<String>>,
     mut __tco_loop_fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -20359,7 +20572,7 @@ pub fn v1_fn_map_key_bound_fixpoint(
     std::option::Option::None => acc.clone(),
     Some(body) => {
             let generics = Rc::new({ let mut __result = Vec::new(); for p in function_type_params(item.params.clone()).iter().cloned() { __result.push(crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone())); } __result });
-let forwarded = v1_call_forwarding_bound_param_names(ForwardedBoundClass::MapKeyForwarded, generics.clone(), body.clone(), fn_decl_items.clone(), acc.clone(), source_indices.clone());
+let forwarded = v1_call_forwarding_bound_param_names(generics.clone(), body.clone(), fn_decl_items.clone(), acc.clone(), source_indices.clone());
 let existing = match v1_rt::map_get(&acc, n.clone()) {
     Some(e) => e.clone(),
     std::option::Option::None => Rc::new(vec![]),
@@ -20374,8 +20587,7 @@ if ((merged.clone().len() as i64) > 0) {
 },
     std::option::Option::None => acc.clone(),
 });
-            if (v1_fn_map_key_bound_total(next.clone()) == v1_fn_map_key_bound_total(table.clone()))
-            {
+            if (v1_fn_bound_total(next.clone()) == v1_fn_bound_total(table.clone())) {
                 break next.clone();
             } else {
                 {
@@ -20590,11 +20802,10 @@ pub fn emit_fn_def(
             si.clone(),
         );
         let call_forwarding_eq_param_names = v1_call_forwarding_bound_param_names(
-            ForwardedBoundClass::EqualityForwarded,
             generic_param_names.clone(),
             body.clone(),
             emit_info.fn_decl_items.clone(),
-            emit_info.fn_map_key_bounds.clone(),
+            emit_info.fn_equality_bounds.clone(),
             si.clone(),
         );
         let eq_param_names = crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
@@ -20612,7 +20823,6 @@ pub fn emit_fn_def(
                     si.clone(),
                 ),
                 v1_call_forwarding_bound_param_names(
-                    ForwardedBoundClass::MapKeyForwarded,
                     generic_param_names.clone(),
                     body.clone(),
                     emit_info.fn_decl_items.clone(),
@@ -30066,6 +30276,7 @@ pub fn emit_rust_fold_method_call(
                             fn_decl_items: emit_info.fn_decl_items.clone(),
                             fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
                             fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
+                            fn_equality_bounds: emit_info.fn_equality_bounds.clone(),
                             recursive_type_set: emit_info.recursive_type_set.clone(),
                             fielded_variants: emit_info.fielded_variants.clone(),
                             positional_payload_variants: emit_info
@@ -30128,6 +30339,7 @@ pub fn emit_rust_fold_method_call(
                                 fn_decl_items: emit_info.fn_decl_items.clone(),
                                 fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
                                 fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
+                                fn_equality_bounds: emit_info.fn_equality_bounds.clone(),
                                 recursive_type_set: emit_info.recursive_type_set.clone(),
                                 fielded_variants: emit_info.fielded_variants.clone(),
                                 positional_payload_variants: emit_info
@@ -36737,12 +36949,50 @@ pub fn emit_typed_bin_op(
             if ((derived.clone() != std::option::Option::None)
                 && ((op.clone() == BinOp::Eq) || (op.clone() == BinOp::Ne)))
             {
-                emit_rust_derived_equality_call(
-                    (op.clone() == BinOp::Ne),
-                    derived.clone().unwrap(),
-                    l_str.clone(),
-                    r_str.clone(),
-                )
+                {
+                    let eq_fn = derived.clone().unwrap();
+                    let eq_target = Rc::new(CallTargetIdentity::SourceDeclarationCall {
+                        owner_module_path: eq_fn.module_path.clone(),
+                        decl_name: eq_fn.decl_name.clone(),
+                    });
+                    let eq_args = Rc::new({
+                        let mut __result = Vec::new();
+                        for a in Rc::new(vec![left.clone(), right.clone()]).iter().cloned() {
+                            __result.push(crate::v1_std_core::make_arg_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                std::option::Option::None,
+                                a.clone(),
+                                left.span.clone(),
+                                left.span.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    let eq_call = emit_typed_call_expr(
+                        eq_fn.decl_name.clone(),
+                        eq_args,
+                        std::option::Option::None,
+                        Some(Rc::new(CallSemantics::PlainCallSemantics {
+                            target: eq_target.clone(),
+                        })),
+                        false,
+                        eq_target.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    );
+                    if (op.clone() == BinOp::Ne) {
+                        crate::v1_compiler_emit::emit_unary_op(
+                            UnaryOpKind::Not,
+                            eq_call,
+                            RenderTarget::Rust,
+                        )
+                    } else {
+                        eq_call.clone()
+                    }
+                }
             } else {
                 match (*binop_operator_realization(
                     op.clone(),
@@ -37074,40 +37324,6 @@ pub fn binop_operator_realization(
             structural_ordering_rows(),
         )
     }
-}
-
-pub fn emit_rust_derived_equality_call(
-    negate: bool,
-    function: Rc<DeclarationRef>,
-    l_str: String,
-    r_str: String,
-) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            if negate.clone() {
-                                "!".to_string()
-                            } else {
-                                "".to_string()
-                            },
-                            rust_declaration_path(
-                                function.module_path.clone(),
-                                function.decl_name.clone(),
-                            ),
-                        ),
-                        "(".to_string(),
-                    ),
-                    l_str.clone(),
-                ),
-                ", ".to_string(),
-            ),
-            r_str.clone(),
-        ),
-        ")".to_string(),
-    )
 }
 
 pub fn rust_declaration_path(module_path: String, decl_name: String) -> String {
@@ -46814,10 +47030,6 @@ pub struct AliasDeclArityAbsent;
 pub struct AliasDeclArityZeroParam;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AliasDeclArityHasParams;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct EqualityForwarded;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct MapKeyForwarded;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HostOptionArmIsHostOption;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
