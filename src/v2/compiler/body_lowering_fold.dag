@@ -5636,7 +5636,12 @@ fn body_lower_block_value_lowered(raw: Node) -> Outcome<Optional<Node>> {
           match body_lower_stmt_spine_head_optional(spine: spine) {
             Absent => body_lower_body_subtree_lower_rest(captured: raw)
             Present { value: head } =>
-              match body_lower_value_read(value: head) {
+              // The block's ONE statement is read by the STATEMENT authority, the same rule that
+              // reads the last statement of a spine -- not by the value reader. A sole statement
+              // that is an expression lands in the same place either way; a sole statement that is
+              // a `let` or a `return` is a statement, and the value reader answers those with a
+              // reason about the compiler rather than about the module.
+              match body_lower_tail_statement_read(stmt: head) {
                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                 Accepted { value: lowered, diagnostics: d } =>
                   outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
@@ -13070,7 +13075,26 @@ fn body_lower_exit_walk_let_match(plan: BodyLowerLetMatchExit, at: Node) -> Opti
 fn body_lower_tail_statement_read(stmt: Node) -> Outcome<Node> {
   match body_lower_return_statement_expr_optional(stmt: stmt) {
     Present { value: e } => body_lower_value_read(value: e)
-    Absent => body_lower_value_read(value: stmt)
+    Absent =>
+      // A `let` that ENDS a statement spine is not a value and has nothing to bind: the spine
+      // reader is the only rule that reads a statement let, and it reads one only against the
+      // statements that follow it (`body_lower_stmt_spine`). Falling through to the value reader
+      // here answered it with `body_lowering_reason_let_body_not_reachable_from_node`, a reason
+      // that blames the compiler for a module that wrote a binding with no body -- the value
+      // reader has no let case because no let is ever a value
+      // (`body_lower_let_expr` refuses on both arms). This refuses at the let itself, which is
+      // where the module is wrong, and it is the sibling of the `return` arm above: a `return`
+      // that is not in tail position refuses, a `let` that is in tail position refuses.
+      match body_lower_statement_let_captured_optional(stmt: stmt) {
+        ParseSubtreeFound { captured: _binding } =>
+          outcome_rejected(
+            d: body_lower_diagnostic(
+              reason: ^body_lowering_reason_statement_let_in_tail_position,
+              n: stmt
+            )
+          )
+        ParseSubtreeAbsent => body_lower_value_read(value: stmt)
+      }
   }
 }
 
