@@ -7,6 +7,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.inspect
 import extdeps.gunbc
 import extdeps.shell
+import extdeps.rust.cargo { cargo_default_target_dir }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -46,7 +47,7 @@ type PlantedClosureError
 
 fn plant_closure_error(root: String) -> PlantedClosureError {
   let dir = shell.Mktemp.DirWithTemplate(
-    template: concat(root, "/target/closure-error-planted-XXXXXX") as FilePath,
+    template: concat(cargo_default_target_dir(build_root: root), "/closure-error-planted-XXXXXX") as FilePath,
   )
   if !dir.success {
     PlantedClosureErrorUnwritable { detail: "mktemp under target/ failed" }

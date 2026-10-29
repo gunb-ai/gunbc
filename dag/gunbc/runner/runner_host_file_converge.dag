@@ -12,7 +12,7 @@ import extdeps.tools.grep { grep_fixed_string_in_tree_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key, cgroup_v2_events_interface_file }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_stop_argv, systemctl_disable_now_argv }
 import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
-import extdeps.posix.getent { getent_passwd_command }
+import extdeps.posix.getent { getent_passwd_command, getent_key_not_found_exit }
 import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
 import extdeps.tools.make { make_makeflags_env_name }
 import gunbc.host.ctrl_jobserver_residue { ctrl_jobserver_unit, ctrl_jobserver_residue_files, ctrl_jobserver_residue_directories }
@@ -45,7 +45,8 @@ import gunbc.ci.ci_runner_placement {
   host_deployment_refusal_text,
   CapacityQuota, NoCpuCeiling,
 }
-import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate }
+import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate, sudo_elevate_command }
+import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import extdeps.needrestart {
   NeedrestartServiceSelectionOverride,
   RestartDeferredByDefault,
@@ -58,7 +59,9 @@ import extdeps.needrestart {
 }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner.runner_slot_job_role { deploy_slot_identities }
+import gunbc.runner.runner_slot_job_role { deploy_slot_identities, runner_host_has_deploy_slot, deploy_slot_account_operation }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user }
+import gunbc.executor_privileged_operation { executor_privileged_operation_argv, executor_privileged_operation_elevated_command, RemoveDirectoryTree, EnsureOwnedDirectory, executor_managed_directory_mode }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_read, SplitOk, SplitRefused, fleet_converge_split_refusal_line }
@@ -67,7 +70,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
-import extdeps.exec.command { argv_words }
+import extdeps.exec.command { argv_words, ArgvCommand }
 import extdeps.tools.stat { stat_default_report_command }
 import gunbc.host.host_effect { FleetSsh }
 import gunbc.live_deploy.member_observe {
@@ -127,9 +130,15 @@ import gunbc.runner.runner_unit_file {
   runner_unit_slot_role_dropin_path,
 }
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
-import gunbc.runner.runner_slot_provision { desired_runner_slot_members }
+import gunbc.runner.runner_slot_provision { desired_runner_slot_members, fleet_runner_slot_artifact }
+import gunbc.runner.runner_lifecycle { runner_slot_dir_path }
+import gunbc.host.verified_archive_install { verified_archive_install, verified_archive_install_holds, verified_archive_install_text, ArchiveSha256 }
+import extdeps.github.actions_runner { actions_runner_download_url, actions_runner_release_digest, actions_runner_tarball_filename }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.tar { tar_extract_command }
+import extdeps.sudo.elevation { sudo_elevate_as_command }
 import gunbc.runner.runner_slot_actuation {
-  SlotActuationOutcome, SlotActuationRefused,
+  SlotActuationOutcome, SlotActuationRefused, SlotDrainPending, SlotActivated, DrainPendingJobRunning,
   activate_runner_slot_over, drain_and_mask_runner_slot_over,
   slot_actuation_settled, slot_actuation_outcome_wire,
 }
@@ -791,10 +800,15 @@ fn runner_host_path_metadata_wire(m: FleetHostPathMetadata) -> String {
   }
 }
 
+// `ancestors` is the root-only reading of the ancestor directories that EXIST; `absent_ancestors` is the
+// tail of the chain that does not, established by listing each one's parent (entry_presence), never read
+// from a failed find. A file whose drop-in directory was never created is therefore an observed absence
+// with a declared repair, not an unobservable path.
 type FleetHostFileObservation {
   content: FleetHostFileStanding
   file_metadata: FleetHostPathMetadata
   ancestors: FleetHostPathMetadata
+  absent_ancestors: List<String>
 }
 
 type FleetHostFileAction
@@ -807,6 +821,34 @@ type FleetHostFileAction
 // bytes where a CI user can replace them. Unsafe FILE metadata, by contrast, IS repaired by a write --
 // the staged file is created by root and renamed over the old one, replacing its owner and mode.
 fn fleet_host_file_action(observation: FleetHostFileObservation) -> FleetHostFileAction {
+  if length(observation.absent_ancestors) > 0 {
+    fleet_host_file_action_under_absent_ancestors(observation: observation)
+  } else {
+    fleet_host_file_action_under_present_ancestors(observation: observation)
+  }
+}
+
+// THE DIRECTORIES ARE CREATED ONLY WHERE NOTHING ELSE COULD HAVE PLACED THE FILE: the ancestors that exist
+// must be root-only (the same refusal as a write into an existing tree), and the file must read absent,
+// since a file cannot exist below a directory that does not. Any other content reading under an absent
+// directory contradicts the presence walk and refuses.
+fn fleet_host_file_action_under_absent_ancestors(observation: FleetHostFileObservation) -> FleetHostFileAction {
+  match observation.ancestors {
+    PathsNotRootOnly { paths: ps, detail: d } =>
+      HostFileActionRefused { reason: join(["ancestor directory not root-only: ", join(ps, ","), " ", d], "") }
+    PathsUnobservable { reason: r } => HostFileActionRefused { reason: concat("ancestor metadata unobservable: ", r) }
+    PathsNotApplicable => HostFileActionRefused { reason: "ancestor metadata was not read" }
+    PathsRootOnly =>
+      match observation.content {
+        HostFileAbsent => HostFileWrite
+        HostFileUnobservable { reason: r } => HostFileActionRefused { reason: r }
+        HostFileIdentical => HostFileActionRefused { reason: concat("the file reads present below an ancestor the listing found absent: ", join(observation.absent_ancestors, ",")) }
+        HostFileDiffers => HostFileActionRefused { reason: concat("the file reads present below an ancestor the listing found absent: ", join(observation.absent_ancestors, ",")) }
+      }
+  }
+}
+
+fn fleet_host_file_action_under_present_ancestors(observation: FleetHostFileObservation) -> FleetHostFileAction {
   match observation.ancestors {
     PathsNotRootOnly { paths: ps, detail: d } =>
       HostFileActionRefused { reason: join(["ancestor directory not root-only: ", join(ps, ","), " ", d], "") }
@@ -1315,16 +1357,24 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
         LegMetadataProbe { path: f.path as String },
         LegFileModeFind { path: f.path as String, mode: f.mode },
         LegRootOnlyFind { paths: fleet_host_path_ancestors(path: f.path as String), kind: "d" },
-      ]),
+      ] + map(fleet_host_path_ancestors(path: f.path as String), a => LegElevated { command: fleet_host_ancestor_directory_argv(path: a) })),
       concat(
         map(concat(residue.files, residue.directories), p => LegMetadataProbe { path: p }),
         concat(
           map(retire_legs_for(residue: residue, observation: ResiduePresent { unit_known: true, present: concat(residue.files, residue.directories) }), l => LegElevated { command: l.argv }),
-          match runner_host_deploy_for(host: subject.host) {
-            RunnerHostDeployFound { deploy: d } => [LegJobUserPasswd { job_user: d.job_user }]
-            RunnerHostDeployRefused { host: _, cause: _ } => []
-            RunnerHostDeployUnmodeled { host: _ } => []
-          },
+          concat(
+            match runner_host_deploy_for(host: subject.host) {
+              RunnerHostDeployFound { deploy: d } => [LegJobUserPasswd { job_user: d.job_user }]
+              RunnerHostDeployRefused { host: _, cause: _ } => []
+              RunnerHostDeployUnmodeled { host: _ } => []
+            },
+            if runner_host_has_deploy_slot(host: subject.host) {
+              [
+                LegJobUserPasswd { job_user: deploy_slot_job_user },
+                LegElevated { command: map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String) },
+              ] + map(filter(deploy_slot_identities, d => (d.host as String) == (subject.host as String)), d => LegElevated { command: deploy_slot_tree_owned_find_argv(slot_dir: runner_slot_dir_path(slot: d) as String) })
+            } else { [] },
+          ),
         ),
       ),
     ),
@@ -1370,6 +1420,108 @@ fn observe_fleet_host_paths(
     TypedArgvExecConverged { result: r } =>
       classify_root_only_paths(requested: paths, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
   }
+}
+
+// THE ANCESTOR CHAIN, WITH ITS ABSENT TAIL. One find over every ancestor answers the common case. find
+// exits nonzero when a named path does not exist, and that exit alone cannot tell absence from a refusal,
+// so a failed find is followed by the presence question for each ancestor (entry_presence, the walk that
+// already establishes a file's own absence). Absent ancestors must be a tail of the chain; the find is
+// then re-run over the ancestors that exist, so their root-only reading is still a successful find.
+type FleetHostAncestorsReading {
+  metadata: FleetHostPathMetadata
+  absent: List<String>
+}
+
+fn observe_fleet_host_ancestors(
+  subject: FleetHostFileSubject,
+  context: FleetSshExecutionContext,
+  path: String,
+) -> FleetHostAncestorsReading
+{
+  let chain = fleet_host_path_ancestors(path: path)
+  match observe_fleet_host_paths(subject: subject, context: context, paths: chain, kind: "d") {
+    PathsUnobservable { reason: r } => {
+      let presence = map(chain, a => AncestorPresence {
+        path: a,
+        presence: entry_presence(arm: OverTransport { transport: FleetSsh { target: subject.target, context: context } }, path: a),
+      })
+      fleet_host_ancestors_after_presence(
+        subject: subject,
+        context: context,
+        chain: chain,
+        presence: presence,
+        find_refusal: r,
+      )
+    }
+    PathsRootOnly => FleetHostAncestorsReading { metadata: PathsRootOnly, absent: [] }
+    PathsNotRootOnly { paths: ps, detail: d } => FleetHostAncestorsReading { metadata: PathsNotRootOnly { paths: ps, detail: d }, absent: [] }
+    PathsNotApplicable => FleetHostAncestorsReading { metadata: PathsNotApplicable, absent: [] }
+  }
+}
+
+type AncestorPresence {
+  path: String
+  presence: EntryPresence
+}
+
+fn fleet_host_ancestors_after_presence(
+  subject: FleetHostFileSubject,
+  context: FleetSshExecutionContext,
+  chain: List<String>,
+  presence: List<AncestorPresence>,
+  find_refusal: String,
+) -> FleetHostAncestorsReading
+{
+  match classify_fleet_host_ancestor_presence(chain: chain, presence: presence) {
+    AncestorTailUndetermined { cause: c } =>
+      FleetHostAncestorsReading { metadata: PathsUnobservable { reason: join([find_refusal, "; ", c], "") }, absent: [] }
+    AncestorTailNone =>
+      FleetHostAncestorsReading { metadata: PathsUnobservable { reason: find_refusal }, absent: [] }
+    AncestorTailAbsent { present: ps, absent: ab } =>
+      FleetHostAncestorsReading {
+        metadata: if length(ps) == 0 { PathsUnobservable { reason: "no ancestor of the file exists within the write scope" } } else {
+          observe_fleet_host_paths(subject: subject, context: context, paths: ps, kind: "d")
+        },
+        absent: ab,
+      }
+  }
+}
+
+// THE PURE HALF: which ancestors exist and which do not, from one presence answer per ancestor, in the
+// chain's root-to-leaf order. Any undetermined answer undetermines the whole reading, and an absent
+// ancestor above a present one contradicts itself, so both refuse rather than create.
+type AncestorTail
+  = AncestorTailNone
+  | AncestorTailAbsent { present: List<String>, absent: List<String> }
+  | AncestorTailUndetermined { cause: String }
+
+fn classify_fleet_host_ancestor_presence(chain: List<String>, presence: List<AncestorPresence>) -> AncestorTail {
+  let undetermined = list_flat_map(presence, a => match a.presence {
+    EntryPresenceIndeterminate { cause: c } => [join([a.path, ": ", c], "")]
+    EntryPresent => []
+    EntryAbsent => []
+  })
+  let present = list_flat_map(presence, a => match a.presence { EntryPresent => [a.path] EntryAbsent => [] EntryPresenceIndeterminate { cause: _ } => [] })
+  let absent = list_flat_map(presence, a => match a.presence { EntryAbsent => [a.path] EntryPresent => [] EntryPresenceIndeterminate { cause: _ } => [] })
+  if length(undetermined) > 0 {
+    AncestorTailUndetermined { cause: concat("ancestor presence undetermined: ", join(undetermined, "; ")) }
+  } else if !(map(presence, a => a.path) == chain) {
+    AncestorTailUndetermined { cause: "the presence answers do not cover the ancestor chain in order" }
+  } else if length(absent) == 0 {
+    AncestorTailNone
+  } else if !(concat(present, absent) == chain) {
+    AncestorTailUndetermined { cause: concat("an absent ancestor lies above a present one: ", join(absent, ",")) }
+  } else {
+    AncestorTailAbsent { present: present, absent: absent }
+  }
+}
+
+// THE DIRECTORY AN ABSENT ANCESTOR IS CREATED AS: root-owned, at the executor's managed directory mode,
+// which carries no group or other write bit, so the root-only readback admits exactly what was created.
+fn fleet_host_ancestor_directory_argv(path: String) -> List<String> {
+  map(executor_privileged_operation_argv(op: EnsureOwnedDirectory {
+    path: path as NonEmptyStr, owner: "root" as NonEmptyStr, group: "root" as NonEmptyStr, mode: executor_managed_directory_mode,
+  }), w => w as String)
 }
 
 fn observe_fleet_host_file_mode(
@@ -1472,6 +1624,7 @@ fn observe_fleet_host_file(
 ) -> FleetHostFileObservation
 {
   let content = observe_fleet_host_file_content(subject: subject, context: context, file: file)
+  let ancestors = observe_fleet_host_ancestors(subject: subject, context: context, path: file.path as String)
   FleetHostFileObservation {
     content: content,
     file_metadata: match content {
@@ -1480,7 +1633,8 @@ fn observe_fleet_host_file(
       HostFileIdentical => observe_fleet_host_file_mode(subject: subject, context: context, file: file)
       HostFileDiffers => observe_fleet_host_file_mode(subject: subject, context: context, file: file)
     },
-    ancestors: observe_fleet_host_paths(subject: subject, context: context, paths: fleet_host_path_ancestors(path: file.path as String), kind: "d"),
+    ancestors: ancestors.metadata,
+    absent_ancestors: ancestors.absent,
   }
 }
 
@@ -1634,6 +1788,355 @@ fn observe_runner_job_user_uid(subject: RunnerHostFileSubject, context: FleetSsh
         TypedArgvExecConverged { result: r } =>
           runner_job_user_uid_reading(job_user: d.job_user, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
       }
+  }
+}
+
+// ── The deploy slot's account ──────────────────────────────────────────────────────────────────
+// A HOST WITH A DEPLOY SLOT OWES ITS ACCOUNT BEFORE ITS ROLE DROP-IN (gunbc.runner.runner_slot_job_role
+// srv1_deploy_slot). The drop-in names the account the slot's jobs run as, and the listener refuses
+// to start when that account does not exist (ctrl jit-runner.sh: "is not a user on this host"), so a
+// drop-in delivered before its account would take the slot down at its next restart. The converge
+// reads the account, creates it as the administrator when it is absent and the run applies, reads it
+// back, and withholds the role drop-in by name whenever the account is not there. Observe mode reads
+// and creates nothing. Absent is only getent's own key-not-found status; any other failure is
+// unreadable, which is not absence and creates nothing.
+type DeploySlotAccountStanding
+  = HostHasNoDeploySlot
+  | DeploySlotAccountPresent { uid: Int, passwd_line: NonEmptyStr }
+  | DeploySlotAccountCreated { uid: Int, passwd_line: NonEmptyStr }
+  | DeploySlotAccountMissing { cause: NonEmptyStr }
+
+type DeploySlotAccountRead
+  = DeploySlotAccountReadPresent { uid: Int, passwd_line: NonEmptyStr }
+  | DeploySlotAccountReadAbsent
+  | DeploySlotAccountReadUnreadable { cause: NonEmptyStr }
+
+fn classify_deploy_slot_account_read(exit_code: Int, stdout: String, stderr: String) -> DeploySlotAccountRead {
+  if exit_code == getent_key_not_found_exit {
+    DeploySlotAccountReadAbsent
+  } else {
+    match runner_job_user_uid_reading(job_user: deploy_slot_job_user, exit_code: exit_code, stdout: stdout, stderr: stderr) {
+      JobUserUidObserved { uid: u, passwd_line: l } => DeploySlotAccountReadPresent { uid: u, passwd_line: l }
+      JobUserUidUnobserved { cause: c } => DeploySlotAccountReadUnreadable { cause: c }
+    }
+  }
+}
+
+fn observe_deploy_slot_account(subject: RunnerHostFileSubject, context: FleetSshExecutionContext) -> DeploySlotAccountRead
+{
+  match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegJobUserPasswd { job_user: deploy_slot_job_user }) {
+    TypedArgvExecRefused { reason: why } => DeploySlotAccountReadUnreadable { cause: concat("getent passwd leg refused: ", why) as NonEmptyStr }
+    TypedArgvExecConverged { result: r } => classify_deploy_slot_account_read(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+  }
+}
+
+// THE DECISION AFTER THE FIRST READ, pure: what the run does next and what it reports when it does
+// nothing. Only an absent account in an apply run with the administrator's privilege is created.
+type DeploySlotAccountStep
+  = DeploySlotAccountSettled { standing: DeploySlotAccountStanding }
+  | DeploySlotAccountCreate
+
+fn deploy_slot_account_step(read: DeploySlotAccountRead, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding) -> DeploySlotAccountStep {
+  match read {
+    DeploySlotAccountReadPresent { uid: u, passwd_line: l } => DeploySlotAccountSettled { standing: DeploySlotAccountPresent { uid: u, passwd_line: l } }
+    DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountSettled { standing: DeploySlotAccountMissing { cause: concat("the account could not be read, so it is neither confirmed nor created: ", c) as NonEmptyStr } }
+    DeploySlotAccountReadAbsent =>
+      match mode {
+        FleetHostFilesObserveOnly => DeploySlotAccountSettled { standing: DeploySlotAccountMissing { cause: "absent; observe mode creates nothing" as NonEmptyStr } }
+        FleetHostFilesApply =>
+          match privilege {
+            AdministratorPrivilegeAvailable => DeploySlotAccountCreate
+            AdministratorPrivilegeRefused { reason: r } => DeploySlotAccountSettled { standing: DeploySlotAccountMissing { cause: concat("absent, and the administrator holds no privilege to create it: ", r) as NonEmptyStr } }
+          }
+      }
+  }
+}
+
+fn converge_deploy_slot_account(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: FleetHostFileConvergeMode,
+  privilege: FleetHostPrivilegeStanding,
+) -> DeploySlotAccountStanding
+{
+  if !runner_host_has_deploy_slot(host: subject.host) {
+    HostHasNoDeploySlot
+  } else {
+    match deploy_slot_account_step(read: observe_deploy_slot_account(subject: subject, context: context), mode: mode, privilege: privilege) {
+      DeploySlotAccountSettled { standing: st } => st
+      DeploySlotAccountCreate =>
+        match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String) }) {
+          TypedArgvExecRefused { reason: why } => DeploySlotAccountMissing { cause: concat("useradd leg refused: ", why) as NonEmptyStr }
+          TypedArgvExecConverged { result: r } =>
+            match observe_deploy_slot_account(subject: subject, context: context) {
+              DeploySlotAccountReadPresent { uid: u, passwd_line: l } => DeploySlotAccountCreated { uid: u, passwd_line: l }
+              DeploySlotAccountReadAbsent => DeploySlotAccountMissing { cause: join(["useradd exit=", to_string(r.exit_code), " ", trim(s: r.stderr), "; the account is still absent on readback"], "") as NonEmptyStr }
+              DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountMissing { cause: concat("created, but the readback could not read it: ", c) as NonEmptyStr }
+            }
+        }
+    }
+  }
+}
+
+// ── The deploy slot's tree ───────────────────────────────────────────────────────────────────────
+// A SLOT'S WHOLE TREE IS OWNED BY ITS JOB USER (gunbc.runner.runner_slot_provision: the provisioner
+// removes, recreates and extracts it as that user), so a slot that was a CI slot carries a tree any
+// pull request job on it could have rewritten: the runner binaries, run.sh, its env file, its hooks,
+// and the checkouts under _work. A deploy slot's jobs hold the administrator's key, so the tree is
+// never handed over by a change of owner: it is drained, removed, and re-extracted from the pinned,
+// digest-verified runner archive the provisioner installs (fleet_runner_slot_artifact), owned by the
+// deploy account from its first byte. The test that the slot is already through the transition is
+// its tree's owner uid equal to the deploy account's. A slot whose job is still running is masked
+// and left pending, settled by a later run, as every drain is.
+type DeploySlotTreeStanding
+  = DeploySlotTreeHeld { unit: NonEmptyStr }
+  | DeploySlotTreeRebuilt { unit: NonEmptyStr }
+  | DeploySlotTreePending { unit: NonEmptyStr, cause: NonEmptyStr }
+  | DeploySlotTreeRefused { unit: NonEmptyStr, cause: NonEmptyStr }
+
+fn deploy_slot_tree_held(standing: DeploySlotTreeStanding) -> Bool {
+  match standing {
+    DeploySlotTreeHeld { unit: _ } => true
+    DeploySlotTreeRebuilt { unit: _ } => true
+    DeploySlotTreePending { unit: _, cause: _ } => false
+    DeploySlotTreeRefused { unit: _, cause: _ } => false
+  }
+}
+
+fn deploy_slot_tree_unit(standing: DeploySlotTreeStanding) -> NonEmptyStr {
+  match standing {
+    DeploySlotTreeHeld { unit: u } => u
+    DeploySlotTreeRebuilt { unit: u } => u
+    DeploySlotTreePending { unit: u, cause: _ } => u
+    DeploySlotTreeRefused { unit: u, cause: _ } => u
+  }
+}
+
+fn deploy_slot_account_is_held(standing: DeploySlotAccountStanding) -> Bool {
+  match standing {
+    DeploySlotAccountPresent { uid: _, passwd_line: _ } => true
+    DeploySlotAccountCreated { uid: _, passwd_line: _ } => true
+    DeploySlotAccountMissing { cause: _ } => false
+    HostHasNoDeploySlot => false
+  }
+}
+
+// WHETHER THE TREE IS THE ACCOUNT'S, asked far side by find in the module's own portable-word idiom
+// (runner_host_root_only_find_argv): the directory is printed exactly when it is a directory owned by
+// the account. A stat format would carry a percent sign the fleet transport refuses
+// (the_percent_format_stat_probe_is_refused_by_the_transport).
+fn deploy_slot_tree_owned_find_argv(slot_dir: String) -> List<String> {
+  ["find", slot_dir, "-maxdepth", "0", "-type", "d", "-user", deploy_slot_job_user as String]
+}
+
+// Printed: owned. Exit 0 and nothing printed: not owned. Anything else: not read.
+fn classify_deploy_slot_tree_owned(slot_dir: String, exit_code: Int, stdout: String) -> Bool? {
+  if exit_code != 0 { none }
+  else if trim(s: stdout) == slot_dir { Present { value: true } }
+  else if trim(s: stdout) == "" { Present { value: false } }
+  else { none }
+}
+
+fn observe_deploy_slot_tree_owned(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, slot_dir: String) -> Bool? {
+  match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: deploy_slot_tree_owned_find_argv(slot_dir: slot_dir) }) {
+    TypedArgvExecRefused { reason: _ } => none
+    TypedArgvExecConverged { result: r } => classify_deploy_slot_tree_owned(slot_dir: slot_dir, exit_code: r.exit_code, stdout: r.stdout)
+  }
+}
+
+// THE TREE'S NEXT STEP AFTER THE OWNER READ, pure.
+type DeploySlotTreeStep
+  = DeploySlotTreeSettled { standing: DeploySlotTreeStanding }
+  | DeploySlotTreeDrainThenRebuild
+
+fn deploy_slot_tree_step(unit: NonEmptyStr, account_held: Bool, owned: Bool?, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding) -> DeploySlotTreeStep {
+  if !account_held {
+    DeploySlotTreeSettled { standing: DeploySlotTreeRefused { unit: unit, cause: "the deploy account is not held, so no tree can be owned by it" as NonEmptyStr } }
+  } else {
+      match owned {
+        Absent => DeploySlotTreeSettled { standing: DeploySlotTreeRefused { unit: unit, cause: "whether the tree is the deploy account's could not be read" as NonEmptyStr } }
+        Present { value: o } =>
+          if o { DeploySlotTreeSettled { standing: DeploySlotTreeHeld { unit: unit } } }
+          else {
+            match mode {
+              FleetHostFilesObserveOnly => DeploySlotTreeSettled { standing: DeploySlotTreePending { unit: unit, cause: join(["the tree is not owned by ", deploy_slot_job_user as String, "; an apply drains and rebuilds it"], "") as NonEmptyStr } }
+              FleetHostFilesApply =>
+                match privilege {
+                  AdministratorPrivilegeRefused { reason: r } => DeploySlotTreeSettled { standing: DeploySlotTreeRefused { unit: unit, cause: concat("the administrator holds no privilege to rebuild it: ", r) as NonEmptyStr } }
+                  AdministratorPrivilegeAvailable => DeploySlotTreeDrainThenRebuild
+                }
+            }
+          }
+      }
+  }
+}
+
+// THE REBUILD, AS ONE VERIFIED INSTALL: the archive is fetched by the administrator into a stage of
+// its own, verified against the release's pinned digest, and only then is the tree removed,
+// recreated owned by the deploy account, and extracted AS that account, so no file in it is owned by
+// anyone else; the stage is removed last.
+//
+// THE STAGE IS WRITABLE BY ROOT ALONE FROM BEFORE THE FETCH UNTIL AFTER THE EXTRACT, because the digest
+// is checked by one leg and the bytes are read by a later one: an archive any other account could
+// replace between them would be extracted unverified under the deploy key while the run reports it
+// verified. So the stage is not in /tmp (the CI slots' jobs share it, gunbc.plans.srv1_deploy_principal_split)
+// but a member of the host-state tree, which root owns and nobody else writes
+// (gunbc.host_state_root host_state_tree_root); it is removed and recreated root-owned before the
+// fetch, so nothing left in it by an earlier run survives, and the fetch itself runs as root, so the
+// archive is root's file.
+fn deploy_slot_runner_stage_dir() -> String {
+  join([host_state_tree_path(tree: host_state_tree()) as String, "/deploy-slot-runner-stage"], "")
+}
+
+fn deploy_slot_runner_stage_fetch_commands(stage: String, url: String, tarball: String) -> List<ArgvCommand> {
+  [
+    executor_privileged_operation_elevated_command(op: RemoveDirectoryTree { path: stage as NonEmptyStr }),
+    executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory {
+      path: stage as NonEmptyStr, owner: "root" as NonEmptyStr, group: "root" as NonEmptyStr, mode: executor_managed_directory_mode,
+    }),
+    sudo_elevate_command(command: argv_words(command: curl_download_command(url: url, destination: tarball))),
+  ]
+}
+
+fn deploy_slot_tree_rebuild_commands(slot_dir: String, stage: String, tarball: String) -> List<ArgvCommand> {
+  [
+    executor_privileged_operation_elevated_command(op: RemoveDirectoryTree { path: slot_dir as NonEmptyStr }),
+    executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory {
+      path: slot_dir as NonEmptyStr, owner: deploy_slot_job_user, group: deploy_slot_job_user, mode: executor_managed_directory_mode,
+    }),
+    sudo_elevate_as_command(user: deploy_slot_job_user, command: argv_words(command: tar_extract_command(archive: tarball, into_directory: slot_dir, strip_components: 0))),
+    executor_privileged_operation_elevated_command(op: RemoveDirectoryTree { path: stage as NonEmptyStr }),
+  ]
+}
+
+fn rebuild_deploy_slot_tree(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, slot: RunnerSlotIdentity) -> DeploySlotTreeStanding
+{
+  let unit = runner_slot_unit_name(slot: slot)
+  let dir = runner_slot_dir_path(slot: slot) as String
+  match fleet_runner_slot_artifact() {
+    Absent => DeploySlotTreeRefused { unit: unit, cause: "no published runner artifact for the fleet's architecture" as NonEmptyStr }
+    Present { value: a } => {
+      let stage = deploy_slot_runner_stage_dir()
+      let tarball = join([stage, "/", actions_runner_tarball_filename(artifact: a)], "")
+      let outcome = verified_archive_install(
+        fetch: deploy_slot_runner_stage_fetch_commands(stage: stage, url: actions_runner_download_url(artifact: a), tarball: tarball),
+        archive: tarball as NonEmptyStr,
+        pin: ArchiveSha256 { hex: actions_runner_release_digest(artifact: a).hex },
+        install: deploy_slot_tree_rebuild_commands(slot_dir: dir, stage: stage, tarball: tarball),
+        transport: FleetSsh { target: subject.target, context: context },
+      )
+      if !verified_archive_install_holds(outcome: outcome) {
+        DeploySlotTreeRefused { unit: unit, cause: verified_archive_install_text(outcome: outcome) as NonEmptyStr }
+      } else {
+        match observe_deploy_slot_tree_owned(subject: subject, context: context, slot_dir: dir) {
+          Present { value: owned_after } =>
+            if owned_after { DeploySlotTreeRebuilt { unit: unit } }
+            else { DeploySlotTreeRefused { unit: unit, cause: join(["rebuilt, but the tree does not read back owned by ", deploy_slot_job_user as String], "") as NonEmptyStr } }
+          Absent => DeploySlotTreeRefused { unit: unit, cause: "rebuilt, but the tree's owner could not be read back" as NonEmptyStr }
+        }
+      }
+    }
+  }
+}
+
+fn converge_deploy_slot_tree(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: FleetHostFileConvergeMode,
+  privilege: FleetHostPrivilegeStanding,
+  account: DeploySlotAccountStanding,
+  slot: RunnerSlotIdentity,
+) -> DeploySlotTreeStanding
+{
+  let unit = runner_slot_unit_name(slot: slot)
+  let account_held = deploy_slot_account_is_held(standing: account)
+  let owned = if account_held { observe_deploy_slot_tree_owned(subject: subject, context: context, slot_dir: runner_slot_dir_path(slot: slot) as String) } else { none }
+  match deploy_slot_tree_step(unit: unit, account_held: account_held, owned: owned, mode: mode, privilege: privilege) {
+    DeploySlotTreeSettled { standing: st } => st
+    DeploySlotTreeDrainThenRebuild =>
+      match drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: unit) {
+        SlotDrainPending { unit: _, cause: _ } => DeploySlotTreePending { unit: unit, cause: "masked; a job is still running or the unit is still stopping, so the rebuild waits for a later run" as NonEmptyStr }
+        SlotActuationRefused { unit: _, step: st, reason: why } => DeploySlotTreeRefused { unit: unit, cause: join(["the drain refused at ", st, ": ", why], "") as NonEmptyStr }
+        SlotActivated { unit: _ } => DeploySlotTreeRefused { unit: unit, cause: "the drain answered activated" as NonEmptyStr }
+        SlotNotInstalled { unit: _ } => DeploySlotTreeRefused { unit: unit, cause: "the slot's unit is not installed, so there is no drained slot whose tree this run may remove" as NonEmptyStr }
+        // drain_and_mask_runner_slot_over answers Noop only for DrainAlreadyMasked: an earlier run masked
+        // the slot while a job ran, and it has since stopped. That is the pending drain settling, so the
+        // slot is as drained as SlotDrainedAndMasked and its tree is rebuilt.
+        SlotActuationNoop { unit: _, state: _ } => rebuild_deploy_slot_tree(subject: subject, context: context, slot: slot)
+        SlotDrainedAndMasked { unit: _ } => rebuild_deploy_slot_tree(subject: subject, context: context, slot: slot)
+      }
+  }
+}
+
+fn converge_deploy_slot_trees(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: FleetHostFileConvergeMode,
+  privilege: FleetHostPrivilegeStanding,
+  account: DeploySlotAccountStanding,
+) -> List<DeploySlotTreeStanding>
+{
+  map(filter(deploy_slot_identities, d => (d.host as String) == (subject.host as String)),
+    slot => converge_deploy_slot_tree(subject: subject, context: context, mode: mode, privilege: privilege, account: account, slot: slot))
+}
+
+// WHY THE ROLE DROP-IN MAY NOT BE DELIVERED, if it may not: the account is not held, or a deploy
+// slot's tree is not yet its account's. The drop-in is then withheld by name, so an apply refuses
+// rather than restarting a slot under no user or over a tree another user could have written.
+fn deploy_slot_role_dropin_bar(account: DeploySlotAccountStanding, trees: List<DeploySlotTreeStanding>) -> NonEmptyStr? {
+  match account {
+    DeploySlotAccountMissing { cause: c } => Present { value: join(["the deploy slot's account ", deploy_slot_job_user as String, " is not held: ", c as String], "") as NonEmptyStr }
+    _ => {
+      let pending = filter(trees, t => !deploy_slot_tree_held(standing: t))
+      if length(pending) == 0 { none } else {
+        Present { value: join(["the deploy slot's tree is not yet its account's: ", join(map(pending, t => deploy_slot_tree_line(standing: t)), "; ")], "") as NonEmptyStr }
+      }
+    }
+  }
+}
+
+type RunnerHostFilesAdmitted {
+  files: List<FleetHostFileDesired>
+  withheld: List<RunnerHostFileWithheld>
+}
+
+fn admit_files_for_deploy_slot(files: List<FleetHostFileDesired>, withheld: List<RunnerHostFileWithheld>, bar: NonEmptyStr?) -> RunnerHostFilesAdmitted {
+  match bar {
+    Absent => RunnerHostFilesAdmitted { files: files, withheld: withheld }
+    Present { value: c } =>
+      RunnerHostFilesAdmitted {
+        files: filter(files, f => (f.subject as String) != "runner-slot-role-dropin"),
+        withheld: concat(withheld, map(filter(files, f => (f.subject as String) == "runner-slot-role-dropin"), f => RunnerHostFileWithheld { subject: f.subject, cause: c })),
+      }
+  }
+}
+
+// A DEPLOY SLOT WHOSE TREE IS NOT HELD IS NOT ACTIVATED: activating it would unmask the old tree under
+// the old role. Its outcome is the tree's own, pending or refused, never an activation.
+fn deploy_slot_tree_actuation(standing: DeploySlotTreeStanding) -> SlotActuationOutcome? {
+  match standing {
+    DeploySlotTreeHeld { unit: _ } => none
+    DeploySlotTreeRebuilt { unit: _ } => none
+    DeploySlotTreePending { unit: u, cause: _ } => Present { value: SlotDrainPending { unit: u, cause: DrainPendingJobRunning } }
+    DeploySlotTreeRefused { unit: u, cause: c } => Present { value: SlotActuationRefused { unit: u, step: "deploy-slot-tree", reason: c as String } }
+  }
+}
+
+fn deploy_slot_tree_line(standing: DeploySlotTreeStanding) -> String {
+  match standing {
+    DeploySlotTreeHeld { unit: u } => join(["deploy-slot-tree unit=", u as String, " held"], "")
+    DeploySlotTreeRebuilt { unit: u } => join(["deploy-slot-tree unit=", u as String, " rebuilt"], "")
+    DeploySlotTreePending { unit: u, cause: c } => join(["deploy-slot-tree unit=", u as String, " PENDING ", c as String], "")
+    DeploySlotTreeRefused { unit: u, cause: c } => join(["deploy-slot-tree unit=", u as String, " REFUSED ", c as String], "")
+  }
+}
+
+fn deploy_slot_account_line(standing: DeploySlotAccountStanding) -> String {
+  match standing {
+    HostHasNoDeploySlot => ""
+    DeploySlotAccountPresent { uid: u, passwd_line: l } => join(["deploy-slot-account=present uid=", to_string(u), " passwd=", l as String, "\n"], "")
+    DeploySlotAccountCreated { uid: u, passwd_line: l } => join(["deploy-slot-account=created uid=", to_string(u), " passwd=", l as String, "\n"], "")
+    DeploySlotAccountMissing { cause: c } => join(["deploy-slot-account=MISSING ", c as String, "\n"], "")
   }
 }
 
@@ -1925,20 +2428,63 @@ fn apply_fleet_host_file(
     HostFileLeaveInPlace => HostFileLeftInPlace
     HostFileActionRefused { reason: r } => HostFileNotAttempted { reason: r }
     HostFileWrite =>
-      match converge_typed_remote_file(
-        target: subject.target,
-        context: context,
-        admission: fleet_host_file_write_admission(file: planned.file),
-        mode: planned.file.mode,
-        privilege: RemoteFileViaNonInteractiveSudo,
-        validation: planned.file.validation,
-      ) {
-        TypedRemoteFileConvergenceRefused { step: st, reason: why } => HostFileWriteRefused { step: st, reason: why }
-        TypedRemoteFileConverged { converged: c } =>
-          match fleet_host_file_readback_refusal(metadata: observe_fleet_host_file_mode(subject: subject, context: context, file: planned.file)) {
-            Absent => HostFileConvergedByWrite { converged: c }
-            Present { value: why } => HostFileWriteRefused { step: "metadata-readback", reason: why }
-          }
+      match create_fleet_host_absent_ancestors(subject: subject, context: context, planned: planned) {
+        Present { value: why } => HostFileWriteRefused { step: "ancestor-directories", reason: why }
+        Absent => write_fleet_host_file(subject: subject, context: context, planned: planned)
+      }
+  }
+}
+
+// THE ABSENT ANCESTORS ARE CREATED TOP-DOWN AS ROOT, AND THE WHOLE CHAIN IS READ BACK before any byte is
+// written: a write lands only beneath directories this run read as root-only, whether they existed or
+// were just created. Nothing is created when the observation found every ancestor present.
+fn create_fleet_host_absent_ancestors(
+  subject: FleetHostFileSubject,
+  context: FleetSshExecutionContext,
+  planned: FleetHostFilePlanned,
+) -> String?
+{
+  if length(planned.observation.absent_ancestors) == 0 {
+    none
+  } else {
+    let failed = list_flat_map(planned.observation.absent_ancestors, d =>
+      match run_fleet_host_leg(subject: subject, context: context, leg: LegElevated { command: fleet_host_ancestor_directory_argv(path: d) }) {
+        TypedArgvExecRefused { reason: why } => [join([d, ": ", why], "")]
+        TypedArgvExecConverged { result: r } =>
+          if r.exit_code == 0 { [] } else { [join([d, ": exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "")] }
+      })
+    if length(failed) > 0 {
+      Present { value: concat("creating an absent ancestor refused: ", join(failed, "; ")) }
+    } else {
+      match observe_fleet_host_paths(subject: subject, context: context, paths: fleet_host_path_ancestors(path: planned.file.path as String), kind: "d") {
+        PathsRootOnly => none
+        PathsNotRootOnly { paths: ps, detail: d } => Present { value: join(["after creation the ancestors do not read back root-only: ", join(ps, ","), " ", d], "") }
+        PathsUnobservable { reason: r } => Present { value: concat("after creation the ancestors could not be read back: ", r) }
+        PathsNotApplicable => Present { value: "after creation the ancestors were not read back" }
+      }
+    }
+  }
+}
+
+fn write_fleet_host_file(
+  subject: FleetHostFileSubject,
+  context: FleetSshExecutionContext,
+  planned: FleetHostFilePlanned,
+) -> FleetHostFileOutcome
+{
+  match converge_typed_remote_file(
+    target: subject.target,
+    context: context,
+    admission: fleet_host_file_write_admission(file: planned.file),
+    mode: planned.file.mode,
+    privilege: RemoteFileViaNonInteractiveSudo,
+    validation: planned.file.validation,
+  ) {
+    TypedRemoteFileConvergenceRefused { step: st, reason: why } => HostFileWriteRefused { step: st, reason: why }
+    TypedRemoteFileConverged { converged: c } =>
+      match fleet_host_file_readback_refusal(metadata: observe_fleet_host_file_mode(subject: subject, context: context, file: planned.file)) {
+        Absent => HostFileConvergedByWrite { converged: c }
+        Present { value: why } => HostFileWriteRefused { step: "metadata-readback", reason: why }
       }
   }
 }
@@ -2016,6 +2562,8 @@ type RunnerHostFileRun {
   reload: RunnerHostManagerReload
   slots: RunnerSlotPopulation
   cap_phase: RunnerHostCapPhase
+  deploy_account: DeploySlotAccountStanding
+  deploy_trees: List<DeploySlotTreeStanding>
 }
 
 fn plan_fleet_host_file(
@@ -2064,6 +2612,7 @@ fn runner_host_slot_actuations(
   context: FleetSshExecutionContext,
   mode: FleetHostFileConvergeMode,
   privilege: FleetHostPrivilegeStanding,
+  trees: List<DeploySlotTreeStanding>,
 ) -> List<SlotActuationOutcome>
 {
   match mode {
@@ -2074,7 +2623,11 @@ fn runner_host_slot_actuations(
           map(concat(subject.desired_units, runner_host_drain_units(subject: subject)), u => SlotActuationRefused { unit: u, step: "privilege", reason: why })
         AdministratorPrivilegeAvailable =>
           concat(
-            map(subject.desired_units, u => activate_runner_slot_over(target: subject.target, context: context, unit: u)),
+            map(subject.desired_units, u =>
+              match list_head(xs: list_flat_map(filter(trees, t => (deploy_slot_tree_unit(standing: t) as String) == (u as String)), t => match deploy_slot_tree_actuation(standing: t) { Present { value: o } => [o] Absent => [] })) {
+                Present { value: held_back } => held_back
+                Absent => activate_runner_slot_over(target: subject.target, context: context, unit: u)
+              }),
             map(runner_host_drain_units(subject: subject), u => drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: u)),
           )
       }
@@ -2694,6 +3247,25 @@ fn run_runner_host_files(
 ) -> RunnerHostFileRun
 {
   let privilege = observe_fleet_host_administrator_privilege(subject: fleet_subject_of(s: subject), context: context)
+  let account = converge_deploy_slot_account(subject: subject, context: context, mode: mode, privilege: privilege)
+  let trees = converge_deploy_slot_trees(subject: subject, context: context, mode: mode, privilege: privilege, account: account)
+  let admitted = admit_files_for_deploy_slot(files: files, withheld: withheld, bar: deploy_slot_role_dropin_bar(account: account, trees: trees))
+  run_runner_host_files_admitted(subject: subject, context: context, files: admitted.files, withheld: admitted.withheld, mode: mode, per_slot: per_slot, privilege: privilege, account: account, trees: trees)
+}
+
+// THE RUN OVER THE FILES THE DEPLOY SLOT'S ACCOUNT ADMITS.
+fn run_runner_host_files_admitted(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  files: List<FleetHostFileDesired>,
+  withheld: List<RunnerHostFileWithheld>,
+  mode: FleetHostFileConvergeMode,
+  per_slot: HardwareThreadCount,
+  privilege: FleetHostPrivilegeStanding,
+  account: DeploySlotAccountStanding,
+  trees: List<DeploySlotTreeStanding>,
+) -> RunnerHostFileRun
+{
   // ORDER (review on ff67e67949): every file but the CPU drop-in is written first and the manager
   // reloaded, so a fresh host has the unit fragment before a slot is activated and converges in one
   // pass; then the slots are actuated; only then is the CPU drop-in written, gated on every actuation
@@ -2725,7 +3297,7 @@ fn run_runner_host_files(
     FleetHostFilesApply => runner_host_actuation_admission(results: unit_results, pre_reload: pre_reload)
   }
   let actuations = match admission {
-    ActuationAdmitted => runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege)
+    ActuationAdmitted => runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege, trees: trees)
     ActuationSkipped { cause: _ } => []
   }
   let gated = runner_host_cpu_dropin_gate(files: files, withheld: withheld, actuations: actuations, admission: admission)
@@ -2763,6 +3335,8 @@ fn run_runner_host_files(
     reload: reload,
     slots: slots,
     cap_phase: cap_phase,
+    deploy_account: account,
+    deploy_trees: trees,
   }
 }
 
@@ -2832,6 +3406,7 @@ fn runner_host_file_result_line(r: FleetHostFileResult) -> String {
     " content=", runner_host_file_standing_wire(standing: r.planned.observation.content),
     " file-metadata=", runner_host_path_metadata_wire(m: r.planned.observation.file_metadata),
     " ancestors=", runner_host_path_metadata_wire(m: r.planned.observation.ancestors),
+    " absent-ancestors=", if length(r.planned.observation.absent_ancestors) == 0 { "none" } else { join(r.planned.observation.absent_ancestors, ",") },
     " action=", runner_host_file_action_wire(action: r.planned.action),
     " outcome=", runner_host_file_outcome_wire(outcome: r.outcome),
     "\n",
@@ -2859,6 +3434,8 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     " principal=", run.subject.target.principal as String,
     " endpoint=", ssh_target_wire(target: run.subject.target) as String, "\n",
     "administrator-privilege=", runner_host_privilege_wire(privilege: run.privilege), "\n",
+    deploy_slot_account_line(standing: run.deploy_account),
+    join(map(run.deploy_trees, t => concat(deploy_slot_tree_line(standing: t), "\n")), ""),
     join(map(run.results, r => runner_host_file_result_line(r: r)), ""),
     "planned-writes=", to_string(length(filter(run.results, r => runner_host_file_planned_write(p: r.planned)))), "\n",
     "pre-actuation-reload=", runner_host_manager_reload_wire(reload: run.pre_actuation_reload), "\n",
