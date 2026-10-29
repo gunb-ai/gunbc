@@ -7,6 +7,8 @@ module test.claim.machine_intake.host_interface_inventory_witness
 // is stated rather than assumed -- including for the host whose host-OS interface was never read.
 
 import std.types { Bool }
+import std.algebra { non_empty }
+import product.host_identity { host_identity_eq }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.list { first_where }
 import std.optional { Absent, Present }
@@ -31,6 +33,11 @@ import gunbc.machine_intake.mtcollins1_platform_observation {
 }
 import gunbc.host.host_primary_network_observed { srv1_bmc_usb_nic_mac, srv1_i210_mac }
 import gunbc.machine_intake.host_interface_inventory {
+  FunctionInterfaceRead,
+  FunctionInterfaceUnread,
+  FunctionNotInventoried,
+  FunctionUnread,
+  HostNeverInventoried,
   host_controller_dedicated_interface,
   host_interface_addresses_are_disjoint,
   host_interface_rows,
@@ -54,8 +61,8 @@ test fn every_row_address_is_the_observation_s_own() -> Bool {
           Present { value: second } => mac_addresses_are_equal(left: lan_configured_address(lan: second.lan), right: lan_configured_address(lan: mtcollins1_second_bmc_lan))
         }
         && match host_operating_system_interface(host: operator_host_mtcollins1) {
-          Absent => false
-          Present { value: host_os } => mac_addresses_are_equal(left: lan_configured_address(lan: host_os), right: lan_configured_address(lan: mtcollins1_host_nic_interface))
+          FunctionInterfaceUnread { gap: _ } => false
+          FunctionInterfaceRead { lan: host_os } => mac_addresses_are_equal(left: lan_configured_address(lan: host_os), right: lan_configured_address(lan: mtcollins1_host_nic_interface))
         }
   }
 }
@@ -65,8 +72,8 @@ test fn every_row_address_is_the_observation_s_own() -> Bool {
 // function claim (host data port) evidence-backed rather than a guess about which port is which.
 test fn srv1_rows_come_from_the_primary_network_receipt() -> Bool {
   match host_operating_system_interface(host: operator_host_srv1) {
-    Absent => false
-    Present { value: host_os } =>
+    FunctionInterfaceUnread { gap: _ } => false
+    FunctionInterfaceRead { lan: host_os } =>
       mac_addresses_are_equal(left: lan_configured_address(lan: host_os), right: srv1_i210_mac)
         && match first_where(xs: host_interface_rows(host: operator_host_srv1), keep: row => row.lan.binding.function == FunctionObserved { function: BmcHostBus }) {
           Absent => false
@@ -83,8 +90,8 @@ test fn srv1_rows_come_from_the_primary_network_receipt() -> Bool {
 test fn mtjade1_controller_address_is_a_reading_not_a_placeholder() -> Bool {
   mtjade1_bmc_link_is_read()
     && match host_controller_dedicated_interface(host: operator_host_mtjade1) {
-      Absent => false
-      Present { value: dedicated } => mac_addresses_are_equal(left: lan_configured_address(lan: dedicated), right: mtjade1_bmc_link_mac())
+      FunctionInterfaceUnread { gap: _ } => false
+      FunctionInterfaceRead { lan: dedicated } => mac_addresses_are_equal(left: lan_configured_address(lan: dedicated), right: mtjade1_bmc_link_mac())
     }
 }
 
@@ -101,14 +108,20 @@ test fn no_address_is_claimed_twice() -> Bool {
 // existed, this test would pass for the wrong host and nothing downstream would notice.
 test fn a_missing_host_interface_is_reported_and_not_filled_in() -> Bool {
   match host_operating_system_interface(host: operator_host_mtjade1) {
-    Absent => match host_controller_dedicated_interface(host: operator_host_mtjade1) {
-      Absent => false
-      Present { value: dedicated } => match host_operating_system_interface(host: operator_host_mtcollins1) {
-        Absent => false
-        Present { value: some_host_os } => !mac_addresses_are_equal(left: lan_configured_address(lan: dedicated), right: lan_configured_address(lan: some_host_os))
-      }
+    FunctionInterfaceRead { lan: _ } => false
+    FunctionInterfaceUnread { gap: gap } => match gap {
+      FunctionUnread { host: h, function: f, consulted: consulted, statement: _ } =>
+        host_identity_eq(a: h, b: operator_host_mtjade1) && f == HostData && non_empty(xs: consulted)
+          && match host_controller_dedicated_interface(host: operator_host_mtjade1) {
+            FunctionInterfaceUnread { gap: _ } => false
+            FunctionInterfaceRead { lan: dedicated } => match host_operating_system_interface(host: operator_host_mtcollins1) {
+              FunctionInterfaceUnread { gap: _ } => false
+              FunctionInterfaceRead { lan: some_host_os } => !mac_addresses_are_equal(left: lan_configured_address(lan: dedicated), right: lan_configured_address(lan: some_host_os))
+            }
+          }
+      HostNeverInventoried { host: _ } => false
+      FunctionNotInventoried { host: _, function: _ } => false
     }
-    Present { value: _ } => false
   }
 }
 

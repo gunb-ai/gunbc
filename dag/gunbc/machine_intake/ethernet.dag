@@ -234,34 +234,25 @@ fn ethernet_ports_are_distinct(a: PhysicalEthernetPort, b: PhysicalEthernetPort)
   }
 }
 
-fn ethernet_function_is_unobserved(f: EthernetFunction) -> Bool {
-  match f {
-    FunctionObserved { function: _ } => false
-    FunctionUnobserved { discriminator: _ } => true
-  }
-}
-
 // `BmcHostBus` IS A CONTROLLER'S ETHERNET CONTROLLER SEEN AS A DEVICE ON THE HOST'S OWN BUS (USB
 // CDC-Ether, a host-to-controller virtual NIC). It has no wire and so no segment to be reached on, which
 // `BmcNcsi` -- the controller sharing a host data port's wire through the sideband -- does. They answer
 // different reach questions, so they are different names (DESIGN.md section 3, meaning fork).
-// `ethernet_function_is_controller` USED TO SIT HERE. It was `(f == BmcDedicated || f == BmcNcsi)` ANDed
-// with `!is_unobserved(f)` -- a Bool over a coproduct whose first clause already made the second
-// unfalsifiable (review 38602 finding 3; ctrl review policy: such a predicate dissolves into the
-// match). Dissolving it left no predicate at all, because the single consumer, host_interface_inventory's
-// `host_controller_interfaces`, wants the arms themselves: it now matches `BmcDedicated | BmcNcsi` and
-// states there why `FunctionUnobserved` -- a function of its own, not a BMC function that happens to be
-// unread -- is refused rather than counted.
+// A host's controller interfaces are read per function (`host_interface_inventory` `host_function_interface`),
+// so no predicate over EthernetFunction exists: `ethernet_function_is_controller` was deleted (review 38602
+// finding 3) and its one fold, `host_controller_interfaces`, with it (review 88405).
 
 fn ethernet_function_identity(a: EthernetFunction, b: EthernetFunction) -> FunctionIdentityStanding {
-  if ethernet_function_is_unobserved(f: a) || ethernet_function_is_unobserved(f: b) {
-    FunctionIdentityUnobserved {
+  match a {
+    FunctionObserved { function: x } => match b {
+      FunctionObserved { function: y } => if x == y { ObservedSameFunction } else { ObservedDistinctFunctions }
+      FunctionUnobserved { discriminator: _ } => FunctionIdentityUnobserved {
+        discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
+      }
+    }
+    FunctionUnobserved { discriminator: _ } => FunctionIdentityUnobserved {
       discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
     }
-  } else if a == b {
-    ObservedSameFunction
-  } else {
-    ObservedDistinctFunctions
   }
 }
 

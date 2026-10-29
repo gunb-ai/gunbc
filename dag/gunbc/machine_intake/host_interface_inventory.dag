@@ -130,7 +130,7 @@ data mtcollins1_dedicated_bmc_interface: HostNetworkInterface = HostNetworkInter
 // earlier cut of this module typed `BmcNcsi` on the row beside a lan that said otherwise -- two answers
 // for one fact (DESIGN.md section 3). Deriving the function from the lan removes the disagreement, and
 // the consequence is stated rather than hidden: this interface is NOT counted by
-// host_controller_interfaces until a reading classifies it. The correction lands on the lan.
+// host_controller_dedicated_interface until a reading classifies it. The correction lands on the lan.
 data mtcollins1_shared_bmc_interface: HostNetworkInterface = HostNetworkInterface {
   host: operator_host_mtcollins1,
   lan: mtcollins1_second_bmc_lan,
@@ -303,6 +303,14 @@ data host_network_interfaces: List<HostNetworkInterface> = [
 type HostInterfaceGap
   = FunctionUnread { host: HostIdentity, function: ObservedEthernetFunction, consulted: List<DeclarationRef>, statement: NonEmptyStr }
   | HostNeverInventoried { host: HostIdentity }
+  | FunctionNotInventoried { host: HostIdentity, function: ObservedEthernetFunction }
+
+// ONE FUNCTION OF ONE HOST: the interface itself, or the gap that says why there is none. The same
+// sum as the whole-host answer, narrowed to a function, so "nobody read it" and "it does not exist"
+// cannot both come back as an absent Optional.
+type HostFunctionInterface
+  = FunctionInterfaceRead { lan: ObservedEthernetLan }
+  | FunctionInterfaceUnread { gap: HostInterfaceGap }
 
 type HostInterfaceInventory
   = InventoryRead { rows: List<HostNetworkInterface> }
@@ -323,6 +331,7 @@ fn host_interface_gap_host(gap: HostInterfaceGap) -> HostIdentity {
   match gap {
     FunctionUnread { host: h, function: _, consulted: _, statement: _ } => h
     HostNeverInventoried { host: h } => h
+    FunctionNotInventoried { host: h, function: _ } => h
   }
 }
 
@@ -351,6 +360,24 @@ fn host_interface_rows(host: HostIdentity) -> List<HostNetworkInterface> {
   }
 }
 
+// THE LOOKUP BY FUNCTION: the host's row for that function, else the declared gap for exactly that
+// function, else the statement that this function was never inventoried for the host (the host may have
+// other rows). Gaps are read per function and not per host, so a host with some rows still reports
+// what it lacks (review 88405).
+fn host_function_interface(host: HostIdentity, function: ObservedEthernetFunction) -> HostFunctionInterface {
+  match first_where(xs: host_interface_rows(host: host), keep: row => row.lan.binding.function == FunctionObserved { function: function }) {
+    Present { value: row } => FunctionInterfaceRead { lan: row.lan }
+    Absent => match first_where(xs: host_interface_gaps, keep: gap => match gap {
+      FunctionUnread { host: h, function: f, consulted: _, statement: _ } => host_identity_eq(a: h, b: host) && f == function
+      HostNeverInventoried { host: _ } => false
+      FunctionNotInventoried { host: _, function: _ } => false
+    }) {
+      Present { value: gap } => FunctionInterfaceUnread { gap: gap }
+      Absent => FunctionInterfaceUnread { gap: FunctionNotInventoried { host: host, function: function } }
+    }
+  }
+}
+
 // THE ADDRESS THE OPERATOR TYPES INTO A BROWSER TO REACH THE CONTROLLER'S CONSOLE: its own interface if
 // it has one, and ONLY its own. THE FALLBACK THAT IS NOT HERE is the load-bearing part of this
 // function's shape. On a shared segment the controller's console answers just as readily through the
@@ -362,43 +389,15 @@ fn host_interface_rows(host: HostIdentity) -> List<HostNetworkInterface> {
 // crosses the host's production interface has been told something false about their own network, and no
 // later symptom says so. When the dedicated interface is absent the honest answer is Absent, and the
 // correction is an inventory row -- not a fallback.
-fn host_controller_dedicated_interface(host: HostIdentity) -> ObservedEthernetLan? {
-  match first_where(xs: host_interface_rows(host: host), keep: row => row.lan.binding.function == FunctionObserved { function: BmcDedicated }) {
-    Absent => none
-    Present { value: row } => row.lan
-  }
+fn host_controller_dedicated_interface(host: HostIdentity) -> HostFunctionInterface {
+  host_function_interface(host: host, function: BmcDedicated)
 }
 
-// THE OPERATOR'S OWN SHELL, the interface they would SSH in through. Absent rather than a refusal: a
-// host with no read host-OS interface is a gap this inventory REPORTS (see host_interface_gaps) and it
-// is S2's anchor that refuses.
-fn host_operating_system_interface(host: HostIdentity) -> ObservedEthernetLan? {
-  match first_where(xs: host_interface_rows(host: host), keep: row => row.lan.binding.function == FunctionObserved { function: HostData }) {
-    Absent => none
-    Present { value: row } => row.lan
-  }
-}
-
-// THE CONTROLLER INTERFACES OF A HOST, dedicated and shared together. A reachability anchor has to
-// consider both and has to know which is which: a dedicated port answers while the host is off, while a
-// shared port can answer with the host's own traffic and be mistaken for it -- the mistake this plan was
-// written to close. THE ARMS ARE LISTED RATHER THAN EXCLUDED: a former `ethernet_function_is_controller`
-// asked "not unobserved, and one of the two", and the first clause could never decide anything the
-// second had not (review 38602 finding 3). What the enumeration carries that a negation does not is the
-// refusal stated where it is used -- `FunctionUnobserved` and `PrebootNetwork` are functions of their
-// own, so a gap and a preboot interface never join this list, and a reach check never runs against an
-// address nobody read as a controller's.
-fn host_controller_interfaces(host: HostIdentity) -> List<HostNetworkInterface> {
-  filter(xs: host_interface_rows(host: host), predicate: row => match row.lan.binding.function {
-    FunctionObserved { function: observed } => match observed {
-      BmcDedicated => true
-      BmcNcsi => true
-      BmcHostBus => false
-      HostData => false
-      PrebootNetwork => false
-    }
-    FunctionUnobserved { discriminator: _ } => false
-  })
+// THE OPERATOR'S OWN SHELL, the interface they would SSH in through. A host with no read host-OS
+// interface returns the typed gap (see host_interface_gaps), never an absent answer; it is S2's anchor
+// that refuses on it.
+fn host_operating_system_interface(host: HostIdentity) -> HostFunctionInterface {
+  host_function_interface(host: host, function: HostData)
 }
 
 // ONE ADDRESS, ONE INTERFACE, ACROSS THE WHOLE TABLE. Two rows claiming the same address is the shape

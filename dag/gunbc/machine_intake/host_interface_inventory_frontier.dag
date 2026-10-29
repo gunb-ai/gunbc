@@ -32,9 +32,9 @@ fn host_interface_inventory_consumer_frontier_rows() -> List<FrontierRow> {
     decl_names: [
       "host_interface_inventory_for" as NonEmptyStr,
       "host_interface_rows" as NonEmptyStr,
+      "host_function_interface" as NonEmptyStr,
       "host_controller_dedicated_interface" as NonEmptyStr,
       "host_operating_system_interface" as NonEmptyStr,
-      "host_controller_interfaces" as NonEmptyStr,
     ],
     reason: "no production caller: git grep shows the five folds are called only by test.claim.machine_intake.host_interface_inventory_witness. One reason for all five -- they share a single missing consumer, S2's host-interface-to-segment anchor relation (gunbc.plans.site_segment_anchor_bmc_reach), which is the first fold that needs a host's interfaces by function",
     dissolution: bound_dissolution(
