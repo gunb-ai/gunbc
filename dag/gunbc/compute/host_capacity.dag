@@ -337,6 +337,7 @@ type ComputeReservation
   | ComputeCapacityFull { wire: String }
   | ComputeHostBelowFloor { requested: Kibibyte, available: Kibibyte }
   | ComputeReservationRefused { detail: String }
+  | ComputeReservationRecoveryRequired { detail: String }
 
 data compute_seat_attempts: Nat = 3
 data compute_partition_read_budget: Nat = 4096
@@ -477,9 +478,11 @@ fn compute_seat_under_parent(subject: ComputeCapacitySubject, reference: NonEmpt
         ComputeCapacityFull { wire: w } => match compute_release_partition(store: store, partition: subject.parent_partition, appropriation: subject.parent_appropriation, reference: parent_reference, reason: "child admission refused before launch") {
           ComputeReleased { partition: _, reference: _, reason: _ } => child
           ComputeNothingToRelease { detail: _ } => child
-          ComputeReleaseRefused { detail: d } => ComputeReservationRefused { detail: join([w, "; parent rollback unconfirmed: ", d], "") }
+          ComputeReleaseRefused { detail: d } => ComputeReservationRecoveryRequired { detail: join([w, "; parent rollback unconfirmed: ", d], "") }
         }
-        // Unknown child publication keeps the parent charged for recovery.
+        // Unknown child publication keeps the parent charged for recovery, and must not
+        // be reported as an unreserved refusal by the caller or the release fold.
+        ComputeReservationRefused { detail: d } => ComputeReservationRecoveryRequired { detail: concat("parent remains charged; child admission unconfirmed: ", d) }
         _ => child
       }
     }
@@ -548,6 +551,7 @@ fn compute_release(reservation: ComputeReservation, reason: NonEmptyStr) -> Comp
   match reservation {
     ComputeCapacityFull { wire: w } => ComputeNothingToRelease { detail: join(["nothing to release: ", w], "") }
     ComputeHostBelowFloor { requested: _, available: _ } => ComputeNothingToRelease { detail: "nothing to release: the host was below its live memory floor" }
+    ComputeReservationRecoveryRequired { detail: d } => ComputeReleaseRefused { detail: concat("recover through the attempt lifecycle before releasing: ", d) }
     ComputeReservationRefused { detail: d } => ComputeNothingToRelease { detail: join(["nothing to release: ", d], "") }
     ComputeReserved { grant: g, parent_partition: pp, partition: p, amount: _, store: store } =>
       compute_release_on(store: store, parent_partition: pp, partition: p, appropriation: kibibyte(count: 0), reference: g.reference, reason: reason)
@@ -692,6 +696,7 @@ fn compute_reservation_wire(r: ComputeReservation) -> String {
     ComputeHostBelowFloor { requested: rq, available: av } =>
       join(["host below floor: ", to_string(value: kibibyte_count(k: rq)), " KiB requested, ", to_string(value: kibibyte_count(k: av)), " KiB available"], "")
     ComputeReservationRefused { detail: d } => join(["refused: ", d], "")
+    ComputeReservationRecoveryRequired { detail: d } => join(["recovery required: ", d], "")
   }
 }
 

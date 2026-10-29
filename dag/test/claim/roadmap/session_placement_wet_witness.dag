@@ -17,7 +17,7 @@ import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, compute_reserve_against, compute_capacity_store, compute_release_on,
-  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
+  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, ComputeReservationRecoveryRequired,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused,
 }
 import gunbc.compute.work_class_grant { WorkClassAgentSession, GrantAtCeiling, ClassUnmeasured }
@@ -142,6 +142,7 @@ fn reserve_real(dir: String) -> LeaseGrant? {
     ComputeCapacityFull { wire: _ } => none
     ComputeHostBelowFloor { requested: _, available: _ } => none
     ComputeReservationRefused { detail: _ } => none
+    ComputeReservationRecoveryRequired { detail: _ } => none
   }
 }
 
