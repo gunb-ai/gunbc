@@ -19,7 +19,7 @@ module test.claim.roadmap.belt_worktree_restore_wet_witness
 // standing collapse and the branch check) and attempt_worktree_claim_wet (the standing classifier).
 
 import std.logic { Bool }
-import std.types { String, FilePath, List, NonEmptyStr, join, trim }
+import std.types { String, FilePath, List, NonEmptyStr }
 import std.filesystem { path_parent_directory }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
