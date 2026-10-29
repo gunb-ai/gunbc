@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr }
 import std.optional { Present }
 import std.measure { bandwidth, watt, gibibyte, gibibyte_to_byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
-import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, ConfigurableBoardPower, GpuComputeCapability, PcieAddInBoard, cuda_gpus_page_authority }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, ConfigurableBoardPower, GpuComputeCapability, PcieAddInBoard, SingleGpu, cuda_gpus_page_authority }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.storage.types { Gen4, PcieLink }
 import extdeps.pci.identity { PciDeviceId }
@@ -60,7 +60,7 @@ data nvidia_a2_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "A2",
   gpu: nvidia_a2_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
   board_power: Present { value: ConfigurableBoardPower { default: none, minimum: watt(count: 40), maximum: watt(count: 60), named_points: [] } },
   zero_power: none,

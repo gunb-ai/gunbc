@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr }
 import std.optional { Present }
 import std.measure { gibibyte, gibibyte_to_byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
-import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, PcieAddInBoard }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, PcieAddInBoard, SingleGpu }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.pci.identity { PciDeviceId }
 import extdeps.vendor.nvidia { nvidia }
@@ -75,7 +75,7 @@ data nvidia_tesla_t10_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "Tesla T10 16GB",
   gpu: nvidia_tesla_t10_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: none },
   board_power: none,
   zero_power: none,
