@@ -275,3 +275,44 @@ test fn a_reclaimed_claim_reopens_on_the_same_slot_at_the_next_generation() -> B
   }
   cleaned(dirs: [cd, td], verdict: opened && closed_ok && reopened_ok && refused)
 }
+
+// A pass whose 'ended' is a function of the claim's OWN (node_id, attempt_key) -- not a constant. The release
+// decision must be made per claim from that claim's key; a constant here (as pass() uses) cannot catch a caller
+// that hands one claim's verdict to another. ended_of returns true only for the attempt_key named by ended_key.
+fn pass_keyed(
+  dir: String, cd: String, td: String, others: AttemptUnitObservation, content: ClaimContent, capture: ClaimCapture, now: EpochSecs, ended_key: String,
+) -> List<WorktreeClaimOutcome> {
+  match worktree_claim_ensure_pass_at(
+    stores: stores_at(dir: dir), claims_root: cd as NonEmptyStr, host: host,
+    path_of: (n, k) => tree_path(td: td, n: n, k: k),
+    loaded_of: u => others, lifecycle_of: lifecycle_absent, now: now,
+    tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
+    content_of: p => content,
+    remove_tree: p => if shell.Remove.RecursiveForce(path: p).success { ClaimRemoved } else { ClaimRemoveDeclined { detail: "rm failed" } },
+    capture_of: (n, k) => capture,
+    ended_of: (n, k) => k == ended_key) {
+    WorktreeClaimPassRan { outcomes } => outcomes
+    WorktreeClaimPassRefused { detail: _ } => []
+  }
+}
+
+// PER-CLAIM KEYING (the belt must ask the continuation about EACH claim's own attempt, never the node's collapsed
+// first-per-node row). Two claims on the SAME node, identical state (worker ended, tree present, capture settled),
+// differ only in that one lineage has ended. Both must be seen in one pass; only the ended one releases. If the fold
+// handed one claim's verdict to both (the meaning fork this guards), both trees would share a fate -- this fails.
+test fn two_claims_on_one_node_are_released_by_their_own_keys() -> Bool {
+  let dir = fresh_dir(tag: "w14")
+  let cd = fresh_dir(tag: "w14c")
+  let td = fresh_dir(tag: "w14t")
+  let opened_live = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let opened_dead = open_claim(cd: cd, td: td, n: node_a, k: key_b, opened: 1000)
+  let planted = plant(td: td, n: node_a, k: key_a) && plant(td: td, n: node_a, k: key_b)
+  // key_b's lineage has ended; key_a's is still open (request-pending).
+  let os = pass_keyed(dir: dir, cd: cd, td: td, others: AttemptUnitAbsent, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1301, ended_key: key_b)
+  let both_seen = os.length() == 2
+  let each_fated = all(os, o => is_removed(o) || is_noop(o))
+  // the discriminating proof: the live-keyed tree survives, the ended-keyed tree is gone.
+  let live_kept = tree_there(td: td, n: node_a, k: key_a)
+  let dead_gone = !tree_there(td: td, n: node_a, k: key_b)
+  cleaned(dirs: [dir, cd, td], verdict: opened_live && opened_dead && planted && both_seen && each_fated && live_kept && dead_gone)
+}

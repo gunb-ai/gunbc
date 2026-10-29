@@ -1826,6 +1826,13 @@ type AttemptWorktreeRestore
   | AttemptWorktreeBranchAbsent { branch: String, detail: String }
   | AttemptWorktreeRestoreRefused { detail: String }
 
+// THE CLAIM SUB-STEP'S OWN OUTCOME. It only ever ensures that an OPEN claim names the worktree path, so it does not
+// borrow AttemptWorktreeRestore's 'nothing to do' / 'branch absent' variants -- reusing that type for two roles would
+// force the sub-step to fake outcomes it cannot produce (§3: a name held constant may not carry two meanings).
+type WorktreeClaimEnsure
+  = ClaimEnsured
+  | ClaimEnsureRefused { detail: String }
+
 // THE ONE gate that a prior attempt is a lineage still being continued (not ended): its recovery reading is
 // request-pending or resumable-pending with no interrupted tool calls -- exactly the lineages the continuation
 // resumes. The recovery is read from the event stream (attempt-state), INDEPENDENT of the worktree, so the restore
@@ -1844,17 +1851,17 @@ fn belt_attempt_lineage_is_resumable_pending(recovery: SessionRecovery) -> Bool 
 // worktree path fails closed -- a reopen that refuses is re-read and accepted only if a live claim already names this
 // exact path, and an absent/open-lost/unreadable claim is a typed refusal rather than a reported success (§5: no
 // plausible output is fabricated on an unknown record).
-fn belt_worktree_claim_reopen_for_instance(
+fn belt_worktree_claim_ensure_open_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
   attempt_key: String,
   worktree_path: String,
   branch: String,
-) -> AttemptWorktreeRestore {
+) -> WorktreeClaimEnsure {
   let root = worktree_claim_slots_root_of(instance: instance)
   let reference = worktree_claim_reference(node_id: node_id as String, attempt_key: attempt_key)
   match now_epoch_seconds() {
-    Absent => AttemptWorktreeRestoreRefused { detail: "the host clock could not be read, so a reopened claim would carry no launch deadline" }
+    Absent => ClaimEnsureRefused { detail: "the host clock could not be read, so a reopened claim would carry no launch deadline" }
     Present { value: now } => {
       let fresh = worktree_claim_new(
         node_id: node_id as String,
@@ -1865,31 +1872,31 @@ fn belt_worktree_claim_reopen_for_instance(
       match worktree_claim_read(root: root, reference: reference as NonEmptyStr) {
         WorktreeClaimHeld { claim: _, generation: g } =>
           match worktree_claim_reopen_settled(root: root, reference: reference as NonEmptyStr, expected: g, claim: fresh) {
-            AttemptAdvanced { state: _, generation: _ } => AttemptWorktreeRestored { worktree_path: worktree_path, branch: branch }
+            AttemptAdvanced { state: _, generation: _ } => ClaimEnsured
             AttemptLostRace { expected: e, observed: o } =>
-              AttemptWorktreeRestoreRefused { detail: join(["the reclaimed claim moved under the restore: expected ", e, ", observed ", o], "") }
+              ClaimEnsureRefused { detail: join(["the reclaimed claim moved under the restore: expected ", e, ", observed ", o], "") }
             AttemptTransitionRefused { detail } =>
               match worktree_claim_read(root: root, reference: reference as NonEmptyStr) {
                 WorktreeClaimHeld { claim: c, generation: _ } =>
                   if c.worktree_path == worktree_path {
-                    AttemptWorktreeRestored { worktree_path: worktree_path, branch: branch }
+                    ClaimEnsured
                   } else {
-                    AttemptWorktreeRestoreRefused { detail: join(["the reclaim would not reopen onto this worktree: ", detail], "") }
+                    ClaimEnsureRefused { detail: join(["the reclaim would not reopen onto this worktree: ", detail], "") }
                   }
-                WorktreeClaimAbsent => AttemptWorktreeRestoreRefused { detail: join(["the reclaim vanished during the restore: ", detail], "") }
-                WorktreeClaimUnreadable { detail: d } => AttemptWorktreeRestoreRefused { detail: join(["the reclaimed claim could not be re-read after the reopen refused: ", d], "") }
+                WorktreeClaimAbsent => ClaimEnsureRefused { detail: join(["the reclaim vanished during the restore: ", detail], "") }
+                WorktreeClaimUnreadable { detail: d } => ClaimEnsureRefused { detail: join(["the reclaimed claim could not be re-read after the reopen refused: ", d], "") }
               }
           }
         WorktreeClaimAbsent =>
           match worktree_claim_open(root: root, claim: fresh) {
-            AttemptAdvanced { state: _, generation: _ } => AttemptWorktreeRestored { worktree_path: worktree_path, branch: branch }
+            AttemptAdvanced { state: _, generation: _ } => ClaimEnsured
             AttemptTransitionRefused { detail } =>
-              AttemptWorktreeRestoreRefused { detail: join(["a worktree claim could not be opened for the restored worktree: ", detail], "") }
+              ClaimEnsureRefused { detail: join(["a worktree claim could not be opened for the restored worktree: ", detail], "") }
             AttemptLostRace { expected: e, observed: o } =>
-              AttemptWorktreeRestoreRefused { detail: join(["a claim appeared under the restore: expected ", e, ", observed ", o], "") }
+              ClaimEnsureRefused { detail: join(["a claim appeared under the restore: expected ", e, ", observed ", o], "") }
           }
         WorktreeClaimUnreadable { detail } =>
-          AttemptWorktreeRestoreRefused { detail: join(["the reclaimed claim could not be read to reopen it: ", detail], "") }
+          ClaimEnsureRefused { detail: join(["the reclaimed claim could not be read to reopen it: ", detail], "") }
       }
     }
   }
@@ -1927,16 +1934,14 @@ fn belt_attempt_worktree_restore_for_instance(instance: HostDashboardInstance, n
                   // claim is recorded BEFORE `git worktree add`), so a tree is never created that no open record names;
                   // only then re-materialize the tree from the branch.
                   ExecOk { stdout: _ } =>
-                    match belt_worktree_claim_reopen_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key, worktree_path: path, branch: branch) {
-                      AttemptWorktreeRestored { worktree_path: _, branch: _ } =>
+                    match belt_worktree_claim_ensure_open_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key, worktree_path: path, branch: branch) {
+                      ClaimEnsured =>
                         match belt_exec(cmd: git_worktree_add_branch_argv_for_instance(instance: instance, worktree_path: path, branch_name: branch), workdir: instance.repo_root as String) {
                           ExecOk { stdout: _ } => AttemptWorktreeRestored { worktree_path: path, branch: branch }
                           ExecFailed { program: _, exit_code, stderr } => AttemptWorktreeRestoreRefused { detail: join(["re-materializing the worktree for attempt ", p.attempt_key, " from branch ", branch, " failed (exit ", to_string(value: exit_code), "): ", stderr], "") }
                           ExecRefused { program, reason } => AttemptWorktreeRestoreRefused { detail: join(["re-materializing the worktree was refused: ", program, " -- ", reason], "") }
                         }
-                      AttemptWorktreeRestoreRefused { detail } => AttemptWorktreeRestoreRefused { detail: detail }
-                      AttemptWorktreeBranchAbsent { branch: b, detail } => AttemptWorktreeBranchAbsent { branch: b, detail: detail }
-                      AttemptWorktreeNotNeeded => AttemptWorktreeRestoreRefused { detail: "the claim reopen unexpectedly reported no restore to do" }
+                      ClaimEnsureRefused { detail } => AttemptWorktreeRestoreRefused { detail: detail }
                     }
                   ExecFailed { program: _, exit_code, stderr: _ } =>
                     if exit_code == 1 {
@@ -2060,16 +2065,13 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
             content_of: p => belt_claim_content_of(instance: instance, worktree: p),
             remove_tree: p => belt_claim_remove_tree(instance: instance, repo_workdir: instance.repo_root as String, path: p),
             capture_of: (n, k) => belt_claim_capture_of(instance: instance, node_id: n, attempt_key: k),
-            // THE ONE 'ENDED' DERIVATION, read from the continuation, not re-derived from the worker's
-            // unit standing. A request-pending worker legitimately exited (its unit is finished), yet
-            // its lineage is resumable -- the continuation says Hold-Until/Resume, not Ended -- so the
-            // claim must NOT release the worktree. Only ContinuationEnded (or the operator's Retired
-            // verdict) releases it; every other standing, including a Refused decision on an already-
-            // reaped attempt, keeps the claim so the lineage can still be continued.
-            ended_of: (n, _k) => match belt_continuation_decision_for_node(instance: instance, node_id: nid(s: n)) {
-              ContinuationEnded { reason: _ } => true
-              _ => false
-            },
+            // THE ONE 'ENDED' DERIVATION, keyed by THIS claim's (node_id, attempt_key) and read from the
+            // continuation -- not re-derived from the worker's unit standing, and NOT from the node's collapsed
+            // first-per-node row (that would let a sibling attempt decide this claim's fate). A request-pending
+            // worker legitimately exited (its unit is finished), yet its OWN lineage is resumable -- its decision is
+            // Hold-Until/Resume, not Ended -- so the claim must NOT release the worktree. Only this attempt's own
+            // ContinuationEnded releases it; every other standing keeps the claim so the lineage can still continue.
+            ended_of: (n, k) => belt_attempt_lineage_ended_for_attempt(instance: instance, node_id: nid(s: n), attempt_key: k),
           ) {
             WorktreeClaimPassRan { outcomes } =>
               if any(outcomes, o => worktree_claim_outcome_is_red(o: o)) {
@@ -3124,6 +3126,41 @@ fn belt_continuation_decision_for_node(instance: HostDashboardInstance, node_id:
         Present { value: p } => belt_continuation_decision_for_progress(instance: instance, node_id: node_id, progress: p)
       }
     }
+  }
+}
+
+// THE 'ENDED' VERDICT FOR ONE ATTEMPT, keyed by (node_id, attempt_key). The node-wide observer above collapses the
+// ledger to the first row PER NODE (dispatch_attempt_ref_first_per_node), so it cannot answer the settlement's
+// question -- "has THIS attempt's lineage ended?" -- without a meaning fork: a live newer attempt would hold an
+// ended older claim open forever (a leak), and an ended older attempt would release a live newer claim (destroying
+// resumable state). So this reads the attempt's OWN row from the raw (uncollapsed) ledger and routes it through the
+// SAME decision the spawn route uses (belt_continuation_decision_for_progress): one derivation, keyed. When the raw
+// ledger cannot be read, or this attempt has no row (fully reaped), the verdict is 'not ended' -- fail closed, never
+// destroy a worktree whose lineage we cannot prove has ended (§5).
+fn belt_attempt_lineage_ended_for_attempt(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> Bool {
+  match belt_attempts_observe_for_instance(instance: instance) {
+    AttemptsRefused { reason: _ } => false
+    AttemptsObserved { attempts } =>
+      match (attempts |> filter(a => a.node_id as String == node_id as String && a.attempt_key == attempt_key)).first() {
+        Absent => false
+        Present { value: a } =>
+          match belt_continuation_decision_for_progress(
+            instance: instance,
+            node_id: node_id,
+            progress: belt_workflow_progress_for_attempt_ref(
+              instance: instance,
+              panes: belt_attempt_panes_observe_for_instance(instance: instance),
+              attempt: a,
+            ),
+          ) {
+            ContinuationEnded { reason: _ } => true
+            _ => false
+          }
+      }
   }
 }
 
