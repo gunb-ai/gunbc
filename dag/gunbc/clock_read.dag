@@ -94,8 +94,10 @@ fn observer_clock_modeled(millis: EpochMs, realization: NonEmptyStr) -> Observer
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_apply_whose_post_read_fails_the_goal_generation_mints_no_receipt"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "one_approval_admits_exactly_the_convergence_it_names"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_secured_apply_projects_to_a_secured_standing_carrying_the_writes"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_credential_policy_witness", decl_name: "controller_reading"),
   ]
 {
   ObserverClockInstant { millis: millis, source: ObserverClockModeled { realization: realization } }
