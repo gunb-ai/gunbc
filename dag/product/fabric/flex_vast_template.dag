@@ -52,6 +52,32 @@ data flex_vast_args_launch: List<String> = ["bash", "-c", flex_vast_args_launch_
 // 57968351 (2026-10-27), which is how its on-start script reached the card.
 data flex_vast_template_env_max_chars: Int = 4096
 
+// The per-rent CREATE env's own cap is not known. What is known is one observation: a create with an env
+// of about 5,277 characters was accepted and served. That is a receipt of this repository's observation,
+// not a Vast fact, so it is not stated as a limit. The cap stays unknown until read; if a create is ever
+// refused for size, that refusal becomes the reading.
+type FlexCreateEnvCap
+  = FlexCreateEnvCapUnknown { read_obligation: NonEmptyStr }
+  | FlexCreateEnvCapRead { max_chars: Int }
+
+data flex_vast_create_env_cap: FlexCreateEnvCap = FlexCreateEnvCapUnknown {
+  read_obligation: "read Vast's API docs for the create-instance env limit, or probe PUT /api/v0/asks/<id>/ for its real cap" as NonEmptyStr,
+}
+
+type FlexCreateEnvObservation {
+  instance_id: Int
+  date: NonEmptyStr
+  env_chars: Int
+  outcome: NonEmptyStr
+}
+
+data flex_vast_create_env_observed_accepted: FlexCreateEnvObservation = FlexCreateEnvObservation {
+  instance_id: 57968351,
+  date: "2026-10-27" as NonEmptyStr,
+  env_chars: 5277,
+  outcome: "accepted; served in about 25 min" as NonEmptyStr,
+}
+
 type FlexTemplateEnvStanding
   = FlexTemplateEnvWithinBound { chars: Int }
   | FlexTemplateEnvOverBound { chars: Int, max: Int }

@@ -3,13 +3,17 @@ module test.claim.fabric.flex_vast_template_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, List, Bool, Int, String, Secret }
 import std.optional { Present, Absent }
+import std.render_repeat_string_bootstrap { repeat_string }
 import extdeps.cloud.vast_ai { VastAiTemplateRow }
 import product.fabric.flex_vast_template {
   FlexTemplateSpec, FlexTemplateNoop, FlexTemplateApply, FlexTemplateRefuse,
   flex_vast_template_spec, flex_template_env, flex_template_decide, flex_template_forbidden_env_names,
   flex_template_env_forbidden_name, flex_template_retired_hash,
+  flex_vast_template_env_standing, flex_vast_template_env_max_chars, FlexTemplateEnvOverBound, FlexTemplateEnvWithinBound,
+  flex_vast_create_env_observed_accepted, flex_vast_create_env_cap, FlexCreateEnvCapUnknown,
+  flex_vast_rent_launch, FlexRentLaunchBuilt, FlexRentLaunchRefused, FlexSshRuntype, FlexArgsRuntype, flex_launch_runtype_wire, flex_vast_args_launch,
 }
-import product.fabric.flex_vast_loop { mint_flex_pool_password }
+import product.fabric.flex_vast_loop { mint_flex_create_env }
 import product.fabric.flex_serving_image { flex_lil_serving_image, flex_serving_image_reference, flex_serving_onstart }
 import product.fabric.flex_vast_shadow { flex_serving_recipe, flex_host_image }
 import product.fabric.flex_vast_template_control {
@@ -67,11 +71,46 @@ test fn the_retired_hash_is_never_adopted_and_differing_content_is_not_edited() 
     && match flex_template_decide(spec: flex_vast_template_spec, named: [row(hash: "a", env: env), row(hash: "b", env: env)]) { FlexTemplateRefuse { cause: _ } => true  _ => false }
 }
 
-// TWO CREATES, TWO PASSWORDS: each mint draws /dev/urandom afresh and is a well-formed env flag.
-test fn two_mints_differ_and_each_names_pool_api_key() -> Bool {
-  let a = mint_flex_pool_password() as String
-  let b = mint_flex_pool_password() as String
-  (a != b) && a.contains("-e POOL_API_KEY=") && b.contains("-e POOL_API_KEY=")
+// TWO CREATES, TWO PASSWORDS: each mint draws /dev/urandom afresh, keeps the launch env, and names POOL_API_KEY.
+test fn two_mints_differ_and_each_carries_the_launch_and_names_pool_api_key() -> Bool {
+  match flex_vast_rent_launch(spec: flex_vast_template_spec) {
+    FlexRentLaunchRefused { cause: _ } => false
+    FlexRentLaunchBuilt { launch: l } =>
+      let a = mint_flex_create_env(launch: l) as String
+      let b = mint_flex_create_env(launch: l) as String
+      (a != b) && a.contains("-e POOL_API_KEY=") && b.contains("-e POOL_API_KEY=") && a.contains("-e ONSTART_B64=") && a.contains(l.env)
+  }
+}
+
+// THE LAUNCH SHAPE: runtype args, [bash, -c, <decode ONSTART_B64, run, exec sleep infinity>], stored onstart ''.
+test fn the_spec_is_the_args_launch_with_an_empty_stored_onstart() -> Bool {
+  (flex_launch_runtype_wire(runtype: flex_vast_template_spec.runtype) == "args")
+    && (flex_vast_template_spec.args == flex_vast_args_launch)
+    && (list_length(flex_vast_template_spec.args) == 3)
+    && join(flex_vast_template_spec.args, " ").contains("ONSTART_B64")
+    && join(flex_vast_template_spec.args, " ").contains("exec sleep infinity")
+}
+
+// A template env over Vast's 4096-char cap refuses; the declared env is within it; an ssh spec builds no
+// per-rent launch.
+test fn a_template_env_over_4096_chars_refuses() -> Bool {
+  let over = join(["-e PORT=", repeat_string(s: "9", n: 4096)], "")
+  (flex_vast_template_env_max_chars == 4096)
+    && match flex_vast_template_env_standing(env: over) { FlexTemplateEnvOverBound { chars: _, max: m } => m == 4096  FlexTemplateEnvWithinBound { chars: _ } => false }
+    && match flex_vast_template_env_standing(env: flex_template_env(spec: flex_vast_template_spec)) { FlexTemplateEnvWithinBound { chars: _ } => true  FlexTemplateEnvOverBound { chars: _, max: _ } => false }
+}
+
+test fn an_ssh_spec_builds_no_per_rent_launch() -> Bool {
+  let ssh = FlexTemplateSpec {
+    name: flex_vast_template_spec.name, image: flex_vast_template_spec.image, tag: flex_vast_template_spec.tag,
+    runtype: FlexSshRuntype, args: [], disk: flex_vast_template_spec.disk, port: flex_vast_template_spec.port,
+    shm: flex_vast_template_spec.shm, onstart: flex_vast_template_spec.onstart, ssh_direct: flex_vast_template_spec.ssh_direct,
+    jup_direct: flex_vast_template_spec.jup_direct, use_jupyter_lab: flex_vast_template_spec.use_jupyter_lab,
+    min_cuda_max_good: flex_vast_template_spec.min_cuda_max_good, min_cpu_ram: flex_vast_template_spec.min_cpu_ram,
+    min_gpu_ram: flex_vast_template_spec.min_gpu_ram, min_inet_down: flex_vast_template_spec.min_inet_down,
+    verified_only: flex_vast_template_spec.verified_only,
+  }
+  match flex_vast_rent_launch(spec: ssh) { FlexRentLaunchRefused { cause: _ } => true  FlexRentLaunchBuilt { launch: _ } => false }
 }
 
 // The run's verdict is a typed outcome: ensured only when the readback decides Noop AND the retired hash
@@ -95,10 +134,19 @@ test fn the_outcome_is_ensured_only_with_a_clean_readback_and_one_retired_row() 
 test fn the_vast_realization_reads_the_one_serving_image() -> Bool {
   ((flex_vast_template_spec.image as String) == "ghcr.io/local-inference-lab/vllm@sha256")
     && ((flex_vast_template_spec.tag as String) == "751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7")
-    && (flex_vast_template_spec.onstart == flex_serving_onstart)
+    && (flex_vast_template_spec.onstart == "")
+    && (flex_serving_onstart == flex_lil_serving_image.onstart)
     && ((flex_serving_image_reference(image: flex_lil_serving_image) as String) == "ghcr.io/local-inference-lab/vllm@sha256:751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7")
     && (match flex_host_image(recipe: flex_serving_recipe) {
           Present { value: i } => (i as String) == (flex_serving_image_reference(image: flex_lil_serving_image) as String)
           Absent => false
         })
+}
+
+// The create env's cap is unknown with a read obligation; the one observation is a receipt, and it is above
+// the template bound, so the template bound is not applied to the create env.
+test fn the_create_env_cap_is_unknown_and_the_observed_acceptance_is_above_the_template_bound() -> Bool {
+  (match flex_vast_create_env_cap { FlexCreateEnvCapUnknown { read_obligation: _ } => true  _ => false })
+    && (flex_vast_create_env_observed_accepted.env_chars > flex_vast_template_env_max_chars)
+    && (flex_vast_create_env_observed_accepted.instance_id == 57968351)
 }
