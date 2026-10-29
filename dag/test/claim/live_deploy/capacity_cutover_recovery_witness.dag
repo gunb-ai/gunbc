@@ -8,7 +8,7 @@ import extdeps.crypto.hash { sha256_digest }
 import extdeps.systemd.manager { SystemManager }
 import extdeps.systemd.unit_file { ServiceUnitFile, NotInstallable }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
-import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument }
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 import gunbc.live_deploy.capacity_cutover_recovery {
   CapacityGenerationFile, CapacityCutoverRecord, CapacityInstalling,
@@ -19,7 +19,7 @@ import gunbc.live_deploy.capacity_cutover_recovery {
 fn recovery_fixture_file(name: NonEmptyStr, digest: NonEmptyStr) -> CapacityGenerationFile {
   CapacityGenerationFile { install: DeploymentUnitInstall { manager: SystemManager, unit: name,
     destination: concat("/etc/systemd/system/", name as String) as NonEmptyStr,
-    file: ServiceUnitFile { unit: [], service: [], install: NotInstallable } }, digest: sha256_digest(hex: digest) }
+    file: ModeledUnitDocument { file: ServiceUnitFile { unit: [], service: [], install: NotInstallable } }}, digest: sha256_digest(hex: digest) }
 }
 
 fn recovery_fixture_record() -> CapacityCutoverRecord {

@@ -4,8 +4,8 @@ import std.types { String, List, ShellResponse }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import std.algebra { trim }
-import extdeps.systemd.unit_file { ServiceUnitFile, SliceUnitFile, PathUnitFile, TimerUnitFile, PathUnit, TimerUnit, ServiceSlice }
-import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import extdeps.systemd.unit_file { SystemdUnitFile, ServiceUnitFile, SliceUnitFile, PathUnitFile, TimerUnitFile, PathUnit, TimerUnit, ServiceSlice }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument, CapturedUnitDocument }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd { ActiveState, ControlGroup, LoadState, Inactive, Failed, parse_systemd_unit_active_state, parse_systemd_unit_load_state, UnitLoadMasked }
 import extdeps.systemd.systemctl {
@@ -26,6 +26,13 @@ type CapacityProbeRequirement
 
 fn capacity_probe_requirement(install: DeploymentUnitInstall) -> CapacityProbeRequirement {
   match install.file {
+    CapturedUnitDocument { blob: _ } => CapacityProbeUnknown { cause: "captured unit document needs a separately recorded source drain binding" }
+    ModeledUnitDocument { file: file } => capacity_probe_modeled_requirement(install: install, file: file)
+  }
+}
+
+fn capacity_probe_modeled_requirement(install: DeploymentUnitInstall, file: SystemdUnitFile) -> CapacityProbeRequirement {
+  match file {
     ServiceUnitFile { unit: _, service: settings, install: _ } => {
       let parents = flat_map(settings, setting => match setting { ServiceSlice { name: name } => [CapacityManagedUnit { manager: install.manager, unit: name }] _ => [] })
       if count(parents) == 1 { CapacityProbeProcess { parent: first(parents) } }

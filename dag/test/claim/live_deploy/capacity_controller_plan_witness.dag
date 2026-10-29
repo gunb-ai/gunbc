@@ -8,13 +8,13 @@ import std.error_primitives { Ok, Err }
 import extdeps.systemd.manager { SystemManager }
 import extdeps.systemd.systemctl { systemctl_start_command }
 import extdeps.systemd.unit_file { ServiceUnitFile, NotInstallable }
-import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument }
 import gunbc.live_deploy.apply_legs { ApplyPlanReady, ApplyLegInstallUnit, ApplyLegCommand, ApplyLegDiagnosedCommand, ApplyLegRepairDirectoryEntries }
 import gunbc.live_deploy.capacity_controller_plan { capacity_controller_installs, capacity_controller_reload_managers, capacity_controller_plan, CapacityControllerDrain, CapacityControllerInstall, CapacityControllerReload, CapacityControllerDischarge }
 
 fn controller_fixture_install() -> DeploymentUnitInstall {
   DeploymentUnitInstall { manager: SystemManager, unit: "fixture.service", destination: "/fixture/fixture.service",
-    file: ServiceUnitFile { unit: [], service: [], install: NotInstallable } }
+    file: ModeledUnitDocument { file: ServiceUnitFile { unit: [], service: [], install: NotInstallable } }}
 }
 
 test fn typed_unit_install_survives_the_closed_projection() -> Bool {

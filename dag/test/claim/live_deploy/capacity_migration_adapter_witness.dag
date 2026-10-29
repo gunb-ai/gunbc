@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import std.error_primitives { Result, Ok, Err }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import extdeps.systemd.unit_file { ServiceUnitFile, SliceUnitFile, NotInstallable, ServiceSlice }
-import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument }
 import gunbc.compute.capacity_migration { CapacityWriterReading, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified }
 import gunbc.live_deploy.capacity_migration {
   DeploymentCapacityWriter, deployment_capacity_writer_parent, deployment_capacity_population_from_installs,
@@ -20,7 +20,7 @@ fn adapter_writer_source() -> DeclarationRef {
 fn adapter_service(unit: NonEmptyStr, parents: List<NonEmptyStr>) -> DeploymentUnitInstall {
   DeploymentUnitInstall {
     manager: UserManager { uid: 1234 }, unit: unit, destination: join(["/fixture/", unit as String], "") as NonEmptyStr,
-    file: ServiceUnitFile { unit: [], service: map(parents, name => ServiceSlice { name: name }), install: NotInstallable },
+    file: ModeledUnitDocument { file: ServiceUnitFile { unit: [], service: map(parents, name => ServiceSlice { name: name }), install: NotInstallable } },
   }
 }
 
@@ -37,7 +37,7 @@ test fn a_slice_with_no_writer_is_not_a_parent_requirement() -> Bool {
   let base = migration_fixture_population(placement_known: true)
   let unused = DeploymentUnitInstall {
     manager: SystemManager, unit: "srv1-inference.slice", destination: "/fixture/srv1-inference.slice",
-    file: SliceUnitFile { unit: [], slice: [], install: NotInstallable },
+    file: ModeledUnitDocument { file: SliceUnitFile { unit: [], slice: [], install: NotInstallable } },
   }
   match deployment_capacity_population_from_installs(
     installed: [adapter_service(unit: "writer.service", parents: ["work.slice"]), adapter_service(unit: "reader.service", parents: ["srv1-inference.slice"]), unused],

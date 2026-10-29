@@ -9,7 +9,7 @@ import gunbc.compute.capacity_migration {
   CapacityManagedUnit, CapacityMigrationPopulation, CapacityTransientFamily, CapacityMigrationChild,
   CapacityMigrationParentRequirement, CapacityWriterReading, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified,
 }
-import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument, CapturedUnitDocument }
 
 // Classification belongs to the source owner. Confirmed non-writers are excluded;
 // confirmed writers AND unclassified services are drained. The reading remains visible
@@ -27,6 +27,8 @@ fn deployment_capacity_writer_parent(writer: DeploymentCapacityWriter) -> Capaci
     source: writer.reading.source,
     standing: writer.reading.standing,
     parents: match writer.install.file {
+      CapturedUnitDocument { blob: _ } => Err { value: "captured unit document has no parsed writer placement" }
+      ModeledUnitDocument { file: file } => match file {
       ServiceUnitFile { unit: _, service: service, install: _ } => {
         let slices = flat_map(service, setting => match setting {
           ServiceSlice { name: name } => [name]
@@ -36,12 +38,16 @@ fn deployment_capacity_writer_parent(writer: DeploymentCapacityWriter) -> Capaci
         else { Ok { value: map(slices, name => CapacityManagedUnit { manager: writer.install.manager, unit: name }) } }
       }
       _ => Err { value: "ledger writer classification names a non-service unit" }
+      }
     },
   }
 }
 
 fn deployment_capacity_writer_binding(row: DeploymentUnitInstall, classify: fn(DeploymentUnitInstall) -> CapacityWriterReading) -> DeploymentCapacityWriter? {
   match row.file {
+    CapturedUnitDocument { blob: _ } => Present { value: DeploymentCapacityWriter {
+      reading: CapacityWriterReading { source: classify(row).source, standing: CapacityUnclassified { detail: "captured unit document has no covered negative writer reading" } }, install: row } }
+    ModeledUnitDocument { file: file } => match file {
     ServiceUnitFile { unit: _, service: _, install: _ } => {
       let reading = classify(row)
       match reading.standing {
@@ -51,6 +57,7 @@ fn deployment_capacity_writer_binding(row: DeploymentUnitInstall, classify: fn(D
       }
     }
     _ => none
+    }
   }
 }
 

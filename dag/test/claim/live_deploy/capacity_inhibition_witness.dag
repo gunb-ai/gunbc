@@ -6,12 +6,12 @@ import extdeps.systemd.manager { SystemManager, UserManager }
 import extdeps.systemd.unit_file { ServiceUnitFile, NotInstallable }
 import extdeps.systemd.unit_load_path { systemd_user_control_directories }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
-import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument }
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath, capacity_inhibition_path, capacity_inhibition_precedes_install }
 
 fn inhibition_fixture_install() -> DeploymentUnitInstall {
   DeploymentUnitInstall { manager: SystemManager, unit: "fixture.service", destination: "/etc/systemd/system/fixture.service",
-    file: ServiceUnitFile { unit: [], service: [], install: NotInstallable } }
+    file: ModeledUnitDocument { file: ServiceUnitFile { unit: [], service: [], install: NotInstallable } }}
 }
 
 fn inhibition_fixture_path() -> CapacityInhibitionPath {

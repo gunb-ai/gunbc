@@ -1,6 +1,8 @@
 module gunbc.host.host_effect_realize
 
-import gunbc.live_deploy.apply_legs { ApplyLegInstallUnit, apply_unit_install_command, apply_unit_install_payload }
+import gunbc.live_deploy.apply_legs { ApplyLegInstallUnit, apply_unit_install_command, apply_modeled_unit_install_payload }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument, CapturedUnitDocument }
+import std.fabric_blob { fabric_blob_reading_path, fabric_blob_reading_digest }
 
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text, admitted_scratch_path }
 
@@ -6291,6 +6293,28 @@ fn deploy_apply_diagnosed_failure(why: String, diagnosis: RunArgvTransportOutcom
 
 // THE DIGEST OF A FILE ON THE HOST AGAINST THE ONE THE PLAN DECLARED. An unreadable file, an unparseable
 // line and a different digest are each their own refusal; none reads as a match.
+// Both documents use the same typed install command. Captured blobs preserve
+// exact bytes; hash checks bracket copying and verify the installed destination.
+fn deploy_apply_unit_install_failure(install: DeploymentUnitInstall, ports: DeployApplyPorts) -> Optional<String> {
+  match install.file {
+    ModeledUnitDocument { file: file } => deploy_retract_command_failure(outcome: ports.stdin(
+      apply_unit_install_command(install: install), apply_modeled_unit_install_payload(file: file)))
+    CapturedUnitDocument { blob: blob } => {
+      let command = ports.command
+      let source = fabric_blob_reading_path(reading: blob) as String
+      let digest = sha256_digest(hex: fabric_blob_reading_digest(reading: blob).hex as NonEmptyStr)
+      match deploy_apply_digest_failure(path: source, digest: digest, outcome: command(sha256sum_file_command(path: source))) {
+        Present { value: why } => Present { value: why }
+        Absent => match deploy_retract_command_failure(outcome: command(apply_unit_install_command(install: install))) {
+          Present { value: why } => Present { value: why }
+          Absent => deploy_apply_digest_failure(path: install.destination as String, digest: digest,
+            outcome: command(sha256sum_file_command(path: install.destination as String)))
+        }
+      }
+    }
+  }
+}
+
 fn deploy_apply_digest_failure(path: String, digest: Digest, outcome: RunArgvTransportOutcome) -> Optional<String> {
   match outcome {
     RunArgvTransportRefused { reason: r } => Present { value: r }
@@ -6325,7 +6349,7 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
     ApplyLegRepairDirectoryEntries { command: c } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegCommand { step: _, command: c } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegInstallFile { step: _, command: c, payload: p } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
-    ApplyLegInstallUnit { step: _, install: install } => deploy_retract_command_failure(outcome: ports.stdin(apply_unit_install_command(install: install), apply_unit_install_payload(install: install)))
+    ApplyLegInstallUnit { step: _, install: install } => deploy_apply_unit_install_failure(install: install, ports: ports)
     ApplyLegReport { step: _, line: _ } => Absent
     ApplyLegDigestVerify { step: _, path: p, digest: d } => deploy_apply_digest_failure(path: p, digest: d, outcome: command(sha256sum_file_command(path: p)))
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } =>

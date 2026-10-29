@@ -8,9 +8,14 @@
 // legs under test are the real plan's, not hand-built.
 module test.claim.live_deploy.live_deploy_apply_run_witness
 
-import gunbc.live_deploy.apply_legs { ApplyLegInstallUnit, apply_unit_install_command, apply_unit_install_payload }
+import gunbc.live_deploy.apply_legs { ApplyLegInstallUnit, apply_unit_install_command, apply_unit_install_preview }
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
+import std.fabric_blob { read_staged_fabric_blob, FabricBlobRead, FabricBlobReadRefused, FabricBlobReading, fabric_blob_reading_digest }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, CapturedUnitDocument }
+import extdeps.systemd.manager { SystemManager }
+import extdeps.crypto.hash { sha256sum_file_command }
+
 import std.algebra { Cons, Empty, skip }
 import std.optional { Optional, Present, Absent }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
@@ -687,6 +692,48 @@ test fn typed_unit_installs_reach_the_existing_stdin_transport() -> Bool {
     ApplyRunOk { legs_run: n, reports: _ } => n == 2 && match deploy_apply_run_legs(legs: units, ports: ports(command_code: 0, stdin_code: 4)) {
       ApplyRunOk { legs_run: _, reports: _ } => false
       ApplyRunFailed { step: _, reason: reason, legs_run: n } => n == 0 && string_contains(s: reason, pattern: "stdin-boom")
+    }
+  }
+}
+
+fn captured_unit_ports(blob: FabricBlobReading, bad_destination: Bool) -> DeployApplyPorts {
+  let base = ports(command_code: 1, stdin_code: 1)
+  let digest = fabric_blob_reading_digest(reading: blob).hex as String
+  DeployApplyPorts {
+    command: fn(c) { observed_out(code: 0, out: concat(
+      if bad_destination && c == sha256sum_file_command(path: "/fixture/unit.service") {
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      } else { digest }, "  /fixture/file\n")) },
+    stdin: base.stdin, object_source: base.object_source, ensure_directory: base.ensure_directory,
+    state_directories: base.state_directories, root_helper_snapshot: base.root_helper_snapshot,
+    broker_tree: base.broker_tree, dependency: base.dependency, retract: base.retract,
+  }
+}
+
+// The reading mint uses the existing committed empty-blob fixture and the blob
+// owner's hermetic handlers. Installation runs only over supplied command ports.
+test fn captured_unit_bytes_use_the_typed_file_copy_not_stdin_rendering() -> Bool {
+  match read_staged_fabric_blob(path: "dag/test/fixture/fabric_blob/empty.bin") {
+    FabricBlobReadRefused { fault: _ } => false
+    FabricBlobRead { reading: blob } => {
+      let install = DeploymentUnitInstall { manager: SystemManager, unit: "unit.service", destination: "/fixture/unit.service", file: CapturedUnitDocument { blob: blob } }
+      match deploy_apply_run_legs(legs: [ApplyLegInstallUnit { step: "captured", install: install }], ports: captured_unit_ports(blob: blob, bad_destination: false)) {
+        ApplyRunOk { legs_run: n, reports: _ } => n == 1 && any(apply_unit_install_command(install: install).arguments, word => word == "dag/test/fixture/fabric_blob/empty.bin")
+        _ => false
+      }
+    }
+  }
+}
+
+test fn captured_unit_destination_digest_mismatch_stops_apply() -> Bool {
+  match read_staged_fabric_blob(path: "dag/test/fixture/fabric_blob/empty.bin") {
+    FabricBlobReadRefused { fault: _ } => false
+    FabricBlobRead { reading: blob } => {
+      let install = DeploymentUnitInstall { manager: SystemManager, unit: "unit.service", destination: "/fixture/unit.service", file: CapturedUnitDocument { blob: blob } }
+      match deploy_apply_run_legs(legs: [ApplyLegInstallUnit { step: "captured", install: install }], ports: captured_unit_ports(blob: blob, bad_destination: true)) {
+        ApplyRunFailed { step: _, reason: _, legs_run: _ } => true
+        _ => false
+      }
     }
   }
 }

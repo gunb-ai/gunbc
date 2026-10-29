@@ -3,6 +3,11 @@ module gunbc.live_deploy.unit_install
 import std.types { NonEmptyStr }
 import extdeps.systemd.manager { SystemdManager }
 import extdeps.systemd.unit_file { SystemdUnitFile }
+import std.fabric_blob { FabricBlobReading }
+
+type DeploymentUnitDocument
+  = ModeledUnitDocument { file: SystemdUnitFile }
+  | CapturedUnitDocument { blob: FabricBlobReading }
 
 // The apply leg carries this record until execution. A migration projects the same
 // records; it does not infer units from destination paths or maintain a second roster.
@@ -11,5 +16,5 @@ type DeploymentUnitInstall {
   manager: SystemdManager
   unit: NonEmptyStr
   destination: NonEmptyStr
-  file: SystemdUnitFile
+  file: DeploymentUnitDocument
 }
