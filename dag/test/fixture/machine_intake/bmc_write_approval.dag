@@ -8,7 +8,7 @@ import gunbc.auth.approval_request_client { PollApproved }
 import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
 import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, BmcAccountWriteRequest, BmcAccountWriteApproval, BmcAccountWritePurpose,
-  RouteQualificationSubject, bmc_account_write_authorization_request, route_subject_of,
+  RouteQualificationSubject, bmc_account_write_authorization_request, bmc_account_write_approval_of, route_subject_of,
 }
 
 // THE OPERATOR'S GO, PRODUCED BY THE REAL GATE. Every grant here is the output of
@@ -31,12 +31,17 @@ fn gate_grant(request: AuthorizationRequest<BmcAccountWriteApproval>) -> ScopedA
   }
 }
 
-// An approved go for one subject and purpose, filed by `attempt`.
-fn approved_bmc_write_for(subject: RouteQualificationSubject, purpose: BmcAccountWritePurpose, attempt: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
-  match bmc_account_write_authorization_request(escalation_id: attempt, approval: BmcAccountWriteApproval { subject: subject, purpose: purpose }) {
-    Absent => refused(attempt: attempt, why: "the write has no framed intent" as NonEmptyStr)
+// An approved go for one convergence, filed by `attempt`.
+fn approved_bmc_convergence(approval: BmcAccountWriteApproval, attempt: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  match bmc_account_write_authorization_request(escalation_id: attempt, approval: approval) {
+    Absent => refused(attempt: attempt, why: "the convergence has no framed intent" as NonEmptyStr)
     Present { value: request } => gate_grant(request: request)
   }
+}
+
+// An approved go for a convergence of one write, the `subject`'s, filed by `attempt`.
+fn approved_bmc_write_for(subject: RouteQualificationSubject, purpose: BmcAccountWritePurpose, attempt: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  approved_bmc_convergence(approval: bmc_account_write_approval_of(subject: subject, purpose: purpose), attempt: attempt)
 }
 
 // The common case: the go for `request` on the route's own controller and build.

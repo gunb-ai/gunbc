@@ -24,7 +24,7 @@ fn install_revision() -> ReleaseRevisionBinding {
 }
 
 fn install_plan() -> List<MicrovmControllerInstallStep> {
-  match microvm_controller_install_staging(revision: install_revision()) {
+  match microvm_controller_install_staging(revision: install_revision(), checkout_root: "/fixture/checkout") {
     MicrovmControllerInstallReady { steps: steps } => steps
     MicrovmControllerInstallRefused { reason: _ } => []
   }

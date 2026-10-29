@@ -8,7 +8,7 @@ import std.algebra { length }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, SupermicroAten, BmcControllerEndpoint }
 import product.host_identity { HostIdentity, host_identity_eq }
 import std.scoped_authorization { ScopedAuthorization }
-import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write }
+import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write, approved_bmc_convergence }
 import gunbc.machine_intake.phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, BootDeliveryEstablish, IntakePhase, machine_qualification_policy }
 import gunbc.machine_intake.subject {
   AssemblyManifest, BoardSerialObservation, BmcFru, HostSmbios, ChassisComponent, ComponentIdentity, BoardSerialAbsent,
@@ -83,6 +83,7 @@ import gunbc.machine_intake.arrival_converge {
   bmc_secure_bound,
 }
 import gunbc.machine_intake.bmc_secure {
+  bmc_secure_convergence_approval,
   PublishedWriteInputs,
   DryProbePublished,
   BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, dry_apply_bmc_account_plan, plan_bmc_account_action,
@@ -106,6 +107,9 @@ import extdeps.bmc.ipmi_channel {
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
 import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
+import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment }
+import test.claim.runner.runner_throughput_qualification_witness { selection, good_run, assess_at_width, assess_unobserved }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -404,10 +408,6 @@ fn mtjade1_fetched_generation(
   }
 }
 
-fn mtjade1_rotation_approval(s: BmcRotationRouteStanding, user: IpmiUserId) -> ScopedAuthorization<BmcAccountWriteApproval> {
-  approved_bmc_write(standing: s, request: IpmiSetUserPassword { user: user }, purpose: RotateCredential, attempt: "o1c1-witness-run-a" as NonEmptyStr)
-}
-
 fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInputs?
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
@@ -420,6 +420,8 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_foreign_bound_host_key_cannot_mint_from_this_instance_controller"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_held_mtjade1_does_not_converge_through_bmc_secure_apply"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_discharge_released_by"),
   ]
 {
   let census_value = mtjade1_bmc_census(published_lan_privilege_closed: true)
@@ -431,6 +433,7 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
     world: world,
     subject: subject,
     endpoint: mtjade1_bmc_endpoint(),
+    board: none,
     firmware: mtjade1_bmc_firmware(),
     managed: mtjade1_bmc_goal().managed,
     managed_user: mtjade1_managed_ipmi_user,
@@ -463,15 +466,16 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
         Present { value: bg } => {
           let managed_route = cited_mtjade1_managed_route()
           let published_route = cited_mtjade1_published_route()
+          let published = PublishedWriteInputs { route: published_route, generation: bg }
           match plan_bmc_account_action(
             subject: subject,
             goal: mtjade1_bmc_goal(),
             reading: reading,
             managed_user: mtjade1_managed_ipmi_user,
             managed_route: managed_route,
-            managed_approval: mtjade1_rotation_approval(s: managed_route, user: mtjade1_managed_ipmi_user),
+            approval: approved_bmc_convergence(approval: bmc_secure_convergence_approval(goal: mtjade1_bmc_goal(), reading: reading, managed_user: mtjade1_managed_ipmi_user, managed_route: managed_route, published: published), attempt: "o1c1-witness-run-a" as NonEmptyStr),
             managed_generation: mg,
-            published: PublishedWriteInputs { route: published_route, approval: mtjade1_rotation_approval(s: published_route, user: mtjade1_published_ipmi_user), generation: bg },
+            published: published,
             channel_close: none,
             planned_at: dry_bmc_account_instant(millis: mtjade1_bmc_plan_at),
           ) {
@@ -488,6 +492,7 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
                 world: step.world,
                 subject: subject,
                 endpoint: mtjade1_bmc_endpoint(),
+                board: none,
                 firmware: mtjade1_bmc_firmware(),
                 managed: p.goal.managed,
                 managed_user: mtjade1_managed_ipmi_user,
@@ -510,14 +515,33 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
   }
 }
 
-fn mtjade1_bmc_inputs(reading: BmcAccountStateObservation, grant: StandingOperatorGrant?, apply: BmcSecureApplyInputs?, capability: ScopedAuthorization<BmcAccountWriteApproval>?) -> BmcSecureInputs {
+// mtjade1's BMC writes are held until mtcollins1 serves CI (gunbc.machine_intake.bmc_write_controller
+// mtjade1_bmc_write_controller). The release is the sealed throughput assessment for mtcollins1, built by
+// the qualification witness's own fixture (test.claim.runner.runner_throughput_qualification_witness):
+// one that holds, and one that refuses for an unobserved cohort.
+fn mtcollins1_qualified() -> RunnerThroughputAssessment<HostIdentity> {
+  assess_at_width(selection: selection(), runs: [good_run(id: GitHubWorkflowRunId { value: 35447067113 })])
+}
+
+fn mtcollins1_not_qualified() -> RunnerThroughputAssessment<HostIdentity> {
+  assess_unobserved(selection: selection(), runs: [good_run(id: GitHubWorkflowRunId { value: 35447067113 })])
+}
+
+fn mtjade1_bmc_inputs_released_by(reading: BmcAccountStateObservation, grant: StandingOperatorGrant?, apply: BmcSecureApplyInputs?, capability: ScopedAuthorization<BmcAccountWriteApproval>?, qualification: RunnerThroughputAssessment<HostIdentity>?) -> BmcSecureInputs {
   BmcSecureInputs {
     goal: mtjade1_bmc_goal(),
     reading: reading,
     grant: grant,
     capability: capability,
     apply: apply,
+    hold_release: qualification,
   }
+}
+
+// Every claim but the hold's own reads mtjade1 with its hold released, so it refuses (or converges) for
+// its own cause and not for the hold.
+fn mtjade1_bmc_inputs(reading: BmcAccountStateObservation, grant: StandingOperatorGrant?, apply: BmcSecureApplyInputs?, capability: ScopedAuthorization<BmcAccountWriteApproval>?) -> BmcSecureInputs {
+  mtjade1_bmc_inputs_released_by(reading: reading, grant: grant, apply: apply, capability: capability, qualification: Present { value: mtcollins1_qualified() })
 }
 
 fn bmc_secure_applied_established(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
@@ -565,6 +589,7 @@ test fn w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix() -> Bool
     ),
     subject: mtjade1_intake_subject(),
     endpoint: mtjade1_bmc_endpoint(),
+    board: none,
     firmware: mtjade1_bmc_firmware(),
     managed: mtjade1_bmc_goal().managed,
     managed_user: mtjade1_managed_ipmi_user,
@@ -603,6 +628,7 @@ test fn w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path() -> 
     ),
     subject: mtjade1_intake_subject(),
     endpoint: mtjade1_bmc_endpoint(),
+    board: none,
     firmware: mtjade1_bmc_firmware(),
     managed: mtjade1_bmc_goal().managed,
     managed_user: mtjade1_managed_ipmi_user,
@@ -1246,6 +1272,7 @@ test fn w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused() -> Bo
           grant: Present { value: mtjade1_live_standing_grant },
           apply: Present { value: apply },
           capability: none,
+          hold_release: Present { value: mtcollins1_qualified() },
         },
       ) {
         StepRefused { key: _, cause: c } => match c { BmcSecureApplicationNotTheInspectedTransition => true  _ => false }
@@ -1291,6 +1318,7 @@ test fn w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused() 
           grant: Present { value: mtjade1_live_standing_grant },
           apply: Present { value: BmcSecureApplyInputs { application: stamped, post_read: apply.post_read } },
           capability: none,
+          hold_release: Present { value: mtcollins1_qualified() },
         },
       ) {
         StepRefused { key: _, cause: c } => match c { BmcSecureApplicationNotTheInspectedTransition => true  _ => false }
@@ -1322,6 +1350,7 @@ test fn w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused(
           grant: Present { value: mtjade1_live_standing_grant },
           apply: Present { value: apply },
           capability: none,
+          hold_release: Present { value: mtcollins1_qualified() },
         },
       ) {
         StepRefused { key: _, cause: c } => match c { BmcSecureApplicationNotTheInspectedTransition => true  _ => false }
@@ -1342,6 +1371,7 @@ test fn w_bmc_secure_apply_of_another_channel_state_is_refused() -> Bool {
     ),
     subject: mtjade1_intake_subject(),
     endpoint: mtjade1_bmc_endpoint(),
+    board: none,
     firmware: mtjade1_bmc_firmware(),
     managed: mtjade1_bmc_goal().managed,
     managed_user: mtjade1_managed_ipmi_user,
@@ -1370,6 +1400,7 @@ test fn w_bmc_secure_apply_of_another_channel_state_is_refused() -> Bool {
           grant: Present { value: mtjade1_live_standing_grant },
           apply: Present { value: apply },
           capability: none,
+          hold_release: Present { value: mtcollins1_qualified() },
         },
       ) {
         StepRefused { key: _, cause: c } => match c { BmcSecureApplicationNotTheInspectedTransition => true  _ => false }
@@ -1664,5 +1695,82 @@ test fn w_a_manager_get_alone_cannot_construct_an_account_write_route_at_the_cur
           RotationApplyRouteNotGrounded { standing: _ } => true
           _ => false
         }
+  }
+}
+
+// ── the hold on mtjade1 (merry-fox-82, 2026-10-28) ────────────────────────────────────────────────────
+
+fn mtjade1_discharge_released_by(qualification: RunnerThroughputAssessment<HostIdentity>?, grant: StandingOperatorGrant?, with_capability: Bool) -> Bool {
+  match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) {
+    Absent => false
+    Present { value: apply } => {
+      let standing = apply.application.plan.managed_write.route
+      let request = apply.application.plan.managed_write.request
+      let capability = if with_capability {
+        Present { value: rotation_capability_for(standing: standing, request: request, attempt_text: run_a as String, purpose: RotateCredential) }
+      } else {
+        none
+      }
+      match discharge_bmc_secure_apply(
+        key: bmc_secure_apply_key(),
+        identity_subject: mtjade1_intake_subject(),
+        inputs: mtjade1_bmc_inputs_released_by(reading: apply.application.plan.diverged, grant: grant, apply: Present { value: apply }, capability: capability, qualification: qualification),
+        standing: standing,
+        request: request,
+      ) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    }
+  }
+}
+
+// THE RED AND ITS PAIR ON THE REAL DISCHARGE. Without mtcollins1's qualification, mtjade1's standing grant
+// discharges nothing and neither does an exact per-write approval; the same two inputs with the
+// qualification supplied discharge.
+test fn w_mtjade1_is_held_for_both_routes_until_mtcollins1_qualifies() -> Bool {
+  let no_release: RunnerThroughputAssessment<HostIdentity>? = none
+  !mtjade1_discharge_released_by(qualification: no_release, grant: Present { value: mtjade1_live_standing_grant }, with_capability: false)
+    && !mtjade1_discharge_released_by(qualification: no_release, grant: none, with_capability: true)
+    && mtjade1_discharge_released_by(qualification: Present { value: mtcollins1_qualified() }, grant: Present { value: mtjade1_live_standing_grant }, with_capability: false)
+    && mtjade1_discharge_released_by(qualification: Present { value: mtcollins1_qualified() }, grant: none, with_capability: true)
+}
+
+// An assessment of mtcollins1 that refused (here: no concurrent cohort observed) releases nothing.
+test fn w_an_assessment_that_does_not_hold_releases_nothing() -> Bool {
+  !mtjade1_discharge_released_by(qualification: Present { value: mtcollins1_not_qualified() }, grant: Present { value: mtjade1_live_standing_grant }, with_capability: true)
+}
+
+// THE HOLD ON THE CONVERGE PATH. The run that converges with the release supplied
+// (w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world) does not converge
+// without it: it stops at BmcSecure.
+test fn w_a_held_mtjade1_does_not_converge_through_bmc_secure_apply() -> Bool {
+  let no_release: RunnerThroughputAssessment<HostIdentity>? = none
+  match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) {
+    Absent => false
+    Present { value: apply } =>
+      match converge_arrival_through_bmc_secure(
+        run: run_a,
+        subject: mtjade1_key,
+        read: read_mtjade1_current_manager_read(),
+        inputs: mtjade1_identity_bind_inputs(),
+        prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
+        bmc: mtjade1_bmc_inputs_released_by(
+          reading: apply.application.plan.diverged,
+          grant: Present { value: mtjade1_live_standing_grant },
+          apply: Present { value: apply },
+          capability: none,
+          qualification: no_release,
+        ),
+        locked: none,
+      ) {
+        ArrivalRunFolded { verdict: v } =>
+          match v {
+            RunConverged { run: _ } => false
+            RunStopped { ledger: _, at: at } => step_instance_key_eq(a: at, b: bmc_secure_apply_key())
+            _ => false
+          }
+        _ => false
+      }
   }
 }

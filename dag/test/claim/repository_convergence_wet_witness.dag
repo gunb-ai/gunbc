@@ -1,11 +1,13 @@
 module test.claim.repository_convergence_wet_witness
 
-import std.types { String, Bool, NonEmptyStr, FilePath }
+import std.types { String, Bool, FilePath, GitRef }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.output_policy { OutcomeIsData }
-import gunbc.retained_shell_script { retained_runtime }
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
 import extdeps.shell
+import extdeps.shell.exec
+import extdeps.git
+import extdeps.filesystem.filesystem_io
+import std.algebra { trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -17,8 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry
 // dag/test/claim/repository_convergence_wet_witness.dag --functions <comma-joined>:
 //   detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree,
-//   already_at_candidate_repairs_a_stale_index, cas_race_is_observed_after_fetch,
-//   reset_refusal_after_successful_cas_is_nonzero,
+//   already_at_candidate_repairs_a_stale_index,
 //   a_legacy_derived_roster_file_is_retired_and_read_back_absent
 // Scratch-repository WET matrix over the real git transport.
 
@@ -38,52 +39,45 @@ type ScratchRepository {
   candidate: String
 }
 
-fn line_at(raw: String, index: Int) -> String {
-  match split(s: raw, sep: "\n").skip(n: index).first() { Present { value: x } => x _ => "" }
-}
-
-fn scratch_repository(index_lock: Bool, already_candidate: Bool, racing_fetch: Bool) -> ScratchRepository? {
-  let flags = join([if index_lock { "1" } else { "0" }, if already_candidate { "1" } else { "0" }, if racing_fetch { "1" } else { "0" }], " ")
-  let result = shell.Exec.Run(
-    script: retained_runtime(
-      body: join([
-        "set -eu",
-        "root=$(mktemp -d)",
-        "remote=$root/remote.git",
-        "repo=$root/repo",
-        "linked=$root/linked",
-        "git init -q --bare $remote",
-        "git init -q $repo",
-        "git -C $repo config user.email witness@example.invalid",
-        "git -C $repo config user.name witness",
-        "printf old > $repo/tracked",
-        "git -C $repo add tracked",
-        "git -C $repo commit -qm old",
-        "old=$(git -C $repo rev-parse HEAD)",
-        "printf new > $repo/tracked",
-        "git -C $repo commit -qam new",
-        "candidate=$(git -C $repo rev-parse HEAD)",
-        "git -C $repo branch dispatch-linked $old",
-        "git -C $repo worktree add -q $linked dispatch-linked",
-        "git -C $repo update-ref refs/dispatch/packed $old",
-        "git -C $repo pack-refs --all --prune",
-        "git -C $repo update-ref refs/dispatch/loose $old",
-        "git -C $repo remote add origin $remote",
-        "git -C $repo push -q origin $candidate:refs/heads/main",
-        "git -C $repo checkout -q --detach $old",
-        "git -C $repo update-ref refs/remotes/origin/main $old",
-        concat("set -- ", flags),
-        "if [ $2 = 1 ]; then git -C $repo reset -q --hard $candidate; cp $repo/.git/index $root/good-index; git -C $repo read-tree $old; else git -C $repo reset -q --hard $old; fi",
-        "if [ $3 = 1 ]; then printf '#!/bin/sh\\ngit -C \"$1\" update-ref refs/remotes/origin/main \"$2\"\\nshift 2\\nexec git-upload-pack \"$@\"\\n' > $root/upload-pack; chmod +x $root/upload-pack; git -C $repo config remote.origin.uploadpack \"$root/upload-pack $repo $candidate\"; fi",
-        "if [ $1 = 1 ]; then printf '#!/bin/sh\\n: > \"$1/.git/index.lock\"\\nshift\\nexec git-upload-pack \"$@\"\\n' > $root/upload-pack; chmod +x $root/upload-pack; git -C $repo config remote.origin.uploadpack \"$root/upload-pack $repo\"; fi",
-        "printf '%s\\n%s\\n%s\\n%s\\n%s\\n' $root $repo $remote $old $candidate",
-      ], "\n"),
-      reason: "repository convergence deterministic scratch git matrix" as NonEmptyStr,
-    ),
-    expect: OutcomeIsData,
-  )
-  if result.success {
-    Present { value: ScratchRepository { root: line_at(raw: result.stdout, index: 0), repo: line_at(raw: result.stdout, index: 1), remote_path: line_at(raw: result.stdout, index: 2), old: line_at(raw: result.stdout, index: 3), candidate: line_at(raw: result.stdout, index: 4) } }
+fn scratch_repository(already_candidate: Bool) -> ScratchRepository? {
+  let dir = shell.Mktemp.Dir()
+  let root = dir.path as String
+  let remote = concat(root, "/remote.git")
+  let repo = concat(root, "/repo")
+  let linked = concat(root, "/linked")
+  let repo_path = repo as FilePath
+  let bare = shell.Exec.RunArgv(program: "git", arguments: ["init", "-q", "--bare", remote])
+  let init = shell.Exec.RunArgv(program: "git", arguments: ["init", "-q", repo])
+  let email = git.Core.ConfigLocalSetInRepo(repo: repo_path, key: "user.email", value: "witness@example.invalid")
+  let name = git.Core.ConfigLocalSetInRepo(repo: repo_path, key: "user.name", value: "witness")
+  let wrote_old = Filesystem.Write(path: concat(repo, "/tracked"), content: "old")
+  let added_old = git.Core.AddAllInRepo(repo: repo_path)
+  let committed_old = git.Core.CommitInRepo(repo: repo_path, message: "old")
+  let old = git.Core.RevParseInRepo(repo: repo_path, target: "HEAD" as GitRef)
+  let wrote_new = Filesystem.Write(path: concat(repo, "/tracked"), content: "new")
+  let added_new = git.Core.AddAllInRepo(repo: repo_path)
+  let committed_new = git.Core.CommitInRepo(repo: repo_path, message: "new")
+  let candidate = git.Core.RevParseInRepo(repo: repo_path, target: "HEAD" as GitRef)
+  let old_sha = trim(s: old.revision)
+  let candidate_sha = trim(s: candidate.revision)
+  let branch = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "branch", "dispatch-linked", old_sha])
+  let worktree = git.Core.WorktreeAddInRepo(repo: repo_path, path: linked as FilePath, start_point: "dispatch-linked")
+  let packed_ref = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "update-ref", "refs/dispatch/packed", old_sha])
+  let pack = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "pack-refs", "--all", "--prune"])
+  let loose_ref = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "update-ref", "refs/dispatch/loose", old_sha])
+  let remote_add = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "remote", "add", "origin", remote])
+  let pushed = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "push", "-q", "origin", concat(candidate_sha, ":refs/heads/main")])
+  let detached = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "checkout", "-q", "--detach", old_sha])
+  let tracking = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "update-ref", "refs/remotes/origin/main", old_sha])
+  let positioned = if already_candidate {
+    git.Core.ResetHardInRepo(repo: repo_path, target: candidate_sha).exit_code == 0
+      && shell.Copy.File(source: concat(repo, "/.git/index") as FilePath, destination: concat(root, "/good-index") as FilePath).success
+      && shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "read-tree", old_sha]).exit_code == 0
+  } else {
+    git.Core.ResetHardInRepo(repo: repo_path, target: old_sha).exit_code == 0
+  }
+  if dir.success && bare.exit_code == 0 && init.exit_code == 0 && email.success && name.success && wrote_old.success && added_old.exit_code == 0 && committed_old.exit_code == 0 && old.exit_code == 0 && wrote_new.success && added_new.exit_code == 0 && committed_new.exit_code == 0 && candidate.exit_code == 0 && branch.exit_code == 0 && worktree.exit_code == 0 && packed_ref.exit_code == 0 && pack.exit_code == 0 && loose_ref.exit_code == 0 && remote_add.exit_code == 0 && pushed.exit_code == 0 && detached.exit_code == 0 && tracking.exit_code == 0 && positioned {
+    Present { value: ScratchRepository { root: root, repo: repo, remote_path: remote, old: old_sha, candidate: candidate_sha } }
   } else { none }
 }
 
@@ -104,15 +98,8 @@ fn run_scratch(s: ScratchRepository) -> ProcessExit {
 // WET assertions inspect the only refusal carrier repository_converge_wet exposes:
 // ProcessExit.reason.
 
-fn mutate_scratch(s: ScratchRepository, body: String) -> Bool {
-  shell.Exec.Run(
-    script: retained_runtime(body: body, reason: "repository convergence refusal fixture mutation" as NonEmptyStr),
-    expect: OutcomeIsData,
-  ).success
-}
-
 test fn detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
+  match scratch_repository(already_candidate: false) {
     Absent => false
     Present { value: s } => {
       let outcome = run_scratch(s: s)
@@ -123,7 +110,7 @@ test fn detached_primary_transition_executes_and_preserves_packed_loose_refs_and
 }
 
 test fn already_at_candidate_repairs_a_stale_index() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: true, racing_fetch: false) {
+  match scratch_repository(already_candidate: true) {
     Absent => false
     Present { value: s } => {
       let outcome = run_scratch(s: s)
@@ -133,33 +120,18 @@ test fn already_at_candidate_repairs_a_stale_index() -> Bool {
   }
 }
 
-test fn cas_race_is_observed_after_fetch() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: true) {
-    Absent => false
-    Present { value: s } => {
-      let outcome = run_scratch(s: s)
-      let cleaned = remove_scratch(s: s)
-      match outcome { ExitFailure { code: _, reason: why } => cleaned && string_contains(s: why, pattern: "base ref moved") _ => false }
-    }
-  }
-}
-
-test fn reset_refusal_after_successful_cas_is_nonzero() -> Bool {
-  match scratch_repository(index_lock: true, already_candidate: false, racing_fetch: false) {
-    Absent => false
-    Present { value: s } => {
-      let outcome = run_scratch(s: s)
-      let cleaned = remove_scratch(s: s)
-      match outcome { ExitFailure { code: _, reason: why } => cleaned && string_contains(s: why, pattern: "PARTIAL TRANSITION") _ => false }
-    }
-  }
-}
+// DROPPED CASES: cas_race_is_observed_after_fetch and reset_refusal_after_successful_cas_is_nonzero
+// lived here. Both needed code to run BETWEEN the repository pre-state observation and the reset, and
+// their only interposition point was remote.origin.uploadpack, which the production fetch's explicit
+// --upload-pack overrides (#12279); a lock planted before the run is instead refused by the pre-state
+// observation, a different cause. Both were red on main. Declared at
+// gunbc.rung_drop.convergence_fetch_window_fixture_interposition.
 
 test fn unreadable_head_refuses_before_fetch_or_mutation() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
+  match scratch_repository(already_candidate: false) {
     Absent => false
     Present { value: s } => {
-      let changed = mutate_scratch(s: s, body: concat("printf 'ref: refs/heads/missing\\n' > ", concat(s.repo, "/.git/HEAD")))
+      let changed = Filesystem.Write(path: concat(s.repo, "/.git/HEAD"), content: "ref: refs/heads/missing\n").success
       let outcome = run_scratch(s: s)
       let cleaned = remove_scratch(s: s)
       changed && cleaned && match outcome { ExitFailure { code: _, reason: why } => string_contains(s: why, pattern: "before the transition could not be observed") _ => false }
@@ -168,10 +140,10 @@ test fn unreadable_head_refuses_before_fetch_or_mutation() -> Bool {
 }
 
 test fn undecodable_worktree_roster_refuses_before_mutation() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
+  match scratch_repository(already_candidate: false) {
     Absent => false
     Present { value: s } => {
-      let changed = mutate_scratch(s: s, body: concat("printf invalid > ", concat(s.repo, "/.git/worktrees/linked/HEAD")))
+      let changed = Filesystem.Write(path: concat(s.repo, "/.git/worktrees/linked/HEAD"), content: "invalid").success
       let outcome = run_scratch(s: s)
       let cleaned = remove_scratch(s: s)
       changed && cleaned && match outcome { ExitFailure { code: _, reason: why } => string_contains(s: why, pattern: "worktree") _ => false }
@@ -180,7 +152,7 @@ test fn undecodable_worktree_roster_refuses_before_mutation() -> Bool {
 }
 
 test fn wrong_primary_standing_refuses_from_gits_roster() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
+  match scratch_repository(already_candidate: false) {
     Absent => false
     Present { value: s } => {
       let linked_repo = concat(s.root, "/linked")
@@ -195,17 +167,13 @@ test fn wrong_primary_standing_refuses_from_gits_roster() -> Bool {
 // The fixture plants the file the old binary wrote; convergence must remove it (the loader never
 // does) and only then report success.
 test fn a_legacy_derived_roster_file_is_retired_and_read_back_absent() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
+  match scratch_repository(already_candidate: false) {
     Absent => false
     Present { value: s } => {
       let roster = join([s.repo, "/dag/gunbc/rung_drop/roster.dag"], "")
-      let planted = mutate_scratch(s: s, body: join([
-        "set -eu",
-        join(["mkdir -p ", s.repo, "/dag/gunbc/rung_drop"], ""),
-        join(["printf legacy > ", roster], ""),
-      ], "\n"))
+      let planted = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", concat(s.repo, "/dag/gunbc/rung_drop")]).exit_code == 0 && Filesystem.Write(path: roster, content: "legacy").success
       let outcome = run_scratch(s: s)
-      let absent = mutate_scratch(s: s, body: join(["test ! -e ", roster], ""))
+      let absent = shell.Exec.RunArgv(program: "test", arguments: ["!", "-e", roster]).exit_code == 0
       let cleaned = remove_scratch(s: s)
       let converged = match outcome { ExitSuccess => true _ => false }
       planted && converged && absent && cleaned

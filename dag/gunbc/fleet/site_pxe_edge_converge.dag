@@ -1,14 +1,24 @@
 module gunbc.fleet.site_pxe_edge_converge
 
-import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port }
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs }
 import std.algebra { FreeSemigroup }
 import std.algebra { trim }
+import gunbc.systemctl_show_read { SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_value_from_stdout }
+import std.filesystem { path_parent_directory }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, serialize_content_hash, sha256_hex_digest }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
-import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg }
+import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg, UbuntuAutoinstallPayload, UserDataOnly, AutoinstallSshServer, StoragePolicyDirectLayout }
+import std.os.types { NobleNumbat2404Lts }
+import gunbc.os_install { srv_fleet_key_only_install_account }
+import gunbc.os_install_emit { autoinstall_user_data_document }
+import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
+import gunbc.fleet.srv4_segment_name_resolution_observation { srv4_segment_resolver_answer, srv4_segment_resolver_observed_at }
+import std.decl_ref { decl_ref, DeclarationRef }
+import std.measure { Second, second }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.provisioning.public_nocloud_seed { PublicNoCloudSeed, public_nocloud_seed_client_mac, public_nocloud_seed_user_data, public_nocloud_seed_meta_data, admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, PublicSeedFinding }
 import extdeps.languages.yaml.types { YamlValue }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, Ipv4ParseError, parse_ipv4_address, render_ipv4_address }
@@ -79,6 +89,7 @@ import extdeps.toolchain.types { Architecture, Aarch64, X86_64, architecture_dia
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly, ipxe_build_target_path, ipxe_chainloading_authority }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacParseError, render_mac_address, parse_mac_address }
 import gunbc.machine_intake.srv14_host_nic_observation { srv14_host_nic_mac }
+import gunbc.machine_intake.srv15_host_nic_observation { srv15_host_nic_mac }
 import gunbc.site_pxe_edge {
   SiteEdgeRoster,
   SiteEdgeServedChain,
@@ -154,8 +165,8 @@ data site_pxe_edge_tftp_root: NonEmptyStr = "/srv/gunbc-site-pxe-edge/tftp"
 
 data site_pxe_edge_dnsmasq_binary: NonEmptyStr = "/usr/sbin/dnsmasq"
 
-// Both desired files are directly under /etc or /etc/systemd/system, directories that exist on every
-// host, because typed_remote_file_write stages beside its destination and creates no parents.
+// typed_remote_file_write stages beside its destination and creates no parents, so every desired file's
+// write first creates its parent (site_pxe_edge_file_parent_argv); a per-client seed directory has no other producer.
 data site_pxe_edge_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc" as NonEmptyStr }
 
 // THE CHAINLOADER PIN IS A BUILD RECEIPT, and the gate checks every field of it. A filename and a digest
@@ -462,15 +473,71 @@ data site_pxe_edge_chain_pins: List<SitePxeEdgeChainPin> = [
 // THE INSTALLS REQUESTED OF THIS EDGE, and the observation that srv4's name resolves from the segment. A request
 // names its client by a MAC parse and its user-data as a document; the run admits each through the public seed
 // authority, so a list of already-admitted seeds (which could only be authored by dropping refusals) never exists.
-data site_pxe_edge_install_requests: List<SitePxeEdgeInstallRequest> = []
+data site_pxe_edge_install_requests: List<SitePxeEdgeInstallRequest> = [
+  SitePxeEdgeInstallRequest {
+    client: srv14_install_client,
+    user_data: autoinstall_user_data_document(payload: site_pxe_edge_key_only_autoinstall),
+    architecture: Aarch64,
+  },
+  SitePxeEdgeInstallRequest {
+    client: srv15_install_client,
+    user_data: autoinstall_user_data_document(payload: site_pxe_edge_key_only_autoinstall),
+    architecture: Aarch64,
+  },
+]
+
+data srv14_install_client: MacParseResult = parse_mac_address(text: srv14_host_nic_mac as String)
+
+data srv15_install_client: MacParseResult = parse_mac_address(text: srv15_host_nic_mac as String)
+
+// THE ONE INSTALL THIS EDGE SERVES: the fleet's key-only account, no identity section, and the direct layout over
+// the installer's chosen disk, which replaces whatever OS the NVMe carried before. Nothing in it names a host (the
+// seed's instance-id comes from the request's MAC), so every request shares it rather than copying it per host.
+// The seed travels over NoCloud-net from this edge's seed root; the per-client directory under it is the edge's to
+// name from the admitted binding.
+data site_pxe_edge_key_only_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+  autoinstall_version: 1,
+  delivery: NoCloudNet { seed_url: site_pxe_edge_seed_root_uri },
+  fully_automated: true,
+  target_distribution: NobleNumbat2404Lts,
+  identity_posture: UserDataOnly { users: srv_fleet_key_only_install_account },
+  locale: "en_US.UTF-8",
+  keyboard_layout: "us",
+  ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
+  storage_policy: StoragePolicyDirectLayout,
+}
 
 // THE CLIENTS THE EDGE KNOWS, each parsed from a measured observation of the client's NIC, never retyped.
 data site_pxe_edge_known_client_observations: List<MacParseResult> = [
   first_onboarding_known_client_mac,
-  parse_mac_address(text: srv14_host_nic_mac as String),
+  srv14_install_client,
+  srv15_install_client,
 ]
 
-data site_pxe_edge_seed_origin_resolution: BootNetworkProbe = BootNetworkProbeUnobserved
+data site_pxe_edge_seed_origin_resolution: BootNetworkProbe = site_pxe_edge_seed_origin_probe(
+  answer: parse_ipv4_address(text: srv4_segment_resolver_answer as String),
+  origin: site_pxe_edge_tftp_server_address,
+  observation: decl_ref(module_path: "gunbc.fleet.srv4_segment_name_resolution_observation", decl_name: "srv4_segment_resolver_answer"),
+  observed_at: srv4_segment_resolver_observed_at,
+)
+
+// The segment resolves the seed origin's name only if it answers with the address the edge serves from; any other
+// answer, or one that does not parse, is a failed probe.
+fn site_pxe_edge_seed_origin_probe(answer: Ipv4ParseResult, origin: Ipv4ParseResult, observation: DeclarationRef, observed_at: EpochMs) -> BootNetworkProbe {
+  match answer {
+    Ipv4Parsed { address: a } =>
+      match origin {
+        Ipv4Parsed { address: o } =>
+          if (a == o) {
+            BootNetworkProbeSucceeded { observation: observation, observed_at: observed_at }
+          } else {
+            BootNetworkProbeFailed { observation: observation, observed_at: observed_at }
+          }
+        Ipv4ParseFailed { error: _ } => BootNetworkProbeFailed { observation: observation, observed_at: observed_at }
+      }
+    Ipv4ParseFailed { error: _ } => BootNetworkProbeFailed { observation: observation, observed_at: observed_at }
+  }
+}
 
 // ── Per-chain standing (pure) ────────────────────────────────────────────────────────────────────
 
@@ -1068,8 +1135,12 @@ fn site_pxe_edge_grub_mac_path(mac: Eui48Address) -> NonEmptyStr {
   concat("grub/grub.cfg-01-", join(split(s: render_mac_address(addr: mac) as String, delimiter: ":"), "-")) as NonEmptyStr
 }
 
+data site_pxe_edge_seed_root: String = "seed/"
+
+data site_pxe_edge_seed_root_uri: Uri = site_pxe_edge_http_uri(name: site_pxe_edge_seed_origin_name, path: site_pxe_edge_seed_root)
+
 fn site_pxe_edge_seed_path(mac: Eui48Address) -> String {
-  concat("seed/", join(split(s: render_mac_address(addr: mac) as String, delimiter: ":"), "-"))
+  concat(site_pxe_edge_seed_root, join(split(s: render_mac_address(addr: mac) as String, delimiter: ":"), "-"))
 }
 
 // ONE HOST'S GRUB CONFIGURATION: the casper kernel and initrd from this TFTP root, the verified installer image
@@ -1141,6 +1212,47 @@ type SitePxeEdgeHttpListenStanding
   | HttpListenOtherAddress { local: String }
   | HttpListenAbsent
   | HttpListenUnobservable { reason: String }
+
+// THE LISTENER IS READ AFTER A RESTART THAT RETURNS BEFORE THE SERVER BINDS: srv4's run 40835829838 read ABSENT while
+// the same port answered 200. So the readback samples until the socket is there or the budget is spent; only ABSENT
+// is retried, because every other finding is already the answer.
+data site_pxe_edge_http_listen_samples: Int = 10
+
+data site_pxe_edge_http_listen_interval: Second = second(count: 1)
+
+fn site_pxe_edge_http_listen_poll_settled(standing: SitePxeEdgeHttpListenStanding, remaining: Int) -> Bool {
+  remaining <= 1 || (match standing {
+    HttpListenAbsent => false
+    HttpListenBoundTo { address: _ } => true
+    HttpListenWildcard { local: _ } => true
+    HttpListenOtherAddress { local: _ } => true
+    HttpListenUnobservable { reason: _ } => true
+  })
+}
+
+fn observe_site_pxe_edge_http_listen(target: SshTarget, context: FleetSshExecutionContext, bind: Ipv4Address) -> SitePxeEdgeHttpListenStanding {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["ss", "-ltnH"]) {
+    TypedArgvExecRefused { reason: why } => HttpListenUnobservable { reason: why }
+    TypedArgvExecConverged { result: r } =>
+      if r.success { site_pxe_edge_http_listen_standing(output: r.stdout, bind: bind) }
+      else { HttpListenUnobservable { reason: join(["ss -ltnH exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
+  }
+}
+
+fn site_pxe_edge_http_listen_poll(target: SshTarget, context: FleetSshExecutionContext, bind: Ipv4Address, remaining: Int) -> SitePxeEdgeHttpListenStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "run_site_pxe_edge"),
+    decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_http_listen_poll"),
+  ]
+{
+  let sample = observe_site_pxe_edge_http_listen(target: target, context: context, bind: bind)
+  if site_pxe_edge_http_listen_poll_settled(standing: sample, remaining: remaining) {
+    sample
+  } else {
+    let _paced = sleep_delay_seconds_second_carrier_projection(duration: site_pxe_edge_http_listen_interval)
+    site_pxe_edge_http_listen_poll(target: target, context: context, bind: bind, remaining: remaining - 1)
+  }
+}
 
 fn site_pxe_edge_http_listen_standing(output: String, bind: Ipv4Address) -> SitePxeEdgeHttpListenStanding {
   let expected = concat(concat(render_ipv4_address(addr: bind) as String, ":"), to_string(site_pxe_edge_http_port))
@@ -1574,11 +1686,19 @@ fn observe_site_pxe_edge_unit_active(target: SshTarget, context: FleetSshExecuti
     TypedArgvExecConverged { result: r } =>
       if (r.success == false) {
         SitePxeEdgeProbeUnobservable { reason: join(["systemctl show exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
-      } else if trim(s: r.stdout) == "ActiveState=active" {
-        SitePxeEdgeProbeHeld
       } else {
-        SitePxeEdgeProbeObservedNegative { reason: join(["unit ", site_pxe_edge_unit_name as String, " ", trim(s: r.stdout)], "") }
+        site_pxe_edge_unit_active_standing(capture: systemctl_show_property_value_from_stdout(success: r.success, stdout: r.stdout))
       }
+  }
+}
+
+// The argv asks for `--value`, so the answer is the bare state word; the shared decoder reads that line.
+fn site_pxe_edge_unit_active_standing(capture: SystemdPropertyCapture) -> SitePxeEdgeProbe {
+  match capture {
+    SystemdPropertyCaptured { value: v } =>
+      if v == "active" { SitePxeEdgeProbeHeld } else { SitePxeEdgeProbeObservedNegative { reason: join(["unit ", site_pxe_edge_unit_name as String, " ActiveState=", v], "") } }
+    SystemdPropertyBlank => SitePxeEdgeProbeUnobservable { reason: join(["unit ", site_pxe_edge_unit_name as String, " ActiveState blank"], "") }
+    SystemdPropertyCaptureRefused { reason: why } => SitePxeEdgeProbeUnobservable { reason: why }
   }
 }
 
@@ -1752,18 +1872,26 @@ fn apply_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext
   }
 }
 
+fn site_pxe_edge_file_parent_argv(file: SitePxeEdgeFile) -> List<String> {
+  ["mkdir", "-p", "--", path_parent_directory(path: file.path as String)]
+}
+
 fn write_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext, file: SitePxeEdgeFile) -> SitePxeEdgeFileOutcome
 {
-  match converge_typed_remote_file(
-    target: target,
-    context: context,
-    admission: site_pxe_edge_file_admission(file: file),
-    mode: RemoteFileModeOwnerReadWriteWorldRead,
-    privilege: RemoteFileViaNonInteractiveSudo,
-    validation: NoValidation,
-  ) {
-    TypedRemoteFileConvergenceRefused { step: st, reason: why } => EdgeFileWriteRefused { step: st, reason: why }
-    TypedRemoteFileConverged { converged: _ } => EdgeFileWrittenAndReadBack
+  match site_pxe_edge_posix_leg(target: target, context: context, argv: site_pxe_edge_file_parent_argv(file: file), step: "mkdir parent") {
+    Present { value: why } => EdgeFileWriteRefused { step: "parent directory", reason: why }
+    Absent =>
+      match converge_typed_remote_file(
+        target: target,
+        context: context,
+        admission: site_pxe_edge_file_admission(file: file),
+        mode: RemoteFileModeOwnerReadWriteWorldRead,
+        privilege: RemoteFileViaNonInteractiveSudo,
+        validation: NoValidation,
+      ) {
+        TypedRemoteFileConvergenceRefused { step: st, reason: why } => EdgeFileWriteRefused { step: st, reason: why }
+        TypedRemoteFileConverged { converged: _ } => EdgeFileWrittenAndReadBack
+      }
   }
 }
 
@@ -2202,12 +2330,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
             Ipv4Parsed { address: bind } =>
               HttpLegActivation {
                 activation: http_activation,
-                listen: match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["ss", "-ltnH"]) {
-                  TypedArgvExecRefused { reason: why } => HttpListenUnobservable { reason: why }
-                  TypedArgvExecConverged { result: r } =>
-                    if r.success { site_pxe_edge_http_listen_standing(output: r.stdout, bind: bind) }
-                    else { HttpListenUnobservable { reason: join(["ss -ltnH exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
-                },
+                listen: site_pxe_edge_http_listen_poll(target: target, context: context, bind: bind, remaining: site_pxe_edge_http_listen_samples),
               }
           }
         } else {
@@ -2337,6 +2460,20 @@ fn site_pxe_edge_post_activation_wire(post: SitePxeEdgePostActivation) -> String
   }
 }
 
+fn site_pxe_edge_http_leg_wire(http: SitePxeEdgeHttpLeg) -> String {
+  match http {
+    HttpLegNotNeeded => "not-needed"
+    HttpLegNotRead { reason: r } => concat("not-read ", r)
+    HttpLegActivation { activation: a, listen: l } => join(["activation ", site_pxe_edge_probe_wire(probe: a), " listen ", match l {
+      HttpListenBoundTo { address: addr } => concat("bound ", addr)
+      HttpListenWildcard { local: w } => concat("WILDCARD ", w)
+      HttpListenOtherAddress { local: o } => concat("OTHER-ADDRESS ", o)
+      HttpListenAbsent => "ABSENT"
+      HttpListenUnobservable { reason: r } => concat("UNOBSERVABLE ", r)
+    }], "")
+  }
+}
+
 fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
   join([
     "mode=", match run.mode { SitePxeEdgeObserveOnly => "observe" SitePxeEdgeApply => "apply" }, "\n",
@@ -2349,6 +2486,7 @@ fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
     "activation=", site_pxe_edge_probe_wire(probe: run.activation), "\n",
     "unit-active=", site_pxe_edge_probe_wire(probe: run.unit_active), "\n",
     "post-activation-members=", site_pxe_edge_post_activation_wire(post: run.post_activation), "\n",
+    "http=", site_pxe_edge_http_leg_wire(http: run.http), "\n",
     "terminal=", if site_pxe_edge_run_succeeded(run: run) { "succeeded" } else { "REFUSED" }, "\n",
   ], "")
 }

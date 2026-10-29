@@ -1,7 +1,7 @@
 module extdeps.posix.getent
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
@@ -23,3 +23,8 @@ fn getent_program() -> ProgramIdentity = uncataloged_program(invocation: "getent
 fn getent_passwd_command(key: NonEmptyStr) -> ArgvCommand {
   argv_command(program: getent_program(), arguments: ["passwd", key as String])
 }
+
+// getent(1), EXIT STATUS: "2  One or more supplied key could not be found in the database." It is
+// the one status that says the entry is ABSENT rather than unreadable, so a caller that creates an
+// absent entry reads this value instead of treating every non-zero exit as absence.
+data getent_key_not_found_exit: Int = 2
