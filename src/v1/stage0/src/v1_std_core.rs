@@ -4766,14 +4766,14 @@ pub fn string_type() -> Rc<Node> {
     CACHED.with(|c: &Rc<Node>| c.clone())
 }
 
-pub fn hash_type() -> Rc<Node> {
+pub fn symbol_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: "Hash".to_string(),
-        span: kernel_span("Hash".to_string()),
-        ident_span: Some(kernel_span("Hash".to_string())),
+        name: "Symbol".to_string(),
+        span: kernel_span("Symbol".to_string()),
+        ident_span: Some(kernel_span("Symbol".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),

@@ -41,7 +41,7 @@ fn symbol_census_row(consumer_class: SymbolConsumerClass, module_path: String, d
 
 fn symbol_identity_census_rows() -> List<SymbolConsumerRow> {
   [
-    symbol_census_row(consumer_class: SymbolLiteralConstruction, module_path: "v1.compiler.parse", decl_name: "parse_caret_expr", evidence: "`^ident` lexes as ShCaret + identifier and builds ExprLiteral LitSymbol with the identifier's spelling; no normalization beyond the lexeme, so two spellings are two symbols and one spelling is one symbol. v1.compiler.types types the literal string_type."),
+    symbol_census_row(consumer_class: SymbolLiteralConstruction, module_path: "v1.compiler.parse", decl_name: "parse_caret_expr", evidence: "`^ident` lexes as ShCaret + identifier and builds ExprLiteral LitSymbol with the identifier's spelling; no normalization beyond the lexeme, so two spellings are two symbols and one spelling is one symbol. v1.compiler.infer_types infer_literal_node types LitSymbol as symbol_type."),
     symbol_census_row(consumer_class: SymbolLiteralConstruction, module_path: "v1.compiler.emit", decl_name: "emit_literal", evidence: "LitSymbol emits as the lexeme string literal with the target's string suffix (Rust: \"x\".to_string()); the value IS the lexeme at the target."),
     symbol_census_row(consumer_class: SymbolIdentityComparison, module_path: "v2.std.node", decl_name: "labeled_named_is", evidence: "Named-edge label equality is `==` on two Symbols; the interpreter holds both as Value::Str, so equality is lexical, and emitted Rust compares the host strings."),
     symbol_census_row(consumer_class: SymbolOrdering, module_path: "v2.std.node", decl_name: "label_sort_key", evidence: "Edge ordering sorts by a Symbol key through sort_by; the only order a lexeme-valued key has is lexical, and canonical child order depends on it being deterministic across processes."),
@@ -53,7 +53,7 @@ fn symbol_identity_census_rows() -> List<SymbolConsumerRow> {
     symbol_census_row(consumer_class: SymbolPersistenceAcrossProcesses, module_path: "std.content_hash", decl_name: "content_hash_atom", evidence: "Cross-process identity is the content hash of the lexeme (FNV-1a over the bytes), stable by construction across processes and generations; an intern id would NOT be, since no table is persisted or shared."),
     symbol_census_row(consumer_class: SymbolUsedAsTextOperation, module_path: "v2.std.node", decl_name: "symbol_identity_digest", evidence: "The one text-typed operation a Symbol flows into without conversion is hashing through a NonEmptyStr parameter (content_hash_atom), at symbol-literal and symbol-variable call sites across the corpus; no concat/split/index of a Symbol was found (census script: zero `concat(` sites with a `^` literal argument)."),
     symbol_census_row(consumer_class: SymbolAtHostBoundary, module_path: "v1.std.core", decl_name: "LitSymbol", evidence: "The host holds a Symbol as Value::Str exactly as it holds a String; the only host seams are the two lexing conversions and JSON, all lexeme-valued."),
-    symbol_census_row(consumer_class: SymbolAtHostBoundary, module_path: "v1.compiler.types", decl_name: "literal_type", evidence: "The v1 checker types LitSymbol as string_type and types the authored name `String` as string_type by spelling: at the kernel the two are one type, which is why a Symbol may flow into a NonEmptyStr parameter unrefused today.")
+    symbol_census_row(consumer_class: SymbolAtHostBoundary, module_path: "v1.compiler.infer_types", decl_name: "infer_literal_node", evidence: "Producer only: infer_literal_node mints LitSymbol as symbol_type and LitStr as string_type, so the node names differ. A caret at a declared String return is still Accepted, through the explicit symbol_at_text exemption in v1.compiler.infer kernel_value_declared_type_mismatch_bounded (Symbol at every other ground non-text type refuses). That is not a declared conversion; it is the declared gap gunbc.recurring_failure_mode caret_symbol_inhabits_string_via_conformance_unjudged. The old honest caveat stands: a Symbol may still flow into a String or NonEmptyStr position unrefused.")
   ]
 }
 
@@ -72,7 +72,7 @@ data symbol_nominality_next_rung_trigger: NonEmptyStr = "In this order, each a c
 data symbol_identity_decision: SymbolSemanticsDecision = SymbolSemanticsDecision {
   semantics: LexemeBacked,
   nominality: NominalityNotEnforced {
-    cause: "v1.compiler.types types a Symbol literal as the kernel string_type and the authored name String as the same type, so a Symbol flows into a String or NonEmptyStr parameter unrefused (content_hash_atom(value: sym) corpus-wide), and the chosen Rust representation std::string::String erases the distinction at the target as well; no checker and no realization enforces nominality today." as NonEmptyStr,
+    cause: "infer_literal_node now mints LitSymbol as symbol_type, but v1.compiler.infer kernel_value_declared_type_mismatch_bounded still does not refuse a Symbol at a String or NonEmptyStr position (the explicit symbol_at_text exemption; every other ground non-text type refuses). content_hash_atom(value: sym) stays unrefused corpus-wide. The chosen Rust representation std::string::String still erases the distinction at the target. Nominality is not enforced." as NonEmptyStr,
     next_rung_trigger: symbol_nominality_next_rung_trigger
   },
   equality: DecidedByLexeme,

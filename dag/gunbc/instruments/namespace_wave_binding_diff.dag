@@ -4,6 +4,7 @@ import std.types { String, Bool, List, Int, Map, NonEmptyStr }
 import std.algebra { Cons, Empty, empty_map, map_insert, list_snoc_item }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.rust.cargo { cargo_default_target_dir }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, AmbientNameKitCall, AmbientNameKitParam, KitCallProbe, KitTypeUseProbe, ExistingDeclaration, KernelTypeSpellingTable, kit_int, ambient_name_homes, ambient_name_declaration }
 import gunbc.instruments.ambient_name_census_reading { ambient_census_base_ref, census_observation_text, binding_lines, field_at, ambient_census_kit_rows, ambient_census_kit_module, ambient_census_kit_source }
@@ -933,7 +934,7 @@ fn verdict_from_results(base_stdout: String, head_stdout: String, base_status: I
 }
 
 fn shard_dir(head_root: String) -> String {
-  head_root + "/target/namespace-wave-binding-diff/shards"
+  cargo_default_target_dir(build_root: head_root) + "/namespace-wave-binding-diff/shards"
 }
 
 fn shard_refusal(why: String) -> CliWireResponse {

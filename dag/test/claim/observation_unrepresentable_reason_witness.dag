@@ -1,0 +1,52 @@
+module test.claim.observation_unrepresentable_reason_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count,
+}
+import std.types { Bool, Int, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.optional { Absent, Present }
+
+// WHY THIS IS A FIXTURE-SOURCE WITNESS. `ObservationUnrepresentable.reason` is `NonEmptyStr`, the
+// cause type `gunbc.guarantee_measurement` `ProbeNotRunnable` carries, so a census probe's
+// could-not-measure cause enters the floor terminal ledger without translation. The invalid state
+// (an EMPTY reason: a `Symbol` or plain `String` flows into the field in both directions, so only emptiness discriminates) is unconstructible in the accepted
+// corpus, so the RED is SOURCE HANDED TO THE COMPILER and read through the compile census. Before
+// the retype the field was `Symbol` and an empty reason was accepted.
+//
+// It calls compile_dag_diagnostic_census, which walks the checkout, so ReadsLiveTree is the honest
+// stamp.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data reason_nonempty_green_source: String = "module probe_reason_nonempty_green\nimport std.types { NonEmptyStr }\nimport v2.workflow.floor_terminal_ledger { ClaimObservation, ObservationUnrepresentable }\nfn f(s: NonEmptyStr) -> ClaimObservation { ObservationUnrepresentable { reason: s } }\n"
+
+fn reason_blocking_count(source: String) -> Int? {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => Present { value: census_total_count(rows: census_blocking_rows(rows: rows)) }
+    CensusNotRunnable { cause: _ } => none
+  }
+}
+
+// The positive control. The same shape with a NonEmptyStr compiles clean, so the REDs are the
+// field type and not the import or the harness refusing everything.
+test fn a_nonempty_str_reason_is_accepted_by_the_retyped_field() -> Bool {
+  match reason_blocking_count(source: reason_nonempty_green_source) {
+    Present { value: n } => n == 0
+    Absent => false
+  }
+}
+
+data reason_empty_literal_red_source: String = "module probe_reason_empty_literal_red\nimport v2.workflow.floor_terminal_ledger { ClaimObservation, ObservationUnrepresentable }\nfn f() -> ClaimObservation { ObservationUnrepresentable { reason: \"\" } }\n"
+
+// The RED. An empty literal is not a NonEmptyStr.
+test fn an_empty_literal_reason_is_refused() -> Bool {
+  match reason_blocking_count(source: reason_empty_literal_red_source) {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}
+
