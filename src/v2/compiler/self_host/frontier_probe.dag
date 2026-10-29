@@ -86,6 +86,7 @@ import v2.std.diagnostic {
   InvariantPortLocus,
   SourcePortLocus,
   Rejected,
+  RequestedModuleMissing,
   Textual,
   Unavailable,
   ExternalContractUnknown,
@@ -284,20 +285,23 @@ fn frontier_probe_read_failure_reason(result: SourceRefReadResult) -> Symbol {
   }
 }
 
-// WHY THE MISSING NAME IS READ OFF THE DIAGNOSTIC RATHER THAN RE-FOUNDED. This used to fold the whole
-// ingest again -- program_assembly_fold_ingest, then validate_module_roots, then module_root_lookup over
-// admission.imports -- to rediscover which import had no root. That was a SECOND derivation of a fact the
-// refusal itself already states, able to disagree with the refusal it was reporting (DESIGN section 3: each
-// fact lives in exactly one place), and it re-derived the answer only for the one reason the caller had
-// already named. v2.compiler.name_resolve's `resolve_module_not_found` mint now cites the requested name as
-// the typed `Locus::DeclarationLocus` std.diagnostic sanctions for a qualified name, so the probe reads
-// that citation. A not_found reached from a route that cites no declaration yields Absent -- the receipt
-// then says the identity is unavailable instead of inventing one by re-folding.
+// THE NAME COMES FROM THE REFUSAL ITSELF, read out of the slot that survives a located caller. The probe
+// once re-folded the whole ingest (`program_assembly_fold_ingest` -> `validate_module_roots` ->
+// `module_root_lookup`) to rediscover a name the caller had already named: a second authority for the missing
+// module, able to disagree with the refusal it was reporting, and it re-derived the answer only for the one
+// reason the caller had already named (DESIGN section 3: each fact lives in exactly one place).
+// `v2.compiler.name_resolve`'s `resolve_module_not_found_diagnostic_from_missing` mint carries the requested
+// name in the diagnostic's `correction`, which is the slot a located caller cannot overwrite:
+// `admit_imported_module_existence` re-stamps `at` with the import's authored locus -- correctly, since that
+// is the only position the requester can be pointed at -- and drops whatever `at` cited. Reading `at` here
+// would therefore lose the name on exactly the admission route this probe reports on. A not_found reached
+// from a route that carries no name yields Absent: the receipt then says the identity is unavailable instead
+// of inventing one by re-folding.
 fn frontier_probe_missing_module_from_diagnostic(d: NonEmptyDiagnostics) -> Optional<QualifiedName> {
   let fatal = diagnostics_fatal(d: d)
-  match fatal {
-    Diagnostic { reason: _, at: DeclarationLocus { declaration: declaration }, correction: _ } =>
-      optional_present(value: declaration)
+  match fatal.correction {
+    Unavailable { reason: RequestedModuleMissing { requested: requested } } =>
+      optional_present(value: requested)
     _ => optional_absent()
   }
 }

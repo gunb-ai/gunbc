@@ -4410,6 +4410,7 @@ fn native_census_correction_declarer(c: Correction) -> Optional<QualifiedName> {
         AmbiguousIntent => optional_absent()
         ExternalContractUnknown => optional_absent()
         CorrectionNotModeled => optional_absent()
+        RequestedModuleMissing { requested: _ } => optional_absent()
       }
   }
 }
