@@ -2411,6 +2411,20 @@ fn site_pxe_edge_post_activation_wire(post: SitePxeEdgePostActivation) -> String
   }
 }
 
+fn site_pxe_edge_http_leg_wire(http: SitePxeEdgeHttpLeg) -> String {
+  match http {
+    HttpLegNotNeeded => "not-needed"
+    HttpLegNotRead { reason: r } => concat("not-read ", r)
+    HttpLegActivation { activation: a, listen: l } => join(["activation ", site_pxe_edge_probe_wire(probe: a), " listen ", match l {
+      HttpListenBoundTo { address: addr } => concat("bound ", addr)
+      HttpListenWildcard { local: w } => concat("WILDCARD ", w)
+      HttpListenOtherAddress { local: o } => concat("OTHER-ADDRESS ", o)
+      HttpListenAbsent => "ABSENT"
+      HttpListenUnobservable { reason: r } => concat("UNOBSERVABLE ", r)
+    }], "")
+  }
+}
+
 fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
   join([
     "mode=", match run.mode { SitePxeEdgeObserveOnly => "observe" SitePxeEdgeApply => "apply" }, "\n",
@@ -2423,6 +2437,7 @@ fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
     "activation=", site_pxe_edge_probe_wire(probe: run.activation), "\n",
     "unit-active=", site_pxe_edge_probe_wire(probe: run.unit_active), "\n",
     "post-activation-members=", site_pxe_edge_post_activation_wire(post: run.post_activation), "\n",
+    "http=", site_pxe_edge_http_leg_wire(http: run.http), "\n",
     "terminal=", if site_pxe_edge_run_succeeded(run: run) { "succeeded" } else { "REFUSED" }, "\n",
   ], "")
 }
