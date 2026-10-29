@@ -7,6 +7,7 @@ import std.types { NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.gpu.types {
   GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, ConfigurableBoardPower, GpuNamedPowerPoint,
+  SeveralGpus, InterconnectRead, OnBoardPcieSwitch,
   PcieAddInBoard, ZeroPowerNotSupported, PassiveThermalSolution, Cuda,
 }
 import extdeps.memory.types { MemoryFacts, Dram }
@@ -14,7 +15,7 @@ import extdeps.storage.types { PcieLink, Gen4 }
 import extdeps.pci.identity { PciDeviceId }
 import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
 import extdeps.vendor.nvidia { nvidia }
-import extdeps.external_authority { FactCitation }
+import extdeps.external_authority { FactCitation, TranscribedUncited }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -84,11 +85,25 @@ data nvidia_a16_gpu_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
   dense_tensor_throughput: [],
 }
 
+// THE FOUR GPUs SIT BEHIND ONE PCIe SWITCH, BUT THE BRIEF DOES NOT SAY SO. What says so is a reading of a
+// real A16 on srv3: nvidia-smi topo reported PIX (one PCIe switch traversed) between its GPUs, each link
+// reporting x4 against a x16 cap (gunbc-private docs/strategy/2026-10-25-serving-benchmarks.md,
+// 2026-10-25). A reading is not the vendor's statement, so the interconnect stands as a transcription
+// until the brief, or NVIDIA's board specification, is read for it; the x4 is left off the row for the
+// same reason. The composition citation below grounds the COUNT (Table 1: four GA107 GPUs), not the switch.
+data a16_interconnect_obligation: NonEmptyStr = "Read the A16's on-board topology from NVIDIA's A16 board specification or the product brief PB-10518-001: that the four GA107s sit behind one PCIe switch, and each GPU's downstream link width. Today the switch is an nvidia-smi topo reading (PIX, links reporting x4) of srv3's card on 2026-10-25, not a vendor statement." as NonEmptyStr
+
 data nvidia_a16_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "A16",
   gpu: nvidia_a16_gpu_catalog,
-  gpu_count: 4,
+  composition: SeveralGpus {
+    count: 4,
+    interconnect: InterconnectRead {
+      interconnect: OnBoardPcieSwitch { downstream_link: none },
+      standing: TranscribedUncited { read_obligation: a16_interconnect_obligation },
+    },
+  },
   attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
   board_power: Present { value: ConfigurableBoardPower {
     default: Present { value: watt(count: 250) },
@@ -101,7 +116,7 @@ data nvidia_a16_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   pci_device_id: Present { value: "25b6" as PciDeviceId },
   driver_listed_name: Present { value: "NVIDIA A16" },
   figure_citations: [
-    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "gpu_count"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "composition"), authority: extdeps_external_authority_anchor },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "board_power"), authority: extdeps_external_authority_anchor },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "zero_power"), authority: extdeps_external_authority_anchor },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "thermal"), authority: extdeps_external_authority_anchor },
