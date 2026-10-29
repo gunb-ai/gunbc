@@ -36,9 +36,11 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_exec, ExecOk, ExecFailed, ExecRefused,
   belt_attempt_worktree_restore_for_instance, AttemptWorktreeRestore,
   AttemptWorktreeRestored, AttemptWorktreeNotNeeded, AttemptWorktreeBranchAbsent, AttemptWorktreeRestoreRefused,
+  belt_attempts_observe_for_instance, belt_prior_attempt_recovery, belt_claim_tree_at, AttemptsObserved,
 }
+import gunbc.roadmap.roadmap_attempt_worktree_claim { ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
-import gunbc.harness.harness_session_recovery { SessionValidated, session_event_request_pending }
+import gunbc.harness.harness_session_recovery { SessionValidated, session_event_request_pending, session_recovery_is_request_pending_resumable }
 
 fn fresh_instance(tag: String) -> HostDashboardInstance {
   let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_wt_restore_wet_", tag, ".XXXXXX"], "")).path
@@ -126,24 +128,112 @@ fn is_not_needed(step: AttemptWorktreeRestore) -> Bool {
   }
 }
 
-// (1) THE INHABITANCE: a request-pending resumable lineage whose worktree is absent, with its branch
-// present, is RESTORED — the real `git worktree add` runs and the tree ends up at the branch head.
-test fn a_request_pending_missing_tree_is_restored_at_the_branch_head() -> Bool {
-  let instance = fresh_instance(tag: "restore")
-  let node = "n-wt-restore"
-  let key = "wt-restore-1"
+// The attempt_key the LEDGER actually parsed for this instance's single dispatch row (the value the
+// restore itself keys the recovery read and the branch/worktree path on). "" if no row. Splitting this
+// out lets each diagnostic claim check the FACT the restore reads, not the fixture's intended key, so a
+// branch-name/parse round-trip mismatch shows up as its own red instead of a silent NotNeeded.
+fn ledger_first_key(instance: HostDashboardInstance) -> String {
+  match belt_attempts_observe_for_instance(instance: instance) {
+    AttemptsObserved { attempts } =>
+      match (attempts).first() {
+        Present { value: row } => row.attempt_key
+        Absent => ""
+      }
+    _ => ""
+  }
+}
+
+// (1) THE LEDGER IS SEEN: for-each-ref on the instance repo surfaced the dispatch branch as the row the
+// restore reads, and the parsed attempt_key round-trips to the fixture's key. A red here means the branch
+// name / dispatch_attempt_refs parse is the culprit, not the restore.
+test fn the_ledger_row_for_the_dispatch_branch_is_observed() -> Bool {
+  let instance = fresh_instance(tag: "ledger")
+  let node = "n-wt-ledger"
+  let key = "wt-ledger-1"
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+  cleaned(instance: instance, verdict: laid && ledger_first_key(instance: instance) == key)
+}
+
+// (2) THE GATE READS RESUMABLE: the recovery reading the restore actually consults — belt_prior_attempt_recovery
+// at the LEDGER's parsed attempt_key — projects a resumable request-pending with no interrupted calls. A red
+// here means the seeded provider-events.jsonl path or the request-pending/resumability projection is the
+// culprit (the live bug's own record shape). This is the tree-INDEPENDENT fact that must gate the restore.
+test fn the_gate_reads_the_seeded_lineage_as_resumable() -> Bool {
+  let instance = fresh_instance(tag: "gate")
+  let node = "n-wt-gate"
+  let key = "wt-gate-1"
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+  let pk = ledger_first_key(instance: instance)
+  let gate = session_recovery_is_request_pending_resumable(belt_prior_attempt_recovery(instance: instance, node_id: node, attempt_key: pk))
+  cleaned(instance: instance, verdict: laid && gate)
+}
+
+// (3) THE TREE IS GENUINELY ABSENT BEFORE THE RESTORE: belt_claim_tree_at reads the worktree root listing
+// and reports Absent (not Unobserved), so the restore proceeds rather than refusing on an unknown tree.
+test fn the_worktree_is_absent_before_the_restore() -> Bool {
+  let instance = fresh_instance(tag: "absent")
+  let node = "n-wt-absent"
+  let key = "wt-absent-1"
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let pk = ledger_first_key(instance: instance)
+  let absent = match belt_claim_tree_at(instance: instance, path: dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: pk)) {
+    ClaimTreeAbsent => true
+    ClaimTreePresent => false
+    ClaimTreeUnobserved { detail: _ } => false
+  }
+  cleaned(instance: instance, verdict: laid && absent)
+}
+
+// (4) THE RESTORE RUNS: the whole named actuation returns the Restored arm (not NotNeeded / Refused /
+// BranchAbsent). Reads the gate (recovery) AND the tree AND the branch AND the claim open AND the real
+// `git worktree add` in one pass.
+test fn the_restore_returns_the_restored_arm() -> Bool {
+  let instance = fresh_instance(tag: "arm")
+  let node = "n-wt-arm"
+  let key = "wt-arm-1"
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
   let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
-  let branch = dispatch_branch_name(node_id: node, attempt_key: key)
-  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: key)
+  cleaned(instance: instance, verdict: laid && is_restored(step))
+}
+
+// (5) THE RESTORED WORKTREE EXISTS: after the restore, belt_claim_tree_at reads the tree as Present.
+test fn the_restored_worktree_exists_after_the_restore() -> Bool {
+  let instance = fresh_instance(tag: "after")
+  let node = "n-wt-after"
+  let key = "wt-after-1"
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let _step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
+  let pk = ledger_first_key(instance: instance)
+  let present = match belt_claim_tree_at(instance: instance, path: dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: pk)) {
+    ClaimTreePresent => true
+    ClaimTreeAbsent => false
+    ClaimTreeUnobserved { detail: _ } => false
+  }
+  cleaned(instance: instance, verdict: laid && present)
+}
+
+// (6) THE RESTORED TREE SITS AT THE BRANCH HEAD: the durable record is what the tree was rebuilt from.
+test fn the_restored_head_equals_the_branch_head() -> Bool {
+  let instance = fresh_instance(tag: "head")
+  let node = "n-wt-head"
+  let key = "wt-head-1"
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let _step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
+  let pk = ledger_first_key(instance: instance)
+  let branch = dispatch_branch_name(node_id: node, attempt_key: pk)
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: pk)
   let head_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
   let branch_sha = git_out(dir: instance.repo_root as String, args: ["rev-parse", branch])
-  let restored = is_restored(step)
-    && head_sha != ""
-    && head_sha == branch_sha
-  cleaned(instance: instance, verdict: laid && restored)
+  cleaned(instance: instance, verdict: laid && head_sha != "" && head_sha == branch_sha)
 }
 
 // (2) FAIL-CLOSED (already-present tree): the same lineage whose worktree is already checked out is
