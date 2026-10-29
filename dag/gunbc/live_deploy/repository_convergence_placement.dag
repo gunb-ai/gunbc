@@ -1,5 +1,8 @@
 module gunbc.live_deploy.repository_convergence_placement
 
+import std.error_primitives { Result, Ok, Err }
+import extdeps.systemd.unit_file { SystemdUnitFile }
+
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.types { String, Bool, NonEmptyStr, List }
 import std.algebra { trim }
@@ -723,16 +726,28 @@ fn convergence_oneshot_unit_text(spec: DeploymentSpec, oneshot: ConvergenceOnesh
 }
 
 fn convergence_oneshot_rendering(spec: DeploymentSpec, slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> ConvergenceUnitRendering {
+  match convergence_oneshot_file(spec: spec, slice: slice, oneshot: oneshot) {
+    Err { value: reason } => ConvergenceUnitPlacementRefused { reason: reason }
+    Ok { value: file } => ConvergenceUnitRendered { text: serialize_systemd_unit_file(file: file) }
+  }
+}
+
+// Installation consumes the admitted file, before serialization can erase its identity.
+fn convergence_oneshot_file(spec: DeploymentSpec, slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> Result<SystemdUnitFile, String> {
   match convergence_slice_admission(spec: spec, slice: slice) {
     ConvergenceSliceInsideServingSlice { name: n, serving: s } =>
-      ConvergenceUnitPlacementRefused { reason: convergence_slice_refusal_text(oneshot: oneshot, slice: n, serving: s) }
+      Err { value: convergence_slice_refusal_text(oneshot: oneshot, slice: n, serving: s) }
     ConvergenceSliceAdmitted { name: admitted } =>
-      ConvergenceUnitRendered { text: convergence_oneshot_text_in(slice: admitted, oneshot: oneshot) }
+      Ok { value: convergence_oneshot_file_in(slice: admitted, oneshot: oneshot) }
   }
 }
 
 fn convergence_oneshot_text_in(slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> String {
-  serialize_systemd_unit_file(file: ServiceUnitFile {
+  serialize_systemd_unit_file(file: convergence_oneshot_file_in(slice: slice, oneshot: oneshot))
+}
+
+fn convergence_oneshot_file_in(slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> SystemdUnitFile {
+  ServiceUnitFile {
     unit: [Description { text: oneshot.description }],
     service: concat(
       concat(
@@ -753,7 +768,7 @@ fn convergence_oneshot_text_in(slice: NonEmptyStr, oneshot: ConvergenceOneshot) 
       ],
     ),
     install: NotInstallable,
-  })
+  }
 }
 
 // THE TREE-SYNC ONESHOT: git-native convergence of the deployed repository to the candidate.
