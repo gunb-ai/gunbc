@@ -695,19 +695,24 @@ fn branch_grant_secrets(grants: List<SecretAccessGrant>) -> List<String> {
 // policy and PRESENT in the boot's -- if someone re-mirrors f.secret_grants, or "helpfully" adds the fleet
 // key because the main boot holds it, the second half fails instead of converging quietly.
 test fn the_branch_policy_never_holds_the_fleet_automation_key() -> Bool {
-  let f = boot_federation_for(host: operator_host_mtcollins1)
+  match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+    // an unprovisioned boot identity means there is nothing to narrow FROM, so the narrowing claim has no
+    // subject; it fails rather than passing vacuously over an absent federation.
+    Absent => false
+    Present { value: f } =>
   let branch_secrets = branch_grant_secrets(grants: mtcollins1_boot_branch_secret_grants_with(f: f, reader: minted_reader_grant()))
   let boot_secrets = branch_grant_secrets(grants: f.secret_grants)
   let fleet_key = fleet_automation_ssh_privkey_secret.secret as String
   // the narrowing itself
-  !any(branch_secrets, sec => sec == fleet_key)
+  filter(branch_secrets, sec => sec == fleet_key).length() == 0
     // ...and it is a narrowing: the boot really does hold that key, so the claim above is not vacuous
-    && any(boot_secrets, sec => sec == fleet_key)
+    && filter(boot_secrets, sec => sec == fleet_key).length() > 0
     // the branch policy is exactly the two cells that were ruled, nothing else
     && branch_secrets.length() == 2
     && all(branch_secrets, sec =>
       sec == (mtcollins1_boot_branch_bmc_secret_id as String)
         || sec == (boot_medium_reader_ssh_privkey_secret.secret as String))
+  }
 }
 
 // THE BMC CELL IS INHERITED, NOT RE-DERIVED: same secret, same pinned version, same condition. A rotation
@@ -715,13 +720,15 @@ test fn the_branch_policy_never_holds_the_fleet_automation_key() -> Bool {
 // SECRET ID -- an index-0 grab would become a silent fleet-key handover the first time someone reorders
 // the boot federation's cells, which is exactly the failure this section exists to close.
 test fn the_bmc_cell_is_the_boot_federations_own() -> Bool {
-  let f = boot_federation_for(host: operator_host_mtcollins1)
-  match mtcollins1_boot_branch_bmc_grant(f: f) {
+  match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+    Absent => false
+    Present { value: f } => match mtcollins1_boot_branch_bmc_grant(f: f) {
     Absent => false
     Present { value: g } =>
       (g.target.secret as String) == (mtcollins1_boot_branch_bmc_secret_id as String)
-        && any(f.secret_grants, b => (b.target.secret as String) == (g.target.secret as String)
-          && (b.target.version as String) == (g.target.version as String))
+        && filter(f.secret_grants, b => (b.target.secret as String) == (g.target.secret as String)
+          && (b.target.version as String) == (g.target.version as String)).length() > 0
+    }
   }
 }
 
@@ -754,10 +761,11 @@ test fn the_reader_mint_is_the_only_thing_that_opens_the_route() -> Bool {
     Absent => false
     Present { value: fed } =>
       // the policy it converges is the narrowed one, not the boot's
-      !any(branch_grant_secrets(grants: fed.secret_grants), sec => sec == (fleet_automation_ssh_privkey_secret.secret as String))
+      filter(branch_grant_secrets(grants: fed.secret_grants), sec => sec == (fleet_automation_ssh_privkey_secret.secret as String)).length() == 0
         && fed.secret_grants.length() == 2
-        // with no reader credential the very same builder declares nothing at all
-        && match mtcollins1_boot_branch_federation_with(reader: none) { Absent => true  Present { value: _ } => false } { true => true  false => false }
+        // with no reader credential the very same builder declares nothing at all. The match below already
+        // decides the conjunct -- a Bool is not matchable, so it is not wrapped in a second match.
+        && match mtcollins1_boot_branch_federation_with(reader: none) { Absent => true  Present { value: _ } => false }
   }
 }
 

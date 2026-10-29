@@ -290,7 +290,12 @@ fn mtcollins1_boot_branch_route_refusal_cause() -> NonEmptyStr? {
 fn mtcollins1_boot_branch_federation_with(reader: SecretAccessGrant?) -> DedicatedFederation? {
   match mtcollins1_boot_branch_route_refusal_cause_with(reader: reader) {
     Present { value: _ } => none
-    Absent =>
+    // THE BOOT IS PROVISIONED HERE BY CONSTRUCTION: the refusal function above returns "unprovisioned" for
+    // exactly this standing, so reaching the Absent arm below would mean the two reads of the standing
+    // disagreed. It answers none rather than panicking, so a disagreement cannot manufacture a federation.
+    Absent => match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+      Absent => none
+      Present { value: boot } =>
       Present { value: DedicatedFederation {
           label: "mtcollins1 boot from a trusted gunbc branch (approval-free, per the operator rulings 2026-10-22/23)",
           pool_id: mtcollins1_boot_branch_wif_pool_id,
@@ -325,8 +330,9 @@ fn mtcollins1_boot_branch_federation_with(reader: SecretAccessGrant?) -> Dedicat
           // what it holds, so the guard cannot be satisfied by a different set than the one converged.
           // THE SAME LIST THE REFUSAL ABOVE TESTED: one computation decides both whether the route exists
           // and what it holds, so the guard cannot be satisfied by a set other than the one converged.
-          secret_grants: mtcollins1_boot_branch_secret_grants_with(f: boot_federation_for(host: operator_host_mtcollins1), reader: reader),
-      } }
+          secret_grants: mtcollins1_boot_branch_secret_grants_with(f: boot, reader: reader),
+        } }
+    }
   }
 }
 
