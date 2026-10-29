@@ -58,10 +58,7 @@ type CapacityRecoveryLeg
   | CapacityRecoveryInstall { file: CapacityGenerationFile }
   | CapacityRecoveryVerifyGeneration { files: List<CapacityGenerationFile> }
   | CapacityRecoveryVerifyInhibition { paths: List<CapacityInhibitionPath> }
-  | CapacityRecoveryVerifyDischarge { artifacts: List<CapacityInhibitionArtifact> }
-  | CapacityRecoveryRemoveCaptures { files: List<CapacityGenerationFile> }
-  | CapacityRecoveryPersistCleanupOnly
-  | CapacityRecoveryCloseRecordedLinks { artifacts: List<CapacityInhibitionArtifact> }
+  | CapacityRecoveryRemoveRecordedLinks { artifacts: List<CapacityInhibitionArtifact> }
   | CapacityRecoveryVerifyDischarge { artifacts: List<CapacityInhibitionArtifact> }
   | CapacityRecoveryRemoveCaptures { files: List<CapacityGenerationFile> }
   | CapacityRecoveryPersistCleanupOnly
