@@ -83,6 +83,7 @@ import v2.compiler.occurrence_resolution_census {
 }
 import v2.compiler.name_resolve {
   resolution_context_namespace,
+  resolution_context_with_blocked_members,
   closure_declarations_demand,
   Admission,
   ResolutionSubject,
