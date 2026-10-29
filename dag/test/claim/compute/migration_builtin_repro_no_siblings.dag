@@ -9,8 +9,8 @@ import gunbc.compute.migration_builtin_repro_no_siblings {
   CapacityConfirmedWriter, capacity_migration_enumerate_family,
 }
 
-// Isolation baseline: the actual failing production module at ee5ce7d0379,
-// with only its module identity changed. Not claimed as a repro until executed.
+// Reduction of the failing 351f9c62cad baseline: retain its imports, types and
+// exact selector, deleting all sibling functions. Outcome awaits execution.
 test fn real_module_without_sibling_functions() -> Bool {
   let unit = CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }
   let family = CapacityTransientFamily {
