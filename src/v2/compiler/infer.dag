@@ -3647,7 +3647,7 @@ fn infer_coproduct_catch_all_binder_widening_over_a_nullary(rows: List<InferCopr
     // what keeps a lone alternative from being rewritten at all.
     Present { value: arm } => optional_present(value: InferCatchAllWidening {
       arm: arm,
-      nullary_remainder: node_rebuild(n: coproduct.variants, children: fold_list(xs: coproduct.variants.children, init: Empty, f: fn(acc, e) {
+      nullary_remainder: node_rebuild(n: coproduct.variants, children: fold_list(xs: coproduct.variants.children, empty: Empty, cons: fn(acc, e) {
         match e.label {
           Authored { name: tag } =>
             if !(contains(xs: walked.earlier, item: tag, eq: fn(x, y) { x == y })) && infer_empty_product_shape(node: e.target) {
