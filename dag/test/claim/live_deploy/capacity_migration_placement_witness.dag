@@ -23,7 +23,7 @@ test fn the_cutover_cannot_drain_its_own_parent_slice() -> Bool {
 test fn a_separate_runner_cgroup_is_not_a_descendant() -> Bool {
   match placement_fixture(body: "0::/system.slice/actions-runner@srv1-02.service\n",
     parent_path: Ok { value: "/user.slice/user-1000.slice/user@1000.service/gunbc-user-work.slice" }) {
-    Ok { value: path } => path as String == "/system.slice/actions-runner@srv1-02.service"
+    Ok { value: path } => (path as String) == "/system.slice/actions-runner@srv1-02.service"
     Err { value: _ } => false
   }
 }

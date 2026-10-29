@@ -13,7 +13,7 @@ fn capacity_cutover_parent_separation(current: NonEmptyStr, parent: CapacityMana
     Ok { value: enclosing } => {
       if enclosing == "" || !starts_with(s: enclosing, prefix: "/") {
         Err { value: concat("unreadable drain parent ControlGroup: ", parent.unit as String) }
-      } else if enclosing == "/" || current as String == enclosing || starts_with(s: current as String, prefix: concat(enclosing, "/")) {
+      } else if enclosing == "/" || (current as String) == enclosing || starts_with(s: (current as String), prefix: concat(enclosing, "/")) {
         Err { value: concat("cutover executes inside drain parent: ", parent.unit as String) }
       } else { Ok { value: current } }
     }
@@ -28,7 +28,7 @@ fn capacity_cutover_placement(content: Result<String, String>, parents: List<Cap
     Err { value: why } => Err { value: why }
     Ok { value: body } => match read_unified_cgroup_membership(content: body) {
       CurrentCgroupObserved { relative_path: current } => {
-        if !starts_with(s: current as String, prefix: "/") { return Err { value: "current process cgroup is not an absolute hierarchy path" } }
+        if !starts_with(s: (current as String), prefix: "/") { return Err { value: "current process cgroup is not an absolute hierarchy path" } }
         if count(parents) == 0 { return Err { value: "cutover has no declared drain parents" } }
         fold(parents, init: Ok { value: current }, f: (prior, parent) => match prior {
           Err { value: why } => Err { value: why }
