@@ -146,11 +146,9 @@ fn srv1_serving_launch_argv(api_key_wire: NonEmptyStr) -> List<String> {
 // nickname DESIGN 3 forbids). The derivation therefore carries its OWN identity fields and holds the
 // upstream row only as its base.
 //
-// KNOWN GAP, DECLARED: gunbc.serving.serving_provision_derivation's srv1 arm still takes the RECIPE's
-// build image (the base, af14f1a9), because its image field is the upstream carrier. Executing that
-// derivation would deploy the unpatched base -- the regression of 2026-10-29 10:58, made by hand.
-// Nothing executes it yet (its own unbound dissolution row says so); before anything does, its image
-// field must admit this derivation.
+// ONE IMAGE AUTHORITY FOR THE DEPLOYMENT: gunbc.serving.serving_provision_derivation's srv1 arm takes its
+// image from srv1_serving_image below, not from the recipe build's pin, so the base is reachable from a
+// provision only as the release it derives from (`build`), never as the image it installs.
 type Srv1ServingImageDerivation {
   repository: NonEmptyStr
   tag: NonEmptyStr
