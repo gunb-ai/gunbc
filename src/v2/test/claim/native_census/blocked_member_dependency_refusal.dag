@@ -50,8 +50,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   Textual,
-  Unavailable,
-  bind_outcome
+  Unavailable
 }
 import v2.std.namespace_alias { CapturedImportTarget }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, fold_list_node, symbol_lexeme }
@@ -115,12 +114,17 @@ fn bm_initial_admission_state() -> AdmissionState {
   AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
 }
 
-// The requester's own root only: the blocked member is NOT a root, which is the whole point -- it was read
-// and refused, so nothing was admitted from it.
-fn bm_validated_roots() -> Outcome<ValidatedModuleRoots> {
-  bind_outcome(o: bm_module_root(segments: Cons { head: ^bm_subject_seg, tail: Empty }), f: fn(subject_root) {
-    validate_module_roots(roots: Cons { head: subject_root, tail: Empty })
-  })
+// The requester's validated root population, or false when even the requester's own module will not
+// validate -- so a refusal can never pass by fixture luck.
+fn bm_with_validated_roots(f: fn(ValidatedModuleRoots) -> Bool) -> Bool {
+  match bm_module_root(segments: Cons { head: ^bm_subject_seg, tail: Empty }) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: subject_root, diagnostics: _ } =>
+      match validate_module_roots(roots: Cons { head: subject_root, tail: Empty }) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: validated, diagnostics: _ } => f(validated)
+      }
+  }
 }
 
 fn bm_admit(roots: ValidatedModuleRoots, target: QualifiedName) -> AdmissionState {
@@ -173,9 +177,7 @@ fn bm_names_declarer(c: Correction, declarer: QualifiedName) -> Bool {
 // in the carrier std.diagnostic already defines for exactly this join.
 test fn imported_module_blocked_at_front_end_refuses_as_dependency_not_not_found() -> Bool {
   let blocked = bm_qn_pair(head_seg: ^bm_blocked_org, tail_seg: ^bm_blocked_member)
-  match bm_validated_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: validated, diagnostics: _ } =>
+  bm_with_validated_roots(f: fn(validated) {
       match bm_admit(
         roots: validated_module_roots_with_blocked_members(roots: validated, blocked_members: Cons { head: blocked, tail: Empty }),
         target: blocked
@@ -186,7 +188,7 @@ test fn imported_module_blocked_at_front_end_refuses_as_dependency_not_not_found
             && bm_is_import_locus(l: d.head.at)
             && bm_names_declarer(c: d.head.correction, declarer: blocked)
       }
-  }
+  })
 }
 
 // CONTROL, THE ABSENT CASE STAYS ITSELF. The same import of a name that is neither a root nor a blocked
@@ -194,28 +196,24 @@ test fn imported_module_blocked_at_front_end_refuses_as_dependency_not_not_found
 // module nobody read is still simply not there.
 test fn imported_module_neither_root_nor_blocked_still_refuses_as_not_found() -> Bool {
   let absent = bm_qn_pair(head_seg: ^bm_absent_org, tail_seg: ^bm_absent_member)
-  match bm_validated_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: validated, diagnostics: _ } =>
+  bm_with_validated_roots(f: fn(validated) {
       match bm_admit(roots: validated, target: absent) {
         AdmissionAccepted { bindings: _, origins: _ } => false
         AdmissionRejected { diagnostics: d } =>
           (d.head.reason == ^resolve_module_not_found) && bm_is_import_locus(l: d.head.at)
       }
-  }
+  })
 }
 
 // CONTROL, THE ACCEPTED CASE. The very same fixture admits an import of a module that IS a root, so the
 // refusal above is the blocked member's and not a fixture that refuses on every route.
 test fn import_of_a_real_root_is_still_accepted_on_the_same_fixture() -> Bool {
-  match bm_validated_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: validated, diagnostics: _ } =>
+  bm_with_validated_roots(f: fn(validated) {
       match bm_admit(roots: validated, target: bm_qn(seg: ^bm_subject_seg)) {
         AdmissionAccepted { bindings: _, origins: _ } => true
         AdmissionRejected { diagnostics: _ } => false
       }
-  }
+  })
 }
 
 // A BLOCKED MEMBER IS NOT A ROOT, AND THE REASON DEPENDS ON THE LOCALITY ALONE. With no blocked members
@@ -224,9 +222,7 @@ test fn import_of_a_real_root_is_still_accepted_on_the_same_fixture() -> Bool {
 // dependency, fails one half of this claim.
 test fn the_reason_separates_on_the_block_and_on_nothing_else() -> Bool {
   let blocked = bm_qn_pair(head_seg: ^bm_blocked_org, tail_seg: ^bm_blocked_member)
-  match bm_validated_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: validated, diagnostics: _ } =>
+  bm_with_validated_roots(f: fn(validated) {
       match bm_admit(roots: validated, target: blocked) {
         AdmissionAccepted { bindings: _, origins: _ } => false
         AdmissionRejected { diagnostics: plain } =>
@@ -240,7 +236,7 @@ test fn the_reason_separates_on_the_block_and_on_nothing_else() -> Bool {
                     carried.head.reason == ^resolve_imported_module_refused
                 })
       }
-  }
+  })
 }
 
 // THE CENSUS SIDE OF THE SAME FACT, WITH NO SECOND WALK. The identity admission is handed is the one the
@@ -273,11 +269,12 @@ test fn census_blocked_member_identity_comes_from_the_read_its_own_header_declar
   (length(xs: carried) == 1)
     && (match carried {
       Cons { head: name, tail: Empty } =>
-        (symbol_lexeme(sym: name.head) == symbol_lexeme(sym: ^bm_blocked_org))
-          && (match name.tail {
-            Cons { head: last, tail: Empty } => symbol_lexeme(sym: last) == symbol_lexeme(sym: ^bm_blocked_member)
-            _ => false
-          })
+        match name {
+          Cons { head: first_seg, tail: Cons { head: last_seg, tail: Empty } } =>
+            (symbol_lexeme(sym: first_seg) == symbol_lexeme(sym: ^bm_blocked_org))
+              && (symbol_lexeme(sym: last_seg) == symbol_lexeme(sym: ^bm_blocked_member))
+          _ => false
+        }
       _ => false
     })
 }

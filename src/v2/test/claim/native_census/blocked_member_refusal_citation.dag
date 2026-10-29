@@ -30,7 +30,7 @@ import v2.extdeps.languages.dag { dag_grammar_atom, dag_surface_edge }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.declaration_marker { test_marker_channel_empty }
-import v2.std.diagnostic { Accepted, ByteRange, DeclarationLocus, None, Outcome, Rejected, Textual, bind_outcome }
+import v2.std.diagnostic { Accepted, ByteRange, DeclarationLocus, None, Outcome, Rejected, Textual }
 import v2.std.namespace_alias { CapturedImportTarget }
 import v2.std.node { Atom, Conj, Node, TypeNode, fold_list_node, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName }
@@ -109,26 +109,38 @@ fn qn_eq(a: QualifiedName, b: QualifiedName) -> Bool {
   )
 }
 
+// The validated root population of a requester whose own module is a real admitted root, or None-shaped
+// false when even that fails -- so a refusal cannot pass by fixture luck.
+fn bc_with_validated_roots(
+  o: Outcome<NormalizedTree>,
+  f: fn(ValidatedModuleRoots) -> Bool
+) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: subject_root, diagnostics: _ } =>
+      match validate_module_roots(roots: Cons { head: subject_root, tail: Empty }) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: validated, diagnostics: _ } => f(validated)
+      }
+  }
+}
+
 // RED ON MAIN, GREEN AT THE FIX: the refusal of an absent import target cites the refused name as a
 // declaration, so a reader takes the identity off the diagnostic instead of re-folding the roots that were
 // already folded to produce the refusal.
 test fn absent_import_refusal_cites_the_refused_name_as_a_declaration() -> Bool {
   let refused = bc_qn_pair(head_seg: ^bc_absent_org, tail_seg: ^bc_absent_member)
-  bind_outcome(
+  bc_with_validated_roots(
     o: bc_module_root(segments: Cons { head: ^bc_subject_seg, tail: Empty }),
-    f: fn(subject_root) {
-      match validate_module_roots(roots: Cons { head: subject_root, tail: Empty }) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: validated, diagnostics: _ } =>
-          match bc_admit(roots: validated, target: refused) {
-            AdmissionAccepted { bindings: _, origins: _ } => false
-            AdmissionRejected { diagnostics: d } =>
-              (d.head.reason == ^resolve_module_not_found)
-                && (match d.head.at {
-                  DeclarationLocus { declaration: declared } => qn_eq(a: declared, b: refused)
-                  _ => false
-                })
-          }
+    f: fn(validated) {
+      match bc_admit(roots: validated, target: refused) {
+        AdmissionAccepted { bindings: _, origins: _ } => false
+        AdmissionRejected { diagnostics: d } =>
+          (d.head.reason == ^resolve_module_not_found)
+            && (match d.head.at {
+              DeclarationLocus { declaration: declared } => qn_eq(a: declared, b: refused)
+              _ => false
+            })
       }
     }
   )
