@@ -35,7 +35,7 @@ module test.claim.machine_intake.machine_intake_bmc_served_lockout_witness
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Absent, Present }
-import std.algebra { length, list_head }
+import std.algebra { list_head }
 import std.scoped_authorization { AttemptIdentity }
 import gunbc.clock_read { ObserverClockInstant }
 import gunbc.machine_intake.receipt { EvidenceRef }
@@ -535,16 +535,28 @@ test fn a_login_the_plan_cannot_name_a_surface_for_is_bounded_by_what_was_actual
     Absent => false
     Present { value: b } => match b.block {
       CostExceedsTheServedHeadroom { cost: _, may_fail: _, threshold: _, known_failures_in_window: _ } => false
-      FailingLoginsWithNoServedThreshold { cost: c, cause: why } => c == 3 && length(split(why, on: "transport")) > 1
+      // The cause is part of the contract here: it is what tells the operator that
+      // the obstacle is a transport nobody read, not a controller that serves no
+      // lockout. The two unread answers share this arm, so the string is the only
+      // thing that separates them, and it is asserted exactly.
+      FailingLoginsWithNoServedThreshold { cost: c, cause: why } => c == 3 && why == unnamed_transport_cause
     }
   }
   let named_surface_keeps_its_own_policy = admitted_verdict(bmc_failed_login_budget_verdict(roster: named, reading: skewed, known: [], now: t_plan))
   skewed_refuses && generous_admits && half_a_reading_refuses_by_cause && named_surface_keeps_its_own_policy
 }
 
+// The account every roster in these two claims is keyed by, and the cause the
+// unnamed-surface arm must answer with when a transport was never read.
+fn root_account() -> NonEmptyStr { "root" as NonEmptyStr }
+
+fn unnamed_transport_cause() -> String {
+  "this login's surface is not named by the plan and the reading did not cover every transport it could authenticate on — the Redfish AccountService policy and a LAN channel policy are both needed to bound it"
+}
+
 // Root's counter on the surface the root rotation authenticates on.
 fn root_redfish_key() -> BmcFailedLoginBudgetKey {
-  BmcFailedLoginBudgetKey { account: root_user, surface: RedfishAccountServiceLogin }
+  BmcFailedLoginBudgetKey { account: root_account(), surface: RedfishAccountServiceLogin }
 }
 
 // A ROSTER OF `count` LOGINS ON THE SURFACE A WRITE WITH NO NAMED REQUEST GETS.
@@ -553,7 +565,7 @@ fn root_redfish_key() -> BmcFailedLoginBudgetKey {
 fn unnamed_surface_roster(count: Int) -> BmcPlanFailedLoginRoster {
   BmcPlanFailedLoginRoster {
     spends: [BmcPlanFailedLoginSpend {
-      key: BmcFailedLoginBudgetKey { account: root_user, surface: SurfaceOfThePlannedWriteUndetermined },
+      key: BmcFailedLoginBudgetKey { account: root_account(), surface: SurfaceOfThePlannedWriteUndetermined },
       logins: unnamed_logins(count: count),
     }],
     exempt: [],
@@ -562,7 +574,7 @@ fn unnamed_surface_roster(count: Int) -> BmcPlanFailedLoginRoster {
 
 fn unnamed_logins(count: Int) -> List<BmcCountedFailedLogin> {
   if count <= 0 { [] } else { concat([DeclaredRetryLogin {
-    account: root_user,
+    account: root_account(),
     surface: SurfaceOfThePlannedWriteUndetermined,
     of: "a login the plan cannot name a surface for",
   }], unnamed_logins(count: count - 1)) }
@@ -572,7 +584,7 @@ fn unnamed_logins(count: Int) -> List<BmcCountedFailedLogin> {
 fn named_redfish_roster(count: Int) -> BmcPlanFailedLoginRoster {
   BmcPlanFailedLoginRoster {
     spends: [BmcPlanFailedLoginSpend {
-      key: BmcFailedLoginBudgetKey { account: root_user, surface: RedfishAccountServiceLogin },
+      key: BmcFailedLoginBudgetKey { account: root_account(), surface: RedfishAccountServiceLogin },
       logins: named_logins(count: count),
     }],
     exempt: [],
@@ -581,7 +593,7 @@ fn named_redfish_roster(count: Int) -> BmcPlanFailedLoginRoster {
 
 fn named_logins(count: Int) -> List<BmcCountedFailedLogin> {
   if count <= 0 { [] } else { concat([DeclaredRetryLogin {
-    account: root_user,
+    account: root_account(),
     surface: RedfishAccountServiceLogin,
     of: "a login named to the Redfish AccountService",
   }], named_logins(count: count - 1)) }
