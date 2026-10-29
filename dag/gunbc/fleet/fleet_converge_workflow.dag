@@ -253,9 +253,8 @@ import gunbc.fleet.host_credential_custody_converge { host_custody_credential_op
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import gunbc.runner.runner_slot_allocation { runner_host_label, revision_job_slots }
-import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name, deploy_slot_observed_tenancy }
-import gunbc.ci.deploy_route_requirement { srv1_deploy_route_requirement, deploy_route_switch_admitted }
-import gunbc.runner.runner_slot_job_role { srv1_modeled_deploy_slot_reading }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
+import gunbc.runner.runner_slot_job_role { srv1_deploy_route_switch_admitted }
 import gunbc.host.host_reset_return {
   DispatchAssignment,
   DispatchAssignmentRefused,
@@ -1504,10 +1503,7 @@ fn fleet_converge_plan_revision_job() -> Job {
 // the modeled slot's reading, which reads shared until the host readback is produced, and the
 // generated workflow keeps today's expression until then.
 fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
-  if deploy_route_switch_admitted(
-    r: srv1_deploy_route_requirement,
-    observed: deploy_slot_observed_tenancy(reading: srv1_modeled_deploy_slot_reading()),
-  ) {
+  if srv1_deploy_route_switch_admitted() {
     RunsOnExpression { expression: fleet_converge_deploy_slot_runner_expression }
   } else {
     RunsOnExpression { expression: fleet_converge_host_runner_expression }
@@ -4424,10 +4420,14 @@ fn fleet_converge_approval_broker_dark_install_step() -> Step {
 // QueueNotMax with cancel_in_progress false, for the reason the dashboard-deploy annotation gives
 // -- a queued install must never interrupt the one holding the host mutation window.
 // ── THE microVM SLOT CONTROLLER INSTALL (microvm_controller_install) ─────────────────────────
-// THE SAME JOB SHAPE AS THE DARK INSTALL, FOR THE SAME REASON: the install binds ci_deploy_srv1_access
-// (ghrunner on the host-pinned runner), copies from the release bins this job downloaded and
-// verified, and writes an additive locus + template unit that starts no instance. It shares the
-// host-mutation concurrency group so it cannot land inside a roadmap deploy or a broker install.
+// THE SAME JOB SHAPE AS THE DARK INSTALL, with one difference that is the point: the install's
+// elevated legs run as the fleet administrator over its SSH edge, never under the job user's sudo
+// (gunbc.live_deploy.apply microvm_controller_install_wet), so the job materializes the fleet key --
+// AFTER the root-mutation approval, so no key exists in a run the operator has not approved -- and
+// ends the masters and the agent whatever the install's fate. It copies from the release bins this
+// job downloaded and verified, and writes an additive locus + template unit that starts no instance.
+// It shares the host-mutation concurrency group so it cannot land inside a roadmap deploy or a
+// broker install.
 data fleet_converge_microvm_controller_install_step_if: String = fleet_converge_srv1_root_mutation_job_if(mode: MicrovmControllerInstall)
 
 fn fleet_converge_microvm_controller_install_step() -> Step {
@@ -4474,7 +4474,9 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
       ],
       fleet_converge_revision_job_image_download_steps(),
       [
+        ci_fleet_key_agent_step(),
         fleet_converge_microvm_controller_install_step(),
+        ci_fleet_key_agent_cleanup_step(),
       ]
     ),
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall)),
