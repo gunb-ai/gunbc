@@ -7402,15 +7402,16 @@ mod heal_round_one_base_mirror_tests {
     ///
     /// The round's own teardown is the single authority that ends the snapshot (the rollback, not a
     /// second journal reader), so the control drives exactly that call and asserts three things a
-    /// silent fallback cannot satisfy: it reports the number it put back, the hand-maintained file
-    /// and the crate manifest read the HEAD's bytes afterwards, and the journal is gone so no later
-    /// round can restore over the regeneration.
+    /// silent fallback cannot satisfy: it reports the number it put back, every file the head
+    /// rewrote reads the HEAD's bytes afterwards, and the journal is gone so no later round can
+    /// restore over the regeneration. Only paths the HEAD actually rewrote are asserted: a file
+    /// committed identically on both sides (the crate's build script) would pass either way.
     #[test]
     fn a_succeeded_round_leaves_no_base_byte_for_the_candidate_to_publish() {
         let (root, stage0, base_commit) = base_mirror_fixture();
-        let manifest_file = root.join(STAGE0_CRATE_REL).join("Cargo.toml");
         let hand_file = stage0.join("std_logic.rs");
         let nested = stage0.join("cli_run").join("fixture_partition.rs");
+        let hand_dir_file = stage0.join("bin").join("fixture_main.rs");
 
         let restored = bootstrap_round_one_from_base_mirror(
             &root,
@@ -7418,11 +7419,17 @@ mod heal_round_one_base_mirror_tests {
             &fixture_subject(&root),
         )
         .expect("the round-1 bootstrap runs");
-        assert!(
-            read(&hand_file).contains("base hand-maintained"),
-            "the fixture's bootstrap did not seed the hand-maintained file, so this control would \
-             pass without exercising the hazard"
-        );
+        for (path, what) in [
+            (&hand_file, "hand-maintained file"),
+            (&hand_dir_file, "file inside a hand-maintained directory"),
+        ] {
+            assert!(
+                read(path).contains("base "),
+                "the fixture's bootstrap did not seed the {what}, so this control would pass \
+                 without exercising the hazard: {}",
+                read(path)
+            );
+        }
 
         // What a SUCCEEDED round now does before anything observes or publishes the worktree.
         let put_back =
@@ -7445,12 +7452,16 @@ mod heal_round_one_base_mirror_tests {
                 "variant `Dag` constructed",
                 "nested partition",
             ),
-            (manifest_file, "[package]", "crate manifest"),
+            (
+                hand_dir_file.clone(),
+                "head hand-maintained main",
+                "file inside a hand-maintained directory",
+            ),
         ] {
             assert!(
                 read(&path).contains(needle),
-                "a succeeded round left the {what} at base's bytes; the candidate would publish a \
-                 revert of the pull request's own edit: {}",
+                "a succeeded round left the {what} at base's bytes; the candidate would publish \
+                 a revert of the pull request's own edit: {}",
                 read(&path)
             );
         }
@@ -7458,6 +7469,91 @@ mod heal_round_one_base_mirror_tests {
             !regen_convergence_journal_path(&root).exists(),
             "the journal survived a succeeded round, so a later round could restore over the \
              regeneration"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// THE HANDOFF CHILD IS NOT A SECOND OWNER OF THE TREE (manager ruling 2026-10-29).
+    ///
+    /// A re-exec'd image was exec'd to report on a build that consumed the tree it is handed. The
+    /// old behaviour was to restore the journal and seed again on arrival, and each half of that is
+    /// fatal in a way this control pins separately, with real bytes rather than with a flag:
+    ///
+    ///  * the restore puts the HEAD's bytes back, so the image reports on a tree its parent did not
+    ///    compile — cargo rebuilds, the relink trips `ExecutableReplacedAfterHandoff`, and the
+    ///    refusal is correct, because the measurement would otherwise describe bytes the emitting
+    ///    image never built;
+    ///  * the restore also DELETES the journal, so the round's teardown has nothing left to return
+    ///    the head's bytes from, and the base snapshot becomes unrecoverable — which is the
+    ///    publication hazard this PR fixes, reintroduced by a child that touched the tree.
+    ///
+    /// Both arms are asserted, then the child's actual (empty) arrival is run and the parent's tree
+    /// and journal are asserted intact: the two things the round depends on, still true at the
+    /// moment the child starts work.
+    #[test]
+    fn a_handoff_child_arrives_on_the_tree_it_was_exec_d_into() {
+        let (root, stage0, base_commit) = base_mirror_fixture();
+        let hand_file = stage0.join("std_logic.rs");
+        // A path the whole-crate population seeds that the generator never rewrites: the load-bearing
+        // assertion in the last arm, because a generated mirror would be rewritten anyway.
+        let build_script = root.join(STAGE0_CRATE_REL).join("build.rs");
+        let subject = fixture_subject(&root);
+
+        // The parent's act: seed the base snapshot, journal the head's bytes, build from that tree.
+        let restored = bootstrap_round_one_from_base_mirror(&root, Some(&base_commit), &subject)
+            .expect("the round-1 bootstrap runs");
+        assert!(
+            read(&hand_file).contains("base hand-maintained")
+                && read(&build_script).contains("base build identity source"),
+            "the parent did not seed the tree it would build from, so this control proves nothing"
+        );
+        let journal = regen_convergence_journal_path(&root);
+        assert!(journal.exists(), "the parent journalled nothing");
+
+        // ARM 1 — WHAT THE CHILD USED TO DO ON ARRIVAL. Restoring the journal is what made the two
+        // images' trees disagree, and it destroyed the record the teardown needs. If a future edit
+        // hands the startup restore back to the child, this arm is the one that goes red.
+        {
+            let (throwaway, throwaway_stage0, throwaway_base) = base_mirror_fixture();
+            let throwaway_hand = throwaway_stage0.join("std_logic.rs");
+            bootstrap_round_one_from_base_mirror(
+                &throwaway,
+                Some(&throwaway_base),
+                &fixture_subject(&throwaway),
+            )
+            .expect("the parent's bootstrap runs in the throwaway tree");
+            restore_regen_convergence_journal_for_subject(&throwaway, &fixture_subject(&throwaway))
+                .expect("the old child's startup restore runs");
+            assert!(
+                read(&throwaway_hand).contains("head hand-maintained"),
+                "the startup restore no longer moves the tree off what the parent compiled, so the \
+                 handoff rule below is dead code and should be deleted with this arm"
+            );
+            assert!(
+                !regen_convergence_journal_path(&throwaway).exists(),
+                "the startup restore leaves a journal behind, so the teardown hazard is gone and \
+                 the handoff rule below is guarding nothing"
+            );
+            let _ = fs::remove_dir_all(&throwaway);
+        }
+
+        // ARM 2 — WHAT THE CHILD DOES NOW: nothing. The carried tree and the journal the teardown
+        // reads are exactly what the parent left.
+        assert!(
+            read(&hand_file).contains("base hand-maintained")
+                && read(&build_script).contains("base build identity source"),
+            "the child's arrival moved the tree it was exec'd into"
+        );
+        assert!(
+            journal.exists(),
+            "the child's arrival destroyed the journal the round's teardown restores from"
+        );
+        assert_eq!(
+            restore_regen_convergence_journal_for_subject(&root, &subject)
+                .expect("the round's teardown restores what the parent seeded"),
+            restored.paths_restored,
+            "the teardown restored a different population than the parent seeded, so the child \
+             touched the tree or the journal"
         );
         let _ = fs::remove_dir_all(&root);
     }
