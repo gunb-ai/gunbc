@@ -447,11 +447,11 @@ type HostCapacityParentLimit { success: Bool, value: String }
 fn host_capacity_parent_limit(pool: HostCapacityPool) -> HostCapacityParentLimit {
   match pool {
     ComputeBuildPool => {
-      let r = systemctl.Systemctl.ShowUserProperty(unit: user_work_slice_unit_name, property: "MemoryMax")
+      let r = systemd.Systemctl.ShowUserProperty(unit: user_work_slice_unit_name, property: "MemoryMax")
       HostCapacityParentLimit { success: r.success, value: r.value }
     }
     AgentSessionPool { slots: _ } => {
-      let r = systemctl.Systemctl.ShowProperty(unit: attempt_worker_slice_unit_name, property: "MemoryMax")
+      let r = systemd.Systemctl.ShowProperty(unit: attempt_worker_slice_unit_name, property: "MemoryMax")
       HostCapacityParentLimit { success: r.success, value: r.value }
     }
   }
