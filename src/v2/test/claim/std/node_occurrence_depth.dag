@@ -27,6 +27,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // work has used. The depth at which the CALL axis starts refusing (the interpreter's own typed
 // call-depth refusal naming v2.std.node's node_edge_same_occurrence) is a separate matter, recorded in
 // the PR that owns it and not claimed here.
+//
+// PRECONDITION, learned when a re-run returned this refusal in place of a verdict: the run must sit
+// under an ENFORCEABLE cgroup memory limit, e.g.
+//   systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 -- <the command above>
+// Launched from a bare shell it prints `OUTPUT-POLICY REFUSAL cause=PolicyResolveFailed ...
+// HostBudgetUnreadable: no modeled host memory source answered` and exits 1 WITHOUT evaluating either
+// arm: gunbc.output_policy refuses to plan against the machine's memory, because the old unbounded
+// default was OOM-killed at rc=137 and a MemAvailable reading would substitute the machine for the slot
+// (gunbc.host.host_budget_source, host_budget_source_seed_mirror_disposition). GUNBC_MEMORY_BUDGET_BYTES
+// cannot substitute for it — it may only request a ceiling LOWER than an enforceable one. A refusal is
+// not a verdict, so a re-run that does not find the arm's PASS line has measured nothing.
 
 test fn node_chain_releases_at_eight_levels() -> Bool {
   let deep = node_deep_chain(doublings: 3)
