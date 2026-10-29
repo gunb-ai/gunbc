@@ -59,14 +59,14 @@ import gunbc.runner.runner_slot_cap_converge {
   slot_cap_holder_deferral_bound,
 }
 import gunbc.runner.runner_host_file_converge {
-  CapDropinOverrideReading,
-  CapDropinsNoLaterSetter,
-  CapDropinsLaterSetter,
-  CapDropinsUnread,
-  cap_dropin_setting_keys,
-  cap_dropins_that_could_override,
+  DropinOverrideReading,
+  DropinsNoLaterSetter,
+  DropinsLaterSetter,
+  DropinsUnread,
+  dropin_setting_keys,
+  dropins_that_could_override,
   parse_loaded_dropin_paths,
-  classify_cap_dropin_override,
+  classify_dropin_override,
   cap_in_place_readback_outcome,
   runner_host_cap_files,
   runner_host_cap_retirement_gate,
@@ -864,31 +864,31 @@ fn srv1_loaded() -> List<String> {
 // The candidates are the distinct loaded files sorting at or after 50-fleet-tasks.conf, and an equal name
 // in an instance directory (which replaces the template's file) is one; earlier names are not.
 test fn the_later_sorting_dropins_are_the_override_candidates() -> Bool {
-  let got = map(cap_dropins_that_could_override(written: [tasks_dropin() as NonEmptyStr], loaded: srv1_loaded()), c => c as String)
-  let shadow = map(cap_dropins_that_could_override(written: [tasks_dropin() as NonEmptyStr], loaded: ["/etc/systemd/system/actions-runner@srv1-01.service.d/50-fleet-tasks.conf", "/etc/systemd/system/actions-runner@.service.d/10-resource-caps.conf"]), c => c as String)
+  let got = map(dropins_that_could_override(written: [tasks_dropin() as NonEmptyStr], loaded: srv1_loaded(), exempt: []), c => c as String)
+  let shadow = map(dropins_that_could_override(written: [tasks_dropin() as NonEmptyStr], loaded: ["/etc/systemd/system/actions-runner@srv1-01.service.d/50-fleet-tasks.conf", "/etc/systemd/system/actions-runner@.service.d/10-resource-caps.conf"], exempt: []), c => c as String)
   got == ["/etc/systemd/system/actions-runner@.service.d/60-fleet-cpu.conf", "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf", "/etc/systemd/system/actions-runner@.service.d/depriv.conf"]
     && shadow == ["/etc/systemd/system/actions-runner@srv1-01.service.d/50-fleet-tasks.conf"]
 }
 
 // The keys searched are the write's own `Key=` lines, from the content this converge renders.
 test fn the_override_keys_are_the_written_files_own_settings() -> Bool {
-  map(cap_dropin_setting_keys(content: "[Service]\nTasksMax=16384\n"), k => k as String) == ["TasksMax="]
-    && map(cap_dropin_setting_keys(content: "# MemoryMax=1\n[Service]\nMemoryHigh=2\n"), k => k as String) == ["MemoryHigh="]
+  map(dropin_setting_keys(content: "[Service]\nTasksMax=16384\n"), k => k as String) == ["TasksMax="]
+    && map(dropin_setting_keys(content: "# MemoryMax=1\n[Service]\nMemoryHigh=2\n"), k => k as String) == ["MemoryHigh="]
     && grep_files_with_fixed_strings_argv(patterns: ["TasksMax=" as NonEmptyStr], paths: ["/x/60.conf" as NonEmptyStr]) == ["grep", "-l", "-F", "-e", "TasksMax=", "--", "/x/60.conf"]
 }
 
-fn override_is_none(r: CapDropinOverrideReading) -> Bool { match r { CapDropinsNoLaterSetter => true CapDropinsLaterSetter { files: _ } => false CapDropinsUnread { cause: _ } => false } }
-fn override_names(r: CapDropinOverrideReading, path: String) -> Bool { match r { CapDropinsLaterSetter { files: fs } => any(non_empty_to_list(xs: fs), f => (f as String) == path) CapDropinsNoLaterSetter => false CapDropinsUnread { cause: _ } => false } }
-fn override_unread(r: CapDropinOverrideReading) -> Bool { match r { CapDropinsUnread { cause: _ } => true CapDropinsNoLaterSetter => false CapDropinsLaterSetter { files: _ } => false } }
+fn override_is_none(r: DropinOverrideReading) -> Bool { match r { DropinsNoLaterSetter => true DropinsLaterSetter { files: _ } => false DropinsUnread { cause: _ } => false } }
+fn override_names(r: DropinOverrideReading, path: String) -> Bool { match r { DropinsLaterSetter { files: fs } => any(non_empty_to_list(xs: fs), f => (f as String) == path) DropinsNoLaterSetter => false DropinsUnread { cause: _ } => false } }
+fn override_unread(r: DropinOverrideReading) -> Bool { match r { DropinsUnread { cause: _ } => true DropinsNoLaterSetter => false DropinsLaterSetter { files: _ } => false } }
 
 // grep -l: exit 1 is no setter; exit 0 names the setter (RED); any other exit, or exit 0 naming nothing, is unread (RED).
 test fn the_override_grep_reads_three_ways() -> Bool {
   let c = ["/x/60.conf" as NonEmptyStr]
-  override_is_none(r: classify_cap_dropin_override(candidates: c, exit_code: 1, stdout: ""))
-    && override_names(r: classify_cap_dropin_override(candidates: c, exit_code: 0, stdout: "/x/60.conf\n"), path: "/x/60.conf")
-    && override_unread(r: classify_cap_dropin_override(candidates: c, exit_code: 2, stdout: ""))
-    && override_unread(r: classify_cap_dropin_override(candidates: c, exit_code: 0, stdout: ""))
-    && override_is_none(r: classify_cap_dropin_override(candidates: [], exit_code: 2, stdout: ""))
+  override_is_none(r: classify_dropin_override(candidates: c, exit_code: 1, stdout: ""))
+    && override_names(r: classify_dropin_override(candidates: c, exit_code: 0, stdout: "/x/60.conf\n"), path: "/x/60.conf")
+    && override_unread(r: classify_dropin_override(candidates: c, exit_code: 2, stdout: ""))
+    && override_unread(r: classify_dropin_override(candidates: c, exit_code: 0, stdout: ""))
+    && override_is_none(r: classify_dropin_override(candidates: [], exit_code: 2, stdout: ""))
 }
 
 // One DropInPaths line per unit, unioned; fewer lines than units is an incomplete read, not "no drop-ins".
