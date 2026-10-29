@@ -397,8 +397,6 @@ type BlowerDuctDesign {
   slot_pitch: Micrometer
 }
 
-// The screw-tool radius is a design allowance: an M3 x 4 pan head (about 5.5 mm) and the driver tip
-// reaching it through the open socket, with room to spare.
 // Which housing edge carries the outlet, off the fan row's cited outlet.
 fn outlet_edge_of(edge: RadialBlowerHousingEdge) -> BlowerOutletEdge {
   match edge { BlowerLengthEdge => OutletOnLengthEdge BlowerDepthEdge => OutletOnDepthEdge }
@@ -411,6 +409,8 @@ data a16_blower_duct_design: BlowerDuctDesign = BlowerDuctDesign {
   outlet_edge: outlet_edge_of(edge: delta_bfb1012m_outlet.edge),
   socket_clearance: micrometer(count: 500),
   socket_depth: micrometer(count: 10000),
+  // The screw-tool radius is a design allowance: an M3 x 4 pan head (about 5.5 mm) and the driver tip
+  // reaching it through the open socket, with room to spare.
   screw_tool_clearance_radius: micrometer(count: 3500),
   card_count: 1,
   slot_pitch: micrometer(count: 40640),
