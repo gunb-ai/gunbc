@@ -140,14 +140,15 @@ test fn w_the_read_card_selects_through_the_same_function() -> Bool {
   }
 }
 
-// A GROUNDED regression control for the A16 print. The a16-plug-fit-ring root was printed out of band and
-// the operator reported "part fits the A16" on 2026-10-26 (artifacts/printing/a16-plug-fit-ring/
-// manual-start-2026-10-26.json; product.printed_chassis.fit_observations plug_fit_ring_fit). The fit-ring
-// geometry did not change between that print and this literal being recorded (the only byte difference is the CARD reference part now
-// named from its row product, "NVIDIA A16 PCIe (PG171 SKU 200)" for "NVIDIA A16"), so the manifest digest below
-// names the geometry that was fitted: a derivation that moves a printed dimension moves the digest and goes
-// red here. A change to a cited component dimension that makes the old value wrong must re-record the digest
-// WITH its source, never silently.
+// A CHANGE DETECTOR for the printed A16 fit ring, honestly labelled. The a16-plug-fit-ring root was printed
+// out of band and the operator reported "part fits the A16" on 2026-10-26 (artifacts/printing/
+// a16-plug-fit-ring/manual-start-2026-10-26.json; product.printed_chassis.fit_observations plug_fit_ring_fit).
+// That record carries only the 3mf project_sha256, no manifest digest or part geometry, so this literal
+// CANNOT be re-derived from the print: it was recorded at 0633c1d from the tree, whose fit-ring geometry is
+// unchanged since before the print (git history), and it covers the WHOLE manifest including note and part
+// names (the CARD name changed at that commit). A red here means a printed dimension moved OR text changed;
+// a reviewer must tell which before re-recording. It becomes a grounded control when a print record carries the
+// FIT-RING part geometry to digest instead.
 test fn w_the_a16_plug_fit_ring_is_the_geometry_that_was_printed_and_fitted() -> Bool {
   match selected(root: A16PlugFitRing) {
     Present { value: a } => match manifest_identity(content: serialize_json(v: printable_manifest(a: a))) {
