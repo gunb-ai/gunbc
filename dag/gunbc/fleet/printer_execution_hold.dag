@@ -195,7 +195,7 @@ fn printer_hold_release_on_operator_observation(root:NonEmptyStr,approvals_root:
     Absent=>exit_failure(reason:"Cannot read the clock; an operator observation cannot be checked for expiry, and the stale printer-start hold stays held")
     Present{value:now}=>
       match printer_hold_operator_grant(root:root,approvals_root:approvals_root,hold_slot:hold_slot,escalation_id:escalation_id,holder:holder,generation:generation,observed_at:now) {
-        PrinterHoldOperatorGrantMissing {cause:mc}=>exit_failure(reason:join(["Printer fleet controller is held by an UNOBSERVABLE holder: ",printer_hold_slot_text(slot_key:slot_key,holder:holder,generation:generation),cause as String,". Nothing released -- ",mc as String,"."],""))
+        PrinterHoldOperatorGrantMissing {cause:mc}=>exit_failure(reason:join(["Printer fleet controller is held by an UNOBSERVABLE holder: ",printer_hold_slot_text(slot_key:slot_key,holder:holder,generation:generation),printer_hold_operator_grant_missing_detail(cause:mc),". Nothing released."],""))
         PrinterHoldOperatorGrantHeld {decision:d}=>
           match printer_hold_nonholder_assess(root:root,hold_slot:hold_slot,request:ReleasedByOperator {authorization:d},released_by:join(["operator-observed-release:",holder as String],"") as DurableHoldReleaseRef) {
             FileHoldNonHolderReleasePlanned {plan:p,released_holder:rh,basis:_}=>
@@ -253,12 +253,34 @@ fn printer_recovery_refusal_detail(refusal:DurableHoldRecoveryRefusal) -> NonEmp
 
 // THE OPERATOR'S OBSERVATION, read back from the approval decision store. The gate is the store's
 // own: the escalation must be FILED and APPROVED for this module's intent hash, and std's `authorize`
-// then decides the grant against the request at `now` (expiry included). Every missing answer keeps
-// its own type: pending is not denied is not absent, and collapsing them is how a deny becomes a
-// re-notification loop.
+// then decides the grant against the request at `now` (expiry included). Both arms below: Held is the
+// ONLY one that can release; every Missing answer keeps the hold held and carries its own typed
+// cause, defined next.
 type PrinterHoldOperatorGrant
   = PrinterHoldOperatorGrantHeld { decision: AuthorizationDecision<DurableHoldSubject> }
-  | PrinterHoldOperatorGrantMissing { cause: NonEmptyStr }
+  | PrinterHoldOperatorGrantMissing { cause: PrinterHoldOperatorGrantCause }
+
+// THE MISSING ANSWER KEEPS THE STORE'S TYPE. Pending, not-filed, decided-for-another-intent,
+// unreadable and refused-by-authorize are five different facts, and the operator reading the refusal
+// needs to know WHICH step to take next (decide it, file it, re-file it for this hold, fix the
+// store). Collapsing them at the arm is how a deny becomes a re-notification loop; the sentence is
+// rendered only at the refusal site, so no consumer ever string-matches to tell them apart.
+type PrinterHoldOperatorGrantCause
+  = PrinterHoldGrantStillPending { escalation_id: NonEmptyStr }
+  | PrinterHoldGrantNotFiled { escalation_id: NonEmptyStr }
+  | PrinterHoldGrantAnotherIntent { requested_revision: NonEmptyStr, decided_revision: NonEmptyStr }
+  | PrinterHoldGrantStoreUnreadable { detail: NonEmptyStr }
+  | PrinterHoldGrantAuthorizeRefused { cause: AuthorizationRefusalCause }
+
+fn printer_hold_operator_grant_missing_detail(cause:PrinterHoldOperatorGrantCause) -> NonEmptyStr {
+  match cause {
+    PrinterHoldGrantStillPending {escalation_id:e}=>join(["the operator observation for escalation ",e as String," is filed but nobody has decided it yet"],"") as NonEmptyStr
+    PrinterHoldGrantNotFiled {escalation_id:e}=>join(["no operator observation is filed for escalation ",e as String,"; the stale printer-start hold stays held"],"") as NonEmptyStr
+    PrinterHoldGrantAnotherIntent {requested_revision:r,decided_revision:d}=>join(["the decided observation for this escalation was decided for a different intent (requested ",r as String,", decided ",d as String,"); nothing released"],"") as NonEmptyStr
+    PrinterHoldGrantStoreUnreadable {detail:d}=>join(["the approval decision store is unreadable: ",d as String],"") as NonEmptyStr
+    PrinterHoldGrantAuthorizeRefused {cause:c}=>authorization_refusal_reason(cause:c) as NonEmptyStr
+  }
+}
 
 fn printer_hold_operator_grant(root:NonEmptyStr,approvals_root:NonEmptyStr,hold_slot:NonEmptyStr,escalation_id:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration,observed_at:Timestamp) -> PrinterHoldOperatorGrant {
   let request = printer_operator_observation_request(hold_root:root,hold_slot:hold_slot,escalation_id:escalation_id,holder:holder,generation:generation)
@@ -266,12 +288,12 @@ fn printer_hold_operator_grant(root:NonEmptyStr,approvals_root:NonEmptyStr,hold_
     GrantDerived {authorization:a}=>
       match authorize(authorization:a,request:request,observed_at:observed_at) {
         AuthorizationPermitted {grant:g} => PrinterHoldOperatorGrantHeld { decision: AuthorizationPermitted { grant: g } }
-        AuthorizationRefused {cause:c} => PrinterHoldOperatorGrantMissing { cause: authorization_refusal_reason(cause:c) as NonEmptyStr }
+        AuthorizationRefused {cause:c} => PrinterHoldOperatorGrantMissing { cause: PrinterHoldGrantAuthorizeRefused { cause: c } }
       }
-    GrantStillPending {escalation_id:e}=>PrinterHoldOperatorGrantMissing {cause:join(["the operator observation for escalation ",e as String," is filed but nobody has decided it yet"],"") as NonEmptyStr}
-    GrantEscalationNotFiled {escalation_id:e}=>PrinterHoldOperatorGrantMissing {cause:join(["no operator observation is filed for escalation ",e as String,"; the stale printer-start hold stays held"],"") as NonEmptyStr}
-    GrantForAnotherIntent {requested_revision:r,decided_revision:d}=>PrinterHoldOperatorGrantMissing {cause:join(["the decided observation for this escalation was decided for a different intent (requested ",r as String,", decided ",d as String,"); nothing released"],"") as NonEmptyStr}
-    GrantStoreUnreadable {detail:d}=>PrinterHoldOperatorGrantMissing {cause:join(["the approval decision store is unreadable: ",d as String],"") as NonEmptyStr}
+    GrantStillPending {escalation_id:e}=>PrinterHoldOperatorGrantMissing {cause:PrinterHoldGrantStillPending {escalation_id:e}}
+    GrantEscalationNotFiled {escalation_id:e}=>PrinterHoldOperatorGrantMissing {cause:PrinterHoldGrantNotFiled {escalation_id:e}}
+    GrantForAnotherIntent {requested_revision:r,decided_revision:d}=>PrinterHoldOperatorGrantMissing {cause:PrinterHoldGrantAnotherIntent {requested_revision:r,decided_revision:d}}
+    GrantStoreUnreadable {detail:d}=>PrinterHoldOperatorGrantMissing {cause:PrinterHoldGrantStoreUnreadable {detail:d}}
   }
 }
 
