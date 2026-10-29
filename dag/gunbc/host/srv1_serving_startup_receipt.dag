@@ -100,6 +100,8 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   // `docker inspect --format {{.Image}} lil-flash-next` — the digest the RUNNING container resolves
   // to, not the mutable tag. The tag the operator's launcher pulls is
   // karmic-kraken-beta-spark-20261007-d071fb3dde0ba979; the digest is the identity.
+  // 2026-10-29 19:28: relaunched on the same image with LMCACHE_L2_GB 200 -> 160 (root-filesystem headroom; the
+  // gunbc-private#266 retention candidate failed startup at 19:26 and was rolled back with its directory snapshot).
   // 2026-10-29 16:23: the page-loss attribution build (observation only) over the lost-retry build
   // (gunbc.serving.srv1_serving_launch srv1_serving_image_derivation). 14:22-16:23 it ran 236aa2f2 (lost
   // retry); 12:55-14:22 da08aaf9 (delete repair only); 10:58-12:55 the unpatched base af14f1a9, by mistake.
@@ -139,7 +141,7 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   // (the engine version is the base's: one Python file differs), checkpoint revision, max_model_len, max_num_seqs, max_num_batched_tokens, gpu_memory_utilization,
   // block_size, kv_cache_dtype and kv_connector were re-read from the new startup log and are unchanged.
   // speculative_acceptance_length was NOT re-read; its own date field says so.
-  wrapper_sha256_hex: "2fe242e0eb363affacd64337bd007ab08bdea653f92e09f4892018f750f07f1c" as NonEmptyStr,
+  wrapper_sha256_hex: "42a8e2a8ede1c90a262f4561220b08934f625d3a0347cde516aa93b424f24961" as NonEmptyStr,
   observed_on: "2026-10-29" as NonEmptyStr,
   probes: [
     "docker inspect --format {{.Image}} lil-flash-next",
