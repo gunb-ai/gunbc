@@ -475,6 +475,32 @@ data a16_plugged_head_is_read_and_its_cable_bend_is_owed: DesignRuling = DesignR
   provenance: "Operator, 2026-10-29, to session snappy-boar-382 via wise-bat-528, plugged in: 'The plugged 8-pin head protrudes 6 mm, and the cable bends almost as soon as it leaves the head'. This answers the reading a16_latch_is_accommodated_not_cut left open. WHAT IT DECIDES: The plugged 8-pin head is carried at 6 mm with 1 mm of width on it (power_connector_head_protrusion), worst case 7 mm, and it fits the relief window with 18.5 mm to spare against the 25.5 mm the governing rear room allows. The relief cut stays; no standoff is built, because the same arithmetic still puts a standoff at zero millimetres. WHAT IT DOES NOT SETTLE: The cable's turn. 'almost as soon as' locates the keep-out and does not size it, so cable_bend_keepout stays NeedsMeasurement and the fit print -- dressed cable, plugged in, in the chassis -- is the instrument.",
 }
 
+// The cable's turn, read at the machine 2026-10-29, and what the geometry could answer without it.
+//
+// The operator read the DIRECTION and not the depth: the cable bends sideways, in the plane of the card end,
+// not back toward the fan. That re-points the keep-out at the duct's side rather than its back, and the
+// question becomes one the model can answer for itself -- is there printed material anywhere along that path?
+// The answer is per-surface, because what is in the path changes with depth, and the model says which surface
+// (card_cooling_route cable_bend_path). Across the connector's own band the relief cut removes the shoulder
+// floor from 4.5 mm in front of the end face to 8 mm behind it, and the cable leaves the head's outer end at
+// 7 mm worst case, so there is NO PRINTED WALL for the turn to hit: that half of the keep-out is discharged by
+// geometry, without a reading, which is what §5 asks for when geometry can answer.
+//
+// What the same reading exposed is not a wall in plastic at all. The plugged head's 7 mm reaches past the
+// blower's bottom face, which starts 4 mm behind the end face across that same strip: 3 mm of head inside
+// 3 mm of fan. Deepening the relief cannot clear it -- cutting plastic deeper into the pocket does not move
+// the fan, it only moves plastic away from where the fan already is. So it is reported, with the instrument
+// that settles it named (the fit print, plugged in), and the standoff that WOULD clear it is derived as
+// 3 mm and confirmed to fit the rear room, but not built: a print that comes back 1 mm clear and a print that
+// comes back crushed 3 mm into the housing call for different next parts, and printing the current geometry is
+// what says which.
+data a16_cable_bend_is_discharged_by_the_relief_and_the_head_hits_the_fan_instead: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_cable_bend_is_discharged_by_the_relief_and_the_head_hits_the_fan_instead"),
+  decided: "2026-10-29",
+  section: "4d",
+  provenance: "Operator, 2026-10-29, to session snappy-boar-382 via wise-bat-528: 'the cable bends SIDEWAYS as it leaves the head, in the plane of the card end, not back toward the fan. The depth behind the end hasn't been measured.' Direction taken as operator-reported, not calipered. WHAT IT DECIDES: the cable's turn needs no clearance from printed material -- the relief cut opens the shoulder floor across the connector band from 4.5 mm in front of the end face to 8 mm behind it, and the cable leaves the head at 7 mm worst case -- so cable_bend_keepout is discharged against plastic by geometry, and the depth reading is no longer what gates the print. WHAT IT DOES NOT SETTLE: the head against the blower. The head reaches 7 mm behind the end face and the blower's housing begins 4 mm behind it across the same strip, so 3 mm of head sits inside 3 mm of fan; whether they actually meet is a fit-print observation, plugged in. Also unresolved: a cable that dips as it runs inboard would be shallower than 7 mm and hits the relief's inboard edge instead -- cable_bend_path names that surface, and the operator's own account ('in the plane of the card end') is what argues it stays level.",
+}
+
 data a16_end_cap_scroll_is_the_operators_reference_design: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_end_cap_scroll_is_the_operators_reference_design"),
   decided: "2026-10-27",
@@ -563,6 +589,7 @@ fn design_rulings() -> List<DesignRuling> {
     a16_chassis_readings_of_2026_10_27_are_operator_reported,
     a16_end_cap_scroll_is_the_operators_reference_design,
     a16_rear_clearance_was_re_read_tighter_and_the_tighter_governs,
+    a16_cable_bend_is_discharged_by_the_relief_and_the_head_hits_the_fan_instead,
     a16_plugged_head_is_read_and_its_cable_bend_is_owed,
     pattern_atom_naming_a_visible_value_is_never_a_binder,
     unread_catch_all_binder_refuses,

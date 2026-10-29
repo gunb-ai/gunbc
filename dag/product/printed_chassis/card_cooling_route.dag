@@ -107,8 +107,8 @@ fn plane_across_row_slot_demand(b: RadialBlowerEnvelope) -> Int { thickness_exte
 
 // OVER-THE-ROW: the fan clears the card's front face by the riser, so the chassis needs the card's own
 // height across the face, plus the fan's vertical extent, plus the walls of the leg and the riser.
-fn over_the_row_height(f: EndFaceMeasurement, d: GpuDuctDesign, b: RadialBlowerEnvelope, riser: Micrometer) -> Int {
-  um(m: f.face_length) + um(m: riser) + thickness_extent(b: b) + 3 * um(m: d.wall)
+fn over_the_row_height(f: EndFaceMeasurement, d: GpuDuctDesign, b: RadialBlowerEnvelope, riser: Micrometer) -> Micrometer {
+  micrometer(count: um(m: f.face_length) + um(m: riser) + thickness_extent(b: b) + 3 * um(m: d.wall))
 }
 // The leg behind the plug end is the only part of this home that spends the 70 mm: the fan's thickness
 // turned on its side plus the turn's walls.
@@ -221,7 +221,7 @@ fn admit_plane_on_end(rear: ChassisGap, lane: ChassisGap) -> RouteAdmission {
   // the sides was a word about; the pitch itself is the design's row geometry, not a chassis gap.
   let slot = RouteDemand { name: "across the slot (neighbour lane behind the ends)", needed: micrometer(count: plane_on_end_slot_demand(b: b)), of_gap: "lane between adjacent cards, behind the plug ends" }
   let overhang = RouteDemand { name: "overhang into the region beside this card's lane, per side", needed: plane_on_end_overhang_per_side(b: b), of_gap: "space on the sides of the card row" }
-  match ask(gap: lane, need: um(m: overhang.needed), home: home, unmet: overhang, over: Absent) {
+  match ask(gap: lane, need: overhang.needed, home: home, unmet: overhang, over: Absent) {
     Present { value: refused } => refused
     Absent => {
       let back = RouteDemand { name: "behind the plug end", needed: micrometer(count: plane_on_end_run_back(b: b, d: d)), of_gap: "plug end to rear chassis fan" }
@@ -241,11 +241,11 @@ fn admit_home_over(home: BlowerHome, rear: ChassisGap, lane: ChassisGap) -> Rout
     PlaneOnEnd => admit_plane_on_end(rear: rear, lane: lane)
     PlaneAcrossRowStanding => {
       let back = RouteDemand { name: "behind the plug end", needed: micrometer(count: plane_across_row_run_back(b: b, d: d)), of_gap: "plug end to rear chassis fan" }
-      match ask(gap: rear, need: um(m: back.needed), home: home, unmet: back, over: governing_rear(rear: rear)) {
+      match ask(gap: rear, need: back.needed, home: home, unmet: back, over: governing_rear(rear: rear)) {
         Present { value: refused } => refused
         Absent => {
           let across = RouteDemand { name: "across the slot", needed: micrometer(count: plane_across_row_slot_demand(b: b)), of_gap: "lane between adjacent cards, behind the plug ends" }
-          match ask(gap: lane, need: um(m: across.needed), home: home, unmet: across, over: Absent) {
+          match ask(gap: lane, need: across.needed, home: home, unmet: across, over: Absent) {
             Present { value: refused2 } => refused2
             Absent => RouteAdmitted { home: home, needs: [back, across] }
           }
@@ -254,12 +254,12 @@ fn admit_home_over(home: BlowerHome, rear: ChassisGap, lane: ChassisGap) -> Rout
     }
     OverTheRow {riser: r} => {
       // Height first: it is the reading this home exists to need, and it has never been taken.
-      let high = RouteDemand { name: "deck to lid above the row", needed: micrometer(count: over_the_row_height(f: f, d: d, b: b, riser: r)), of_gap: "deck to chassis lid, behind the plug end" }
-      match ask(gap: deck_to_lid_clearance, need: um(m: high.needed), home: home, unmet: high, over: Absent) {
+      let high = RouteDemand { name: "deck to lid above the row", needed: over_the_row_height(f: f, d: d, b: b, riser: r), of_gap: "deck to chassis lid, behind the plug end" }
+      match ask(gap: deck_to_lid_clearance, need: high.needed, home: home, unmet: high, over: Absent) {
         Present { value: refused } => refused
         Absent => {
           let back = RouteDemand { name: "behind the plug end (the turned leg)", needed: micrometer(count: over_the_row_run_back(d: d, b: b)), of_gap: "plug end to rear chassis fan" }
-          match ask(gap: rear, need: um(m: back.needed), home: home, unmet: back, over: governing_rear(rear: rear)) {
+          match ask(gap: rear, need: back.needed, home: home, unmet: back, over: governing_rear(rear: rear)) {
             Present { value: refused2 } => refused2
             Absent => RouteAdmitted { home: home, needs: [high, back, RouteDemand { name: "fan face span along the row", needed: micrometer(count: over_the_row_span(b: b)), of_gap: "free row length behind the card ends" }] }
           }
@@ -268,7 +268,7 @@ fn admit_home_over(home: BlowerHome, rear: ChassisGap, lane: ChassisGap) -> Rout
     }
     BesideTheRow => {
       let beside = RouteDemand { name: "free lane beside the row", needed: micrometer(count: beside_the_row_demand(b: b, d: d)), of_gap: "free lane beside the card row" }
-      match ask(gap: side_lane_width, need: um(m: beside.needed), home: home, unmet: beside, over: Absent) {
+      match ask(gap: side_lane_width, need: beside.needed, home: home, unmet: beside, over: Absent) {
         Present { value: refused } => refused
         Absent => RouteAdmitted { home: home, needs: [beside] }
       }
@@ -279,7 +279,11 @@ fn admit_home_over(home: BlowerHome, rear: ChassisGap, lane: ChassisGap) -> Rout
 // `over` lets a caller compare against a room derived from MORE than this row -- the rear span is spoken
 // twice now (rear_of_end_room), and a design may not be admitted against the generous reading of a span
 // that somebody has since read tighter. Absent means the ordinary case: this row's own standing governs.
-fn ask(gap: ChassisGap, need: Int, home: BlowerHome, unmet: RouteDemand, over: GapRoom?) -> RouteAdmission? {
+// `need` is a Micrometer, not a count: this is the function that decides whether a route is admitted, and a
+// count at that boundary is a unit system that lives in the caller's memory. §5 -- "making it unwritable,
+// correctness by construction, not validation" -- is about exactly this: with `need: Int`, someone passing
+// millimetres, or a raw count, writes a wrong admission and nothing complains.
+fn ask(gap: ChassisGap, need: Micrometer, home: BlowerHome, unmet: RouteDemand, over: GapRoom?) -> RouteAdmission? {
   match gap {
     NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => Present { value: RouteHomeUnmeasured { home: home, unmet: unmet, gap: gap } }
     Measured {name: _, from_point: _, to_point: _, distance: dist, standing: _} =>
@@ -303,13 +307,18 @@ fn ask(gap: ChassisGap, need: Int, home: BlowerHome, unmet: RouteDemand, over: G
       } else {
         match gap_declared_bound(g: gap) { Present { value: b } => um(m: b) Absent => um(m: dist) }
       }
-      let governing = match over {
-        Present { value: Room {room: r, from: _} } => micrometer_count(m: r) as Int
-        Present { value: OverSubscribed {shortfall: _, from: _} } => 0 - 1
-        Present { value: NoReading {obligation: _} } => limit
-        Absent => limit
+      // The room that governs, kept as a carrier. There is no room at all behind an over-subscribed reading,
+      // and 0 -- not a fabricated negative -- is what "nothing is left" is worth here, because the shortfall
+      // itself is carried by OverSubscribed and callers who want it take it from there.
+      let governing: GapRoom = match over {
+        Present { value: r } => r
+        Absent => Room { room: micrometer(count: limit), from: "this row's own standing" }
       }
-      if governing < need { Present { value: RouteRefusedByChassis { home: home, unmet: unmet, gap: gap } } } else { Absent }
+      match governing {
+        Room {room: r, from: _} => if um(m: r) < um(m: need) { Present { value: RouteRefusedByChassis { home: home, unmet: unmet, gap: gap } } } else { Absent }
+        OverSubscribed {shortfall: _, from: _} => Present { value: RouteRefusedByChassis { home: home, unmet: unmet, gap: gap } }
+        NoReading {obligation: _} => Present { value: RouteHomeUnmeasured { home: home, unmet: unmet, gap: gap } }
+      }
   }
 }
 
@@ -339,10 +348,10 @@ fn ask(gap: ChassisGap, need: Int, home: BlowerHome, unmet: RouteDemand, over: G
 // "32.5 mm to spare" because the 2026-10-26 declaration says 70, while a 2026-10-29 reading says the span is
 // 60 by eye, would be a margin nobody can spend. Absent means this row governed alone, and its own standing
 // supplies the figure the way it always has.
-fn margin_of(room: GapRoom?, need: Int, fallback: Int) -> Micrometer {
+fn margin_of(room: GapRoom?, need: Micrometer, fallback: Micrometer) -> Micrometer {
   match room {
-    Present { value: Room {room: r, from: _} } => micrometer(count: micrometer_count(m: r) as Int - need)
-    _ => micrometer(count: fallback)
+    Present { value: Room {room: r, from: _} } => micrometer(count: um(m: r) - um(m: need))
+    _ => fallback
   }
 }
 
@@ -387,12 +396,11 @@ fn governing_rear(rear: ChassisGap) -> GapRoom? {
 fn rear_of_end_clearance() -> GapRoom { rear_of_end_room() }
 
 fn finish(home: BlowerHome, needs: List<RouteDemand>, gap: ChassisGap, unmet: RouteDemand, over: GapRoom?) -> RouteAdmission {
-  let need = um(m: unmet.needed)
-  match ask(gap: gap, need: need, home: home, unmet: unmet, over: over) {
+  match ask(gap: gap, need: unmet.needed, home: home, unmet: unmet, over: over) {
     Present { value: refused } => refused
     Absent => match gap {
-      Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: bnd, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => RouteAdmittedOnOperatorBound { home: home, needs: needs, on_bound: gap, governed_by: governed_row(over: over, fallback: gap), margin: margin_of(room: over, need: need, fallback: um(m: bnd) - need) }
-      Measured {name: _, from_point: _, to_point: _, distance: dist, standing: EstimatedByOperator {bound: bnd, date: _, positions: _, bound_is: _}} => RouteProposalOnly { home: home, needs: needs, on_estimate: gap, margin: margin_of(room: over, need: need, fallback: um(m: dist) - um(m: bnd) - need) }
+      Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: bnd, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => RouteAdmittedOnOperatorBound { home: home, needs: needs, on_bound: gap, governed_by: governed_row(over: over, fallback: gap), margin: margin_of(room: over, need: unmet.needed, fallback: micrometer(count: um(m: bnd) - um(m: unmet.needed))) }
+      Measured {name: _, from_point: _, to_point: _, distance: dist, standing: EstimatedByOperator {bound: bnd, date: _, positions: _, bound_is: _}} => RouteProposalOnly { home: home, needs: needs, on_estimate: gap, margin: margin_of(room: over, need: unmet.needed, fallback: micrometer(count: um(m: dist) - um(m: bnd) - um(m: unmet.needed))) }
       Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => RouteAdmitted { home: home, needs: needs }
       NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => RouteHomeUnmeasured { home: home, unmet: unmet, gap: gap }
     }
@@ -717,13 +725,14 @@ fn verdict_against_2026_10_27_readings() -> List<String> {
   let d = a16_wall_design()
   let b = a16_blower()
   let lane_need = beside_the_row_demand(b: b, d: d)
-  let lane = RouteDemand { name: "housing width across the free lane", needed: shape_um(m: lane_need), of_gap: "free lane beside the card row" }
-  let at_lane = ask(gap: side_lane_width, need: lane_need, home: BesideTheRow, unmet: lane, over: Absent)
-  let at_wall = ask(gap: outer_side_at_the_wall, need: lane_need, home: BesideTheRow, unmet: lane, over: Absent)
-  let lid_need = over_the_row_height(f: a16_end_face, d: d, b: b, riser: shape_um(m: 6000))
-  let lid = ask(gap: deck_to_lid_clearance, need: lid_need, home: OverTheRow {riser: shape_um(m: 6000)}, unmet: RouteDemand { name: "deck to lid above the row", needed: shape_um(m: lid_need), of_gap: "deck to chassis lid, behind the plug end" }, over: Absent)
-  let pair_need = micrometer_count(m: flat_on_end_pair_need(b: b))
-  let twins = ask(gap: inter_card_gap, need: pair_need, home: PlaneOnEnd, unmet: RouteDemand { name: "both housings' overhang, across the gap between the two cards", needed: shape_um(m: pair_need), of_gap: "clear gap between the two cards" }, over: Absent)
+  let lane = RouteDemand { name: "housing width across the free lane", needed: micrometer(count: lane_need), of_gap: "free lane beside the card row" }
+  let at_lane = ask(gap: side_lane_width, need: lane.needed, home: BesideTheRow, unmet: lane, over: Absent)
+  let at_wall = ask(gap: outer_side_at_the_wall, need: lane.needed, home: BesideTheRow, unmet: lane, over: Absent)
+  let lid_riser = shape_um(m: 6000)
+  let lid_demand = RouteDemand { name: "deck to lid above the row", needed: over_the_row_height(f: a16_end_face, d: d, b: b, riser: lid_riser), of_gap: "deck to chassis lid, behind the plug end" }
+  let lid = ask(gap: deck_to_lid_clearance, need: lid_demand.needed, home: OverTheRow {riser: lid_riser}, unmet: lid_demand, over: Absent)
+  let pair_need = flat_on_end_pair_need(b: b)
+  let twins = ask(gap: inter_card_gap, need: pair_need, home: PlaneOnEnd, unmet: RouteDemand { name: "both housings' overhang, across the gap between the two cards", needed: pair_need, of_gap: "clear gap between the two cards" }, over: Absent)
   [route_admission_display(a: match at_lane { Present { value: r } => r Absent => RouteAdmitted { home: BesideTheRow, needs: [lane] } }),
    route_admission_display(a: match at_wall { Present { value: r } => r Absent => RouteAdmitted { home: BesideTheRow, needs: [lane] } }),
    route_admission_display(a: match lid { Present { value: r } => r Absent => RouteAdmitted { home: OverTheRow {riser: shape_um(m: 6000)}, needs: [] } }),
@@ -1253,4 +1262,99 @@ fn cable_bend_room() -> GapRoom { gap_room(g: cable_bend_keepout) }
 
 fn cable_bend_is_still_owed() -> Bool {
   match cable_bend_room() { NoReading {obligation: _} => true _ => false }
+}
+
+// ═══ THE CABLE TURN, ANSWERED BY THE GEOMETRY RATHER THAN BY A READING ═══
+//
+// The operator has read the DIRECTION: "the cable bends SIDEWAYS as it leaves the head, in the plane of the
+// card end, not back toward the fan." That is not nothing -- it says the volume the cable needs runs inboard,
+// parallel to the end face, and so asks a different question than the one cable_bend_keepout originally
+// posed. The question a geometry can answer on its own: does printed material sit anywhere along that path?
+//
+// It cannot be answered with a single yes/no, and a single yes/no is what would have been the fabrication
+// here. The relief window cuts printed material away across the connector's own band down to a stated depth;
+// outside that window the shoulder's floor begins at a stated depth; and between them the strip the connector
+// occupies is where the BLOWER sits, which is purchased material and not printed material at all. So the
+// answer is per-surface, and the function returns which surface a cable at a given depth would meet, with the
+// depth it would meet it at. Naming the wall is the useful part: it turns "measure the cable" into "measure
+// this one height".
+type CableBendPath
+  = ClearOfPrintedMaterial {cable_depth_behind_face: Micrometer, cleared_to: Micrometer, why: NonEmptyStr}
+  | MeetsPrintedFloor {cable_depth_behind_face: Micrometer, floor_surface_behind_face: Micrometer, relief_edge_from_face_centre: Micrometer, which_wall: NonEmptyStr}
+  | PastTheReliefEdge {cable_depth_behind_face: Micrometer, relief_edge_from_face_centre: Micrometer, which_wall: NonEmptyStr}
+
+// A cable running sideways at `depth` behind the end face, inside the connector's band -- which is what the
+// operator described, "the cable bends SIDEWAYS as it leaves the head, in the plane of the card end". A run
+// that stays parallel to the end face keeps that depth, so `depth` is the head's own worst-case reach and the
+// answer is per-surface rather than one yes/no: what sits in the path changes with depth, and naming the
+// surface is the part that turns "measure the cable" into "measure this one thing".
+fn cable_bend_path(depth: Micrometer) -> CableBendPath {
+  let relief = plane_on_end_relief_back_reach(a16_wall_design())
+  let floor = plane_on_end_floor_behind_face(a16_wall_design())
+  if um(m: depth) <= um(m: floor) {
+    MeetsPrintedFloor {
+      cable_depth_behind_face: depth,
+      floor_surface_behind_face: floor,
+      relief_edge_from_face_centre: plane_on_end_relief_inboard_x(a16_end_face, a16_wall_design()),
+      which_wall: "the relief window's inboard edge -- the shoulder floor's end face. The floor is two wall plates (4 mm deep behind the end face) and the cut opens it only across the connector's own band, so a cable running that shallow hits the edge of the opening rather than passing under it",
+    }
+  } else if um(m: depth) <= um(m: relief) {
+    ClearOfPrintedMaterial {
+      cable_depth_behind_face: depth,
+      cleared_to: relief,
+      why: "the relief cut opens the shoulder floor across the connector's own band, from 4.5 mm in front of the end face to 8 mm behind it, so a cable running at this depth has no printed wall in front of it across that band",
+    }
+  } else {
+    PastTheReliefEdge {
+      cable_depth_behind_face: depth,
+      relief_edge_from_face_centre: plane_on_end_relief_inboard_x(a16_end_face, a16_wall_design()),
+      which_wall: "past the relief's depth the surface in the path is the blower's own housing, which is a purchased part -- no cut in plastic clears it",
+    }
+  }
+}
+
+// THE ANSWER TO "IS THE KEEP-OUT DISCHARGED BY GEOMETRY". At the only depth the operator's reading implies --
+// the cable leaves the head's outer end, and the head's outer end is the head's worst-case reach -- the run is
+// ClearOfPrintedMaterial: the relief opens to 8 mm and the head is 7 mm, so there is no printed wall for the
+// turn to hit. The keep-out is discharged against PRINTED material, by the cut, without a reading.
+//
+// It is NOT discharged against the blower, and that is the finding the reading produced rather than the one it
+// was asked for: see plane_on_end_head_vs_blower_overlap.
+fn cable_bend_is_discharged_by_geometry() -> Bool {
+  match cable_bend_path(depth: plugged_head_reach()) {
+    ClearOfPrintedMaterial {cable_depth_behind_face: _, cleared_to: _, why: _} => true
+    _ => false
+  }
+}
+
+// THE OVERLAP NO CUT CAN REMOVE. The plugged head reaches 7 mm behind the end face at worst case; the
+// blower's bottom face begins 4 mm behind it across the same strip -- the blower lies flat directly behind the
+// connector band, and its envelope starts where the two shoulder wall plates end. So 3 mm of head sits inside
+// 3 mm of fan. Deepening the relief does not clear it: cutting plastic deeper into the pocket does not move the
+// fan, it only moves plastic away from where the fan already is. That is why this is reported rather than
+// "fixed", and it is the same reason plane_on_end_housing_clears_keepout stays false.
+fn plane_on_end_head_vs_blower_overlap() -> Micrometer {
+  let head = plugged_head_reach()
+  let fan_floor = plane_on_end_floor_behind_face(a16_wall_design())
+  micrometer(count: if um(m: head) - um(m: fan_floor) > 0 { um(m: head) - um(m: fan_floor) } else { 0 })
+}
+
+fn plane_on_end_plugged_head_clears_blower() -> Bool { um(m: plane_on_end_head_vs_blower_overlap()) == 0 }
+
+// THE ONE NUMBER THE READING BOUGHT. The plugged head reaches 7 mm behind the end face at worst case; the
+// blower's bottom face begins 4 mm behind it across the same strip, because the blower lies flat directly
+// behind the connector band. So 3 mm of head is inside 3 mm of fan, and the fit print is the instrument that
+// says whether they actually meet (the operator's own ruling: 'could we try both? ... the fit print decides').
+//
+// Lifting the fan by 3 mm on a standoff removes it on paper and the rear room affords it -- see
+// plane_on_end_standoff_admits -- but it has NOT been built into the printable part, for two reasons. One:
+// the relief cut was designed against a boundary, not this reading, and the standoff's whole justification is
+// the reading, so it wants the operator's eyes on the number before it moves the part. Two: the print is the
+// instrument, and a print that comes back with the head 1 mm clear of the housing is a different next part
+// from one that comes back crushed 3 mm into it. Printing the current geometry is what tells us which.
+fn plane_on_end_fan_standoff_required() -> Micrometer { plane_on_end_head_vs_blower_overlap() }
+
+fn plane_on_end_standoff_admits() -> Bool {
+  let spent = um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design())) + um(m: plane_on_end_fan_standoff_required())
+  spent <= um(m: rear_of_end_governing_room())
 }

@@ -403,11 +403,22 @@ data power_connector_head_protrusion: ChassisGap = Measured {
 // NeedsMeasurement so it cannot be silently spent, with the reading named. The order of magnitude the
 // operator gave ("almost as soon as") is enough to say WHERE the keep-out is -- behind the end, around the
 // cable's exit -- and not enough to say how deep it is.
+// THE DIRECTION WAS READ, 2026-10-29, AND IT MOVED THE QUESTION. The depth behind the end -- what this row
+// originally asked for -- is the wrong reading: "the cable bends SIDEWAYS as it leaves the head, in the plane
+// of the card end, not back toward the fan." A volume that runs inboard, parallel to the end face, is bounded
+// by the duct's SIDE, not by the fan. So the direction is recorded as read (operator-reported, not calipered)
+// and the obligation is restated against what the geometry still cannot answer on its own.
+//
+// It stays NeedsMeasurement rather than becoming a Measured with a guessed depth, for the reason DESIGN.md §5
+// gives: an absence answered with a plausible number is worse than the absence. What discharged part of it is
+// a derivation, not a reading -- see card_cooling_route cable_bend_governing_wall -- and the derivation says
+// which wall to dress the cable against, which is what makes the remaining reading one number instead of a
+// survey.
 data cable_bend_keepout: ChassisGap = NeedsMeasurement {
-  name: "cable bend room behind the plug end",
-  from_point: "the plugged 8-pin head's cable exit",
-  to_point: "the first obstruction the cable meets on its way to a bend: duct wall, chassis wall, or fan",
-  read_obligation: "dress the cable as it will actually sit, plugged in, and read from the head's cable exit to whatever it first touches, plus how far the bend swings behind the end. The operator's word is that it turns almost immediately ('the cable bends almost as soon as it leaves the head'), so the answer is expected to be small and close to the connector, not a sweep across the duct",
+  name: "cable bend room beside the plug end",
+  from_point: "the plugged 8-pin head's cable exit, at the head's outer end",
+  to_point: "inboard, parallel to the card's end face: the shoulder floor's top surface and the inboard edge of the relief window cut under it",
+  read_obligation: "NOTHING HERE GATES THE PRINT ANY MORE -- the printed-material half was discharged by the geometry itself, not by a reading: across the connector's own band the relief cut opens the shoulder floor from 4.5 mm in front of the end face to 8 mm behind it, and the cable leaves the head's outer end at 7 mm worst case, so no printed wall is in the turn's path (card_cooling_route cable_bend_path, a16_cable_bend_is_discharged_by_the_relief_and_the_head_hits_the_fan_instead). What is still owed, and what the print is actually for: (a) dress the cable plugged in and confirm it really does stay in the plane of the card end -- a run that dips to 4 mm or shallower on its way inboard meets the relief window's inboard edge instead, which is the one printed surface in the neighbourhood, and cable_bend_path names it; and (b) report whether the plugged head meets the blower's housing, which is the finding this reading produced instead of the one it was asked for",
 }
 
 data chassis_gaps: List<ChassisGap> = [card_end_rear_fan_clearance, card_end_to_chassis_fan_2026_10_29, rear_fan_face_ambiguity, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, inter_card_gap, card_to_rear_fans, power_connector_latch, power_connector_head_protrusion, cable_bend_keepout, outer_side_at_the_wall]

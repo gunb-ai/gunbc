@@ -851,6 +851,45 @@ fn plane_on_end_max_admissible_protrusion(b: BlowerDuctDesign, d: GpuDuctDesign,
   micrometer(count: 2 * um(m: d.wall) + um(m: rear_bound) - um(m: plane_on_end_duct_run_back(b: b, d: d)))
 }
 
+// ═══ THE RELIEF WINDOW, AS CARRIERS ═══
+//
+// The relief cut's edges, exposed rather than recomputed at each call site: the cut, the keep-out envelope it
+// is cut for, and anything that has to reason about the cable leaving the connector all read these, so they
+// cannot drift apart. Coordinates are bed coordinates with the part printed shoulder-down; the card's end face
+// is the plane the flange seats against.
+fn plane_on_end_relief_inboard_x(f: EndFaceMeasurement, d: GpuDuctDesign) -> Micrometer {
+  micrometer(count: um(m: f.face_length) / 2 - connector_keepout_length(f: f, d: d))
+}
+
+// The flange stops short of the relief's inboard edge by the band clearance, so a cable travelling inboard
+// meets the relief's own edge first and the flange's end face one millimetre behind it.
+fn plane_on_end_flange_inboard_end_x(f: EndFaceMeasurement, d: GpuDuctDesign) -> Micrometer {
+  micrometer(count: um(m: f.face_length) / 2 - connector_keepout_length(f: f, d: d) - um(m: d.band_clearance))
+}
+
+// How far in FRONT of the end face the relief reaches (the cut overshoots the printed floor by 2 mm on each
+// side, so the clearance does not depend on where the plate's faces happen to land).
+fn plane_on_end_relief_front_reach(d: GpuDuctDesign) -> Micrometer {
+  micrometer(count: um(m: d.flange_thickness) + 2000)
+}
+
+// How far BEHIND the end face the relief stays open: the cut overshoots the floor's far side by 2 mm, so the
+// connector band is clear to this depth and no deeper. The number a sideways cable is measured against.
+fn plane_on_end_relief_back_reach(d: GpuDuctDesign) -> Micrometer {
+  micrometer(count: 3 * um(m: d.wall) + 2000)
+}
+
+// How far BEHIND the end face the printed floor reaches: two wall plates, solid, across everything the relief
+// does not cut. This is the surface a sideways-running cable lands on.
+fn plane_on_end_floor_behind_face(d: GpuDuctDesign) -> Micrometer {
+  micrometer(count: 2 * um(m: d.wall))
+}
+
+// Where the shoulder ends beyond the card's top edge, past which there is no printed material at all.
+fn plane_on_end_shoulder_top_x(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign) -> Micrometer {
+  micrometer(count: smaller_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth)) / 2 + um(m: d.wall))
+}
+
 fn plane_on_end_slab(x_lo: Int, x_hi: Int, y_lo: Int, y_hi: Int, z_lo: Int, z_hi: Int) -> Primitive {
   block(w: x_hi - x_lo, h: y_hi - y_lo, d: z_hi - z_lo, x: (x_lo + x_hi) / 2, y: (y_lo + y_hi) / 2, z: (z_lo + z_hi) / 2)
 }
