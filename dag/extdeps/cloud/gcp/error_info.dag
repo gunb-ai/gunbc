@@ -38,8 +38,7 @@ import extdeps.languages.json.parse {
 }
 
 // AIP-193 is the error model this decoder follows (google.rpc.Status and google.rpc.ErrorInfo with its
-// reason / domain / metadata). The published quota pages the window fallback cites are named at the
-// fallback itself; they are fallbacks, not the live governing limits.
+// reason / domain / metadata).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "google.aip.dev/193" }
 }
@@ -193,8 +192,8 @@ fn quota_window_for(info: GcpQuotaErrorInfo) -> Second? {
 // slept on). `to_epoch_secs` is the caller's fact (the clock's RFC3339-to-epoch reduction), injected so
 // this stays a pure arithmetic over facts and a claim can supply it deterministically. A missing
 // window_start_time, or one the clock cannot reduce, REFUSES naming the missing fact -- no bound is
-// invented for a quota Google never described. `window` comes from `quota_window_for`, so live metadata
-// governs and the published row is the fallback.
+// invented for a quota Google never described. `window` comes from `quota_window_for`, which reads the live quota_unit
+// only; an absent or unrecognized unit refuses.
 fn quota_retry_wait_for(
   info: GcpQuotaErrorInfo,
   now_secs: EpochSecs,
