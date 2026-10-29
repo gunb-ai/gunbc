@@ -2513,7 +2513,7 @@ fn gpu_container_provision_subordinate_reconcile(
 // no entries means, and a half-written file is not a file with no entries.
 fn gpu_container_provision_file_reading(path: String, transport: HostEffectTransport) -> SubordinateFileReading {
   match run_argv_over_host_effect_transport(
-    command: sudo_elevate_command(command: od_hex_file_command(path: path)),
+    command: sudo_elevate_command(command: argv_words(command: od_hex_file_command(path: path))),
     transport: transport) {
     RunArgvTransportRefused { reason: r } =>
       SubordinateFileUnreadable { path: path, cause: r as String }
