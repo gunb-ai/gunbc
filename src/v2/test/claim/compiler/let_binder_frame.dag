@@ -47,7 +47,10 @@ fn lbf_reason(body: String) -> Symbol {
   }
 }
 
-// Accepted with no advisory at all: no node of the program -- binder key, reference, Bind -- stands on the frontier.
+// ACCEPTED AND DECIDED: no advisory other than the counted infer_grounding_not_derived frontier. That
+// frontier is charged on every function signature's Arrow and Conj, a let or not (measured: `fn g(a: Int)
+// -> Int { a }` carries it), so "no advisory at all" is no longer a property any program has. The test
+// fails closed: any other reason, present or future, is not decided.
 fn lbf_accepted_clean(body: String) -> Bool {
   match bla_assemble_with_peers(p_src: lbf_src(body: body), peers: []) {
     Rejected { diagnostics: _ } => false
@@ -57,7 +60,8 @@ fn lbf_accepted_clean(body: String) -> Bool {
         Accepted { value: _, diagnostics: d } =>
           match d {
             None => true
-            Some { diagnostics: _ } => false
+            Some { diagnostics: ds } =>
+              fold_list(xs: ds.tail, empty: ds.head.reason == ^infer_grounding_not_derived, cons: fn(acc, x) { acc && (x.reason == ^infer_grounding_not_derived) })
           }
       }
   }
@@ -183,9 +187,18 @@ test fn lbf_a_projection_off_a_let_binder_is_typed() -> Bool {
     && lbf_reason(body: "type R {\n  n: Int\n}\n\nfn g(p: R) -> Bool {\n  let r = p\n  r.n\n}\n") == ^arrow_body_does_not_inhabit_declared_return
 }
 
-// NO TYPE IS INVENTED: a value with no derived type (the nullary constructor `A`) gives the binder no row,
-// so the reference and the Bind stay on the counted frontier.
-data lbf_underived_let: String = "type T\n  = A\n  | B\n\nfn g() -> T {\n  let b = A\n  b\n}\n"
+// A NULLARY CONSTRUCTOR IS TYPED BY ITS DECLARATION: `A` of `type T = A | B` derives T (it no longer
+// stands on the frontier), so the binder, its reference and the Bind take T.
+data lbf_nullary_let: String = "type T\n  = A\n  | B\n\nfn g() -> T {\n  let b = A\n  b\n}\n"
+
+test fn lbf_a_nullary_constructor_types_the_reference_and_the_let() -> Bool {
+  let t = lbf_let_types(body: lbf_nullary_let)
+  lbf_present(x: t.value) && caf_same_type(a: t.body, b: t.value) && caf_same_type(a: t.bind, b: t.value)
+}
+
+// NO TYPE IS INVENTED: a value with no derived type (an unannotated lambda with no consuming frame) gives
+// the binder no row, so the reference and the Bind stay on the counted frontier.
+data lbf_underived_let: String = "fn g() -> Int {\n  let b = fn(x) { x }\n  b\n}\n"
 
 test fn lbf_an_underived_value_types_neither_the_reference_nor_the_let() -> Bool {
   let t = lbf_let_types(body: lbf_underived_let)
@@ -193,9 +206,9 @@ test fn lbf_an_underived_value_types_neither_the_reference_nor_the_let() -> Bool
     && lbf_accepted_carries(body: lbf_underived_let, reason: ^infer_grounding_not_derived)
 }
 
-// THE ANNOTATION TYPES THE BINDER: the same underived value under `b: T` gives the reference and the Let
-// T from the annotation, while the value itself stays underived -- the binder is not typed by the value.
-data lbf_annotated_underived_let: String = "type T\n  = A\n  | B\n\nfn g() -> T {\n  let b: T = A\n  b\n}\n"
+// THE ANNOTATION TYPES THE BINDER: an underived value under `b: Int` gives the reference and the Let Int
+// from the annotation, while the value itself stays underived -- the binder is not typed by the value.
+data lbf_annotated_underived_let: String = "fn g() -> Int {\n  let b: Int = fn(x) { x }\n  b\n}\n"
 
 test fn lbf_an_annotated_binder_is_typed_by_its_annotation() -> Bool {
   let t = lbf_let_types(body: lbf_annotated_underived_let)

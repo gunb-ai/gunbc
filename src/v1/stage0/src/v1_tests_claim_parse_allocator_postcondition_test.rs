@@ -130,24 +130,26 @@ pub fn chain_terms_loop(
     mut __tco_loop_next: i64,
     mut __tco_loop_upto: i64,
 ) -> Rc<Vec<i64>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        #[allow(unused_mut)]
-        let mut next = __tco_loop_next;
-        #[allow(unused_mut)]
-        let mut upto = __tco_loop_upto;
-        if (next.clone() > upto.clone()) {
-            break acc.clone();
-        } else {
-            {
-                let __tco_0 = v1_rt::concat(acc, Rc::new(vec![next.clone()]));
-                let __tco_1 = v1_rt::int_add(next.clone(), 1);
-                let __tco_2 = upto;
-                __tco_loop_acc = __tco_0;
-                __tco_loop_next = __tco_1;
-                __tco_loop_upto = __tco_2;
-                continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            #[allow(unused_mut)]
+            let mut next = __tco_loop_next;
+            #[allow(unused_mut)]
+            let mut upto = __tco_loop_upto;
+            if (next.clone() > upto.clone()) {
+                break acc.clone();
+            } else {
+                {
+                    let __tco_0 = v1_rt::concat(acc, Rc::new(vec![next.clone()]));
+                    let __tco_1 = v1_rt::int_add(next.clone(), 1);
+                    let __tco_2 = upto;
+                    __tco_loop_acc = __tco_0;
+                    __tco_loop_next = __tco_1;
+                    __tco_loop_upto = __tco_2;
+                    continue;
+                }
             }
         }
     }

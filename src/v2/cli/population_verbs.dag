@@ -9,6 +9,10 @@ import gunbc.parse_population_refusals { RefusalClass, parse_population_declared
 import gunbc.parse_verdict_schema {
   ParseVerdictStanding,
   Reused,
+  MissIdentityAbsent,
+  MissIdentityMismatch,
+  MissEntryAbsent,
+  MissDigestUnseen,
   MissDeclaredRefused,
   parse_verdict_standing,
   parse_verdict_stored_accepted_line,
@@ -374,7 +378,11 @@ fn population_parse_standing(tally: PopulationParse, key: String, source_digest:
                 Present { value: _ } => Present { value: MissDeclaredRefused }
                 Absent => Present { value: Reused }
               }
-            miss => Present { value: miss }
+            MissIdentityAbsent => Present { value: MissIdentityAbsent }
+            MissIdentityMismatch => Present { value: MissIdentityMismatch }
+            MissEntryAbsent => Present { value: MissEntryAbsent }
+            MissDigestUnseen => Present { value: MissDigestUnseen }
+            MissDeclaredRefused => Present { value: MissDeclaredRefused }
           }
       }
   }
@@ -534,7 +542,7 @@ fn parse_population_listed(env: AcquisitionEnv, modules: List<String>, compiler:
 }
 
 fn parse_population_prepared(env: AcquisitionEnv, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationReport {
-  match enumerate_bound_modules(layout: env.layout, bindings: env.bindings, namespaces: layout_namespaces()) {
+  match enumerate_bound_modules(layout: env.layout, bindings: env.bindings) {
     BoundModulesRefused { subject: subject, cause: cause } =>
       PopulationReport {
         text: concat(subject, ": ", cause),
@@ -631,7 +639,7 @@ fn select_spelled_modules(bindings: List<SourceRootBinding>) -> PopulationReport
     AcquisitionEnvUnprepared { diagnostics: _ } =>
       PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module was observed" }
     AcquisitionEnvReady { env: env } =>
-      match enumerate_bound_modules(layout: env.layout, bindings: env.bindings, namespaces: layout_namespaces()) {
+      match enumerate_bound_modules(layout: env.layout, bindings: env.bindings) {
         BoundModulesRefused { subject: subject, cause: cause } =>
           PopulationReport { text: concat(subject, ": ", cause), held: false, detail: concat("could not enumerate the modules of ", subject) }
         BoundModulesListed { modules: modules } => select_spelled_listed(env: env, modules: modules)

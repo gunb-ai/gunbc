@@ -200,7 +200,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   TargetRecordConstructShape
 }
 import v2.std.logic { bool_node }
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, for_all, is_empty, length, list_init, list_map, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, for_all, is_empty, length, list_map, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape, list_reverse }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -223,6 +223,7 @@ import std.dissolution { DissolutionCondition, retires_dissolution }
 import v2.std.integer { decimal_digits_to_magnitude, integer_decimal_magnitude_node, integer_decimal_magnitude_node_to_int, integer_int_type_node, integer_string_to_decimal_digits_optional, DecimalMagnitude, DecimalNonZero, DecimalNonZeroMagnitude, Int, NonZeroD1, NonZeroD2 }
 import std.integer { int_to_decimal_string }
 import v2.std.text { String }
+import extdeps.languages.dag.syntax { dag_keyword_literals }
 import extdeps.numeric.base16 { base16_digit_rows }
 import std.unicode.scalar { from_code_point }
 import std.error_primitives { Ok, Err }
@@ -4863,7 +4864,7 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 // A SPELLING ROW IS A SEPARATE FACT FROM BEING A KERNEL ATOM. `spelling` and `declarations` say that
 // v2.compiler.resolve binds that authored name, where it resolves to one of those declarations or
 // to nothing, to the kernel type. Int and Bool carry them. Int's two declarations stand until its
-// de-fork lane consolidates them (docs/plans/dag-v2-defork-audit.md), and its row follows that lane
+// de-fork lane consolidates them (`gunbc.plans.dag_v2_defork_audit`), and its row follows that lane
 // rather than choosing. Bool's lane has landed: std.types Bool is its one declaration, and its row
 // names that declaration as what the v2 carrier bool_node carries, keyed by identity rather than by
 // bool_node's module.
@@ -5549,32 +5550,26 @@ fn dag_string_decode_step(state: DagStringDecode, c: Int) -> DagStringDecode {
   }
 }
 
-// The lexeme's scalars in order; a lexeme is framed when its first and last scalars are the open
+// The lexeme's body TEXT, sliced; a lexeme is framed when its first and last scalars are the open
 // and close and there are at least two of them (quotes for a literal; quote/`{` and `}`/quote for
-// a template part).
-fn dag_string_framed_body_optional(lexeme: String, open: Int, close: Int) -> Optional<List<Int>> {
-  let cs = unicode_scalar_unfold(s: lexeme)
-  let n = length(xs: cs)
+// a template part). THE BODY IS READ BY SLICE, NOT REBUILT (DESIGN 6: a fixed cost, regardless of
+// n): the earlier shape unfolded the lexeme to scalars and rebuilt the body one Cons at a time
+// (skip + list_init), so every caller of the lexer paid the fold's depth on the literal's length —
+// a 10^5-scalar literal overflowed the seed interpreter. string_length counts scalars, char_at and
+// substring index scalars on the non-ASCII path (v1_rt.rs), so the three reads agree on the scalar
+// measure the framing judgment is stated in, and the O(1) slice replaces the O(n) rebuild.
+fn dag_string_framed_body_optional(lexeme: String, open: Int, close: Int) -> Optional<String> {
+  let n = string_length(s: lexeme)
   if n < 2 {
     optional_absent()
+  } else if (code_point(c: char_at(s: lexeme, pos: 0)) == open) && (code_point(c: char_at(s: lexeme, pos: n - 1)) == close) {
+    optional_present(value: substring(s: lexeme, start: 1, end: n - 1))
   } else {
-    match list_at_optional(xs: cs, index: 0) {
-      Present { value: first } =>
-        match list_at_optional(xs: cs, index: n - 1) {
-          Present { value: last } =>
-            if (first == open) && (last == close) {
-              optional_present(value: list_init(xs: skip(xs: cs, n: 1)))
-            } else {
-              optional_absent()
-            }
-          Absent => optional_absent()
-        }
-      Absent => optional_absent()
-    }
+    optional_absent()
   }
 }
 
-fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
+fn dag_string_literal_body_optional(lexeme: String) -> Optional<String> {
   dag_string_framed_body_optional(lexeme: lexeme, open: 34, close: 34)
 }
 
@@ -5613,12 +5608,12 @@ fn dag_string_literal_decoded_text(lexeme: String, occurrence_id: NodeOccurrence
   dag_string_text_decoded(token_class: ^dag_token_string_literal, body: dag_string_literal_body_optional(lexeme: lexeme), occurrence_id: occurrence_id)
 }
 
-fn dag_string_text_decoded(token_class: Symbol, body: Optional<List<Int>>, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
+fn dag_string_text_decoded(token_class: Symbol, body: Optional<String>, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
   let escape_refusal = dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
   match body {
     Absent => dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
-    Present { value: scalars } =>
-      match fold(scalars, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
+    Present { value: text } =>
+      match fold(unicode_scalar_unfold(s: text), init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
         DagStringDecodeText { text: value } => outcome_accepted(value: value)
         DagStringDecodeEscape { text: _ } => escape_refusal
         DagStringDecodeHex { text: _, digits: _, value: _ } => escape_refusal
@@ -6120,6 +6115,29 @@ fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
         }
       } else {
         outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
+      }
+  }
+}
+
+// A PATTERN ATOM THAT IS A LITERAL IS NEVER A BINDER, at any pattern position. A canonical literal
+// (dag_canonical_literal_from_node: `true`, `false`, a number, a string, a caret symbol) is a literal
+// pattern. So is every word the dag language's literal table names (extdeps.languages.dag.syntax
+// dag_keyword_literals), read from that table and not restated here: today `none` and `null`, which it
+// maps to LitNull. A pattern-position absence literal is the declared follow-up of ruling
+// gunbc.design_ruling dag_absence_is_one_meaning, so it has no lowering here yet; if it were read as a
+// binder it would match every value, so it stays an atom that resolves as a reference and refuses. A word
+// the table gains later is a literal here at once, never a catch-all binder.
+fn dag_pattern_atom_is_literal(node: Node) -> Bool {
+  match dag_canonical_literal_from_node(node: node) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: id } =>
+          match map_lookup(m: dag_keyword_literals, key: symbol_lexeme(sym: id)) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
       }
   }
 }
@@ -8251,11 +8269,13 @@ fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<QualifiedN
   }
 }
 
+// No qualified-name production under the module root is its own fact, not a child lookup: it refuses
+// with its own reason rather than borrowing v2.std.node_query's named_child_missing.
 fn qualified_name_from_parsed_module_root(root: Node) -> Outcome<QualifiedName> {
   match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_qualified_name) {
     ParseSubtreeAbsent =>
       outcome_rejected(Diagnostic {
-        reason: ^named_child_missing,
+        reason: ^module_root_qualified_name_production_absent,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
       })

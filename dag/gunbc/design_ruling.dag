@@ -28,6 +28,13 @@ type DesignRuling {
   provenance: String
 }
 
+data bmc_secure_goes_live_per_controller_family: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bmc_secure_goes_live_per_controller_family"),
+  decided: "2026-10-28",
+  section: "3",
+  provenance: "Operator answers to session cool-owl-599 on staffing the brief that retires gunbc.tools.bmc_onboard for BMC credential rotation. (1) The state-shaped BmcSecure (gunbc.machine_intake.bmc_secure cut O1b) may become the live authority for the ASRock ALTRAD8UD / OpenBMC family while the rotation-event path stays frozen as mtcollins1's standing under ruling C (eager-gull-22, 2026-10-04), on the condition that mtcollins1's own cutover is left near a flag switch rather than stranded: \"yeah thats fine assuming the code is basically a flag switch to finish the mtcollins migration - i don't want to leave it on an island/stranded\". (2) A build that forces the published credential's change on first login is behaviour modeled per version and interacted with, and in that state the password write is the first rotation; the converge rotates at the earliest point and never redundantly: \"thats behavior we have to model per version and interact with ... Our workflow should be smart enough to rotate credentials at the earliest place, and not do it redundantly\" (gunbc.machine_intake.bmc_credential_policy). (3) Failed-login probes against an account with a lockout budget are avoided where a derivation is available, and otherwise accounted for: \"we can't do lockout bound reads basically - or, we have to account for them - i would avoid it if possible\" (bmc_secure PublishedCredentialRetiredOnTheManagedAccount). (4) srv1-srv4, the same board family, are in scope for the cutover; the Supermicro H11SSL units are folded in, with their per-unit bootstrap credential held in the operator's sheet for now.",
+}
+
 data conformance_needs_attention: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "conformance_needs_attention"),
   decided: "2026-09-06",
@@ -54,6 +61,20 @@ data one_approval_route_for_every_privileged_action: DesignRuling = DesignRuling
   decided: "2026-10-22",
   section: "3b",
   provenance: "Operator ruling on the policy question gunbc#14694 left open: \"i prefer everything to go thru one route\". Every disruptive or privileged action, including FleetOnce actions with host-root reach on srv1, is approved through the approval broker route AccessRequest -> ApprovalCapability -> redeem_capability (gunbc.auth.access_request, approval_capability, approval_broker), fronted by the iOS approval app; the administrator edge is not a second approval route. Applied in gunbc.auth.authorization_pattern_selection candidate_patterns (the edge is a candidate only for an effect that must run unattended), so FleetOnce plus host-root reach selects OperatorApprovedCapability.",
+}
+
+data the_initial_convergence_is_the_only_approval: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_initial_convergence_is_the_only_approval"),
+  decided: "2026-10-25",
+  section: "3b",
+  provenance: "Operator ruling, refining one_approval_route_for_every_privileged_action for effects that recur: \"ultimately the initial convergence is the only thing being approved, everything else is just granted THAT approval (assuming its sufficient)\", with the aim that \"anything sensitive [is] done through an approval\" rather than through revision or branch pinning. The operator approves one convergence through the broker route; each effect that convergence entails runs inside the attempt that claimed that approval and is admitted against its std.scoped_authorization OperatorGrant (plan identity, scopes, expiry, claim), and an insufficient approval is a fresh request, never a widening. Applied in gunbc.auth.authorization_pattern_selection as WitnessDischarge EntailedByApprovedConvergence and the ApprovedConvergenceGrant candidate, and in gunbc.auth.privileged_effect_census convergence_lineage_defects, which admits a lineage root only where the root itself selects OperatorApprovedCapability; the srv1 host-root writes take the srv1 root-mutation job's approval as their root.",
+}
+
+data srv1_root_mutation_approval_is_filed_by_the_job: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_root_mutation_approval_is_filed_by_the_job"),
+  decided: "2026-10-26",
+  section: "3b",
+  provenance: "Operator ruling choosing between two routes for the srv1 root-mutation approval: (A) gunbc.plans.ntfy_deployment_gate_approval option A, a new least-privilege GitHub App answering a custom deployment protection rule on srv1-production after the operator approves, or (B) each srv1 root-mutation job files one access request with the approval broker as its first step and proceeds only on the operator's device-redeemed approval, through gunbc.auth.approval_gate, with the environment kept for its main-only branch rule. The operator chose B (\"B is fine\"). B supersedes option A of that plan, which had been approved by default and never answered. The approval check runs in reviewed main rather than in GitHub's gate, the census pattern already admitted for the runner-group create; the environment's required reviewer is removed by the operator only after the step has been seen to admit one approval and refuse one denial on a real dispatch. Realized by gunbc.fleet.srv1_root_mutation_approval_run.",
 }
 
 data coercion_is_the_implicit_safe_subset: DesignRuling = DesignRuling {
@@ -367,8 +388,46 @@ data emit_build_subjects_are_the_two_compiler_products: DesignRuling = DesignRul
   provenance: "Operator ruling with the v1 withdrawal (gunbc#13658, second round: the required job \"requires fresh emission/build of both retained products\"): the subjects of gunbc.emitted_subject_build_gate emitted_subject_build_rows are the two retained compiler products, //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli, and a third subject row is a growth the operator vetoed. Until 2026-10-24 the veto lived only as a comment on test.claim.compiler_gate_emit_build_lane_witness the_job_runs_both_retained_emit_build_subjects, which quotes the roster as remaining the two compiler products; that comment landed in gunbc#13641 and its quotation has no other source in the repository. Re-raised and confirmed on 2026-10-24 by merry-fox-82 when gunbc#14984 built a native control over gunbc.fleet.fleet_convergence_verdict: it stays run by name, and enrolling it would reverse this ruling and goes to the operator.",
 }
 
+data pattern_atom_naming_a_visible_value_is_never_a_binder: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "pattern_atom_naming_a_visible_value_is_never_a_binder"),
+  decided: "2026-10-25",
+  section: "5",
+  provenance: "Ruling by tidy-ant-251 (Manager 1), 2026-10-25, on the bare-atom match-arm binding work (gunbc#15125): a bare atom in pattern position is a binder unless it names something the arm can already see, and then it never silently shadows it. A pattern atom naming a frame value refuses with one cause covering both readings (rename to bind, or compare with an equality guard), replacing binder_hides_visible_value for pattern atoms at either pattern position; a pattern atom naming a module-level value refuses only for a `data` constant, since a module function stays admitted exactly as root shadowing always allowed. It is decided at v2.compiler.resolve resolve_pattern_atom_naming_a_frame_value, with the module-level half in resolve_pattern_atom_names_module_value.",
+}
+
+data unread_catch_all_binder_refuses: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "unread_catch_all_binder_refuses"),
+  decided: "2026-10-25",
+  section: "5",
+  provenance: "Ruling by tidy-ant-251 (Manager 1), 2026-10-25, on the bare-atom match-arm binding work (gunbc#15125): with a bare arm atom now binding its arm, an arm that never reads its own catch-all binder is a mistake the author should hear about, not a binding that silently exists — it refuses at resolve, and the remedy the refusal names is to write `_`. Decided at v2.compiler.resolve resolve_catch_all_binder_read_gate; the widening-over-a-nullary companion refusal lives at v2.compiler.infer infer_coproduct_catch_all_binder_widening_over_a_nullary.",
+}
+
+data cross_tree_admission_is_namespace_membership: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "cross_tree_admission_is_namespace_membership"),
+  decided: "2026-10-25",
+  section: "3",
+  provenance: "Operator ratified 2026-10-25 (escalation msg_6f0857a6) a decision by root coordinator sleek-owl-397, relayed by tidy-ant-251, on the per-root fundamentality defect, where native resolve denied every dag->v2 import that the seed admits: fix the model and do not move the importers. Narrowed the same day from 'rank per namespace' to membership, with no direction rule, once the namespace-grain import census showed one 23-namespace cycle spanning both trees, so any strict order would deny live edges that no ruling forbids. A crossing is admitted when both namespaces have a row in gunbc.source_layout_namespaces and refused when either has none; the storage lookup is the one enforcement site, and the population route asks the same membership read; name resolution keeps only the active-root denials. Applied in gunbc#15080 (v2.std.cross_tree.import_model cross_tree_import_admitted).",
+}
+
+data native_claim_route_admits_the_docker_cli: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_claim_route_admits_the_docker_cli"),
+  decided: "2026-10-25",
+  section: "Building & checks",
+  provenance: "Operator ruling relayed by calm-crab-645 (msg_396b4514), answering proud-bear-756's escalation msg_127d75bc: the router proxy falsifier (plan gunbc.plans.fabric_serving_router, S1b) takes route (a), native-process-effect, over a seed producer or a live receipt. Process spawn is a declared .dag effect, and one native route's denominator is extended on the D11 row (gunbc.plans.demand_engine_program); the seed does not grow. As built, and with calm-crab-645's conditions of msg_49fe21ca: std.compiler_entry native_claim_route_denominator admits exactly extdeps.docker.cli_service DockerCli, a fixed-argv shell-transport service whose image, name, network and paths arrive as parameters; generic exec (extdeps.shell.exec, held at an empty roster by the meta_exec_confinement lens) stays out; a runner with no reachable docker daemon answers no observation (exit 2), never a skip or a green.",
+}
+
+data macos_operator_terminal_runs_without_a_memory_bound: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "macos_operator_terminal_runs_without_a_memory_bound"),
+  decided: "2026-10-28",
+  section: "Building & checks",
+  provenance: "Operator ruling to wise-bat-528, 2026-10-28, answering the option 'A: admit an operator-attended macOS run without a cgroup wrap, with a notice; CI and servers unchanged' with 'A is fine'. Context: the IAM root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) is run from the operator's Mac, which has no cgroup facility, so every gunbc run there refused CgroupUnreadable. As built (gunbc#15316): macOS, GITHUB_ACTIONS unset, and stdin a terminal classify as OperatorHostWithoutCgroups and skip the wrap with a notice; every other macOS run still refuses. The loss is declared as gunbc.rung_drop.macos_operator_terminal_run_unbounded.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    macos_operator_terminal_runs_without_a_memory_bound,
+    cross_tree_admission_is_namespace_membership,
+    native_claim_route_admits_the_docker_cli,
     emit_build_subjects_are_the_two_compiler_products,
     job_roster_closed_to_growth,
     runner_listener_admission_is_mask_roster_and_no_worker,
@@ -382,6 +441,8 @@ fn design_rulings() -> List<DesignRuling> {
     instrument_is_a_row_not_a_flag,
     authorization_pattern_is_a_selection,
     one_approval_route_for_every_privileged_action,
+    the_initial_convergence_is_the_only_approval,
+    srv1_root_mutation_approval_is_filed_by_the_job,
     coercion_is_the_implicit_safe_subset,
     text_crossings_go_through_the_unfold,
     v2_better_than_the_seed,
@@ -415,6 +476,9 @@ fn design_rulings() -> List<DesignRuling> {
     instrument_measurement_queues_run_in_parallel,
     approval_enrolment_is_google_sign_in,
     drain_wait_bound_is_derived_from_declared_job_timeouts,
+    pattern_atom_naming_a_visible_value_is_never_a_binder,
+    unread_catch_all_binder_refuses,
+    bmc_secure_goes_live_per_controller_family,
   ]
 }
 

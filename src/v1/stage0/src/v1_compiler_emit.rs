@@ -2,6 +2,8 @@
 // Source module: v1.compiler.emit
 
 use self::BoundOperation::*;
+use self::CastRealization::*;
+use self::CastRealizationRefusal::*;
 use self::EmitterOutcome::*;
 use self::ExprCategory::*;
 use self::FileEmissionRefusal::*;
@@ -14,6 +16,7 @@ use self::NativeEffectHandler::*;
 use self::NativeEffectRealizationAdmission::*;
 use self::NativeEffectResolution::*;
 use self::NativeEffectUnavailableCause::*;
+use self::RepresentationCarrier::*;
 use self::ShellEmissionRefusal::*;
 use self::ShellResultChannel::*;
 use self::TargetEmissionMode::*;
@@ -23,6 +26,7 @@ pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
 pub use crate::gunbc_rust_emitted_edge::module_to_filename;
+pub use crate::gunbc_structural_realization_bindings::kernel_grounding_rows;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_coercion::TypeRealizationDecision;
@@ -39,10 +43,14 @@ pub use crate::std_compiler_entry::{
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
-    OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
+use crate::std_literal_elaboration::KernelGroundingCrossing::{
+    CrossingRefused, CrossingTotalWidening,
 };
-pub use crate::std_occurrence_identity::{occurrence_id_eq, NodeOccurrenceIdentity, OccurrenceId};
+pub use crate::std_literal_elaboration::{
+    declaration_is_grounded_natural, kernel_grounding_crossing, KernelGroundingCrossing,
+};
+pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::NullCoalesce;
 use crate::std_syntax::BinOp::*;
@@ -77,11 +85,15 @@ use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{
 };
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling, EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
-use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration;
+use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{
+    TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceNamesDeclaration,
+    TypeReferenceUnidentified,
+};
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, empty_symbol_index, lookup_type_for, type_reference_declaration_reading,
-    GlobalBareLookupState, TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
+    alias_rhs_of_declaration, authored_name, carried_declaration_ref, declaration_binding_of_ref,
+    empty_symbol_index, lookup_type_for, type_reference_declaration_reading, GlobalBareLookupState,
+    TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
 };
 pub use crate::v1_compiler_infer_items::{
     item_is_effectful_callee, item_resource_names, ItemInfo, ResolvedGraph, TypedModule,
@@ -128,7 +140,7 @@ use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled;
+use crate::v1_std_core::CompilerDiagnostic::{CastRealizationRefused, TransportEmissionNotModeled};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
@@ -148,7 +160,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::TransportKind::{
-    FileTransport, LocalTransport, RestTransport, ShellTransport,
+    FileTransport, RestTransport, ShellTransport, UndeclaredTransport,
 };
 use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::VarBindingKind::*;
@@ -162,17 +174,17 @@ pub use crate::v1_std_core::{
     field_init_node_name_at, field_init_node_value, field_init_operation_modifier,
     find_child_named, foreach_body, foreach_collection, foreach_variable_at, if_condition,
     if_else_branch, if_then_branch, index_base, index_expr, is_compiler_error, is_file_transport,
-    is_local_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, local_transport_node, make_error_node,
+    is_rest_transport, is_shell_transport, is_undeclared_transport, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, make_error_node,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
     module_items, operation_modifier_name, param_node_default_value, param_node_name_at,
     param_node_type_expr, qualified_last_segment, record_lit_type_name_at, return_value,
     slice_base, slice_end, slice_start, transport_base_path, transport_has_auth, transport_verb,
-    tuple_type_name, unaryop_operand, with_required_cardinality, CallSemantics, CallTargetIdentity,
-    Cardinality, CompilerDiagnostic, Connective, DeclaredCallableIdentity, DeclaredFuncSig,
-    ErrorNode, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind, StringPart, TextFile, TransportKind,
-    UnaryOpKind, VarBindingKind,
+    tuple_type_name, unaryop_operand, undeclared_transport_node, with_required_cardinality,
+    CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
+    DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
+    StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -786,54 +798,41 @@ pub fn has_nested_records_node(
     mut __tco_loop_n: Rc<Node>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        let is_product = (n.connective.clone() == Connective::Conj);
-        let is_coproduct = (n.connective.clone() == Connective::Disj);
-        if is_product.clone() {
-            break true;
-        } else {
-            if is_coproduct.clone() {
-                let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-                if is_optional.clone() {
-                    {
-                        let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
-                        let __tco_1 = source_indices;
-                        __tco_loop_n = __tco_0;
-                        __tco_loop_source_indices = __tco_1;
-                        continue;
-                    }
-                } else {
-                    break false;
-                }
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            let is_product = (n.connective.clone() == Connective::Conj);
+            let is_coproduct = (n.connective.clone() == Connective::Disj);
+            if is_product.clone() {
+                break true;
             } else {
-                let is_map = crate::v1_compiler_infer_types::node_is_keyed_collection(
-                    n.clone(),
-                    source_indices.clone(),
-                );
-                if is_map.clone() {
-                    match n.children.clone().get((1) as usize).cloned() {
-                        Some(val_child) => {
-                            let __tco_0 =
-                                crate::v1_compiler_infer_types::child_type_node(val_child.clone());
+                if is_coproduct.clone() {
+                    let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+                    if is_optional.clone() {
+                        {
+                            let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
                             let __tco_1 = source_indices;
                             __tco_loop_n = __tco_0;
                             __tco_loop_source_indices = __tco_1;
                             continue;
                         }
-                        std::option::Option::None => {
-                            break false;
-                        }
+                    } else {
+                        break false;
                     }
                 } else {
-                    if ((n.children.clone().len() as i64) == 1) {
-                        match n.children.clone().first().cloned() {
-                            Some(el) => {
-                                let __tco_0 =
-                                    crate::v1_compiler_infer_types::child_type_node(el.clone());
+                    let is_map = crate::v1_compiler_infer_types::node_is_keyed_collection(
+                        n.clone(),
+                        source_indices.clone(),
+                    );
+                    if is_map.clone() {
+                        match n.children.clone().get((1) as usize).cloned() {
+                            Some(val_child) => {
+                                let __tco_0 = crate::v1_compiler_infer_types::child_type_node(
+                                    val_child.clone(),
+                                );
                                 let __tco_1 = source_indices;
                                 __tco_loop_n = __tco_0;
                                 __tco_loop_source_indices = __tco_1;
@@ -844,7 +843,23 @@ pub fn has_nested_records_node(
                             }
                         }
                     } else {
-                        break false;
+                        if ((n.children.clone().len() as i64) == 1) {
+                            match n.children.clone().first().cloned() {
+                                Some(el) => {
+                                    let __tco_0 =
+                                        crate::v1_compiler_infer_types::child_type_node(el.clone());
+                                    let __tco_1 = source_indices;
+                                    __tco_loop_n = __tco_0;
+                                    __tco_loop_source_indices = __tco_1;
+                                    continue;
+                                }
+                                std::option::Option::None => {
+                                    break false;
+                                }
+                            }
+                        } else {
+                            break false;
+                        }
                     }
                 }
             }
@@ -2245,7 +2260,7 @@ pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
 
 pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
     if (item.transport.clone() == std::option::Option::None) {
-        crate::v1_std_core::local_transport_node(
+        crate::v1_std_core::undeclared_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             item.span.clone(),
         )
@@ -2552,7 +2567,7 @@ pub enum BoundOperation {
         transport: Rc<Node>,
         result_fields: Rc<Vec<Rc<ShellResultField>>>,
     },
-    LocalBound,
+    UnboundOperation,
     FileBound {
         verb: FileVerb,
         path_template: Rc<Node>,
@@ -3001,7 +3016,7 @@ pub fn bind_operation_transport(
         Some(TransportKind::FileTransport) => {
             bind_file_operation(t.clone(), op_node.clone(), source_indices.clone())
         }
-        Some(TransportKind::LocalTransport) => Rc::new(BoundOperation::LocalBound),
+        Some(TransportKind::UndeclaredTransport) => Rc::new(BoundOperation::UnboundOperation),
         std::option::Option::None => Rc::new(BoundOperation::BindingRefused {
             cause: Rc::new(TransportBindingRefusal::TransportMatchesNoRosterMember),
         }),
@@ -3203,7 +3218,7 @@ pub fn bound_operation_transport_kind(bound: Rc<BoundOperation>) -> Option<Trans
         BoundOperation::RestBound { transport: _, .. } => Some(TransportKind::RestTransport),
         BoundOperation::ShellBound { .. } => Some(TransportKind::ShellTransport),
         BoundOperation::FileBound { .. } => Some(TransportKind::FileTransport),
-        BoundOperation::LocalBound => Some(TransportKind::LocalTransport),
+        BoundOperation::UnboundOperation => Some(TransportKind::UndeclaredTransport),
         BoundOperation::BindingRefused { cause: _, .. } => std::option::Option::None,
     }
 }
@@ -3542,7 +3557,6 @@ pub fn emit_unified_transport_dispatch(
     render_rest: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone,
     render_shell: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
         + Clone,
-    render_local: impl Fn(String, i64) -> String + Clone,
 ) -> String {
     match (*bound.clone()).clone() {
         BoundOperation::RestBound { transport: t, .. } => render_rest(
@@ -3561,7 +3575,9 @@ pub fn emit_unified_transport_dispatch(
             depth.clone(),
             source_indices.clone(),
         ),
-        BoundOperation::LocalBound => render_local(op_name.clone(), depth.clone()),
+        BoundOperation::UnboundOperation => {
+            emit_unbound_operation_refusal(op_name.clone(), target.clone())
+        }
         BoundOperation::FileBound {
             path_template: __pt,
             result_fields: __rf,
@@ -4036,82 +4052,84 @@ pub fn emit_shared_tco_expr(
     mut __tco_loop_emit_block: impl Fn(Rc<TcoFrame>) -> String + Clone,
     mut __tco_loop_emit_default_return: impl Fn(Rc<TcoFrame>) -> String + Clone,
 ) -> String {
-    loop {
-        #[allow(unused_mut)]
-        let mut frame = __tco_loop_frame;
-        #[allow(unused_mut)]
-        let mut fn_name = __tco_loop_fn_name;
-        #[allow(unused_mut)]
-        let mut emit_self_call_reassign = __tco_loop_emit_self_call_reassign;
-        #[allow(unused_mut)]
-        let mut emit_non_self_call = __tco_loop_emit_non_self_call;
-        #[allow(unused_mut)]
-        let mut emit_if = __tco_loop_emit_if;
-        #[allow(unused_mut)]
-        let mut emit_match = __tco_loop_emit_match;
-        #[allow(unused_mut)]
-        let mut emit_let = __tco_loop_emit_let;
-        #[allow(unused_mut)]
-        let mut emit_block = __tco_loop_emit_block;
-        #[allow(unused_mut)]
-        let mut emit_default_return = __tco_loop_emit_default_return;
-        let si = frame.scope.type_env.source_indices.clone();
-        match (*frame.expr.expr_data.clone()).clone() {
-            ExprData::ExprCall { .. } => {
-                if (crate::v1_std_core::expr_call_func_at(frame.expr.clone(), si)
-                    == fn_name.clone())
-                {
-                    break emit_self_call_reassign(Rc::new(TcoReassignInput {
-                        args: frame.expr.children.clone(),
-                        scope: frame.scope.clone(),
-                        depth: frame.depth.clone(),
-                    }));
-                } else {
-                    break emit_non_self_call(frame.clone());
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut frame = __tco_loop_frame;
+            #[allow(unused_mut)]
+            let mut fn_name = __tco_loop_fn_name;
+            #[allow(unused_mut)]
+            let mut emit_self_call_reassign = __tco_loop_emit_self_call_reassign;
+            #[allow(unused_mut)]
+            let mut emit_non_self_call = __tco_loop_emit_non_self_call;
+            #[allow(unused_mut)]
+            let mut emit_if = __tco_loop_emit_if;
+            #[allow(unused_mut)]
+            let mut emit_match = __tco_loop_emit_match;
+            #[allow(unused_mut)]
+            let mut emit_let = __tco_loop_emit_let;
+            #[allow(unused_mut)]
+            let mut emit_block = __tco_loop_emit_block;
+            #[allow(unused_mut)]
+            let mut emit_default_return = __tco_loop_emit_default_return;
+            let si = frame.scope.type_env.source_indices.clone();
+            match (*frame.expr.expr_data.clone()).clone() {
+                ExprData::ExprCall { .. } => {
+                    if (crate::v1_std_core::expr_call_func_at(frame.expr.clone(), si)
+                        == fn_name.clone())
+                    {
+                        break emit_self_call_reassign(Rc::new(TcoReassignInput {
+                            args: frame.expr.children.clone(),
+                            scope: frame.scope.clone(),
+                            depth: frame.depth.clone(),
+                        }));
+                    } else {
+                        break emit_non_self_call(frame.clone());
+                    }
                 }
-            }
-            ExprData::ExprReturn => {
-                let inner = crate::v1_std_core::return_value(frame.expr.clone());
-                {
-                    let __tco_0 = Rc::new(TcoFrame {
-                        expr: inner.clone(),
-                        scope: frame.scope.clone(),
-                        depth: frame.depth.clone(),
-                    });
-                    let __tco_1 = fn_name;
-                    let __tco_2 = emit_self_call_reassign;
-                    let __tco_3 = emit_non_self_call;
-                    let __tco_4 = emit_if;
-                    let __tco_5 = emit_match;
-                    let __tco_6 = emit_let;
-                    let __tco_7 = emit_block;
-                    let __tco_8 = emit_default_return;
-                    __tco_loop_frame = __tco_0;
-                    __tco_loop_fn_name = __tco_1;
-                    __tco_loop_emit_self_call_reassign = __tco_2;
-                    __tco_loop_emit_non_self_call = __tco_3;
-                    __tco_loop_emit_if = __tco_4;
-                    __tco_loop_emit_match = __tco_5;
-                    __tco_loop_emit_let = __tco_6;
-                    __tco_loop_emit_block = __tco_7;
-                    __tco_loop_emit_default_return = __tco_8;
-                    continue;
+                ExprData::ExprReturn => {
+                    let inner = crate::v1_std_core::return_value(frame.expr.clone());
+                    {
+                        let __tco_0 = Rc::new(TcoFrame {
+                            expr: inner.clone(),
+                            scope: frame.scope.clone(),
+                            depth: frame.depth.clone(),
+                        });
+                        let __tco_1 = fn_name;
+                        let __tco_2 = emit_self_call_reassign;
+                        let __tco_3 = emit_non_self_call;
+                        let __tco_4 = emit_if;
+                        let __tco_5 = emit_match;
+                        let __tco_6 = emit_let;
+                        let __tco_7 = emit_block;
+                        let __tco_8 = emit_default_return;
+                        __tco_loop_frame = __tco_0;
+                        __tco_loop_fn_name = __tco_1;
+                        __tco_loop_emit_self_call_reassign = __tco_2;
+                        __tco_loop_emit_non_self_call = __tco_3;
+                        __tco_loop_emit_if = __tco_4;
+                        __tco_loop_emit_match = __tco_5;
+                        __tco_loop_emit_let = __tco_6;
+                        __tco_loop_emit_block = __tco_7;
+                        __tco_loop_emit_default_return = __tco_8;
+                        continue;
+                    }
                 }
-            }
-            ExprData::ExprIf => {
-                break emit_if(frame.clone());
-            }
-            ExprData::ExprMatch => {
-                break emit_match(frame.clone());
-            }
-            ExprData::ExprLet => {
-                break emit_let(frame.clone());
-            }
-            ExprData::ExprBlock => {
-                break emit_block(frame.clone());
-            }
-            _ => {
-                break emit_default_return(frame.clone());
+                ExprData::ExprIf => {
+                    break emit_if(frame.clone());
+                }
+                ExprData::ExprMatch => {
+                    break emit_match(frame.clone());
+                }
+                ExprData::ExprLet => {
+                    break emit_let(frame.clone());
+                }
+                ExprData::ExprBlock => {
+                    break emit_block(frame.clone());
+                }
+                _ => {
+                    break emit_default_return(frame.clone());
+                }
             }
         }
     }
@@ -5175,51 +5193,53 @@ pub fn suffix_escape_collides_with_reserved_chain(
     mut __tco_loop_suffix: String,
     mut __tco_loop_keywords: Rc<Vec<String>>,
 ) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut name = __tco_loop_name;
-        #[allow(unused_mut)]
-        let mut suffix = __tco_loop_suffix;
-        #[allow(unused_mut)]
-        let mut keywords = __tco_loop_keywords;
-        let suffix_len = v1_rt::string_length(&suffix);
-        let name_len = v1_rt::string_length(&name);
-        if ((suffix_len.clone() == 0) || (name_len.clone() < suffix_len.clone())) {
-            break false;
-        } else {
-            if (v1_rt::substring(
-                &name,
-                v1_rt::int_sub(name_len.clone(), suffix_len.clone()),
-                name_len.clone(),
-            ) != suffix.clone())
-            {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut name = __tco_loop_name;
+            #[allow(unused_mut)]
+            let mut suffix = __tco_loop_suffix;
+            #[allow(unused_mut)]
+            let mut keywords = __tco_loop_keywords;
+            let suffix_len = v1_rt::string_length(&suffix);
+            let name_len = v1_rt::string_length(&name);
+            if ((suffix_len.clone() == 0) || (name_len.clone() < suffix_len.clone())) {
                 break false;
             } else {
-                let base = v1_rt::substring(
+                if (v1_rt::substring(
                     &name,
-                    0,
                     v1_rt::int_sub(name_len.clone(), suffix_len.clone()),
-                );
-                if {
-                    let mut __found = false;
-                    for r in keywords.iter().cloned() {
-                        if (r.clone() == base.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                } {
-                    break true;
+                    name_len.clone(),
+                ) != suffix.clone())
+                {
+                    break false;
                 } else {
-                    {
-                        let __tco_0 = base.clone();
-                        let __tco_1 = suffix;
-                        let __tco_2 = keywords;
-                        __tco_loop_name = __tco_0;
-                        __tco_loop_suffix = __tco_1;
-                        __tco_loop_keywords = __tco_2;
-                        continue;
+                    let base = v1_rt::substring(
+                        &name,
+                        0,
+                        v1_rt::int_sub(name_len.clone(), suffix_len.clone()),
+                    );
+                    if {
+                        let mut __found = false;
+                        for r in keywords.iter().cloned() {
+                            if (r.clone() == base.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        break true;
+                    } else {
+                        {
+                            let __tco_0 = base.clone();
+                            let __tco_1 = suffix;
+                            let __tco_2 = keywords;
+                            __tco_loop_name = __tco_0;
+                            __tco_loop_suffix = __tco_1;
+                            __tco_loop_keywords = __tco_2;
+                            continue;
+                        }
                     }
                 }
             }
@@ -5266,20 +5286,22 @@ pub fn hex_digit_char(d: i64) -> String {
 }
 
 pub fn int_to_upper_hex_inner(mut __tco_loop_n: i64, mut __tco_loop_acc: String) -> String {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        if (n.clone() == 0) {
-            break acc.clone();
-        } else {
-            {
-                let __tco_0 = v1_rt::int_div(n.clone(), 16);
-                let __tco_1 = v1_rt::concat(hex_digit_char(v1_rt::int_rem(n.clone(), 16)), acc);
-                __tco_loop_n = __tco_0;
-                __tco_loop_acc = __tco_1;
-                continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            if (n.clone() == 0) {
+                break acc.clone();
+            } else {
+                {
+                    let __tco_0 = v1_rt::int_div(n.clone(), 16);
+                    let __tco_1 = v1_rt::concat(hex_digit_char(v1_rt::int_rem(n.clone(), 16)), acc);
+                    __tco_loop_n = __tco_0;
+                    __tco_loop_acc = __tco_1;
+                    continue;
+                }
             }
         }
     }
@@ -5301,49 +5323,51 @@ pub fn escape_emoji_codepoints_inner(
     mut __tco_loop_prefix: String,
     mut __tco_loop_suffix: String,
 ) -> String {
-    loop {
-        #[allow(unused_mut)]
-        let mut s = __tco_loop_s;
-        #[allow(unused_mut)]
-        let mut pos = __tco_loop_pos;
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        #[allow(unused_mut)]
-        let mut prefix = __tco_loop_prefix;
-        #[allow(unused_mut)]
-        let mut suffix = __tco_loop_suffix;
-        if (pos.clone() >= n.clone()) {
-            break acc.clone();
-        } else {
-            let ch_str = v1_rt::char_at(&s, pos.clone());
-            let cp = v1_rt::code_point(ch_str.clone());
-            let next_acc = if v1_rt::is_emoji_ident(cp.clone()) {
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(acc.clone(), prefix.clone()),
-                        int_to_upper_hex(cp.clone()),
-                    ),
-                    suffix.clone(),
-                )
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut s = __tco_loop_s;
+            #[allow(unused_mut)]
+            let mut pos = __tco_loop_pos;
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            #[allow(unused_mut)]
+            let mut prefix = __tco_loop_prefix;
+            #[allow(unused_mut)]
+            let mut suffix = __tco_loop_suffix;
+            if (pos.clone() >= n.clone()) {
+                break acc.clone();
             } else {
-                v1_rt::concat(acc.clone(), ch_str.clone())
-            };
-            {
-                let __tco_0 = s;
-                let __tco_1 = v1_rt::int_add(pos, 1);
-                let __tco_2 = n;
-                let __tco_3 = next_acc;
-                let __tco_4 = prefix;
-                let __tco_5 = suffix;
-                __tco_loop_s = __tco_0;
-                __tco_loop_pos = __tco_1;
-                __tco_loop_n = __tco_2;
-                __tco_loop_acc = __tco_3;
-                __tco_loop_prefix = __tco_4;
-                __tco_loop_suffix = __tco_5;
-                continue;
+                let ch_str = v1_rt::char_at(&s, pos.clone());
+                let cp = v1_rt::code_point(ch_str.clone());
+                let next_acc = if v1_rt::is_emoji_ident(cp.clone()) {
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(acc.clone(), prefix.clone()),
+                            int_to_upper_hex(cp.clone()),
+                        ),
+                        suffix.clone(),
+                    )
+                } else {
+                    v1_rt::concat(acc.clone(), ch_str.clone())
+                };
+                {
+                    let __tco_0 = s;
+                    let __tco_1 = v1_rt::int_add(pos, 1);
+                    let __tco_2 = n;
+                    let __tco_3 = next_acc;
+                    let __tco_4 = prefix;
+                    let __tco_5 = suffix;
+                    __tco_loop_s = __tco_0;
+                    __tco_loop_pos = __tco_1;
+                    __tco_loop_n = __tco_2;
+                    __tco_loop_acc = __tco_3;
+                    __tco_loop_prefix = __tco_4;
+                    __tco_loop_suffix = __tco_5;
+                    continue;
+                }
             }
         }
     }
@@ -6446,6 +6470,22 @@ pub fn emit_unmodeled_file_transport_refusal_with_cause(
     )
 }
 
+pub fn emit_unbound_operation_refusal(op_name: String, target: RenderTarget) -> String {
+    emit_error_expr(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat("operation '".to_string(), op_name.clone()),
+                    "' has no realization for target ".to_string(),
+                ),
+                render_target_name(target.clone()),
+            ),
+            ": its service declares no transport".to_string(),
+        ),
+        target.clone(),
+    )
+}
+
 pub fn emit_unmodeled_file_transport_refusal(op_name: String, target: RenderTarget) -> String {
     emit_unmodeled_file_transport_refusal_with_cause(
         op_name,
@@ -6568,72 +6608,86 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
     })
 }
 
-pub fn transparent_representation_root(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RepresentationCarrier {
+    KernelCarrier { name: String },
+    DeclaredCarrier { declaration: Rc<DeclarationRef> },
+}
+
+pub fn representation_carriers_equal(
+    a: Rc<RepresentationCarrier>,
+    b: Rc<RepresentationCarrier>,
+) -> bool {
+    match (*a.clone()).clone() {
+        RepresentationCarrier::KernelCarrier { name: x, .. } => match (*b.clone()).clone() {
+            RepresentationCarrier::KernelCarrier { name: y, .. } => (x.clone() == y.clone()),
+            RepresentationCarrier::DeclaredCarrier { declaration: _, .. } => false,
+        },
+        RepresentationCarrier::DeclaredCarrier { declaration: x, .. } => match (*b.clone()).clone()
+        {
+            RepresentationCarrier::KernelCarrier { name: _, .. } => false,
+            RepresentationCarrier::DeclaredCarrier { declaration: y, .. } => {
+                crate::std_decl_ref::declaration_ref_eq(x.clone(), y.clone())
+            }
+        },
+    }
+}
+
+pub fn representation_carrier(
     mut __tco_loop_n: Rc<Node>,
     mut __tco_loop_env: Rc<TypeEnv>,
-    mut __tco_loop_target: RenderTarget,
     mut __tco_loop_fuel: i64,
-) -> Rc<Node> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut env = __tco_loop_env;
-        #[allow(unused_mut)]
-        let mut target = __tco_loop_target;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if (fuel.clone() <= 0) {
-            break n.clone();
-        } else {
-            if (n.return_cardinality.clone() == Cardinality::CardOptional) {
-                break n.clone();
+) -> Option<Rc<RepresentationCarrier>> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut env = __tco_loop_env;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (fuel.clone() <= 0) {
+                break std::option::Option::None;
             } else {
-                if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {
-                    match n.children.clone().first().cloned() {
-                        Some(base) => {
-                            let __tco_0 = base.clone();
-                            let __tco_1 = env;
-                            let __tco_2 = target;
-                            let __tco_3 = v1_rt::int_sub(fuel, 1);
-                            __tco_loop_n = __tco_0;
-                            __tco_loop_env = __tco_1;
-                            __tco_loop_target = __tco_2;
-                            __tco_loop_fuel = __tco_3;
-                            continue;
-                        }
-                        std::option::Option::None => {
-                            break n.clone();
-                        }
-                    }
+                if (n.return_cardinality.clone() == Cardinality::CardOptional) {
+                    break std::option::Option::None;
                 } else {
-                    if (((n.connective.clone() == Connective::NoConnective)
-                        && ((n.children.clone().len() as i64) == 0))
-                        && ((n.params.clone().len() as i64) == 0))
-                    {
-                        match n.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: rt, .. }) => {
-                                let __tco_0 = rt.clone();
+                    if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {
+                        match n.children.clone().first().cloned() {
+                            Some(base) => {
+                                let __tco_0 = base.clone();
                                 let __tco_1 = env;
-                                let __tco_2 = target;
-                                let __tco_3 = v1_rt::int_sub(fuel, 1);
+                                let __tco_2 = v1_rt::int_sub(fuel, 1);
                                 __tco_loop_n = __tco_0;
                                 __tco_loop_env = __tco_1;
-                                __tco_loop_target = __tco_2;
-                                __tco_loop_fuel = __tco_3;
+                                __tco_loop_fuel = __tco_2;
                                 continue;
                             }
-                            _ => {
-                                break transparent_named_carrier_root(
-                                    n.clone(),
-                                    env.clone(),
-                                    target.clone(),
-                                    fuel.clone(),
-                                );
+                            std::option::Option::None => {
+                                break std::option::Option::None;
                             }
                         }
                     } else {
-                        break n.clone();
+                        if ((n.params.clone().len() as i64) > 0) {
+                            break std::option::Option::None;
+                        } else {
+                            if ((n.module_item_kind.clone()
+                                != ParsedModuleItemKind::ModuleItemTypeDeclaration)
+                                && ((n.children.clone().len() as i64) > 0))
+                            {
+                                break std::option::Option::None;
+                            } else {
+                                match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(n.clone(), env.source_indices.clone(), env.clone())).clone() {
+    TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: k, .. } => { break Some(Rc::new(RepresentationCarrier::KernelCarrier {
+    name: crate::v1_std_core::qualified_last_segment(k.clone()),
+})); },
+    TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: d, .. } => { break declared_representation_carrier(n.clone(), d.clone(), env.clone(), v1_rt::int_sub(fuel.clone(), 1)); },
+    TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => { break std::option::Option::None; },
+    TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => { break unidentified_representation_carrier(n.clone(), env.clone(), v1_rt::int_sub(fuel.clone(), 1)); },
+}
+                            }
+                        }
                     }
                 }
             }
@@ -6641,128 +6695,179 @@ pub fn transparent_representation_root(
     }
 }
 
-pub fn transparent_named_carrier_root(
+pub fn unidentified_representation_carrier(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
-    target: RenderTarget,
     fuel: i64,
-) -> Rc<Node> {
+) -> Option<Rc<RepresentationCarrier>> {
     {
-        let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
-        if representation_carrier_is_grounded(
-            crate::v1_compiler_coercion::type_reference_realization(
-                n.clone(),
-                name,
-                target.clone(),
-            ),
-        ) {
-            n.clone()
-        } else {
-            match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
-                Some(decl) => {
-                    if node_occurrence_ids_equal(
-                        decl.occurrence_identity.clone(),
-                        n.occurrence_identity.clone(),
-                    ) {
-                        if crate::v1_compiler_emit_core_support::is_type_alias_item(
-                            decl.clone(),
-                            env.source_indices.clone(),
-                        ) {
-                            transparent_representation_root(
-                                crate::v1_compiler_infer_types::resolved_type(decl.clone()),
-                                env.clone(),
-                                target.clone(),
-                                v1_rt::int_sub(fuel.clone(), 1),
-                            )
-                        } else {
-                            n.clone()
-                        }
-                    } else {
-                        transparent_representation_root(
-                            decl.clone(),
-                            env.clone(),
-                            target.clone(),
-                            v1_rt::int_sub(fuel.clone(), 1),
-                        )
-                    }
+        let via_inferred = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                if node_is_identified_or_refinement(rt.clone(), env.clone()) {
+                    Some(rt.clone())
+                } else {
+                    std::option::Option::None
                 }
-                std::option::Option::None => n.clone(),
             }
+            _ => std::option::Option::None,
+        };
+        let next = match via_inferred.clone() {
+            Some(rt) => Some(rt.clone()),
+            std::option::Option::None => {
+                match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+                    Some(decl) => {
+                        if node_is_identified_or_refinement(decl.clone(), env.clone()) {
+                            Some(decl.clone())
+                        } else {
+                            std::option::Option::None
+                        }
+                    }
+                    std::option::Option::None => std::option::Option::None,
+                }
+            }
+        };
+        match next.clone() {
+            Some(m) => representation_carrier(m.clone(), env.clone(), fuel),
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }
 
-pub fn representation_carrier_is_grounded(decision: Rc<TypeRealizationDecision>) -> bool {
-    match crate::v1_compiler_coercion::realized_checkpoint(decision) {
-        Some(_) => true,
-        std::option::Option::None => false,
-    }
-}
-
-pub fn occurrence_identity_id(identity: Rc<NodeOccurrenceIdentity>) -> Option<OccurrenceId> {
-    match (*identity.clone()).clone() {
-        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
-        NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => Some(id.clone()),
-        NodeOccurrenceIdentity::OccurrencePending { caused_by: _, .. } => std::option::Option::None,
-        NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
-    }
-}
-
-pub fn node_occurrence_ids_equal(
-    left: Rc<NodeOccurrenceIdentity>,
-    right: Rc<NodeOccurrenceIdentity>,
-) -> bool {
-    {
-        let l = occurrence_identity_id(left);
-        let r = occurrence_identity_id(right);
-        if ((l.clone() == std::option::Option::None) || (r.clone() == std::option::Option::None)) {
-            false
-        } else {
-            crate::std_occurrence_identity::occurrence_id_eq(l.clone().unwrap(), r.clone().unwrap())
-        }
-    }
-}
-
-pub fn realization_checkpoints_identical(
-    a: Rc<TypeRealizationDecision>,
-    b: Rc<TypeRealizationDecision>,
-) -> bool {
-    match crate::v1_compiler_coercion::realized_checkpoint(a) {
-        Some(ca) => match crate::v1_compiler_coercion::realized_checkpoint(b) {
-            Some(cb) => {
-                (((ca.dag_name.clone() == cb.dag_name.clone())
-                    && (ca.target_type.clone() == cb.target_type.clone()))
-                    && (ca.grounding_type.clone() == cb.grounding_type.clone()))
-            }
-            std::option::Option::None => false,
-        },
-        std::option::Option::None => false,
-    }
-}
-
-pub fn representation_roots_identical(
-    a: Rc<Node>,
-    b: Rc<Node>,
-    env: Rc<TypeEnv>,
-    target: RenderTarget,
-) -> bool {
-    {
-        let da = crate::v1_compiler_coercion::type_reference_realization(
-            a.clone(),
-            crate::v1_std_core::authored_name_at(env.source_indices.clone(), a.clone()),
-            target.clone(),
-        );
-        let db = crate::v1_compiler_coercion::type_reference_realization(
-            b.clone(),
-            crate::v1_std_core::authored_name_at(env.source_indices.clone(), b.clone()),
-            target.clone(),
-        );
-        if (representation_carrier_is_grounded(da.clone())
-            && representation_carrier_is_grounded(db.clone()))
+pub fn node_is_identified_or_refinement(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {
+        true
+    } else {
+        match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+            n.clone(),
+            env.source_indices.clone(),
+            env.clone(),
+        ))
+        .clone()
         {
-            realization_checkpoints_identical(da.clone(), db.clone())
-        } else {
-            node_occurrence_ids_equal(a.occurrence_identity.clone(), b.occurrence_identity.clone())
+            TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: _, .. } => true,
+            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                declaration: _,
+                ..
+            } => true,
+            TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => false,
+            TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => false,
+        }
+    }
+}
+
+pub fn declared_representation_carrier(
+    n: Rc<Node>,
+    d: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+    fuel: i64,
+) -> Option<Rc<RepresentationCarrier>> {
+    match declaration_edge(n, d.clone(), env.clone()) {
+        Some(next) => {
+            representation_carrier(next.clone(), env.clone(), v1_rt::int_sub(fuel.clone(), 1))
+        }
+        std::option::Option::None => Some(Rc::new(RepresentationCarrier::DeclaredCarrier {
+            declaration: d.clone(),
+        })),
+    }
+}
+
+pub fn declaration_edge(n: Rc<Node>, d: Rc<DeclarationRef>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    match crate::v1_compiler_infer_env::alias_rhs_of_declaration(d.clone(), env.clone()) {
+        Some(rhs) => Some(rhs.clone()),
+        std::option::Option::None => non_alias_declaration_edge(n, d.clone(), env.clone()),
+    }
+}
+
+pub fn non_alias_declaration_edge(
+    n: Rc<Node>,
+    d: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    {
+        let from_resolved = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                if edge_moves_past(rt.clone(), d.clone(), env.clone()) {
+                    Some(rt.clone())
+                } else {
+                    std::option::Option::None
+                }
+            }
+            _ => std::option::Option::None,
+        };
+        let from_resolver = match from_resolved.clone() {
+            Some(rt) => Some(rt.clone()),
+            std::option::Option::None => {
+                match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+                    Some(decl) => {
+                        if edge_moves_past(decl.clone(), d.clone(), env.clone()) {
+                            Some(decl.clone())
+                        } else {
+                            if (crate::v1_compiler_emit_core_support::is_type_alias_item(
+                                decl.clone(),
+                                env.source_indices.clone(),
+                            ) && edge_moves_past(
+                                crate::v1_compiler_infer_types::resolved_type(decl.clone()),
+                                d.clone(),
+                                env.clone(),
+                            )) {
+                                Some(crate::v1_compiler_infer_types::resolved_type(decl.clone()))
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                    }
+                    std::option::Option::None => std::option::Option::None,
+                }
+            }
+        };
+        match from_resolver.clone() {
+            Some(next) => Some(next.clone()),
+            std::option::Option::None => {
+                match crate::v1_compiler_infer_env::declaration_binding_of_ref(
+                    d.clone(),
+                    env.clone(),
+                ) {
+                    Some(b) => match b.alias_rhs.clone() {
+                        Some(rhs) => {
+                            if edge_moves_past(rhs.clone(), d.clone(), env.clone()) {
+                                Some(rhs.clone())
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                        std::option::Option::None => {
+                            if edge_moves_past(b.resolved.clone(), d.clone(), env.clone()) {
+                                Some(b.resolved.clone())
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                    },
+                    std::option::Option::None => std::option::Option::None,
+                }
+            }
+        }
+    }
+}
+
+pub fn edge_moves_past(next: Rc<Node>, d: Rc<DeclarationRef>, env: Rc<TypeEnv>) -> bool {
+    if crate::v1_compiler_infer::is_where_refinement_type(next.clone()) {
+        true
+    } else {
+        match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+            next.clone(),
+            env.source_indices.clone(),
+            env.clone(),
+        ))
+        .clone()
+        {
+            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                declaration: e,
+                ..
+            } => !crate::std_decl_ref::declaration_ref_eq(e.clone(), d),
+            TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: _, .. } => true,
+            TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => false,
+            TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => false,
         }
     }
 }
@@ -6771,28 +6876,171 @@ pub fn cast_representation_identical(
     source_type: Rc<Node>,
     target_type_node: Rc<Node>,
     env: Rc<TypeEnv>,
-    target: RenderTarget,
 ) -> bool {
-    representation_roots_identical(
-        transparent_representation_root(source_type, env.clone(), target.clone(), 64),
-        transparent_representation_root(target_type_node, env.clone(), target.clone(), 64),
-        env.clone(),
-        target.clone(),
-    )
+    match representation_carrier(source_type, env.clone(), 64) {
+        Some(a) => match representation_carrier(target_type_node, env.clone(), 64) {
+            Some(b) => representation_carriers_equal(a.clone(), b.clone()),
+            std::option::Option::None => false,
+        },
+        std::option::Option::None => false,
+    }
 }
 
-pub fn cast_source_representation_identical(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CastRealization {
+    CastOperandUnchanged,
+    CastThroughTargetSyntax { target_spelling: String },
+    CastNotRealized { refusal: Rc<CastRealizationRefusal> },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CastRealizationRefusal {
+    CastRouteUndeclared {
+        source_type: String,
+        target_type: String,
+    },
+}
+impl CastRealizationRefusal {
+    pub fn source_type(&self) -> String {
+        match self {
+            CastRealizationRefusal::CastRouteUndeclared {
+                source_type: __val, ..
+            } => __val.clone(),
+        }
+    }
+    pub fn target_type(&self) -> String {
+        match self {
+            CastRealizationRefusal::CastRouteUndeclared {
+                target_type: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn cast_realization(
+    expr: Rc<Node>,
+    cast_target_node: Rc<Node>,
+    target: RenderTarget,
+    env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CastRealization> {
+    {
+        let ty_str = emit_node_type(
+            cast_target_node.clone(),
+            target.clone(),
+            source_indices.clone(),
+        );
+        match expr.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: st, .. }) => {
+                let src_ty = emit_node_type(st.clone(), target.clone(), source_indices.clone());
+                if (((src_ty.clone() == ty_str.clone())
+                    || cast_representation_identical(
+                        st.clone(),
+                        cast_target_node.clone(),
+                        env.clone(),
+                    ))
+                    || cast_source_grounded_onto_target_carrier(
+                        expr.clone(),
+                        cast_target_node.clone(),
+                        env.clone(),
+                        source_indices.clone(),
+                    ))
+                {
+                    Rc::new(CastRealization::CastOperandUnchanged)
+                } else {
+                    cast_through_target_syntax_or_refuse(
+                        src_ty.clone(),
+                        ty_str.clone(),
+                        target.clone(),
+                    )
+                }
+            }
+            _ => {
+                cast_through_target_syntax_or_refuse("".to_string(), ty_str.clone(), target.clone())
+            }
+        }
+    }
+}
+
+pub fn cast_through_target_syntax_or_refuse(
+    src_ty: String,
+    ty_str: String,
+    target: RenderTarget,
+) -> Rc<CastRealization> {
+    if crate::v1_compiler_coercion::can_cast(target, src_ty.clone(), ty_str.clone()) {
+        Rc::new(CastRealization::CastThroughTargetSyntax {
+            target_spelling: ty_str.clone(),
+        })
+    } else {
+        Rc::new(CastRealization::CastNotRealized {
+            refusal: Rc::new(CastRealizationRefusal::CastRouteUndeclared {
+                source_type: src_ty.clone(),
+                target_type: ty_str.clone(),
+            }),
+        })
+    }
+}
+
+pub fn cast_source_grounded_onto_target_carrier(
     expr: Rc<Node>,
     cast_target_node: Rc<Node>,
     env: Rc<TypeEnv>,
-    target: RenderTarget,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match expr.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
-            cast_representation_identical(n.clone(), cast_target_node, env, target)
+            match crate::v1_compiler_infer_env::carried_declaration_ref(
+                n.clone(),
+                source_indices.clone(),
+                env.clone(),
+            ) {
+                Some(d) => {
+                    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+                        cast_target_node,
+                        source_indices.clone(),
+                        env.clone(),
+                    ))
+                    .clone()
+                    {
+                        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                            declaration: t,
+                            ..
+                        } => match (*crate::std_literal_elaboration::kernel_grounding_crossing(
+                            kernel_grounding_rows(),
+                            d.clone(),
+                            t.clone(),
+                        ))
+                        .clone()
+                        {
+                            KernelGroundingCrossing::CrossingTotalWidening => true,
+                            KernelGroundingCrossing::CrossingRefused { cause: _, .. } => false,
+                        },
+                        TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
+                            name: k,
+                            ..
+                        } => {
+                            ((k.clone() == "Int".to_string())
+                                && crate::std_literal_elaboration::declaration_is_grounded_natural(
+                                    kernel_grounding_rows(),
+                                    d.clone(),
+                                ))
+                        }
+                        _ => false,
+                    }
+                }
+                std::option::Option::None => false,
+            }
         }
         _ => false,
     }
+}
+
+pub fn cast_realization_refusal_fact(refusal: Rc<CastRealizationRefusal>) -> String {
+    match (*refusal.clone()).clone() {
+    CastRealizationRefusal::CastRouteUndeclared { source_type: s, target_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no declared conversion route from ".to_string(), s.clone()), " to ".to_string()), t.clone()), ": the two do not reach one carrier, no grounded crossing joins them, and the target's cast syntax has no rule for the pair; name a declared conversion (a checked constructor or a conversion function) instead of `as`".to_string()),
+}
 }
 
 pub fn emit_typed_cast_shared(
@@ -6805,53 +7053,142 @@ pub fn emit_typed_cast_shared(
 ) -> String {
     {
         let expr_str = recurse(expr.clone());
-        let ty_str = emit_node_type(
-            cast_target_node.clone(),
+        match (*cast_realization(
+            expr.clone(),
+            cast_target_node,
             target.clone(),
-            source_indices.clone(),
-        );
-        let src_ty = match expr.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: n, .. }) => {
-                emit_node_type(n.clone(), target.clone(), source_indices.clone())
-            }
-            _ => "".to_string(),
-        };
-        if ((src_ty.clone() != "".to_string()) && (src_ty.clone() == ty_str.clone())) {
-            expr_str.clone()
-        } else {
-            if cast_source_representation_identical(
-                expr.clone(),
-                cast_target_node.clone(),
-                env,
+            env,
+            source_indices,
+        ))
+        .clone()
+        {
+            CastRealization::CastOperandUnchanged => expr_str.clone(),
+            CastRealization::CastThroughTargetSyntax {
+                target_spelling: ty,
+                ..
+            } => crate::v1_compiler_coercion::render_cast(
+                expr_str.clone(),
+                ty.clone(),
                 target.clone(),
-            ) {
-                expr_str.clone()
-            } else {
-                if crate::v1_compiler_coercion::can_cast(
-                    target.clone(),
-                    src_ty.clone(),
-                    ty_str.clone(),
-                ) {
-                    crate::v1_compiler_coercion::render_cast(
-                        expr_str.clone(),
-                        ty_str.clone(),
-                        target.clone(),
-                    )
-                } else {
-                    emit_error_expr(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("unsupported cast from ".to_string(), src_ty.clone()),
-                                " to ".to_string(),
-                            ),
-                            ty_str.clone(),
-                        ),
-                        target.clone(),
-                    )
-                }
+            ),
+            CastRealization::CastNotRealized { refusal: r, .. } => {
+                let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
+                crate::v1_compiler_emit_core_support::apply_type_template1(
+                    spec.error_type_template.clone(),
+                    cast_realization_refusal_fact(r.clone()),
+                )
             }
         }
     }
+}
+
+pub fn cast_realization_diagnostics(
+    typed: Rc<ResolvedGraph>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::SerializesSubstrate => Rc::new(vec![]),
+        TargetEmissionMode::RealizesTransports => Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*{
+                        let module_name = crate::v1_compiler_infer_env::authored_name(
+                            tm.type_env.clone(),
+                            tm.module.clone(),
+                        );
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for item in tm.items.clone().iter().cloned() {
+                                __result.extend(
+                                    (*match item.body.clone() {
+                                        Some(b) => cast_realization_diagnostics_in(
+                                            b.clone(),
+                                            target.clone(),
+                                            tm.type_env.clone(),
+                                            module_name.clone(),
+                                        ),
+                                        std::option::Option::None => Rc::new(vec![]),
+                                    })
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        })
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+    }
+}
+
+pub fn cast_realization_diagnostics_in(
+    texpr: Rc<Node>,
+    target: RenderTarget,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*texpr.expr_data.clone()).clone() {
+            ExprData::ExprCast => match (*cast_realization(
+                crate::v1_std_core::cast_expr(texpr.clone()),
+                crate::v1_std_core::cast_target(texpr.clone()),
+                target.clone(),
+                env.clone(),
+                env.source_indices.clone(),
+            ))
+            .clone()
+            {
+                CastRealization::CastNotRealized { refusal: r, .. } => {
+                    Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::CastRealizationRefused {
+                            target: render_target_name(target.clone()),
+                            missing_realization_fact: cast_realization_refusal_fact(r.clone()),
+                            span: texpr.span.clone(),
+                        }),
+                        module_name.clone(),
+                    )])
+                }
+                _ => Rc::new(vec![]),
+            },
+            _ => Rc::new(vec![]),
+        };
+        let nested_body = match texpr.body.clone() {
+            Some(b) => cast_realization_diagnostics_in(
+                b.clone(),
+                target.clone(),
+                env.clone(),
+                module_name.clone(),
+            ),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            v1_rt::concat(
+                here.clone(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in texpr.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*cast_realization_diagnostics_in(
+                                c.clone(),
+                                target.clone(),
+                                env.clone(),
+                                module_name.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+            nested_body.clone(),
+        )
+    })
 }
 
 pub fn emit_typed_for_each_shared(
@@ -7187,51 +7524,53 @@ pub fn emit_block_stmts_shared(
     mut __tco_loop_prepend_indent: bool,
     mut __tco_loop_emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> Rc<BlockEmitState> {
-    loop {
-        #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining;
-        #[allow(unused_mut)]
-        let mut text = __tco_loop_text;
-        #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope;
-        #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth;
-        #[allow(unused_mut)]
-        let mut prepend_indent = __tco_loop_prepend_indent;
-        #[allow(unused_mut)]
-        let mut emit_expr = __tco_loop_emit_expr;
-        match remaining.clone().first().cloned() {
-            std::option::Option::None => {
-                break Rc::new(BlockEmitState {
-                    text: text.clone(),
-                    scope: scope.clone(),
-                });
-            }
-            Some(stmt) => {
-                let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
-                let line = if prepend_indent.clone() {
-                    v1_rt::concat(
-                        crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
-                        raw.clone(),
-                    )
-                } else {
-                    raw.clone()
-                };
-                let next_scope = scope_after_expr(stmt.clone(), scope.clone());
-                {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
-                    let __tco_1 = v1_rt::rc_list_push(text, line.clone());
-                    let __tco_2 = next_scope;
-                    let __tco_3 = depth;
-                    let __tco_4 = prepend_indent;
-                    let __tco_5 = emit_expr;
-                    __tco_loop_remaining = __tco_0;
-                    __tco_loop_text = __tco_1;
-                    __tco_loop_scope = __tco_2;
-                    __tco_loop_depth = __tco_3;
-                    __tco_loop_prepend_indent = __tco_4;
-                    __tco_loop_emit_expr = __tco_5;
-                    continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut remaining = __tco_loop_remaining;
+            #[allow(unused_mut)]
+            let mut text = __tco_loop_text;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            #[allow(unused_mut)]
+            let mut depth = __tco_loop_depth;
+            #[allow(unused_mut)]
+            let mut prepend_indent = __tco_loop_prepend_indent;
+            #[allow(unused_mut)]
+            let mut emit_expr = __tco_loop_emit_expr;
+            match remaining.clone().first().cloned() {
+                std::option::Option::None => {
+                    break Rc::new(BlockEmitState {
+                        text: text.clone(),
+                        scope: scope.clone(),
+                    });
+                }
+                Some(stmt) => {
+                    let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
+                    let line = if prepend_indent.clone() {
+                        v1_rt::concat(
+                            crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
+                            raw.clone(),
+                        )
+                    } else {
+                        raw.clone()
+                    };
+                    let next_scope = scope_after_expr(stmt.clone(), scope.clone());
+                    {
+                        let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                        let __tco_1 = v1_rt::rc_list_push(text, line.clone());
+                        let __tco_2 = next_scope;
+                        let __tco_3 = depth;
+                        let __tco_4 = prepend_indent;
+                        let __tco_5 = emit_expr;
+                        __tco_loop_remaining = __tco_0;
+                        __tco_loop_text = __tco_1;
+                        __tco_loop_scope = __tco_2;
+                        __tco_loop_depth = __tco_3;
+                        __tco_loop_prepend_indent = __tco_4;
+                        __tco_loop_emit_expr = __tco_5;
+                        continue;
+                    }
                 }
             }
         }
@@ -7246,60 +7585,64 @@ pub fn emit_init_block_stmts_shared(
     mut __tco_loop_prepend_indent: bool,
     mut __tco_loop_emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> Rc<BlockEmitState> {
-    loop {
-        #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining;
-        #[allow(unused_mut)]
-        let mut text = __tco_loop_text;
-        #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope;
-        #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth;
-        #[allow(unused_mut)]
-        let mut prepend_indent = __tco_loop_prepend_indent;
-        #[allow(unused_mut)]
-        let mut emit_expr = __tco_loop_emit_expr;
-        match remaining.clone().first().cloned() {
-            std::option::Option::None => {
-                break Rc::new(BlockEmitState {
-                    text: text.clone(),
-                    scope: scope.clone(),
-                });
-            }
-            Some(stmt) => {
-                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
-                match rest.clone().first().cloned() {
-                    std::option::Option::None => {
-                        break Rc::new(BlockEmitState {
-                            text: text.clone(),
-                            scope: scope.clone(),
-                        });
-                    }
-                    Some(_) => {
-                        let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
-                        let line = if prepend_indent.clone() {
-                            v1_rt::concat(
-                                crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
-                                raw.clone(),
-                            )
-                        } else {
-                            raw.clone()
-                        };
-                        let next_scope = scope_after_expr(stmt.clone(), scope.clone());
-                        {
-                            let __tco_0 = rest.clone();
-                            let __tco_1 = v1_rt::rc_list_push(text, line.clone());
-                            let __tco_2 = next_scope;
-                            let __tco_3 = depth;
-                            let __tco_4 = prepend_indent;
-                            let __tco_5 = emit_expr;
-                            __tco_loop_remaining = __tco_0;
-                            __tco_loop_text = __tco_1;
-                            __tco_loop_scope = __tco_2;
-                            __tco_loop_depth = __tco_3;
-                            __tco_loop_prepend_indent = __tco_4;
-                            __tco_loop_emit_expr = __tco_5;
-                            continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut remaining = __tco_loop_remaining;
+            #[allow(unused_mut)]
+            let mut text = __tco_loop_text;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            #[allow(unused_mut)]
+            let mut depth = __tco_loop_depth;
+            #[allow(unused_mut)]
+            let mut prepend_indent = __tco_loop_prepend_indent;
+            #[allow(unused_mut)]
+            let mut emit_expr = __tco_loop_emit_expr;
+            match remaining.clone().first().cloned() {
+                std::option::Option::None => {
+                    break Rc::new(BlockEmitState {
+                        text: text.clone(),
+                        scope: scope.clone(),
+                    });
+                }
+                Some(stmt) => {
+                    let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
+                    match rest.clone().first().cloned() {
+                        std::option::Option::None => {
+                            break Rc::new(BlockEmitState {
+                                text: text.clone(),
+                                scope: scope.clone(),
+                            });
+                        }
+                        Some(_) => {
+                            let raw = emit_expr(stmt.clone(), scope.clone(), depth.clone());
+                            let line = if prepend_indent.clone() {
+                                v1_rt::concat(
+                                    crate::v1_compiler_emit_core_support::make_indent(
+                                        depth.clone(),
+                                    ),
+                                    raw.clone(),
+                                )
+                            } else {
+                                raw.clone()
+                            };
+                            let next_scope = scope_after_expr(stmt.clone(), scope.clone());
+                            {
+                                let __tco_0 = rest.clone();
+                                let __tco_1 = v1_rt::rc_list_push(text, line.clone());
+                                let __tco_2 = next_scope;
+                                let __tco_3 = depth;
+                                let __tco_4 = prepend_indent;
+                                let __tco_5 = emit_expr;
+                                __tco_loop_remaining = __tco_0;
+                                __tco_loop_text = __tco_1;
+                                __tco_loop_scope = __tco_2;
+                                __tco_loop_depth = __tco_3;
+                                __tco_loop_prepend_indent = __tco_4;
+                                __tco_loop_emit_expr = __tco_5;
+                                continue;
+                            }
                         }
                     }
                 }

@@ -1647,12 +1647,44 @@ fn non_empty_to_list<T>(xs: FreeSemigroup<T>) -> FreeMonoid<T> {
   Cons { head: xs.head, tail: xs.tail }
 }
 
+// ALL BUT THE LAST, IN ORDER. The recursion this replaced (Cons { head: h, tail: list_init(t) }) made the
+// CALL DEPTH the list's length: under the seed interpreter every caller inherited an overflow at ~10^5
+// members. §6 names the producer, not the reading: the RED claim
+// v2.test.claim.execution.dag_emit_interface dag_string_scalar_body_read_by_slice_reaches_the_decode_lane,
+// run through `claim_batch --claim-run`, re-derives that overflow on the replaced shape (it dies by stack
+// overflow, not by a wrong answer), and v2.test.claim.derived_roster_seed_agreement
+// rung_drop_standing_acquires_with_its_derived_roster reached the same depth through this combinator.
+// DESIGN 6: a fixed cost, regardless of n. One native fold_list pass carries a lag pair — the element
+// read one step ago is only committed to the kept list when its successor arrives — so the last element is
+// what never gets committed, and the interpreter's stack never grows with n (fold_list is a seed native
+// intercept, and the emitter lowers it to a cursor loop). The pass is linear because the accumulator grows
+// by one list_push per step and BOTH realizations of that push share the spine instead of copying the
+// members: the dry-lane rc_list_push (v1_rt.rs) is Rc::make_mut(..).push_back(..), and the clone make_mut
+// takes when the handle is shared is im::Vector's structural-sharing clone -- O(1) per im-15.1.0
+// vector/mod.rs "Clone for Vector", O(n) only up to the bounded inline threshold, never per member -- and
+// the wet-lane list_push arm reads the receiver as a Value::List (value_to_list_carrier, copied = 0) and
+// pushes on a clone of that same tree. What re-derives it is the interpreter's own MutationCounters
+// list_push row (calls / entries copied / average per call; MutationCounters::fmt in
+// src/v1/stage0/src/v1_interpreter.rs, printed as the [interp-stats] block by print_interp_stats in
+// src/v1/stage0/src/bin/claim_batch.rs): a push that copied members would drive that average up with n
+// instead of holding at one entry per call. A Cons-prepend fold would have rebuilt the accumulator per step.
+type ListInitLag<T> {
+  kept: FreeMonoid<T>
+  pending: Optional<T>
+}
+
 fn list_init<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
-  match xs {
-    Empty => Empty
-    Cons { head: _, tail: Empty } => Empty
-    Cons { head: h, tail: t } => Cons { head: h, tail: list_init(xs: t) }
-  }
+  fold_list(
+    xs: xs,
+    empty: ListInitLag { kept: Empty, pending: Absent },
+    cons: fn(acc, item) {
+      match acc.pending {
+        Absent => ListInitLag { kept: acc.kept, pending: Present { value: item } }
+        Present { value: p } =>
+          ListInitLag { kept: list_push(xs: acc.kept, item: p), pending: Present { value: item } }
+      }
+    }
+  ).kept
 }
 
 fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
@@ -1665,24 +1697,50 @@ fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool
   }
 }
 
+// ELEMENTWISE EQUALITY OF TWO SAME-LENGTH LISTS. The recursion this replaced put the call INSIDE the
+// `&&` (eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)), so the frame stayed live across the element
+// comparison AND the whole rest of the list: host depth equalled the list's length. The v1 interpreter
+// performs no tail-call optimization at all, so tail position would not have helped either — the only
+// fixed-depth route in the wet lane is the intercepted fold_list (v1_interpreter.rs
+// `native_intercept.fold_list`), which is also emitted as a __tco_loop, so it costs no host stack in
+// either lane. §6: a proven cost-shape defect is always fixed, regardless of realized n.
+// THE RED that re-derives the old shape: v2.test.claim.algebra.list_linear_combinators
+// zip_eq_compares_a_list_too_long_to_recurse_over, run through the claim-batch binary
+// src/v1/stage0/src/bin/claim_batch.rs. On the replaced shape it refuses inside this function at
+// the interpreter's call-depth ceiling instead of answering. The consumer that showed up host-side
+// is v2.test.claim.derived_roster_seed_agreement rung_drop_standing_acquires_with_its_derived_roster,
+// which aborted on the host stack; the call-depth trace recorded in gunbc#15258 located it by
+// climbing a fixed step per sibling through this function and v2.std.node node_edge_same_occurrence /
+// node_same_occurrence — so the depth was a property of the list's length, not of its contents.
+// The fold walks a's members once, carrying b's aligned tail in the accumulator. Once a mismatch is
+// held the pass keeps its shape but stops calling `eq`, so a pair count matches the old short-circuit;
+// the final is_empty over the leftover asks the question the old base case asked (a ran out before b).
+type ZipEqWalk<T> {
+  rest: FreeMonoid<T>
+  agreed: Bool
+}
+
 fn zip_eq<T>(
   a: FreeMonoid<T>,
   b: FreeMonoid<T>,
   eq: fn(T, T) -> Bool
 ) -> Bool {
-  match a {
-    Empty =>
-      match b {
-        Empty => true
-        Cons { head: _, tail: _ } => false
-      }
-    Cons { head: ha, tail: ta } =>
-      match b {
-        Empty => false
+  let walk = fold_list(
+    xs: a,
+    empty: ZipEqWalk { rest: b, agreed: true },
+    cons: fn(acc, item) {
+      match acc.rest {
+        Empty => ZipEqWalk { rest: Empty, agreed: false }
         Cons { head: hb, tail: tb } =>
-          eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)
+          if acc.agreed {
+            ZipEqWalk { rest: tb, agreed: eq(item, hb) }
+          } else {
+            ZipEqWalk { rest: tb, agreed: false }
+          }
       }
-  }
+    }
+  )
+  walk.agreed && is_empty(xs: walk.rest)
 }
 
 fn zip_map<A, B, C>(

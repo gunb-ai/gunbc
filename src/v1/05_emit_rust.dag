@@ -192,7 +192,7 @@ import std.types { is_container_type, is_kernel_type, container_template_algebra
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -271,13 +271,13 @@ import v1.compiler.emit {
   service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
   emit_typed_let_shared,
   child_from_key,
-  BoundOperation, RestBound, ShellBound, LocalBound, FileBound, BindingRefused,
+  BoundOperation, RestBound, ShellBound, UnboundOperation, FileBound, BindingRefused,
   ShellResultField, ShellResultChannel, ShellChanStdout, ShellChanStderr,
   ShellChanExitSuccess, ShellChanExitCode, ShellChanStdoutLines,
   ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes,
   ShellChannelNotRealizedByTarget, ShellCapturePolicyInputAbsent, shell_emission_refusal_fact, shell_result_channel_key,
   shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy,
-  bind_operation_transport, transport_binding_refusal_fact,
+  bind_operation_transport, transport_binding_refusal_fact, emit_unbound_operation_refusal,
   NativeEffectRealizationAdmission, NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator, NativeEffectRealizationUnavailable,
   NativeServiceEffect, NativeResourceEffect, NativeTransportHandler, NativeCapabilityToken, NativeEffectDeclSite, native_effect_resolution,
   admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal,
@@ -658,6 +658,7 @@ fn unstamped_reference_is_host_option(n: Node, source_indices: Map<String, Newli
         KernelMintDeclarationAbsent => false
         KernelMintDeclarationAmbiguous { row_count: _ } => false
       }
+    BareOccurrenceUnbound => false
     BareOccurrenceUndecided => false
   }
 }
@@ -677,7 +678,7 @@ fn is_host_optional_carrier_type(n: Node, source_indices: Map<String, NewlineInd
         _ => false
       }
     Absent =>
-      let is_declaration_structure = (n.module_item_kind == ModuleItemTypeDeclaration || n.connective == Disj) && n.ident_span != none
+      let is_declaration_structure = type_node_is_declaration_structure(n: n) && n.ident_span != none
       let declared = if is_declaration_structure { declaration_ref_of_declaration_node(decl: n, source_indices: source_indices, env: env) } else { none }
       match declared {
         Present { value: d } => declaration_owns_host_option(module_path: d.module_path as String, decl_name: d.decl_name as String)
@@ -2286,14 +2287,54 @@ fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List
   }
 }
 
+// A DECLARATION'S STRUCTURE IS NOT A TYPE ARGUMENT. A call whose result is a record carries the
+// record's DECLARATION item as its type (infer answers Resolved with the item), and a reference to an
+// Optional or a Bool resolves to the coproduct body declaring it. The renderer spells either by name
+// and type arguments (closed_alias_peel_verdict reads the declaration's parameter count), never by
+// fields or variant arms. The walks below read a node's children as its type arguments, so on a
+// declaration they descended into its members and onward into the declarations those members name,
+// and answered for leaves the rendered spelling never writes. Measured on the self-host closure:
+// every `fold(.., init: child_walk_init(), ..)` in v2.compiler.resolve rendered `|acc: _, ..|` for
+// the non-generic ChildWalk, through the closure walk on its fields and then, with that gated, through
+// the parametric-head walk on the same fields; elsewhere an Option<Rc<Node>> accumulator reached
+// Optional's `Absent` arm and a bool-valued one reached Bool's `True`, each an environment miss read
+// as "a generic this fn does not bind" (gunbc.recurring_failure_mode
+// a_type_walk_reads_declaration_structure_as_type_arguments). Resolve already stops at a declaration
+// for the same reason (v1.compiler.infer_resolve reference_tree_with_declaration), and
+// is_host_optional_carrier_type reads the same pair as declaration structure.
+fn type_node_is_declaration_structure(n: Node) -> Bool {
+  match n.module_item_kind {
+    ModuleItemTypeDeclaration => true
+    _ => n.connective == Disj
+  }
+}
+
+fn type_node_is_declaration_item(n: Node) -> Bool {
+  match n.module_item_kind {
+    ModuleItemTypeDeclaration => true
+    _ => false
+  }
+}
+
 // A DECLARATION'S OWN FORMALS ARE UNBOUND ATOMS TOO. A fold whose init is a bare constructor
 // (`init: Ok { value: .. }`) carries the parametric DECLARATION as its accumulator type, and its
 // renderer spells the declaration's formals as arguments: `Rc<Result<ok, err>>` on
-// extdeps.dns.domain_name parse_dns_label_list, two E0425s. The walk below read children and an
-// applied binding but never `params`, so a declaration node with no applied binding answered
-// "bound" and the closure annotation was written. With no applied binding, a formal outside the
-// fn's generic scope is as unbound as any other atom, and the annotation defers to `_`.
+// extdeps.dns.domain_name parse_dns_label_list, two E0425s. With no applied binding, a formal outside
+// the fn's generic scope is as unbound as any other atom, and the annotation defers to `_`. Formals
+// count only on an item spelled in its own right: a declaration reached through a reference's
+// `inferred` is spelled by that reference's own arguments, which the walk reads instead.
+fn type_node_applied_or_formal_has_closure_unbound_generic_atom(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+    Present { value: applied } => applied.children |> any(c => type_node_has_closure_unbound_generic_atom(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
+    Absent => n.params |> any(p => !type_var_in_fn_generic_scope(id: generic_param_name_at(n: p, source_indices: source_indices), generic_param_names: generic_param_names))
+  }
+}
+
 fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if type_node_is_declaration_structure(n: n) {
+    let spelled_by_itself = find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none || type_node_is_declaration_item(n: n)
+    return spelled_by_itself && type_node_applied_or_formal_has_closure_unbound_generic_atom(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices)
+  }
   let leaf_name = authored_name_at(source_indices: source_indices, node: n)
   if n.children |> count == 0 && leaf_name != "" {
     if type_leaf_is_unbound_in_closure_scope(name: leaf_name, generic_param_names: generic_param_names, env: env) { return true }
@@ -2303,38 +2344,36 @@ fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List
       TypeVariable { id: tv } =>
         if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
       Resolved { node: rt } =>
-        if type_node_has_closure_unbound_generic_atom(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
+        if !type_node_is_declaration_structure(n: rt) && type_node_has_closure_unbound_generic_atom(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
       _ => ()
     }
   }
-  if n.children |> any(c => type_node_has_closure_unbound_generic_atom(n: child_type_node(ch: c), generic_param_names: generic_param_names, env: env, source_indices: source_indices)) {
-    true
-  } else {
-    match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
-      Present { value: applied } => applied.children |> any(c => type_node_has_closure_unbound_generic_atom(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
-      Absent => n.params |> any(p => !type_var_in_fn_generic_scope(id: generic_param_name_at(n: p, source_indices: source_indices), generic_param_names: generic_param_names))
-    }
+  n.children |> any(c => type_node_has_closure_unbound_generic_atom(n: child_type_node(ch: c), generic_param_names: generic_param_names, env: env, source_indices: source_indices))
+    || type_node_applied_or_formal_has_closure_unbound_generic_atom(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices)
+}
+
+fn type_node_applied_has_unbound_type_variable(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+    Present { value: applied } => applied.children |> any(c => type_node_has_unbound_type_variable(n: c, generic_param_names: generic_param_names, source_indices: source_indices))
+    Absent => false
   }
 }
 
 fn type_node_has_unbound_type_variable(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if type_node_is_declaration_structure(n: n) {
+    return type_node_applied_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices)
+  }
   if n.inferred != none {
     match n.inferred.value {
       TypeVariable { id: tv } =>
         if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
       Resolved { node: rt } =>
-        if type_node_has_unbound_type_variable(n: rt, generic_param_names: generic_param_names, source_indices: source_indices) { return true }
+        if !type_node_is_declaration_structure(n: rt) && type_node_has_unbound_type_variable(n: rt, generic_param_names: generic_param_names, source_indices: source_indices) { return true }
       _ => ()
     }
   }
-  if n.children |> any(c => type_node_has_unbound_type_variable(n: child_type_node(ch: c), generic_param_names: generic_param_names, source_indices: source_indices)) {
-    true
-  } else {
-    match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
-      Present { value: applied } => applied.children |> any(c => type_node_has_unbound_type_variable(n: c, generic_param_names: generic_param_names, source_indices: source_indices))
-      Absent => false
-    }
-  }
+  n.children |> any(c => type_node_has_unbound_type_variable(n: child_type_node(ch: c), generic_param_names: generic_param_names, source_indices: source_indices))
+    || type_node_applied_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices)
 }
 
 fn is_rust_value_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -3333,39 +3372,130 @@ fn rust_phantom_zst_marker_def(vname: String, indexed: Bool) -> String {
   )
 }
 
-fn phantom_marker_name_shadowed_by_real_type_item(items: List<Node>, source_indices: Map<String, NewlineIndex>, vname: String) -> Bool {
-  items |> any(item =>
-    authored_name_at(source_indices: source_indices, node: item) == vname
-    && (is_type_alias_item(item: item, source_indices: source_indices) || is_type_decl_item(item: item, source_indices: source_indices))
-  )
+// WHETHER A COPRODUCT ARM OWES A PHANTOM ZST MARKER IS DECIDED BY WHAT ITS NAME BINDS IN ITS OWN
+// MODULE'S SCOPE, NEVER BY A SPELLING MATCH. The marker (`pub struct X;`) stands for a unit variant
+// at a type position, so it is owed exactly when the arm's name denotes no type there. Which type a
+// bare name denotes in a module is the scope's binding -- the module's own declaration, then a named
+// import, then the kernel (v1.compiler.infer_emit_info type_decl_occurrence_binding over
+// EmitGraphInfo.type_decl_items, the resolver's lookup order joined to declaration identity). An arm
+// whose name binds a declaration denotes it, and that declaration is emitted where it is declared and
+// brought in by its import, so a marker would be a second item of one name in the emitted module:
+// gunbc.roadmap.roadmap_model's arms AcceptanceNodeReopensActiveFrontier and
+// AcceptanceNodeRemainsSuperseded name its own records (rustc E0428 and E0119; class 1 of
+// stern-bat-401's emitter-debt list), and an arm naming a record the module imports is the same
+// collision through `use`.
+// THE CORPUS-WIDE SPELLING ROUTE IS NOT THIS QUESTION. resolve_type_decl_reference answers an
+// unstamped reference whose leaf ONE module declares with that declaration wherever it lives; read
+// for an arm, it suppressed the markers of unit variants whose names some unrelated module declares
+// (std.coercion HostText, std.constructors Optional, std.types Template, std.measure Volume) and
+// refused std.fidelity's Unit on the kernel spelling. A name the scope does not bind denotes nothing
+// there, which is what makes the arm a variant, and only the scope's positive `binds nothing`
+// (OccurrenceUnbound) says so: a binding the index cannot identify is a bound name, and refuses.
+// The marker is then owed only on positive evidence: the closure's unit-variant index names THIS
+// arm, by declaring span, as the one variant of that name. Unavailable evidence, or evidence naming
+// another node, refuses, located, rather than emitting or dropping the marker.
+type PhantomMarkerDecision
+  = PhantomMarkerOwed { indexed: Bool }
+  | PhantomMarkerArmDenotesDeclaration
+  | PhantomMarkerNotDemanded
+  | PhantomMarkerUndecided { cause: String }
+
+fn phantom_marker_decision(coproduct: Node, arm: Node, vname: String, env: TypeEnv, emit_info: EmitGraphInfo) -> PhantomMarkerDecision {
+  match type_decl_occurrence_binding(index: emit_info.type_decl_items, leaf: vname, reference: arm) {
+    OccurrenceDeclaredHere { identity: identity } => phantom_marker_for_bound_arm(identity: identity, coproduct: coproduct, arm: arm, vname: vname, env: env, emit_info: emit_info)
+    OccurrenceImported { identity: identity } => phantom_marker_for_bound_arm(identity: identity, coproduct: coproduct, arm: arm, vname: vname, env: env, emit_info: emit_info)
+    OccurrenceIsKernelName => phantom_marker_for_unbound_arm(coproduct: coproduct, arm: arm, vname: vname, env: env)
+    OccurrenceUnbound => phantom_marker_for_unbound_arm(coproduct: coproduct, arm: arm, vname: vname, env: env)
+    OccurrenceUndecided => PhantomMarkerUndecided { cause: "the arm's name binds ambiguously, or binds a declaration the type-declaration index does not identify" }
+  }
 }
 
-// One marker per distinct variant name; `indexed` is decided by the declaring coproduct's identity.
-type PhantomZstMarker {
-  name: String
-  indexed: Bool
+// A BINDING MAY DENOTE THE VARIANT ITSELF. The symbol index binds a corpus-unique variant name to
+// the coproduct that owns it (v1.compiler.infer_env merge_global_bare_variant_locals: the owner is
+// the coproduct node), so a scope binding that resolves to a coproduct declaring a unit variant of
+// this name says the name IS that variant, not that a type of that name exists. Read as a type, it
+// dropped the markers of std.measure's dimension and prefix variants (rustc E0573 in the seed).
+fn phantom_marker_for_bound_arm(identity: String, coproduct: Node, arm: Node, vname: String, env: TypeEnv, emit_info: EmitGraphInfo) -> PhantomMarkerDecision {
+  match type_decl_resolution_at_identity(index: emit_info.type_decl_items, identity: identity) {
+    TypeDeclResolved { identity: _, decl: decl } =>
+      if decl.connective == Disj && (decl.children |> any(c => (c.children |> count) == 0 && authored_name_at(source_indices: env.source_indices, node: c) == vname)) {
+        phantom_marker_for_unbound_arm(coproduct: coproduct, arm: arm, vname: vname, env: env)
+      } else { PhantomMarkerArmDenotesDeclaration }
+    TypeDeclLeafAmbiguous { leaf: leaf } => PhantomMarkerUndecided { cause: concat("more than one declaration of ", leaf) }
+    TypeDeclKernelSpellingUndecided { leaf: leaf } => PhantomMarkerUndecided { cause: concat("kernel spelling undecided for ", leaf) }
+    TypeDeclNotDeclared => PhantomMarkerUndecided { cause: "the scope binding names no indexed declaration" }
+  }
 }
 
-fn collect_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> List<PhantomZstMarker> {
+fn phantom_marker_for_unbound_arm(coproduct: Node, arm: Node, vname: String, env: TypeEnv) -> PhantomMarkerDecision {
+  match lookup_unit_variant_phantom_type(env: env, variant_name: vname) {
+    UnitVariantPhantomPresent { variant: variant } =>
+      if declaring_span_key(sp: variant.span) == declaring_span_key(sp: arm.span) {
+        PhantomMarkerOwed { indexed: is_static_width_index_arm(env: env, coproduct: coproduct, variant_name: vname) }
+      } else { PhantomMarkerUndecided { cause: "the unit-variant index names a different variant of this name" } }
+    UnitVariantPhantomAbsent => PhantomMarkerNotDemanded
+    UnitVariantPhantomEvidenceUnavailable => PhantomMarkerUndecided { cause: "unit-variant evidence unavailable" }
+  }
+}
+
+// One row per distinct variant name: the marker it owes, or the located refusal.
+type PhantomZstMarker
+  = PhantomZstMarkerOwed { name: String, indexed: Bool }
+  | PhantomZstMarkerRefused { name: String, cause: String }
+
+fn phantom_zst_marker_name(marker: PhantomZstMarker) -> String {
+  match marker {
+    PhantomZstMarkerOwed { name: name, indexed: _ } => name
+    PhantomZstMarkerRefused { name: name, cause: _ } => name
+  }
+}
+
+// A MARKER STANDS FOR A UNIT VARIANT, AND ONLY A COPRODUCT HAS VARIANTS. A record's fields are childless
+// nodes too (their types are not children), so a filter on childless children alone walked records,
+// and a field such as std.algebra FreeMonoidUniqueState's `unique` reached the arm decision; only the
+// unit-variant index's silence kept it from owing a marker.
+fn collect_phantom_zst_markers(items: List<Node>, env: TypeEnv, emit_info: EmitGraphInfo) -> List<PhantomZstMarker> {
   items
-    |> filter(item => is_type_def_item(item: item) && item.children |> all(c => c.children |> count == 0))
+    |> filter(item => is_type_def_item(item: item) && item.connective == Disj && item.children |> all(c => c.children |> count == 0))
     |> fold(init: [], f: (acc, item) =>
       fold(item.children, init: acc, f: (inner, child) =>
         if child.children |> count == 0 {
           let vname = authored_name(env: env, node: child)
-          if is_phantom_unit_variant_type_arg(env: env, variant_name: vname)
-            && !(inner |> any(m => m.name == vname))
-            && !phantom_marker_name_shadowed_by_real_type_item(items: items, source_indices: env.source_indices, vname: vname) {
-            concat(inner, [PhantomZstMarker { name: vname, indexed: is_static_width_index_arm(env: env, coproduct: item, variant_name: vname) }])
-          } else { inner }
+          if inner |> any(m => phantom_zst_marker_name(marker: m) == vname) { inner }
+          else {
+            match phantom_marker_decision(coproduct: item, arm: child, vname: vname, env: env, emit_info: emit_info) {
+              PhantomMarkerOwed { indexed: indexed } => concat(inner, [PhantomZstMarkerOwed { name: vname, indexed: indexed }])
+              PhantomMarkerUndecided { cause: cause } => concat(inner, [PhantomZstMarkerRefused { name: vname, cause: cause }])
+              PhantomMarkerArmDenotesDeclaration => inner
+              PhantomMarkerNotDemanded => inner
+            }
+          }
         } else { inner }
       )
     )
 }
 
-fn emit_module_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> String {
-  collect_phantom_zst_markers(items: items, env: env)
-    |> map(m => rust_phantom_zst_marker_def(vname: m.name, indexed: m.indexed))
+fn phantom_zst_marker_owed_name(marker: PhantomZstMarker) -> List<String> {
+  match marker {
+    PhantomZstMarkerOwed { name: name, indexed: _ } => [name]
+    PhantomZstMarkerRefused { name: _, cause: _ } => []
+  }
+}
+
+fn phantom_zst_marker_owed_names(markers: List<PhantomZstMarker>) -> List<String> {
+  markers |> flat_map(m => phantom_zst_marker_owed_name(marker: m))
+}
+
+fn rust_phantom_zst_marker_item(marker: PhantomZstMarker) -> String {
+  match marker {
+    PhantomZstMarkerOwed { name: name, indexed: indexed } => rust_phantom_zst_marker_def(vname: name, indexed: indexed)
+    PhantomZstMarkerRefused { name: name, cause: cause } => emit_rust_compile_error_item(message: concat("whether unit variant ", name, " owes a phantom marker is undecided: ", cause))
+  }
+}
+
+fn emit_module_phantom_zst_markers(items: List<Node>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+  collect_phantom_zst_markers(items: items, env: env, emit_info: emit_info)
+    |> map(m => rust_phantom_zst_marker_item(marker: m))
     |> join(separator: "\n")
 }
 
@@ -3434,6 +3564,27 @@ fn shared_by_every_declarer(type_summaries: TypeSummaryIndex, name: String, recu
       Absent => true
     }
   )
+}
+
+// THE ROSTER ARM ASKS THE DECLARATION, NOT THE SPELLING. shared_types above is keyed by spelling
+// and must stay so: every REFERENCE to a spelling must render the same way, so a leaf two
+// declarations own gets one answer for all readers (shared_by_every_declarer). But a struct's own
+// derive roster is not a spelling question -- a declaration's fields are what they are. Two
+// declarations of one leaf with different field shapes take ONE roster from the spelling answer,
+// and the non-constant one derives Copy over Rc fields: the E0204 refusal at emitted
+// std_bit.rs:40 (std.bit's `Word64 { bytes: List<Byte> }` inheriting Copy from
+// std.machine_word's constant `Word64 { hi: Int, lo: Int }`), the case
+// gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer still
+// names. So the roster arm reads THIS declaration's summary by the identity key TypeSummaryIndex
+// already mints (type_decl_identity, no second key type), and calls it shared exactly when the one
+// existing marking rule (maybe_mark_shared_type) would mark it. A spelling this module does not
+// declare keeps the leaf answer, so single-declarer types are unaffected.
+fn shared_type_declaration_is_marked_shared(module_path: String, name: String, emit_info: EmitGraphInfo) -> Bool {
+  set_contains(emit_info.shared_types, name) || match type_summary_decided(index: emit_info.type_summaries, key: type_decl_identity(owner_module: module_path, decl_name: name)) {
+    Present { value: summary } =>
+      set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: emit_info.recursive_type_set, target_needs_sharing: sharing_for_target(target: Rust).needs_sharing), summary.name)
+    Absent => false
+  }
 }
 
 fn build_shared_types(type_summaries: TypeSummaryIndex, recursive_type_set: Set<String>, target: RenderTarget) -> Set<String> {
@@ -3659,6 +3810,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     fn_decl_items: base_info.fn_decl_items,
     fn_decl_identity_items: base_info.fn_decl_identity_items,
     fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, type_decl_items: base_info.type_decl_items, type_bounds: map_key_bounded, source_indices: closure_source_indices),
+    fn_equality_bounds: v1_fn_equality_bound_table(fn_decl_items: base_info.fn_decl_items, source_indices: closure_source_indices),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     positional_payload_variants: base_info.positional_payload_variants,
@@ -3681,6 +3833,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     expected_type: none,
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
+    trmc_out: false,
     dying_base_sites: empty_map()
   }
   let registry = typed.item_registry
@@ -4367,6 +4520,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     fn_decl_items: base_info.fn_decl_items,
     fn_decl_identity_items: base_info.fn_decl_identity_items,
     fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, type_decl_items: base_info.type_decl_items, type_bounds: map_key_bounded, source_indices: merged_module_source_indices(modules: [typed_module])),
+    fn_equality_bounds: v1_fn_equality_bound_table(fn_decl_items: base_info.fn_decl_items, source_indices: merged_module_source_indices(modules: [typed_module])),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     positional_payload_variants: base_info.positional_payload_variants,
@@ -4389,6 +4543,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     expected_type: none,
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
+    trmc_out: false,
     dying_base_sites: empty_map()
   }
   let shared_types = emit_info.shared_types
@@ -5701,6 +5856,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     fn_decl_items: emit_info.fn_decl_items,
     fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
+    fn_equality_bounds: emit_info.fn_equality_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
@@ -5723,6 +5879,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     expected_type: emit_info.expected_type,
     tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails,
+    trmc_out: emit_info.trmc_out,
     dying_base_sites: emit_info.dying_base_sites
   }
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
@@ -5741,7 +5898,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
         || is_type_decl_item(item: item, source_indices: scope.type_env.source_indices)
       )
       |> map(item => authored_name(env: scope.type_env, node: item)),
-    collect_phantom_zst_markers(items: typed_module.items, env: scope.type_env) |> map(m => m.name)
+    phantom_zst_marker_owed_names(markers: collect_phantom_zst_markers(items: typed_module.items, env: scope.type_env, emit_info: emit_info))
   )
   let module_import_items = module_imports(n: m)
   let this_module_name = authored_name(env: scope.type_env, node: m)
@@ -5821,7 +5978,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let coproduct_wire_contract_validation_section = if coproduct_wire_contract_validations == "" { "" } else { concat(coproduct_wire_contract_validations, "\n\n") }
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
-  let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env)
+  let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env, emit_info: emit_info)
   let phantom_section = if phantom_zst_markers == "" { "" } else { concat("\n\n", phantom_zst_markers) }
   let module_emit_path = rust_module_emit_path(module_name: authored_name(env: scope.type_env, node: m))
   let module_attrs = if authored_name(env: scope.type_env, node: m) == "std.error_primitives" {
@@ -7865,7 +8022,10 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             Present { value: m } => m
             Absent => empty_set()
           }
+          // A loop-lowered function (plain tail calls, or tail recursion modulo cons) takes its params as
+          // owned loop slots, so neither the read-only borrow nor the dying-base analysis applies to it.
           let item_is_tco = is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: authored_name(env: env, node: item) }, body: fn_body, registry: registry, source_indices: env.source_indices)
+            || is_trmc_eligible(body: fn_body, fn_name: authored_name(env: env, node: item), emit_info: emit_info, si: env.source_indices)
           let fn_read_only = if item_is_tco { empty_set() } else {
             match map_get(emit_info.read_only_params_index, qualified_name) {
               Present { value: m } => m
@@ -7883,6 +8043,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             fn_decl_items: emit_info.fn_decl_items,
             fn_decl_identity_items: emit_info.fn_decl_identity_items,
             fn_map_key_bounds: emit_info.fn_map_key_bounds,
+            fn_equality_bounds: emit_info.fn_equality_bounds,
             recursive_type_set: emit_info.recursive_type_set,
             fielded_variants: emit_info.fielded_variants,
             positional_payload_variants: emit_info.positional_payload_variants,
@@ -7905,6 +8066,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             expected_type: emit_info.expected_type,
             tco_cursor_params: emit_info.tco_cursor_params,
             tco_cursor_tails: emit_info.tco_cursor_tails,
+            trmc_out: false,
             dying_base_sites: fn_dying_base_sites
           }
 
@@ -8398,7 +8560,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     module_path: env.module_path,
     name: name,
     children: children,
-    shared_types: shared_types,
+    declared_shared: shared_type_declaration_is_marked_shared(module_path: env.module_path, name: name, emit_info: emit_info),
     has_fn_fields: has_fn_fields,
     map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: name)),
     generic_param_names: generic_param_names,
@@ -9227,7 +9389,7 @@ fn v1_call_forwarding_forwarded_param_names(
 // `S: Clone` by cloning a CostTimeAxis<S> through derive(Clone); the wrapper instantiates that same
 // S and emitted bare, so regen produced a seed that does not typecheck (rustc E0277).
 //
-// The walk mirrors v1_call_forwarding_bound_param_names (EqualityForwarded) exactly rather than adding a
+// The walk mirrors v1_call_forwarding_bound_param_names exactly rather than adding a
 // scrutinee special case, and for the reason that half already states: descending every child can
 // only find more call sites, while precision stays where it belongs, in the exact type-resolving
 // predicate v1_call_forwarding_bound_wrapper_param_names applies per (callee param, argument) pair.
@@ -9734,23 +9896,21 @@ fn v1_call_site_static_forwarded_param_names(
   }
 }
 
-// WHICH BOUND A CALL-FORWARDING WALK PROPAGATES. One walker serves every bound class (DESIGN.md S2:
-// one derivation of how a callee's bound reaches the caller's generics, not a copy per class); the
-// class selects only where the callee's OWN bound comes from. EqualityForwarded derives the one-hop
-// equality bound from the callee body. MapKeyForwarded READS the callee's DECLARED map-key bound from
-// `declared_map_key_bounds` (EmitGraphInfo.fn_map_key_bounds, built once per emission by
-// v1_fn_map_key_bound_table); it never re-derives key position at a call site, and a call cycle
-// needs no guard because the table is a fixpoint, not a recursion.
-type ForwardedBoundClass
-  = EqualityForwarded
-  | MapKeyForwarded
-
+// ONE CALL-GRAPH FIXPOINT PER BOUND CLASS, ONE FORWARDING WALK FOR ALL OF THEM. A callee's bound
+// reaches a caller's generics through exactly one derivation: the walk below reads the callee's
+// bound from `callee_bounds`, a closure-wide fn name -> bound-generics table closed to a fixpoint
+// (v1_fn_bound_fixpoint), so a call cycle needs no guard and a chain of any length forwards. The
+// bound class only chooses which table is passed: EmitGraphInfo.fn_map_key_bounds
+// (v1_fn_map_key_bound_table) or EmitGraphInfo.fn_equality_bounds (v1_fn_equality_bound_table).
+// Equality used to be the exception: its forwarding re-derived the callee's bound from the callee
+// body, one hop and no further, beside the map-key table it shared this walk with, so
+// std.state_durability state_durability_boundary_evidence_verdict<Target, ReadbackSubject> (two
+// hops from the == in state_durability_admission_eq) emitted without PartialEq (rustc E0277).
 fn v1_call_forwarding_bound_param_names(
-  bound_class: ForwardedBoundClass,
   generic_param_names: List<String>,
   body: Node,
   fn_decl_items: Map<String, Node>,
-  declared_map_key_bounds: Map<String, List<String>>,
+  callee_bounds: Map<String, List<String>>,
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
   if (generic_param_names |> count) == 0 {
@@ -9758,11 +9918,10 @@ fn v1_call_forwarding_bound_param_names(
   }
   let here = match body.expr_data {
     ExprCall => v1_call_site_forwarded_param_names(
-      bound_class: bound_class,
       call: body,
       generic_param_names: generic_param_names,
       fn_decl_items: fn_decl_items,
-      declared_map_key_bounds: declared_map_key_bounds,
+      callee_bounds: callee_bounds,
       source_indices: source_indices
     )
     _ => []
@@ -9771,11 +9930,10 @@ fn v1_call_forwarding_bound_param_names(
     v1_union_bound_param_names(
       base: acc,
       extra: v1_call_forwarding_bound_param_names(
-        bound_class: bound_class,
         generic_param_names: generic_param_names,
         body: child,
         fn_decl_items: fn_decl_items,
-        declared_map_key_bounds: declared_map_key_bounds,
+        callee_bounds: callee_bounds,
         source_indices: source_indices
       )
     )
@@ -9783,11 +9941,10 @@ fn v1_call_forwarding_bound_param_names(
 }
 
 fn v1_call_site_forwarded_param_names(
-  bound_class: ForwardedBoundClass,
   call: Node,
   generic_param_names: List<String>,
   fn_decl_items: Map<String, Node>,
-  declared_map_key_bounds: Map<String, List<String>>,
+  callee_bounds: Map<String, List<String>>,
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
   let si = source_indices
@@ -9797,20 +9954,12 @@ fn v1_call_site_forwarded_param_names(
     Present { value: callee_item } =>
       match callee_item.body {
         Absent => []
-        Present { value: callee_body } =>
+        Present { value: _ } =>
           let callee_params = callee_item.params
           let callee_generic_param_names = function_type_params(params: callee_params) |> map(p => generic_param_name_at(n: p, source_indices: si))
-          let callee_bound_param_names = match bound_class {
-            EqualityForwarded => v1_fn_body_equality_bound_param_names(
-              body: callee_body,
-              generic_param_names: callee_generic_param_names,
-              source_indices: si
-            )
-            MapKeyForwarded =>
-              match map_get(declared_map_key_bounds, callee_name) {
-                Present { value: declared } => declared
-                Absent => []
-              }
+          let callee_bound_param_names = match map_get(callee_bounds, callee_name) {
+            Present { value: bound } => bound
+            Absent => []
           }
           v1_call_forwarding_forwarded_param_names(
             call: call,
@@ -9847,14 +9996,36 @@ fn v1_fn_map_key_bound_table(fn_decl_items: Map<String, Node>, type_decl_items: 
       Absent => acc
     }
   )
-  v1_fn_map_key_bound_fixpoint(names: names, fn_decl_items: fn_decl_items, source_indices: source_indices, table: seed, fuel: names |> count)
+  v1_fn_bound_fixpoint(names: names, fn_decl_items: fn_decl_items, source_indices: source_indices, table: seed, fuel: names |> count)
 }
 
-fn v1_fn_map_key_bound_total(table: Map<String, List<String>>) -> Int {
+// THE EQUALITY BOUND OF EVERY FN, ONCE: the generics its own body compares
+// (v1_fn_body_equality_bound_param_names), closed over the call graph by the same fixpoint the
+// map-key table uses, so a caller any number of hops above a == owes PartialEq exactly where the
+// generics it forwards reach one.
+fn v1_fn_equality_bound_table(fn_decl_items: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<String>> {
+  let names = sorted_map_keys(fn_decl_items)
+  let seed = names |> fold(init: empty_map(), f: (acc, n) =>
+    match map_get(fn_decl_items, n) {
+      Present { value: item } =>
+        match item.body {
+          Absent => acc
+          Present { value: body } =>
+            let generics = function_type_params(params: item.params) |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+            let bound = v1_fn_body_equality_bound_param_names(body: body, generic_param_names: generics, source_indices: source_indices)
+            if (bound |> count) > 0 { map_insert(acc, n, bound) } else { acc }
+        }
+      Absent => acc
+    }
+  )
+  v1_fn_bound_fixpoint(names: names, fn_decl_items: fn_decl_items, source_indices: source_indices, table: seed, fuel: names |> count)
+}
+
+fn v1_fn_bound_total(table: Map<String, List<String>>) -> Int {
   map_values(table) |> fold(init: 0, f: (acc, l) => acc + (l |> count))
 }
 
-fn v1_fn_map_key_bound_fixpoint(
+fn v1_fn_bound_fixpoint(
   names: List<String>,
   fn_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>,
@@ -9872,11 +10043,10 @@ fn v1_fn_map_key_bound_fixpoint(
           Present { value: body } =>
             let generics = function_type_params(params: item.params) |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
             let forwarded = v1_call_forwarding_bound_param_names(
-              bound_class: MapKeyForwarded,
               generic_param_names: generics,
               body: body,
               fn_decl_items: fn_decl_items,
-              declared_map_key_bounds: acc,
+              callee_bounds: acc,
               source_indices: source_indices
             )
             let existing = match map_get(acc, n) {
@@ -9889,10 +10059,10 @@ fn v1_fn_map_key_bound_fixpoint(
       Absent => acc
     }
   )
-  if v1_fn_map_key_bound_total(table: next) == v1_fn_map_key_bound_total(table: table) {
+  if v1_fn_bound_total(table: next) == v1_fn_bound_total(table: table) {
     next
   } else {
-    v1_fn_map_key_bound_fixpoint(names: names, fn_decl_items: fn_decl_items, source_indices: source_indices, table: next, fuel: fuel - 1)
+    v1_fn_bound_fixpoint(names: names, fn_decl_items: fn_decl_items, source_indices: source_indices, table: next, fuel: fuel - 1)
   }
 }
 
@@ -10064,11 +10234,10 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     source_indices: si
   )
   let call_forwarding_eq_param_names = v1_call_forwarding_bound_param_names(
-    bound_class: EqualityForwarded,
     generic_param_names: generic_param_names,
     body: body,
     fn_decl_items: emit_info.fn_decl_items,
-    declared_map_key_bounds: emit_info.fn_map_key_bounds,
+    callee_bounds: emit_info.fn_equality_bounds,
     source_indices: si
   )
   let eq_param_names = v1_union_bound_param_names(
@@ -10085,11 +10254,10 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
       source_indices: si
     ),
     extra: v1_call_forwarding_bound_param_names(
-      bound_class: MapKeyForwarded,
       generic_param_names: generic_param_names,
       body: body,
       fn_decl_items: emit_info.fn_decl_items,
-      declared_map_key_bounds: emit_info.fn_map_key_bounds,
+      callee_bounds: emit_info.fn_map_key_bounds,
       source_indices: si
     )
   )
@@ -10132,7 +10300,9 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
   let realized_seam = rust_host_seam_is_realized(module_path: scope.module_name, name: name, body: body, source_indices: si)
-  let use_tco = !realized_seam && is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si)
+  let plain_tco = !realized_seam && is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si)
+  let use_trmc = !realized_seam && !plain_tco && is_trmc_eligible(body: body, fn_name: name, emit_info: emit_info, si: si)
+  let use_tco = plain_tco || use_trmc
   let needs_stacker = !realized_seam && is_self_recursive(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si) && use_tco == false
   if rust_host_seam_is_unrealized(module_path: scope.module_name, name: name, body: body, source_indices: si) {
     let kw = rust_items().func_keyword
@@ -10150,8 +10320,9 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   }
   if use_tco {
     let tco_params_str = emit_tco_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
-    let cursor_plan = tco_cursor_plan(body: body, fn_name: name, params: value_params, emit_info: body_emit_info, si: si)
-    let cursor_emit_info = with(body_emit_info, { tco_cursor_params: cursor_plan.params, tco_cursor_tails: cursor_plan.tails })
+    let loop_emit_info = with(body_emit_info, { trmc_out: use_trmc })
+    let cursor_plan = tco_cursor_plan(body: body, fn_name: name, params: value_params, emit_info: loop_emit_info, si: si)
+    let cursor_emit_info = with(loop_emit_info, { tco_cursor_params: cursor_plan.params, tco_cursor_tails: cursor_plan.tails })
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: value_params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: cursor_emit_info)
     let kw = rust_items().func_keyword
     concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", tco_params_str, ")", ret_str, " {\n",
@@ -12247,7 +12418,7 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 // nothing to infer from. A bare head is a type REFERENCE (a Map argument, a field), never an arm; the arms'
 // own children are still searched. Dissolution: adhoc-65526d74-43f, with the rest of this compensation.
 fn type_node_carries_applicationless_parametric_head(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
-  n.children |> any(c =>
+  !type_node_is_declaration_structure(n: n) && n.children |> any(c =>
     let t = child_type_node(ch: c)
     (n.connective != Disj && rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
       || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
@@ -13177,12 +13348,24 @@ fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo
 // value params -- then_outcome<A, B, C>(f, g) is exactly this shape.
 // function_value_params is the existing filter (used by emit_fn_def) that
 // recovers the value-param-only list idx is indexed against.
+//
+// A RECORD FIELD IS THE SECOND Rc<dyn Fn> PRODUCER, AND THE SENTENCE ABOVE THAT EXCLUDED "a
+// field/method-call reference" WAS WRONG ABOUT IT. A field's type renders through the value carrier,
+// so an arrow-typed field is stored as Rc<dyn Fn(..) -> ..> whatever produced it, and reading it
+// yields that carrier, not an `impl Fn`. gunbc.host_convergence_protocol
+// inspect_via_host_effect_projection passes `projection.observe` and `projection.assess` (fields of
+// HostEffectDomainProjection) into std.goal_assessment inspect_goal's `fn(..)` parameters and
+// failed rustc E0277, expected `Fn(Subject, Request)`, found `Rc<dyn Fn(Subject, Request) -> ..>`
+// (class 5 of stern-bat-401's emitter-debt list). A field access at an arrow-typed parameter
+// crosses the same seam as a call result and takes the same forwarding closure. A bare
+// identifier and a literal closure stay unwrapped, for the reasons above.
 fn rust_call_arg_function_value_adapt(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int) -> String {
-  let is_call_result = match arg.expr_data {
+  let is_rc_carried = match arg.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } => true
+    ExprFieldAccess { summary: _ } => true
     _ => false
   }
-  if !is_call_result {
+  if !is_rc_carried {
     return arg_str
   }
   match callee {
@@ -14076,6 +14259,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fn_decl_items: emit_info.fn_decl_items,
               fn_decl_identity_items: emit_info.fn_decl_identity_items,
               fn_map_key_bounds: emit_info.fn_map_key_bounds,
+              fn_equality_bounds: emit_info.fn_equality_bounds,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
               positional_payload_variants: emit_info.positional_payload_variants,
@@ -14098,6 +14282,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               expected_type: emit_info.expected_type,
               tco_cursor_params: emit_info.tco_cursor_params,
               tco_cursor_tails: emit_info.tco_cursor_tails,
+              trmc_out: emit_info.trmc_out,
               dying_base_sites: emit_info.dying_base_sites
             }
           Absent => emit_info
@@ -14118,6 +14303,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fn_decl_items: emit_info.fn_decl_items,
               fn_decl_identity_items: emit_info.fn_decl_identity_items,
               fn_map_key_bounds: emit_info.fn_map_key_bounds,
+              fn_equality_bounds: emit_info.fn_equality_bounds,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
               positional_payload_variants: emit_info.positional_payload_variants,
@@ -14140,6 +14326,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               expected_type: emit_info.expected_type,
               tco_cursor_params: emit_info.tco_cursor_params,
               tco_cursor_tails: emit_info.tco_cursor_tails,
+              trmc_out: emit_info.trmc_out,
               dying_base_sites: emit_info.dying_base_sites
             }
           Absent => emit_info
@@ -16064,6 +16251,35 @@ fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: 
 // is a guess. It refuses exactly as the multi-field arm does; the remedy is a nominal type on the
 // literal. Found when std.algebra TotalOrder gained the same single `compare` field as
 // extdeps.version VersionScheme and `{ compare: f }` silently emitted `f`.
+// THE VARIANT PARENT A RECORD LITERAL RESOLVES TO: the contextual parent the resolved type names, else the
+// enum the resolved type is when the variant belongs to it, else the literal's own bare parent. ONE
+// judgment, read by the Cons lowering below and by tail recursion modulo cons (trmc_cons_tail_call), so
+// the two cannot disagree on which literals are the FreeMonoid carrier's Cons.
+fn record_lit_variant_parent(variant_surface_name: String, bare_parent_enum: String?, resolved_type: Node, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> String? {
+  match contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si) {
+    Present { value: context_parent } => Present { value: context_parent }
+    Absent =>
+      let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
+      let rt_name = qualified_last_segment(name: authored_name_at(source_indices: si, node: resolved_type))
+      if resolved_type.ident_span != none && rt_name != variant_surface_name && !rt_is_type_var && rt_name != "Error"
+        && match variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_surface_name, enum_name: rt_name) {
+          QuestionDecided { value: v } => v
+          _ => false
+        } {
+        Present { value: rt_name }
+      } else {
+        bare_parent_enum
+      }
+  }
+}
+
+// A literal is the FreeMonoid carrier's Cons exactly when its constructor is Cons and its resolved parent
+// is FreeMonoid (parent_enum_is_freemonoid, the same reading the FreeMonoid match lowering uses). A
+// module's own `List` with its own `Cons { head, tail }` resolves to that List and is not this.
+fn record_lit_is_host_freemonoid_cons(tn: String, effective_parent: String?) -> Bool {
+  tn == "Cons" && parent_enum_is_freemonoid(p: effective_parent)
+}
+
 fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: String?, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let qualified_name = match struct_name {
@@ -16188,25 +16404,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           } else { tn }
         }
       let ctor_alias_resolved = ctor_name != tn
-      let context_lookup = contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
-      let effective_parent = match context_lookup {
-        Present { value: context_parent } => Present { value: context_parent }
-        Absent =>
-          let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
-          let rt_name = qualified_last_segment(name: authored_name_at(source_indices: si, node: resolved_type))
-
-          if resolved_type.ident_span != none && rt_name != variant_surface_name && !rt_is_type_var && rt_name != "Error"
-            && match variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_surface_name, enum_name: rt_name) {
-              QuestionDecided { value: v } => v
-              _ => false
-            } {
-            Present { value: rt_name }
-          } else {
-            bare_parent_enum
-          }
-      }
-      let host_freemonoid_cons = tn == "Cons"
-        && (match effective_parent { Present { value: p } => p == "FreeMonoid"  Absent => false })
+      let effective_parent = record_lit_variant_parent(variant_surface_name: variant_surface_name, bare_parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, si: si)
+      let host_freemonoid_cons = record_lit_is_host_freemonoid_cons(tn: tn, effective_parent: effective_parent)
       if host_freemonoid_cons {
         let head_val = match fields |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "head") |> first {
           Present { value: f } => emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -17034,13 +17233,14 @@ fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registr
   let inner = emit_typed_tco_expr(texpr: texpr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
   let si = scope.type_env.source_indices
   let cursor_params = emit_info.tco_cursor_params
+  let trmc_decl = if emit_info.trmc_out { "let mut __trmc_out = Rc::new(vec![]); " } else { "" }
   if (cursor_params |> count) == 0 {
     concat(
-      "loop {\n",
+      "{ ", trmc_decl, "loop {\n",
       tco_loop_iteration_lets(params: params, source_indices: si, depth: depth + 1),
       make_indent(level: depth + 1),
       inner,
-      "\n}"
+      "\n} }"
     )
   } else {
     // Each cursor param's slot keeps its base list for the whole loop, and the param's NAME is bound
@@ -17060,7 +17260,7 @@ fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registr
       concat(make_indent(level: depth + 1), "let ", tco_base_name(param: cp), " = ", emit_ident(name: tco_loop_slot_name(param_name: cp), target: Rust), ".clone();\n",
         make_indent(level: depth + 1), "#[allow(unused_mut, unused_variables)]\n", make_indent(level: depth + 1), "let mut ", tco_focus_name(param: cp), " = ", tco_base_name(param: cp), ".focus();\n")) |> join(separator: "")
     concat(
-      "{ ", cursor_decls, "\n",
+      "{ ", trmc_decl, cursor_decls, "\n",
       make_indent(level: depth + 1), "#[allow(unused_labels)]\n",
       make_indent(level: depth + 1), "let __tco_result = ", tco_rebase_label(), ": loop {\n",
       focus_lets,
@@ -17078,7 +17278,7 @@ fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>,
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: frame.expr, source_indices: frame.scope.type_env.source_indices)
       let call_str = emit_typed_call(func: f, args: frame.expr.children, inferred: frame.expr.inferred, call_semantics: cs, callee_is_function_value: call_semantics_is_function_value(cs: cs), call_target: call_semantics_target(cs: cs), registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
-      concat("break ", call_str, ";")
+      concat("break ", trmc_exit(value: call_str, emit_info: emit_info), ";")
     _ => emit_error_expr(message: "emit_rust_tco_non_self_call expected ExprCall", target: Rust)
   }
 }
@@ -17148,6 +17348,105 @@ type CursorWalk {
 type TcoCursorPlan {
   params: List<String>
   tails: Map<String, Int>
+}
+
+// TAIL RECURSION MODULO CONS: A SELF-CALL THAT IS THE TAIL OF A TAIL-POSITION CONS IS A LOOP STEP.
+// `Cons { head: h, tail: f(args) }` asks for h followed by whatever f(args) returns. Lowered as plain
+// recursion, every level builds f's whole result, clones it and inserts h at the front: a vector
+// materialized and copied per element, plus a stack frame per element. Measured on the emitted
+// list_sort_by_key, std.algebra take_prefix alone was 78.5% of the sort (gunbc.recurring_failure_mode
+// a_cons_around_a_self_call_rebuilds_the_result_per_element). The same shape was re-authored by hand
+// three times (list_map, list_flat_map, the sort merge) and is still live in take_prefix, zip_map and
+// list_init, so the repair is this one rule: the loop carries `__trmc_out`, the heads emitted so far,
+// a Cons-tail self-call pushes its head and continues with the call's arguments, and every other exit
+// returns `__trmc_out` followed by its value. It is admitted only when every self-call is either in
+// tail position or exactly the tail field of a tail-position list Cons whose head calls nothing
+// recursive, and the function returns a list; anything else keeps the ordinary lowering.
+// KEYED ON THE RESOLVED CARRIER, NEVER ON A SPELLING (DESIGN section 4): a Cons step is admitted only
+// when the literal resolves to the FreeMonoid carrier's Cons (record_lit_is_host_freemonoid_cons, the
+// same judgment the Cons lowering uses), so a module's own List with its own Cons keeps the ordinary
+// lowering. A tail-position FreeMonoid Cons is the function's return value, so the function returns the
+// carrier by typing; no return-type spelling is consulted.
+fn is_trmc_eligible(body: Node, fn_name: String, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> Bool {
+  trmc_has_cons_site(n: body, fn_name: fn_name, emit_info: emit_info, si: si) && trmc_tail_ok(n: body, fn_name: fn_name, emit_info: emit_info, si: si)
+}
+
+// The self-call a FreeMonoid Cons carries as its tail, when the Cons is `Cons { head, tail: fn_name(..) }`.
+fn trmc_cons_tail_call(n: Node, fn_name: String, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> Node? {
+  match n.expr_data {
+    ExprRecordLit { parent_enum: pe } =>
+      let tn = match record_lit_type_name_at(texpr: n, source_indices: si) { Present { value: t } => t  Absent => "" }
+      let bare_parent = match pe { Present { value: p } => Present { value: qualified_last_segment(name: p) }  Absent => none }
+      let carrier_cons = record_lit_is_host_freemonoid_cons(tn: tn, effective_parent: record_lit_variant_parent(variant_surface_name: tn, bare_parent_enum: bare_parent, resolved_type: resolved_type(n: n), emit_info: emit_info, si: si))
+      let names = n.children |> map(f => field_init_node_name_at(n: f, source_indices: si))
+      let shaped = carrier_cons && (names |> count) == 2 && names |> any(x => x == "head") && names |> any(x => x == "tail")
+      if !shaped { none } else {
+        match n.children |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "tail") |> first {
+          Present { value: tf } =>
+            let tv = field_init_node_value(n: tf)
+            match tv.expr_data {
+              ExprCall { call_semantics: _, descent_evidence: _ } =>
+                if expr_call_func_at(texpr: tv, source_indices: si) == fn_name { Present { value: tv } } else { none }
+              _ => none
+            }
+          Absent => none
+        }
+      }
+    _ => none
+  }
+}
+
+fn trmc_cons_head(n: Node, si: Map<String, NewlineIndex>) -> Node? {
+  match n.children |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "head") |> first {
+    Present { value: hf } => Present { value: field_init_node_value(n: hf) }
+    Absent => none
+  }
+}
+
+fn trmc_no_self_call(n: Node, fn_name: String, si: Map<String, NewlineIndex>) -> Bool {
+  !expr_has_self_call(texpr: n, fn_name: fn_name, source_indices: si)
+}
+
+fn trmc_has_cons_site(n: Node, fn_name: String, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> Bool {
+  match trmc_cons_tail_call(n: n, fn_name: fn_name, emit_info: emit_info, si: si) {
+    Present { value: _ } => true
+    Absent => n.children |> any(c => trmc_has_cons_site(n: c, fn_name: fn_name, emit_info: emit_info, si: si))
+  }
+}
+
+// `n` sits in tail position. FAIL-CLOSED: any self-call anywhere this walk does not admit refuses
+// the lowering, which leaves the function on the ordinary path.
+fn trmc_tail_ok(n: Node, fn_name: String, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> Bool {
+  match trmc_cons_tail_call(n: n, fn_name: fn_name, emit_info: emit_info, si: si) {
+    Present { value: call } =>
+      let head_ok = match trmc_cons_head(n: n, si: si) { Present { value: h } => trmc_no_self_call(n: h, fn_name: fn_name, si: si)  Absent => false }
+      head_ok && call.children |> all(a => trmc_no_self_call(n: arg_value(n: a), fn_name: fn_name, si: si))
+    Absent =>
+      match n.expr_data {
+        ExprCall { call_semantics: _, descent_evidence: _ } =>
+          if expr_call_func_at(texpr: n, source_indices: si) == fn_name {
+            n.children |> all(a => trmc_no_self_call(n: arg_value(n: a), fn_name: fn_name, si: si))
+          } else { trmc_no_self_call(n: n, fn_name: fn_name, si: si) }
+        ExprIf =>
+          let else_ok = match if_else_branch(texpr: n) { Present { value: eb } => trmc_tail_ok(n: eb, fn_name: fn_name, emit_info: emit_info, si: si)  Absent => true }
+          trmc_no_self_call(n: if_condition(texpr: n), fn_name: fn_name, si: si) && trmc_tail_ok(n: if_then_branch(texpr: n), fn_name: fn_name, emit_info: emit_info, si: si) && else_ok
+        ExprMatch =>
+          trmc_no_self_call(n: match_scrutinee(texpr: n), fn_name: fn_name, si: si)
+            && match_arm_nodes(texpr: n) |> all(arm =>
+              (match arm_guard(n: arm) { Present { value: g } => trmc_no_self_call(n: g, fn_name: fn_name, si: si)  Absent => true })
+              && trmc_tail_ok(n: arm_body(n: arm), fn_name: fn_name, emit_info: emit_info, si: si))
+        ExprLet =>
+          let body_ok = match let_body(texpr: n) { Present { value: b } => trmc_tail_ok(n: b, fn_name: fn_name, emit_info: emit_info, si: si)  Absent => true }
+          trmc_no_self_call(n: let_value(texpr: n), fn_name: fn_name, si: si) && body_ok
+        ExprBlock =>
+          let ss = n.children
+          let ss_count = ss |> count
+          let inits_ok = ss |> enumerate |> all(pair => pair.first == ss_count - 1 || trmc_no_self_call(n: pair.second, fn_name: fn_name, si: si))
+          inits_ok && (match ss |> last { Present { value: e } => trmc_tail_ok(n: e, fn_name: fn_name, emit_info: emit_info, si: si)  Absent => true })
+        ExprReturn => trmc_tail_ok(n: return_value(texpr: n), fn_name: fn_name, emit_info: emit_info, si: si)
+        _ => trmc_no_self_call(n: n, fn_name: fn_name, si: si)
+      }
+  }
 }
 
 // One index per cursor param, named by the param it advances.
@@ -17391,6 +17690,16 @@ fn cursor_walk(n: Node, p: String, in_tails: List<String>, fn_name: String, para
         } else {
           cursor_walk_fail()
         }
+      // A tail-recursion-modulo-cons step is a self-call whose head is pushed first: its arguments are
+      // judged as a self-call's are, and its head as any other read of the param.
+      ExprRecordLit { parent_enum: _ } =>
+        let cons_step = if emit_info.trmc_out { trmc_cons_tail_call(n: n, fn_name: fn_name, emit_info: emit_info, si: si) } else { none }
+        match cons_step {
+          Present { value: call } =>
+            let head_ok = match trmc_cons_head(n: n, si: si) { Present { value: h } => cursor_escapes_only(node: h, p: p, in_tails: in_tails, si: si)  Absent => false }
+            if head_ok { cursor_walk(n: call, p: p, in_tails: in_tails, fn_name: fn_name, param_names: param_names, emit_info: emit_info, si: si) } else { cursor_walk_fail() }
+          Absent => if cursor_escapes_only(node: n, p: p, in_tails: in_tails, si: si) { cursor_walk_ok(tails: []) } else { cursor_walk_fail() }
+        }
       _ => if cursor_escapes_only(node: n, p: p, in_tails: in_tails, si: si) { cursor_walk_ok(tails: []) } else { cursor_walk_fail() }
     }
   }
@@ -17535,9 +17844,26 @@ fn emit_rust_tco_block(frame: TcoFrame, fn_name: String, params: List<Node>, reg
   }
 }
 
-fn emit_rust_tco_default_return(frame: TcoFrame, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let val_str = emit_typed_expr(texpr: frame.expr, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  concat("break ", val_str, ";")
+// Under tail recursion modulo cons every exit is the heads emitted so far followed by the exit's value.
+fn trmc_exit(value: String, emit_info: EmitGraphInfo) -> String {
+  if emit_info.trmc_out { concat("v1_rt::rc_list_concat(__trmc_out, ", value, ")") } else { value }
+}
+
+fn emit_rust_tco_default_return(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let si = frame.scope.type_env.source_indices
+  let cons_step = if emit_info.trmc_out { trmc_cons_tail_call(n: frame.expr, fn_name: fn_name, emit_info: emit_info, si: si) } else { none }
+  match cons_step {
+    Present { value: call } =>
+      let head_str = match trmc_cons_head(n: frame.expr, si: si) {
+        Present { value: h } => emit_typed_expr(texpr: h, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+        Absent => emit_rust_compile_error_expr(message: "a tail-recursion-modulo-cons step without a head")
+      }
+      concat("{ __trmc_out = v1_rt::rc_list_push(__trmc_out, ", head_str, "); ",
+        emit_typed_tco_reassign(args: call.children, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info), " }")
+    Absent =>
+      let val_str = emit_typed_expr(texpr: frame.expr, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      concat("break ", trmc_exit(value: val_str, emit_info: emit_info), ";")
+  }
 }
 
 fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -17550,7 +17876,7 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, registr
     emit_match: frame => emit_rust_tco_match(frame: frame, fn_name: fn_name, params: params, registry: registry, shared_types: shared_types, emit_info: emit_info),
     emit_let: frame => emit_rust_tco_let(frame: frame, fn_name: fn_name, params: params, registry: registry, shared_types: shared_types, emit_info: emit_info),
     emit_block: frame => emit_rust_tco_block(frame: frame, fn_name: fn_name, params: params, registry: registry, shared_types: shared_types, emit_info: emit_info),
-    emit_default_return: frame => emit_rust_tco_default_return(frame: frame, registry: registry, shared_types: shared_types, emit_info: emit_info))
+    emit_default_return: frame => emit_rust_tco_default_return(frame: frame, fn_name: fn_name, params: params, registry: registry, shared_types: shared_types, emit_info: emit_info))
 }
 
 fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, present_binding: Bool) -> String {
@@ -17913,7 +18239,7 @@ fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<Str
     ShellBound { transport: t, result_fields: rsf } => emit_shell_call(op_name: op_name, transport: t, registry: registry, depth: depth, result_fields: rsf, op_node: op_node, source_indices: source_indices, env: env, shared_types: shared_types, emit_info: emit_info)
     FileBound { verb: v, path_template: pt, result_fields: fs } =>
       emit_file_call(verb: v, path_template: pt, result_fields: fs, source_indices: source_indices)
-    LocalBound => emit_local_call(op_name: op_name)
+    UnboundOperation => emit_unbound_operation_refusal(op_name: op_name, target: Rust)
     BindingRefused { cause: cz } =>
       emit_error_expr(
         message: concat("transport binding refused for operation '", op_name, "': ", transport_binding_refusal_fact(cause: cz)),
@@ -18089,17 +18415,21 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
   }
 }
 
+// ONE `.query` CALL PER PARAMETER. reqwest's RequestBuilder::query takes `&T: Serialize` and APPENDS,
+// and a Rust array literal is homogeneous, so rendering every parameter into one
+// `&[("k", &v), ..]` slice compiled only while every value had the same type. extdeps.github.pulls
+// List declares `query: { state: state, per_page: per_page }` (a PullRequestState and an Int), and
+// the single slice was rustc E0308, expected `&PullRequestState`, found `&i64` (class 7 of
+// stern-bat-401's emitter-debt list). One call per parameter lets each value serialize as its own
+// type -- a coproduct through its wire contract, an integer as a number -- in declaration order.
 fn emit_rest_query_line(transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match transport_query(t: transport, source_indices: source_indices) {
     Present { value: q } => {
-      let pairs = q.children |> map(fi =>
-        concat("(\"", field_init_node_name_at(n: fi, source_indices: source_indices), "\", &",
+      q.children |> map(fi =>
+        concat("let request = request.query(&[(\"", field_init_node_name_at(n: fi, source_indices: source_indices), "\", &",
           emit_rust_dag_string_to_host_via_seam(dag_expr: emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_indices: source_indices)),
-          ")")
-      )
-      if pairs |> count > 0 {
-        concat("let request = request.query(&[", pairs |> join(separator: ", "), "]);")
-      } else { "" }
+          ")]);")
+      ) |> join(separator: "\n")
     }
     Absent => ""
   }
@@ -19025,11 +19355,6 @@ fn emit_file_return(result_fields: List<FileResultField>) -> String {
   if n == 0 { "Ok(())" }
   else if n == 1 { concat("Ok(", field_exprs |> join(separator: ", "), ")") }
   else { concat("Ok((", field_exprs |> join(separator: ", "), "))") }
-}
-
-fn emit_local_call(op_name: String) -> String {
-  concat("// Local binding -- direct function call\n",
-    "Ok(", emit_ident(name: op_name, target: Rust), "())")
 }
 
 // A RESOURCE WITH CAPABILITIES RENDERS AS AN #[async_trait] TRAIT, so the crate that carries one
@@ -20894,12 +21219,12 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
       "    native_census_module_completeness, native_census_module_resolution, native_census_modules,", "\n",
       "    native_census_module_inference, native_census_infer_type_contribution, native_census_infer_binding_lines,", "\n",
-      "    native_census_infer_completeness, native_census_infer_accepted_frontier, native_census_cause_groups_add_infer_module,", "\n",
+      "    native_census_infer_completeness, native_census_infer_accepted_frontier, native_census_infer_first_refusal, native_census_cause_groups_add_infer_module,", "\n",
       "    native_census_subject_closure, native_census_root_subject_membership, native_census_subject_label,", "\n",
       "    native_census_residual_rows,", "\n",
       "    native_census_cause_groups_add_module, native_census_cause_groups_from_file_refusals,", "\n",
       "    native_census_cause_group_rows, native_census_closure_index, native_census_roots_ranked,", "\n",
-      "    native_census_verb_output, NativeCensusVerbWord,", "\n",
+      "    native_census_verb_output, NativeCensusVerbWord, native_self_host_frontier_output,", "\n",
       "    native_lane_acquire, native_lane_acquired, native_lane_census_ingest, native_lane_census_scoped_ingest,", "\n",
       "    NativeCensusScope, NativeCensusScoped,", "\n",
       "    census_module_obligation_rows, census_scoped_run_record, census_comparable_record, census_comparable_diff,", "\n",
@@ -21278,6 +21603,26 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    std::process::exit(output.exit as i32);", "\n",
       "\}", "\n",
       "", "\n",
+      "// THE SELF-HOST FRONTIER MODE (v2.compiler.source_root_eval native_self_host_frontier_output).", "\n",
+      "// The fold decides every line and the exit -- 0 held, 1 an Unclassified file or a stale row, 2 no", "\n",
+      "// observation -- and this function only reads the three operand files, prints and exits.", "\n",
+      "fn run_self_host_frontier(manifest_path: &str, verdict_path: &str, observed_path: &str) \{", "\n",
+      "    let read = |path: &str| -> String \{", "\n",
+      "        match std::fs::read_to_string(path) \{", "\n",
+      "            Ok(text) => text,", "\n",
+      "            Err(err) => \{", "\n",
+      "                eprintln!(\"REFUSED: cannot read {}: {}\", path, err);", "\n",
+      "                std::process::exit(2);", "\n",
+      "            \}", "\n",
+      "        \}", "\n",
+      "    \};", "\n",
+      "    let output = native_self_host_frontier_output(read(manifest_path), read(verdict_path), read(observed_path));", "\n",
+      "    for line in output.lines.iter() \{", "\n",
+      "        println!(\"{}\", line);", "\n",
+      "    \}", "\n",
+      "    std::process::exit(output.exit as i32);", "\n",
+      "\}", "\n",
+      "", "\n",
       "// THE FIFTH MODE: THE WHOLE TREE, RESOLVED AND INFERRED PER MODULE (`census-infer`).", "\n",
       "//", "\n",
       "// Every decision is a .dag fold: the per-module step (v2.compiler.source_root_eval", "\n",
@@ -21412,9 +21757,9 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                obligation_rows.push(row.clone());", "\n",
       "            \}", "\n",
       "        \}", "\n",
-      "        // THE OCCURRENCE-BINDING CENSUS'S ROWS (v2.compiler.occurrence_binding_census), one line each, in", "\n",
+      "        // THE OCCURRENCE-BINDING CENSUS'S ROWS (v2.compiler.occurrence_resolution_census), one line each, in", "\n",
       "        // both modes: a scoped run is how a module's bindings are read when the whole corpus does not fit.", "\n",
-      "        for line in native_census_infer_binding_lines(entry.clone(), step.outcome.clone()).iter() \{", "\n",
+      "        for line in native_census_infer_binding_lines(context.positions.clone(), entry.clone(), step.outcome.clone()).iter() \{", "\n",
       "            println!(\"\{\}\", line);", "\n",
       "        \}", "\n",
       "        if scope.is_none() \{", "\n",
@@ -21428,6 +21773,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \"outcome\": outcome_label,", "\n",
       "            \"occurrence_completeness\": native_census_infer_completeness(step.outcome.clone()),", "\n",
       "            \"accepted_frontier\": native_census_infer_accepted_frontier(step.outcome.clone()),", "\n",
+      "            \"first_refusal\": native_census_infer_first_refusal(context.positions.clone(), entry.clone(), step.outcome.clone()),", "\n",
       "        \}));", "\n",
       "    \}", "\n",
       "    let cause_groups = native_census_cause_group_rows(groups.clone());", "\n",
@@ -22235,6 +22581,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                NativeDriverVerb::NativeDriverCensusInfer \{ .. \} => run_census_infer(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusVerb \{ verb, .. \} => run_census_verb(verb, &source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusScoped \{ subject, subjects_rest, against, .. \} => run_census_scoped(subject, &subjects_rest.iter().cloned().collect::<Vec<String>>(), against.clone(), &source_roots),", "\n",
+      "                NativeDriverVerb::NativeDriverSelfHostFrontier \{ manifest_path, verdict_path, observed_path \} => run_self_host_frontier(manifest_path, verdict_path, observed_path),", "\n",
       "                NativeDriverVerb::NativeDriverAdjudicate \{ facts_path, pattern, .. \} => run_adjudication(facts_path, Rc::new(TargetPattern::clone(pattern)), &source_roots),", "\n",
       "            \}", "\n",
       "        \}", "\n",

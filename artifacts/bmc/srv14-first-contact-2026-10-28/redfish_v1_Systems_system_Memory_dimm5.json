@@ -1,0 +1,40 @@
+{
+  "@odata.id": "/redfish/v1/Systems/system/Memory/dimm5",
+  "@odata.type": "#Memory.v1_11_0.Memory",
+  "AllowedSpeedsMHz": [],
+  "BaseModuleType": "RDIMM",
+  "BusWidthBits": 72,
+  "CapacityMiB": 65536,
+  "DataWidthBits": 64,
+  "ErrorCorrection": "MultiBitECC",
+  "FirmwareRevision": "0",
+  "Id": "dimm5",
+  "Location": {
+    "PartLocation": {
+      "ServiceLabel": "Bank 6 DDR4_F1"
+    }
+  },
+  "Manufacturer": "Samsung",
+  "MemoryDeviceType": "DDR4",
+  "MemoryLocation": {
+    "Channel": 0,
+    "MemoryController": 0,
+    "Slot": 0,
+    "Socket": 0
+  },
+  "MemoryMedia": [
+    "DRAM"
+  ],
+  "MemoryType": "DRAM",
+  "Model": "",
+  "Name": "DIMM Slot",
+  "OperatingSpeedMhz": 2666,
+  "PartNumber": "M393A8K40B22-CWD",
+  "RankCount": 2,
+  "SerialNumber": "40CE0D1F                ",
+  "SparePartNumber": "",
+  "Status": {
+    "Health": "OK",
+    "State": "Enabled"
+  }
+}

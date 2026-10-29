@@ -1,6 +1,8 @@
 module gunbc.ci.deploy_slot_tenancy
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import extdeps.github.actions_jit_runner { JitRunnerGroupId }
 import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.runner.runner_group_restriction_observation {
@@ -35,6 +37,48 @@ fn deploy_slot_selected_workflow() -> NonEmptyStr {
     artifact_path(a: FleetConvergeYamlArtifact),
     "@refs/heads/", gunbc_repository.default_branch as String,
   ], "") as NonEmptyStr
+}
+
+// THE GROUP'S ID, AS THE ENSURE RUN THAT CREATED IT READ IT BACK. GitHub assigns the id at creation,
+// so the repository cannot author it; it reaches the slot's registration only through this receipt of
+// gunbc.runner.runner_group_restriction_ensure_run (its `microvm-runner-group=created` line, uploaded
+// as the run's microvm-runner-group-ensure-receipts artifact), committed as a row because the slot's
+// drop-in is rendered before any job runs. The row records an observation; it admits nothing. The
+// deploy route's admission stays deploy_slot_observed_tenancy over a live read.
+//
+// THE ID IS TRANSCRIBED, AND THIS IS THE BOUNDARY THAT ADMITS IT. The guard below catches a receipt for
+// another group name or another workflow, but not the group being deleted and recreated under the same
+// name with a new id. A slot rendered from this row would then register with the old id. The expected
+// answer is that the JIT registration is refused for a group that no longer exists, so the slot fails to
+// register visibly; that is inferred from the API taking a group id, not yet observed. What retires this row is a live read of the slot's group from the
+// org's runner groups (the DeploySlotReading readback, which replaces srv1_modeled_deploy_slot_reading),
+// once that read can be done at render time.
+type RunnerGroupEnsureReceipt {
+  run_id: NonEmptyStr
+  observed_at: NonEmptyStr
+  name: NonEmptyStr
+  group: JitRunnerGroupId
+  selected_workflow: NonEmptyStr
+}
+
+data deploy_slot_runner_group_ensure_receipt: RunnerGroupEnsureReceipt = RunnerGroupEnsureReceipt {
+  run_id: "40812313878",
+  observed_at: "2026-10-29",
+  name: "gunbc-deploy",
+  group: JitRunnerGroupId { value: 10 },
+  selected_workflow: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+}
+
+// The id only when the receipt is for THIS group restricted to THIS workflow: a rename of the group
+// or of the workflow makes the row a receipt for something else, and it refuses rather than
+// registering the slot into a group nobody re-read.
+fn deploy_slot_runner_group_id(receipt: RunnerGroupEnsureReceipt) -> JitRunnerGroupId? {
+  if (receipt.name as String) == (deploy_slot_runner_group_name as String)
+    && (receipt.selected_workflow as String) == (deploy_slot_selected_workflow() as String) {
+    Present { value: receipt.group }
+  } else {
+    Absent
+  }
 }
 
 // What a read of the deploy slot holds: the group's standing as the sealed observer reports it, the

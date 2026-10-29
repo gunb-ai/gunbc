@@ -90,7 +90,10 @@ fn layout_governed_roots() -> List<String> {
 // v2.compiler.source_authority derived_roster_module and its neighbours; this row is the policy they
 // are handed, the same split as the namespace roots above). A file at the roster's storage path is
 // therefore never a source: it would be a second authority for the ledger's membership, which is
-// why .gitignore refuses one and acquisition refuses one it finds.
+// why acquisition refuses one it finds. For the two ledgers whose file an older seed wrote on every
+// walk (recurring_failure_mode, rung_drop), .gitignore and gunbc.repo_workspace also retire it;
+// gunbc.guarantee_stall's roster was a committed file that git removes on checkout, so it has no
+// such row.
 //
 // The policy states only what cannot be derived: which namespaces are ledgers, and the declared type
 // that selects a row. The roster's module name and declaration name follow from the namespace.
@@ -102,6 +105,7 @@ type LayoutDerivedRoster {
 fn layout_derived_rosters() -> List<LayoutDerivedRoster> {
   [
     LayoutDerivedRoster { row_namespace: "gunbc.recurring_failure_mode", row_type: "RecurringFailureMode" },
-    LayoutDerivedRoster { row_namespace: "gunbc.rung_drop", row_type: "RungDrop" }
+    LayoutDerivedRoster { row_namespace: "gunbc.rung_drop", row_type: "RungDrop" },
+    LayoutDerivedRoster { row_namespace: "gunbc.guarantee_stall", row_type: "GuaranteeStall" }
   ]
 }
