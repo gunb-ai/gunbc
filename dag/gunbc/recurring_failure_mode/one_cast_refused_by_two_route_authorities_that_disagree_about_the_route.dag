@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.one_cast_refused_by_two_route_authorities_that_disagree_about_the_route
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data one_cast_refused_by_two_route_authorities_that_disagree_about_the_route: RecurringFailureMode = RecurringFailureMode {
+  identity: "one_cast_refused_by_two_route_authorities_that_disagree_about_the_route" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the text-route table non_text_kernel_text_route keeps is folded into the declared-conversion authority the checker already reads, so exactly one authority answers whether a carrier has a declared route into text and every refusal of that crossing quotes it" } },
+
+  receipts: [
+    "**one crossing is refused by two route authorities that disagree about whether a route exists** (INVALID STATE: a numeric carrier cast into a text position is refused twice, once by `v1.compiler.infer grounded_cast_verdict`, which answers the question from `kernel_grounding_rows` and reports `no declared conversion route`, and once by `v1.compiler.infer non_text_kernel_text_route`, which keeps its OWN per-kernel table and names the crossing's declared conversion -- for `std.nat Nat` it prints `std.nat nat_to_decimal_string`, which IS declared, in `std.nat`. HARM: every `Nat as String` site carries two blocking diagnostics for one act, and the two say opposite things about the repair the author is being told to perform: one says no route exists, the other hands over the route. Nothing is admitted silently -- both authorities refuse -- so this sits on the ladder, not below it.",
+
+    "SPECIMEN (measured 2026-10-29 against public gunbc 71f28929f7c with a release build, `gunbc --version` tree:sha1:92cdaca7dbc5, the tree of that revision, on the refusal probe private gunbc-private enrolled in gunbc-private#246): the probe casts five numeric values into String and the checker emits SEVEN diagnostics over them. Int at one site and Float at one site each get ONE. Each of the two Nat sites -- a parameter cast and a record-field cast, which behave identically -- gets BOTH: `invalid cast: Nat as String -- no declared conversion route` and `invalid cast: Nat as String -- a non-text value has no route into text; build the text through its declared conversion, std.nat nat_to_decimal_string`. Same span, same act, two remediations.",
+
+    "WHICH AUTHORITY REACHES WHICH CARRIER, and the fact that makes the population uneven: `grounded_cast_verdict` refuses the crossing only when `declaration_is_grounded_natural` holds of the source, and that predicate is true exactly of a carrier with a Peano grounding view whose extent is the unbounded naturals -- which `std.nat Nat` has and `std.types Int`, carrying a signed grounding view, does not. So the fork lands on Nat alone today, and Int's single diagnostic is not evidence that Int has one authority; it is evidence that the second authority abstains for Int. A third carrier would appear if the grounding population changed, and nothing joins the two tables to keep that consistent.",
+
+    "FAMILY, and this row's population is the whole family rather than one pair: `grounded_cast_verdict` states the same refusal a second way for a non-kernel target -- `no declared conversion route onto X` naming `std.coercion` -- so the disagreement is between a grounding/conversion authority and a per-kernel text-route table, and it recurs per carrier and per target family. `gunbc.recurring_failure_mode meaning_fork` is the general class this is a case of; the distinguishing fact for THIS row is that the forked meaning is the REMEDIATION of a refusal, both arms refuse, and the two authorities are two tables rather than hidden state or two consumers -- so `meaning_fork`'s scoping carve-out does not reach it and neither does its hidden-state recognition rule.",
+
+    "CONSEQUENCE FOR ENROLLED EXPECTATIONS: a refusal probe that pins its causes by exact string must list one entry per AUTHORITY rather than one per type, which is why the probe's expected causes carry two `Nat as String` strings for one cast. That is the symptom a reader should not mistake for the probe being over-specified: the roster is faithfully reporting that the checker holds two answers.",
+
+    "CEILING, and why it is not merely a wording fix: with ONE route authority -- the declared conversions -- consulted by both the grounding check and the text-route message, the pair cannot re-form for any carrier, which is structural rather than per-carrier mitigation. TODAY'S RUNG is mitigatable: the contradiction is observable, the diagnostics are located, and any author who follows either arm's advice reaches a declared conversion.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "grounded_cast_verdict", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "non_text_kernel_text_route", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.literal_elaboration", decl_name: "declaration_is_grounded_natural", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.nat", decl_name: "nat_to_decimal_string", field: WholeDeclaration },
+  ],
+}
