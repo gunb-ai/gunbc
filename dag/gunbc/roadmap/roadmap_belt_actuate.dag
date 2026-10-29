@@ -12492,11 +12492,11 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
               // THE RECORD CARRIES THE SETTINGS THE UNIT ACTUALLY RUNS WITH, built from the same call
               // the command builder makes, so a reader can compare cap to grant without trusting
               // either alone. Record, then launch generation, then start -- the worker's order.
-              let unit_properties = match systemd_run_property_assignments(properties: dispatch_review_unit_properties(instance: instance, granted: granted_bytes, working_directory: instance.repo_root as String, log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key, criterion_key: key), review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key), exit_hook: exec_line)) {
-                SystemdRunPropertyAssignmentsReady { assignments: assignments } => map(assignments, a => systemd_run_property_wire(p: a))
-                SystemdRunPropertyAssignmentsRefused { index: _, detail: _ } => [] as List<String>
-              }
-              match session_reviewer_placement_record_write(stores: stores, host: instance.host_identity as String, grant: grant, unit_properties: unit_properties) {
+              match systemd_run_property_assignments(properties: dispatch_review_unit_properties(instance: instance, granted: granted_bytes, working_directory: instance.repo_root as String, log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key, criterion_key: key), review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key), exit_hook: exec_line)) {
+                SystemdRunPropertyAssignmentsRefused { cause: why } =>
+                  ReviewFailed { node_id: node_id, criterion: call.id, detail: join([systemd_run_option_words_refused_cause_detail(cause: why), "; ", session_reviewer_placement_abandon(stores: stores, grant: grant, reason: "reviewer unit property refused" as NonEmptyStr)], "") }
+                SystemdRunPropertyAssignmentsReady { assignments: unit_properties } =>
+                  match session_reviewer_placement_record_write(stores: stores, host: instance.host_identity as String, grant: grant, unit_properties: unit_properties) {
                 SessionPlacementWriteFailed { path: p, error: e } =>
                   ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer placement record could not be written at ", p, ": ", e, "; ", session_reviewer_placement_abandon(stores: stores, grant: grant, reason: "reviewer placement record write failed before launch" as NonEmptyStr)], "") }
                 SessionPlacementWritten { path: _ } =>
@@ -12512,6 +12512,7 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
                         ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr, "; ", session_reviewer_placement_abandon(stores: stores, grant: launched, reason: "reviewer unit start failed" as NonEmptyStr)], "") }
                         ExecRefused { program: _, reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join([reason, "; ", session_reviewer_placement_abandon(stores: stores, grant: launched, reason: "reviewer unit start could not run" as NonEmptyStr)], "") }
                       }
+                  }
                   }
               }
             }

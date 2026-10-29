@@ -1,0 +1,373 @@
+module test.claim.roadmap.reviewer_placement_wet_witness
+
+import extdeps.shell
+import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs }
+import std.measure { kibibyte, kibibyte_count }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first, cas_generation_count }
+import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
+import product.capacity.event_chain { PartitionId }
+import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.compute.host_capacity {
+  ComputeCapacitySubject, compute_reserve_against, compute_capacity_store, compute_release_on,
+  ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
+  ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused,
+}
+import gunbc.compute.work_class_grant { WorkClassReviewerSession, GrantAtCeiling, ClassUnmeasured }
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, AttemptReserved, AttemptLaunching, AttemptTerminal,
+  AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
+  attempt_open, attempt_begin_launch, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+  UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_name }
+import gunbc.roadmap.roadmap_session_placement {
+  SessionReviewerName, SessionReviewerGrant, SessionPlacementStores, session_reviewer_identity,
+  session_reviewer_attempt_record, session_reviewer_record_of, session_reviewer_placement_record_write,
+  session_reviewer_placement_basename, session_reviewer_release_basename, session_reviewer_placement_key,
+  session_reviewer_grant_reading, session_reviewer_release_observation,
+  session_reviewer_placement_settle_pass_at, session_reviewer_placement_abandon,
+  SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
+  SessionReleaseObservation, SessionReleased, SessionReleaseNotRecorded, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
+  SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused,
+  SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused,
+  session_attempt_record, session_placement_record_json, session_unit_wire,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+fn witness_cas_generation(n: Int) -> CasGeneration {
+  match cas_generation(n: n) {
+    Present { value: g } => g
+    Absent => cas_generation_first()
+  }
+}
+
+// THE REVIEWER'S LEASE, WET. The same ruling that governs the worker's controls (a real
+// compare-and-set slot store, a real file-store ledger, releases counted only when the ledger
+// itself answers ComputeReleased) applied to a unit that carries a CRITERION. Every control writes
+// only under its own mktemp directory; the ledger partition is the reviewer's own, and the second
+// control proves the release the pass writes binds the recorded grant, not the belt's word.
+
+data node_a: String = "g5r-node-a"
+data key_a: String = "feedfacefeedface"
+data crit_a: String = "code-conformance"
+data crit_b: String = "risk-review"
+data node_b: String = "g5r-node-b"
+data key_b: String = "0123456789abcdef"
+data crit_other: String = "spec-conformance"
+data host: String = "srv2"
+
+fn name_a() -> SessionReviewerName { SessionReviewerName { node_id: node_a, attempt_key: key_a, criterion_key: crit_a } }
+fn name_b() -> SessionReviewerName { SessionReviewerName { node_id: node_b, attempt_key: key_b, criterion_key: crit_other } }
+
+fn r_unit() -> String {
+  dispatch_review_unit_name(node_id: node_a, attempt_key: key_a, criterion_key: crit_a) as String
+}
+
+fn fresh_dir(tag: String) -> String {
+  shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_g5r_", tag, ".XXXXXX"], "")).path
+}
+
+fn subject_at(dir: String) -> ComputeCapacitySubject {
+  ComputeCapacitySubject {
+    root: join([dir, "/capacity"], "") as NonEmptyStr,
+    partition: "reviewer-memory-g5-witness" as NonEmptyStr as PartitionId,
+    appropriation: kibibyte(count: 1048576),
+    request: kibibyte(count: 1024),
+  }
+}
+
+fn stores_at(dir: String) -> SessionPlacementStores {
+  SessionPlacementStores {
+    slots_root: dir as NonEmptyStr,
+    records_dir: dir,
+    store: compute_capacity_store(subject: subject_at(dir: dir)),
+    partition: subject_at(dir: dir).partition,
+  }
+}
+
+fn reserve_real(dir: String) -> LeaseGrant? {
+  match compute_reserve_against(subject: subject_at(dir: dir), reference: r_unit() as NonEmptyStr, term_seconds: 14400, total: kibibyte(count: 1073741824), available: kibibyte(count: 1073741824)) {
+    ComputeReserved { grant: grant, partition: _, amount: _, store: _ } => Present { value: grant }
+    ComputeCapacityFull { wire: _ } => none
+    ComputeHostBelowFloor { requested: _, available: _ } => none
+    ComputeReservationRefused { detail: _ } => none
+  }
+}
+
+fn ledger_still_holds(dir: String) -> Bool {
+  match compute_release_on(store: compute_capacity_store(subject: subject_at(dir: dir)), partition: subject_at(dir: dir).partition, appropriation: kibibyte(count: 0), reference: r_unit() as NonEmptyStr, reason: "witness probe") {
+    ComputeReleased { partition: _, reference: _, reason: _ } => true
+    ComputeNothingToRelease { detail: _ } => false
+    ComputeReleaseRefused { detail: _ } => false
+  }
+}
+
+fn ledger_returned(r: ComputeRelease?) -> Bool {
+  match r {
+    Present { value: ComputeReleased { partition: _, reference: _, reason: _ } } => true
+    Present { value: ComputeNothingToRelease { detail: _ } } => false
+    Present { value: ComputeReleaseRefused { detail: _ } } => false
+    Absent => false
+  }
+}
+
+fn grant_for(node_id: String, attempt_key: String, criterion_key: String, slot: AttemptRecord) -> SessionReviewerGrant {
+  let unit = dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key)
+  SessionReviewerGrant {
+    node_id: node_id,
+    attempt_key: attempt_key,
+    criterion_key: criterion_key,
+    unit: unit,
+    lease: LeaseGrant {
+      reference: unit,
+      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: witness_cas_generation(n: 7) },
+      granted_at: 1000,
+      maximum_duration_seconds: 14400,
+      expires_at: 15400,
+    },
+    partition: "reviewer-memory-srv2" as NonEmptyStr as PartitionId,
+    amount: kibibyte(count: 8388608),
+    class_grant: GrantAtCeiling { class: WorkClassReviewerSession, amount: kibibyte(count: 8388608), reason: ClassUnmeasured },
+    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: "/state/capacity" as NonEmptyStr) },
+    slot: slot,
+    slot_generation: cas_generation_first(),
+  }
+}
+
+fn real_grant(dir: String, lease: LeaseGrant, slot: AttemptRecord, generation: CasGeneration) -> SessionReviewerGrant {
+  SessionReviewerGrant {
+    node_id: node_a, attempt_key: key_a, criterion_key: crit_a, unit: r_unit() as NonEmptyStr, lease: lease,
+    partition: subject_at(dir: dir).partition, amount: kibibyte(count: 1024),
+    class_grant: GrantAtCeiling { class: WorkClassReviewerSession, amount: kibibyte(count: 1024), reason: ClassUnmeasured },
+    store: compute_capacity_store(subject: subject_at(dir: dir)), slot: slot, slot_generation: generation,
+  }
+}
+
+fn rslot(opened: EpochSecs) -> AttemptRecord {
+  session_reviewer_attempt_record(node_id: node_a, attempt_key: key_a, criterion_key: crit_a, unit: r_unit() as NonEmptyStr, granted: kibibyte(count: 8388608), now: opened)
+}
+
+fn opened_ok(dir: String, rec: AttemptRecord) -> Bool {
+  match attempt_open(root: dir as NonEmptyStr, record: rec) {
+    AttemptAdvanced { state: _, generation: _ } => true
+    AttemptLostRace { expected: _, observed: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+}
+
+fn launched_ok(dir: String, rec: AttemptRecord) -> Bool {
+  match attempt_open(root: dir as NonEmptyStr, record: rec) {
+    AttemptAdvanced { state: _, generation: g } =>
+      match attempt_begin_launch(root: dir as NonEmptyStr, reference: rec.reference as NonEmptyStr, expected: g) {
+        AttemptAdvanced { state: _, generation: _ } => true
+        AttemptLostRace { expected: _, observed: _ } => false
+        AttemptTransitionRefused { detail: _ } => false
+      }
+    AttemptLostRace { expected: _, observed: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+}
+
+fn slot_is_terminal(dir: String) -> Bool {
+  match attempt_slot_read(root: dir as NonEmptyStr, reference: r_unit() as NonEmptyStr) {
+    AttemptSlotHeld { record, generation: _ } => match record.state { AttemptTerminal { verdict: _, detail: _ } => true  AttemptReserved => false  AttemptLaunching => false }
+    AttemptSlotAbsent => false
+    AttemptSlotUnreadable { detail: _ } => false
+  }
+}
+
+fn slot_is_launching(dir: String) -> Bool {
+  match attempt_slot_read(root: dir as NonEmptyStr, reference: r_unit() as NonEmptyStr) {
+    AttemptSlotHeld { record, generation: _ } => match record.state { AttemptLaunching => true  AttemptReserved => false  AttemptTerminal { verdict: _, detail: _ } => false }
+    AttemptSlotAbsent => false
+    AttemptSlotUnreadable { detail: _ } => false
+  }
+}
+
+fn launched_with_real_seat(dir: String) -> SessionReviewerGrant? {
+  match reserve_real(dir: dir) {
+    Absent => none
+    Present { value: lease } => {
+      let rec = rslot(opened: 1000)
+      match attempt_open(root: dir as NonEmptyStr, record: rec) {
+        AttemptAdvanced { state: _, generation: g1 } =>
+          match attempt_begin_launch(root: dir as NonEmptyStr, reference: rec.reference as NonEmptyStr, expected: g1) {
+            AttemptAdvanced { state: _, generation: _ } => Present { value: real_grant(dir: dir, lease: lease, slot: rec, generation: g1) }
+            AttemptLostRace { expected: _, observed: _ } => none
+            AttemptTransitionRefused { detail: _ } => none
+          }
+        AttemptLostRace { expected: _, observed: _ } => none
+        AttemptTransitionRefused { detail: _ } => none
+      }
+    }
+  }
+}
+
+fn lifecycle_absent(n: SessionReviewerName) -> UnitLifecycle { UnitTerminatedCauseUnknown { detail: "the user manager has no such unit" } }
+fn lifecycle_running(n: SessionReviewerName) -> UnitLifecycle { UnitStillRunning { detail: "the unit is active" } }
+
+fn settlement_of(p: SessionSettlePass) -> SessionSettlement {
+  match p {
+    SessionSettlePassRan { settlements } => match settlements.first() { Present { value: s } => s  Absent => SessionSettlementRefused { unit: "", detail: "no settlement" } }
+    SessionSettlePassRefused { detail } => SessionSettlementRefused { unit: "", detail: detail }
+  }
+}
+
+fn settlement_count(p: SessionSettlePass) -> Int {
+  match p {
+    SessionSettlePassRan { settlements } => list_length(items: settlements)
+    SessionSettlePassRefused { detail: _ } => 0
+  }
+}
+
+fn released_unit(s: SessionSettlement) -> String {
+  match s {
+    SessionSettlementReleaseAttempted { unit, freed, detail: _ } => match freed {
+      ComputeReleased { partition: _, reference: _, reason: _ } => unit
+      ComputeNothingToRelease { detail: _ } => ""
+      ComputeReleaseRefused { detail: _ } => ""
+    }
+    SessionSettlementKept { unit: _, why: _ } => ""
+    SessionSettlementDone { unit: _, why: _ } => ""
+    SessionSettlementRefused { unit: _, detail: _ } => ""
+  }
+}
+
+fn kept(s: SessionSettlement) -> Bool {
+  match s {
+    SessionSettlementKept { unit: _, why: _ } => true
+    SessionSettlementReleaseAttempted { unit: _, freed: _, detail: _ } => false
+    SessionSettlementDone { unit: _, why: _ } => false
+    SessionSettlementRefused { unit: _, detail: _ } => false
+  }
+}
+
+fn release_text(dir: String) -> String {
+  let r = Filesystem.Read(path: join([dir, "/", session_reviewer_release_basename(name: name_a())], ""))
+  if r.success { r.content } else { "" }
+}
+
+fn grant_is_bound(dir: String) -> Bool {
+  match session_reviewer_grant_reading(stores: stores_at(dir: dir), host: host, name: name_a()) {
+    SessionGrantRecorded { record } => record.grant_identity == "evt-7" && cas_generation_count(g: record.fence_generation) == 7
+    SessionGrantNotRecorded { path: _ } => false
+    SessionGrantUnreadable { path: _, detail: _ } => false
+    SessionGrantForeign { path: _, detail: _ } => false
+  }
+}
+
+fn release_is_recorded(dir: String) -> Bool {
+  match session_reviewer_release_observation(stores: stores_at(dir: dir), host: host, name: name_a()) {
+    SessionReleased { reason: _, detail: _ } => true
+    SessionReleaseNothingHeld { reason: _, detail: _ } => false
+    SessionReleaseRefused { reason: _, detail: _ } => false
+    SessionReleaseNotRecorded { path: _ } => false
+    SessionReleaseUnreadable { path: _, detail: _ } => false
+  }
+}
+
+// CONTROL 1, THE SLOT OPENS AND NOTHING IS RESERVED. Inside the declared window the pass keeps the
+// hold; past it, with no unit, the slot is closed and the seat released BY REFERENCE, with a
+// durable release record that binds no grant -- the reviewer's crash law at its barest.
+test fn a_reviewer_slot_with_no_record_is_kept_in_window_and_released_after() -> Bool {
+  let dir = fresh_dir(tag: "c1")
+  let stores = stores_at(dir: dir)
+  let rec = rslot(opened: 1000)
+  let opened = opened_ok(dir: dir, rec: rec)
+  let early = settlement_of(p: session_reviewer_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: rec.launch_deadline - 1))
+  let late = settlement_of(p: session_reviewer_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: rec.launch_deadline + 1))
+  let rel = release_text(dir: dir)
+  opened && kept(s: early) && released_unit(s: late) == r_unit() && slot_is_terminal(dir: dir)
+    && string_contains(s: rel, pattern: r_unit()) && !string_contains(s: rel, pattern: "\"grant\"")
+}
+
+// CONTROL 2, THE FULL LEASE. A real seat is charged, the real writer's record lands, and the pass --
+// with the unit gone -- releases the seat and writes the release the real reader accepts only as
+// BOUND to the recorded grant identity and fence. This is the witness the operator's failure needed:
+// the hold the reviewers left behind, returned with its binding.
+test fn a_recorded_reviewer_is_released_bound_to_its_grant() -> Bool {
+  let dir = fresh_dir(tag: "c2")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let rec = rslot(opened: 1000)
+  let opened = opened_ok(dir: dir, rec: rec)
+  let wrote = session_reviewer_placement_record_write(stores: stores, host: host, grant: grant_for(node_id: node_a, attempt_key: key_a, criterion_key: crit_a, slot: rec), unit_properties: ["MemoryMax=8589934592"])
+  let wrote_ok = match wrote { SessionPlacementWritten { path: _ } => true  SessionPlacementWriteFailed { path: _, error: _ } => false }
+  let s = settlement_of(p: session_reviewer_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: rec.launch_deadline + 1))
+  charged && opened && wrote_ok && released_unit(s: s) == r_unit() && slot_is_terminal(dir: dir)
+    && grant_is_bound(dir: dir) && release_is_recorded(dir: dir)
+    && string_contains(s: release_text(dir: dir), pattern: "\"grant\"")
+}
+
+// CONTROL 3, UNIT START -> TERMINATION. A Launching reviewer is kept while its unit runs and
+// released once it is gone -- the same trigger law the worker's pass serves, on the reviewer's slot.
+test fn a_launched_reviewer_is_kept_while_running_and_released_when_ended() -> Bool {
+  let dir = fresh_dir(tag: "c3")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let launched = launched_ok(dir: dir, rec: rslot(opened: 1000))
+  let running = settlement_of(p: session_reviewer_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_running, now: 99999))
+  let ended = settlement_of(p: session_reviewer_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999))
+  charged && launched && kept(s: running) && released_unit(s: ended) == r_unit() && slot_is_terminal(dir: dir)
+}
+
+// CONTROL 4, THE POST-GATE FAILURE. The belt lost the generation race at the launch gate and its
+// stale-grant abandon must NOT spend a seat it no longer owns: the slot stays Launching and the
+// ledger still holds -- settlement, not the belt's word, owns the seat from here.
+test fn a_post_gate_failure_with_a_stale_grant_keeps_the_real_seat() -> Bool {
+  let dir = fresh_dir(tag: "c4")
+  match launched_with_real_seat(dir: dir) {
+    Absent => false
+    Present { value: stale } => {
+      let note = session_reviewer_placement_abandon(stores: stores_at(dir: dir), grant: stale, reason: "harness-unit-start failed")
+      string_contains(s: note, pattern: "settlement pass owns it") && slot_is_launching(dir: dir) && ledger_still_holds(dir: dir)
+    }
+  }
+}
+
+// CONTROL 5, THE PRE-GATE ABANDON RETURNS THE SEAT. The unit start refused before the gate: the
+// abandon closes the slot at its own generation and the ledger answers ComputeReleased -- then
+// nothing is left to return.
+test fn a_pre_gate_start_failure_returns_the_real_seat() -> Bool {
+  let dir = fresh_dir(tag: "c5")
+  match reserve_real(dir: dir) {
+    Absent => false
+    Present { value: lease } => {
+      let rec = rslot(opened: 1000)
+      match attempt_open(root: dir as NonEmptyStr, record: rec) {
+        AttemptAdvanced { state: _, generation: g1 } => {
+          let note = session_reviewer_placement_abandon(stores: stores_at(dir: dir), grant: real_grant(dir: dir, lease: lease, slot: rec, generation: g1), reason: "the unit start refused")
+          slot_is_terminal(dir: dir) && !ledger_still_holds(dir: dir) && string_contains(s: note, pattern: "the unit start refused")
+        }
+        AttemptLostRace { expected: _, observed: _ } => false
+        AttemptTransitionRefused { detail: _ } => false
+      }
+    }
+  }
+}
+
+// CONTROL 6, THE TWO PASSES NEVER CROSS-RELEASE. A worker slot and a reviewer slot share ONE slot
+// store; the reviewer pass settles exactly the reviewer's hold and leaves the worker's slot held,
+// by identity, not by luck of directory layout.
+test fn the_reviewer_pass_settles_only_the_slot_whose_identity_names_a_criterion() -> Bool {
+  let dir = fresh_dir(tag: "c6")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let rec = rslot(opened: 1000)
+  let opened = opened_ok(dir: dir, rec: rec)
+  let worker_rec = session_attempt_record(node_id: node_a, attempt_key: key_a, unit: "gunbc-attempt-g5r-node-a-afeedfacefeedface" as NonEmptyStr, granted: kibibyte(count: 8388608), now: 1000)
+  let worker_opened = match attempt_open(root: dir as NonEmptyStr, record: worker_rec) {
+    AttemptAdvanced { state: _, generation: _ } => true
+    AttemptLostRace { expected: _, observed: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+  let p = session_reviewer_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999)
+  let worker_held = match attempt_slot_read(root: dir as NonEmptyStr, reference: "gunbc-attempt-g5r-node-a-afeedfacefeedface" as NonEmptyStr) {
+    AttemptSlotHeld { record, generation: _ } => match record.state { AttemptTerminal { verdict: _, detail: _ } => false  AttemptReserved => true  AttemptLaunching => true }
+    AttemptSlotAbsent => false
+    AttemptSlotUnreadable { detail: _ } => false
+  }
+  charged && opened && worker_opened && settlement_count(p: p) == 1 && released_unit(s: settlement_of(p: p)) == r_unit() && worker_held
+}

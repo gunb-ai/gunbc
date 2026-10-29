@@ -2106,8 +2106,20 @@ fn floor_route_gap_expectation_chunk_32() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.a_post_gate_failure_with_a_live_or_unreadable_unit_keeps_the_real_seat", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.a_post_gate_failure_with_an_ended_unit_returns_the_real_seat_from_the_current_generation", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.reviewer_placement_wet_witness.a_reviewer_slot_with_no_record_is_kept_in_window_and_released_after", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.reviewer_placement_wet_witness.a_recorded_reviewer_is_released_bound_to_its_grant", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.reviewer_placement_wet_witness.a_launched_reviewer_is_kept_while_running_and_released_when_ended", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.reviewer_placement_wet_witness.a_post_gate_failure_with_a_stale_grant_keeps_the_real_seat", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.reviewer_placement_wet_witness.a_pre_gate_start_failure_returns_the_real_seat", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.reviewer_placement_wet_witness.the_reviewer_pass_settles_only_the_slot_whose_identity_names_a_criterion", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
-  }  }  }  }  }  }  }
+  }  }  }  }  }  }  }  }  }  }  }  }  }
 }
 
 // THE ALLOCATION AUTH REAL-FILE CLAIMS (gunbc#13004): the login transaction's create-new consume,

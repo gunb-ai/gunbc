@@ -835,6 +835,42 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.reviewer_placement_wet_witness", function: "a_reviewer_slot_with_no_record_is_kept_in_window_and_released_after" },
+      entry: "dag/test/claim/roadmap/reviewer_placement_wet_witness.dag",
+      function: "a_reviewer_slot_with_no_record_is_kept_in_window_and_released_after",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.reviewer_placement_wet_witness", function: "a_recorded_reviewer_is_released_bound_to_its_grant" },
+      entry: "dag/test/claim/roadmap/reviewer_placement_wet_witness.dag",
+      function: "a_recorded_reviewer_is_released_bound_to_its_grant",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.reviewer_placement_wet_witness", function: "a_launched_reviewer_is_kept_while_running_and_released_when_ended" },
+      entry: "dag/test/claim/roadmap/reviewer_placement_wet_witness.dag",
+      function: "a_launched_reviewer_is_kept_while_running_and_released_when_ended",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.reviewer_placement_wet_witness", function: "a_post_gate_failure_with_a_stale_grant_keeps_the_real_seat" },
+      entry: "dag/test/claim/roadmap/reviewer_placement_wet_witness.dag",
+      function: "a_post_gate_failure_with_a_stale_grant_keeps_the_real_seat",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.reviewer_placement_wet_witness", function: "a_pre_gate_start_failure_returns_the_real_seat" },
+      entry: "dag/test/claim/roadmap/reviewer_placement_wet_witness.dag",
+      function: "a_pre_gate_start_failure_returns_the_real_seat",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.reviewer_placement_wet_witness", function: "the_reviewer_pass_settles_only_the_slot_whose_identity_names_a_criterion" },
+      entry: "dag/test/claim/roadmap/reviewer_placement_wet_witness.dag",
+      function: "the_reviewer_pass_settles_only_the_slot_whose_identity_names_a_criterion",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.session_placement_wet_witness", function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after" },
       entry: "dag/test/claim/roadmap/session_placement_wet_witness.dag",
       function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after",
