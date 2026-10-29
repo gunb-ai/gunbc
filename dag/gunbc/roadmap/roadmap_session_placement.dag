@@ -24,7 +24,7 @@ import gunbc.compute.attempt_lifecycle {
 }
 import gunbc.compute.host_capacity {
   HostCapacityPool, AgentSessionPool, host_capacity_reserve, host_capacity_subject,
-  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, compute_reservation_wire,
+  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, ComputeReservationRecoveryRequired, compute_reservation_wire,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_release_on,
   ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, compute_capacity_store,
   compute_memory_ceiling,
@@ -316,6 +316,7 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
                 ComputeCapacityFull { wire: w } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeCapacityFull { wire: w }))
                 ComputeHostBelowFloor { requested: rq, available: av } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeHostBelowFloor { requested: rq, available: av }))
                 ComputeReservationRefused { detail: d } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeReservationRefused { detail: d }))
+                ComputeReservationRecoveryRequired { detail: d } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeReservationRecoveryRequired { detail: d }))
               }
           }
         }
@@ -326,8 +327,9 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
 }
 
 // A REFUSED RESERVATION CLOSES THE SLOT IT OPENED, and if the close itself fails the slot is left
-// Reserved -- which settlement terminates after the deadline, releasing nothing because nothing was
-// reserved. Both outcomes are carried in the refusal.
+// Reserved -- which settlement terminates after the deadline. A partial parent acquisition may
+// still be charged: settlement must discharge it through the same lifecycle gate.
+// Both outcomes are carried in the refusal.
 fn session_refused_after_open(stores: SessionPlacementStores, record: AttemptRecord, generation: CasGeneration, refusal: String) -> SessionPlacementAcquisition {
   SessionPlacementRefused {
     detail: join([
