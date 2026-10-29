@@ -968,21 +968,22 @@ fn admit_captured_import_rows(
 // name that is neither in `by_name` nor absent. Stating `resolve_module_not_found` for it is false (DESIGN
 // 5), so this arm reads the acquisition's block locality and mints the typed dependency refusal naming the
 // blocked member. The blocked member's OWN refusal row keeps its cause; `DeclarerRefused { declarer }` is
-// the identity a census joins on (std.diagnostic), not a second copy of that cause. `at` is whole-file
-// here because this function knows only the name sought; the located caller,
-// `admit_imported_module_existence`, re-stamps head.reason and head.correction onto the import's own locus.
+// the identity a census joins on (std.diagnostic), not a second copy of that cause. `at` cites the
+// requested name as a declaration, exactly as the sibling `resolve_module_not_found_diagnostic_from_missing`
+// arm does -- the two arms of ONE lookup differ only in which fact they state, so they must not differ in
+// how they cite (DESIGN 6b: a fork between sibling leaves is the same defect as a fork between routes).
+// This function knows only the names; the located caller, `admit_imported_module_existence`, re-stamps
+// head.reason and head.correction onto the import's own authored locus, which is where the span comes from.
 fn resolve_imported_module_refused_diagnostic(
   requested: QualifiedName,
   blocked: QualifiedName
 ) -> NonEmptyDiagnostics {
   diagnostics_singleton(
-    d: textual_whole_file_diagnostic(
+    d: Diagnostic {
       reason: ^resolve_imported_module_refused,
-      module_file: symbol_intern_lexeme(
-        lexeme: qualified_name_to_dotted_string(qn: requested)
-      ),
+      at: DeclarationLocus { declaration: requested },
       correction: Unavailable { reason: DeclarerRefused { declarer: blocked } }
-    )
+    }
   )
 }
 
