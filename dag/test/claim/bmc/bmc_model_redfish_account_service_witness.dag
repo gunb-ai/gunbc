@@ -5,7 +5,7 @@ module test.claim.bmc.bmc_model_redfish_account_service_witness
 // to exercise -- factory controller answers 403 PasswordChangeRequired -> one root Password PATCH ->
 // managed credential authenticates, published no longer does -- plus the REDs that make that claim bite,
 // the one-store invariant for a build whose policy grounds Redfish and IPMI sharing, and the failed-login
-// counter against a caller-supplied threshold.
+// counter locking under a typed threshold (Never / After) rather than a sentinel.
 //
 // RUNG (DESIGN 4b): every check here is a claim about the dry WORLD's transitions, evaluated on the real
 // functions gunbc.bmc_model declares -- not on a re-implementation. The positive control runs the full
@@ -18,9 +18,9 @@ import std.optional { Present, Absent }
 import gunbc.bmc_model {
   BmcWorld, BmcPowerOn, BmcIpmiUser,
   bmc_world, bmc_with_ipmi_users, bmc_with_redfish_accounts, bmc_ipmi_user_accepts,
-  BmcRedfishAccount, BmcRedfishAccountSharesIpmi, BmcRedfishAccountOwnCredential,
+  BmcRedfishAccount, BmcRedfishCredentialSharesIpmi, BmcRedfishCredentialOwn,
+  BmcRedfishLockoutThreshold, BmcRedfishLockoutNever, BmcRedfishLockoutAfter,
   bmc_redfish_authorize, bmc_redfish_change_password, bmc_redfish_note_failed_login, bmc_redfish_account,
-  bmc_redfish_account_forced, bmc_redfish_account_failed_logins, bmc_redfish_account_locked,
   RedfishAuthTransport, RedfishAuthAccepted, RedfishAuthUnauthorized, RedfishAuthForcedPasswordChange,
   RedfishBasicAuth, RedfishSessionAuth, RedfishOrdinaryRequest, RedfishPasswordPatch,
 }
@@ -42,11 +42,11 @@ fn world_with(accounts: List<BmcRedfishAccount>) -> BmcWorld {
 }
 
 fn forced_root() -> BmcRedfishAccount {
-  BmcRedfishAccountOwnCredential { name: "root", password: factory_password, role: admin_role(), enabled: true, locked: false, forced_password_change: true, failed_logins: 0 }
+  BmcRedfishAccount { name: "root", credential: BmcRedfishCredentialOwn { password: factory_password }, role: admin_role(), enabled: true, locked: false, forced_password_change: true, failed_logins: 0 }
 }
 
 fn free_root(password: String) -> BmcRedfishAccount {
-  BmcRedfishAccountOwnCredential { name: "root", password: password, role: admin_role(), enabled: true, locked: false, forced_password_change: false, failed_logins: 0 }
+  BmcRedfishAccount { name: "root", credential: BmcRedfishCredentialOwn { password: password }, role: admin_role(), enabled: true, locked: false, forced_password_change: false, failed_logins: 0 }
 }
 
 // THE DRY POSITIVE CONTROL ON THE REAL PATH: the whole cycle the fold rehearses. While the change is forced,
@@ -76,16 +76,11 @@ test fn the_forced_change_cycle_turns_a_factory_root_into_a_managed_one() -> Boo
     RedfishAuthUnauthorized {} => true
     _ => false
   }
-  let flag_cleared = managed_root_no_longer_forced(world: step.world)
-  forced_basic && forced_session && patch_admitted && step.completed && managed_authenticates && published_refused && flag_cleared
-}
-
-// A thin helper so the positive control does not sprawl: the managed root's forced flag must read false.
-fn managed_root_no_longer_forced(world: BmcWorld) -> Bool {
-  match bmc_redfish_account(world: world, name: "root") {
+  let flag_cleared = match bmc_redfish_account(world: step.world, name: "root") {
     Absent => false
-    Present { value: account } => !bmc_redfish_account_forced(account: account)
+    Present { value: account } => !account.forced_password_change
   }
+  forced_basic && forced_session && patch_admitted && step.completed && managed_authenticates && published_refused && flag_cleared
 }
 
 // RED: a wrong password is 401, and a 401 is NOT a secured state -- neither as an ordinary request nor as an
@@ -111,7 +106,7 @@ test fn a_stale_or_wrong_password_is_401_and_never_accepted() -> Bool {
 // RED: a write to ANOTHER account leaves THIS account's forced state standing. Changing "operator" must not
 // clear "root"'s forced flag -- otherwise one PATCH would silently stand in for securing every account.
 test fn a_password_write_to_another_account_leaves_this_one_forced() -> Bool {
-  let operator = BmcRedfishAccountOwnCredential { name: "operator", password: factory_password, role: admin_role(), enabled: true, locked: false, forced_password_change: true, failed_logins: 0 }
+  let operator = BmcRedfishAccount { name: "operator", credential: BmcRedfishCredentialOwn { password: factory_password }, role: admin_role(), enabled: true, locked: false, forced_password_change: true, failed_logins: 0 }
   let world = world_with([forced_root(), operator])
   let step = bmc_redfish_change_password(world: world, name: "operator", new_password: managed_password)
   let root_still_forced = match bmc_redfish_authorize(world: step.world, name: "root", password: factory_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
@@ -131,7 +126,8 @@ test fn a_password_write_to_another_account_leaves_this_one_forced() -> Bool {
 // moved, not a Redfish copy that drifted from an IPMI original.
 test fn a_shared_root_password_write_moves_the_one_ipmi_store_not_a_copy() -> Bool {
   let root_id: IpmiUserId = 2
-  let seeded = bmc_with_ipmi_users(world: world_with([BmcRedfishAccountSharesIpmi { name: "root", ipmi_user: root_id, role: admin_role(), enabled: true, locked: false, forced_password_change: true, failed_logins: 0 }]), users: [BmcIpmiUser { id: root_id, password: factory_password }])
+  let root = BmcRedfishAccount { name: "root", credential: BmcRedfishCredentialSharesIpmi { ipmi_user: root_id }, role: admin_role(), enabled: true, locked: false, forced_password_change: true, failed_logins: 0 }
+  let seeded = bmc_with_ipmi_users(world: world_with([root]), users: [BmcIpmiUser { id: root_id, password: factory_password }])
   let reaches_forced = match bmc_redfish_authorize(world: seeded, name: "root", password: factory_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
     RedfishAuthForcedPasswordChange { body: _ } => true
     _ => false
@@ -148,7 +144,7 @@ test fn a_shared_root_password_write_moves_the_one_ipmi_store_not_a_copy() -> Bo
 // A SHARED ACCOUNT whose IPMI user the table does not hold has no credential to authenticate -- it fails
 // closed to 401 rather than assuming a password. The RED: it must not accept anything.
 test fn a_shared_root_without_its_ipmi_user_fails_closed() -> Bool {
-  let orphan = BmcRedfishAccountSharesIpmi { name: "root", ipmi_user: 7, role: admin_role(), enabled: true, locked: false, forced_password_change: false, failed_logins: 0 }
+  let orphan = BmcRedfishAccount { name: "root", credential: BmcRedfishCredentialSharesIpmi { ipmi_user: 7 }, role: admin_role(), enabled: true, locked: false, forced_password_change: false, failed_logins: 0 }
   let refused = match bmc_redfish_authorize(world: world_with([orphan]), name: "root", password: "", transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
     RedfishAuthUnauthorized {} => true
     _ => false
@@ -158,8 +154,8 @@ test fn a_shared_root_without_its_ipmi_user_fails_closed() -> Bool {
 
 // A disabled account, a locked account, and no-such-account all read 401 (fail closed, no leaking which).
 test fn disabled_locked_and_unknown_read_401_not_access() -> Bool {
-  let disabled = BmcRedfishAccountOwnCredential { name: "root", password: managed_password, role: admin_role(), enabled: false, locked: false, forced_password_change: false, failed_logins: 0 }
-  let locked = BmcRedfishAccountOwnCredential { name: "root", password: managed_password, role: admin_role(), enabled: true, locked: true, forced_password_change: false, failed_logins: 0 }
+  let disabled = BmcRedfishAccount { name: "root", credential: BmcRedfishCredentialOwn { password: managed_password }, role: admin_role(), enabled: false, locked: false, forced_password_change: false, failed_logins: 0 }
+  let locked = BmcRedfishAccount { name: "root", credential: BmcRedfishCredentialOwn { password: managed_password }, role: admin_role(), enabled: true, locked: true, forced_password_change: false, failed_logins: 0 }
   let disabled_401 = match bmc_redfish_authorize(world: world_with([disabled]), name: "root", password: managed_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
     RedfishAuthUnauthorized {} => true
     _ => false
@@ -175,31 +171,34 @@ test fn disabled_locked_and_unknown_read_401_not_access() -> Bool {
   disabled_401 && locked_401 && unknown_401
 }
 
-// THE FAILED-LOGIN COUNTER counts up and locks at a caller-supplied threshold; threshold 0 NEVER locks (the
-// lockout lane's upstream rule). After the lock the correct credential no longer authenticates (401), so a
-// locked account cannot be secured until the lockout lane lifts it.
-test fn the_failed_login_counter_locks_at_threshold_and_zero_never_locks() -> Bool {
+// THE FAILED-LOGIN COUNTER counts up and locks under a typed After { count } threshold; Never NEVER locks (so
+// a build that serves no lockout is modelled without a sentinel). After the lock the correct credential no
+// longer authenticates (401), so a locked account cannot be secured until the lockout lane lifts it.
+test fn the_failed_login_counter_locks_under_after_and_never_under_never() -> Bool {
   let base = world_with([free_root(managed_password)])
-  let first = bmc_redfish_note_failed_login(world: base, name: "root", at_lockout_threshold: 3)
-  let second = bmc_redfish_note_failed_login(world: first.world, name: "root", at_lockout_threshold: 3)
-  let third = bmc_redfish_note_failed_login(world: second.world, name: "root", at_lockout_threshold: 3)
-  let counted = bmc_redfish_account_failed_logins(account: account_or_die(world: third.world)) == 3
-  let locked_now = third.locked_now && bmc_redfish_account_locked(account: account_or_die(world: third.world))
+  let after_three: BmcRedfishLockoutThreshold = BmcRedfishLockoutAfter { count: 3 }
+  let never: BmcRedfishLockoutThreshold = BmcRedfishLockoutNever
+  let first = bmc_redfish_note_failed_login(world: base, name: "root", at_lockout_threshold: after_three)
+  let second = bmc_redfish_note_failed_login(world: first.world, name: "root", at_lockout_threshold: after_three)
+  let third = bmc_redfish_note_failed_login(world: second.world, name: "root", at_lockout_threshold: after_three)
+  let counted = match bmc_redfish_account(world: third.world, name: "root") {
+    Absent => false
+    Present { value: account } => account.failed_logins == 3
+  }
+  let locked_now = third.locked_now && match bmc_redfish_account(world: third.world, name: "root") {
+    Absent => false
+    Present { value: account } => account.locked
+  }
   let locked_refuses = match bmc_redfish_authorize(world: third.world, name: "root", password: managed_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
     RedfishAuthUnauthorized {} => true
     _ => false
   }
-  let never_locked = match bmc_redfish_note_failed_login(world: bmc_redfish_note_failed_login(world: base, name: "root", at_lockout_threshold: 0).world, name: "root", at_lockout_threshold: 0) {
-    step => !step.locked_now && !bmc_redfish_account_locked(account: account_or_die(world: step.world))
+  let never_world = bmc_redfish_note_failed_login(world: bmc_redfish_note_failed_login(world: base, name: "root", at_lockout_threshold: never).world, name: "root", at_lockout_threshold: never)
+  let never_locked = !never_world.locked_now && match bmc_redfish_account(world: never_world.world, name: "root") {
+    Absent => true
+    Present { value: account } => !account.locked
   }
   counted && locked_now && locked_refuses && never_locked
-}
-
-fn account_or_die(world: BmcWorld) -> BmcRedfishAccount {
-  match bmc_redfish_account(world: world, name: "root") {
-    Absent => BmcRedfishAccountOwnCredential { name: "absent", password: "", role: admin_role(), enabled: false, locked: false, forced_password_change: false, failed_logins: 0 }
-    Present { value: a } => a
-  }
 }
 
 // INHABITANCE. The body the world emits on the 403 (built in bmc_redfish_authorize through the extdeps

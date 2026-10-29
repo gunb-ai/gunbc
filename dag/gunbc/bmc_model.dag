@@ -13,7 +13,8 @@ import extdeps.bmc.ipmi_sdr { SdrTypeLine }
 import extdeps.bmc.ipmi_chassis_control {
   IpmiChassisControlAction, IpmiChassisPowerDown, IpmiChassisPowerUp, IpmiChassisPowerCycle, IpmiChassisHardReset,
 }
-import std.roster_frontier { FrontierRow, PathSubject }
+import std.roster_frontier { FrontierRow, PathSubject, frontier_row_path }
+import std.dissolution { unbound_dissolution }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // THE ONE BMC MODEL: scenario state and its transitions, nothing else. The controller operations and
@@ -557,6 +558,11 @@ fn bmc_ipmi_get_user_access(world: BmcWorld, user: IpmiUserId, channel: IpmiChan
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "bmc_sol_drop_fired" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  frontier_row_path(
+    path: "gunbc.bmc_model::bmc_redfish_note_failed_login",
+    reason: "the failed-login lock reads its threshold from the caller as a typed BmcRedfishLockoutThreshold, not from the served AccountService; the world counts failures and applies a threshold but does not own the served value (the lockout lane does). Rostered so the ratchet arms at unrostered=0.",
+    dissolution: unbound_dissolution(description: "DISSOLVE-ON: the lockout lane's extdeps.bmc.redfish RedfishAccountServiceLockoutServed lands and the caller reads account_lockout_threshold from it into bmc_redfish_note_failed_login, retiring the caller-supplied threshold parameter; the 0-means-never conversion belongs at that extdeps wire boundary, not here."),
+  ),
 ]
 
 // ── REDFISH ACCOUNT SERVICE ───────────────────────────────────────────────────────────────────
@@ -582,25 +588,24 @@ data non_fold_residue_frontier: List<FrontierRow> = [
 // honestly, so it can neither silently duplicate a shared secret nor silently claim a shared secret that
 // the build does not ground.
 
-type BmcRedfishAccount
-  = BmcRedfishAccountSharesIpmi {
-      name: String
-      ipmi_user: IpmiUserId
-      role: RedfishAccountRole
-      enabled: Bool
-      locked: Bool
-      forced_password_change: Bool
-      failed_logins: Int
-    }
-  | BmcRedfishAccountOwnCredential {
-      name: String
-      password: String
-      role: RedfishAccountRole
-      enabled: Bool
-      locked: Bool
-      forced_password_change: Bool
-      failed_logins: Int
-    }
+// The credential is the ONLY thing that differs between the two account kinds; everything else is modeled
+// once (DESIGN §2). A shared account references the ONE credential's home -- the IPMI user id, whose password
+// the IPMI user table stores -- so there is never a second copy of a secret the world did not earn.
+type BmcRedfishCredential
+  = BmcRedfishCredentialSharesIpmi { ipmi_user: IpmiUserId }
+  | BmcRedfishCredentialOwn { password: String }
+
+// One account the Redfish surface serves. The credential sum above is the only branch; the rest are plain
+// fields read directly. The forced-change flag and the failed-login counter drive the 03.22.00 first-login flow.
+type BmcRedfishAccount {
+  name: String
+  credential: BmcRedfishCredential
+  role: RedfishAccountRole
+  enabled: Bool
+  locked: Bool
+  forced_password_change: Bool
+  failed_logins: Int
+}
 
 // Which accounts the Redfish surface serves. The dry Redfish read (gunbc.machine_intake.bmc_secure's
 // dry_read_bmc_account_state) is the consumer that reads this census; a world built with none reads as
@@ -612,41 +617,6 @@ fn bmc_with_redfish_accounts(world: BmcWorld, accounts: List<BmcRedfishAccount>)
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
     web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
     redfish_accounts: Present { value: accounts },
-  }
-}
-
-fn bmc_redfish_account_name(account: BmcRedfishAccount) -> String {
-  match account {
-    BmcRedfishAccountSharesIpmi { name: name } => name
-    BmcRedfishAccountOwnCredential { name: name } => name
-  }
-}
-
-fn bmc_redfish_account_enabled(account: BmcRedfishAccount) -> Bool {
-  match account {
-    BmcRedfishAccountSharesIpmi { enabled: enabled } => enabled
-    BmcRedfishAccountOwnCredential { enabled: enabled } => enabled
-  }
-}
-
-fn bmc_redfish_account_locked(account: BmcRedfishAccount) -> Bool {
-  match account {
-    BmcRedfishAccountSharesIpmi { locked: locked } => locked
-    BmcRedfishAccountOwnCredential { locked: locked } => locked
-  }
-}
-
-fn bmc_redfish_account_forced(account: BmcRedfishAccount) -> Bool {
-  match account {
-    BmcRedfishAccountSharesIpmi { forced_password_change: forced } => forced
-    BmcRedfishAccountOwnCredential { forced_password_change: forced } => forced
-  }
-}
-
-fn bmc_redfish_account_failed_logins(account: BmcRedfishAccount) -> Int {
-  match account {
-    BmcRedfishAccountSharesIpmi { failed_logins: n } => n
-    BmcRedfishAccountOwnCredential { failed_logins: n } => n
   }
 }
 
@@ -678,7 +648,7 @@ fn bmc_redfish_surface(world: BmcWorld) -> List<BmcRedfishAccount>? {
 
 fn bmc_redfish_account(world: BmcWorld, name: String) -> BmcRedfishAccount? {
   let wanted: BmcRedfishAccount? = none
-  filter(bmc_redfish_census(world: world), a => bmc_redfish_account_name(account: a) == name)
+  filter(bmc_redfish_census(world: world), a => a.name == name)
     |> fold(init: wanted, f: (acc, a) => match acc { Absent => Present { value: a }  Present { value: _ } => acc })
 }
 
@@ -693,9 +663,9 @@ fn bmc_ipmi_user_password(world: BmcWorld, user: IpmiUserId) -> String? {
 }
 
 fn bmc_redfish_account_password(world: BmcWorld, account: BmcRedfishAccount) -> String? {
-  match account {
-    BmcRedfishAccountSharesIpmi { ipmi_user: ipmi_user } => bmc_ipmi_user_password(world: world, user: ipmi_user)
-    BmcRedfishAccountOwnCredential { password: password } => Present { value: password }
+  match account.credential {
+    BmcRedfishCredentialSharesIpmi { ipmi_user: ipmi_user } => bmc_ipmi_user_password(world: world, user: ipmi_user)
+    BmcRedfishCredentialOwn { password: password } => Present { value: password }
   }
 }
 
@@ -737,7 +707,7 @@ fn bmc_redfish_authorize(
   match bmc_redfish_account(world: world, name: name) {
     Absent => RedfishAuthUnauthorized {}
     Present { value: account } =>
-      if !bmc_redfish_account_enabled(account: account) || bmc_redfish_account_locked(account: account) {
+      if !account.enabled || account.locked {
         RedfishAuthUnauthorized {}
       } else {
         match bmc_redfish_account_password(world: world, account: account) {
@@ -745,7 +715,7 @@ fn bmc_redfish_authorize(
           Present { value: secret } =>
             if secret != password {
               RedfishAuthUnauthorized {}
-            } else if bmc_redfish_account_forced(account: account) {
+            } else if account.forced_password_change {
               match request {
                 RedfishPasswordPatch {} => RedfishAuthAccepted { via: transport }
                 RedfishOrdinaryRequest {} => RedfishAuthForcedPasswordChange {
@@ -776,55 +746,58 @@ fn bmc_redfish_change_password(world: BmcWorld, name: String, new_password: Stri
   match bmc_redfish_account(world: world, name: name) {
     Absent => BmcRedfishPasswordChangeStep { world: world, completed: false }
     Present { value: account } =>
-      let cleared = match account {
-        BmcRedfishAccountSharesIpmi { name: n, ipmi_user: i, role: r, enabled: e, locked: l } =>
-          BmcRedfishAccountSharesIpmi { name: n, ipmi_user: i, role: r, enabled: e, locked: l, forced_password_change: false, failed_logins: 0 }
-        BmcRedfishAccountOwnCredential { name: n, role: r, enabled: e, locked: l } =>
-          BmcRedfishAccountOwnCredential { name: n, password: new_password, role: r, enabled: e, locked: l, forced_password_change: false, failed_logins: 0 }
+      // The record update: the forced flag clears and the counter resets on a completed change. A dedicated
+      // credential writes the new password here; a shared credential keeps referencing the IPMI user (written
+      // below), so the one stored password is the one that moves.
+      let new_credential = match account.credential {
+        BmcRedfishCredentialOwn { password: _ } => BmcRedfishCredentialOwn { password: new_password }
+        BmcRedfishCredentialSharesIpmi { ipmi_user: i } => BmcRedfishCredentialSharesIpmi { ipmi_user: i }
       }
+      let cleared = BmcRedfishAccount { name: account.name, credential: new_credential, role: account.role, enabled: account.enabled, locked: account.locked, forced_password_change: false, failed_logins: 0 }
       let with_accounts = bmc_with_redfish_accounts(
         world: world,
-        accounts: map(bmc_redfish_census(world: world), a => if bmc_redfish_account_name(account: a) == name { cleared } else { a }),
+        accounts: map(bmc_redfish_census(world: world), a => if a.name == name { cleared } else { a }),
       )
-      match account {
-        BmcRedfishAccountSharesIpmi { ipmi_user: i } =>
+      match account.credential {
+        BmcRedfishCredentialSharesIpmi { ipmi_user: i } =>
           let wrote = bmc_ipmi_set_user_password(world: with_accounts, user: i, password: new_password)
           BmcRedfishPasswordChangeStep { world: wrote.world, completed: wrote.completed }
-        BmcRedfishAccountOwnCredential { password: _ } =>
+        BmcRedfishCredentialOwn { password: _ } =>
           BmcRedfishPasswordChangeStep { world: with_accounts, completed: true }
       }
   }
 }
 
-// THE FAILED-LOGIN COUNTER is the world's; the SERVED threshold that decides when it locks is declared by
-// the lockout lane in extdeps.bmc.redfish (RedfishAccountServiceLockoutServed: AccountLockoutThreshold), NOT
-// here. Until that shape lands the threshold is supplied by the caller and `0` means NEVER lock -- the
-// lockout lane's upstream-grounded rule (a threshold of 0 means the account shall never be locked), cited
-// there, not inferred here. So a build that serves no lockout is modelled without inventing a threshold, and
-// a build that does reaches the lock only through a threshold the lockout lane declared. PROSE FRONTIER:
-// when RedfishAccountServiceLockoutServed lands, the caller passes its account_lockout_threshold here and this
-// comment is replaced by the read; the trigger is that shape landing on main.
+// The failed-login COUNTER and its lock transition are the world's. The threshold is a TYPED
+// BmcRedfishLockoutThreshold, never a magic number: `Never` models a build that serves no lockout without
+// inventing a count, and `After { count }` locks when the counter reaches it -- no `0` sentinel, no
+// `!= 0` test. Where the served value comes from -- the lockout lane's extdeps.bmc.redfish
+// RedfishAccountServiceLockoutServed -- is a DECLARED frontier (see non_fold_residue_frontier, subject
+// gunbc.bmc_model::bmc_redfish_note_failed_login); the 0-means-Never conversion belongs at that extdeps wire
+// boundary, not here.
+type BmcRedfishLockoutThreshold
+  = BmcRedfishLockoutNever
+  | BmcRedfishLockoutAfter { count: Int }
+
 type BmcRedfishFailedLoginStep {
   world: BmcWorld
   locked_now: Bool
 }
 
-fn bmc_redfish_note_failed_login(world: BmcWorld, name: String, at_lockout_threshold: Int) -> BmcRedfishFailedLoginStep {
+fn bmc_redfish_note_failed_login(world: BmcWorld, name: String, at_lockout_threshold: BmcRedfishLockoutThreshold) -> BmcRedfishFailedLoginStep {
   match bmc_redfish_account(world: world, name: name) {
     Absent => BmcRedfishFailedLoginStep { world: world, locked_now: false }
     Present { value: account } =>
-      let count = bmc_redfish_account_failed_logins(account: account) + 1
-      let should_lock = at_lockout_threshold != 0 && count >= at_lockout_threshold
-      let bumped = match account {
-        BmcRedfishAccountSharesIpmi { name: n, ipmi_user: i, role: r, enabled: e, locked: l, forced_password_change: f } =>
-          BmcRedfishAccountSharesIpmi { name: n, ipmi_user: i, role: r, enabled: e, locked: l || should_lock, forced_password_change: f, failed_logins: count }
-        BmcRedfishAccountOwnCredential { name: n, password: p, role: r, enabled: e, locked: l, forced_password_change: f } =>
-          BmcRedfishAccountOwnCredential { name: n, password: p, role: r, enabled: e, locked: l || should_lock, forced_password_change: f, failed_logins: count }
+      let count = account.failed_logins + 1
+      let should_lock = match at_lockout_threshold {
+        BmcRedfishLockoutNever => false
+        BmcRedfishLockoutAfter { count: threshold } => count >= threshold
       }
+      let bumped = BmcRedfishAccount { name: account.name, credential: account.credential, role: account.role, enabled: account.enabled, locked: account.locked || should_lock, forced_password_change: account.forced_password_change, failed_logins: count }
       BmcRedfishFailedLoginStep {
         world: bmc_with_redfish_accounts(
           world: world,
-          accounts: map(bmc_redfish_census(world: world), a => if bmc_redfish_account_name(account: a) == name { bumped } else { a }),
+          accounts: map(bmc_redfish_census(world: world), a => if a.name == name { bumped } else { a }),
         ),
         locked_now: should_lock,
       }

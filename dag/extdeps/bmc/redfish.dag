@@ -443,20 +443,24 @@ type RedfishAccountCollectionRead
       members_odata_count: JsonFieldRead<Int>,
     }
 
-fn redfish_collection_member_has_odata_id(member: JsonValue) -> Bool {
-  match json_field_string(obj: member, key: "@odata.id") {
-    FieldRead { value: _ } => true
-    FieldAbsent => false
-    FieldMalformed { cause: _ } => false
-  }
-}
-
-fn redfish_collection_member_odata_id_or_empty(member: JsonValue) -> String {
-  match json_field_string(obj: member, key: "@odata.id") {
-    FieldRead { value: s } => s
-    FieldAbsent => ""
-    FieldMalformed { cause: _ } => ""
-  }
+// THE MEMBERS ARRAY IS THE CENSUS, read in one pass, and the reading REFUSES (no partial census) the
+// moment any member fails to carry its single string `@odata.id`. There is no fill-in default and no
+// pre-check that a later reader re-does (DESIGN §5: correctness by construction, not validation) -- the
+// fold accumulates a `List<String>?` and, once it has seen a member it cannot name, stays `Absent`, so an
+// unreadable census can never be assembled from partially-missing members. A malformed `@odata.id` is
+// refused exactly as an absent one is: a member whose identity is not a string cannot be named.
+fn redfish_member_odata_ids(members: List<JsonValue>) -> List<String>? {
+  let start: List<String>? = Present { value: [] }
+  fold(members, init: start, f: (acc, member) =>
+    match acc {
+      Absent => Absent
+      Present { value: ids } => match json_field_string(obj: member, key: "@odata.id") {
+        FieldRead { value: s } => Present { value: concat(ids, [s]) }
+        FieldAbsent => Absent
+        FieldMalformed { cause: _ } => Absent
+      }
+    }
+  )
 }
 
 // THE COLLECTION DECIDES THE CENSUS, and only a document that parses and carries a Members array of
@@ -473,11 +477,10 @@ fn redfish_manager_account_collection_from_json(body: String) -> RedfishAccountC
       FieldAbsent => RedfishAccountCollectionUnreadable { cause: "the ManagerAccountCollection carries no Members member" }
       FieldMalformed { cause: c } => RedfishAccountCollectionUnreadable { cause: c }
       FieldRead { value: JsonArray { elements: elements } } =>
-        if any(elements, e => !redfish_collection_member_has_odata_id(member: e)) {
-          RedfishAccountCollectionUnreadable { cause: "a ManagerAccountCollection member carries no single string @odata.id" }
-        } else {
-          RedfishAccountCollection {
-            member_odata_ids: map(elements, e => redfish_collection_member_odata_id_or_empty(member: e)),
+        match redfish_member_odata_ids(members: elements) {
+          Absent => RedfishAccountCollectionUnreadable { cause: "a ManagerAccountCollection member carries no single string @odata.id" }
+          Present { value: ids } => RedfishAccountCollection {
+            member_odata_ids: ids,
             members_odata_count: json_field_int(obj: value, key: "Members@odata.count"),
           }
         }
