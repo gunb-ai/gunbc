@@ -1,0 +1,60 @@
+module test.claim.live_deploy.capacity_cutover_recovery_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import std.error_primitives { Ok, Err }
+import std.scoped_authorization { AttemptIdentity }
+import std.durable_compare_and_set { CasObservedReadable, CasReadableAbsent }
+import extdeps.crypto.hash { sha256_digest }
+import extdeps.systemd.manager { SystemManager }
+import extdeps.systemd.unit_file { ServiceUnitFile, NotInstallable }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import gunbc.live_deploy.capacity_cutover_recovery {
+  CapacityGenerationFile, CapacityCutoverRecord, CapacityInstalling,
+  CapacityResume, CapacityRollback, capacity_recovery_plan, capacity_recovery_finding, CapacityRecoveryOrphanMasks,
+  CapacityRecoveryInstall, CapacityRecoveryVerifyGeneration,
+}
+
+fn recovery_fixture_file(name: NonEmptyStr, digest: NonEmptyStr) -> CapacityGenerationFile {
+  CapacityGenerationFile { install: DeploymentUnitInstall { manager: SystemManager, unit: name,
+    destination: concat("/etc/systemd/system/", name as String) as NonEmptyStr,
+    file: ServiceUnitFile { unit: [], service: [], install: NotInstallable } }, digest: sha256_digest(hex: digest) }
+}
+
+fn recovery_fixture_record() -> CapacityCutoverRecord {
+  let path = CapacityInhibitionPath { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }, path: "/etc/systemd/system.control/fixture.service" }
+  CapacityCutoverRecord { attempt: "fixture-cutover" as NonEmptyStr as AttemptIdentity,
+    target_revision: "1111111111111111111111111111111111111111",
+    prior: [recovery_fixture_file(name: "fixture.service", digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")],
+    target: [recovery_fixture_file(name: "fixture.service", digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")],
+    planned_paths: [path], created_paths: [path], phase: CapacityInstalling { completed: 0 } }
+}
+
+// Supplied journal boundary, not a claim to have simulated filesystem durability.
+// Replay includes even a possibly completed write; the checkpoint cannot skip it.
+test fn resume_reinstalls_and_verifies_the_recorded_target() -> Bool {
+  let record = recovery_fixture_record()
+  match capacity_recovery_plan(record: record, choice: CapacityResume) {
+    Err { value: _ } => false
+    Ok { value: legs } => count(filter(legs, leg => match leg { CapacityRecoveryInstall { file: file } => record.target == [file] _ => false })) == 1
+      && count(filter(legs, leg => match leg { CapacityRecoveryVerifyGeneration { files: files } => files == record.target _ => false })) == 1
+  }
+}
+
+test fn rollback_uses_the_recorded_prior_not_the_current_files() -> Bool {
+  let record = recovery_fixture_record()
+  match capacity_recovery_plan(record: record, choice: CapacityRollback) {
+    Err { value: _ } => false
+    Ok { value: legs } => count(filter(legs, leg => match leg { CapacityRecoveryInstall { file: file } => record.prior == [file] _ => false })) == 1
+      && count(filter(legs, leg => match leg { CapacityRecoveryVerifyGeneration { files: files } => files == record.prior _ => false })) == 1
+  }
+}
+
+test fn masks_without_a_record_are_reported_and_never_adopted() -> Bool {
+  let record = recovery_fixture_record()
+  match capacity_recovery_finding(record: CasObservedReadable { readable: CasReadableAbsent }, owned_masks: Ok { value: record.created_paths }) {
+    CapacityRecoveryOrphanMasks { paths: paths, remedy: _ } => paths == record.created_paths
+    _ => false
+  }
+}
