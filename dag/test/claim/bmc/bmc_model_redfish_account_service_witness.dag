@@ -312,3 +312,23 @@ test fn the_bmc_secure_redfish_consumers_are_rostered_as_pending_frontiers() -> 
   let write_bound = any(xs: write_rows, predicate: fn(row) { redfish_frontier_trigger_qualified_name(row: row) == write_trigger })
   counts && every_row_disciplined && read_bound && write_bound
 }
+
+// RED (review 87824): a SHARED account whose IPMI user is not in the table has nowhere to write. Applying the
+// Password PATCH there must NOT clear the forced flag or reset the counter -- the change is not completed and the
+// world is returned UNCHANGED. This is the fabricated-partial-state the pre-fix code built (it cleared the record
+// first, then the IPMI write failed and handed back the half-written world). Positive control is the sibling
+// a_shared_root_password_write_moves_the_one_ipmi_store_not_a_copy (a present user: completed, flag cleared,
+// counter reset, one store moved).
+test fn a_shared_password_write_to_an_absent_ipmi_user_changes_nothing() -> Bool {
+  let missing_id: IpmiUserId = 7
+  let orphan = BmcRedfishAccount { name: "root", credential: BmcRedfishCredentialSharesIpmi { ipmi_user: missing_id }, role: admin_role(), enabled: true, locked: false, forced_password_change: true, failed_logins: 3 }
+  let seeded = world_with([orphan])
+  let step = bmc_redfish_change_password(world: seeded, name: "root", new_password: managed_password)
+  let not_completed = !step.completed
+  let flag_and_counter_untouched = match bmc_redfish_account(world: step.world, name: "root") {
+    Present { value: a } => a.forced_password_change && a.failed_logins == 3
+    Absent => false
+  }
+  let no_credential_written = !bmc_ipmi_user_accepts(world: step.world, user: missing_id, password: managed_password)
+  not_completed && flag_and_counter_untouched && no_credential_written && step.world == seeded
+}

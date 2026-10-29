@@ -727,16 +727,27 @@ fn bmc_redfish_authorize(
   }
 }
 
-// THE ONE PASSWORD WRITE. Applying the admitted Password PATCH writes the account's credential and clears
-// the forced flag -- the two effects the change is made of. For a shared account the credential is written to
-// its ONE home via bmc_ipmi_set_user_password (the shared write goes through the IPMI user, so there is still
-// a single stored password); for a dedicated account it is written in the record. A write to an account the
-// Redfish surface does not serve changes nothing and is not completed. The failed-login counter resets on a
-// completed change. `completed` is the world's fact about whether the account existed -- the caller's
-// re-read, not this reply, decides whether the account is secured (DESIGN 4b rung discipline).
+// THE ONE PASSWORD WRITE, all-or-nothing. Applying the admitted Password PATCH writes the account's credential
+// and clears the forced flag -- the two effects the change is made of, and both only on a completed change. For a
+// shared account the credential is written to its ONE home via bmc_ipmi_set_user_password (the shared write goes
+// through the IPMI user, so there is still a single stored password); for a dedicated account it is written in the
+// record. A change that cannot fully apply -- the account not in the census, or a shared account whose IPMI user
+// is not in the table -- returns the world UNCHANGED (flag still set, counter untouched) and is not completed; a
+// half-applied "cleared flag, no credential written" is the fabricated default DESIGN 5 refuses. The failed-login
+// counter resets only on a completed change. The caller's re-read, not this reply, decides whether the account is
+// secured (DESIGN 4b rung discipline).
 type BmcRedfishPasswordChangeStep {
   world: BmcWorld
   completed: Bool
+}
+
+// Replace ONE account record in the world's Redfish census by name (the shared rebuild every completed
+// change performs). Extracted so the shared and dedicated arms update the record the same single way.
+fn bmc_redfish_set_record(world: BmcWorld, name: String, cleared: BmcRedfishAccount) -> BmcWorld {
+  bmc_with_redfish_accounts(
+    world: world,
+    accounts: map(bmc_redfish_census(world: world), a => if a.name == name { cleared } else { a }),
+  )
 }
 
 fn bmc_redfish_change_password(world: BmcWorld, name: String, new_password: String) -> BmcRedfishPasswordChangeStep {
@@ -751,16 +762,20 @@ fn bmc_redfish_change_password(world: BmcWorld, name: String, new_password: Stri
         BmcRedfishCredentialSharesIpmi { ipmi_user: i } => BmcRedfishCredentialSharesIpmi { ipmi_user: i }
       }
       let cleared = BmcRedfishAccount { name: account.name, credential: new_credential, role: account.role, enabled: account.enabled, locked: account.locked, forced_password_change: false, failed_logins: 0 }
-      let with_accounts = bmc_with_redfish_accounts(
-        world: world,
-        accounts: map(bmc_redfish_census(world: world), a => if a.name == name { cleared } else { a }),
-      )
       match account.credential {
+        // A shared account moves ONE credential: the password is written to the IPMI user, and the Redfish
+        // record's flag clears and its counter resets ONLY on a completed write. If the user is not in the
+        // table the write is not completed and NOTHING changes -- no fabricated cleared flag, no reset counter
+        // (DESIGN 5: fully succeed, or fail with the world untouched, never a half-applied change).
         BmcRedfishCredentialSharesIpmi { ipmi_user: i } =>
-          let wrote = bmc_ipmi_set_user_password(world: with_accounts, user: i, password: new_password)
-          BmcRedfishPasswordChangeStep { world: wrote.world, completed: wrote.completed }
+          let wrote = bmc_ipmi_set_user_password(world: world, user: i, password: new_password)
+          if wrote.completed {
+            BmcRedfishPasswordChangeStep { world: bmc_redfish_set_record(world: wrote.world, name: name, cleared: cleared), completed: true }
+          } else {
+            BmcRedfishPasswordChangeStep { world: wrote.world, completed: false }
+          }
         BmcRedfishCredentialOwn { password: _ } =>
-          BmcRedfishPasswordChangeStep { world: with_accounts, completed: true }
+          BmcRedfishPasswordChangeStep { world: bmc_redfish_set_record(world: world, name: name, cleared: cleared), completed: true }
       }
   }
 }
