@@ -10506,7 +10506,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(result_declaration_diags, concat(tier2b.kernel_diags, builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope, if func_name == "to_string" { tostr_census_registry(call_target: call_target, typed_args: typed_args, span: span, scope: scope) } else { [] })))))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(result_declaration_diags, concat(tier2b.kernel_diags, builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope), if func_name == "to_string" { tostr_census_registry(call_target: call_target, typed_args: typed_args, span: span, scope: scope) } else { [] }))))
           }
         } else {
           let callable_local = match call_target_local_binding(outcome: call_target) {
