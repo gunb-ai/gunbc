@@ -1,0 +1,88 @@
+module v2.test.claim.outside_discovery_roots_census_helpers
+
+import std.types { String, List }
+import gunbc.stage0.stage0_cargo_manifest { stage0_package_root, stage0_source_dir_relative_to_package }
+import gunbc.stage0.stage0_emitted_population_manifest { emitted_population_manifest_basename }
+
+// The artifact's location, COMPOSED from the modeled manifest constants rather than spelled. Spelling
+// `src/v1/stage0/src/emitted_population.rs` here would be a second source for where that file lives -- the
+// same fact `gunbc.stage0.stage0_rust_host_observation` already owns.
+data emitted_registry_path: String = concat(
+  concat(stage0_package_root, stage0_source_dir_relative_to_package),
+  emitted_population_manifest_basename
+)
+
+// FIXTURE DATA for the outside-discovery-roots census -- the expected population, and the two edge cases the
+// census must classify differently. It lives in the TEST TREE, beside the claims that read it, because nothing
+// in production consumes it: the census computes its own population from the live reads (the index listing and
+// the marker answer), and the production census module never referenced a single one of these names. They sat
+// in `v2.workflow.outside_discovery_roots_census`, which made a production module carry test data (review
+// 83368), and it now does not.
+//
+// WHAT EACH LIST IS: HERMETIC FIXTURE INPUT ONLY. None of these lists is compared with the live tree or the live
+// registry. The live pairing derives its expected population from the emitted population registry
+// (v2.test.claim.outside_discovery_roots_census_real_execution `derived_subject_population`), because a
+// hand-kept copy of the tree's file list is a change detector (DESIGN 5) that went red when a file was added.
+//   - `subject_population_expected` is a fixture shaped like the subject's claim-bearing files; it is injected
+//     into the pure census so the witness can exercise its classification on a controlled population.
+//   - `subject_helpers_declare_nothing` and `prose_mentioning_paths` are the two failure modes the marker read
+//     must tell apart: a file under the subject that declares NO claim (so it is correctly NOT a finding),
+//     and a file that merely MENTIONS the declaration shape in prose (so the anchored pattern must not report
+//     it). Both are verified against the marker read by their own claims.
+// No count is written down anywhere in this census (DESIGN 5): these are path sets.
+
+// THE EXPECTED SUBJECT POPULATION, at file grain -- and what it is NOT: it is not what the NOTE declares.
+//
+// The note (`gunbc.ci.ci_layer_roots::v1_claim_scoped_witness_batch_deleted_note`) declares a SUBJECT: its
+// body says the entries under `src/v1/tests/claim` have no executing consumer. `git grep -c
+// annotation_gap_round_trip_test -- dag/gunbc/ci/ci_layer_roots.dag` returns nothing -- the note names no
+// file, so no line of this census may say a path was "declared by" it, and a receipt that did would be
+// crediting a directory-grain source with item-grain authority (DESIGN §5).
+//
+// What grounds each ITEM then: the emitted population registry, at identity. This list is held against
+// `src/v1/stage0/src/emitted_population.rs` by the claims in the witness file -- every path here must have a
+// token in that registry, and a path invented for the purpose must not. That registry is produced by the v1
+// emitter, not by `git ls-files`, which is what makes the wet pairing a comparison between two instruments
+// rather than `measure() == measure()`.
+//
+// Why the expectation follows the tree and not an earlier scoping list: `carrier_realization_census.dag`
+// declares test fns and was left out of that scoping. Excluding a tracked file under no governed tree that
+// declares claims would not make the census quieter -- it is reported either way -- it would only make the
+// claim that pairs the registry against the tree lie. Discrepancies are reported upward, not absorbed. The
+// `*_census.dag` files in the same directory that declare NOTHING are a different case; they have their own
+// standing, claimed below. This list is a fixture and does not follow the tree; the live pairing
+// derives its own population.
+data subject_population_expected: List<String> = [
+  "src/v1/tests/claim/annotation_gap_round_trip_test.dag",
+  "src/v1/tests/claim/bare_variant_reference_occurrence_control_test.dag",
+  "src/v1/tests/claim/carrier_realization_census.dag",
+  "src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag",
+  "src/v1/tests/claim/escape_json_string_differential.dag",
+  "src/v1/tests/claim/item_kind_dissolves_shape_predicates_control_test.dag",
+  "src/v1/tests/claim/keyword_pattern_binder_refusal_test.dag",
+  "src/v1/tests/claim/parse_allocator_postcondition_test.dag",
+  "src/v1/tests/claim/parse_source_extent_control_test.dag",
+  "src/v1/tests/claim/production_fed_exposure_discrimination_control_test.dag",
+  "src/v1/tests/claim/reference_derived_disposition_census_witness_test.dag",
+  "src/v1/tests/claim/tco_tail_call_assigns_every_loop_slot_witness_test.dag",
+  "src/v1/tests/claim/transport_roster_closure_witness_test.dag",
+  "src/v1/tests/claim/type_declaration_occurrence_control_test.dag"
+]
+
+// THE FILES THAT ARE NOT CLAIMS. Tracked `.dag` under the same subject that declare no test fn at all --
+// helper inventories the claim files beside them import. An extension-only rule called these findings; that
+// was a fabricated population, and these three paths are the RED for it.
+data subject_helpers_declare_nothing: List<String> = [
+  "src/v1/tests/claim/generic_identity_census.dag",
+  "src/v1/tests/claim/interpolation_hole_census.dag",
+  "src/v1/tests/claim/shared_type_leaf_collision_census.dag"
+]
+
+// ...and the files OUTSIDE the subject whose text merely MENTIONS the phrase `test fn` in prose (measured:
+// four tracked `src/v1/*.dag` do). With the bare phrase as the pattern these became findings too; the
+// declaration shape is what keeps them out. Their paths are handed to the census without the marker answer,
+// which is how the live entry hands them.
+data prose_mentioning_paths: List<String> = [
+  "src/v1/00_core.dag",
+  "src/v1/compile.dag"
+]

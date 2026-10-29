@@ -23,7 +23,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParamete
 import std.types { is_kernel_type }
 import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
-import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, bare_occurrence_binding }
+import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided, bare_occurrence_binding }
 import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary,
   normalize_access_type_node, resolved_type,
@@ -279,11 +279,14 @@ type TypeDeclIndex {
 
 // WHAT A BARE LEAF DENOTES AT ONE OCCURRENCE: v1.compiler.infer_env bare_occurrence_binding (own file,
 // then named import, then kernel -- the typechecker's lookup_binding order), joined here to the
-// declaration identity this index keys on.
+// declaration identity this index keys on. OccurrenceUnbound is bare_occurrence_binding's positive
+// `binds nothing`; OccurrenceUndecided is no answer, including a binding to a declaration this index
+// does not identify, which is a bound name and never reads as an unbound one.
 type TypeDeclOccurrenceBinding
   = OccurrenceDeclaredHere { identity: String }
   | OccurrenceImported { identity: String }
   | OccurrenceIsKernelName
+  | OccurrenceUnbound
   | OccurrenceUndecided
 
 // TypeDeclKernelSpellingUndecided IS ITS OWN ARM BECAUSE IT IS A DIFFERENT FACT FROM AMBIGUITY.
@@ -500,6 +503,7 @@ fn type_decl_spelling_route(index: TypeDeclIndex, authored: String, leaf: String
       OccurrenceDeclaredHere { identity: _ } => RouteReferencingModuleDeclarer
       OccurrenceIsKernelName => RouteKernelMint
       OccurrenceImported { identity: _ } => RouteReferencingModuleImport
+      OccurrenceUnbound => RouteLeafSpelling
       OccurrenceUndecided => RouteLeafSpelling
     }
   }
@@ -512,6 +516,7 @@ fn type_decl_occurrence_identity(index: TypeDeclIndex, leaf: String, reference: 
     OccurrenceDeclaredHere { identity: identity } => Present { value: identity }
     OccurrenceIsKernelName => type_decl_kernel_mint_declarer(index: index, leaf: leaf)
     OccurrenceImported { identity: identity } => Present { value: identity }
+    OccurrenceUnbound => none
     OccurrenceUndecided => none
   }
 }
@@ -534,6 +539,7 @@ fn type_decl_occurrence_binding(index: TypeDeclIndex, leaf: String, reference: N
           }
       }
     BareOccurrenceIsKernelName => OccurrenceIsKernelName
+    BareOccurrenceUnbound => OccurrenceUnbound
     BareOccurrenceUndecided => OccurrenceUndecided
   }
 }
@@ -581,6 +587,7 @@ type EmitGraphInfo {
   fn_decl_items: Map<String, Node>
   fn_decl_identity_items: Map<String, Node>
   fn_map_key_bounds: Map<String, List<String>>
+  fn_equality_bounds: Map<String, List<String>>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
   positional_payload_variants: Set<String>
@@ -643,6 +650,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     fn_decl_items: empty_map(),
     fn_decl_identity_items: empty_map(),
     fn_map_key_bounds: empty_map(),
+    fn_equality_bounds: empty_map(),
     recursive_type_set: empty_set(),
     fielded_variants: empty_set(),
     positional_payload_variants: empty_set(),
@@ -680,6 +688,7 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     fn_decl_items: emit_info.fn_decl_items,
     fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
+    fn_equality_bounds: emit_info.fn_equality_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
@@ -716,6 +725,7 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     fn_decl_items: emit_info.fn_decl_items,
     fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
+    fn_equality_bounds: emit_info.fn_equality_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
@@ -757,6 +767,7 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     fn_decl_items: emit_info.fn_decl_items,
     fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
+    fn_equality_bounds: emit_info.fn_equality_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,

@@ -111,7 +111,7 @@ fn fixture_user_data() -> YamlValue {
 fn amd64_chain() -> SitePxeEdgePinnedChain? {
   match skip(xs: site_pxe_edge_chain_pins, n: 1).first() {
     Present { value: SitePxeEdgeChainPinned { chain: c } } => if c.architecture == X86_64 { Present { value: c } } else { Absent }
-    Present { value: SitePxeEdgeChainUnpinned { architecture: _, obligation: _ } } => Absent
+    Present { value: SitePxeEdgeChainUnpinned { architecture: _, audience: _, obligation: _ } } => Absent
     Absent => Absent
   }
 }
@@ -124,7 +124,7 @@ fn subject() -> NetworkInstallSubject? {
       PublicSeedAdmitted { seed: sd } => Present { value: NetworkInstallSubject {
         attempt: AttemptBinding { unit: "fixture-unit" as UnitKey, attempt: "attempt-1" },
         chain: c,
-        binding: SitePxeEdgeInstallBinding { seed: sd },
+        binding: SitePxeEdgeInstallBinding { seed: sd, architecture: X86_64 },
         started_at: started,
         ground: ground,
       } }

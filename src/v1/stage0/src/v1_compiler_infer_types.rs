@@ -66,9 +66,10 @@ pub use crate::v1_std_core::{
     error_type, find_child_named, float_type, has_inferred, int_type, is_compiler_error,
     kernel_span, leaf_node_with_span, make_error_node, make_expr_error_node, make_expr_node,
     make_param_node, no_span, none_type, param_node_type_expr, qualified_last_segment, string_type,
-    type_name_compatible, unit_type, with_optional_cardinality, with_required_cardinality,
-    Cardinality, CompilerDiagnostic, Connective, ContainerSpellingVerdict, DeclarationMarker,
-    ErrorNode, ExprData, ExprErrorKind, InferredNode, NewlineIndex, Node,
+    symbol_type, type_name_compatible, unit_type, with_optional_cardinality,
+    with_required_cardinality, Cardinality, CompilerDiagnostic, Connective,
+    ContainerSpellingVerdict, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, InferredNode,
+    NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -123,6 +124,14 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
         resolved_type(ch.clone())
     } else {
         ch.clone()
+    }
+}
+
+pub fn join_element_type(slot: Rc<Node>) -> Rc<Node> {
+    if (slot.children.clone().len() as i64) == 0 {
+        child_type_node(slot.clone())
+    } else {
+        slot
     }
 }
 
@@ -2766,9 +2775,9 @@ pub fn node_type_compatible(
                                                     match right.children.clone().first().cloned() {
                                                         Some(right_ch) => {
                                                             let left_el =
-                                                                child_type_node(left_ch.clone());
+                                                                join_element_type(left_ch.clone());
                                                             let right_el =
-                                                                child_type_node(right_ch.clone());
+                                                                join_element_type(right_ch.clone());
                                                             let left_el_is_unit =
                                                                 is_unit_like(left_el.clone());
                                                             let right_el_is_unit =
@@ -2824,9 +2833,9 @@ pub fn node_type_compatible(
                                                     match right.children.clone().first().cloned() {
                                                         Some(right_ch) => {
                                                             let left_el =
-                                                                child_type_node(left_ch.clone());
+                                                                join_element_type(left_ch.clone());
                                                             let right_el =
-                                                                child_type_node(right_ch.clone());
+                                                                join_element_type(right_ch.clone());
                                                             if (is_unit_like(left_el.clone())
                                                                 || is_unit_like(right_el.clone()))
                                                             {
@@ -3276,6 +3285,54 @@ pub fn callable_signatures_agree(
     }
 }
 
+pub fn applied_head_identity_agrees(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> bool {
+    {
+        let both_stamped = match left.declaration.clone() {
+            Some(ld) => match right.declaration.clone() {
+                Some(rd) => Some(
+                    ((ld.module_path.clone() == rd.module_path.clone())
+                        && (ld.decl_name.clone() == rd.decl_name.clone())),
+                ),
+                std::option::Option::None => std::option::Option::None,
+            },
+            std::option::Option::None => std::option::Option::None,
+        };
+        match both_stamped.clone() {
+            Some(stamped_agree) => stamped_agree.clone(),
+            std::option::Option::None => match (*text.clone()).clone() {
+                TextJudgment::TextJudgedIn { env: e, .. } => {
+                    match crate::v1_compiler_infer_env::settled_type(
+                        left.clone(),
+                        source_indices.clone(),
+                        e.clone(),
+                        16,
+                    ) {
+                        std::option::Option::None => false,
+                        Some(ls) => match crate::v1_compiler_infer_env::settled_type(
+                            right.clone(),
+                            source_indices.clone(),
+                            e.clone(),
+                            16,
+                        ) {
+                            std::option::Option::None => false,
+                            Some(rs) => {
+                                ((ls.head.module_path.clone() == rs.head.module_path.clone())
+                                    && (ls.head.decl_name.clone() == rs.head.decl_name.clone()))
+                            }
+                        },
+                    }
+                }
+                TextJudgment::TextNotAsked { reason: _, .. } => false,
+            },
+        }
+    }
+}
+
 pub fn node_type_equals_core(
     left: Rc<Node>,
     right: Rc<Node>,
@@ -3467,7 +3524,41 @@ pub fn node_type_equals_core(
                                                             },
                                                         )
                                                     } else {
-                                                        false
+                                                        if applied_head_identity_agrees(
+                                                            left.clone(),
+                                                            right.clone(),
+                                                            source_indices.clone(),
+                                                            text.clone(),
+                                                        ) {
+                                                            (((left.children.clone().len() as i64)
+                                                                == (right.children.clone().len()
+                                                                    as i64))
+                                                                && {
+                                                                    let mut __all = true;
+                                                                    for pair in Rc::new(
+                                                                        left.children
+                                                                            .clone()
+                                                                            .iter()
+                                                                            .cloned()
+                                                                            .enumerate()
+                                                                            .map(|(i, v)| {
+                                                                                (i as i64, v)
+                                                                            })
+                                                                            .collect::<Vec<_>>(),
+                                                                    )
+                                                                    .iter()
+                                                                    .cloned()
+                                                                    {
+                                                                        if !(match right.children.clone().get((pair.0.clone()) as usize).cloned() {
+    Some(right_child) => node_type_equals(child_type_node(pair.1.clone()), child_type_node(right_child.clone()), source_indices.clone(), text.clone()),
+    std::option::Option::None => false,
+}) { __all = false; break; }
+                                                                    }
+                                                                    __all
+                                                                })
+                                                        } else {
+                                                            false
+                                                        }
                                                     }
                                                 }
                                             }
@@ -3607,7 +3698,7 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
         LiteralValue::LitFloat { value: _, .. } => float_type(),
         LiteralValue::LitBool { value: _, .. } => bool_type(),
         LiteralValue::LitNull => crate::v1_std_core::with_optional_cardinality(unit_type()),
-        LiteralValue::LitSymbol { value: _, .. } => string_type(),
+        LiteralValue::LitSymbol { value: _, .. } => symbol_type(),
     }
 }
 

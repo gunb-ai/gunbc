@@ -164,7 +164,7 @@ fn nic_emitted_crate_evidence(
   consumer_rel: String
 ) -> SubjectEvidence<NicNoVerdict, NicEmissionOutcome> {
   let src = shell.Mktemp.DirWithTemplate(
-    template: concat(root, "/target/namespace_import_closure_witness_XXXXXX")
+    template: concat(cargo_default_target_dir(build_root: root), "/namespace_import_closure_witness_XXXXXX")
   )
   if src.success {
     let pilot_dir = shell.Mkdir.Parents(path: concat(src.path, "/witness/pilot"))

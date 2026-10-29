@@ -471,8 +471,9 @@ fn mtcollins1_host_reset_effect() -> PrivilegedEffect {
 // opens is not undone by a reapply (artifacts/bmc/mtcollins1-bmc-user3-route-2026-09-13.txt, steps
 // b1 and b1r). It applies a credential to one controller account, so its reach is one resource. No
 // dispatched run carries it: in this cut it is modeled, with a dry realization only. The realization
-// takes an operator-approved capability (gunbc.auth.approval_broker Redemption) bound to the exact
-// controller, build and request, which is what the selection is expected to return.
+// takes the operator's go through gunbc.auth.approval_gate, a std.scoped_authorization grant whose
+// subject (gunbc.machine_intake.bmc_rotation_route BmcAccountWriteApproval) is the exact controller,
+// build, request and purpose, which is what the selection is expected to return.
 fn route_qualification_effect() -> PrivilegedEffect {
   PrivilegedEffect {
     subject: "qualify a BMC account-write route: execute one account-write request on one controller at one firmware build and read it back" as NonEmptyStr,
@@ -1359,6 +1360,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     site: site(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key"),
     effect: PrivilegedEffect {
       subject: "in the service_runner_lost_boot_sweep fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity, mint the controller installation token, and delete every runner registration of the swept managed host whose embedded boot id is not the current admitted one, confirming each absent from the organization listing; pre-approved under the dispatching run's authorization (operator ruling 2026-10-03) and ruling mtcollins1_ci_runner_enrolment_approved. GATED: the current boot is admitted only through a host-observed boot (lost_boot_observe_current_boot reads boot_id over a HostBoundTransport it is handed, whose host is derived from the transport's address; no run holds a host-authenticated transport to mtcollins1 until one is supplied from an executed selection), so no run performs this deletion until then" as NonEmptyStr as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "dry_run_under_staged_key"),
+    effect: PrivilegedEffect {
+      subject: "in the service_runner_lost_boot_sweep_dry_run fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity and mint the controller installation token that reads the organization runner listing for the dry run's plan; no registration is deleted and the key is removed on every arm",
       frequency: EveryProvision,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,

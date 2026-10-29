@@ -2,6 +2,7 @@ module v2.lens.enforcement.cost_coverage
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
 import v2.std.diagnostic { diagnostics_fatal_reason }
+import v2.lens.cost { ClassConstant, ClassExponential, ClassFactorial, ClassLinear, ClassLinearithmic, ClassLog }
 import v2.compiler.normalized_tree { NormalizedTree }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -99,6 +100,12 @@ fn cost_coverage_fn_verdict_from_body(body: Node) -> CostCoverageFnVerdict {
           match asymptotic_class_of_cost(cost: cost) {
             ClassUnknown =>
               FnCostUnknown { reason: cost_coverage_unknown_asymptotic_class }
+            ClassConstant => FnCostKnown { asymptotic_class: ClassConstant }
+            ClassLog => FnCostKnown { asymptotic_class: ClassLog }
+            ClassLinear => FnCostKnown { asymptotic_class: ClassLinear }
+            ClassLinearithmic => FnCostKnown { asymptotic_class: ClassLinearithmic }
+            ClassExponential => FnCostKnown { asymptotic_class: ClassExponential }
+            ClassFactorial => FnCostKnown { asymptotic_class: ClassFactorial }
             class =>
               FnCostKnown { asymptotic_class: class }
           }
