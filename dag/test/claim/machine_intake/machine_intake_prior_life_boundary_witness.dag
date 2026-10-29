@@ -36,6 +36,10 @@ import gunbc.machine_intake.prior_life_boundary {
   mt_collins_platform_ref, mt_jade_platform_ref,
   prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_archive, prior_life_receipt_realization,
   prior_life_archive_digest, prior_life_archive_body, baseline_cursor_sel_final_record, baseline_cursor_archive, baseline_cursor_log_services,
+  dry_archive_prior_life_across_forced_write, PriorLifeForcedWriteContext, PostWriteEntryStanding,
+  PreWriteEntryPresent, EntriesPresentNoneBeforeWrite, NoPriorLifeEntries,
+  PriorLifeArchiveIndeterminateAcrossForcedWrite,
+  ConfirmFactoryFresh,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -166,6 +170,7 @@ fn outcome_label(o: PriorLifeArchiveOutcome) -> String {
         ArchiveWrittenButNotReadBack { write: _, digest: _ } => "incomplete:not-read-back"
         ArchiveReadBackDiffersFromWrite { write: _, digest: _, read: _ } => "incomplete:read-back-differs"
       }
+    PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: _ } => "indeterminate-across-forced-write"
   }
 }
 
@@ -395,4 +400,85 @@ test fn w_two_locators_that_render_one_resource_path_archive_distinctly() -> Boo
     && digests_differ(a: on_a.outcome, b: on_b.outcome)
     && written_not_held(o: on_b.outcome)
     && (match a_again.outcome { PriorLifeArchiveEstablished { receipt: r } => (match prior_life_receipt_application(r: r) { ArchiveAlreadyHeld => true  ArchiveWritten { write: _, within: _ } => false })  _ => false })
+}
+
+// ── ACROSS A FORCED FIRST ROTATION ─────────────────────────────────────────────────────────────────
+// The forced-change divergence (gunbc.machine_intake.arrival_converge
+// ForcedFirstRotationPrecedesPriorLife): on a build that forces a password change, the archive is read
+// AFTER the admitted forced root write, so an established outcome is trustworthy only if the post-write
+// archive still grounds an entry from before the write instant. These are the classifier rung: the world
+// is the ordinary establishing world and the standing is supplied at the context (as the real reader
+// grounds it per vendor build, keyed by firmware under extdeps.bmc.*). The real-arrival-path rung is
+// test.claim.machine_intake.machine_intake_arrival_converge_witness.
+
+fn forced_ctx(standing: PostWriteEntryStanding) -> PriorLifeForcedWriteContext {
+  PriorLifeForcedWriteContext { write_instant: t_returned_p, standing: standing }
+}
+
+// POSITIVE CONTROL. A pre-write entry grounded in the post-write archive: the archive arm runs in full and
+// establishes NORMALLY -- the same established outcome a non-forced unit gets, not re-minted here.
+test fn w_a_pre_write_entry_across_the_forced_write_establishes_normally() -> Bool {
+  outcome_label(o: dry_archive_prior_life_across_forced_write(
+    key: key_p(),
+    consumed_identity: identity_p(),
+    subject: subject_p(),
+    platform: mt_jade_platform_ref,
+    world: prior_life_full_dry_world(),
+    across: Present { value: forced_ctx(standing: PreWriteEntryPresent { entry_receipt: "sel record 1 predates the write" as NonEmptyStr }) },
+  ).outcome) == "established"
+}
+
+// RED (iii), classifier rung. NO pre-write entry (the controller is either genuinely factory-fresh or its
+// history was erased by the write -- from here the two are one): the third outcome, NOT a refusal and NOT a
+// pass, and it NAMES the operator decision (factory-fresh vs quarantine). It blocks fleet admission through
+// the arrival step, which maps it to an incomplete (see the arrival witness); it is never a plain refusal,
+// which would brick every genuinely new unit.
+test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write() -> Bool {
+  let step = dry_archive_prior_life_across_forced_write(
+    key: key_p(),
+    consumed_identity: identity_p(),
+    subject: subject_p(),
+    platform: mt_jade_platform_ref,
+    world: prior_life_full_dry_world(),
+    across: Present { value: forced_ctx(standing: NoPriorLifeEntries {}) },
+  )
+  match step.outcome {
+    PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } =>
+      v.write_instant == t_returned_p
+        && length(xs: v.options) == 2
+        && (match first(xs: v.options) { Present { value: ConfirmFactoryFresh { confirm_receipt: _ } } => true  _ => false })
+    _ => false
+  }
+}
+
+// THE OTHER FACE OF THE AMBIGUITY. Entries present but NONE grounded before the write is also indeterminate:
+// it is exactly what an erased-then-refilled history looks like, and it establishes nothing predating the
+// write, which is the whole obligation. Fails closed to the operator, never to a silent establish (§5).
+test fn w_entries_present_none_before_the_write_are_indeterminate_across_the_forced_write() -> Bool {
+  outcome_label(o: dry_archive_prior_life_across_forced_write(
+    key: key_p(),
+    consumed_identity: identity_p(),
+    subject: subject_p(),
+    platform: mt_jade_platform_ref,
+    world: prior_life_full_dry_world(),
+    across: Present { value: forced_ctx(standing: EntriesPresentNoneBeforeWrite { entries_seen: 7 }) },
+  ).outcome) == "indeterminate-across-forced-write"
+}
+
+// A REFUSAL IS STILL A REFUSAL ACROSS THE WRITE. The third outcome re-decides only the ESTABLISHED arm,
+// never a policy refusal: a platform with no policy row still refuses (and writes nothing), even with a
+// no-pre-write standing supplied. This is the control that keeps the third outcome from swallowing refusals.
+test fn w_a_refusal_across_the_forced_write_stays_a_refusal() -> Bool {
+  let mitchell = decl_ref(module_path: "extdeps.ocp.mt_mitchell.subject", decl_name: "MtMitchellSpecificationRevision")
+  match dry_archive_prior_life_across_forced_write(
+    key: key_p(),
+    consumed_identity: identity_p(),
+    subject: subject_p(),
+    platform: mitchell,
+    world: prior_life_full_dry_world(),
+    across: Present { value: forced_ctx(standing: NoPriorLifeEntries {}) },
+  ).outcome {
+    PriorLifeArchiveRefused { cause: _ } => true
+    _ => false
+  }
 }

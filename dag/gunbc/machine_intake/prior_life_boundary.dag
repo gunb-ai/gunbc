@@ -837,15 +837,184 @@ type PriorLifeIncomplete
   | ArchiveWrittenButNotReadBack { write: ArchiveWriteReceipt, digest: ContentHash }
   | ArchiveReadBackDiffersFromWrite { write: ArchiveWriteReceipt, digest: ContentHash, read: ContentHash }
 
+// THE FOURTH ARM IS NOT A REFUSAL AND NOT A PASS. It exists only for a run that took arrival_converge's
+// ForcedFirstRotationPrecedesPriorLife row, where the archive is read AFTER the forced root write. See
+// the "ACROSS A FORCED FIRST ROTATION" section below.
 type PriorLifeArchiveOutcome
   = PriorLifeArchiveEstablished { receipt: PriorLifeBoundaryEstablished }
   | PriorLifeArchiveRefused { cause: PriorLifeRefusal }
   | PriorLifeArchiveIncomplete { cause: PriorLifeIncomplete }
+  | PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: PriorLifeIndeterminateAcrossForcedWrite }
 
 // ONE DRY RUN OF THE PHASE AND THE STORE IT LEAVES, so a refusal can be shown to have written nothing.
 type DryPriorLifeStep {
   outcome: PriorLifeArchiveOutcome
   store: DryArchiveStore
+}
+
+// ── ACROSS A FORCED FIRST ROTATION ───────────────────────────────────────────────────────────────────
+//
+// (the forced-change arrival divergence, gunbc.machine_intake.arrival_converge
+// ForcedFirstRotationPrecedesPriorLife; merry-fox-82 approved 2026-10-29.) On a build whose
+// credential-policy row forces a password change on first login, AccessDiscover runs UNAUTHENTICATED and
+// the prior life cannot be read until the managed root credential is written. arrival_converge admits
+// exactly that one write BEFORE the PriorLifeBoundary standing, so the archive this phase reads is read
+// AFTER the write. The obligation "the post-write archive has entries timestamped before the write
+// instant" then cannot, from this layer, tell a genuinely factory-fresh controller (which has no prior
+// entries at all) from one whose history the write erased: BOTH read as no entry before the write. This
+// layer is not the place that decision lives, so neither verdict is taken here.
+//
+// WHY NEITHER PASS NOR REFUSAL: passing the zero-pre-write archive as established would admit a BMC whose
+// history the write erased into the fleet unexamined; refusing it would brick every genuinely new unit,
+// whose pre-write archive is legitimately empty. The ambiguity therefore becomes this typed third
+// outcome, which STOPS fleet admission (the arrival step maps it to an incomplete, so the run is
+// incomplete and the unit never enters the fleet) WITHOUT being a plain refusal (which says the boundary
+// failed; this says it cannot yet be decided and names the decision that would decide it).
+//
+// WHY ENTRIES-PRESENT-BUT-NONE-BEFORE-THE-WRITE IS ALSO INDETERMINATE: an archive holding entries all
+// dated at or after the write instant is exactly what an erased-then-refilled history looks like; it
+// cannot establish that any entry predates the write, which is the whole obligation. So both non-present
+// arms reach the operator. Only an entry the reader grounded strictly before the write establishes.
+//
+// (rung: pure classification over a standing the reader grounds. The discriminating RED is
+// w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write, and its positive
+// control w_a_pre_write_entry_across_the_forced_write_establishes_normally, both in
+// test.claim.machine_intake.machine_intake_prior_life_boundary_witness.)
+
+// WHAT THE POST-WRITE ARCHIVE SHOWS RELATIVE TO THE WRITE INSTANT. An entry's own time is a vendor-served
+// fact, so the comparison lives keyed by firmware in the reader (extdeps.bmc.*) and what the reader read
+// is a receipt here; the dry model supplies the standing the same way it supplies the SEL archive and the
+// virtual-media census. An entry whose time the reader cannot compare is NOT a pre-write entry: it falls
+// into EntriesPresentNoneBeforeWrite, which fails closed toward the operator and never toward a silent
+// establish (§5).
+type PostWriteEntryStanding
+  = PreWriteEntryPresent { entry_receipt: NonEmptyStr }
+  | EntriesPresentNoneBeforeWrite { entries_seen: Int }
+  | NoPriorLifeEntries {}
+
+// THE TWO RESOLUTIONS THE OPERATOR MUST CHOOSE BETWEEN, named on the verdict so the run says WHICH
+// decision it needs rather than failing with a bare no (item 6).
+type FactoryFreshOrQuarantine
+  = ConfirmFactoryFresh { confirm_receipt: NonEmptyStr }
+  | QuarantineUnit { quarantine_reason: NonEmptyStr }
+
+// THE RUN'S FORCED-WRITE CONTEXT, supplied by the arrival step ONLY when the run took the
+// ForcedFirstRotationPrecedesPriorLife row: the instant THIS run's forced root write returned, and what
+// the post-write archive shows against it. It is bound to the run by the caller -- the arrival step
+// builds it only from the write that admit_forced_first_rotation already admitted for THIS run,
+// controller and build -- so a context for another run cannot reach the archive arm.
+type PriorLifeForcedWriteContext {
+  write_instant: EpochMs
+  standing: PostWriteEntryStanding
+}
+
+// THE TYPED THIRD OUTCOME. Not a refusal, not a pass: it stops fleet admission and names the operator
+// decision. Minted only by the archive arm of a forced-write run (see the mint's admit_callers).
+type PriorLifeIndeterminateAcrossForcedWrite sole_constructor {
+  key: StepInstanceKey
+  consumed_identity: StepInstanceKey
+  subject: MachineIntakeSubject
+  write_instant: EpochMs
+  standing: PostWriteEntryStanding
+  options: List<FactoryFreshOrQuarantine>
+  question: NonEmptyStr
+}
+
+// ONLY AN ENTRY THE READER GROUNDED STRICTLY BEFORE THE WRITE ESTABLISHES PRE-WRITE HISTORY. The other two
+// arms -- entries present but none before the write, and no entries at all -- are the two faces of the
+// ambiguity and reach the operator.
+fn pre_write_history_present(standing: PostWriteEntryStanding) -> Bool {
+  match standing {
+    PreWriteEntryPresent { entry_receipt: _ } => true
+    EntriesPresentNoneBeforeWrite { entries_seen: _ } => false
+    NoPriorLifeEntries {} => false
+  }
+}
+
+fn prior_life_indeterminate_across_forced_write(
+  key: StepInstanceKey,
+  consumed_identity: StepInstanceKey,
+  subject: MachineIntakeSubject,
+  write_instant: EpochMs,
+  standing: PostWriteEntryStanding,
+) -> PriorLifeIndeterminateAcrossForcedWrite
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life_across_forced_write"),
+  ]
+{
+  PriorLifeIndeterminateAcrossForcedWrite {
+    key: key,
+    consumed_identity: consumed_identity,
+    subject: subject,
+    write_instant: write_instant,
+    standing: standing,
+    options: [
+      ConfirmFactoryFresh { confirm_receipt: "confirm the controller was factory-fresh before the forced write (its prior life was empty before the write, not erased by it)" },
+      QuarantineUnit { quarantine_reason: "the controller held prior-life entries none of which is grounded before the forced write; quarantine until their fate is established" },
+    ],
+    question: "the post-write archive has no entry grounded before the forced root write; is this controller factory-fresh, or did the write erase its prior life?" as NonEmptyStr,
+  }
+}
+
+// THE ARCHIVE ARM FOR A RUN THAT TOOK THE FORCED-FIRST-ROTATION ROW. The archive is read AFTER the
+// admitted forced root write, so an established outcome is trustworthy only if the post-write archive
+// still grounds an entry from before the write instant. If it does, the establishment stands UNCHANGED --
+// the archive arm is run in full and its sealed receipt is returned as any other unit's, never re-minted
+// here. If it grounds no such entry -- whether the controller is genuinely factory-fresh (no entries at
+// all) or the write erased its history -- the run takes the indeterminate third outcome instead of being
+// silently established. A refusal or an incomplete from the archive is returned UNTOUCHED: a refusal is
+// still a refusal and an incomplete is still an incomplete; this arm only re-decides the ESTABLISHED arm,
+// the one place where fresh and erased are indistinguishable from this layer. With `across` Absent (every
+// non-forced unit) the result is identical to dry_archive_prior_life.
+//
+// (rung: pure re-decision of one arm; the discriminating RED is
+// w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write in
+// test.claim.machine_intake.machine_intake_prior_life_boundary_witness, paired with the positive control
+// w_a_pre_write_entry_across_the_forced_write_establishes_normally and with the real arrival-path control
+// in test.claim.machine_intake.machine_intake_arrival_converge_witness.)
+fn dry_archive_prior_life_across_forced_write(
+  key: StepInstanceKey,
+  consumed_identity: StepInstanceKey,
+  subject: MachineIntakeSubject,
+  platform: DeclarationRef,
+  world: DryPriorLifeWorld,
+  across: PriorLifeForcedWriteContext?,
+) -> DryPriorLifeStep
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "prior_life_boundary"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_pre_write_entry_across_the_forced_write_establishes_normally"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_entries_present_none_before_the_write_are_indeterminate_across_the_forced_write"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_refusal_across_the_forced_write_stays_a_refusal"),
+  ]
+{
+  let base = dry_archive_prior_life(key: key, consumed_identity: consumed_identity, subject: subject, platform: platform, world: world)
+  match across {
+    Absent => base
+    Present { value: ctx } =>
+      match base.outcome {
+        PriorLifeArchiveEstablished { receipt: _ } =>
+          if pre_write_history_present(standing: ctx.standing) {
+            base
+          } else {
+            DryPriorLifeStep {
+              outcome: PriorLifeArchiveIndeterminateAcrossForcedWrite {
+                verdict: prior_life_indeterminate_across_forced_write(
+                  key: key,
+                  consumed_identity: consumed_identity,
+                  subject: subject,
+                  write_instant: ctx.write_instant,
+                  standing: ctx.standing,
+                ),
+              },
+              store: base.store,
+            }
+          }
+        PriorLifeArchiveRefused { cause: _ } => base
+        PriorLifeArchiveIncomplete { cause: _ } => base
+        PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: _ } => base
+      }
+  }
 }
 
 fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack) -> PriorLifeArchiveOutcome
@@ -907,6 +1076,7 @@ fn dry_archive_prior_life(
 ) -> DryPriorLifeStep
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "prior_life_boundary"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life_across_forced_write"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_only_the_sel_final_record_with_the_other_carriers_absent_is_not_established"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_one_unmodeled_carrier_is_a_typed_gap_that_refuses"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_policy_refusal_writes_nothing"),
