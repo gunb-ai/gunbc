@@ -1,12 +1,16 @@
 module test.claim.host.microvm_controller_install_typed_witness
 
+import extdeps.posix.getent { getent_program }
+import extdeps.tools.id { id_program }
+import gunbc.host.host_effect_realize { microvm_controller_step_commands }
+
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { list_at_optional }
 import std.content_hash { content_hash_validate_lower_hex_length }
 import gunbc.host.host_effect_realize {
   MicrovmControllerInstallStep, MicrovmControllerInstallReady, MicrovmControllerInstallRefused,
-  MicrovmControllerArgvStep, MicrovmControllerVerifyStep, MicrovmControllerReceiptStep, MicrovmControllerTreeStep,
+  MicrovmControllerAccountStep, MicrovmControllerArgvStep, MicrovmControllerVerifyStep, MicrovmControllerReceiptStep, MicrovmControllerTreeStep,
   microvm_controller_install_staging, microvm_controller_starts_no_instance_refusal,
   microvm_controller_step_text, microvm_controller_step_name, microvm_controller_step_stdin,
   microvm_controller_step_words, microvm_controller_argv_step,
@@ -221,11 +225,14 @@ test fn microvm_w5_digest_checks_carry_no_expected_hex_in_words() -> Bool {
 // arguments, not in program).
 data microvm_w5_cataloged_programs: List<String> = [
   "install", "mkdir", "curl", "tar", "sha256sum", "dd", "mv", "/usr/bin/sudo",
+  // Database reads are unelevated. Creation remains a sudo command on this edge;
+  // its fixed-ID shadow builders and authorization are censused separately.
+  getent_program().invocation as String, id_program().invocation as String,
 ]
 
 test fn microvm_w5_every_leg_inhabits_a_cataloged_argv_program() -> Bool {
   let legs = filter(microvm_w5_steps(), s => list_length(items: microvm_controller_step_words(step: s)) > 0)
-  let programs = map(legs, s => nth_text(items: microvm_controller_step_words(step: s), index: 0))
+  let programs = flat_map(legs, step => map(microvm_controller_step_commands(step: step), command => command.program.invocation as String))
   list_length(items: legs) >= 20
     && all(programs, pr => any(microvm_w5_cataloged_programs, c => c == pr))
     && !any(programs, pr => pr == "sh" || pr == "bash" || pr == "dash" || pr == "env")
@@ -252,6 +259,7 @@ fn microvm_w5_elevated_relative_words(step: MicrovmControllerInstallStep) -> Lis
     MicrovmControllerVerifyStep { name: _ } => []
     MicrovmControllerReceiptStep { name: _ } => []
     MicrovmControllerTreeStep { name: _ } => []
+    MicrovmControllerAccountStep { name: _, user: _ } => []
   }
 }
 
@@ -301,4 +309,19 @@ test fn microvm_w5_the_route_sends_only_elevated_legs_to_the_elevated_side() -> 
   let elevated = sudo_elevate_command(command: argv_words(command: mkdir_parents_command(path: "/opt/gunbc/x")))
   !microvm_w5_is_local(t: elevation_route_transport(route: route, command: elevated))
     && microvm_w5_is_local(t: elevation_route_transport(route: route, command: mkdir_parents_command(path: "/tmp/x")))
+}
+
+// The account leg's final id read must be in the program census, not only its first
+// getent command. This fails if composite commands are flattened before inspection.
+test fn microvm_w5_account_census_keeps_every_command_boundary() -> Bool {
+  let accounts = filter(microvm_w5_steps(), step => match step {
+    MicrovmControllerAccountStep { name: _, user: _ } => true
+    _ => false
+  })
+  count(accounts) == 2 && all(accounts, step => {
+    let commands = microvm_controller_step_commands(step: step)
+    count(commands) == 5
+      && any(commands, command => command.program.invocation == id_program().invocation)
+      && any(commands, command => command.program.invocation == getent_program().invocation)
+  })
 }

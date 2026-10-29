@@ -169,6 +169,41 @@ data fleet_posix_worker_user: PosixUser = PosixUser {
   shell: LoginShellObserved { path: fleet_posix_nologin_shell_path },
 }
 
+// REVISION PREPARATION HAS TWO PRINCIPALS. The preparer may fetch and unpack source;
+// the materializer may read that staging area and is the sole non-root writer of its
+// bounded artifact store. Neither is root, the worker, or the other principal. Sharing
+// their uid would let a producer modify the supposedly sealed store inode.
+//
+// These ids are chosen from the free range in the dated srv1 reading below, NOT a live
+// allocation receipt. Convergence must refuse an occupied uid/gid or a mismatched existing
+// account. No host has been changed by these declarations. Provisioning belongs to the
+// existing gated fleet convergence; it must precede enabling revision preparation.
+// Path resolution remains below the structural ceiling recorded by
+// a_pathname_reresolves_its_ancestry_between_calls: permissions bound readable bytes,
+// not ancestry stability. A modeled directory-handle primitive closes that residual.
+data fleet_posix_revision_preparer_user: PosixUser = PosixUser {
+  name: "gunbc-revision-preparer",
+  uid: 1005,
+  gid: 1005,
+  shell: LoginShellObserved { path: fleet_posix_nologin_shell_path },
+}
+
+data fleet_posix_materialization_writer_user: PosixUser = PosixUser {
+  name: "gunbc-materializer",
+  uid: 1006,
+  gid: 1006,
+  shell: LoginShellObserved { path: fleet_posix_nologin_shell_path },
+}
+
+fn fleet_revision_principal_home(user: PosixUser) -> NonEmptyStr {
+  concat("/var/lib/gunbc/revision-job/principals/", user.name as String) as NonEmptyStr
+}
+
+// No daemon socket, administrator group, or sudo reach is conferred on either account.
+// Staging read access is a separate directory grant, not membership of the worker group.
+data fleet_posix_revision_preparer_supplementary_groups: List<NonEmptyStr> = []
+data fleet_posix_materialization_writer_supplementary_groups: List<NonEmptyStr> = []
+
 // THE SHARED ATTEMPT GROUP: the instance's service user and the worker account are its only members.
 data fleet_posix_worker_shared_group_name: NonEmptyStr = "gunbc-attempt"
 
@@ -176,7 +211,7 @@ data fleet_posix_worker_shared_group_gid: Int = 1003
 
 // HOST READING, srv1, 2026-10-17 (bright-moth-475): uid/gid 1002 belong to ubuntu (ubuntu:x:1002:1002),
 // which is why gunbc-worker moved off 1002; 1003 to 1012 were free (1003 is the attempt group's gid above,
-// 1004 is gunbc-worker's). Other ids in use: briansrls 1000, gunbc-fleet 1001, gunbc-publication 995/985,
+// 1004 is gunbc-worker's; the preparation declarations above reserve 1005 and 1006). Other ids in use: briansrls 1000, gunbc-fleet 1001, gunbc-publication 995/985,
 // gunbc-ntfy 994/984. A reading, not a declaration: these accounts are not rows here, so a supplied
 // reading at this interface is what the no-collision claim compares against.
 data fleet_srv1_observed_numeric_ids: List<Int> = [1000, 1001, 1002, 995, 985, 994, 984]

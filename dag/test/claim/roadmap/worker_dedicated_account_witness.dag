@@ -10,7 +10,12 @@ import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mo
 // THE WALK'S OWN PROGRAM IDENTITY, for the pairing claim's leg that requires every grant argv to BE a
 // find walk. Read from the tool module rather than spelled "find" here, so the claim cannot agree with a
 // model that had quietly started running a different program.
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessRefused }
+import gunbc.fleet.fleet_revision_accounts { revision_account_converge }
+import gunbc.runner.runner_revision_input_store { revision_input_store_owner_admits }
+import gunbc.runner.runner_microvm_cell_readiness_store { OwnershipRead, OwnershipUnread }
+import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
 import extdeps.tools.findutils { find_program }
 // THE TWO ACTION WORDS, so the pairing claim can tell a re-group walk from a mode walk by WHAT IT RUNS
 // rather than by its position in a list -- a model that swapped the two families would keep its count and
@@ -69,6 +74,9 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_automation_user, fleet_posix_root_user,
   fleet_srv1_observed_numeric_ids,
   fleet_posix_worker_supplementary_groups,
+  fleet_posix_revision_preparer_user, fleet_posix_materialization_writer_user,
+  fleet_revision_principal_home, fleet_posix_nologin_shell_path,
+  fleet_posix_revision_preparer_supplementary_groups, fleet_posix_materialization_writer_supplementary_groups,
 }
 import gunbc.fleet.fleet_root_equivalent_groups { fleet_root_equivalent_group_names }
 
@@ -1486,4 +1494,72 @@ fn only_migration_group(
   } else {
     none
   }
+}
+
+// Declaration-level pairing only: deployment must independently observe the accounts and
+// directory ownership. These checks do not establish a live uid allocation or confinement.
+test fn revision_preparation_and_materialization_have_distinct_unprivileged_principals() -> Bool {
+  let preparer = fleet_posix_revision_preparer_user
+  let writer = fleet_posix_materialization_writer_user
+  let existing = [fleet_posix_root_user, fleet_posix_operator_user, fleet_automation_user, fleet_posix_worker_user]
+  preparer.uid != writer.uid && preparer.gid != writer.gid
+    && preparer.name != writer.name
+    && all(existing, account => account.uid != preparer.uid && account.gid != preparer.gid
+      && account.uid != writer.uid && account.gid != writer.gid)
+    && all(fleet_srv1_observed_numeric_ids, n => n != preparer.uid && n != preparer.gid && n != writer.uid && n != writer.gid)
+    && preparer.gid != fleet_posix_worker_shared_group_gid
+    && writer.gid != fleet_posix_worker_shared_group_gid
+    && all(fleet_posix_revision_preparer_supplementary_groups + fleet_posix_materialization_writer_supplementary_groups,
+      group => !any(fleet_root_equivalent_group_names, denied => group == denied))
+}
+
+fn materializer_account_readback(command: ArgvCommand, uid: Int, groups: String) -> ProcessOutcome {
+  let words = argv_words(command: command)
+  let user = fleet_posix_materialization_writer_user
+  if any(words, word => word == "group") {
+    ProcessOutputPresent { text: join([user.name as String, ":x:", to_string(user.gid), ":"], "") }
+  } else if any(words, word => word == "passwd") {
+    ProcessOutputPresent { text: join([user.name as String, ":x:", to_string(uid), ":", to_string(user.gid), ":materializer:",
+      fleet_revision_principal_home(user: user) as String, ":", fleet_posix_nologin_shell_path as String], "") }
+  } else if any(words, word => word == "-G") {
+    ProcessOutputPresent { text: groups }
+  } else {
+    // No mutation is allowed in this supplied existing-account fixture.
+    ProcessRefused { exit_code: 1, stderr: "unexpected account mutation" }
+  }
+}
+
+test fn revision_account_convergence_refuses_wrong_uid_and_extra_groups() -> Bool {
+  let user = fleet_posix_materialization_writer_user
+  let correct = revision_account_converge(user: user,
+    run: command => materializer_account_readback(command: command, uid: user.uid, groups: to_string(user.gid)))
+  let wrong_uid = revision_account_converge(user: user,
+    run: command => materializer_account_readback(command: command, uid: 0, groups: to_string(user.gid)))
+  let extra_group = revision_account_converge(user: user,
+    run: command => materializer_account_readback(command: command, uid: user.uid, groups: concat(to_string(user.gid), " 0")))
+  let unreadable = revision_account_converge(user: user,
+    run: command => ProcessRefused { exit_code: 1, stderr: "database unavailable" })
+  match correct {
+    Present { value: _ } => false
+    Absent => match wrong_uid {
+      Absent => false
+      Present { value: _ } => match extra_group {
+        Absent => false
+        Present { value: _ } => match unreadable { Absent => false Present { value: _ } => true }
+      }
+    }
+  }
+}
+
+// Ownership observations are supplied here; the wet observation remains read_store_ownership.
+// A correct uid with writable group/other bits is not an exclusive writer boundary.
+test fn revision_input_store_admits_only_its_writer_and_no_other_write_bits() -> Bool {
+  let writer = fleet_posix_materialization_writer_user
+  revision_input_store_owner_admits(reading: OwnershipRead { ownership: StoreNotRootOwned { owner_uid: writer.uid, mode: "700" } })
+    && !revision_input_store_owner_admits(reading: OwnershipRead { ownership: StoreNotRootOwned { owner_uid: writer.uid, mode: "wat" } })
+    && !revision_input_store_owner_admits(reading: OwnershipUnread { reason: "stat refused" })
+    && !revision_input_store_owner_admits(reading: OwnershipRead { ownership: StoreRootOwned })
+    && !revision_input_store_owner_admits(reading: OwnershipRead { ownership: StoreNotRootOwned { owner_uid: fleet_posix_revision_preparer_user.uid, mode: "700" } })
+    && !revision_input_store_owner_admits(reading: OwnershipRead { ownership: StoreNotRootOwned { owner_uid: writer.uid, mode: "770" } })
+    && !revision_input_store_owner_admits(reading: OwnershipRead { ownership: StoreNotRootOwned { owner_uid: writer.uid, mode: "707" } })
 }

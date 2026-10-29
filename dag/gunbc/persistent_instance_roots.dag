@@ -10,13 +10,17 @@ import std.types { String }
 type PersistentInstanceScope
   = MacbookLocal
   | Srv2Deploy
+  | RevisionPreparation
 
 data materialization_store_persistent_macbook_scope: String = "/Users/briansrls/.local/share/gunbc-macbook-local"
 data materialization_store_persistent_srv2_scope: String = "/home/briansrls/.local/share/gunbc-srv2-deploy"
+
+data materialization_store_revision_preparation_scope: String = "/var/lib/gunbc/revision-job/preparation"
 
 fn persistent_instance_scope_root(scope: PersistentInstanceScope) -> String {
   match scope {
     MacbookLocal => materialization_store_persistent_macbook_scope
     Srv2Deploy => materialization_store_persistent_srv2_scope
+    RevisionPreparation => materialization_store_revision_preparation_scope
   }
 }

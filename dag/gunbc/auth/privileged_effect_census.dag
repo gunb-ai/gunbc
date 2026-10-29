@@ -1241,8 +1241,14 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: Present { value: interim_job_user_whole_binary_grants },
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.fleet.fleet_revision_accounts", decl_name: "revision_account_ensure_entry"),
+    effect: srv1_host_root_effect(subject: "create the declared fixed-ID revision preparer/materializer account and primary group only when getent reports the key absent; refuse conflicting accounts and read back the created allocation (microVM controller install's existing approved convergence)" as NonEmptyStr, required: microvm_controller_install_root_scopes),
+    realized: RealizedUnderApprovedConvergence,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.host.host_effect_realize", decl_name: "microvm_controller_staged_write_steps"),
-    effect: srv1_host_root_effect(subject: "stage and install the microVM controller's units, slice, dispatch grant, release locus and revision-job state as root, then check the grant and reload the manager (host_effect_apply MicrovmControllerInstall; run 39284886844 was refused at 'controller slice unit (stage)' under the job user's sudo)" as NonEmptyStr, required: microvm_controller_install_root_scopes),
+    effect: srv1_host_root_effect(subject: "install the microVM controller's units, slice, dispatch grant, release locus and revision-job state as root, then check the grant and reload the manager (host_effect_apply MicrovmControllerInstall; run 39284886844 was refused at 'controller slice unit (stage)' under the job user's sudo)" as NonEmptyStr, required: microvm_controller_install_root_scopes),
     realized: RealizedUnderApprovedConvergence,
     divergence_reason: none,
   },
