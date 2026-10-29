@@ -585,7 +585,14 @@ fn r2_custom_domain_zone_admissible(zone: CloudflareZone, bucket_account: Option
         ZoneRefusedWrongAccount { zone: zone, bucket_account: account, basis: basis }
       } else if zone.paused {
         ZoneRefusedPaused { zone: zone, basis: basis }
-      } else if !cloudflare_zone_status_is_active(status: zone.status) {
+      } else if match zone.status {
+               // The arm, matched AT THE CALL SITE (review 87789): the deleted Bool re-derived which arm
+               // means active, a second home for one fact. The fallback here is fail-CLOSED — a status
+               // this model has not named (a vendor arm added later, or the published unknown) refuses,
+               // so a new value can never widen admissibility; only ZoneStatusActive admits.
+               ZoneStatusActive => false
+               _ => true
+             } {
         ZoneRefusedNotActive { zone: zone, basis: basis }
       } else {
         // The hold is matched, not asked about, and its absence is the CALLER'S unread state, not a
@@ -597,13 +604,6 @@ fn r2_custom_domain_zone_admissible(zone: CloudflareZone, bucket_account: Option
           Absent => ZoneRefusedHoldUnobserved { zone: zone, basis: basis }
         }
       }
-  }
-}
-
-fn cloudflare_zone_status_is_active(status: CloudflareZoneStatus) -> Bool {
-  match status {
-    ZoneStatusActive => true
-    _ => false
   }
 }
 

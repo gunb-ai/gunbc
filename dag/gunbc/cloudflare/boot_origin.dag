@@ -11,7 +11,7 @@ import std.human_intervention {
 import extdeps.external_authority { FactCitation }
 import extdeps.cloudflare.r2 { r2_custom_domain_citation }
 import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name, domain_name_wire }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import extdeps.uri { Uri, uri_https }
@@ -170,7 +170,11 @@ fn boot_origin_hostname_unallocated() -> BootOriginHostnameStanding {
       identity: boot_origin_hostname_intervention_identity as HumanInterventionIdentity,
       frequency: FleetOnce,
       subject: "the boot origin's production custom-domain hostname" as NonEmptyStr,
-      instruction: "Choose the Cloudflare zone on the fleet account and the FQDN that will serve the gunbai-fabric-boot bucket, then record the FQDN (its zone is its parent domain) as the BootOriginHostnameAllocated arm of boot_origin_hostname_standing. An r2.dev hostname is refused: it is rate-limited and development-only." as NonEmptyStr,
+      // The instruction was the old process — "record the FQDN as the ... arm" — and after this PR that
+      // arm is DERIVED, so following the old sentence would be the wrong step while the name stayed
+      // constant: exactly the §3 meaning fork. It now walks the real path, and its target agrees with
+      // this intervention's own completion_evidence: the operator's act lands on boot_origin_fqdn_decision.
+      instruction: "Choose the Cloudflare zone on the fleet account and the FQDN that will serve the gunbai-fabric-boot bucket. An r2.dev hostname is refused: it is rate-limited and development-only. The FQDN is recorded as the Decided arm of boot_origin_fqdn_decision in gunbc.cloudflare.zone, carried with your identity and a citation to where the decision is recorded — the BootOriginHostnameAllocated arm of boot_origin_hostname_standing is then DERIVED, not written: it also requires the bind to have been dispatched through the authorization pattern and a custom-domain readback that reports itself serving (the verdict's BindingAllocated). Neither may be fabricated; the gates open only on the real response and this recorded decision." as NonEmptyStr,
       // The evidence site is the OPERATOR'S DECISION CARRIER in gunbc.cloudflare.zone, not this standing:
       // std.human_intervention warns an intervention must not be dischargeable by editing a flag beside
       // it, and pointing the evidence at the very arm this intervention unblocks would be that mistake.
