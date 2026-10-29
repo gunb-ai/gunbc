@@ -144,7 +144,3 @@ fn row_is_sealed(row: CardRow) -> Bool {
     NeedsReading {read_obligation: _} => false
   })
 }
-
-fn row_display(row: CardRow) -> String {
-  join([row.id as String, ": ", if row_is_sealed(row: row) { "sealed, printable" } else { join([to_string(value: length(list: row_unread_fields(row: row))), " field(s) await reading (", to_string(value: length(list: row.sources)), " source(s) noted)"], "") }], "")
-}

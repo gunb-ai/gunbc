@@ -106,8 +106,6 @@ data t4_product_brief_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/tesla-t4/t4-tensor-core-product-brief.pdf" }
 }
 
-data t4_brief_sha256: NonEmptyStr = "4b94dfc3eb3e94ae06f20d4aa1a4d2d7fbd9115bf5c12d3136f08eec761da698"
-
 data t4_brief_standing: CitedFigureStanding = CitedToAuthority { authority: t4_product_brief_authority }
 
 // The height is the drawing's MAX, not its nominal: a part fitted around the card has to clear the
