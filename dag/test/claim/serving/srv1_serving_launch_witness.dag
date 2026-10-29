@@ -33,6 +33,8 @@ data observed_cmd_tail: List<String> = [
   "--env", "LMCACHE_L2_ROOT=/cache/kv",
   "--env", "LMCACHE_L2_WORKERS=16",
   "--env", "LMCACHE_L2_ODIRECT=1",
+  "--env", "LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5",
+  "--env", "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800",
   "--",
   "--port", "18000",
   "--ssl-keyfile", "/root/serve/tls.key",
@@ -86,6 +88,8 @@ test fn the_environment_tiers_wire_as_the_container_shows_them() -> Bool {
       lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_ODIRECT" as NonEmptyStr, value: "1" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_CHECKPOINT_PROTECTED_SHARE" as NonEmptyStr, value: "0.5" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS" as NonEmptyStr, value: "1800" as NonEmptyStr),
     ]
     && (lil_serve_environment_wire(e: lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr)) as String) == "LMCACHE_MODE=ram-disk"
 }
@@ -98,7 +102,7 @@ test fn the_retained_wrapper_is_the_serving_entrypoint_the_receipt_read() -> Boo
   let b = srv1_serving_wrapper.body
   string_contains(s: b, pattern: "#!/bin/bash")
     && string_contains(s: b, pattern: "lil-flash-next")
-    && string_contains(s: b, pattern: "IMG=sha256:74b35f46d8067dc6cae68ff6b92bf010497a5cbb8a06429f5729f8ed342ec7ba")
+    && string_contains(s: b, pattern: "IMG=sha256:58d49cac0f22daa3af29177b68bc76d7aa7389858a59192bfc3625911e7778b0")
     && string_contains(s: b, pattern: "srv1-inference.slice")
     && string_contains(s: b, pattern: "pool-card")
     && string_contains(s: b, pattern: ".pool_key")
@@ -115,18 +119,18 @@ test fn the_launch_exports_the_observed_authorities() -> Bool {
     && (srv1_serving_pinned_checkpoint().revision as String) == (srv1_serving_startup_reading.checkpoint_revision as String)
     && (srv1_serving_image().digest_sha256 as String) == (srv1_serving_startup_reading.image_digest_sha256 as String)
     // srv1 runs the DERIVED image, not the upstream base: the two digests differ, the base is the
-    // upstream row itself, and every change is a real one: seven files, six replaced (each digest differs
-    // from the base's) and one added (checkpoint_loss.py, which the base does not have).
+    // upstream row itself, and every change is a real one: twenty-one files, nineteen replaced (each digest
+    // differs from the base's) and two added (checkpoint_loss.py and checkpoint_policy.py, absent from the base).
     && (srv1_serving_image_derivation.base.digest_sha256 as String) == (local_inference_lab_vllm_image.digest_sha256 as String)
     && (srv1_serving_image().digest_sha256 as String) != (local_inference_lab_vllm_image.digest_sha256 as String)
-    && length(xs: concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail)) == 7
+    && length(xs: concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail)) == 21
     && concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail)
       .all(c => match c {
         Srv1ImageFileReplaced { path: _, base_file_sha256_hex: b, replaced_file_sha256_hex: r } => (b as String) != (r as String)
         Srv1ImageFileAdded { path: _, added_file_sha256_hex: _ } => true
       })
     && fold(concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail), init: 0,
-      f: (n, c) => match c { Srv1ImageFileAdded { path: _, added_file_sha256_hex: _ } => n + 1 _ => n }) == 1
+      f: (n, c) => match c { Srv1ImageFileAdded { path: _, added_file_sha256_hex: _ } => n + 1 _ => n }) == 2
 }
 
 // THE ROUTER'S LAUNCH FACTS READ THE LAUNCH: the port is the launch's listen port, the advertised model
@@ -172,6 +176,10 @@ test fn a_port_override_changes_only_the_port() -> Bool {
       "--env", "LMCACHE_L2_ROOT=/cache/kv",
       "--env", "LMCACHE_L2_WORKERS=16",
       "--env", "LMCACHE_L2_ODIRECT=1",
+      "--env", "LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5",
+      "--env", "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800",
+  "--env", "LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5",
+  "--env", "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800",
       "--",
       "--port", "18001",
       "--ssl-keyfile", "/root/serve/tls.key",
