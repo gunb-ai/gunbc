@@ -1,6 +1,6 @@
 module gunbc.compute.host_capacity
 
-import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, Duration }
 import std.nat { Nat }
 import std.algebra { Cons, Empty }
 import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size, byte_size_count }
@@ -665,7 +665,13 @@ fn host_capacity_reserve_reviewer(
   reviewer_slots: Nat,
   agent_slots: Nat,
   reference: NonEmptyStr,
-  term_seconds: Nat,
+  // THE DURATION CARRIER AT THE NEW ENTRY POINT (review 87616): a lease term is a duration, and
+  // std.types declares the carrier -- this new public signature does not extend the raw-Nat path
+  // the base siblings sit on. The seat and lease policies downstream still take Nat seconds; that
+  // lane is named by the existing tracked marker at session_placement_term_seconds (its 🟡
+  // dissolve-on: names SeatRequest.term_seconds and LeasePolicy.maximum_duration_seconds as the
+  // lanes that retype when the measure duration lands) -- one place, already carried.
+  term_seconds: Duration,
   request: Kibibyte,
 ) -> ComputeReservation {
   match host_capacity_subject(instance: instance, pool: ReviewerSessionPool { slots: reviewer_slots }, request: request) {
