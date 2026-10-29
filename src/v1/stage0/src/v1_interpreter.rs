@@ -30097,9 +30097,9 @@ mod value_depth_walker_tests {
 
     use super::{
         account_value, cross_representation_numeric_straddle,
-        free_monoid_symbol_value_to_dotted_string, json_to_value, list_value,
+        free_monoid_symbol_value_to_dotted_string, json_to_value, list_value, map_value,
         portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
-        portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash,
+        portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash, CanonKey,
         ExecutionMode, InterpContext, MemoryAccounting, Value,
     };
 
@@ -30206,9 +30206,9 @@ mod value_depth_walker_tests {
     #[test]
     fn a_weak_held_map_chain_drops() {
         let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
-        let mut value = map_value(HamtMap::new());
+        let mut value = map_value(HashMap::new());
         for level in 0..DEPTH {
-            let mut entries = HamtMap::new();
+            let mut entries = HashMap::new();
             entries.insert(
                 CanonKey::new(Value::Int(level as i64)).expect("reflexive key"),
                 value,
