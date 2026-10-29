@@ -383,7 +383,9 @@ data runner_host_spec_rows: List<RunnerHostSpecRow> = [
 // gunbc.runner.runner_user_session_receipt from the bytes a converge run wrote -- the roster here is the
 // converge's INPUT population, and the receipt is the EVIDENCE; hand-copied receipt rows were rejected as
 // DESIGN 6's transcribed output), and stripped from any caller-spelled or offer-spelled half; until the
-// fleet-converge receipt read (the follow-up in the PR body of gunbc#15253) supplies a receipt, the label is
+// fleet-converge receipt read (the follow-up carried on a FrontierRow in gunbc.runner
+// .runner_user_session_receipt runner_user_session_label_frontier_rows, registered in
+// gunbc.census_closure_frontier) supplies a receipt, the label is
 // granted to nobody in production; then gunbc#14972's systemd credential
 // rows select on that label -- the CONSUMER of the label, the jobs that run a command under the job account's
 // user manager. gunbc.runner.runner_user_session runner_user_session_converge_ci_wet is the leg that

@@ -54,8 +54,9 @@ module test.claim.runner.runner_user_session_label_witness
 // default a later control would inherit).
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.list { first_where }
 import std.algebra { string_contains }
-import std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent, optional_is_absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
@@ -79,9 +80,14 @@ import gunbc.runner.runner_user_session_receipt {
   LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread,
   runner_user_session_converge_receipt_failure, runner_user_session_converge_receipt_read_argv,
   parse_runner_user_session_converge_receipt, runner_user_session_receipt_input_of_text,
+  runner_user_session_converge_receipt_staleness,
+  runner_user_session_converge_receipt_artifact_name, runner_user_session_label_frontier_rows,
   runner_user_session_converge_receipt_names_host,
 }
-import gunbc.runner.runner_user_session { runner_user_session_converge_receipt_path }
+import std.roster_frontier { frontier_rows_well_formed, DeclSubject, PathSubject }
+import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigger_ref }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.runner.runner_slot_job_role { srv1_deploy_slot }
 import gunbc.ci.ci_fleet { srv4_offer }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
@@ -104,10 +110,10 @@ fn label_count(labels: List<String>) -> Int {
 // receipt a control reasons about is one the production reader could actually have produced. The bytes
 // for the negative cases are equally honest: a truncated file, a failed reading, a header naming a
 // different host -- each is text a run really could leave behind.
-fn receipt_bytes(host: String, enable_linger: String, linger: String, bus: String) -> String {
+fn receipt_bytes_probed_at(host: String, probed_at: String, enable_linger: String, linger: String, bus: String) -> String {
   join([
     "runner_user_session_converge host=", host,
-    " job_user=ghrunner probed_at=2026-10-28T00:00:00Z\n",
+    " job_user=ghrunner probed_at=", probed_at, "\n",
     "context_receipt: agent accepted\n",
     "enable_linger=", enable_linger, "\n",
     "linger=", linger, "\n",
@@ -115,12 +121,25 @@ fn receipt_bytes(host: String, enable_linger: String, linger: String, bus: Strin
   ], "")
 }
 
+// THE PROBE INSTANT the fixtures stamp into every receipt document, and THE READ INSTANT the controls age
+// it against: 28 days apart on purpose is NOT what this pair is -- they are the SAME instant (the fresh
+// case), so no control's GREEN depends on the wall clock, and the STALE cases below forge an older stamp
+// while the read stays here. A control that hardcoded "fresh" against today's date would rot; this pair
+// is age 0 by construction.
+fn receipt_probe_instant() -> String {
+  "2026-10-28T00:00:00Z"
+}
+
+fn receipt_bytes(host: String, enable_linger: String, linger: String, bus: String) -> String {
+  receipt_bytes_probed_at(host: host, probed_at: receipt_probe_instant(), enable_linger: enable_linger, linger: linger, bus: bus)
+}
+
 fn srv4_holding_bytes() -> String {
   receipt_bytes(host: "srv4", enable_linger: "ok", linger: "yes", bus: "answered")
 }
 
 fn srv4_holding_input() -> RunnerUserSessionReceiptInput {
-  runner_user_session_receipt_input_of_text(text: srv4_holding_bytes())
+  runner_user_session_receipt_input_of_text(text: srv4_holding_bytes(), read_at: receipt_probe_instant())
 }
 
 fn grant_srv4_with_own_receipt() -> RunnerUserSessionGrant {
@@ -149,14 +168,14 @@ test fn the_grant_states_who_holds_the_label_and_why_the_others_do_not() -> Bool
           RunnerUserSessionRosteredUnconverged { host: forged, cause: why } =>
             (forged as String) == (operator_host_srv1 as String)
               && string_contains(s: why as String, pattern: "no converge receipt")
-              && match runner_user_session_grant_of_roster(host: operator_host_srv1, roster: concat(runner_job_user_session_hosts, [operator_host_srv1]), receipt: runner_user_session_receipt_input_of_text(text: "not a receipt at all")) {
+              && match runner_user_session_grant_of_roster(host: operator_host_srv1, roster: concat(runner_job_user_session_hosts, [operator_host_srv1]), receipt: runner_user_session_receipt_input_of_text(text: "not a receipt at all", read_at: receipt_probe_instant())) {
                 RunnerUserSessionRosteredUnconverged { host: _, cause: garbage } =>
                   string_contains(s: garbage as String, pattern: "did not parse")
-                  && match runner_user_session_grant_of_roster(host: operator_host_srv1, roster: concat(runner_job_user_session_hosts, [operator_host_srv1]), receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes(host: "srv1", enable_linger: "ok", linger: "yes", bus: "not-answered cause=Connection refused"))) {
+                  && match runner_user_session_grant_of_roster(host: operator_host_srv1, roster: concat(runner_job_user_session_hosts, [operator_host_srv1]), receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes(host: "srv1", enable_linger: "ok", linger: "yes", bus: "not-answered cause=Connection refused"), read_at: receipt_probe_instant())) {
                     RunnerUserSessionRosteredUnconverged { host: _, cause: dead_bus } =>
                       string_contains(s: dead_bus as String, pattern: "did not hold")
                         && string_contains(s: dead_bus as String, pattern: "user manager")
-                        && match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes(host: "srv1", enable_linger: "ok", linger: "yes", bus: "answered"))) {
+                        && match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes(host: "srv1", enable_linger: "ok", linger: "yes", bus: "answered"), read_at: receipt_probe_instant())) {
                           RunnerUserSessionRosteredUnconverged { host: _, cause: wrong_host } =>
                             string_contains(s: wrong_host as String, pattern: "another host")
                             && match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: [], receipt: srv4_holding_input()) {
@@ -240,15 +259,140 @@ test fn the_parser_reads_the_document_and_refuses_to_guess() -> Bool {
   }
 }
 
-// THE READ SPEC IS THE READER THE FOLLOW-UP RUNS: cat of a path, options ended. The argv the fleet leg
-// will run per rostered host is this one, and its path argument is the SAME path the converge writes to
-// (gunbc.runner.runner_user_session runner_user_session_converge_receipt_path) -- a reader pointed at a
-// different path reads a document nobody wrote. Consumers: the follow-up named in the PR body of
-// gunbc#15253 (the production one), and this control (the shape one).
-// RED control: change the program or drop the path from the spec and this goes red.
+// THE READ SPEC FETCHES THE PRODUCER'S ARTIFACT, IT DOES NOT CAT A HOST PATH (review 87218). The converge
+// writes the receipt document in the WORKFLOW WORKSPACE on a Linux runner and
+// actions/upload-artifact ships it to the GitHub artifact store; the path the writer used is a path inside
+// that workspace, and NO fleet host has it. So the words the follow-up leg must run are gh run download of
+// the artifact, by name, from the producer's repository and run -- pinned here word for word, including
+// the artifact name the upload step publishes under
+// (runner_user_session_converge_receipt_artifact_name: one row, read by the workflow's upload step AND
+// these words, so a rename that misses one goes red HERE). producer_run is the fleet-converge run the
+// gate evidence cites (40270496735); the follow-up passes whatever run it read, typed as
+// GitHubWorkflowRunId. Consumers: this control (the shape) and the follow-up carried on
+// runner_user_session_label_frontier_rows in gunbc.runner.runner_user_session_receipt (registered in
+// gunbc.census_closure_frontier -- the production one).
+// RED control: turn the route back into cat of a path, drop --name/--repo/--dir, or rename the artifact
+// on one side only, and this goes red.
 test fn the_consumer_reads_this_spec() -> Bool {
-  let words = runner_user_session_converge_receipt_read_argv(path: runner_user_session_converge_receipt_path)
-  words == ["cat", "--", runner_user_session_converge_receipt_path]
+  let words = runner_user_session_converge_receipt_read_argv(run: GitHubWorkflowRunId { value: 40270496735 }, into: "receipts")
+  words
+    == [
+      "gh",
+      "run",
+      "download",
+      "40270496735",
+      "--repo",
+      "gunb-ai/gunbc",
+      "--name",
+      runner_user_session_converge_receipt_artifact_name,
+      "--dir",
+      "receipts",
+    ]
+    && !string_contains(s: join(words, " "), pattern: "cat")
+    && string_contains(s: join(words, " "), pattern: runner_user_session_converge_receipt_artifact_name)
+}
+
+// THE PARSER KEEPS THE PROBED_AT WORD; THE GRANT IS WHAT AGES IT (review 87218: the parser dropped the
+// header's probed_at, so any document on disk granted forever -- the stale-grant defect the rows were
+// deleted for, back through the reader). The parser's job is SHAPE: an instant is kept VERBATIM, canonical
+// or not, because WHETHER it can be aged is a question with a located answer at the gate that spends the
+// evidence (DESIGN 5), not a reason to throw the document away at the mouth. This control pins the
+// preservation and drives the age function on both sides of the declared bound.
+// RED control: drop probed_at from the receipt type, or age at the parse instead of the grant.
+test fn the_parser_keeps_the_instant_and_the_grant_ages_it() -> Bool {
+  match parse_runner_user_session_converge_receipt(text: receipt_bytes_probed_at(host: "srv4", probed_at: "2026-09-01T00:00:00Z", enable_linger: "ok", linger: "yes", bus: "answered")) {
+    Present { value: r } =>
+      r.probed_at == "2026-09-01T00:00:00Z"
+        && match runner_user_session_converge_receipt_staleness(receipt: r, read_at: receipt_probe_instant()) {
+          Present { value: why } => string_contains(s: why, pattern: "older than")
+            && match runner_user_session_converge_receipt_staleness(receipt: r, read_at: "2026-09-02T00:00:00Z") {
+              Absent =>
+                match runner_user_session_converge_receipt_staleness(receipt: r, read_at: "2026-09-04T00:00:00Z") {
+                  Absent =>
+                    // exactly the declared bound is still evidence; one second past it is not
+                    match runner_user_session_converge_receipt_staleness(receipt: r, read_at: "2026-09-04T00:00:01Z") {
+                      Present { value: _ } => true
+                      Absent => false
+                    }
+                  Present { value: _ } => false
+                }
+              Present { value: _ } => false
+            }
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+// A STALE, UNDATABLE, OR CLOCK-SKEWED RECEIPT GRANTS NOTHING, AND SAYS WHY. Same bytes as the granting
+// document, same roster -- only the document's own probed_at (or the read instant) moved. Each refusal is
+// a TYPED RosteredUnconverged with the located reason (the age against the declared bound; a probed_at
+// that is not a canonical instant -- the "clock-unreadable" word gunbc.clock_read probed_at_word renders
+// when no clock can be read; a read instant that is not canonical; a document dated after the read, which
+// is two clocks disagreeing, not freshness). This is the control that makes "the label cannot outlive the
+// host's user manager" true even after piece 3 wires the live read: a fossil document in the artifact
+// store answers a refusal, not a grant.
+// RED control: delete the staleness gate in runner_user_session_grant_of_roster, or let staleness pass as
+// a grant, and every arm here goes red.
+test fn the_grant_refuses_a_stale_undatable_or_skewed_receipt() -> Bool {
+  match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes_probed_at(host: "srv4", probed_at: "2026-09-01T00:00:00Z", enable_linger: "ok", linger: "yes", bus: "answered"), read_at: receipt_probe_instant())) {
+    RunnerUserSessionRosteredUnconverged { host: _, cause: stale } =>
+      string_contains(s: stale as String, pattern: "older than")
+        && match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes_probed_at(host: "srv4", probed_at: "clock-unreadable", enable_linger: "ok", linger: "yes", bus: "answered"), read_at: receipt_probe_instant())) {
+          RunnerUserSessionRosteredUnconverged { host: _, cause: undatable } =>
+            string_contains(s: undatable as String, pattern: "canonical")
+            && match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes_probed_at(host: "srv4", probed_at: "2026-10-29T00:00:00Z", enable_linger: "ok", linger: "yes", bus: "answered"), read_at: receipt_probe_instant())) {
+              RunnerUserSessionRosteredUnconverged { host: _, cause: skew } =>
+                string_contains(s: skew as String, pattern: "after the instant")
+                && match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts, receipt: runner_user_session_receipt_input_of_text(text: srv4_holding_bytes(), read_at: "clock-unreadable")) {
+                  RunnerUserSessionRosteredUnconverged { host: _, cause: blind_read } =>
+                    string_contains(s: blind_read as String, pattern: "canonical")
+                  RunnerUserSessionGranted { receipt: _ } => false
+                  RunnerUserSessionReceiptedUnrostered { host: _ } => false
+                  RunnerUserSessionUnadmitted { host: _ } => false
+                }
+              RunnerUserSessionGranted { receipt: _ } => false
+              RunnerUserSessionReceiptedUnrostered { host: _ } => false
+              RunnerUserSessionUnadmitted { host: _ } => false
+            }
+          RunnerUserSessionGranted { receipt: _ } => false
+          RunnerUserSessionReceiptedUnrostered { host: _ } => false
+          RunnerUserSessionUnadmitted { host: _ } => false
+        }
+    RunnerUserSessionGranted { receipt: _ } => false
+    RunnerUserSessionReceiptedUnrostered { host: _ } => false
+    RunnerUserSessionUnadmitted { host: _ } => false
+  }
+}
+
+// THE FOLLOW-UP IS A ROW ON A CARRIER, NOT A SENTENCE IN A PR BODY (review 87218: "each frontier comment
+// names its trigger as the follow-up in the PR body; a PR body is not on a carrier and will not be
+// resolvable from the Node tree"). The gap -- no leg yet fetches the converge receipt artifact and feeds
+// the grant -- is carried as FrontierRows in gunbc.runner.runner_user_session_receipt
+// runner_user_session_label_frontier_rows: well formed (reason, subject, and a BOUND dissolution whose
+// trigger names the declaration whose appearance ends the gap), and ENROLLED in
+// gunbc.census_closure_frontier, so a census walk of the tree reaches it. This is also the control that
+// goes red if someone deletes the registration line while leaving the rows behind.
+// RED control: un-enroll the rows from the census, or strip a dissolution trigger, and this goes red.
+test fn the_wiring_frontier_is_a_row_on_a_carrier() -> Bool {
+  frontier_rows_well_formed(rows: runner_user_session_label_frontier_rows)
+    && fold(runner_user_session_label_frontier_rows, init: 0, f: (acc, _) => acc + 1) == 2
+    && match first_where(xs: runner_user_session_label_frontier_rows, keep: _ => true) {
+      Present { value: row } =>
+        match row.dissolution {
+          BoundDissolution { trigger: t } => dissolution_trigger_ref(trigger: t).decl_name == "fleet_converge_runner_user_session_receipt_read_job"
+          UnboundDissolution { description: _ } => false
+        }
+      Absent => false
+    }
+    && !optional_is_absent(opt: first_where(xs: census_closure_frontier_rows(), keep: enrolled => match enrolled.subject {
+      DeclSubject { ref: r } => r.module_path == "gunbc.runner.runner_registration_labels" && r.decl_name == "runner_user_session_labels_for"
+      PathSubject { path: _ } => false
+    }))
+    && !optional_is_absent(opt: first_where(xs: census_closure_frontier_rows(), keep: enrolled => match enrolled.subject {
+      DeclSubject { ref: r } => r.module_path == "gunbc.runner.runner_registration_labels" && r.decl_name == "runner_slot_registration_labels_with_user_session_receipt"
+      PathSubject { path: _ } => false
+    }))
 }
 
 // THE PRODUCTION ENTRY CARRIES NO EVIDENCE YET, AND THE LABEL IS OFF -- THAT IS THE HONEST STATE, AND IT
@@ -298,7 +442,7 @@ test fn the_evidence_entry_grants_the_label_exactly_once_and_only_to_a_rostered_
   match runner_registration_labels_with_user_session_receipt(host: operator_host_srv4, receipt: srv4_holding_input()) {
     RegistrationLabelsResolved { labels: srv4 } =>
       has_label(labels: srv4) && label_count(labels: srv4) == 1
-        && match runner_registration_labels_with_user_session_receipt(host: operator_host_srv1, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes(host: "srv1", enable_linger: "ok", linger: "yes", bus: "answered"))) {
+        && match runner_registration_labels_with_user_session_receipt(host: operator_host_srv1, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes(host: "srv1", enable_linger: "ok", linger: "yes", bus: "answered"), read_at: receipt_probe_instant())) {
           RegistrationLabelsResolved { labels: srv1 } =>
             !has_label(labels: srv1)
               && match runner_registration_labels_of_class(host: operator_host_srv1, class_labels: [gunbc_user_session_label]) {
@@ -381,7 +525,7 @@ test fn the_consumer_selector_is_satisfied_by_the_evidence_and_by_nothing_else()
         RegistrationLabelsResolved { labels: srv4_backed } =>
           match runner_registration_labels(host: operator_host_srv4) {
             RegistrationLabelsResolved { labels: srv4_bare } =>
-              match runner_registration_labels_with_user_session_receipt(host: operator_host_srv1, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes(host: "srv1", enable_linger: "ok", linger: "yes", bus: "answered"))) {
+              match runner_registration_labels_with_user_session_receipt(host: operator_host_srv1, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes(host: "srv1", enable_linger: "ok", linger: "yes", bus: "answered"), read_at: receipt_probe_instant())) {
                 RegistrationLabelsResolved { labels: srv1_backed } => {
                   let selector = concat(platform, [gunbc_user_session_label])
                   runner_labels_satisfy_selector(held: srv4_backed, selector: selector)
@@ -408,7 +552,10 @@ test fn the_consumer_selector_is_satisfied_by_the_evidence_and_by_nothing_else()
 type WitnessControl
   = GrantTypedStateStep
   | ParserIsGateMouthpieceStep
+  | InstantKeptAgedStep
+  | StaleReceiptRefusedStep
   | ReadSpecStep
+  | FrontierCarrierStep
   | ProductionEntryLabelOffStep
   | EvidenceEntryExactlyOnceStep
   | StripComposesWithGrantStep
@@ -434,7 +581,10 @@ fn witness_control_name(step: WitnessControl) -> String {
   match step {
     GrantTypedStateStep => "the_grant_states_who_holds_the_label_and_why_the_others_do_not"
     ParserIsGateMouthpieceStep => "the_parser_reads_the_document_and_refuses_to_guess"
+    InstantKeptAgedStep => "the_parser_keeps_the_instant_and_the_grant_ages_it"
+    StaleReceiptRefusedStep => "the_grant_refuses_a_stale_undatable_or_skewed_receipt"
     ReadSpecStep => "the_consumer_reads_this_spec"
+    FrontierCarrierStep => "the_wiring_frontier_is_a_row_on_a_carrier"
     ProductionEntryLabelOffStep => "the_production_entry_advertises_the_label_to_nobody_until_the_fleet_read_lands"
     EvidenceEntryExactlyOnceStep => "the_evidence_entry_grants_the_label_exactly_once_and_only_to_a_rostered_host"
     StripComposesWithGrantStep => "the_grant_adds_the_label_exactly_once_and_the_strip_composes_with_it"
@@ -448,7 +598,10 @@ fn witness_control_holds(step: WitnessControl) -> Bool {
   match step {
     GrantTypedStateStep => the_grant_states_who_holds_the_label_and_why_the_others_do_not()
     ParserIsGateMouthpieceStep => the_parser_reads_the_document_and_refuses_to_guess()
+    InstantKeptAgedStep => the_parser_keeps_the_instant_and_the_grant_ages_it()
+    StaleReceiptRefusedStep => the_grant_refuses_a_stale_undatable_or_skewed_receipt()
     ReadSpecStep => the_consumer_reads_this_spec()
+    FrontierCarrierStep => the_wiring_frontier_is_a_row_on_a_carrier()
     ProductionEntryLabelOffStep => the_production_entry_advertises_the_label_to_nobody_until_the_fleet_read_lands()
     EvidenceEntryExactlyOnceStep => the_evidence_entry_grants_the_label_exactly_once_and_only_to_a_rostered_host()
     StripComposesWithGrantStep => the_grant_adds_the_label_exactly_once_and_the_strip_composes_with_it()

@@ -13,6 +13,7 @@ import gunbc.runner.runner_host_deploy { runner_job_user_session_hosts }
 import gunbc.runner.runner_user_session_receipt {
   RunnerUserSessionConvergeReceipt, RunnerUserSessionReceiptInput, ReceiptSupplied, ReceiptUnreadable, ReceiptAbsent,
   runner_user_session_converge_receipt_failure, runner_user_session_converge_receipt_names_host,
+  runner_user_session_converge_receipt_staleness,
 }
 import gunbc.runner.runner_slot_job_role { RunnerSlotJobRole, CiJobSlot, DeployJobSlot, runner_slot_job_role }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
@@ -38,9 +39,10 @@ fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsRes
   runner_registration_labels_with_user_session_receipt(host: host, receipt: ReceiptAbsent)
 }
 
-// THE COMPOSITION WITH THE EVIDENCE IN HAND. THE ONLY WIRING POINT PIECE 3 CHANGES: the follow-up named
-// in the PR body of gunbc#15253 replaces the production entry's ReceiptAbsent with the parsed read of the
-// converge's own document (the fleet-converge leg runs
+// THE COMPOSITION WITH THE EVIDENCE IN HAND. THE ONLY WIRING POINT PIECE 3 CHANGES: the follow-up carried
+// on a FrontierRow in gunbc.runner.runner_user_session_receipt runner_user_session_label_frontier_rows
+// (registered in gunbc.census_closure_frontier) replaces the production entry's ReceiptAbsent with the
+// parsed read of the converge's own document (the fleet-converge leg runs
 // gunbc.runner.runner_user_session_receipt runner_user_session_converge_receipt_read_argv per rostered
 // host and pipes the bytes through runner_user_session_receipt_input_of_text). Controls drive this entry
 // with forged receipts the same way the class half is driven with a forged class_labels argument --
@@ -127,18 +129,28 @@ fn runner_slot_registration_labels_with_user_session_receipt(slot: RunnerSlotIde
 //
 // UNTIL PIECE 3 THE LABEL IS OFF IN PRODUCTION, AND THAT IS THE HONEST STATE. No caller supplies a
 // receipt yet -- the production entries below pass ReceiptAbsent, so every rostered host answers
-// RosteredUnconverged and no registration carries the label. The follow-up (named, with its trigger, in
-// the PR body of gunbc#15253) wires the fleet-converge leg to run the receipt read
-// (runner_user_session_converge_receipt_read_argv) per rostered host, parse the bytes, and hand them
-// here. No rung drop declares this gap, because no debt was taken: the label this PR adds has never
-// been advertised, and the states below refuse rather than fabricate.
+// RosteredUnconverged and no registration carries the label. The follow-up is carried, not promised: a
+// FrontierRow in gunbc.runner.runner_user_session_receipt runner_user_session_label_frontier_rows,
+// registered in gunbc.census_closure_frontier, whose dissolution names the declaration whose appearance
+// ends the gap -- the fleet-converge leg that will run the receipt read
+// (runner_user_session_converge_receipt_read_argv: a gh run download of the converge run's receipt
+// ARTIFACT, not a cat of a host path -- the converge writes the file in the runner's workspace and
+// actions/upload-artifact ships it), parse the bytes with the read_at its own clock stamps, and hand them
+// here. No rung drop declares this gap, because no debt was taken: the label this PR adds has never been
+// advertised; production supplies Absent; and when a document does arrive it must be FRESH -- the grant
+// ages the receipt's own probed_at against the read instant and refuses one older than
+// gunbc.runner.runner_user_session_receipt runner_user_session_converge_receipt_max_age -- so no state in
+// the tree can keep advertising the label after the host loses its manager.
 data gunbc_user_session_label: String = "gunbc-user-session"
 
 // THE GRANT IS TYPED STATE, NOT A SILENT LIST (review 87126; DESIGN 3 "each fact lives in exactly one
 // place", DESIGN 5 "every path succeeds fully or fails with a typed, located diagnostic"). Granted only
 // when the host is rostered AND a receipt was supplied AND it is ABOUT that host AND every reading in it
-// holds. RosteredUnconverged carries WHY there is no label -- no receipt supplied, the bytes did not
-// parse, a named reading failed (which reading, from the receipt module's own locator), or the receipt
+// holds AND it is still FRESH at the read (its probed_at ages against
+// the caller's read instant inside the declared bound). RosteredUnconverged carries WHY there is no label
+// -- no receipt supplied, the bytes did not
+// parse, a named reading failed (which reading, from the receipt module's own locator), the document was
+// stale or undatable at the read (staleness, from the receipt module's own locator), or the receipt
 // was written about a different host -- so the difference between "not in the population" and "rostered
 // but unconverged" is assertable, never inferred from an empty list. ReceiptedUnrostered names the
 // mismatch in the other direction: evidence supplied for a host the roster does not name (a stale or
@@ -174,19 +186,32 @@ fn runner_user_session_grant_of_roster(
     }
   } else {
     match receipt {
-      ReceiptSupplied { value: r } =>
+      ReceiptSupplied { value: r, read_at: read_at } =>
         if !runner_user_session_converge_receipt_names_host(receipt: r, host: host) {
           RunnerUserSessionRosteredUnconverged {
             host: host,
             cause: "the supplied converge receipt was written about another host, so it is not evidence about this one" as NonEmptyStr,
           }
         } else {
-          match runner_user_session_converge_receipt_failure(receipt: r) {
-            Absent => RunnerUserSessionGranted { receipt: r }
+          // FRESHNESS BEFORE TRUST (review 87218): a document that names this host and holds every reading
+          // is still not evidence if the read that supplied it is older than the declared bound, or if its
+          // probed_at cannot be aged at all. A receipt is evidence about a LIVE manager; the age gate is
+          // what stops a document left in the artifact store from a run before a re-image from granting a
+          // label on a host whose manager is gone -- the silent-wrong-answer DESIGN 5 hard-rejects.
+          match runner_user_session_converge_receipt_staleness(receipt: r, read_at: read_at) {
             Present { value: why } =>
               RunnerUserSessionRosteredUnconverged {
                 host: host,
-                cause: join(["the converge receipt for this host did not hold: ", why], "") as NonEmptyStr,
+                cause: join(["the converge receipt for this host was supplied but is stale evidence: ", why], "") as NonEmptyStr,
+              }
+            Absent =>
+              match runner_user_session_converge_receipt_failure(receipt: r) {
+                Absent => RunnerUserSessionGranted { receipt: r }
+                Present { value: why } =>
+                  RunnerUserSessionRosteredUnconverged {
+                    host: host,
+                    cause: join(["the converge receipt for this host did not hold: ", why], "") as NonEmptyStr,
+                  }
               }
           }
         }

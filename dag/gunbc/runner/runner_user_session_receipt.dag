@@ -1,13 +1,18 @@
 module gunbc.runner.runner_user_session_receipt
 
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int, List, Timestamp }
 import std.algebra { trim }
 import std.list { first_where }
+import std.measure { Second, second, second_count }
 import std.optional { Optional, Present, Absent }
+import std.decl_ref { decl_ref }
+import std.dissolution { bound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import product.host_identity { HostIdentity }
 import extdeps.systemd.loginctl { LoginctlLingerReading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
-import extdeps.tools.gnu_coreutils { cat_file_command }
-import extdeps.exec.command { argv_words }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
+import gunbc.repository { gunbc_repository }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 
 // THE CONVERGE RECEIPT AS A PARSED DOCUMENT (DESIGN 4c, DESIGN 6).
 //
@@ -27,11 +32,17 @@ import extdeps.exec.command { argv_words }
 // could not know. So nothing in-tree claims a host is converged. The grant
 // (gunbc.runner.runner_registration_labels runner_user_session_grant_of_roster) takes the receipt as a
 // PARAMETER, and the only document that grants is one a caller READ from a converge run's own output file.
-// Until piece 3 -- the fleet-converge leg wired to read the document back and hand it to the composition
-// (its trigger and the argv it will run are named at runner_user_session_converge_receipt_read_argv
-// below, and the follow-up is recorded in the PR body of gunbc#15253) -- production callers supply
-// Absent, every rostered host answers RosteredUnconverged, and the label is genuinely off. That is the
-// honest state: no rung drop is needed because no debt is taken.
+// A receipt read from the producer's ARTIFACT (its read route is runner_user_session_converge_receipt_read_
+// argv below; the name it was uploaded under has one home in
+// runner_user_session_converge_receipt_artifact_name) is still only evidence for a window: the grant ages
+// the document's own probed_at header word against the instant it was read at, and refuses one older than
+// runner_user_session_converge_receipt_max_age, so even a document left in the artifact store from a run
+// before a host lost its linger cannot grant. Until piece 3 -- the fleet-converge leg wired to fetch the
+// document and hand it to the composition -- production callers supply Absent, every rostered host answers
+// RosteredUnconverged, and the label is genuinely off. That is the honest state: no rung drop is needed
+// because no debt is taken. The follow-up is not a promise kept in a PR body: it is a FrontierRow in
+// runner_user_session_label_frontier_rows below, registered in gunbc.census_closure_frontier, whose
+// dissolution names the declaration whose appearance ends the gap.
 //
 // This module is a LEAF: runner_user_session reaches its consumers through the host-effect chain, so
 // anything imported HERE must not reach gunbc.runner.runner_registration_labels (checked by
@@ -72,28 +83,55 @@ fn user_session_answer_text(a: UserSessionAnswer) -> String {
 // ONE HOST'S CONVERGE RECEIPT, PARSED FROM THE DOCUMENT ITS converge run wrote. The readings are the
 // three the live leg took; the host is the one the document's own header names -- the parser is what ties
 // them together, so a document cannot be handed to a host it was not written about (see the grant's
-// host-equality refusal). There is deliberately NO run-id field: a transcription of a run's OUTPUT is not
-// evidence you can hold; the evidence is the document, read from the producer's path, and the run that
+// host-equality refusal). probed_at is the instant the probe was taken, carried in the document's own
+// header (gunbc.runner.runner_user_session user_session_receipt_then writes "probed_at=<word>"), and it is
+// KEPT VERBATIM by the parser: whether it is a canonical UTC instant is the GRANT's question, not the
+// parser's (a document whose clock was unreadable at probe time renders the word "clock-unreadable", and
+// that must refuse with a located diagnostic at the gate that spends the evidence, not vanish at the
+// read). There is deliberately NO run-id field: a transcription of a run's OUTPUT is not
+// evidence you can hold; the evidence is the document, read from the producer's artifact, and the run that
 // wrote it is cited by its PRODUCER (the fleet-converge runner_user_session_converge leg) wherever a
 // human needs to follow the trail.
 type RunnerUserSessionConvergeReceipt {
   host: String,
+  probed_at: Timestamp,
   enable_linger: UserSessionLingerEnable,
   linger: LoginctlLingerReading,
   bus: UserSessionAnswer,
 }
 
-// THE READ ARGV SPEC (piece 2 of the plan): the words a leg runs to FETCH one host's receipt document --
-// cat of the path the converge wrote it at (the path has ONE home: gunbc.runner.runner_user_session
-// runner_user_session_converge_receipt_path, the writer's constant; the reader takes it as a parameter so
-// a control can pass a different path and prove the spec reads FROM the writer's path, not from a wish).
-// Consumers: test.claim.runner
-// .runner_user_session_label_witness the_consumer_reads_this_spec pins its shape (a reader that runs a
-// different program or path is a different document), and the follow-up named in the PR body of
-// gunbc#15253 -- the fleet-converge leg that, once wired, runs these words per rostered host and hands
-// the bytes to the grant -- is the production consumer whose absence keeps the label off until then.
-fn runner_user_session_converge_receipt_read_argv(path: String) -> List<String> {
-  argv_words(command: cat_file_command(path: path))
+// THE ONE ARTIFACT NAME THE PRODUCER UPLOADS THE RECEIPT DOCUMENT UNDER (review 87218: the name had two
+// homes -- a bare literal in the workflow's upload step and the read spec -- and a rename that missed one
+// would make the follow-up download a name that no run ever published, silently). The fleet-converge
+// upload step (gunbc.fleet.fleet_converge_workflow
+// fleet_converge_runner_user_session_receipt_upload_step) publishes the writer's path under THIS name, and
+// the read spec below fetches by it; the label witness pins both against this row.
+data runner_user_session_converge_receipt_artifact_name: String = "runner-user-session-converge-receipt"
+
+// THE READ SPEC (review 87218: the receipt is NOT a file on a host -- the converge writes it on a Linux
+// runner inside the workflow's workspace and actions/upload-artifact ships it to the GitHub ARTIFACT
+// STORE, where the host path never exists). These are therefore the words a leg runs to FETCH one rostered
+// host's receipt document FROM THE PRODUCER RUN: gh run download of the artifact the converge uploaded, by
+// name, from gunbc_repository's repository, into a directory the caller names. run is the producer's run id
+// -- typed GitHubWorkflowRunId, projected to its wire word -- because the follow-up reads the receipt from
+// the run that WROTE it (that is DESIGN 6's citation by producer, not by transcription). Consumers:
+// test.claim.runner.runner_user_session_label_witness the_consumer_reads_this_spec pins these words (a
+// reader that runs a different route is downloading a different document), and the follow-up -- carried on
+// a FrontierRow in runner_user_session_label_frontier_rows below, registered in
+// gunbc.census_closure_frontier -- is the production consumer whose absence keeps the label off until then.
+fn runner_user_session_converge_receipt_read_argv(run: GitHubWorkflowRunId, into: String) -> List<String> {
+  [
+    "gh",
+    "run",
+    "download",
+    github_workflow_run_id_wire_text(id: run),
+    "--repo",
+    gunbc_repository.full_name,
+    "--name",
+    runner_user_session_converge_receipt_artifact_name,
+    "--dir",
+    into,
+  ]
 }
 
 // THE DOCUMENT'S LINE PREFIXES, one home each: the header line user_session_receipt_then writes, and the
@@ -101,6 +139,7 @@ fn runner_user_session_converge_receipt_read_argv(path: String) -> List<String> 
 // writer-side rename that the reader misses is caught by the parser's own controls going red, not by a
 // silently widened parse.
 data runner_user_session_receipt_header_prefix: String = "runner_user_session_converge host="
+data runner_user_session_receipt_probed_at_prefix: String = "probed_at="
 data runner_user_session_receipt_enable_linger_prefix: String = "enable_linger="
 data runner_user_session_receipt_linger_prefix: String = "linger="
 data runner_user_session_receipt_bus_prefix: String = "user_manager="
@@ -141,23 +180,34 @@ fn parse_runner_user_session_converge_receipt(text: String) -> Optional<RunnerUs
                   // space. The header line itself never contains a space inside the host word, so the
                   // first word is cut by finding the first space in the remainder.
                   let after = receipt_after(line: h, prefix: runner_user_session_receipt_header_prefix)
+                  let words = split(s: after, delimiter: " ")
                   // The host is the text between the prefix and the FIRST space -- the head segment, not
                   // the first non-empty one: a header written as "host= job_user=..." has an empty host and
                   // must refuse, not fall through onto the next field.
-                  match split(s: after, delimiter: " ").first() {
+                  match words.first() {
                     Absent => Absent
                     Present { value: w } =>
-                      if string_length(s: trim(s: w)) == 0 {
-                        Absent
-                      } else {
-                        Present {
-                          value: RunnerUserSessionConvergeReceipt {
-                            host: trim(s: w),
-                            enable_linger: parse_user_session_linger_enable(rest: receipt_after(line: e, prefix: runner_user_session_receipt_enable_linger_prefix)),
-                            linger: parse_loginctl_linger_reading(rest: receipt_after(line: g, prefix: runner_user_session_receipt_linger_prefix)),
-                            bus: parse_user_session_answer(rest: receipt_after(line: b, prefix: runner_user_session_receipt_bus_prefix)),
-                          },
-                        }
+                      // The instant behind the host word is part of the document's SHAPE: the writer puts
+                      // it there (user_session_receipt_then), and a header that lost its probed_at word is
+                      // not a receipt document at all -- an undated document cannot be aged, and the age is
+                      // what makes it evidence of a live manager rather than of a past one. WHETHER the
+                      // instant is canonical is the grant's question (staleness below), not the parser's.
+                      match first_where(xs: words, keep: x => starts_with(s: x, prefix: runner_user_session_receipt_probed_at_prefix)) {
+                        Absent => Absent
+                        Present { value: t } =>
+                          if string_length(s: trim(s: w)) == 0 {
+                            Absent
+                          } else {
+                            Present {
+                              value: RunnerUserSessionConvergeReceipt {
+                                host: trim(s: w),
+                                probed_at: receipt_after(line: t, prefix: runner_user_session_receipt_probed_at_prefix),
+                                enable_linger: parse_user_session_linger_enable(rest: receipt_after(line: e, prefix: runner_user_session_receipt_enable_linger_prefix)),
+                                linger: parse_loginctl_linger_reading(rest: receipt_after(line: g, prefix: runner_user_session_receipt_linger_prefix)),
+                                bus: parse_user_session_answer(rest: receipt_after(line: b, prefix: runner_user_session_receipt_bus_prefix)),
+                              },
+                            }
+                          }
                       }
                   }
               }
@@ -188,21 +238,29 @@ fn parse_user_session_answer(rest: String) -> UserSessionAnswer {
 }
 
 // WHAT A CALLER SUPPLIES TO THE GRANT (gunbc.runner.runner_registration_labels
-// runner_user_session_grant_of_roster): the parsed document, the typed fact that the read produced bytes
+// runner_user_session_grant_of_roster): the parsed document TOGETHER WITH THE INSTANT THE CALLER READ IT
+// (read_at: the freshness gate ages the document against the read, so an old document left in the artifact
+// store cannot grant -- see runner_user_session_converge_receipt_staleness), the typed fact that the read
+// produced bytes
 // that are NOT a receipt document (a truncated file, a log with the header line cut), or the typed fact
 // that nothing was read at all. There is no fourth state, because there is no way to ask for one: "an
 // absent receipt" and "a receipt saying the converge failed" are different claims, and each names its
 // own producer. runner_user_session_receipt_input_of_text is the piece-2 pipeline the future live leg
 // runs -- bytes in, one of these three out.
 type RunnerUserSessionReceiptInput
-  = ReceiptSupplied { value: RunnerUserSessionConvergeReceipt }
+  = ReceiptSupplied { value: RunnerUserSessionConvergeReceipt, read_at: Timestamp }
   | ReceiptUnreadable { why: String }
   | ReceiptAbsent
 
-fn runner_user_session_receipt_input_of_text(text: String) -> RunnerUserSessionReceiptInput {
+// THE PARSE-AND-STAMP PIPELINE: bytes in, typed input out. read_at is the instant the CALLER performed the
+// read (the live leg passes its own clock word, probed_at_word(clock_read.dag clock_now_probed_at()); a
+// control forges it to drive the age gate). It travels WITH the bytes because a receipt's freshness is a
+// fact about the READ, not about the document: the same bytes are evidence one day and a fossil the next,
+// and the grant ages probed_at against the read, never against a date copied into the tree.
+fn runner_user_session_receipt_input_of_text(text: String, read_at: Timestamp) -> RunnerUserSessionReceiptInput {
   match parse_runner_user_session_converge_receipt(text: text) {
-    Present { value: r } => ReceiptSupplied { value: r }
-    Absent => ReceiptUnreadable { why: "the bytes read from the converge receipt path did not parse: the document must carry a 'runner_user_session_converge host=' header and the enable_linger=, linger= and user_manager= reading lines" }
+    Present { value: r } => ReceiptSupplied { value: r, read_at: read_at }
+    Absent => ReceiptUnreadable { why: "the bytes read from the converge receipt artifact did not parse: the document must carry a 'runner_user_session_converge host=' header with its probed_at= word and the enable_linger=, linger= and user_manager= reading lines" }
   }
 }
 
@@ -235,3 +293,72 @@ fn runner_user_session_converge_receipt_failure(receipt: RunnerUserSessionConver
 fn runner_user_session_converge_receipt_names_host(receipt: RunnerUserSessionConvergeReceipt, host: HostIdentity) -> Bool {
   receipt.host == (host as String)
 }
+
+// HOW OLD A RECEIPT MAY BE AND STILL BE EVIDENCE (review 87218: the parser dropped the header's probed_at,
+// so a document left in the artifact store from an old run granted the label FOREVER after the host lost
+// its linger -- the same silent-wrong-answer the hand-copied rows were deleted for, arriving by a different
+// road). The bound is three daily fleet-converge cadences: the receipt is written by the daily
+// review-sheet converge (gunbc.fleet.fleet_converge_workflow review_sheet_converge_cron), so a receipt
+// older than three cycles means the converge leg has missed two consecutive scheduled runs -- the host is
+// no longer being checked, and the last thing said about it stops being evidence. The consumer is
+// runner_user_session_converge_receipt_staleness below; the label witness drives both sides of the bound.
+data runner_user_session_converge_receipt_max_age: Second = second(count: 259200)
+
+// IS THIS RECEIPT STILL EVIDENCE, ANSWERED AT THE GATE THAT SPENDS IT (DESIGN 2: the instant arrives as an
+// INPUT the control drives, never read from a clock inside the decision -- the tailnet readback's
+// gunbc.auth.tailnet_serve_readback tailnet_serve_readback_is_fresh is the precedent this copies). Present
+// carries the LOCATED reason the document cannot be trusted -- a probed_at the writer could not read
+// ("clock-unreadable" from gunbc.clock_read probed_at_word), an instant that is not the canonical UTC
+// shape, a read instant that is not canonical, or a document older than the declared bound (including one
+// dated after the read, which is clock skew and not freshness) -- so a refused grant says WHICH of these
+// and never fabricates freshness. The canonical shape and the seconds-between are the same authority
+// gunbc.auth.approval_capability uses for approval expiry; this module imports them rather than carrying a
+// second clock arithmetic (one fact, one home).
+fn runner_user_session_converge_receipt_staleness(receipt: RunnerUserSessionConvergeReceipt, read_at: Timestamp) -> Optional<String> {
+  if !utc_instant_is_canonical(t: receipt.probed_at) {
+    Present { value: join(["the converge receipt's probed_at is not a canonical UTC instant, so the receipt cannot be aged: ", receipt.probed_at], "") }
+  } else if !utc_instant_is_canonical(t: read_at) {
+    Present { value: join(["the instant the converge receipt was read at is not a canonical UTC instant, so the receipt cannot be aged: ", read_at], "") }
+  } else {
+    let age = utc_instant_seconds_after(later: read_at, earlier: receipt.probed_at)
+    if age < 0 {
+      Present { value: "the converge receipt was probed after the instant it was read, so one of the two clocks is wrong" }
+    } else if age > second_count(s: runner_user_session_converge_receipt_max_age) {
+      Present {
+        value: join(
+          [
+            "the converge receipt is older than the declared freshness bound of ",
+            to_string(value: second_count(s: runner_user_session_converge_receipt_max_age)),
+            " seconds (probed at ",
+            receipt.probed_at,
+            "); the converge leg has not re-checked this host recently enough for the document to be evidence",
+          ],
+          "",
+        )
+      }
+    } else {
+      Absent
+    }
+  }
+}
+
+// THE WIRING FRONTIER ON A CARRIER (review 87218: "each frontier comment names its trigger as the follow-up
+// in the PR body -- a PR body is not on a carrier and will not be resolvable from the Node tree"). These
+// rows name, as subjects, the two production entries that must gain a live receipt supplier, and as their
+// dissolution, the declaration whose APPEARANCE ends the gap: the fleet-converge receipt-read job. They are
+// registered in gunbc.census_closure_frontier census_closure_frontier_row_groups, so the pending frontier is
+// walkable from the census -- the mark on the carrier is the authority, not a parallel ledger (DESIGN 6).
+// While these rows stand, production supplies ReceiptAbsent and the user-session label is off; test.claim.
+// runner.runner_user_session_label_witness proves the rows are well formed and enrolled.
+data runner_user_session_label_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.runner.runner_registration_labels", decl_name: "runner_user_session_labels_for"),
+    reason: "the production entry for the user-session grant still supplies ReceiptAbsent, because no leg yet runs runner_user_session_converge_receipt_read_argv to fetch the converge run's receipt artifact, parses it with runner_user_session_receipt_input_of_text, and supplies it; until then the label is off",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_runner_user_session_receipt_read_job")),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.runner.runner_registration_labels", decl_name: "runner_slot_registration_labels_with_user_session_receipt"),
+    reason: "the CI job-slot entry has no production caller that supplies a parsed converge receipt; the slot's host is rostered by the same row the job entry reads, so it waits on the same receipt-read leg",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_runner_user_session_receipt_read_job")),
+  ),
+]
