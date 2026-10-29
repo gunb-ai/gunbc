@@ -24,8 +24,11 @@ data broker_owns_lifecycle_not_meaning_note: NonEmptyStr = "One broker lifecycle
 // ── Redemption lives with the enrolled device ───────────────────────────────────────────────
 // THE BROKER NO LONGER REDEEMS A BARE CAPABILITY. Its bearer route -- a MAC'd link delivered by
 // ntfy, redeemed by whoever held it, recorded as "bearer of capability ..." when the tailnet header
-// could not be attributed -- was deleted in the device cutover, once a real phone approval read back with decided_by naming the
-// enrolled login (ruling gunbc.design_ruling
+// could not be attributed -- was deleted in the device cutover, once a real phone approval read back
+// with decided_by naming the enrolled login: escalation
+// gcp-iam-bootstrap-delta-b6408304fcc2908fa37769be958b1b6555902f00244b91d0b7a25994fb14f1e3-run-40767618826-attempt-1,
+// decided_by brian@gunb.ai at 2026-10-28T21:30:31Z, the record read back at
+// /var/lib/gunbc/approvals/<escalation_id>.2 on srv1 (ruling gunbc.design_ruling
 // one_approval_route_for_every_privileged_action). The one redemption authority is
 // gunbc.auth.approval_device_redemption redeem_device_over_store: the same capability, verified by the
 // same verify_capability, admitted only under a verified device signature from an active enrolment,

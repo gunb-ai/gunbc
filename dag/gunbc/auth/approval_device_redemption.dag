@@ -73,7 +73,13 @@ import std.durable_compare_and_set {
 // one_approval_route_for_every_privileged_action). The bearer route that redeemed a capability
 // alone -- gunbc.auth.approval_broker redeem_capability behind POST /approve/{capability}, its link
 // delivered by ntfy -- was deleted in the device cutover, together with the ntfy publish and the
-// header arms that let a record name "the bearer of capability ...". redeem_device_over_store is
+// header arms that let a record name "the bearer of capability ...". The cutover's own frontiers
+// (gunbc.auth.approval_device_cutover_frontier, gunbc.auth.approval_device_routes_frontier) were
+// deleted with it and are replaced by the reading they demanded, taken in the Approve app on the
+// operator's phone: escalation
+// gcp-iam-bootstrap-delta-b6408304fcc2908fa37769be958b1b6555902f00244b91d0b7a25994fb14f1e3-run-40767618826-attempt-1,
+// decided_by brian@gunb.ai at 2026-10-28T21:30:31Z, read back from the decision store record
+// /var/lib/gunbc/approvals/<escalation_id>.2 on srv1. redeem_device_over_store is
 // the one-off approved access redemption authority: every admitted redemption names an enrolled
 // Google login, and a disclosed capability admits nothing without the enrolled device.
 //
