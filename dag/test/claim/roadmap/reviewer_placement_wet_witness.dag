@@ -237,6 +237,22 @@ fn released_unit(s: SessionSettlement) -> String {
   }
 }
 
+// THE UNCHARGED RELEASE, TOLD HONESTLY: c1 opens a slot and NO reservation -- the crash landed
+// before the seat was ever taken -- so the ledger has nothing to release and compute_release_on
+// answers ComputeNothingToRelease, which is the SETTLED outcome for that crash shape (the release
+// vocabulary already counts it: SessionReleaseNothingHeld is accepted, not refused). This helper
+// asks the question c1 actually asks -- did the pass attempt the release, under the reviewer's
+// unit -- without pretending a charge existed. c2, the charged control, keeps released_unit:
+// there an actual ComputeReleased must name the unit.
+fn release_attempted_under(s: SessionSettlement) -> String {
+  match s {
+    SessionSettlementReleaseAttempted { unit, freed: _, detail: _ } => unit
+    SessionSettlementKept { unit: _, why: _ } => ""
+    SessionSettlementDone { unit: _, why: _ } => ""
+    SessionSettlementRefused { unit: _, detail: _ } => ""
+  }
+}
+
 fn kept(s: SessionSettlement) -> Bool {
   match s {
     SessionSettlementKept { unit: _, why: _ } => true
@@ -281,7 +297,7 @@ test fn a_reviewer_slot_with_no_record_is_kept_in_window_and_released_after() ->
   let early = settlement_of(p: session_reviewer_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: rec.launch_deadline - 1))
   let late = settlement_of(p: session_reviewer_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: rec.launch_deadline + 1))
   let rel = release_text(dir: dir)
-  opened && kept(s: early) && released_unit(s: late) == r_unit() && slot_is_terminal(dir: dir)
+  opened && kept(s: early) && release_attempted_under(s: late) == r_unit() && slot_is_terminal(dir: dir)
     && string_contains(s: rel, pattern: r_unit()) && !string_contains(s: rel, pattern: "\"grant\"")
 }
 
@@ -384,7 +400,7 @@ test fn the_reviewer_pass_settles_only_the_slot_whose_identity_names_a_criterion
 // OBSERVED arm specifically (a reader stuck at 'unreadable' or the declared row reddens this even
 // when the shell cooperates). Writes nothing to any ledger: the unit carries RuntimeMaxSec and
 // --collect so it self-collects within a minute, and a killed run leaves at worst one sleeping
-// scope gone by its own timer.
+// service gone by its own timer.
 test fn the_real_slice_reader_reads_a_unit_the_witness_started() -> Bool {
   let dir = fresh_dir(tag: "c7")
   let token = string_replace(source: dir, needle: "/", replacement: "-")
