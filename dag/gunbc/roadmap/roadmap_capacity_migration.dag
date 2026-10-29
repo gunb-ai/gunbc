@@ -5,7 +5,7 @@ import std.decl_ref { decl_ref }
 import std.error_primitives { Ok, Err }
 import extdeps.systemd { systemd_service_unit_suffix }
 import extdeps.systemd.manager { SystemManager, UserManager }
-import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityTransientFamily, CapacityMigrationParentRequirement, capacity_migration_family_parent_requirements }
+import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityTransientFamily, CapacityMigrationParentRequirement, CapacityConfirmedWriter, CapacityUnclassified, capacity_migration_family_parent_requirements }
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, attempt_worker_slice_unit_name }
 import gunbc.live_deploy.spec {
   DeploymentNames, deployment_agent_door_unit_name,
@@ -47,30 +47,35 @@ fn roadmap_capacity_migration_transients(names: DeploymentNames, instance_id: St
   let work_parent = CapacityManagedUnit { manager: user_manager, unit: user_work_slice_unit_name }
   [
     CapacityTransientFamily {
+      standing: CapacityConfirmedWriter,
       manager: user_manager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_obligation", decl_name: "belt_attempt_obligation_unit_name"),
       patterns: [belt_attempt_obligation_unit_name(node_id: "*", attempt_key: "*")],
       activators: activators, parents: Ok { value: [work_parent] },
     },
     CapacityTransientFamily {
+      standing: CapacityConfirmedWriter,
       manager: user_manager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_obligation", decl_name: "belt_instance_obligation_unit_name"),
       patterns: map(belt_instance_obligation_kinds, kind => belt_instance_obligation_unit_name(instance_id: instance_id, kind: kind)),
       activators: activators, parents: Ok { value: [work_parent] },
     },
     CapacityTransientFamily {
+      standing: CapacityUnclassified { detail: "process entry reachability is not covered; retain this family in the drain" },
       manager: user_manager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_review_unit_name"),
       patterns: [dispatch_review_unit_name(node_id: "*", attempt_key: "*", criterion_key: "*")],
       activators: activators, parents: Ok { value: [work_parent] },
     },
     CapacityTransientFamily {
+      standing: CapacityUnclassified { detail: "process entry reachability is not covered; retain this family in the drain" },
       manager: user_manager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_audit_unit_name"),
       patterns: [dispatch_audit_unit_name(node_id: "*", attempt_key: "*")],
       activators: activators, parents: Ok { value: [work_parent] },
     },
     CapacityTransientFamily {
+      standing: CapacityUnclassified { detail: "process entry reachability is not covered; retain this family in the drain" },
       manager: SystemManager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_attempt_unit_stem"),
       patterns: [join([dispatch_attempt_unit_stem(node_id: "*", attempt_key: "*"), systemd_service_unit_suffix], "") as NonEmptyStr],
@@ -78,6 +83,7 @@ fn roadmap_capacity_migration_transients(names: DeploymentNames, instance_id: St
       parents: Ok { value: [CapacityManagedUnit { manager: SystemManager, unit: attempt_worker_slice_unit_name }] },
     },
     CapacityTransientFamily {
+      standing: CapacityConfirmedWriter,
       manager: user_manager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_redelivery_wake", decl_name: "attempt_redelivery_wake_unit_name"),
       patterns: attempt_redelivery_wake_family_patterns(), activators: activators,

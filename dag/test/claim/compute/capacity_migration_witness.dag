@@ -7,7 +7,7 @@ import std.measure { kibibyte }
 import product.capacity.event_chain { PartitionId }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import gunbc.compute.capacity_migration {
-  CapacityManagedUnit, CapacityTransientFamily, CapacityMigrationChild,
+  CapacityManagedUnit, CapacityTransientFamily, CapacityMigrationChild, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified, capacity_migration_family_parent_requirements,
   CapacityMigrationPopulation, CapacityUnitDrain, CapacityMigrationAdmission, capacity_migration_admit,
 }
 import gunbc.compute.host_capacity { ComputeCapacityStanding, ComputeCapacityStandingRead }
@@ -24,8 +24,9 @@ fn migration_fixture_population(placement_known: Bool) -> CapacityMigrationPopul
   let activator = migration_fixture_unit(name: "fixture.path")
   CapacityMigrationPopulation {
     source: decl_ref(module_path: "test.claim.compute.capacity_migration_witness", decl_name: "migration_fixture_population"),
-    installed: [activator],
+    installed: [activator], writer_parents: [],
     transients: [CapacityTransientFamily {
+      standing: CapacityConfirmedWriter,
       manager: SystemManager,
       source: decl_ref(module_path: "test.claim.compute.capacity_migration_witness", decl_name: "migration_fixture_unit"),
       patterns: ["fixture-*.service"], activators: [activator],
@@ -81,4 +82,21 @@ test fn a_different_manager_cannot_supply_the_unit_drain() -> Bool {
     quiescence: original.quiescence, descendants: original.descendants,
   }
   !migration_fixture_admits(observed: [wrong, migration_fixture_drain(name: "fixture.slice", populated: false)], placement_known: true, listing_known: true)
+}
+
+// New sound negative evidence can shrink the drain without changing activation.
+// The same unknown placement must remain visible while the root is unclassified.
+test fn only_confirmed_nonwriters_leave_the_family_parent_requirements() -> Bool {
+  let base = migration_fixture_population(placement_known: true)
+  let source = base.source
+  let family = CapacityTransientFamily {
+    manager: SystemManager, source: source, patterns: ["fixture-*.service"], activators: base.installed,
+    standing: CapacityConfirmedNonWriter, parents: Err { value: "unobserved parent" },
+  }
+  let unknown = CapacityTransientFamily {
+    manager: family.manager, source: source, patterns: family.patterns, activators: family.activators,
+    standing: CapacityUnclassified { detail: "service-call reach not covered" }, parents: family.parents,
+  }
+  count(capacity_migration_family_parent_requirements(families: [family])) == 0
+    && count(capacity_migration_family_parent_requirements(families: [unknown])) == 1
 }
