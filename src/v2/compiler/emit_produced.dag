@@ -39,7 +39,7 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   node_locus,
   outcome_rejected
-}
+, outcome_accepted }
 import v2.std.node { Instantiation, ComputationNode, Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }

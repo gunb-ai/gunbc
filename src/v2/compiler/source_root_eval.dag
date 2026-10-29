@@ -145,7 +145,7 @@ import v2.std.provenance {
   node_authored_span_optional,
   span_index_empty,
   span_index_textual_locus_optional,
-}
+, span_index_in_scope }
 import v2.std.sorted_floor { SortedFloorStrides, sorted_floor_position, sorted_floor_strides_empty, sorted_floor_strides_grown }
 import v2.std.source_position {
   SourceLineCol,
@@ -321,7 +321,7 @@ import v2.compiler.resolve {
   resolve,
   resolved_tree_of,
   ResolvedTree,
-}
+, declaration_available }
 import v2.compiler.tokenize {
   PreparedLexRules,
   prepare_lex_rules,

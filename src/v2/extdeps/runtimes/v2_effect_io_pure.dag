@@ -35,7 +35,7 @@ import v2.std.runtime {
   WriteResource,
   effect_handler_for_kind,
   runtime_value_node_projection
-}
+, runtime_value_equality }
 import v2.std.witness { Holds, Violates, Witness, list_nth, map_get_checked }
 
 type EffectIoResourceBackend
