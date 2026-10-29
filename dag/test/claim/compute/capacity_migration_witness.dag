@@ -1,0 +1,83 @@
+module test.claim.compute.capacity_migration_witness
+
+import std.types { Bool, String, NonEmptyStr, CommitSha, List }
+import std.error_primitives { Result, Ok, Err }
+import std.decl_ref { decl_ref }
+import std.measure { kibibyte }
+import product.capacity.event_chain { PartitionId }
+import extdeps.systemd.manager { SystemManager, UserManager }
+import gunbc.compute.capacity_migration {
+  CapacityManagedUnit, CapacityTransientFamily, CapacityMigrationChild,
+  CapacityMigrationPopulation, CapacityUnitDrain, CapacityMigrationAdmission, capacity_migration_admit,
+}
+import gunbc.compute.host_capacity { ComputeCapacityStanding, ComputeCapacityStandingRead }
+import gunbc.compute.recorded_cgroup_drain { RecordedPathEmpty, RecordedPathPopulated }
+import gunbc.deploy_transition_bootstrap {
+  observe_unit_quiescence, UnitObservedInactive, ActivationObservedRefused, MaskRuntimeOnlyObserved,
+}
+
+fn migration_fixture_unit(name: NonEmptyStr) -> CapacityManagedUnit {
+  CapacityManagedUnit { manager: SystemManager, unit: name }
+}
+
+fn migration_fixture_population(placement_known: Bool) -> CapacityMigrationPopulation {
+  let activator = migration_fixture_unit(name: "fixture.path")
+  CapacityMigrationPopulation {
+    source: decl_ref(module_path: "test.claim.compute.capacity_migration_witness", decl_name: "migration_fixture_population"),
+    installed: [activator],
+    transients: [CapacityTransientFamily {
+      source: decl_ref(module_path: "test.claim.compute.capacity_migration_witness", decl_name: "migration_fixture_unit"),
+      patterns: ["fixture-*.service"], activators: [activator],
+      parents: if placement_known { Ok { value: [migration_fixture_unit(name: "fixture.slice")] } }
+        else { Err { value: "self-wrap destination unobserved" } },
+    }],
+    children: [CapacityMigrationChild { root: "/fixture", partition: "child" as PartitionId }],
+  }
+}
+
+fn migration_fixture_drain(name: NonEmptyStr, populated: Bool) -> CapacityUnitDrain {
+  CapacityUnitDrain {
+    subject: migration_fixture_unit(name: name),
+    quiescence: observe_unit_quiescence(unit: name,
+      inactive: UnitObservedInactive { unit: name },
+      activation: ActivationObservedRefused { unit: name, detail: "masked" },
+      persistence: MaskRuntimeOnlyObserved { unit: name, path: "/run/systemd/system" }),
+    descendants: if populated { RecordedPathPopulated } else { RecordedPathEmpty },
+  }
+}
+
+fn migration_fixture_empty() -> ComputeCapacityStanding {
+  ComputeCapacityStandingRead {
+    committed: kibibyte(count: 0), ceiling: kibibyte(count: 1), headroom: kibibyte(count: 1),
+    observed_available: kibibyte(count: 1), observed_total: kibibyte(count: 1),
+  }
+}
+
+fn migration_fixture_admits(observed: List<CapacityUnitDrain>, placement_known: Bool, listing_known: Bool) -> Bool {
+  match capacity_migration_admit(population: migration_fixture_population(placement_known: placement_known),
+    target_revision: "0123456789012345678901234567890123456789" as CommitSha,
+    observed: observed,
+    enumerate: family => if listing_known { Ok { value: [] } } else { Err { value: "manager unavailable" } },
+    read_child: child => migration_fixture_empty()) {
+    Ok { value: _ } => true
+    Err { value: _ } => false
+  }
+}
+
+test fn empty_ledgers_do_not_replace_inhibition_or_descendant_drain() -> Bool {
+  let good = [migration_fixture_drain(name: "fixture.path", populated: false), migration_fixture_drain(name: "fixture.slice", populated: false)]
+  migration_fixture_admits(observed: good, placement_known: true, listing_known: true)
+    && !migration_fixture_admits(observed: [], placement_known: true, listing_known: true)
+    && !migration_fixture_admits(observed: [migration_fixture_drain(name: "fixture.path", populated: false), migration_fixture_drain(name: "fixture.slice", populated: true)], placement_known: true, listing_known: true)
+    && !migration_fixture_admits(observed: good, placement_known: false, listing_known: true)
+    && !migration_fixture_admits(observed: good, placement_known: true, listing_known: false)
+}
+
+test fn a_different_manager_cannot_supply_the_unit_drain() -> Bool {
+  let original = migration_fixture_drain(name: "fixture.path", populated: false)
+  let wrong = CapacityUnitDrain {
+    subject: CapacityManagedUnit { manager: UserManager { uid: 1000 }, unit: original.subject.unit },
+    quiescence: original.quiescence, descendants: original.descendants,
+  }
+  !migration_fixture_admits(observed: [wrong, migration_fixture_drain(name: "fixture.slice", populated: false)], placement_known: true, listing_known: true)
+}
