@@ -49,12 +49,13 @@ import gunbc.machine_intake.bmc_credential_policy {
   admit_published_credential_change_forced, asrock_altrad8ud_openbmc_3_22_00_key, CredentialSurface,
 }
 import gunbc.machine_intake.bmc_rotation_route {
-  BmcRotationRouteStanding, RotateCredential, rotation_route_from_citation, redfish_account_password_write,
+  BmcRotationRouteStanding, rotation_route_from_citation, redfish_account_password_write,
 }
 import gunbc.machine_intake.bmc_secure {
   BmcAccountStateObservation, BmcSecureGoal, ManagedCredentialReference,
   BmcAccountPlanOutcome, BmcAccountPlanned, BmcAccountPlanRefused,
-  PublishedWriteInputs, PublishedAccountIsTheManagedAccount,
+  PublishedWriteInput, PublishedAccountIsTheManagedAccount,
+  bmc_secure_convergence_approval,
   BmcControllerLockoutReading, BmcFailedLoginSurface, BmcFailedLoginBudgetKey,
   BmcPlanFailedLoginRoster, BmcPlanFailedLoginSpend, BmcCountedFailedLogin,
   BmcFailedLoginBudgetVerdict, FailedLoginBudgetAdmitted, FailedLoginBudgetRefused,
@@ -71,12 +72,12 @@ import test.fixture.machine_intake.bmc_lockout {
   lockout_redfish_never_locked, lockout_unread,
   lockout_redfish_served_ipmi_unread, lockout_ipmi_served_redfish_unread,
 }
-import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write }
+import test.fixture.machine_intake.bmc_write_approval { approved_bmc_convergence }
 import test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness {
   lab_subject, lab_endpoint, lab_firmware, root_ref, goal_v1, census, world_root,
   root_user, published_password, generation_1,
   t_read, t_store, t_fetch, t_plan, version_identity, ready, generation_v2, lab_route_citation,
-  derive_over, redfish_only,
+  derive_over, redfish_only, lab_board,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -104,6 +105,7 @@ fn read_lock(password: String, shared: Bool, at: EpochMs, lockout: BmcController
     world: world_root(password: password),
     subject: lab_subject(),
     endpoint: lab_endpoint,
+    board: lab_board(),
     firmware: lab_firmware(),
     managed: root_ref(version: "1", epoch: 1),
     managed_user: root_user,
@@ -132,7 +134,14 @@ fn plan_lock(
   plan_at: ObserverClockInstant,
 ) -> BmcAccountPlanOutcome {
   let route = root_route()
-  let go = approved_bmc_write(standing: route, request: redfish_account_password_write(account: "root" as NonEmptyStr), purpose: RotateCredential, attempt: "attempt-1" as NonEmptyStr)
+  // ONE APPROVAL FOR THE WHOLE CONVERGENCE (1b-i), minted from the plan's own
+  // goal and reading: the plan below is then the approved set of writes, so a
+  // refusal here can only be the budget gate and not an approval mismatch.
+  let published: PublishedWriteInput = PublishedAccountIsTheManagedAccount
+  let go = approved_bmc_convergence(
+    approval: bmc_secure_convergence_approval(goal: goal_v1(), reading: reading, managed_user: root_user, managed_route: route, published: published),
+    attempt: "attempt-1" as NonEmptyStr,
+  )
   match generation_v2(store_at: store_at, fetch_at: fetch_at) {
     Absent => BmcAccountPlanRefused { cause: PublishedWriteWouldRepeatTheManagedWrite { user: 1 } }
     Present { value: g } =>
@@ -142,9 +151,9 @@ fn plan_lock(
         reading: reading,
         managed_user: root_user,
         managed_route: route,
-        managed_approval: go,
+        approval: go,
         managed_generation: g,
-        published: PublishedAccountIsTheManagedAccount,
+        published: published,
         channel_close: none,
         planned_at: plan_at,
         declared_retries: declared_retries,
