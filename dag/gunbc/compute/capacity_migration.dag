@@ -33,6 +33,17 @@ type CapacityTransientFamily {
   parents: Result<List<CapacityManagedUnit>, String>
 }
 
+// Drain scheduling consumes this projection, including unresolved placements. It cannot
+// schedule a host quiet window from only the successfully resolved subset.
+type CapacityMigrationParentRequirement {
+  source: DeclarationRef
+  parents: Result<List<CapacityManagedUnit>, String>
+}
+
+fn capacity_migration_parent_requirements(population: CapacityMigrationPopulation) -> List<CapacityMigrationParentRequirement> {
+  map(population.transients, family => CapacityMigrationParentRequirement { source: family.source, parents: family.parents })
+}
+
 type CapacityMigrationChild {
   root: NonEmptyStr
   partition: PartitionId
