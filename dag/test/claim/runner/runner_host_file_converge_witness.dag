@@ -62,7 +62,7 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
-import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, NoValidation, remote_file_mode_octal }
+import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, DestinationUnchangedUntilRename, NoValidation, remote_file_mode_octal }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
 import gunbc.runner.runner_slot_cap_converge { SlotCapUnitStanding, SlotCapsAtDesired }
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
@@ -1698,7 +1698,7 @@ test fn the_sudoers_row_is_the_rendered_body_at_the_sudoers_path_validated_and_0
           f.content == c
             && (f.path as String) == "/etc/sudoers.d/gunbc-ghrunner"
             && remote_file_mode_octal(mode: f.mode) == "440"
-            && (match f.validation { VisudoCheck => true NoValidation => false })
+            && (match f.validation { VisudoCheck => true NoValidation => false DestinationUnchangedUntilRename { expected: _ } => false })
         RunnerHostSudoersBodyRefused { reason: _ } => false
       }
   }
@@ -1710,7 +1710,7 @@ test fn only_the_sudoers_row_is_visudo_validated() -> Bool {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
-      all(fs, f => ((f.subject as String) == "runner-host-sudoers") == (match f.validation { VisudoCheck => true NoValidation => false }))
+      all(fs, f => ((f.subject as String) == "runner-host-sudoers") == (match f.validation { VisudoCheck => true NoValidation => false DestinationUnchangedUntilRename { expected: _ } => false }))
   }
 }
 

@@ -325,6 +325,14 @@ fn observed_bmc_credential_rotation(
 // PublishedCredentialStillAccepted is the discriminating refusal this phase
 // exists for: everything else about the rotation succeeded and the machine is
 // still open on its published default.
+//
+// PhaseReceiptForAnotherSubject is the state-shaped fold's subject join, minted only by
+// bmc_secure_standing_of_phase_receipt: a converged phase receipt is about ONE unit, and a consumer
+// that names a different one gets this refusal rather than the standing of the unit the readback
+// actually covers. It is deliberately NOT RotationObservationForOtherAttempt under a second reading:
+// that arm's label asserts a rotation observation, and a receipt whose conjunction was satisfied
+// BEFORE any write (the Noop arm) records that no rotation was applied at all — one name for two
+// facts is the fork DESIGN §3 names, and a label that overstates what the carrier holds is §4d.
 type BmcSecureRefusalCause
   = RotationObservationForOtherAttempt { expected: MachineIntakeSubject, found: MachineIntakeSubject }
   | CredentialStateUnknown { detail: NonEmptyStr }
@@ -351,6 +359,7 @@ type BmcSecureRefusalCause
   | PublishedCredentialProbeUnmatched { channel: IpmiChannelNumber }
   | PublishedCredentialRetainedNotAdmittedByProdRiskPolicy
   | PublishedCredentialNotRetained { channel: IpmiChannelNumber }
+  | PhaseReceiptForAnotherSubject { expected: MachineIntakeSubject, found: MachineIntakeSubject }
 
 // NO ARM RETURNS UnitHardware, AND THAT IS THE POINT (design §6: a non-working
 // factory credential is an access state -> PartsHold, not ReturnWindow, absent
@@ -387,6 +396,7 @@ fn bmc_secure_refusal_owner(cause: BmcSecureRefusalCause) -> QualificationRefusa
     PublishedCredentialProbeUnmatched { channel: _ } => QualificationPolicy
     PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => QualificationPolicy
     PublishedCredentialNotRetained { channel: _ } => OperatorAction
+    PhaseReceiptForAnotherSubject { expected: _, found: _ } => QualificationPolicy
   }
 }
 
@@ -417,6 +427,7 @@ fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
     PublishedCredentialProbeUnmatched { channel: _ } => "a published-credential probe matched no census LAN member"
     PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => "a retained BMC backdoor is not admitted under a ProdRisk-admitting qualification policy; a fresh census pass that retires or disables the published credential is required"
     PublishedCredentialNotRetained { channel: _ } => "the declared factory-credential retention was not observed on a census LAN member"
+    PhaseReceiptForAnotherSubject { expected: _, found: _ } => "the converged phase receipt was read for another intake subject"
   }
 }
 
@@ -1578,6 +1589,10 @@ fn conjunction_cause_class(cause: BmcSecureRefusalCause) -> ConjunctionCauseClas
     PublishedCredentialProbeUnmatched { channel: _ } => CauseRefusesAssessment
     PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => CauseRefusesAssessment
     PublishedCredentialNotRetained { channel: _ } => CauseNeedsUngroundedOperation { operation: PublishedFactoryCredentialRestore }
+    // Not minted by the conjunction: this cause belongs to the standing projection beside this fold, and
+    // an assessment never sees it. Named so the match stays the forcing function DESIGN §4b wants — a
+    // cause added to the coproduct must be classified here before anything compiles.
+    PhaseReceiptForAnotherSubject { expected: _, found: _ } => CauseRefusesAssessment
   }
 }
 
@@ -2503,6 +2518,90 @@ fn bmc_secure_phase_receipt_evidence(receipt: BmcSecurePhaseReceipt) -> List<Evi
   }
 }
 
+// THE ONE PROJECTION FROM THIS FOLD TO THE STANDING EVERY CONSUMER READS.
+//
+// WHY IT EXISTS. BmcSecureStanding is what gunbc.host.managed_host, gunbc.host.bmc_control_binding,
+// gunbc.host.managed_host_boot_federation, gunbc.fleet.mtcollins_firmware_converge and
+// gunbc.machine_intake.mtcollins1_bmc_secure_observation all read; before this fn its only mint took the
+// EVENT-shaped BmcCredentialRotationObservation, so a controller this fold converged could not be handed
+// to any of them. That is what made mtcollins1's cutover a rewrite of every consumer instead of a change
+// of mint (operator ruling gunbc.design_ruling bmc_secure_goes_live_per_controller_family); with this
+// projection the cutover moves the call site beside the standing, which is the flag switch
+// bmc_secure_state_cutover_frontier names. It is a MINT, not a codec: a caller can hand it a receipt
+// belonging to another unit and get a refused standing, and it can hand it nothing else.
+//
+// THE RUNG (§4b), and what the projection does NOT trust. The standing's credential verdict is RE-DERIVED
+// here by conjunction_over_observation over the readback the receipt itself carries -- the observation the
+// fold inspected and then had to satisfy -- so the projection cannot be talked into a BmcSecured standing
+// by an argument it is handed; a reading that does not conjoin yields BmcSecureRefused with the cause the
+// conjunction named, never a standing with a satisfied result. The one fact taken from the receipt rather
+// than re-derived is its EVIDENCE, on the conjunction's own authority: the conjunction's list is a prefix
+// of BmcSecureHeld.evidence, which bmc_secure_phase_receipt_evidence extends with the write receipts the
+// Applied arm rests on -- the event path's standing carries the same two kinds, its bootstrap probe being
+// the entry this fold has no route to (see the asymmetry note on the standing above). It is one authority,
+// not two: the receipt mints held and the observation together, and the standing reports exactly what
+// that readback established.
+//
+// SUBJECT, AND WHY IT IS THE ONLY CHECK. `subject` is the caller's claim and is compared against the
+// subject the fold minted the receipt for -- two values minted independently, so a real check that can
+// fail (the discriminating RED is the state witness's a_receipt_for_another_subject_never_projects). The
+// readback's OWN subject is not compared: observe_bmc_account_state already refuses a reading of another
+// unit and bmc_secure_phase_applied already refuses a post-read of another plan, so a second comparison
+// there is a structural invariant dressed as a check (DESIGN §3c). The POLICY is not a formal either: the
+// standing reports the policy the readback was adjudicated under, receipt.goal.policy, because a caller-
+// supplied policy would be a second minted authority over the same fact and the ProdRisk arm of the
+// conjunction is decided by it -- a standing claiming a policy the readback never established is the
+// content-hash lie the standing's doc comment above exists to forbid. The check that would have been
+// needed with such a formal is therefore not available by construction, which is the stronger answer.
+//
+// THE WITNESSES, AND THE FRONTIER. Positive control and the two REDs are
+// test.claim.machine_intake.machine_intake_bmc_secure_state_witness on the dry world, and the seal that
+// keeps this the only route from a receipt to a standing is
+// test.claim.machine_intake.machine_intake_bmc_secure_standing_forged_probe_witness. It has no production
+// caller: bmc_secure_standing_consumer_frontier below names the first.
+fn bmc_secure_standing_of_phase_receipt(
+  subject: MachineIntakeSubject,
+  receipt: BmcSecurePhaseReceipt,
+) -> BmcSecureStanding
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_secured_noop_projects_to_a_secured_standing"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_secured_apply_projects_to_a_secured_standing_carrying_the_writes"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_unestablished_reading_yields_no_receipt_to_project"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "a_receipt_for_another_subject_never_projects"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_standing_reports_the_policy_the_readback_was_adjudicated_under")
+  ]
+{
+  let outcome =
+    if !same_intake_subject(left: subject, right: receipt.subject) {
+      BmcSecureRefused {
+        cause: PhaseReceiptForAnotherSubject { expected: subject, found: receipt.subject },
+      }
+    } else {
+      let readback = match receipt.decision {
+        BmcSecurePhaseNoop { observation: o } => o
+        BmcSecurePhaseApplied { plan: _, application: _, post_read: o } => o
+      }
+      match conjunction_over_observation(goal: receipt.goal, observed: readback) {
+        BmcSecured {
+          endpoint: endpoint,
+          reference: reference,
+          evidence: _,
+          latest_admitted_probe_at: latest_admitted_probe_at,
+          published_credential: published_credential,
+        } =>
+          BmcSecured {
+            endpoint: endpoint,
+            reference: reference,
+            evidence: bmc_secure_phase_receipt_evidence(receipt: receipt),
+            latest_admitted_probe_at: latest_admitted_probe_at,
+            published_credential: published_credential,
+          }
+        BmcSecureRefused { cause: cause } => BmcSecureRefused { cause: cause }
+      }
+    }
+  BmcSecureStanding { subject: subject, policy: receipt.goal.policy, outcome: outcome }
+}
+
 // ── THE DRY REALIZATION OVER gunbc.bmc_model BmcWorld ────────────────────────────────────────────
 //
 // The executing consumer of this section while it is in shadow. The world's IPMI user table is the
@@ -2719,7 +2818,7 @@ fn dry_apply_bmc_account_plan(
   applied_at_millis: EpochMs,
 ) -> BmcAccountDryStep
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "applied_with"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "applied_outcome_of_plan"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "the_root_rotation_applies_reads_back_and_converges"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
@@ -2788,4 +2887,33 @@ data bmc_secure_state_live_apply_frontier: DissolutionCondition = unbound_dissol
 // gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash, retired by the same trigger.
 data bmc_secure_state_cutover_frontier: DissolutionCondition = unbound_dissolution(
   description: "dissolves when mtcollins1's BmcSecure standing is derived by the state-shaped fold (bmc_secure_phase_noop or bmc_secure_phase_applied) from a committed post-reflash readback of the current subject, and the rotation-event path (derive_bmc_secure, BmcCredentialRotationObservation, CredentialRotationApplication, CredentialProbeOutcome and every consumer that reads them, including gunbc.host.managed_host managed_hosts and gunbc.fleet.mtcollins_firmware_converge BmcCredentialReestablishment) is deleted in the same change; NOT satisfied by this section typechecking, by its dry realization, by re-expressing the 2026-09-13 readback on BMC 0.32, or by a readback whose subject is not the unit's current firmware" as NonEmptyStr,
+)
+
+// THE CONSUMER FRONTIER OF THE PROJECTION (DESIGN §3c). bmc_secure_standing_of_phase_receipt exists today
+// with NO production caller: the event path is FROZEN, so no consumer swapped when this projection landed
+// and the fold stays in shadow behind its dry realization. This row is what keeps a mint with no consumer
+// from being dead code, and it names the order the consumers arrive in, so a swap can be checked against
+// a promise made before it.
+//
+// TRIGGER, in this order, each part required:
+//   1. the srv1-4 / srv14 ALTRAD8UD rows -- gunbc.host.managed_host managed_hosts rows for the units on
+//      board gunbc.boards.altrad8ud (OpenBMC 03.22.00) -- are admitted with their secure standing produced
+//      by bmc_secure_standing_of_phase_receipt over THAT unit's own converged phase receipt: today the
+//      dry-realized fold (dry_read_bmc_account_state, dry_apply_bmc_account_plan), and the wet fold only
+//      once bmc_secure_state_live_read_frontier and bmc_secure_state_live_apply_frontier have dissolved.
+//      The author of that admission is added to the projection's admit_callers, which is what makes the
+//      swap visible at the seal rather than in a comment.
+//   2. mtcollins1's held transition follows on the SAME projection:
+//      gunbc.machine_intake.mtcollins1_bmc_secure_observation mtcollins1_bmc_secure_standing stops calling
+//      derive_bmc_secure and calls this fn over the post-reflash fold's receipt, in the change that drops
+//      gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash.
+//
+// NOT satisfied by: a witness calling the projection (the witnesses are the shadow and are admitted from
+// the first commit), by a consumer that re-mints the standing from an event-shaped observation, or by
+// pointing a consumer at a receipt belonging to another unit or an older firmware than the standing
+// claims -- the projection refuses the first and the rung drop names the second. SUFFICIENT FOR: deleting
+// this row. NOT sufficient for deleting the event-path fold, which dissolves only with
+// bmc_secure_state_cutover_frontier beside it, in the change that deletes that fold and its consumers.
+data bmc_secure_standing_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when the srv1-4 / srv14 ALTRAD8UD gunbc.host.managed_host rows take their BmcSecureStanding from bmc_secure_standing_of_phase_receipt over each unit's own converged BmcSecurePhaseReceipt, that admission being named in the projection's admit_callers, and mtcollins1's held transition follows on the same projection in the change that drops gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash; NOT satisfied by a witness calling the projection, by a standing re-minted from an event-shaped observation, or by a consumer pointed at a receipt for another subject" as NonEmptyStr,
 )
