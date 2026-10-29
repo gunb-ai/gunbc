@@ -1,0 +1,21 @@
+module gunbc.live_deploy.unit_install_roster
+
+import std.types { String, List }
+import std.measure { Second }
+import std.error_primitives { Result }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.member_identity { ReleaseTarget, full_install_plan }
+import gunbc.live_deploy.member_observe { deployment_member_roster }
+import gunbc.live_deploy.apply_legs { deploy_apply_unit_installs, deploy_apply_plan_legs }
+import gunbc.host.host_axis_caps { CapConvergeDecision }
+
+// A desired population is never projected from the current deploy's delta: an unchanged
+// unit can still enqueue work. Reuse the existing complete-install demand over the source
+// member roster, without executing it. Admission failures propagate rather than implying
+// an empty host. This is desired installation data, not a live drain observation.
+fn deployment_desired_unit_installs(spec: DeploymentSpec, target: ReleaseTarget, authorization: CapConvergeDecision, source_root: String, oidc_now: Second?) -> Result<List<DeploymentUnitInstall>, String> {
+  deploy_apply_unit_installs(plan: deploy_apply_plan_legs(
+    spec: spec, plan: full_install_plan(roster: deployment_member_roster(spec: spec), target: target),
+    authorization: authorization, source_root: source_root, oidc_now: oidc_now))
+}

@@ -1,5 +1,22 @@
 module gunbc.live_deploy.apply_legs
 
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import gunbc.live_deploy.repository_convergence_placement { convergence_oneshot_file, tree_sync_convergence_oneshot }
+import gunbc.live_deploy.emit { tree_remote_convergence_oneshot }
+import extdeps.systemd.manager { SystemdManager, SystemManager, UserManager }
+import std.error_primitives { Result, Ok, Err }
+import gunbc.live_deploy.spec {
+  deployment_belt_credential_recovery_unit_name, deployment_slice_unit_name,
+  gunbc_repository_convergence_slice_unit_name, gunbc_approval_broker_slice_unit_name,
+  deployment_attempt_unit_drain_service_unit_name, deployment_publication_service_unit_name,
+}
+import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, attempt_worker_slice_unit_name }
+import gunbc.live_deploy.emit {
+  live_deploy_slice_unit_file, repository_convergence_slice_unit_file,
+  live_deploy_publication_service_unit_file, live_deploy_publication_path_unit_file,
+  live_deploy_belt_service_unit_file,
+}
+
 import std.types { String, list_length }
 import std.algebra { Cons, Empty, list_append }
 import extdeps.exec.command { ArgvCommand }
@@ -170,6 +187,7 @@ type DeployApplyLeg
   | ApplyLegRepairDirectoryEntries { command: ArgvCommand }
   | ApplyLegCommand { step: String, command: ArgvCommand }
   | ApplyLegInstallFile { step: String, command: ArgvCommand, payload: String }
+  | ApplyLegInstallUnit { step: String, install: DeploymentUnitInstall }
   | ApplyLegReport { step: String, line: String }
   | ApplyLegObjectSource
   | ApplyLegDigestVerify { step: String, path: String, digest: Digest }
@@ -198,6 +216,7 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegRepairDirectoryEntries { command: _ } => "repair-directory-entries"
     ApplyLegCommand { step: st, command: _ } => st
     ApplyLegInstallFile { step: st, command: _, payload: _ } => st
+    ApplyLegInstallUnit { step: st, install: _ } => st
     ApplyLegReport { step: st, line: _ } => st
     ApplyLegObjectSource => "object-source"
     ApplyLegDigestVerify { step: st, path: _, digest: _ } => st
@@ -429,8 +448,8 @@ fn deploy_apply_git_worker_subtree_group(spec: DeploymentSpec, plan: ReleaseEffe
       list_append(
         left: git_worker_subtree_posture_legs(remaining: dashboard_ensure_git_shared_repository_posture(instance: instance), n: 0, legs: []),
         right: [
-          apply_belt_unit_leg(step: "git-maintenance-service-unit", dest: dashboard_git_maintenance_service_unit_path(instance: instance), file: dashboard_git_maintenance_service_unit_file(instance: instance)),
-          apply_belt_unit_leg(step: "git-maintenance-timer-unit", dest: dashboard_git_maintenance_timer_unit_path(instance: instance), file: dashboard_git_maintenance_timer_unit_file(instance: instance)),
+          apply_belt_unit_leg(step: "git-maintenance-service-unit", unit: dashboard_git_maintenance_service_unit_name(instance: instance) as NonEmptyStr, dest: dashboard_git_maintenance_service_unit_path(instance: instance), file: dashboard_git_maintenance_service_unit_file(instance: instance)),
+          apply_belt_unit_leg(step: "git-maintenance-timer-unit", unit: dashboard_git_maintenance_timer_unit_name(instance: instance) as NonEmptyStr, dest: dashboard_git_maintenance_timer_unit_path(instance: instance), file: dashboard_git_maintenance_timer_unit_file(instance: instance)),
           apply_root_leg(step: "git-maintenance-daemon-reload", argv: systemctl_daemon_reload_argv()),
           apply_root_leg(step: "git-maintenance-timer-enable", argv: systemctl_enable_argv(unit: dashboard_git_maintenance_timer_unit_name(instance: instance) as NonEmptyStr)),
         ],
@@ -563,6 +582,34 @@ fn apply_staged_leg(step: String, dest: String, payload: String) -> DeployApplyL
   }
 }
 
+// Unit bytes and installation argv are lowered from one typed record at execution.
+// The complete desired plan (not a delta) is the installed roster's source. A refused
+// plan must remain refused; no consumer may turn it into an empty population.
+fn apply_unit_install_leg(step: String, manager: SystemdManager, unit: NonEmptyStr, dest: NonEmptyStr, file: SystemdUnitFile) -> DeployApplyLeg {
+  ApplyLegInstallUnit { step: step, install: DeploymentUnitInstall { manager: manager, unit: unit, destination: dest, file: file } }
+}
+
+fn apply_unit_install_command(install: DeploymentUnitInstall) -> ArgvCommand {
+  sudo_elevate_command(command: coreutils_install_file_owned_argv(
+    mode: install_file_shared_mode,
+    owner: approval_broker_helper_root_principal, group: approval_broker_helper_root_principal,
+    source: "/dev/stdin", dest: install.destination as String))
+}
+
+fn apply_unit_install_payload(install: DeploymentUnitInstall) -> String {
+  apply_unit_text(file_text: serialize_systemd_unit_file(file: install.file))
+}
+
+fn deploy_apply_unit_installs(plan: DeployApplyPlan) -> Result<List<DeploymentUnitInstall>, String> {
+  match plan {
+    ApplyPlanRefused { step: step, reason: reason } => Err { value: join([step, ": ", reason], "") }
+    ApplyPlanReady { legs: legs } => Ok { value: flat_map(legs, leg => match leg {
+      ApplyLegInstallUnit { step: _, install: install } => [install]
+      _ => []
+    }) }
+  }
+}
+
 fn apply_owned_directory_leg(spec: DeploymentSpec, step: String, path: String) -> DeployApplyLeg {
   apply_root_leg(step: step, argv: coreutils_install_directory_owned_argv(
     mode: install_d_shared_mode, owner: spec.service.service_user, group: spec.service.service_user, path: path))
@@ -578,6 +625,20 @@ fn apply_unit_text(file_text: String) -> String {
 // readback of the receipt through the INSTALLED binary. A user-work slice that cannot derive its
 // bounds refuses the plan with that cause.
 fn deploy_apply_tree_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
+  if !plan_publishes_tree(plan: plan) { ApplyPlanReady { legs: [] } }
+  else {
+    match convergence_oneshot_file(spec: spec, slice: gunbc_repository_convergence_slice_unit_name,
+      oneshot: tree_sync_convergence_oneshot(spec: spec,
+        candidate: release_revision_execstart_text(binding: RevisionBoundAtEmission { revision: plan.target.revision }),
+        receipt_path: convergence_receipt_path(instance_root: spec.service.instance_root as String),
+        working_directory: source_root)) {
+      Err { value: reason } => ApplyPlanRefused { step: "tree-sync-unit", reason: reason }
+      Ok { value: file } => deploy_apply_tree_plan_admitted(spec: spec, plan: plan, source_root: source_root, convergence_file: file)
+    }
+  }
+}
+
+fn deploy_apply_tree_plan_admitted(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String, convergence_file: SystemdUnitFile) -> DeployApplyPlan {
   if !plan_publishes_tree(plan: plan) {
     ApplyPlanReady { legs: [] }
   } else {
@@ -605,20 +666,13 @@ fn deploy_apply_tree_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_
               apply_root_leg(step: "tree-root", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: "/opt/gunbc")),
               apply_owned_directory_leg(spec: spec, step: "tree-repo-root", path: spec.service.repo_root as String),
               apply_staged_leg(step: "tree-sync-env", dest: spec.names.tree_sync_env_path as String, payload: join(["GUNBC_TREE_SRC=", source_root, "\n"], "")),
-              apply_staged_leg(step: "instance-slice", dest: deployment_slice_unit_path(names: spec.names) as String, payload: render(doc: emit_slice_unit_doc(spec: spec), proto: live_deploy_protocol)),
+              apply_unit_install_leg(step: "instance-slice", manager: SystemManager, unit: deployment_slice_unit_name(names: spec.names), dest: deployment_slice_unit_path(names: spec.names), file: live_deploy_slice_unit_file(spec: spec)),
               apply_owned_directory_leg(spec: spec, step: "instance-receipts-dir", path: instance_receipts_dir(instance_root: spec.service.instance_root as String)),
-              apply_staged_leg(step: "user-work-slice", dest: gunbc_user_work_slice_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f))),
+              apply_unit_install_leg(step: "user-work-slice", manager: UserManager { uid: gunbc_service_uid }, unit: user_work_slice_unit_name, dest: gunbc_user_work_slice_unit_path(), file: f),
               apply_root_leg(step: "user-work-slice-reload", argv: systemctl_user_daemon_reload_argv(uid: gunbc_service_uid)),
-              apply_staged_leg(step: "repository-convergence-slice", dest: gunbc_repository_convergence_slice_unit_path() as String, payload: render(doc: emit_repository_convergence_slice_unit_doc(), proto: live_deploy_protocol)),
-              apply_staged_leg(
-                step: "tree-sync-unit",
-                dest: tree_sync_unit_path(names: spec.names) as String,
-                payload: convergence_unit_doc(
-                  spec: spec,
-                  candidate: release_revision_execstart_text(binding: RevisionBoundAtEmission { revision: plan.target.revision }),
-                  receipt_path: convergence_receipt_path(instance_root: spec.service.instance_root as String),
-                  working_directory: source_root,
-                )),
+              apply_unit_install_leg(step: "repository-convergence-slice", manager: SystemManager, unit: gunbc_repository_convergence_slice_unit_name, dest: gunbc_repository_convergence_slice_unit_path(), file: repository_convergence_slice_unit_file()),
+              apply_unit_install_leg(step: "tree-sync-unit", manager: SystemManager,
+                unit: spec.names.tree_sync_unit_name, dest: tree_sync_unit_path(names: spec.names), file: convergence_file),
               apply_root_leg(step: "tree-sync-reload", argv: systemctl_daemon_reload_argv()),
               ApplyLegDiagnosedCommand {
                 step: "tree-sync-restart",
@@ -800,8 +854,8 @@ fn deploy_apply_attempt_drain_plan(spec: DeploymentSpec, revision: ReleaseRevisi
           ApplyPlanRefused { step: "attempt-unit-drain", reason: join(["live-deploy apply refused: the attempt-unit launch argument was refused, so it will not pin a false argv: ", attempt_system_unit_launch_argv_refused_detail(cause: c)], "") }
         AttemptUnitDrainServiceReady { file: service } =>
           ApplyPlanReady { legs: concat(concat([
-            apply_staged_leg(step: "attempt-unit-drain-service-unit", dest: deployment_attempt_unit_drain_service_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: service))),
-            apply_staged_leg(step: "attempt-unit-drain-path-unit", dest: deployment_attempt_unit_drain_path_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: live_deploy_attempt_unit_drain_path_unit_file(spec: spec)))),
+            apply_unit_install_leg(step: "attempt-unit-drain-service-unit", manager: SystemManager, unit: deployment_attempt_unit_drain_service_unit_name(names: spec.names), dest: deployment_attempt_unit_drain_service_unit_path(names: spec.names), file: service),
+            apply_unit_install_leg(step: "attempt-unit-drain-path-unit", manager: SystemManager, unit: deployment_attempt_unit_drain_path_unit_name(names: spec.names), dest: deployment_attempt_unit_drain_path_unit_path(names: spec.names), file: live_deploy_attempt_unit_drain_path_unit_file(spec: spec)),
             apply_root_leg(step: "attempt-unit-drain-reload", argv: systemctl_daemon_reload_argv()),
           ], apply_enable_restart_legs(step: "attempt-unit-drain", unit: deployment_attempt_unit_drain_path_unit_name(names: spec.names))), [
             ApplyLegRootHelperSnapshot {
@@ -827,7 +881,7 @@ fn deploy_apply_worker_sandbox_plan(spec: DeploymentSpec, revision: ReleaseRevis
               ApplyPlanRefused { step: "attempt-worker-slice", reason: join(["live-deploy apply refused: ", c, " (DESIGN 5: refuse, never widen)"], "") }
             AttemptWorkerSliceUnitFileReady { file: f } =>
               deploy_apply_chain(
-                first: ApplyPlanReady { legs: [apply_staged_leg(step: "attempt-worker-slice", dest: gunbc_attempt_worker_slice_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))] },
+                first: ApplyPlanReady { legs: [apply_unit_install_leg(step: "attempt-worker-slice", manager: SystemManager, unit: attempt_worker_slice_unit_name, dest: gunbc_attempt_worker_slice_unit_path(), file: f)] },
                 rest: deploy_apply_attempt_launcher_plan(spec: spec, revision: revision),
               )
           }
@@ -854,14 +908,11 @@ fn deploy_apply_broker_unit_write_legs(spec: DeploymentSpec, revision: ReleaseRe
         dest: device_crypto_deployed_digest_env_file_path(root: spec.approval_broker.repo_root as String, revision: revision),
         owner: owner,
       },
-      apply_staged_leg(step: "device-crypto-sidecar-unit", dest: gunbc_device_crypto_sidecar_unit_path() as String, payload: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision))),
+      apply_unit_install_leg(step: "device-crypto-sidecar-unit", manager: SystemManager, unit: gunbc_device_crypto_sidecar_unit_name, dest: gunbc_device_crypto_sidecar_unit_path(), file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision)),
       apply_root_leg(step: "device-crypto-sidecar-reload", argv: systemctl_daemon_reload_argv()),
     ], apply_enable_restart_legs(step: "device-crypto-sidecar", unit: gunbc_device_crypto_sidecar_unit_name)), [
-      apply_staged_leg(step: "approval-broker-slice-unit", dest: gunbc_approval_broker_slice_unit_path() as String, payload: serialize_systemd_unit_file(file: approval_broker_slice_unit_file())),
-      apply_staged_leg(
-        step: "approval-broker-unit",
-        dest: gunbc_approval_broker_unit_path() as String,
-        payload: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port))),
+      apply_unit_install_leg(step: "approval-broker-slice-unit", manager: SystemManager, unit: gunbc_approval_broker_slice_unit_name, dest: gunbc_approval_broker_slice_unit_path(), file: approval_broker_slice_unit_file()),
+      apply_unit_install_leg(step: "approval-broker-unit", manager: SystemManager, unit: gunbc_approval_broker_unit_name, dest: gunbc_approval_broker_unit_path(), file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port)),
     ])
   } else {
     []
@@ -896,7 +947,7 @@ fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
             first: deploy_apply_worker_sandbox_plan(spec: spec, revision: revision),
             rest: ApplyPlanReady { legs: list_append(
               left: deploy_apply_broker_unit_write_legs(spec: spec, revision: revision),
-              right: [apply_staged_leg(step: "serve-unit", dest: deployment_systemd_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))],
+              right: [apply_unit_install_leg(step: "serve-unit", manager: SystemManager, unit: spec.names.unit_name, dest: deployment_systemd_unit_path(names: spec.names), file: f)],
             ) },
           )
         },
@@ -983,8 +1034,8 @@ fn deploy_apply_publication_legs(spec: DeploymentSpec, path: NonEmptyStr) -> Lis
       apply_install_directory_leg(step: "publication-spool-answer", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_answer_dir(instance_root: instance_root)),
       apply_install_directory_leg(step: "publication-spool-refused", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_refused_dir(instance_root: instance_root)),
       apply_install_directory_leg(step: "publication-bare-mirror", mode: declared_directory_mode(m: DirectoryOwnerOnly), owner: pub, group: pub, path: publication_bare_mirror_path(instance_root: instance_root) as String),
-      apply_staged_leg(step: "publication-service-unit", dest: deployment_publication_service_unit_path(names: spec.names) as String, payload: render(doc: emit_publication_service_unit_doc(spec: spec), proto: live_deploy_protocol)),
-      apply_staged_leg(step: "publication-path-unit", dest: path as String, payload: render(doc: emit_publication_path_unit_doc(spec: spec), proto: live_deploy_protocol)),
+      apply_unit_install_leg(step: "publication-service-unit", manager: SystemManager, unit: deployment_publication_service_unit_name(names: spec.names), dest: deployment_publication_service_unit_path(names: spec.names), file: live_deploy_publication_service_unit_file(spec: spec)),
+      apply_unit_install_leg(step: "publication-path-unit", manager: SystemManager, unit: deployment_publication_path_unit_name(names: spec.names), dest: path, file: live_deploy_publication_path_unit_file(spec: spec)),
     ],
     concat(
       apply_leftover_timer_legs(step: "publication-timer-retire", unit: deployment_publication_timer_unit_name(names: spec.names), path: deployment_publication_timer_unit_path(names: spec.names)),
@@ -993,8 +1044,8 @@ fn deploy_apply_publication_legs(spec: DeploymentSpec, path: NonEmptyStr) -> Lis
   )
 }
 
-fn apply_belt_unit_leg(step: String, dest: NonEmptyStr, file: SystemdUnitFile) -> DeployApplyLeg {
-  apply_staged_leg(step: step, dest: dest as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: file)))
+fn apply_belt_unit_leg(step: String, unit: NonEmptyStr, dest: NonEmptyStr, file: SystemdUnitFile) -> DeployApplyLeg {
+  apply_unit_install_leg(step: step, manager: SystemManager, unit: unit, dest: dest, file: file)
 }
 
 fn deploy_apply_belt_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<DeployApplyLeg> {
@@ -1009,13 +1060,13 @@ fn deploy_apply_belt_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<Deplo
       apply_owned_directory_leg(spec: spec, step: "attempt-exit-running", path: attempt_exit_running_dir(instance_root: instance_root)),
       apply_owned_directory_leg(spec: spec, step: "attempt-exit-done", path: attempt_exit_done_dir(instance_root: instance_root)),
       apply_owned_directory_leg(spec: spec, step: "attempt-exit-refused", path: attempt_exit_refused_dir(instance_root: instance_root)),
-      apply_staged_leg(step: "belt-service-unit", dest: deployment_belt_service_unit_path(names: n) as String, payload: render(doc: emit_belt_service_unit_doc(spec: spec), proto: live_deploy_protocol)),
-      apply_belt_unit_leg(step: "belt-exit-drain-unit", dest: deployment_belt_exit_drain_service_unit_path(names: n), file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)),
-      apply_belt_unit_leg(step: "belt-discovery-unit", dest: deployment_belt_discovery_service_unit_path(names: n), file: live_deploy_belt_discovery_service_unit_file(spec: spec)),
-      apply_belt_unit_leg(step: "belt-credential-recovery-unit", dest: deployment_belt_credential_recovery_unit_path(names: n), file: live_deploy_belt_credential_recovery_unit_file(spec: spec)),
-      apply_belt_unit_leg(step: "belt-credential-recovery-timer", dest: deployment_belt_credential_recovery_timer_unit_path(names: n), file: live_deploy_belt_credential_recovery_timer_unit_file(spec: spec)),
-      apply_belt_unit_leg(step: "belt-answer-path-unit", dest: deployment_belt_answer_path_unit_path(names: n), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
-      apply_belt_unit_leg(step: "belt-exit-path-unit", dest: path, file: live_deploy_belt_exit_path_unit_file(spec: spec)),
+      apply_unit_install_leg(step: "belt-service-unit", manager: SystemManager, unit: deployment_belt_service_unit_name(names: n), dest: deployment_belt_service_unit_path(names: n), file: live_deploy_belt_service_unit_file(spec: spec)),
+      apply_belt_unit_leg(step: "belt-exit-drain-unit", unit: deployment_belt_exit_drain_service_unit_name(names: n), dest: deployment_belt_exit_drain_service_unit_path(names: n), file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)),
+      apply_belt_unit_leg(step: "belt-discovery-unit", unit: deployment_belt_discovery_service_unit_name(names: n), dest: deployment_belt_discovery_service_unit_path(names: n), file: live_deploy_belt_discovery_service_unit_file(spec: spec)),
+      apply_belt_unit_leg(step: "belt-credential-recovery-unit", unit: deployment_belt_credential_recovery_unit_name(names: n), dest: deployment_belt_credential_recovery_unit_path(names: n), file: live_deploy_belt_credential_recovery_unit_file(spec: spec)),
+      apply_belt_unit_leg(step: "belt-credential-recovery-timer", unit: deployment_belt_credential_recovery_timer_unit_name(names: n), dest: deployment_belt_credential_recovery_timer_unit_path(names: n), file: live_deploy_belt_credential_recovery_timer_unit_file(spec: spec)),
+      apply_belt_unit_leg(step: "belt-answer-path-unit", unit: deployment_belt_answer_path_unit_name(names: n), dest: deployment_belt_answer_path_unit_path(names: n), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
+      apply_belt_unit_leg(step: "belt-exit-path-unit", unit: deployment_belt_exit_path_unit_name(names: n), dest: path, file: live_deploy_belt_exit_path_unit_file(spec: spec)),
       apply_root_leg(step: "belt-daemon-reload", argv: systemctl_daemon_reload_argv()),
       apply_root_leg(step: "belt-exit-drain-enable", argv: systemctl_enable_argv(unit: deployment_belt_exit_drain_service_unit_name(names: n))),
     ],
@@ -1032,12 +1083,17 @@ fn deploy_apply_belt_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<Deplo
   )
 }
 
-fn deploy_apply_tree_remote_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<DeployApplyLeg> {
-  [
-    apply_staged_leg(step: "tree-remote-unit", dest: path as String, payload: render(doc: emit_tree_remote_unit_doc(spec: spec), proto: live_deploy_protocol)),
-    apply_root_leg(step: "tree-remote-reload", argv: systemctl_daemon_reload_argv()),
-    apply_root_leg(step: "tree-remote-restart", argv: systemctl_restart_argv(unit: deployment_tree_remote_unit_name(names: spec.names))),
-  ]
+fn deploy_apply_tree_remote_plan(spec: DeploymentSpec, path: NonEmptyStr) -> DeployApplyPlan {
+  match convergence_oneshot_file(spec: spec, slice: gunbc_repository_convergence_slice_unit_name,
+    oneshot: tree_remote_convergence_oneshot(spec: spec)) {
+    Err { value: reason } => ApplyPlanRefused { step: "tree-remote-unit", reason: reason }
+    Ok { value: file } => ApplyPlanReady { legs: [
+      apply_unit_install_leg(step: "tree-remote-unit", manager: SystemManager,
+        unit: deployment_tree_remote_unit_name(names: spec.names), dest: path, file: file),
+      apply_root_leg(step: "tree-remote-reload", argv: systemctl_daemon_reload_argv()),
+      apply_root_leg(step: "tree-remote-restart", argv: systemctl_restart_argv(unit: deployment_tree_remote_unit_name(names: spec.names))),
+    ] }
+  }
 }
 
 fn deploy_apply_upsert_plan(kind: UpsertArtifactKind, path: NonEmptyStr, spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
@@ -1050,7 +1106,7 @@ fn deploy_apply_upsert_plan(kind: UpsertArtifactKind, path: NonEmptyStr, spec: D
     PublicationHelperPathUnit => ApplyPlanReady { legs: deploy_apply_publication_legs(spec: spec, path: path) }
     BeltEventPathUnit => ApplyPlanReady { legs: deploy_apply_belt_legs(spec: spec, path: path) }
     AttemptUnitDrainPathUnit => deploy_apply_attempt_drain_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
-    DeployedTreeRemoteUnit => ApplyPlanReady { legs: deploy_apply_tree_remote_legs(spec: spec, path: path) }
+    DeployedTreeRemoteUnit => deploy_apply_tree_remote_plan(spec: spec, path: path)
     TailscaleServeMapping =>
       match deployment_tailnet_door_socket(names: spec.names) {
         Present { value: _ } => ApplyPlanReady { legs: [] }
@@ -1100,7 +1156,7 @@ fn deploy_apply_effects_plan(effects: List<MemberEffect<DeploymentStep>>, spec: 
 fn deploy_apply_unit_lifecycle_legs(step: String, unit: NonEmptyStr, dest: NonEmptyStr, file: SystemdUnitFile) -> List<DeployApplyLeg> {
   concat(
     [
-      apply_staged_leg(step: join([step, "-unit"], ""), dest: dest as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: file))),
+      apply_unit_install_leg(step: join([step, "-unit"], ""), manager: SystemManager, unit: unit, dest: dest, file: file),
       apply_root_leg(step: join([step, "-reload"], ""), argv: systemctl_daemon_reload_argv()),
     ],
     apply_enable_restart_legs(step: step, unit: unit),

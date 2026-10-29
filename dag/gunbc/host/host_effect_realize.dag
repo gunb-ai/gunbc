@@ -11,6 +11,7 @@ import gunbc.runner.runner_revision_input_store { revision_input_store_root }
 import std.materialization_store_grant { materialization_store_root_path, materialization_store_staging_root_path }
 import gunbc.persistent_instance_roots { persistent_instance_scope_root, RevisionPreparation }
 
+import gunbc.live_deploy.apply_legs { ApplyLegInstallUnit, apply_unit_install_command, apply_unit_install_payload }
 
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text, admitted_scratch_path }
 
@@ -6335,6 +6336,7 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
     ApplyLegRepairDirectoryEntries { command: c } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegCommand { step: _, command: c } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegInstallFile { step: _, command: c, payload: p } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
+    ApplyLegInstallUnit { step: _, install: install } => deploy_retract_command_failure(outcome: ports.stdin(apply_unit_install_command(install: install), apply_unit_install_payload(install: install)))
     ApplyLegReport { step: _, line: _ } => Absent
     ApplyLegDigestVerify { step: _, path: p, digest: d } => deploy_apply_digest_failure(path: p, digest: d, outcome: command(sha256sum_file_command(path: p)))
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } =>
@@ -6368,6 +6370,7 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegRepairDirectoryEntries { command: _ } => []
     ApplyLegCommand { step: _, command: _ } => []
     ApplyLegInstallFile { step: _, command: _, payload: _ } => []
+    ApplyLegInstallUnit { step: _, install: install } => []
     ApplyLegBrokerStateDirectories { revision: _ } => []
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
     ApplyLegBrokerTree { revision: _ } => []

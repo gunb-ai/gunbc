@@ -1,5 +1,7 @@
 module test.claim.roadmap.attempt_system_unit_launch_witness
 
+import gunbc.live_deploy.apply_legs { ApplyLegInstallUnit, apply_unit_install_command, apply_unit_install_payload }
+
 import gunbc.roadmap.dispatch_worker_unit_confinement { GunbcHarnessProvider, dispatch_attempt_unit_stem, dispatch_attempt_worker_log_path_for_instance, dispatch_pane_working_directory, dispatch_worktree_path_for_instance }
 import std.types { Bool, NonEmptyStr, List, String, FilePath, Int }
 import std.optional { Present, Absent }
@@ -254,6 +256,7 @@ fn leg_command_words(c: ArgvCommand) -> String {
 fn leg_text(leg: DeployApplyLeg) -> String {
   match leg {
     ApplyLegInstallFile { step: st, command: c, payload: p } => join([st, " ", leg_command_words(c: c), "\n", p], "")
+    ApplyLegInstallUnit { step: st, install: install } => join([st, " ", leg_command_words(c: apply_unit_install_command(install: install)), "\n", apply_unit_install_payload(install: install)], "")
     ApplyLegCommand { step: st, command: c } => join([st, " ", leg_command_words(c: c)], "")
     ApplyLegRetract { step: st, leg: RetractRemoveForce { paths: ps } } => join([st, " ", join(non_empty_to_list(xs: ps) |> map(p => p as String), " ")], "")
     ApplyLegRootHelperSnapshot { locus: l, spine: _, revision: _, action: _ } => join([deploy_apply_leg_step(leg: leg), " ", l.base], "")
@@ -915,6 +918,7 @@ fn service_body_of_payload(payload: String) -> String {
 fn leg_install_payload(leg: DeployApplyLeg) -> String {
   match leg {
     ApplyLegInstallFile { step: _, command: _, payload: p } => p
+    ApplyLegInstallUnit { step: _, install: install } => apply_unit_install_payload(install: install)
     _ => ""
   }
 }
@@ -922,6 +926,7 @@ fn leg_install_payload(leg: DeployApplyLeg) -> String {
 fn leg_install_dest(leg: DeployApplyLeg) -> String {
   match leg {
     ApplyLegInstallFile { step: _, command: c, payload: _ } => last_or_empty(parts: c.arguments)
+    ApplyLegInstallUnit { step: _, install: install } => last_or_empty(parts: apply_unit_install_command(install: install).arguments)
     _ => ""
   }
 }
