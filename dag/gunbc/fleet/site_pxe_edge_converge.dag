@@ -17,6 +17,8 @@ import gunbc.os_install_emit { autoinstall_user_data_document }
 import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
 import gunbc.fleet.srv4_segment_name_resolution_observation { srv4_segment_resolver_answer, srv4_segment_resolver_observed_at }
 import std.decl_ref { decl_ref, DeclarationRef }
+import std.measure { Second, second }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.provisioning.public_nocloud_seed { PublicNoCloudSeed, public_nocloud_seed_client_mac, public_nocloud_seed_user_data, public_nocloud_seed_meta_data, admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, PublicSeedFinding }
 import extdeps.languages.yaml.types { YamlValue }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, Ipv4ParseError, parse_ipv4_address, render_ipv4_address }
@@ -1200,6 +1202,47 @@ type SitePxeEdgeHttpListenStanding
   | HttpListenAbsent
   | HttpListenUnobservable { reason: String }
 
+// THE LISTENER IS READ AFTER A RESTART THAT RETURNS BEFORE THE SERVER BINDS: srv4's run 40835829838 read ABSENT while
+// the same port answered 200. So the readback samples until the socket is there or the budget is spent; only ABSENT
+// is retried, because every other finding is already the answer.
+data site_pxe_edge_http_listen_samples: Int = 10
+
+data site_pxe_edge_http_listen_interval: Second = second(count: 1)
+
+fn site_pxe_edge_http_listen_poll_settled(standing: SitePxeEdgeHttpListenStanding, remaining: Int) -> Bool {
+  remaining <= 1 || (match standing {
+    HttpListenAbsent => false
+    HttpListenBoundTo { address: _ } => true
+    HttpListenWildcard { local: _ } => true
+    HttpListenOtherAddress { local: _ } => true
+    HttpListenUnobservable { reason: _ } => true
+  })
+}
+
+fn observe_site_pxe_edge_http_listen(target: SshTarget, context: FleetSshExecutionContext, bind: Ipv4Address) -> SitePxeEdgeHttpListenStanding {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["ss", "-ltnH"]) {
+    TypedArgvExecRefused { reason: why } => HttpListenUnobservable { reason: why }
+    TypedArgvExecConverged { result: r } =>
+      if r.success { site_pxe_edge_http_listen_standing(output: r.stdout, bind: bind) }
+      else { HttpListenUnobservable { reason: join(["ss -ltnH exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
+  }
+}
+
+fn site_pxe_edge_http_listen_poll(target: SshTarget, context: FleetSshExecutionContext, bind: Ipv4Address, remaining: Int) -> SitePxeEdgeHttpListenStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "run_site_pxe_edge"),
+    decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_http_listen_poll"),
+  ]
+{
+  let sample = observe_site_pxe_edge_http_listen(target: target, context: context, bind: bind)
+  if site_pxe_edge_http_listen_poll_settled(standing: sample, remaining: remaining) {
+    sample
+  } else {
+    let _paced = sleep_delay_seconds_second_carrier_projection(duration: site_pxe_edge_http_listen_interval)
+    site_pxe_edge_http_listen_poll(target: target, context: context, bind: bind, remaining: remaining - 1)
+  }
+}
+
 fn site_pxe_edge_http_listen_standing(output: String, bind: Ipv4Address) -> SitePxeEdgeHttpListenStanding {
   let expected = concat(concat(render_ipv4_address(addr: bind) as String, ":"), to_string(site_pxe_edge_http_port))
   let port_suffix = concat(":", to_string(site_pxe_edge_http_port))
@@ -2276,12 +2319,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
             Ipv4Parsed { address: bind } =>
               HttpLegActivation {
                 activation: http_activation,
-                listen: match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["ss", "-ltnH"]) {
-                  TypedArgvExecRefused { reason: why } => HttpListenUnobservable { reason: why }
-                  TypedArgvExecConverged { result: r } =>
-                    if r.success { site_pxe_edge_http_listen_standing(output: r.stdout, bind: bind) }
-                    else { HttpListenUnobservable { reason: join(["ss -ltnH exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
-                },
+                listen: site_pxe_edge_http_listen_poll(target: target, context: context, bind: bind, remaining: site_pxe_edge_http_listen_samples),
               }
           }
         } else {

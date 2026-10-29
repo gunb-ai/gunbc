@@ -135,6 +135,8 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_image_standing,
   site_pxe_edge_install_standing,
   site_pxe_edge_install_files,
+  site_pxe_edge_http_listen_poll_settled,
+  site_pxe_edge_http_listen_samples,
   site_pxe_edge_run_text,
   site_pxe_edge_unit_active_standing,
   site_pxe_edge_file_parent_argv,
@@ -1115,6 +1117,18 @@ test fn the_listening_socket_must_be_the_onboarding_address() -> Bool {
     && site_pxe_edge_http_listen_standing(output: "", bind: edge_server) == HttpListenAbsent
     && site_pxe_edge_http_listen_standing(output: "LISTEN 0      4096   0.0.0.0:22      0.0.0.0:*\nLISTEN 0      5      192.168.1.196:8080      0.0.0.0:*\n", bind: edge_server) == HttpListenBoundTo { address: "192.168.1.196:8080" }
     && site_pxe_edge_http_listen_standing(output: "LISTEN 0      4096   0.0.0.0:22      0.0.0.0:*\n", bind: edge_server) == HttpListenAbsent
+}
+
+// THE LISTENER READBACK WAITS OUT A BIND, AND ONLY A BIND: srv4's run 40835829838 read ABSENT right after the restart
+// while the port answered. ABSENT is sampled again until the budget's last sample; every other finding stops the poll.
+test fn the_listener_poll_retries_only_absent_and_stops_at_its_budget() -> Bool {
+  !site_pxe_edge_http_listen_poll_settled(standing: HttpListenAbsent, remaining: 5)
+    && site_pxe_edge_http_listen_poll_settled(standing: HttpListenAbsent, remaining: 1)
+    && site_pxe_edge_http_listen_poll_settled(standing: HttpListenBoundTo { address: "192.168.1.196:8080" }, remaining: 5)
+    && site_pxe_edge_http_listen_poll_settled(standing: HttpListenWildcard { local: "0.0.0.0:8080" }, remaining: 5)
+    && site_pxe_edge_http_listen_poll_settled(standing: HttpListenOtherAddress { local: "127.0.0.1:8080" }, remaining: 5)
+    && site_pxe_edge_http_listen_poll_settled(standing: HttpListenUnobservable { reason: "ss -ltnH exit=127" }, remaining: 5)
+    && site_pxe_edge_http_listen_samples > 1
 }
 
 // AN APPLY WHOSE HTTP LISTENER IS A WILDCARD IS NOT CONVERGED.
