@@ -10,7 +10,7 @@ import extdeps.systemd.systemctl { systemctl_start_command }
 import extdeps.systemd.unit_file { ServiceUnitFile, NotInstallable }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument }
 import gunbc.live_deploy.apply_legs { ApplyPlanReady, ApplyLegInstallUnit, ApplyLegCommand, ApplyLegDiagnosedCommand, ApplyLegRepairDirectoryEntries }
-import gunbc.live_deploy.capacity_controller_plan { capacity_controller_installs, capacity_controller_reload_managers, capacity_controller_plan, CapacityControllerDrain, CapacityControllerInstall, CapacityControllerReload, CapacityControllerDischarge }
+import gunbc.live_deploy.capacity_controller_plan { capacity_controller_installs, capacity_controller_reload_managers, capacity_controller_plan, capacity_controller_bind_publications, CapacityControllerDrain, CapacityControllerInstall, CapacityControllerReload, CapacityControllerDischarge }
 
 fn controller_fixture_install() -> DeploymentUnitInstall {
   DeploymentUnitInstall { manager: SystemManager, unit: "fixture.service", destination: "/fixture/fixture.service",
@@ -66,4 +66,15 @@ test fn installation_and_reload_precede_discharge_and_follow_drain() -> Bool {
 test fn an_empty_install_plan_cannot_discharge_a_cutover() -> Bool {
   capacity_controller_plan(request: controller_fixture_request(), install_plan: ApplyPlanReady { legs: [] })
     == Err { value: "cutover has no writer generation to install" }
+}
+
+
+test fn a_proposed_install_without_publication_is_not_executable() -> Bool {
+  match capacity_controller_plan(request: controller_fixture_request(), install_plan: ApplyPlanReady {
+    legs: [ApplyLegInstallUnit { step: "fixture", install: controller_fixture_install() }]
+  }) {
+    Err { value: _ } => false
+    Ok { value: plan } => capacity_controller_bind_publications(plan: plan, published: [])
+      == Err { value: "controller target publication set is incomplete or contains extra units" }
+  }
 }

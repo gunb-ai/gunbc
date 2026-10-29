@@ -1,6 +1,8 @@
 module gunbc.live_deploy.capacity_controller_plan
 
 import std.types { String, List, Bool }
+import std.optional { Present, Absent }
+import gunbc.live_deploy.capacity_generation_publish { CapacityPublishedGeneration }
 import std.error_primitives { Result, Ok, Err }
 import extdeps.systemd.manager { SystemdManager }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
@@ -71,3 +73,54 @@ fn capacity_controller_plan(request: CapacityMigrationApplyRequest, install_plan
 // carry argv without typed effect evidence; their absence of a compute_reserve
 // variant is not a negative proof. Trigger: a later need to exempt general apply
 // requires effect evidence at those existing constructors, not an argv whitelist.
+
+// The proposed plan is reviewable before bytes are published. It is not an
+// executable authority. Binding replaces each proposed install with the provider
+// proof; an executor consumes only this closed bound form.
+type CapacityBoundControllerLeg
+  = CapacityBoundControllerDrain { request: CapacityMigrationApplyRequest }
+  | CapacityBoundControllerInstall { generation: CapacityPublishedGeneration }
+  | CapacityBoundControllerReload { manager: SystemdManager }
+  | CapacityBoundControllerDischarge
+
+type CapacityBoundControllerPlan sole_constructor {
+  legs: List<CapacityBoundControllerLeg>
+}
+
+fn capacity_controller_bind_publications(plan: CapacityControllerPlan,
+  published: List<CapacityPublishedGeneration>) -> Result<CapacityBoundControllerPlan, String> {
+  let installs = filter(plan.legs, leg => match leg { CapacityControllerInstall { install: _ } => true _ => false })
+  if count(installs) != count(published) { return Err { value: "controller target publication set is incomplete or contains extra units" } }
+  if !all(published, generation => count(filter(installs, leg => match leg {
+    CapacityControllerInstall { install: install } => generation.planned.install == install _ => false
+  })) == 1) { return Err { value: "controller publication does not identify one proposed install" } }
+  let first_publication = match first(published) {
+    Absent => { return Err { value: "controller has no published generation" } } Present { value: value } => value
+  }
+  if !all(published, generation => generation.planned.store.attempt == first_publication.planned.store.attempt
+    && generation.revision == first_publication.revision) {
+    return Err { value: "controller publications belong to different applies or revisions" }
+  }
+  let bound = fold(plan.legs, init: Ok { value: [] }, f: (prior, leg) => match prior {
+    Err { value: why } => Err { value: why }
+    Ok { value: legs } => match leg {
+      CapacityControllerDrain { request: request } => if request.target_revision != first_publication.revision {
+        Err { value: "controller drain revision differs from published generation" }
+      } else { Ok { value: legs + [CapacityBoundControllerDrain { request: request }] } }
+      CapacityControllerReload { manager: manager } => Ok { value: legs + [CapacityBoundControllerReload { manager: manager }] }
+      CapacityControllerDischarge => Ok { value: legs + [CapacityBoundControllerDischarge] }
+      CapacityControllerInstall { install: install } => {
+        let matches = filter(published, generation => generation.planned.install == install)
+        if count(matches) != 1 { Err { value: "controller install has no unique published target" } }
+        else { match first(matches) {
+          Absent => Err { value: "controller install has no published target" }
+          Present { value: generation } => Ok { value: legs + [CapacityBoundControllerInstall { generation: generation }] }
+        } }
+      }
+    }
+  })
+  match bound {
+    Err { value: why } => Err { value: why }
+    Ok { value: legs } => Ok { value: CapacityBoundControllerPlan { legs: legs } }
+  }
+}

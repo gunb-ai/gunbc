@@ -13,7 +13,7 @@ import gunbc.durable_cas_file_store { SlotStore }
 import gunbc.owned_directory { owned_directory_outcome_converged, owned_directory_outcome_detail }
 import gunbc.host.host_effect_realize { DeployApplyPorts, deploy_apply_unit_install_failure }
 import extdeps.realization.materialization_store_local { LocalStoreCapability, LocalStoreBracket, LocalStoreFamilyHeld, LocalStoreStagedPart, local_store_binding_path, local_store_held_session, local_store_bind_retention, local_store_commit_under_request }
-import std.types { String, NonEmptyStr, Timestamp, List }
+import std.types { String, NonEmptyStr, Timestamp, List, CommitSha }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import std.content_hash { sha256_hex_of_text, sha256_hex_digest }
@@ -73,6 +73,7 @@ fn capacity_generation_render_admission(plan: CapacityPlannedGeneration, approve
 }
 
 type CapacityPublishedGeneration sole_constructor {
+  revision: CommitSha
   planned: CapacityPlannedGeneration
   install: DeploymentUnitInstall
 }
@@ -94,7 +95,7 @@ fn capacity_generation_target_admit(plan: CapacityPlannedGeneration, approval: C
         if capture.request != request || fabric_blob_reading_digest(reading: capture.reading) != plan.operation.digest
           || fabric_blob_reading_path(reading: capture.reading) != expected {
           Err { value: "published target does not match the approved unit digest and provider address" }
-        } else { Ok { value: CapacityPublishedGeneration { planned: plan, install: DeploymentUnitInstall {
+        } else { Ok { value: CapacityPublishedGeneration { revision: approval.intent.revision, planned: plan, install: DeploymentUnitInstall {
           manager: plan.install.manager, unit: plan.install.unit, destination: plan.install.destination,
           file: CapturedUnitDocument { capture: capture }
         } } } }
