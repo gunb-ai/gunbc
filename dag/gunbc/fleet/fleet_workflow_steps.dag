@@ -1076,7 +1076,7 @@ fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
 // measured cost so the step can finish; it is NOT the fix for the cost itself -- reducing the generic
 // bash emit path is owned by gunbc.rung_drop live_deploy_dark_install_render_new_witness_eval_step_cost,
 // its own task. The figure is the ceiling of the measured 696.6 s, rounded to whole minutes.
-data gunbc_ci_approval_broker_dark_install_render_allowance_minutes: Duration = 12
+data gunbc_ci_approval_broker_dark_install_render_allowance: Minute = minute(count: 12)
 
 // THE BROKER DARK-INSTALL STEP'S OWN BUDGET. It is ONE `gunbc run` of the dark-install wet
 // (gunbc.live_deploy.apply approval_broker_dark_install_wet): it boots (resolve + typecheck) the wet's
@@ -1090,7 +1090,7 @@ data gunbc_ci_approval_broker_dark_install_render_allowance_minutes: Duration = 
 //   - the `gunbc run` boot tier (closure resolve dominates),
 //     gunbc_ci_gunbc_run_resolve_step_timeout_minutes;
 //   - the access preflight (git head + sudo NOPASSWD probes), one run-step allowance;
-//   - the measured render fold above, gunbc_ci_approval_broker_dark_install_render_allowance_minutes;
+//   - the measured render fold above, gunbc_ci_approval_broker_dark_install_render_allowance;
 //   - one aux tier for the additive install legs, gunbc_ci_aux_step_timeout_minutes;
 //   - the BROKER'S OWN STARTUP, given its own declared budget rather than inheriting the step's: the
 //     same figure the readback poll uses, approval_broker_readback_poll_bound, converted to minutes.
@@ -1098,12 +1098,18 @@ data gunbc_ci_approval_broker_dark_install_render_allowance_minutes: Duration = 
 //     the borrowed 30-minute cap at 04:58:17, ~160 s into its ~200 s boot (journalctl showed it still
 //     typechecking), so it never bound 8085 -- the broker never failed to start, the borrowed budget ran
 //     out before its startup finished.
-fn gunbc_ci_approval_broker_dark_install_step_timeout_minutes() -> Int {
+// budget (review 57760 finding 1 precedent): the internal sum is the per-step Int allowances, and the
+// public fn carries the std.measure Minute duration rather than a bare scalar.
+fn gunbc_ci_approval_broker_dark_install_step_timeout_minute_count() -> Nat {
   gunbc_ci_gunbc_run_resolve_step_timeout_minutes
     + gunbc_ci_aux_step_timeout_minutes
-    + gunbc_ci_approval_broker_dark_install_render_allowance_minutes
+    + minute_count(gunbc_ci_approval_broker_dark_install_render_allowance)
     + gunbc_ci_aux_step_timeout_minutes
-    + (((second_count(s: approval_broker_readback_poll_bound) as Int) + 59) / 60)
+    + ((second_count(s: approval_broker_readback_poll_bound) + 59) / 60)
+}
+
+fn gunbc_ci_approval_broker_dark_install_step_timeout() -> Minute {
+  minute(count: gunbc_ci_approval_broker_dark_install_step_timeout_minute_count())
 }
 
 // The dark-install JOB's own backstop, derived the same way as the dashboard deploy's and kept
@@ -1112,14 +1118,18 @@ fn gunbc_ci_approval_broker_dark_install_step_timeout_minutes() -> Int {
 // live-deploy step, a step this job never runs). It composes the job's REAL steps: the consumer prelude,
 // the release-bins download and unpack-verify, the srv1 root-mutation secret auth + file-and-wait +
 // receipt upload, and the dark-install step's own tier (replacing the dashboard's live-deploy step).
-fn gunbc_ci_approval_broker_dark_install_job_backstop_timeout_minutes() -> Int {
+fn gunbc_ci_approval_broker_dark_install_job_backstop_timeout_minute_count() -> Nat {
   gunbc_ci_prelude_allowance_minutes
     + gunbc_ci_artifact_transfer_step_timeout_minutes
     + gunbc_ci_aux_step_timeout_minutes
-    + gunbc_ci_approval_broker_dark_install_step_timeout_minutes()
+    + gunbc_ci_approval_broker_dark_install_step_timeout_minute_count()
     + gunbc_ci_aux_step_timeout_minutes
-    + (minute_count(srv1_root_mutation_approval_step_timeout_minutes()) as Int)
+    + minute_count(srv1_root_mutation_approval_step_timeout_minutes())
     + gunbc_ci_artifact_transfer_step_timeout_minutes
+}
+
+fn gunbc_ci_approval_broker_dark_install_job_backstop_timeout() -> Minute {
+  minute(count: gunbc_ci_approval_broker_dark_install_job_backstop_timeout_minute_count())
 }
 
 // The Mt. Collins boot job: checkout prelude, release download (transfer) and unpack (aux), the host

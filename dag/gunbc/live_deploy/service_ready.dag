@@ -113,7 +113,7 @@ data live_deploy_service_ready_poll_bound_margin_factor: Int = 3
 // /livez for the broker to bind after its unit restart. It is the single authority for that window:
 // the readback's attempt count (gunbc.live_deploy.apply approval_broker_readback_poll_attempts) and
 // the CI step budget that runs the install
-// (gunbc.fleet.fleet_workflow_steps gunbc_ci_approval_broker_dark_install_step_timeout_minutes) are
+// (gunbc.fleet.fleet_workflow_steps gunbc_ci_approval_broker_dark_install_step_timeout) are
 // BOTH consumers of this figure, not separate products of expected_startup and the margin -- one
 // derivation per DESIGN section 6b. Giving the broker startup its own declared bound rather than
 // inheriting the live-deploy step tier is the point: run 40630763823 restarted the broker at
