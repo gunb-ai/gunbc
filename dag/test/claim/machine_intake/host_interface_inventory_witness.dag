@@ -18,6 +18,7 @@ import gunbc.fleet.fleet_host_identity {
 }
 import gunbc.machine_intake.ethernet {
   BmcDedicated,
+  BmcHostBus,
   BmcNcsi,
   FunctionUnobserved,
   lan_link_address,
@@ -49,6 +50,7 @@ test fn every_row_address_is_the_observation_s_own() -> Bool {
           FunctionUnobserved { discriminator: _ } => true
           BmcDedicated => false
           BmcNcsi => false
+          BmcHostBus => false
           HostData => false
           PrebootNetwork => false
         }) {
@@ -70,7 +72,7 @@ test fn srv1_rows_come_from_the_primary_network_receipt() -> Bool {
     Absent => false
     Present { value: host_os } =>
       mac_addresses_are_equal(left: lan_link_address(lan: host_os), right: srv1_i210_mac)
-        && match first_where(xs: host_interface_rows(host: operator_host_srv1), keep: row => row.lan.binding.function == BmcNcsi) {
+        && match first_where(xs: host_interface_rows(host: operator_host_srv1), keep: row => row.lan.binding.function == BmcHostBus) {
           Absent => false
           Present { value: shared } => mac_addresses_are_equal(left: lan_link_address(lan: shared.lan), right: srv1_bmc_usb_nic_mac)
         }

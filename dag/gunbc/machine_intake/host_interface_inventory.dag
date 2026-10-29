@@ -19,7 +19,7 @@ module gunbc.machine_intake.host_interface_inventory
 //                       host-OS / dedicated-BMC / shared-BMC triad here would be the §3 second home:
 //                       two carriers for one distinction, disagreeing in silence whenever one is
 //                       corrected. The task's three functions ARE this vocabulary: host OS is
-//                       HostData, dedicated BMC is BmcDedicated, shared BMC is BmcNcsi.
+//                       HostData, dedicated BMC is BmcDedicated, shared BMC is BmcNcsi; a controller NIC enumerated on the host's bus is BmcHostBus.
 //   address             extdeps.network.mac Eui48Address, the carrier phase S1 moved the stragglers
 //                       onto, reached through lan.link. A link read off the wire is a CONFIGURED
 //                       address and stays so: the row never calls it permanent unless the reading did.
@@ -45,6 +45,7 @@ import gunbc.machine_intake.ethernet {
   AttachmentUnobserved,
   BaseboardOnboard,
   BmcDedicated,
+  BmcHostBus,
   BmcNcsi,
   ConfiguredLink,
   EthtoolDriverInfo,
@@ -163,11 +164,12 @@ data srv1_host_os_lan: ObservedEthernetLan = ObservedEthernetLan {
 // Aspeed silicon) enumerated on the HOST's bus as a USB CDC-Ether device (kernel name enxaa7a13da73d3,
 // driver cdc_ether). The enumeration itself decides the function: a controller port reachable only as a
 // NIC on the host's bus, with no wire of its own in the receipt, is management sharing the host's
-// network path -- BmcNcsi in this corpus. It is admin-down and unconfigured in the same read, so the lan
+// network path.
+// It is a host-bus device with no wire, so it is `BmcHostBus`, not `BmcNcsi`. It is admin-down and unconfigured in the same read, so the lan
 // has no network address.
 //
 // DISSENT ROUTE: whether that silicon also drives a physical RJ45 on this board is unobserved, and
-// BmcNcsi claims it does not. If a dedicated controller port is later read on srv1, THIS LAN IS THE ONE
+// BmcHostBus claims no wire of its own. If a dedicated controller port is later read on srv1, THIS LAN IS THE ONE
 // TO CORRECT.
 data srv1_shared_bmc_port: PhysicalEthernetPort = PhysicalEthernetPort {
   unit: PortUnitUnobserved { discriminator: "srv1 has no unit key in the intake model; the receipt names the device by kernel name only" },
@@ -177,7 +179,7 @@ data srv1_shared_bmc_port: PhysicalEthernetPort = PhysicalEthernetPort {
 }
 
 data srv1_shared_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
-  binding: EthernetFunctionBinding { port: srv1_shared_bmc_port, function: BmcNcsi },
+  binding: EthernetFunctionBinding { port: srv1_shared_bmc_port, function: BmcHostBus },
   network_address: none,
   link: ConfiguredLink { configured: srv1_bmc_usb_nic_mac },
   provenance: srv1_bmc_usb_nic_reading,
@@ -394,6 +396,7 @@ fn host_controller_interfaces(host: HostIdentity) -> List<HostNetworkInterface> 
   filter(xs: host_interface_rows(host: host), predicate: row => match row.lan.binding.function {
     BmcDedicated => true
     BmcNcsi => true
+    BmcHostBus => false
     HostData => false
     PrebootNetwork => false
     FunctionUnobserved { discriminator: _ } => false

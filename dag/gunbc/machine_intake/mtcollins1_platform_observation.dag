@@ -3,7 +3,7 @@ module gunbc.machine_intake.mtcollins1_platform_observation
 import std.types { Bool, FilePath, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import std.measure { rpm, watt }
+import std.measure { minute, rpm, watt }
 import gunbc.machine_intake.power_supply { PowerSupplyStanding, both_supplies_have_ac }
 import gunbc.machine_intake.ethernet {
   AttachmentUnobserved,
@@ -136,8 +136,7 @@ fn supply_ac_loss_cause_text(cause: SupplyAcLossCause) -> NonEmptyStr {
 // THE MINUTE THE CONTROLLER READINGS BELOW WERE TAKEN. Minute-grained because the source reading is.
 data mtcollins1_controller_readings_taken: ReadingMoment = ReadAtMinute {
   date: Iso8601CivilDate { year: 2026, month: 9, day: 6 },
-  hour: 2,
-  minute: 30,
+  since_midnight: minute(count: 150),
 }
 
 // THE ADDRESSES THIS MODULE OBSERVES, each written once: the interface rows and the provenance rows
@@ -278,8 +277,7 @@ data mtcollins1_host_nic_reading: InterfaceReadingProvenance = InterfaceReadingP
   artifact: WorkspaceCaptureFile { path: "artifacts/bmc/mtcollins1-host-pxe-client.json" as FilePath, field: "observed.client_mac, observed.chaddr" },
   moment: ReadAtMinute {
     date: Iso8601CivilDate { year: 2026, month: 9, day: 5 },
-    hour: 14,
-    minute: 54,
+    since_midnight: minute(count: 894),
   },
   reading: "the PXE Discover whose vendor class is PXEClient:Arch:00002:UNDI:003016",
 }
@@ -310,6 +308,7 @@ fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
       FunctionUnobserved { discriminator: _ } => true
       BmcDedicated => false
       BmcNcsi => false
+      BmcHostBus => false
       HostData => false
       PrebootNetwork => false
     }

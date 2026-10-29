@@ -1,5 +1,6 @@
 module gunbc.machine_intake.ethernet
 
+import std.measure { Minute }
 import std.types { Bool, FilePath, List, NonEmptyStr, String }
 import extdeps.standards.nic_attachment { NicAttachmentClass }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq }
@@ -41,6 +42,7 @@ type PhysicalEthernetPort {
 type EthernetFunction
   = BmcDedicated
   | BmcNcsi
+  | BmcHostBus
   | HostData
   | PrebootNetwork
   | FunctionUnobserved { discriminator: NonEmptyStr }
@@ -74,10 +76,14 @@ type EthernetLinkAddress
 //
 // `ReadAtMinute` EXISTS BECAUSE THE SOURCE READINGS ARE MINUTE-GRAINED. "2026-09-06T02:30Z" has no
 // seconds, which RFC 3339 requires, so it cannot inhabit `Rfc3339Timestamp` without inventing a
-// second; the arm keeps the precision the source had.
+// second; the arm keeps the precision the source had. THE CLOCK TIME IS ONE `std.measure` `Minute`
+// COUNT SINCE MIDNIGHT, not an hour field beside a minute field: two bare Ints made 25:99 writable and
+// restated a unit the measure layer already owns. The count is not bounded to a day by construction (a
+// checked constructor returning Optional is the rung above, unbuilt); that residual is stated here
+// rather than hidden behind a field name.
 type ReadingMoment
   = ReadAt { instant: Rfc3339Timestamp }
-  | ReadAtMinute { date: Iso8601CivilDate, hour: Int, minute: Int }
+  | ReadAtMinute { date: Iso8601CivilDate, since_midnight: Minute }
   | ReadBefore { bound: Iso8601CivilDate, bound_stated_by: DeclarationRef }
 
 // HOW AN ADDRESS IS READ ON THIS FLEET, as a closed vocabulary. The first cut packed "ipmitool -I
@@ -226,12 +232,17 @@ fn ethernet_function_is_unobserved(f: EthernetFunction) -> Bool {
   match f {
     BmcDedicated => false
     BmcNcsi => false
+    BmcHostBus => false
     HostData => false
     PrebootNetwork => false
     FunctionUnobserved { discriminator: _ } => true
   }
 }
 
+// `BmcHostBus` IS A CONTROLLER'S ETHERNET CONTROLLER SEEN AS A DEVICE ON THE HOST'S OWN BUS (USB
+// CDC-Ether, a host-to-controller virtual NIC). It has no wire and so no segment to be reached on, which
+// `BmcNcsi` -- the controller sharing a host data port's wire through the sideband -- does. They answer
+// different reach questions, so they are different names (DESIGN.md section 3, meaning fork).
 // `ethernet_function_is_controller` USED TO SIT HERE. It was `(f == BmcDedicated || f == BmcNcsi)` ANDed
 // with `!is_unobserved(f)` -- a Bool over a coproduct whose first clause already made the second
 // unfalsifiable (review 38602 finding 3; ctrl review policy: such a predicate dissolves into the
