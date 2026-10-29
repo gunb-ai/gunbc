@@ -1,7 +1,7 @@
 module v2.workflow.roster_import_sweep
 
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
-import v2.compiler.module_acquisition { AcquiredModule, AcquisitionNotVerified, AcquisitionVerified, SourceRootBinding, acquire_verified }
+import v2.compiler.module_acquisition { AcquiredModule, AcquisitionNotVerified, AcquisitionVerified, SourceRootBinding, acquire_verified, acquisition_reached }
 import v2.cli.repository_layout { repository_storage_layout, repository_tree_directory, repository_path_of_module_file }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
@@ -27,7 +27,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node,
   parse_import_block_idents
 }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, list_init, list_find_first, string_contains, zip_map, for_all, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, list_init, list_find_first, map_contains_key, string_contains, zip_map, for_all, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
@@ -319,14 +319,10 @@ type RosterHomeClosure
   | RosterClosureUnread { home: String }
 
 fn roster_home_closures(root: String, scope: RosterHomeScope) -> List<RosterHomeClosure> {
-  let bindings = roster_repository_bindings(root: root)
-  fold_list(xs: roster_rows_for_scope(scope: scope), empty: [], cons: fn(acc, row) {
-    if roster_closure_has_home(closures: acc, home: roster_qn_text(qn: row.home)) {
-      acc
-    } else {
-      list_snoc_item(xs: acc, item: roster_home_closure_read(home: roster_qn_text(qn: row.home), bindings: bindings))
-    }
+  let homes = fold_list(xs: roster_rows_for_scope(scope: scope), empty: [], cons: fn(acc, row) {
+    if roster_contains(xs: acc, name: roster_qn_text(qn: row.home)) { acc } else { list_snoc_item(xs: acc, item: roster_qn_text(qn: row.home)) }
   })
+  roster_homes_closures_read(homes: homes, bindings: roster_repository_bindings(root: root))
 }
 
 fn roster_repository_bindings(root: String) -> List<SourceRootBinding> {
@@ -347,12 +343,23 @@ fn roster_home_closure_read(home: String, bindings: List<SourceRootBinding>) -> 
   }
 }
 
-fn roster_acquired_name(m: AcquiredModule) -> String {
-  m.name
+// ONE walk for every home of a run: the union of the homes' closures is acquired and verified once (each file read once),
+// and each home's own closure is the acquirer's own traversal (acquisition_reached) from that home over that one member table
+// -- the same reach acquisition_exactness certifies, so no second derivation of what a home reaches. A union the door
+// cannot verify leaves EVERY home unread (a refusal, never a guess).
+fn roster_homes_closures_read(homes: List<String>, bindings: List<SourceRootBinding>) -> List<RosterHomeClosure> {
+  match acquire_verified(layout: repository_storage_layout(), bindings: bindings, entries: homes) {
+    AcquisitionVerified { modules: modules, reads: _, absent_probes: _ } =>
+      list_map(xs: homes, f: fn(home) {
+        let reached = acquisition_reached(entries: [home], modules: modules)
+        RosterClosureRead { home: home, modules: list_map(xs: fold_list(xs: modules, empty: [], cons: fn(acc, m) { if map_contains_key(m: reached, key: m.name) { list_snoc_item(xs: acc, item: m) } else { acc } }), f: fn(m) { roster_acquired_name(m: m) }) }
+      })
+    AcquisitionNotVerified { reason: _, cause: _ } => list_map(xs: homes, f: fn(home) { RosterClosureUnread { home: home } })
+  }
 }
 
-fn roster_closure_has_home(closures: List<RosterHomeClosure>, home: String) -> Bool {
-  fold_list(xs: closures, empty: false, cons: fn(f, c) { f || roster_closure_home(c: c) == home })
+fn roster_acquired_name(m: AcquiredModule) -> String {
+  m.name
 }
 
 fn roster_closure_home(c: RosterHomeClosure) -> String {
@@ -3608,13 +3615,7 @@ fn roster_wave_control_blocks() -> String {
 }
 
 // THE ONE ORACLE: render a wave over fixture at the ORIGINAL keys ik/nk (gate checked, single write planned).
-fn roster_wave_control_render(fixture: String, legs: List<RosterWaveLeg>, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  let bindings = roster_repository_bindings(root: "")
-  let closures = [
-    roster_home_closure_read(home: "std.integer", bindings: bindings),
-    roster_home_closure_read(home: "std.nat", bindings: bindings),
-    roster_home_closure_read(home: "std.types", bindings: bindings)
-  ]
+fn roster_wave_control_render(fixture: String, legs: List<RosterWaveLeg>, prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> String {
   let scope = OneWave { legs: legs }
   let rows = roster_rows_for_scope(scope: scope)
   match roster_scope_selection_refusal_in(table: roster_head_rows(), scope: scope) {
@@ -3623,14 +3624,14 @@ fn roster_wave_control_render(fixture: String, legs: List<RosterWaveLeg>, prepar
   }
 }
 
-fn roster_wave_control_expect(name: String, fixture: String, legs: List<RosterWaveLeg>, want: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  let got = roster_wave_control_render(fixture: fixture, legs: legs, prepared: prepared, lex: lex)
+fn roster_wave_control_expect(name: String, fixture: String, legs: List<RosterWaveLeg>, want: String, prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> String {
+  let got = roster_wave_control_render(fixture: fixture, legs: legs, prepared: prepared, lex: lex, closures: closures)
   if got == want { "" } else { "CONTROL-FAIL " + name + ": got [" + got + "] want [" + want + "]\n" }
 }
 
 // A RED's oracle: the refusal must be the NAMED one (the substring pins the refusal and its fields).
-fn roster_wave_control_expect_refusal(name: String, fixture: String, legs: List<RosterWaveLeg>, want: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  let got = roster_wave_control_render(fixture: fixture, legs: legs, prepared: prepared, lex: lex)
+fn roster_wave_control_expect_refusal(name: String, fixture: String, legs: List<RosterWaveLeg>, want: String, prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> String {
+  let got = roster_wave_control_render(fixture: fixture, legs: legs, prepared: prepared, lex: lex, closures: closures)
   if roster_contains_needle(needle: want, hay: got) { "" } else { "CONTROL-FAIL " + name + ": refused wrongly: [" + got + "] want substring [" + want + "]\n" }
 }
 
@@ -3640,13 +3641,7 @@ fn roster_contains_needle(needle: String, hay: String) -> Bool {
 
 // The wave's applied TEXTS, through the SAME applier the sweep's writes use (roster_applied): the plan's import edits
 // merge-sort into ONE write, labels land first, imports last-first -- the applied text is the rule's, checked exactly.
-fn roster_wave_control_expect_applied(name: String, fixture: String, legs: List<RosterWaveLeg>, want: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  let bindings = roster_repository_bindings(root: "")
-  let closures = [
-    roster_home_closure_read(home: "std.integer", bindings: bindings),
-    roster_home_closure_read(home: "std.nat", bindings: bindings),
-    roster_home_closure_read(home: "std.types", bindings: bindings)
-  ]
+fn roster_wave_control_expect_applied(name: String, fixture: String, legs: List<RosterWaveLeg>, want: String, prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> String {
   let scope = OneWave { legs: legs }
   let rows = roster_rows_for_scope(scope: scope)
   match roster_sweep_text_gate(sides: roster_home_sides(rows: rows), companions: [], path: "control/wave.dag", text: fixture, prepared: prepared, lex: lex, candidates: rows, closures: closures, gates: roster_scope_gates(scope: scope, path: "control/wave.dag", text: fixture), multi_home: true) {
@@ -3692,34 +3687,35 @@ fn roster_wave_control_multibyte_line() -> String {
 }
 
 fn roster_wave_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
+  let closures = roster_homes_closures_read(homes: ["std.integer", "std.nat", "std.types"], bindings: roster_repository_bindings(root: ""))
   let plain = roster_wave_control_plain()
   let named = roster_wave_control_named()
   let int_imported = roster_wave_control_int_imported()
   let imported = roster_wave_control_imported()
   let applied = roster_wave_control_applied()
   let blocks = roster_wave_control_blocks()
-  let full = [roster_control_verdict(name: "wave-clean", fail: roster_wave_control_expect(name: "wave-clean", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"]), want: "EDIT control/wave.dag 13 13 \\n\\nimport std.integer { int_to_decimal_string }\\nimport std.nat { nat_to_decimal_string }\nLABEL control/wave.dag 57 66 to_string int_to_decimal_string\nLABEL control/wave.dag 67 67  value: \nLABEL control/wave.dag 72 81 to_string nat_to_decimal_string\nLABEL control/wave.dag 82 82  value: \n", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-distinct-anchors", fail: roster_wave_control_expect(name: "wave-distinct-anchors", fixture: blocks, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"]), want: "EDIT control/wave.dag 15 38 import std.nat { succ, nat_to_decimal_string }\nEDIT control/wave.dag 38 38 \\nimport std.integer { int_to_decimal_string }\nLABEL control/wave.dag 73 82 to_string int_to_decimal_string\nLABEL control/wave.dag 83 83  value: \nLABEL control/wave.dag 88 97 to_string nat_to_decimal_string\nLABEL control/wave.dag 98 98  value: \n", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-half-imported", fail: roster_wave_control_expect(name: "wave-half-imported", fixture: int_imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"]), want: "EDIT control/wave.dag 59 59 \\nimport std.nat { nat_to_decimal_string }\nLABEL control/wave.dag 94 103 to_string int_to_decimal_string\nLABEL control/wave.dag 104 104  value: \nLABEL control/wave.dag 109 118 to_string nat_to_decimal_string\nLABEL control/wave.dag 119 119  value: \n", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-pass2-partial", fail: roster_wave_control_expect(name: "wave-pass2-partial", fixture: applied, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:3:58"]), want: "LABEL control/wave.dag 135 144 to_string int_to_decimal_string\nLABEL control/wave.dag 145 145  value: \n", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-pass2-clean", fail: roster_wave_control_expect(name: "wave-pass2-clean", fixture: roster_wave_control_converged(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"]), want: "", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-single-leg", fail: roster_wave_control_expect(name: "wave-single-leg", fixture: plain, legs: roster_wave_control_one_leg(ik: ["control/wave.dag:3:43"]), want: "EDIT control/wave.dag 13 13 \\n\\nimport std.integer { int_to_decimal_string }\nLABEL control/wave.dag 57 66 to_string int_to_decimal_string\nLABEL control/wave.dag 67 67  value: \n", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-named-argument", fail: roster_wave_control_expect(name: "wave-named-argument", fixture: named, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:65"]), want: "EDIT control/wave.dag 13 13 \\n\\nimport std.integer { int_to_decimal_string }\\nimport std.nat { nat_to_decimal_string }\nLABEL control/wave.dag 57 66 to_string int_to_decimal_string\nLABEL control/wave.dag 79 88 to_string nat_to_decimal_string\n", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-named-mismatch", fail: roster_wave_control_expect_refusal(name: "wave-named-mismatch", fixture: "module c.wave\n\nfn f(v: Int, n: Nat) -> String { to_string(value: v) + to_string(arg: n) }\n", legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:34"], nk: ["control/wave.dag:3:56"]), want: "REFUSE control/wave.dag rename-call-named-argument call=to_string", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-unmatched-key", fail: roster_wave_control_expect_refusal(name: "wave-unmatched-key", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:41"], nk: ["control/wave.dag:3:58"]), want: "REFUSE control/wave.dag occurrence-key-unmatched path=control/wave.dag call=to_string key=control/wave.dag:3:41", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-empty-claim", fail: roster_wave_control_expect_refusal(name: "wave-empty-claim", fixture: plain, legs: roster_wave_control_two_legs(ik: [], nk: ["control/wave.dag:3:58"]), want: "REFUSE control/wave.dag scope-selects-no-row home=std.integer selection=call=to_string occurrences=empty", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-duplicate-keys", fail: roster_wave_control_expect_refusal(name: "wave-duplicate-keys", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:43"]), want: "REFUSE control/wave.dag wave-duplicate-keys call=to_string key=control/wave.dag:3:43", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-leg-overlap", fail: roster_wave_control_expect_refusal(name: "wave-leg-overlap", fixture: plain, legs: list_append(left: list_snoc_item(xs: [], item: roster_wave_control_int_leg(keys: ["control/wave.dag:3:43"])), right: list_snoc_item(xs: [], item: roster_wave_control_int_leg(keys: ["control/wave.dag:3:58"]))), want: "REFUSE control/wave.dag wave-leg-overlap call=to_string homes=std.integer|std.integer", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-wrong-binding", fail: roster_wave_control_expect_refusal(name: "wave-wrong-binding", fixture: roster_wave_control_wrong_binding(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=int_to_decimal_string expected-home=std.integer bound-home=std.types.int_to_decimal_string", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-candidate-wrong-binding", fail: roster_wave_control_expect_refusal(name: "wave-candidate-wrong-binding", fixture: roster_wave_control_double_binding(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=nat_to_decimal_string expected-home=std.nat bound-home=std.types.nat_to_decimal_string", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-prefix-home", fail: roster_wave_control_expect_refusal(name: "wave-prefix-home", fixture: roster_wave_control_prefix_home(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=nat_to_decimal_string expected-home=std.nat bound-home=std.nat.compat.nat_to_decimal_string", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-bare-import", fail: roster_wave_control_expect_applied(name: "wave-bare-import", fixture: roster_wave_control_bare_import(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:7:34"], nk: ["control/wave.dag:7:49"]), want: "module c.wave\n\nimport std.types { String }\n// 😀 é 日本 between the imports\nimport extdeps.tools.openssl\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) }\n", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-bare-import-plan", fail: roster_wave_control_expect(name: "wave-bare-import-plan", fixture: roster_wave_control_bare_import(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:7:34"], nk: ["control/wave.dag:7:49"]), want: "EDIT control/wave.dag 109 109 \\nimport std.integer { int_to_decimal_string }\\nimport std.nat { nat_to_decimal_string }\nLABEL control/wave.dag 144 153 to_string int_to_decimal_string\nLABEL control/wave.dag 154 154  value: \nLABEL control/wave.dag 159 168 to_string nat_to_decimal_string\nLABEL control/wave.dag 169 169  value: \n", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-byte-column-key", fail: roster_wave_control_expect_applied(name: "wave-byte-column-key", fixture: roster_wave_control_multibyte_line(), legs: roster_wave_control_one_leg(ik: ["control/wave.dag:3:33"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\n\nfn f(v: Int) -> String { \"é\" + int_to_decimal_string(value: v) }\n", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-scalar-column-key", fail: roster_wave_control_expect_refusal(name: "wave-scalar-column-key", fixture: roster_wave_control_multibyte_line(), legs: roster_wave_control_one_leg(ik: ["control/wave.dag:3:32"]), want: "REFUSE control/wave.dag occurrence-key-unmatched path=control/wave.dag call=to_string key=control/wave.dag:3:32", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-applies-text", fail: roster_wave_control_expect_applied(name: "wave-applies-text", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat, b: Bool) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) + to_string(b) }\n", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-applies-half-imported", fail: roster_wave_control_expect_applied(name: "wave-applies-half-imported", fixture: int_imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) }\n", prepared: prepared, lex: lex))]
-  let imported_labels = roster_control_verdict(name: "wave-imported-labels", fail: roster_wave_control_expect(name: "wave-imported-labels", fixture: imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:43"], nk: ["control/wave.dag:6:58"]), want: "LABEL control/wave.dag 144 153 to_string int_to_decimal_string\nLABEL control/wave.dag 154 154  value: \nLABEL control/wave.dag 159 168 to_string nat_to_decimal_string\nLABEL control/wave.dag 169 169  value: \n", prepared: prepared, lex: lex))
+  let full = [roster_control_verdict(name: "wave-clean", fail: roster_wave_control_expect(name: "wave-clean", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"]), want: "EDIT control/wave.dag 13 13 \\n\\nimport std.integer { int_to_decimal_string }\\nimport std.nat { nat_to_decimal_string }\nLABEL control/wave.dag 57 66 to_string int_to_decimal_string\nLABEL control/wave.dag 67 67  value: \nLABEL control/wave.dag 72 81 to_string nat_to_decimal_string\nLABEL control/wave.dag 82 82  value: \n", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-distinct-anchors", fail: roster_wave_control_expect(name: "wave-distinct-anchors", fixture: blocks, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"]), want: "EDIT control/wave.dag 15 38 import std.nat { succ, nat_to_decimal_string }\nEDIT control/wave.dag 38 38 \\nimport std.integer { int_to_decimal_string }\nLABEL control/wave.dag 73 82 to_string int_to_decimal_string\nLABEL control/wave.dag 83 83  value: \nLABEL control/wave.dag 88 97 to_string nat_to_decimal_string\nLABEL control/wave.dag 98 98  value: \n", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-half-imported", fail: roster_wave_control_expect(name: "wave-half-imported", fixture: int_imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"]), want: "EDIT control/wave.dag 59 59 \\nimport std.nat { nat_to_decimal_string }\nLABEL control/wave.dag 94 103 to_string int_to_decimal_string\nLABEL control/wave.dag 104 104  value: \nLABEL control/wave.dag 109 118 to_string nat_to_decimal_string\nLABEL control/wave.dag 119 119  value: \n", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-pass2-partial", fail: roster_wave_control_expect(name: "wave-pass2-partial", fixture: applied, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:3:58"]), want: "LABEL control/wave.dag 135 144 to_string int_to_decimal_string\nLABEL control/wave.dag 145 145  value: \n", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-pass2-clean", fail: roster_wave_control_expect(name: "wave-pass2-clean", fixture: roster_wave_control_converged(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"]), want: "", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-single-leg", fail: roster_wave_control_expect(name: "wave-single-leg", fixture: plain, legs: roster_wave_control_one_leg(ik: ["control/wave.dag:3:43"]), want: "EDIT control/wave.dag 13 13 \\n\\nimport std.integer { int_to_decimal_string }\nLABEL control/wave.dag 57 66 to_string int_to_decimal_string\nLABEL control/wave.dag 67 67  value: \n", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-named-argument", fail: roster_wave_control_expect(name: "wave-named-argument", fixture: named, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:65"]), want: "EDIT control/wave.dag 13 13 \\n\\nimport std.integer { int_to_decimal_string }\\nimport std.nat { nat_to_decimal_string }\nLABEL control/wave.dag 57 66 to_string int_to_decimal_string\nLABEL control/wave.dag 79 88 to_string nat_to_decimal_string\n", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-named-mismatch", fail: roster_wave_control_expect_refusal(name: "wave-named-mismatch", fixture: "module c.wave\n\nfn f(v: Int, n: Nat) -> String { to_string(value: v) + to_string(arg: n) }\n", legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:34"], nk: ["control/wave.dag:3:56"]), want: "REFUSE control/wave.dag rename-call-named-argument call=to_string", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-unmatched-key", fail: roster_wave_control_expect_refusal(name: "wave-unmatched-key", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:41"], nk: ["control/wave.dag:3:58"]), want: "REFUSE control/wave.dag occurrence-key-unmatched path=control/wave.dag call=to_string key=control/wave.dag:3:41", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-empty-claim", fail: roster_wave_control_expect_refusal(name: "wave-empty-claim", fixture: plain, legs: roster_wave_control_two_legs(ik: [], nk: ["control/wave.dag:3:58"]), want: "REFUSE control/wave.dag scope-selects-no-row home=std.integer selection=call=to_string occurrences=empty", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-duplicate-keys", fail: roster_wave_control_expect_refusal(name: "wave-duplicate-keys", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:43"]), want: "REFUSE control/wave.dag wave-duplicate-keys call=to_string key=control/wave.dag:3:43", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-leg-overlap", fail: roster_wave_control_expect_refusal(name: "wave-leg-overlap", fixture: plain, legs: list_append(left: list_snoc_item(xs: [], item: roster_wave_control_int_leg(keys: ["control/wave.dag:3:43"])), right: list_snoc_item(xs: [], item: roster_wave_control_int_leg(keys: ["control/wave.dag:3:58"]))), want: "REFUSE control/wave.dag wave-leg-overlap call=to_string homes=std.integer|std.integer", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-wrong-binding", fail: roster_wave_control_expect_refusal(name: "wave-wrong-binding", fixture: roster_wave_control_wrong_binding(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=int_to_decimal_string expected-home=std.integer bound-home=std.types.int_to_decimal_string", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-candidate-wrong-binding", fail: roster_wave_control_expect_refusal(name: "wave-candidate-wrong-binding", fixture: roster_wave_control_double_binding(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=nat_to_decimal_string expected-home=std.nat bound-home=std.types.nat_to_decimal_string", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-prefix-home", fail: roster_wave_control_expect_refusal(name: "wave-prefix-home", fixture: roster_wave_control_prefix_home(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=nat_to_decimal_string expected-home=std.nat bound-home=std.nat.compat.nat_to_decimal_string", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-bare-import", fail: roster_wave_control_expect_applied(name: "wave-bare-import", fixture: roster_wave_control_bare_import(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:7:34"], nk: ["control/wave.dag:7:49"]), want: "module c.wave\n\nimport std.types { String }\n// 😀 é 日本 between the imports\nimport extdeps.tools.openssl\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) }\n", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-bare-import-plan", fail: roster_wave_control_expect(name: "wave-bare-import-plan", fixture: roster_wave_control_bare_import(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:7:34"], nk: ["control/wave.dag:7:49"]), want: "EDIT control/wave.dag 109 109 \\nimport std.integer { int_to_decimal_string }\\nimport std.nat { nat_to_decimal_string }\nLABEL control/wave.dag 144 153 to_string int_to_decimal_string\nLABEL control/wave.dag 154 154  value: \nLABEL control/wave.dag 159 168 to_string nat_to_decimal_string\nLABEL control/wave.dag 169 169  value: \n", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-byte-column-key", fail: roster_wave_control_expect_applied(name: "wave-byte-column-key", fixture: roster_wave_control_multibyte_line(), legs: roster_wave_control_one_leg(ik: ["control/wave.dag:3:33"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\n\nfn f(v: Int) -> String { \"é\" + int_to_decimal_string(value: v) }\n", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-scalar-column-key", fail: roster_wave_control_expect_refusal(name: "wave-scalar-column-key", fixture: roster_wave_control_multibyte_line(), legs: roster_wave_control_one_leg(ik: ["control/wave.dag:3:32"]), want: "REFUSE control/wave.dag occurrence-key-unmatched path=control/wave.dag call=to_string key=control/wave.dag:3:32", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-applies-text", fail: roster_wave_control_expect_applied(name: "wave-applies-text", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat, b: Bool) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) + to_string(b) }\n", prepared: prepared, lex: lex, closures: closures)),
+  roster_control_verdict(name: "wave-applies-half-imported", fail: roster_wave_control_expect_applied(name: "wave-applies-half-imported", fixture: int_imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) }\n", prepared: prepared, lex: lex, closures: closures))]
+  let imported_labels = roster_control_verdict(name: "wave-imported-labels", fail: roster_wave_control_expect(name: "wave-imported-labels", fixture: imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:43"], nk: ["control/wave.dag:6:58"]), want: "LABEL control/wave.dag 144 153 to_string int_to_decimal_string\nLABEL control/wave.dag 154 154  value: \nLABEL control/wave.dag 159 168 to_string nat_to_decimal_string\nLABEL control/wave.dag 169 169  value: \n", prepared: prepared, lex: lex, closures: closures))
   let partial = list_snoc_item(xs: [], item: imported_labels)
   list_append(left: full, right: partial)
 }
