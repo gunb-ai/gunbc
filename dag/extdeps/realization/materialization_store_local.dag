@@ -66,7 +66,7 @@ import std.artifact_store {
   store_over_provider, store_refused, store_replacement_supported, store_put, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit, StorePutAtCapacity, StorePutPolicyRefused,
   store_get, StoreHit, StoreMiss, store_bytes_used,
 }
-import std.cache_identity { ArtifactKindId }
+import std.cache_identity { ArtifactKindId, cutover_capture_artifact_kind }
 import std.measure { ByteSize, byte_size, measure_count, measure_add }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.durable_compare_and_set {
@@ -230,6 +230,7 @@ fn store_marker_content(root: MaterializationStoreRoot, instance_label: NonEmpty
 // line; initialization refuses anything else before a marker is written.
 fn store_marker_catalog_admissible(budgets: List<LocalStoreFamilyBudget>) -> Bool {
   count(budgets) > 0 && count(local_store_name_set(names: budgets |> map(b => b.family as String))) == count(budgets)
+    && all(budgets, b => b.family != cutover_capture_artifact_kind || b.at_capacity == RefuseNewStore)
     && all(budgets, b => match store_replacement_supported(action: b.at_capacity) { Absent => true, Present { value: _ } => false })
 }
 

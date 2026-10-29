@@ -1,5 +1,6 @@
 module std.materialization_store_grant
 
+import gunbc.runner.runner_microvm_attempt_identity { AttemptSegment }
 import std.types { String, Bool, List, Int }
 import std.access { AccessDecision }
 import std.effect_grant {
@@ -26,6 +27,11 @@ import gunbc.persistent_instance_roots { PersistentInstanceScope, persistent_ins
 // declared persistent instances (gunbc.persistent_instance_roots); the store is the leaf
 // `materialization-store` under that scope's root, and the grant is that path.
 //
+// CutoverCaptureRoot { attempt } — durable until explicit cutover recovery or discharge.
+// The path segment is admitted by the existing attempt identity home; ownership
+// is root:root 0700, established by the cutover consumer before opening the store.
+// Capacity eviction of the capture family is forbidden by the local provider.
+//
 // FrameJobWorkspace { frame } — EphemeralToFrame. The store is
 // `/tmp/gunbc_compute_<frame>/materialization-store`: it lives under the frame-owned scratch grant
 // (std.artifact_store_scratch_grant) by construction, so it cannot alias a durable store, and it is
@@ -43,6 +49,7 @@ import gunbc.persistent_instance_roots { PersistentInstanceScope, persistent_ins
 
 type MaterializationStoreRoot
   = DurableHostVolume
+  | CutoverCaptureRoot { attempt: AttemptSegment }
   | PersistentInstanceWorkspace { scope: PersistentInstanceScope }
   | FrameJobWorkspace { frame: Int }
   | WitnessScratchRoot { root: String }
@@ -55,6 +62,8 @@ data materialization_store_frame: Frame = Frame {
   name: "materialization-store",
   kind: SharedStateFrame
 }
+
+data materialization_store_cutover_capture_base: String = "/var/lib/gunbc/cutover-capture"
 
 data materialization_store_host_volume_path: String = "/var/lib/gunbc/materialization-store"
 
@@ -69,6 +78,7 @@ fn materialization_store_frame_root(frame: Int) -> String {
 
 fn materialization_store_root_path(root: MaterializationStoreRoot) -> String {
   match root {
+    CutoverCaptureRoot { attempt: a } => join([materialization_store_cutover_capture_base, "/", a.value as String], "")
     DurableHostVolume => materialization_store_host_volume_path
     PersistentInstanceWorkspace { scope } =>
       join([persistent_instance_scope_root(scope: scope), "/", materialization_store_workspace_leaf], "")
@@ -84,6 +94,7 @@ fn materialization_store_staging_root_path(root: MaterializationStoreRoot) -> St
 
 fn materialization_store_durability(root: MaterializationStoreRoot) -> MaterializationStoreDurability {
   match root {
+    CutoverCaptureRoot { attempt: _ } => DurableAcrossRuns
     DurableHostVolume => DurableAcrossRuns
     PersistentInstanceWorkspace { scope: _ } => DurableAcrossRuns
     FrameJobWorkspace { frame: _ } => EphemeralToFrame
@@ -121,6 +132,7 @@ fn materialization_store_grants(root_position: NamespacePosition) -> List<Grant>
 
 fn materialization_store_envelope(root: MaterializationStoreRoot) -> Envelope {
   match root {
+    CutoverCaptureRoot { attempt: _ } => materialization_store_path_envelope(path: materialization_store_root_path(root: root))
     DurableHostVolume => materialization_store_path_envelope(path: materialization_store_host_volume_path)
     PersistentInstanceWorkspace { scope: _ } => materialization_store_path_envelope(path: materialization_store_root_path(root: root))
     FrameJobWorkspace { frame: _ } => materialization_store_scratch_envelope()
