@@ -97,6 +97,10 @@ type SystemdUnitProperty
   | WantsProperty
   | InvocationIDProperty
   | FragmentPathProperty
+  // org.freedesktop.systemd1.Unit DropInPaths: every drop-in file the manager loaded for the unit, in the
+  // order it applied them (template and instance .d directories merged, sorted by file name);
+  // `systemctl show` prints them space-separated.
+  | DropInPathsProperty
   | StandardInputProperty
   | StandardOutputProperty
   | StandardErrorProperty
@@ -200,6 +204,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     WantsProperty => "Wants" as NonEmptyStr
     InvocationIDProperty => "InvocationID" as NonEmptyStr
     FragmentPathProperty => "FragmentPath" as NonEmptyStr
+    DropInPathsProperty => "DropInPaths" as NonEmptyStr
     StandardInputProperty => "StandardInput" as NonEmptyStr
     StandardOutputProperty => "StandardOutput" as NonEmptyStr
     StandardErrorProperty => "StandardError" as NonEmptyStr
@@ -230,8 +235,8 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
 // predicate, so a path-carrying setting is a fact of the upstream and not a list a consumer keeps beside
 // the unit. THE MATCH IS EXHAUSTIVE WITH NO WILDCARD: a property added to SystemdUnitProperty has no arm
 // here until it is classified, so the omission is a compile-time refusal and never a silent false.
-// FragmentPathProperty is false by classification: it is the unit file's own location read back from
-// the manager, not a path the unit is handed.
+// FragmentPathProperty and DropInPathsProperty are false by classification: they are the unit's own
+// configuration files read back from the manager, not paths the unit is handed.
 fn systemd_property_carries_paths(property: SystemdUnitProperty) -> Bool {
   match property {
     MemoryMax => false
@@ -278,6 +283,7 @@ fn systemd_property_carries_paths(property: SystemdUnitProperty) -> Bool {
     WantsProperty => false
     InvocationIDProperty => false
     FragmentPathProperty => false
+    DropInPathsProperty => false
     StandardInputProperty => true
     StandardOutputProperty => true
     StandardErrorProperty => true

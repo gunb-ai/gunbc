@@ -10,7 +10,7 @@ import extdeps.systemd {
   MemoryCurrent, MemoryPeak, TasksCurrent, ControlGroup,
   ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
-  InvocationIDProperty, FragmentPathProperty, JobProperty,
+  InvocationIDProperty, FragmentPathProperty, DropInPathsProperty, JobProperty,
   NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, UMaskProperty, DelegateProperty, ReadOnlyPathsProperty, InaccessiblePathsProperty,
   RestartProperty, TimeoutStopSecProperty,
   systemd_unit_property_wire, PartOf, Unit }
@@ -176,6 +176,7 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     WantsProperty => SettableDirective
     InvocationIDProperty => ObservationOnly
     FragmentPathProperty => ObservationOnly
+    DropInPathsProperty => ObservationOnly
     JobProperty => ObservationOnly
     NoNewPrivilegesProperty => SettableDirective
     RestrictSUIDSGIDProperty => SettableDirective
@@ -222,7 +223,7 @@ data systemd_unit_property_members: List<SystemdUnitProperty> = [
   StandardInputProperty, StandardOutputProperty, StandardErrorProperty, ProtectSystemProperty, ProtectHomeProperty,
   PrivateTmpProperty, ReadWritePathsProperty, ReadOnlyPathsProperty, InaccessiblePathsProperty, BindPathsProperty, RemainAfterExitProperty, RuntimeMaxSecProperty, CollectModeProperty,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
-  InvocationIDProperty, FragmentPathProperty, JobProperty,
+  InvocationIDProperty, FragmentPathProperty, DropInPathsProperty, JobProperty,
   NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, UMaskProperty, DelegateProperty, RestartProperty, TimeoutStopSecProperty,
 ]
 
