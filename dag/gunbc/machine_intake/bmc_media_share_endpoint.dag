@@ -40,7 +40,7 @@ import gunbc.fleet.fleet_endpoint {
 import gunbc.fleet.fleet_naming { provider_endpoint, provider_endpoint_text }
 import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
-import gunbc.fleet.host_identity { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.megarac_media_model {
@@ -48,6 +48,7 @@ import gunbc.megarac_media_model {
   NfsServerAddressHostnameAccepted,
   NfsServerAddressHostnameRefused,
   NfsServerAddressHostnameUnobserved,
+  megarac_mtcollins1_nfs_server_address_formality,
 }
 
 // THE TYPED RESOLUTION THE ENDPOINT AUTHORITY RETURNS FOR THE SHARE. `ByHolderIpv4` is the holder's LAN IPv4
@@ -185,12 +186,51 @@ fn resolve_fabric_storage_share_server_address(
   }
 }
 
-// THE BINDING'S `server_address` (Do-step 3, what mtcollins1_boot_run and the fixtures read). The share is the
-// srv2 FabricStorageShare endpoint, and while the firmware's hostname standing is the one the corpus holds
-// (Unobserved) the resolution is the holder's cited LAN IPv4, produced through the typed endpoint resolution
-// above -- never a literal. bmc_media_share_endpoint_witness binds this value to the resolver run on the real
-// srv2 endpoint, so the two cannot silently diverge; if a cited observation ever moves the standing to
-// Accepted, the Accepted arm and this line move together under that witness.
-fn srv2_bmc_media_share_server_address() -> NonEmptyStr {
-  srv2_fabric_storage_share_holder_ipv4().address
+// THE SINGLE ROUTE TO THE SHARE'S `server_address` (Do-step 3, what mtcollins1_boot_run and the fixtures
+// read). It is NOT a shortcut to the holder's IPv4 row: it builds the srv2 FabricStorageShare endpoint, runs
+// it through the endpoint resolver, and hands the resolver the LIVE per-firmware hostname reading
+// (megarac_mtcollins1_nfs_server_address_formality) -- so the role gate, the member gate and the firmware
+// reading are all on the production path, not only on the witness. It returns a Result: the share is
+// grounded by construction and never fabricated, and when the resolver refuses (a foreign member, a wrong
+// role, or a hostname form the firmware is read as accepting with no grounded name-resolution to serve it)
+// the refusal propagates to the caller, which fails closed -- the boot binding never falls back to the raw
+// holder row. This is the one route; there is no second path beside it (DESIGN 3, DESIGN 5).
+// Consumers: gunbc.machine_intake.mtcollins1_boot_run (mtcollins1_media_share) and the witness.
+fn srv2_bmc_media_share_server_address() -> Result<NonEmptyStr, BmcMediaShareRefusal> {
+  match srv2_fabric_storage_share_endpoint() {
+    Err { value: why } => Err { value: why }
+    Ok { value: share } =>
+      match resolve_fabric_storage_share_server_address(
+        share: share,
+        formality: megarac_mtcollins1_nfs_server_address_formality,
+      ) {
+        Err { value: why } => Err { value: why }
+        Ok { value: resolved } =>
+          match resolved {
+            ByHolderIpv4 { address: address, source: _ } => Ok { value: address }
+            ByAllocatedName { name: name, source: _ } => Ok { value: name }
+          }
+      }
+  }
+}
+
+// WHY A REFUSAL IS NOT A VOID. The boot actuation must fail closed with a legible cause when the endpoint
+// authority refuses the share, but it must not have to pattern-match every BmcMediaShareRefusal arm itself
+// (§3c -- the module that owns the refusal renders its own text). Consumers:
+// gunbc.machine_intake.mtcollins1_boot_run (mtcollins1_boot_actuate's early refusal) and the witness.
+fn bmc_media_share_refusal_text(refusal: BmcMediaShareRefusal) -> NonEmptyStr {
+  match refusal {
+    MemberSourceUnallocated { slot: slot, cause: cause } =>
+      concat("the BMC media share endpoint has no allocation row for the segment holder ", cause) as NonEmptyStr
+    MemberNamingRefused { slot: slot, cause: cause } =>
+      concat("the naming policy refused the segment holder's member name: ", cause) as NonEmptyStr
+    IdentityConstructionRefused { slot: slot, cause: cause } =>
+      concat("the endpoint authority refused to bind the holder to a FabricStorageShare service: ", cause) as NonEmptyStr
+    RoleNotFabricStorageShare { slot: slot } =>
+      "the BMC media share endpoint dials a role other than FabricStorageShare" as NonEmptyStr
+    MemberNotSegmentHolder { slot: slot, expected: expected } =>
+      "the BMC media share endpoint names a member that is not the segment holder" as NonEmptyStr
+    HostFormNeedsResolutionEvidence { member: member, what_would_ground_it: need } =>
+      concat("the firmware is read as accepting a hostname but no grounded name-resolution exists for ", member, ": ", need) as NonEmptyStr
+  }
 }

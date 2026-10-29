@@ -466,11 +466,18 @@ data share_as_of_2026_09_27: MegaRacShareBinding = MegaRacShareBinding {
   share_type: MegaRacShareNfs,
 }
 
-// The binding the production caller passes is DERIVED from srv2's address row and the export row:
-// it renders gunbc.fleet.fleet_reach srv2_lan_ipv4, never a literal copied here.
+// The binding the production caller passes is DERIVED from srv2's FabricStorageShare endpoint through the
+// endpoint resolver -- it renders the cited srv2 LAN row only while the firmware standing is Unobserved/
+// Refused, never a literal copied here. If the endpoint authority ever REFUSES the share (a moved standing
+// with no grounded resolution, a wrong role or member) this witness goes red, not silently green: a share
+// that cannot be grounded is exactly when the boot must not proceed.
 test fn the_production_share_is_derived_from_srv2s_address_row() -> Bool {
-  (mtcollins1_media_share.server_address as String) == (render_ipv4_address(addr: srv2_lan_ipv4) as String)
-    && (mtcollins1_media_share.source_path as String) == "/srv/bmc"
+  match mtcollins1_media_share() {
+    Err { value: _ } => false
+    Ok { value: share } =>
+      (share.server_address as String) == (render_ipv4_address(addr: srv2_lan_ipv4) as String)
+        && (share.source_path as String) == "/srv/bmc"
+  }
 }
 
 // The controller's own answer of that day binds to that day's binding: the morning read (error 0) is bound.

@@ -89,6 +89,9 @@ test fn witness_unobserved_hostname_standing_resolves_to_holder_ipv4() -> Bool {
         Err { value: _ } => false
         Ok { value: ByHolderIpv4 { address: a, source: src } } =>
           (a as String) == expected_holder_ipv4() && string_contains(s: src as String, pattern: "srv2_lan_ipv4")
+        // A name served under an UNOBSERVED standing would mean the resolver treated "unobserved" as "the
+        // firmware accepts a hostname" -- the exact bug this witness exists to catch -- so it is RED, not green.
+        Ok { value: ByAllocatedName { name: _, source: _ } } => false
       }
   }
 }
@@ -115,6 +118,8 @@ test fn witness_unobserved_and_refused_give_address_while_accepted_is_refused() 
               Ok { value: _ } => false
               Err { value: _ } => true
             }
+        // A name served under a REFUSED standing would ignore the firmware reading -- RED, not green.
+        Ok { value: ByAllocatedName { name: _, source: _ } } => false
       }
   }
 }
@@ -191,10 +196,19 @@ test fn witness_production_binding_and_fixture_match_the_resolver_output() -> Bo
         formality: megarac_mtcollins1_nfs_server_address_formality,
       ) {
         Err { value: _ } => false
+        Ok { value: ByAllocatedName { name: _, source: _ } } => false
         Ok { value: ByHolderIpv4 { address: resolved, source: _ } } =>
-          (mtcollins1_media_share.server_address as String) == (resolved as String)
-            && (srv2_bmc_media_share_server_address() as String) == (resolved as String)
-            && (resolved as String) == expected_holder_ipv4()
+          match srv2_bmc_media_share_server_address() {
+            Err { value: _ } => false
+            Ok { value: accessor } =>
+              match mtcollins1_media_share() {
+                Err { value: _ } => false
+                Ok { value: binding } =>
+                  (binding.server_address as String) == (resolved as String)
+                    && (accessor as String) == (resolved as String)
+                    && (resolved as String) == expected_holder_ipv4()
+              }
+          }
       }
   }
 }

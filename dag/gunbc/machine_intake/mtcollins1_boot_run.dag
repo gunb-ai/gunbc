@@ -18,6 +18,7 @@ import std.algebra { trim, FreeSemigroup }
 import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond, measure_add, measure_le, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.error_primitives { Err, Ok, Result }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
 import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_image_stem, mtcollins1_census_image, census_served_check }
@@ -35,7 +36,7 @@ import gunbc.host.managed_host_unit_hold {
 import gunbc.host_state_root { host_state_tree }
 import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation, megarac_release_boot_session }
 import gunbc.machine_intake.megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs, MegaRacAttachResult }
-import gunbc.machine_intake.bmc_media_share_endpoint { srv2_bmc_media_share_server_address }
+import gunbc.machine_intake.bmc_media_share_endpoint { srv2_bmc_media_share_server_address, bmc_media_share_refusal_text, BmcMediaShareRefusal }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text, megarac_operation_evidence }
 import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill }
 import gunbc.machine_intake.megarac_media_attach { PresentationStillReady, presentation_still_served }
@@ -214,10 +215,25 @@ data mtcollins1_sol_notice_ready_allowance: Second = second(count: 900)
 // itself reads the same account off the admitted boot subject's binding.
 data mtcollins1_bmc_username: NonEmptyStr? = managed_host_account_driving(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr), endpoint: mtcollins1_endpoint)
 
-data mtcollins1_media_share: MegaRacShareBinding = MegaRacShareBinding {
-  server_address: srv2_bmc_media_share_server_address(),
-  source_path: bmc_boot_image_export.dir,
-  share_type: MegaRacShareNfs,
+// THE SHARE BINDING THIS LANE ATTACHES. It is no longer a total `data` row handing out a pre-baked IPv4: it
+// is built by the single route above -- the srv2 FabricStorageShare endpoint through the endpoint resolver,
+// reading the live firmware hostname standing -- and it is FALLIBLE, so the address cannot exist apart from
+// that construction. The actuation resolves it ONCE and threads the one ground value to the attach, the
+// handoff looks and the end look; a refusal stops the boot before any BMC media write (DESIGN 5: the ground
+// is one value carried through real parameters, not a row every reader re-derives). Consumers:
+// gunbc.machine_intake.mtcollins1_boot_run.mtcollins1_boot_actuate and the two machine_intake witnesses.
+fn mtcollins1_media_share() -> Result<MegaRacShareBinding, BmcMediaShareRefusal> {
+  match srv2_bmc_media_share_server_address() {
+    Err { value: why } => Err { value: why }
+    Ok { value: server_address } =>
+      Ok {
+        value: MegaRacShareBinding {
+          server_address: server_address,
+          source_path: bmc_boot_image_export.dir,
+          share_type: MegaRacShareNfs,
+        }
+      }
+  }
 }
 
 // THE BOUND ON ONE ipmitool READ OF THIS UNIT'S CONTROLLER, as the generic attach takes it
@@ -2452,6 +2468,7 @@ type MediaGatedHandoff {
 fn mtcollins1_boot_handoff_when_media_ready(
   proof: UnitHoldProof,
   media: MegaRacMediaAttach,
+  share: MegaRacShareBinding,
   subject: AdmittedBootSubject,
   password_file: String,
   attempt: String,
@@ -2467,7 +2484,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
     MediaGateWithheld { reason: why } =>
       MediaGatedHandoff { result: boot_handoff_not_issued(outcome: exit_failure(reason: why as String)), media: MegaRacHandoffNotReached { reason: why }, live_at: last_live_at }
     MediaGateReady { evidence: _ } => {
-      let before = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "before-handoff")
+      let before = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: share, password_file: password_file, attempt: attempt, look: "before-handoff")
       match presentation_still_served(result: before) {
         PresentationStillReady => {
           let supervised_at = match mtcollins1_sol_supervised(stage: SolLostBeforeHandoff, pid_path: pid_path, capture_path: capture_path, password_file: password_file, last_live_at: last_live_at) {
@@ -2484,7 +2501,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
             label: "mtcollins1 cdrom handoff",
             password_file_raw: password_file,
           )
-          let after = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "after-handoff")
+          let after = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: share, password_file: password_file, attempt: attempt, look: "after-handoff")
           MediaGatedHandoff {
             result: handed,
             media: MegaRacHandoffAttempted {
@@ -2534,6 +2551,22 @@ fn mtcollins1_boot_actuate(
   ]
 {
   let hold_acquired = proc_uptime_read()
+  // THE SHARE IS GROUNDED ONCE, BEFORE THE FIRST BMC WRITE. The endpoint authority is asked for srv2's
+  // FabricStorageShare endpoint and the firmware hostname standing is read at the resolver; if it refuses
+  // (no allocation for the holder, the naming policy refusing the member, a non-storage role, a member that
+  // is not the holder, or a hostname form the firmware accepts with no grounded resolution to serve), the
+  // boot is refused with that typed cause and NOTHING is written -- never a fall-back to a raw address row
+  // (DESIGN 5). The one ground value then threads into the attach, both handoff looks and the end look.
+  // The refusal precedes even the SOL acquire, so actuation_not_powered_on's not-taken clock is the honest
+  // timing: no phase ran at all.
+  let media_share = match mtcollins1_media_share() {
+    Err { value: why } =>
+      return actuation_not_powered_on(
+        outcome: exit_failure(reason: bmc_media_share_refusal_text(refusal: why) as String),
+        reason: bmc_media_share_refusal_text(refusal: why),
+      )
+    Ok { value: share } => share
+  }
   match mtcollins1_sol_acquire_under_unit_hold(proof: proof, password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
     ExitFailure { code: c, reason: r } => {
       let refused_at = proc_uptime_read()
@@ -2580,7 +2613,7 @@ fn mtcollins1_boot_actuate(
               megarac_attach_boot_image(
                 proof: proof,
                 subject: subject,
-                share: mtcollins1_media_share,
+                share: media_share,
                 replaceable_seeded_stems: lane_stems,
                 bound: mtcollins1_boot_ipmi_read_bound,
                 password_file: password_file,
@@ -2606,6 +2639,7 @@ fn mtcollins1_boot_actuate(
         SolHandoffAdmitted { held_at: _ } => mtcollins1_boot_handoff_when_media_ready(
           proof: proof,
           media: media,
+          share: media_share,
           subject: subject,
           password_file: password_file,
           attempt: attempt,
@@ -2685,7 +2719,7 @@ fn mtcollins1_boot_actuate(
       let released = proc_uptime_read()
       let end_media_owed = end_media_is_owed(media: media)
       let end_look = if end_media_owed {
-        Present { value: megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
+        Present { value: megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: media_share, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
       } else {
         none
       }
