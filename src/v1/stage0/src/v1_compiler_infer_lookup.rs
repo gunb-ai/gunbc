@@ -559,12 +559,21 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedC
                     module_path: mp,
                     binding: b,
                     ..
-                }) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
-                    declaration: Rc::new(BorrowedCensusDecl {
-                        owner_module_path: mp.clone(),
-                        node: b.resolved.clone(),
-                    }),
-                }),
+                }) => {
+                    if crate::v1_compiler_infer_env::global_bare_declarer_in_scope(
+                        type_env.module_path.clone(),
+                        mp.clone(),
+                    ) {
+                        Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+                            declaration: Rc::new(BorrowedCensusDecl {
+                                owner_module_path: mp.clone(),
+                                node: b.resolved.clone(),
+                            }),
+                        })
+                    } else {
+                        Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound)
+                    }
+                }
                 Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
                     candidates: cands,
                     ..
