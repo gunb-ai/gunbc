@@ -19,6 +19,9 @@ import gunbc.host.boot_medium_reader_key {
   boot_medium_reader_ssh_privkey_secret,
 }
 import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
+// ONE HOME FOR THE BMC CREDENTIAL'S ID: the provisioned reference, read for its .secret exactly the way the
+// fleet key's and the reader key's references are read above (review 87659; DESIGN section 3).
+import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 
 // ── THE APPROVAL-FREE mtcollins1 BOOT FROM A SAME-REPOSITORY BRANCH (operator rulings 2026-10-22/23) ──
@@ -380,14 +383,17 @@ fn mtcollins1_boot_branch_federation_with(state: BootMediumReaderKeyState) -> De
 // inflation in DESIGN.md section 4b's exact sense ("the reported rung equals the rung established by
 // executed evidence"; "rung inflation is worse than sitting low"). Narrowing the policy is what makes the
 // row true again; the row is not being re-labelled to match a wider account.
-// WHAT THE DERIVED CELL'S ID MEASURED OUT TO, ON 2026-10-29, through the admission path below. It is NOT
-// what selects the cell -- see mtcollins1_boot_branch_bmc_grant, which selects by EXCLUSION and never
-// compares to this. It is here because a claim asserts the derived cell's id equals it, so a rotation of
-// the host's BMC credential (which renames the secret, since the id comes from the BMC standing) turns that
-// claim red instead of quietly letting the branch account follow a different credential. An earlier draft
-// matched ON this literal, which is exactly the unverified-in-input failure DESIGN section 4b refuses: the
-// id is published by gunbc.machine_intake.bmc_secure ManagedCredentialReference, not by this module.
-data mtcollins1_boot_branch_bmc_secret_id: NonEmptyStr = "bmc-mtcollins1-gunbc"
+// THE HOST'S BMC CREDENTIAL ID, READ FROM ITS HOME -- never written down a second time. DESIGN section 3:
+// minimization holds only if each fact lives in exactly one place; section 2: net concepts must not grow by
+// re-invention. The provisioned reference is gunbc.secret_provision mtcollins1_bmc_gunbc_secret_ref -- the
+// same symbol the boot federation's cell speaks of and the one gunbc.test.claim.auth.gcp_secret_access_witness
+// checks. Spelling "bmc-mtcollins1-gunbc" here again gave the branch policy a second source that can drift:
+// rename the secret in secret_provision and a literal here would silently disagree about which credentials
+// the branch account may hold, which is a decision, not a label. (An earlier draft both spelled this literal
+// AND matched on it -- see mtcollins1_boot_branch_bmc_grant, which now selects by EXCLUSION of the fleet key
+// and never compares to this.) It remains read by mtcollins1_boot_branch_policy_excludes_the_fleet_key and
+// asserted equal to the derived cell's id by a claim, so a rotation is a red claim, not a quiet widening.
+data mtcollins1_boot_branch_bmc_secret_id: NonEmptyStr = mtcollins1_bmc_gunbc_secret_ref.secret
 
 // THE BMC CELL, TAKEN FROM THE ADMITTED BOOT FEDERATION RATHER THAN RE-DERIVED: the same secret, the
 // same pinned version, the same version-condition expression. One pin, two identities -- a rotation moves

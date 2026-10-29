@@ -31,7 +31,7 @@ import gunbc.auth.authorization_pattern_selection {
 }
 import gunbc.auth.privileged_effect_census {
   privileged_effect_census, site_verdict, site_conformance, Conforms, SiteNotDecidable, Diverges,
-  DivergesWithReason, RealizedFederatedGrant, site_ruling_linkage, ruling_backed_privileged_sites,
+  DivergesWithReason, RealizedFederatedGrant, site_ruling_linkage, ruling_backed_privileged_sites, PrivilegedEffectSite,
   site,
 }
 import std.decl_ref { declaration_ref_eq, declaration_ref_in_list }
@@ -41,7 +41,7 @@ import gunbc.design_ruling { mtcollins1_branch_boot_is_approval_free }
 // typed carrier and section 3 refuses a citation whose home does not resolve -- so the words live in
 // gunbc.design_ruling, the census module exposes them, and the claims below check all three links: the row is
 // registered, its provenance carries the operator's own sentences, and the census row names it.
-import gunbc.design_ruling { design_rulings }
+import gunbc.design_ruling { design_rulings, DesignRuling }
 import gunbc.auth.privileged_effect_census { mtcollins1_branch_boot_operator_ruling_text }
 import gunbc.auth.branch_dispatch_federation { branch_boot_credential_effect_approval_free }
 import gunbc.auth.mtcollins1_branch_boot_trust {
@@ -62,6 +62,10 @@ import gunbc.host.boot_medium_reader_key {
 import extdeps.ssh.keys { SshPublicKey, Ed25519 }
 import std.content_hash { sha256_hex_digest }
 import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
+// ONE HOME FOR THE BMC CREDENTIAL'S ID AND VERSION (review 87659; DESIGN section 3). A witness that spells
+// the id itself is a second source that can drift from the provisioned one -- and a claim that agrees with a
+// stale literal is worse than no claim, because it reads as evidence.
+import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.auth.branch_dispatch_federation {
   select_boot_credential_source_at_ref_with, boot_grant_required_at_ref_with,
   boot_credential_source_from_branch_selection_with,
@@ -320,11 +324,13 @@ test fn both_boot_accounts_pin_the_admitted_bmc_and_fleet_key_versions() -> Bool
         grant_secret_versions(grants: standing.secret_grants) == grant_secret_versions(grants: admitted.secret_grants)
           && grant_secret_versions(grants: run.secret_grants) == grant_secret_versions(grants: admitted.secret_grants)
           && any(admitted.secret_grants, g => (g.target.secret as String) == "fleet-automation-ssh-key" && g.target.version == "1")
-          && any(admitted.secret_grants, g => (g.target.secret as String) == "bmc-mtcollins1-gunbc" && g.target.version == "2")
+          && any(admitted.secret_grants, g => (g.target.secret as String) == (mtcollins1_bmc_gunbc_secret_ref.secret as String)
+                && (g.target.version as String) == (mtcollins1_bmc_gunbc_secret_ref.version as String))
           && !any(gcp_iam_converge_targets, t =>
             (t.service_account_id as String) == (run.service_account_id as String)
-              && any(t.secret_grants, g => (g.target.secret as String) == "bmc-mtcollins1-gunbc"
-                && any(admitted.secret_grants, a => (a.target.secret as String) == "bmc-mtcollins1-gunbc" && a.target.version != g.target.version)))
+              && any(t.secret_grants, g => (g.target.secret as String) == (mtcollins1_bmc_gunbc_secret_ref.secret as String)
+                && any(admitted.secret_grants, a => (a.target.secret as String) == (mtcollins1_bmc_gunbc_secret_ref.secret as String)
+                  && a.target.version != g.target.version)))
           && match select_boot_credential_source(on_reviewed_main: true) { BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => true  BootCredentialSourceSelected { source: RunScopedApprovedGrant } => false  BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false  BootCredentialSourceRefused { cause: _ } => false }
           && match select_boot_credential_source(on_reviewed_main: false) { BootCredentialSourceSelected { source: RunScopedApprovedGrant } => true  BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => false  BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false  BootCredentialSourceRefused { cause: _ } => false }
       }
@@ -592,31 +598,43 @@ test fn a_different_workflow_file_is_refused() -> Bool {
 // algebra directly (select_authorization_pattern over the effect built with the minted state, then
 // site_conformance against the row's own realized field) rather than pretending site_verdict can see a
 // world it cannot.
-test fn the_branch_boot_credential_is_censused_and_conforms() -> Bool {
-  let rows = filter(privileged_effect_census, r => (r.site.decl_name as String) == "branch_boot_credential_effect_approval_free")
-  // exactly one row, or the join below is over the wrong subject
-  && rows.length() == 1
-  && match rows.first() {
+fn branch_boot_census_rows() -> List<PrivilegedEffectSite> {
+  filter(privileged_effect_census, candidate => (candidate.site.decl_name as String) == "branch_boot_credential_effect_approval_free")
+}
+
+// TODAY'S VERDICT: not decidable, and only for the reason the route is shut.
+fn branch_boot_verdict_today_is_honest() -> Bool {
+  match branch_boot_census_rows().first() {
     Absent => false
-    Present { value: r } =>
-      // TODAY: not decidable, and only because the route is closed
-      (match site_verdict(row: r).conformance {
-        SiteNotDecidable { standing: _ } => mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted()
-        Conforms => !mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted()
-        Diverges => false
-        DivergesWithReason { reason: _ } => false
-      })
-      // POST-MINT: the same row, same realized field, conforms
-      && match site_conformance(
-        row: r,
-        selection: select_authorization_pattern(e: branch_boot_credential_effect_approval_free_over(state: minted_reader_state()))
-      ) {
-        Conforms => true
-        SiteNotDecidable { standing: _ } => false
-        Diverges => false
-        DivergesWithReason { reason: _ } => false
-      }
+    Present { value: row } => match site_verdict(row: row).conformance {
+      SiteNotDecidable { standing: _ } => mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted()
+      Conforms => !mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted()
+      Diverges => false
+      DivergesWithReason { reason: _ } => false
+    }
   }
+}
+
+// POST-MINT VERDICT: the same row and the same realized field, now conforming.
+fn branch_boot_verdict_post_mint_conforms() -> Bool {
+  match branch_boot_census_rows().first() {
+    Absent => false
+    Present { value: row } => match site_conformance(
+      row: row,
+      selection: select_authorization_pattern(e: branch_boot_credential_effect_approval_free_over(state: minted_reader_state()))
+    ) {
+      Conforms => true
+      SiteNotDecidable { standing: _ } => false
+      Diverges => false
+      DivergesWithReason { reason: _ } => false
+    }
+  }
+}
+
+test fn the_branch_boot_credential_is_censused_and_conforms() -> Bool {
+  branch_boot_census_rows().length() == 1
+    && branch_boot_verdict_today_is_honest()
+    && branch_boot_verdict_post_mint_conforms()
 }
 
 // ...AND IT CHANGES NO EXISTING VERDICT: the two boot-credential rows and the actuation row keep their
@@ -748,29 +766,44 @@ test fn a_boot_presenting_no_environment_is_refused() -> Bool {
 // renderer), the stored CEL carries the environment conjunct exactly when the pin is not the poison -- which
 // is the §5 property the review asked for: removing the environment standing cannot leave a provider that
 // admits a branch boot.
-test fn an_unnameable_environment_leaves_no_federation_and_a_poisoned_pin() -> Bool {
-  let nameable = match mtcollins1_boot_trusted_environment() {
+fn branch_boot_environment_is_nameable() -> Bool {
+  match mtcollins1_boot_trusted_environment() {
     Present { value: _ } => true
     Absent => false
   }
-  // (1) the pin tracks the standing, in both directions
-  && (mtcollins1_boot_trusted_environment_pin().value == "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__") == !nameable
-  // (2) the stored provider condition carries the environment term exactly when the standing exists
-  && match mtcollins1_boot_branch_provider().attribute_condition {
+}
+
+// (1) the pin tracks the standing, in BOTH directions
+fn branch_boot_environment_pin_tracks_the_standing() -> Bool {
+  (mtcollins1_boot_trusted_environment_pin().value == "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__")
+    == !branch_boot_environment_is_nameable()
+}
+
+// (2) the stored provider condition carries the environment term exactly when the standing exists
+fn branch_boot_provider_condition_tracks_the_standing() -> Bool {
+  match mtcollins1_boot_branch_provider().attribute_condition {
     Present { value: c } =>
-      nameable == string_contains(s: c, pattern: boot_environment())
-        // the conjunct is an equality on the mapped claim, not a bare mention of the word
+      branch_boot_environment_is_nameable() == string_contains(s: c, pattern: boot_environment())
         && string_contains(s: c, pattern: "environment")
     Absent => false
   }
-  // (3) and a federation that DOES exist says the same thing about its own condition
-  && match mtcollins1_boot_branch_federation() {
+}
+
+// (3) and a federation that DOES exist says the same thing about its own condition
+fn branch_boot_federation_condition_tracks_the_standing() -> Bool {
+  match mtcollins1_boot_branch_federation() {
     Present { value: f } =>
       f.attribute_condition == mtcollins1_boot_branch_attribute_condition()
         && string_contains(s: f.attribute_condition, pattern: boot_environment())
-        && nameable
+        && branch_boot_environment_is_nameable()
     Absent => true
   }
+}
+
+test fn an_unnameable_environment_leaves_no_federation_and_a_poisoned_pin() -> Bool {
+  branch_boot_environment_pin_tracks_the_standing()
+    && branch_boot_provider_condition_tracks_the_standing()
+    && branch_boot_federation_condition_tracks_the_standing()
   // (4) THE POINT OF IT ALL, INDEPENDENT OF WHAT ELSE IS CLOSED: with the environment conjunct poisoned,
   // no presented claim set admits -- including one that presents the real environment name.
   && !mtcollins1_boot_branch_admits(claims: mtcollins1_boot_branch_presented_claims(
@@ -955,39 +988,52 @@ test fn a_half_minted_reader_key_keeps_the_route_closed_by_its_own_reason() -> B
 // Empty the ruling and this goes red; rename it and the citation check goes red; rewrite the operator's
 // words into a summary and the provenance conjuncts go red. That is what makes it a carrier rather than
 // prose.
+fn branch_boot_ruling_rows() -> List<DesignRuling> {
+  filter(design_rulings(), candidate => (candidate.reference.decl_name as String) == "mtcollins1_branch_boot_is_approval_free")
+}
+
+// THE OPERATOR'S OWN WORDS, STILL IN THE ROW. Each conjunct is one of their sentences; paraphrase the
+// provenance into a summary and the conjunct it satisfies goes red.
+fn branch_boot_ruling_carries_the_operators_words() -> Bool {
+  match branch_boot_ruling_rows().first() {
+    Absent => false
+    Present { value: row } =>
+      string_contains(s: row.provenance, pattern: "is not sensitive")
+        && string_contains(s: row.provenance, pattern: "permission to boot it endlessly")
+        && string_contains(s: row.provenance, pattern: "shouldn't need an approval")
+        && string_contains(s: row.provenance, pattern: "2026-09-23")
+        && string_contains(s: row.provenance, pattern: "one_approval_route_for_every_privileged_action")
+        && row.decided == "2026-10-23"
+  }
+}
+
+// ONE HOME FOR THE TEXT: the census module's datum -- the symbol the selection's citation names, which did
+// not exist when review 87627 was written -- is that row's provenance, not a copy of it.
+fn branch_boot_ruling_text_has_one_home() -> Bool {
+  match branch_boot_ruling_rows().first() {
+    Absent => false
+    Present { value: row } => mtcollins1_branch_boot_operator_ruling_text() == row.provenance
+  }
+}
+
+// THE JOIN: the census site is backed by a ruling that RESOLVES. PrivilegedEffectSite carries no prose field,
+// so the association is data in the census module (SiteRulingLinkage) keyed by the site identity the row
+// itself uses. This is the half that catches a citation whose home has gone missing -- exactly what the
+// review found by hand, now a claim.
+fn branch_boot_ruling_linkage_resolves() -> Bool {
+  match site_ruling_linkage(site(module_path: "gunbc.auth.branch_dispatch_federation", decl_name: "branch_boot_credential_effect_approval_free")) {
+    Absent => false
+    Present { value: linkage } =>
+      declaration_ref_in_list(target: linkage.ruling, refs: map(design_rulings(), candidate => candidate.reference))
+        && declaration_ref_eq(a: linkage.ruling, b: mtcollins1_branch_boot_is_approval_free.reference)
+  }
+}
+
 test fn the_approval_free_branch_boot_rests_on_a_typed_ruling() -> Bool {
-  let rulings = filter(design_rulings(), r => (r.reference.decl_name as String) == "mtcollins1_branch_boot_is_approval_free")
-  rulings.length() == 1
-    && match rulings.first() {
-      Absent => false
-      Present { value: r } =>
-        // the operator's words, verbatim, from 2026-10-22 and 2026-10-23
-        string_contains(s: r.provenance, pattern: "is not sensitive")
-        && string_contains(s: r.provenance, pattern: "permission to boot it endlessly")
-        && string_contains(s: r.provenance, pattern: "shouldn't need an approval")
-        // it is the EXTENSION of the pre-existing main-dispatch rulings, not a new authority
-        && string_contains(s: r.provenance, pattern: "2026-09-23")
-        // and it classifies itself against the one-approval-route ruling rather than leaving that to a
-        // reader's judgement
-        && string_contains(s: r.provenance, pattern: "one_approval_route_for_every_privileged_action")
-        && r.decided == "2026-10-23"
-    }
-  // the census module's datum is that row's provenance -- one home for the text, so the citation at
-  // gunbc.auth.branch_dispatch_federation's TrustedBranchBootIdentity arm resolves to something real
-  && match rulings.first() {
-    Present { value: r } => mtcollins1_branch_boot_operator_ruling_text() == r.provenance
-    Absent => false
-  }
-  // THE JOIN: the site is backed by a ruling that RESOLVES. PrivilegedEffectSite carries no prose field, so
-  // the association is data in the census module (SiteRulingLinkage) keyed by the site identity the row
-  // itself uses -- and this is the half that catches a citation whose home has gone missing, which is
-  // precisely what review 87627 found by hand.
-  && match site_ruling_linkage(site(module_path: "gunbc.auth.branch_dispatch_federation", decl_name: "branch_boot_credential_effect_approval_free")) {
-    Absent => false
-    Present { value: l } =>
-      declaration_ref_in_list(target: l.ruling, refs: map(design_rulings(), r => r.reference))
-      && declaration_ref_eq(a: l.ruling, b: mtcollins1_branch_boot_is_approval_free.reference)
-  }
+  branch_boot_ruling_rows().length() == 1
+    && branch_boot_ruling_carries_the_operators_words()
+    && branch_boot_ruling_text_has_one_home()
+    && branch_boot_ruling_linkage_resolves()
 }
 
 // THE WIDENING, ASSERTED WHERE IT IS TRUE -- on the far side of the mint. On a rostered ref the boot needs
