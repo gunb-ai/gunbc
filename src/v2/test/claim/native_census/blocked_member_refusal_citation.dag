@@ -16,28 +16,15 @@ module v2.test.claim.native_census.blocked_member_refusal_citation
 // name that is neither a root nor declared -- so it cannot pass by fixture luck: the requester's own module
 // is a real admitted root with a parsed header name, and the refused name is the one the request asked for.
 
-import std.algebra { Cons, Empty, empty_map, fold_list }
-import v2.compiler.name_resolve {
-  AdmissionAccepted,
-  AdmissionRejected,
-  AdmissionState,
-  ValidatedModuleRoots,
-  admit_imported_modules,
-  validate_module_roots
-}
+import std.algebra { Cons, Empty, fold_list }
+import v2.compiler.name_resolve { module_root_find }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_imported_modules, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_surface_edge }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.declaration_marker { test_marker_channel_empty }
-import v2.std.diagnostic { Accepted, ByteRange, DeclarationLocus, None, Outcome, Rejected, Textual }
-import v2.std.namespace_alias { CapturedImportTarget }
+import v2.std.diagnostic { Accepted, DeclarationLocus, None, Outcome, Rejected }
 import v2.std.node { Atom, Conj, Node, TypeNode, fold_list_node, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName }
-
-fn bc_qn(seg: Symbol) -> QualifiedName {
-  Cons { head: seg, tail: Empty }
-}
 
 fn bc_qn_pair(head_seg: Symbol, tail_seg: Symbol) -> QualifiedName {
   Cons { head: head_seg, tail: Cons { head: tail_seg, tail: Empty } }
@@ -74,26 +61,8 @@ fn bc_module_root(segments: FreeMonoid<Symbol>) -> Outcome<NormalizedTree> {
   )
 }
 
-fn bc_located_import(target: QualifiedName) -> CapturedImportTarget {
-  CapturedImportTarget {
-    target: target,
-    at: Textual { file: ^bc_import_file, extent: ByteRange { start: 14, end: 42 } }
-  }
-}
-
-fn bc_admit(roots: ValidatedModuleRoots, target: QualifiedName) -> AdmissionState {
-  admit_imported_modules(
-    roots: roots,
-    modules: Cons { head: bc_located_import(target: target), tail: Empty },
-    state: AdmissionAccepted { bindings: empty_map(), origins: empty_map() },
-    subject_qn: bc_qn(seg: ^bc_subject_seg),
-    index: source_root_index_empty(),
-    active_roots: Empty
-  )
-}
-
 // Element-wise identity of two module names, by lexeme: identity is the join here, not pointer equality.
-fn qn_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+fn bc_qn_eq(a: QualifiedName, b: QualifiedName) -> Bool {
   fold_list(
     xs: a,
     empty: true,
@@ -109,39 +78,26 @@ fn qn_eq(a: QualifiedName, b: QualifiedName) -> Bool {
   )
 }
 
-// The validated root population of a requester whose own module is a real admitted root, or None-shaped
-// false when even that fails -- so a refusal cannot pass by fixture luck.
-fn bc_with_validated_roots(
-  o: Outcome<NormalizedTree>,
-  f: fn(ValidatedModuleRoots) -> Bool
-) -> Bool {
-  match o {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: subject_root, diagnostics: _ } =>
-      match validate_module_roots(roots: Cons { head: subject_root, tail: Empty }) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: validated, diagnostics: _ } => f(validated)
-      }
-  }
-}
-
-// RED ON MAIN, GREEN AT THE FIX: the refusal of an absent import target cites the refused name as a
-// declaration, so a reader takes the identity off the diagnostic instead of re-folding the roots that were
-// already folded to produce the refusal.
-test fn absent_import_refusal_cites_the_refused_name_as_a_declaration() -> Bool {
+// RED ON MAIN, GREEN AT THE FIX. `module_root_find` is the door that mints the absent-module refusal
+// directly from `ModuleRootLookup::ModuleRootMissing { requested }` -- it is the mint's own door, with no
+// located re-stamp in front of it (the import-admission door overwrites `at` with the import declaration's
+// own locus, which is right for that refusal and would hide the citation here). On main the mint put the
+// requested name's DOTTED TEXT into the FILE slot of a Textual locus, so a reader had to parse display text
+// to recover the identity -- std.diagnostic's DeclarationLocus comment names that papering-over, and the
+// typed citation is its sanctioned replacement. Same claim text at both revisions; only the mint differs.
+test fn absent_module_refusal_cites_the_refused_name_as_a_declaration() -> Bool {
   let refused = bc_qn_pair(head_seg: ^bc_absent_org, tail_seg: ^bc_absent_member)
-  bc_with_validated_roots(
-    o: bc_module_root(segments: Cons { head: ^bc_subject_seg, tail: Empty }),
-    f: fn(validated) {
-      match bc_admit(roots: validated, target: refused) {
-        AdmissionAccepted { bindings: _, origins: _ } => false
-        AdmissionRejected { diagnostics: d } =>
+  match bc_module_root(segments: Cons { head: ^bc_subject_seg, tail: Empty }) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match module_root_find(roots: Cons { head: root, tail: Empty }, name: refused) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
           (d.head.reason == ^resolve_module_not_found)
             && (match d.head.at {
-              DeclarationLocus { declaration: declared } => qn_eq(a: declared, b: refused)
+              DeclarationLocus { declaration: declared } => bc_qn_eq(a: declared, b: refused)
               _ => false
             })
       }
-    }
-  )
+  }
 }
