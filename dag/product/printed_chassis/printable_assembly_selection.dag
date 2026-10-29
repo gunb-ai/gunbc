@@ -51,7 +51,7 @@ fn select_printable_assembly(root: PrintedAssemblyRoot) -> PrintableAssemblySele
 // operator is told is what the model actually decided rather than a paraphrase of it.
 fn a16_plane_on_end_selection(root: PrintedAssemblyRoot) -> PrintableAssemblySelection {
   match admit_home(home: PlaneOnEnd) {
-    RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, margin: _} => {
+    RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, governed_by: _, margin: _} => {
       let parts = plane_on_end_duct_parts(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design)
       PrintableAssemblyReady {
         assembly: PrintableAssembly {

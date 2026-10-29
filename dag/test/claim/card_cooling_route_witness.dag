@@ -14,9 +14,9 @@ import product.printed_chassis.card_cooling_route {
   fan_poses, fan_pose_checks, fan_pose_admits, admitting_fan_poses, sideways_fan_poses, printed_pose, fan_pose_rear_shortfall, best_sideways_rear_shortfall, fan_pose_displays, scroll_is_not_a_second_geometry,
   card_intake, CardIntake, Facing, RowEmpty, NoSuchCard, BlockedSide, NeighbourCard, ChassisWall,
   required_flow, required_flow_rise_check, free_air_cfm_text, bfb1012m_flow_context,
-  a16_blower, a16_wall_design, a16_route_report, outlet_alignment_obligation,
+  a16_blower, a16_wall_design, a16_route_report, outlet_alignment_obligation, mm_text, rear_of_end_room, rear_of_end_governing_room, plugged_head_reach, plugged_head_admits, plugged_head_margin, cable_bend_is_still_owed, route_admission_display,
 }
-import product.printed_chassis.gpu_duct {a16_blower_duct_design, blower_reach_behind, um}
+import product.printed_chassis.gpu_duct {a16_blower_duct_design, blower_reach_behind, um, plane_on_end_connector_protrusion_admits}
 import product.printed_chassis.chassis_clearances {ChassisGap, Measured, DeclaredConservativeByOperator, EstimatedByOperator, NeedsMeasurement, card_end_rear_fan_clearance, neighbour_lane_width, side_lane_width, deck_to_lid_clearance, chassis_gaps, chassis_gap, gap_display, gap_name, gap_is_measured, gap_is_estimate, gap_may_be_printed_on, gap_room, remeasure_before_print, measured_distance, standing_origin}
 import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
 import extdeps.fans.delta {delta_bfb1012m_envelope, delta_bfb1012m_rating}
@@ -24,7 +24,7 @@ import extdeps.fans.types {RadialBlowerEnvelope}
 import std.measure {CelsiusDelta, MillilitrePerSecond, Watt, celsius_delta, millilitre_per_second, millilitre_per_second_count, micrometer, micrometer_count, watt, watt_count}
 import extdeps.gpu.passive_card_row {row_is_sealed, row_unread_fields, row_field_obligation}
 import extdeps.gpu.nvidia_passive_rows {a16_row, t10_row, a2_row, card_rows, all_rows_bench_list}
-import product.printed_chassis.chassis_clearances {GapRoom, Room}
+import product.printed_chassis.chassis_clearances {GapRoom, Room, remeasure_before_print, chassis_gaps, cable_bend_keepout}
 import product.printed_chassis.gpu_duct {a16_end_face, EndFaceMeasurement, plane_on_end_duct_run_back, plane_on_end_face_clear_of_keepout, plane_on_end_keepout_crossing, plane_on_end_housing_clears_keepout, plane_on_end_connector_protrusion_admits, plane_on_end_max_admissible_protrusion}
 
 // required_flow answers with an Optional carrier; a witness comparing two of them needs the count, and an
@@ -53,18 +53,18 @@ fn extent_count(e: ShapeExtent) -> Int {
 // that nobody has ever measured. A test that only checked "36 mm fits in 70 mm" would certify a duct that
 // puts 97 mm of blower housing into the neighbouring card's lane.
 
-fn is_admitted(a: RouteAdmission) -> Bool { match a { RouteAdmitted {home: _, needs: _} => true RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, margin: _} => false RouteProposalOnly {home: _, needs: _, on_estimate: _, margin: _} => false RouteRefusedByChassis {home: _, unmet: _, gap: _} => false RouteHomeUnmeasured {home: _, unmet: _, gap: _} => false } }
-fn is_chassis_refusal(a: RouteAdmission) -> Bool { match a { RouteAdmitted {home: _, needs: _} => false RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, margin: _} => false RouteProposalOnly {home: _, needs: _, on_estimate: _, margin: _} => false RouteRefusedByChassis {home: _, unmet: _, gap: _} => true RouteHomeUnmeasured {home: _, unmet: _, gap: _} => false } }
+fn is_admitted(a: RouteAdmission) -> Bool { match a { RouteAdmitted {home: _, needs: _} => true RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, governed_by: _, margin: _} => false RouteProposalOnly {home: _, needs: _, on_estimate: _, margin: _} => false RouteRefusedByChassis {home: _, unmet: _, gap: _} => false RouteHomeUnmeasured {home: _, unmet: _, gap: _} => false } }
+fn is_chassis_refusal(a: RouteAdmission) -> Bool { match a { RouteAdmitted {home: _, needs: _} => false RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, governed_by: _, margin: _} => false RouteProposalOnly {home: _, needs: _, on_estimate: _, margin: _} => false RouteRefusedByChassis {home: _, unmet: _, gap: _} => true RouteHomeUnmeasured {home: _, unmet: _, gap: _} => false } }
 // The operator-bound admission, kept separate from RouteAdmitted everywhere: `is_admitted` is TRUE only
 // for the caliper-grounded verdict, so no test can accidentally treat a declared bound as a measurement.
-fn is_admitted_on_operator_bound(a: RouteAdmission) -> Bool { match a { RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, margin: _} => true _ => false } }
+fn is_admitted_on_operator_bound(a: RouteAdmission) -> Bool { match a { RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, governed_by: _, margin: _} => true _ => false } }
 fn is_operator_admission_that_prints_as_a_fit_print(a: RouteAdmission) -> Bool {
   match a {
-    RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: g, margin: _} => gap_may_be_printed_on(g: g) && !gap_is_measured(g: g)
+    RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: g, governed_by: _, margin: _} => gap_may_be_printed_on(g: g) && !gap_is_measured(g: g)
     _ => false
   }
 }
-fn is_unmeasured_refusal(a: RouteAdmission) -> Bool { match a { RouteAdmitted {home: _, needs: _} => false RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, margin: _} => false RouteProposalOnly {home: _, needs: _, on_estimate: _, margin: _} => false RouteRefusedByChassis {home: _, unmet: _, gap: _} => false RouteHomeUnmeasured {home: _, unmet: _, gap: _} => true } }
+fn is_unmeasured_refusal(a: RouteAdmission) -> Bool { match a { RouteAdmitted {home: _, needs: _} => false RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, governed_by: _, margin: _} => false RouteProposalOnly {home: _, needs: _, on_estimate: _, margin: _} => false RouteRefusedByChassis {home: _, unmet: _, gap: _} => false RouteHomeUnmeasured {home: _, unmet: _, gap: _} => true } }
 
 // Which gap an admission refuses against, as a typed extraction rather than a substring of a report.
 fn refused_against(a: RouteAdmission, wanted: NonEmptyStr) -> Bool {
@@ -164,15 +164,93 @@ test fn w_the_operators_bound_prints_without_becoming_a_measurement() -> Bool {
 // nobody has ruled on, and an unread gap is nobody's claim at all: both keep refusing, so the print answer
 // tracks WHO DECIDED rather than how big the number is.
 
-// THE MARGIN IS THE BOUND'S, NOT THE READING'S. The route needs 37.5 mm behind the end and the bound
-// allows 70, so the margin is 32.5 mm -- taken against what the operator ALLOWED, and not against the
-// ~73 mm they said it was "like": checking against the 73 would promote a figure they called rough and
-// then deliberately discounted into the authority the design is measured by. The expected figure is
-// derived from plane_on_end_run_back, so this cannot drift from the arithmetic it checks.
-test fn w_the_margin_is_taken_against_the_allowed_bound_not_the_rough_reading() -> Bool {
+// THE MARGIN IS WHATEVER GOVERNS'S, AND THE REPORT SAYS WHICH. The route needs 37.5 mm behind the end.
+// Two rows speak for that span: the operator's authored allowance of 70 (2026-10-26) and a 60 mm figure
+// they read at the machine on 2026-10-29, which this repository carries with a 1 mm width on it. So the
+// margin is 59 - 37.5 = 21.5 mm, NOT the 32.5 mm the declaration alone would have granted -- and the
+// admission says so in a field rather than in prose, because the day the re-read is superseded by a
+// caliper the number has to move on its own.
+//
+// The older prohibition still holds inside this witness: the margin is never taken against the ~73 mm the
+// operator said the 70 was "like". That figure was called rough and deliberately discounted; checking
+// against it would promote a number the operator themselves refused to spend.
+test fn w_the_margin_is_the_governing_readings_and_the_report_says_which_row_governed() -> Bool {
   match admit_home(home: PlaneOnEnd) {
-    RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, margin: mg} => um(m: mg) == 70000 - plane_on_end_run_back(b: a16_blower(), d: a16_wall_design())
-      && um(m: mg) == 32500
+    RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: b, governed_by: gov, margin: mg} =>
+      // the print is authorized by the operator's authored allowance...
+      gap_name(g: b) == "plug end to rear chassis fan"
+      // ...but the number was set by the tighter re-read, and that is recorded, not implied
+      && match gov { Present {value: row} => gap_name(g: row) == "plug end to the 120 mm chassis fan (re-read)" Absent => false }
+      && um(m: mg) == 59000 - plane_on_end_run_back(b: a16_blower(), d: a16_wall_design())
+      && um(m: mg) == 21500
+      // and neither reading's authority comes from the 73 the operator discounted
+      && um(m: mg) < 73000 - plane_on_end_run_back(b: a16_blower(), d: a16_wall_design())
+    _ => false
+  }
+}
+
+// THE RE-READ GOVERNS BECAUSE IT IS THE TIGHTER, NOT BECAUSE IT IS NEWER. Each reading of the span is
+// reduced by its OWN standing's width before the minimum is taken, so the declared 70 enters at 70 and the
+// by-eye 60 at 59. A witness that only checked "the newest wins" would pass on an implementation that took
+// the raw minimum of face values, and that implementation would be wrong in the other direction too: it
+// would have let a by-eye 60 beat a caliper 62.
+// THE PLUGGED HEAD, CHECKED RATHER THAN BOUNDED. Before 2026-10-29 the only honest statement was the
+// boundary (plane_on_end_max_admissible_protrusion, pinned below); the operator has since read the head
+// itself -- 'The plugged 8-pin head protrudes 6 mm' -- so this asks the real question and pins the answer
+// AND its arithmetic: window = 2 x 2 mm floor + (59 mm governing rear - 37.5 mm stack), reach = 6 + 1 mm.
+// The margin is recomputed from the same parts the duct uses, so a change to the wall, the tolerance or the
+// governing room moves this witness rather than quietly moving the verdict.
+test fn w_the_plugged_head_fits_the_relief_window_and_the_margin_is_derived() -> Bool {
+  plugged_head_admits()
+    && um(m: plugged_head_reach()) == 7000
+    && um(m: plugged_head_margin()) == 18500
+    // and the head would still fit against the OLDER, looser allowance -- the check is not tuned to barely
+    // pass on the tightest number by leaving no slack anywhere
+    && plane_on_end_connector_protrusion_admits(reach: plugged_head_reach(), b: a16_blower_duct_design(), d: a16_wall_design(), rear_bound: micrometer(count: 70000))
+}
+
+// A STANDING INVARIANT, not just today's pass: the head must fit whenever the rear room leaves it the
+// window, and refuse when it does not. Today's reading is one point on this curve; the curve is what makes
+// the pass mean something rather than "the number happens to work".
+test fn w_the_head_admits_until_the_rear_room_runs_out_and_then_refuses() -> Bool {
+  plane_on_end_connector_protrusion_admits(reach: plugged_head_reach(), b: a16_blower_duct_design(), d: a16_wall_design(), rear_bound: micrometer(count: 59000))
+    // THE BOUNDARY, found by execution rather than asserted: the window is 4 mm of floor + (rear - 37.5 mm
+    // of stack), so a 7 mm head fits at exactly 40.5 mm of rear room and not at 40.0. Pinning both sides of
+    // one millimetre is what makes this a boundary; a single passing point would not.
+    && plane_on_end_connector_protrusion_admits(reach: plugged_head_reach(), b: a16_blower_duct_design(), d: a16_wall_design(), rear_bound: micrometer(count: 40500))
+    && !plane_on_end_connector_protrusion_admits(reach: plugged_head_reach(), b: a16_blower_duct_design(), d: a16_wall_design(), rear_bound: micrometer(count: 40000))
+    // and a head too fat for the window refuses even with all the rear room in the world -- the check cannot
+    // be satisfied by rear clearance alone
+    && !plane_on_end_connector_protrusion_admits(reach: micrometer(count: 26000), b: a16_blower_duct_design(), d: a16_wall_design(), rear_bound: micrometer(count: 59000))
+}
+
+// THE CABLE TURN IS STILL OWED, and stays owed visibly. 'the cable bends almost as soon as it leaves the
+// head' says where, not how deep, so the keep-out is a typed NoReading and the fit print is told to look
+// for it. If somebody later fills this row with a guessed depth to make a report read nicer, this witness
+// goes red -- which is the point: the absence must be an absence.
+test fn w_the_cable_bend_keepout_is_still_unmeasured_and_still_owed() -> Bool {
+  cable_bend_is_still_owed()
+    && any(remeasure_before_print(gaps: chassis_gaps), o => string_contains(s: o, pattern: "cable bend room behind the plug end"))
+    && !gap_is_measured(g: cable_bend_keepout)
+}
+
+// THE SUPERSESSION IS VISIBLE IN THE REPORT. The print is admitted on the operator's 2026-10-26 allowance;
+// the margin comes from the 2026-10-29 re-read. Both must appear, named -- a report that quietly showed
+// "32.5 mm to spare (70 mm declared)" after the re-read would be the §5 fabrication this whole file exists
+// to prevent.
+test fn w_the_admission_report_shows_both_the_authorizing_bound_and_the_governing_reading() -> Bool {
+  let report = route_admission_display(a: admit_home(home: PlaneOnEnd))
+  string_contains(s: report, pattern: "70 mm")
+    && string_contains(s: report, pattern: "TIGHTER")
+    && string_contains(s: report, pattern: "120 mm chassis fan (re-read)")
+    && string_contains(s: report, pattern: "21.5 mm")
+}
+
+test fn w_the_rear_room_is_the_tightest_reading_after_each_ones_own_width() -> Bool {
+  match rear_of_end_room() {
+    Room {room: r, from: origin} => um(m: r) == 59000
+      && string_contains(s: origin, pattern: "re-read")
+      && um(m: rear_of_end_governing_room()) == 59000
     _ => false
   }
 }
@@ -299,7 +377,7 @@ test fn w_a_twenty_mm_side_bound_refuses_on_the_overhang() -> Bool {
 // bound was asked to cover, and the verdict says whose bound it was.
 test fn w_the_admitted_home_reports_everything_it_spends() -> Bool {
   match admit_home(home: PlaneOnEnd) {
-    RouteAdmittedOnOperatorBound {home: _, needs: ns, on_bound: g, margin: _} => length(list: ns) == 3
+    RouteAdmittedOnOperatorBound {home: _, needs: ns, on_bound: g, governed_by: _, margin: _} => length(list: ns) == 3
       && string_contains(s: gap_display(g: g), pattern: "DECLARED BY THE OPERATOR")
     _ => false
   }
@@ -392,7 +470,10 @@ test fn w_a_spoken_estimate_leaves_its_room_after_its_own_width_and_admits_nothi
   // an arithmetic path at all (gunbc.design_ruling dag_absence_is_one_meaning).
   let room = gap_room(g: side_lane_width)
   let need = beside_the_row_demand(b: a16_blower(), d: a16_wall_design())
-  let verdict = ask(gap: side_lane_width, need: need, home: BesideTheRow, unmet: RouteDemand { name: "housing width across the free lane", needed: shape_um(m: need), of_gap: "free lane beside the card row" })
+  // over: Absent -- this is a side lane, not the rear span, so the row it is asked about governs alone.
+  // Passing the real chassis's rear room through here instead would make the lane's verdict depend on a
+  // span it has nothing to do with.
+  let verdict = ask(gap: side_lane_width, need: need, home: BesideTheRow, unmet: RouteDemand { name: "housing width across the free lane", needed: shape_um(m: need), of_gap: "free lane beside the card row" }, over: Absent)
   room_ok(r: room, at_most: 50000) && need == 100400 && match verdict {
     Present { value: r } => match r {
       RouteRefusedByChassis {home: _, unmet: _, gap: g} => gap_name(g: g) == "free lane beside the card row"
@@ -405,7 +486,7 @@ test fn w_a_spoken_estimate_leaves_its_room_after_its_own_width_and_admits_nothi
 test fn w_the_lid_refuses_the_over_the_row_home_and_the_card_height_is_subtracted_first() -> Bool {
   let riser = micrometer(count: 6000)
   let need = over_the_row_height(f: a16_end_face, d: a16_wall_design(), b: a16_blower(), riser: riser)
-  let verdict = ask(gap: deck_to_lid_clearance, need: need, home: OverTheRow {riser: riser}, unmet: RouteDemand { name: "deck to lid above the row", needed: shape_um(m: need), of_gap: "deck to chassis lid, behind the plug end" })
+  let verdict = ask(gap: deck_to_lid_clearance, need: need, home: OverTheRow {riser: riser}, unmet: RouteDemand { name: "deck to lid above the row", needed: shape_um(m: need), of_gap: "deck to chassis lid, behind the plug end" }, over: Absent)
   // 120 mm floor-to-lid, with its width taken off: 110000. The demand carries the card's own 97840.
   room_ok(r: gap_room(g: deck_to_lid_clearance), at_most: 110000) && need == 143340 && match verdict {
     Present { value: r } => match r {
@@ -422,7 +503,11 @@ test fn w_two_ducted_cards_clear_the_gap_between_them_and_the_arithmetic_is_the_
   // future edit cannot swap the comparison without failing here.
   micrometer_count(m: flat_on_end_pair_need(b: a16_blower())) == 56560
     && room_ok(r: flat_on_end_pair_span(), at_most: 81640)
-    && string_contains(s: flat_on_end_twin_verdict(), pattern: "clear, with 25 mm to spare")
+    // The report is checked against the SAME carriers the arithmetic used, not against a number typed into
+    // this witness: the margin is 81640 - 56560 = 25.08 mm, and mm_text renders that as 25.1. Pinning the
+    // literal "25 mm" here would have pinned a truncation, and would have gone red the day the formatter got
+    // more honest -- which is exactly backwards.
+    && string_contains(s: flat_on_end_twin_verdict(), pattern: join(["clear, with ", mm_text(m: micrometer(count: 81640 - 56560)), " to spare"], ""))
 }
 
 // THE LARGEST PLANFORM A HOME MAY DRAW, with the cap that binds it NAMED and an extent no reading reaches
@@ -481,7 +566,7 @@ test fn w_only_the_fore_aft_wheel_axis_admits_and_the_reference_images_pose_refu
 // extdeps.gpu.types. Written first as first(poses, predicate), which the interpreter ACCEPTS and then
 // answers as a bare projection: it returned the first element regardless of the predicate, so this
 // "search" quietly measured whichever pose happened to be first in the enumeration (both branches got the
-// deep pose's 31.7 mm, and the shallow pose's 28.9 mm vanished). A predicate that is silently not applied is
+// deep pose's 42.7 mm, and the shallow pose's 39.9 mm vanished). A predicate that is silently not applied is
 // the worst possible failure for a search: the answer looks like a hit.
 fn pose_with_reach(poses: List<FanPose>, extent: Int) -> FanPose? {
   filter(poses, p => micrometer_count(m: p.behind_end.extent) == extent).first()
@@ -492,8 +577,9 @@ fn shortfall_of(pose: FanPose?) -> Int {
 }
 
 test fn w_a_refused_pose_names_its_rear_shortfall_in_micrometres() -> Bool {
-  // The reference image's family, worst and best: 97.2 mm or 94.4 mm of housing behind a declared 70 mm, plus
-  // the envelope's cited +/-0.5 mm and the printed pocket's two 2 mm walls -- short by 31.7 mm and 28.9 mm. Positive, typed shortfalls a reader
+  // The reference image's family, worst and best: 97.2 mm or 94.4 mm of housing behind the 59 mm the
+  // 2026-10-29 re-read leaves, plus the envelope's cited +/-0.5 mm and the printed pocket's two 2 mm walls
+  // -- short by 42.7 mm and 39.9 mm. Positive, typed shortfalls a reader
   // never has to subtract; the pose that admits reports zero instead of inventing one, and the headline figure
   // is the BEST of the four (the most favourable reading anyone could honestly give the idea), not the worst.
   let sideways = sideways_fan_poses()
@@ -504,9 +590,11 @@ test fn w_a_refused_pose_names_its_rear_shortfall_in_micrometres() -> Bool {
   // mean a part that fits -- 97.2 + 0.5 + 4 = 101.7 mm and 94.4 + 0.5 + 4 = 98.9 mm behind a declared 70 mm.
   let deep_behind = pose_with_reach(poses: sideways, extent: 101700)
   let shallow_behind = pose_with_reach(poses: sideways, extent: 98900)
-  shortfall_of(pose: deep_behind) == 31700
-    && shortfall_of(pose: shallow_behind) == 28900
-    && micrometer_count(m: best_sideways_rear_shortfall()) == 28900
+  // 101.7 and 98.9 mm of housing against the 59 mm the 2026-10-29 re-read leaves, not the 70 the
+  // 2026-10-26 allowance allowed -- the tighter reading governs the poses too, so both shortfalls grew 11 mm.
+  shortfall_of(pose: deep_behind) == 42700
+    && shortfall_of(pose: shallow_behind) == 39900
+    && micrometer_count(m: best_sideways_rear_shortfall()) == 39900
     && micrometer_count(m: fan_pose_rear_shortfall(pose: printed_pose())) == 0
 }
 

@@ -748,8 +748,8 @@ fn duct_readme(mount: DuctCardMount, extent: DuctExtent) -> String {
 //     figure here is evidence that it is.
 //   * IT IS A FIT PROTOTYPE, AND THAT IS ITS PURPOSE. The print is admitted on the operator's ruling -- they answered
 //     "can we print" with those two figures, and chassis_clearances gap_may_be_printed_on is true for a declared bound --
-//     because a PLA plate costs less than the argument and the plate IS the instrument that settles whether the 70 mm was
-//     right. gap_is_measured is still false for both gaps, so nothing in the corpus claims the chassis was read. PLA for an
+//     because a PLA plate costs less than the argument and the plate IS the instrument that settles the span behind the end — the
+//     2026-10-26 declared 70 mm, the 2026-10-29 re-read of 60, and which face of the fan was judged from. gap_is_measured is still false for both gaps, so nothing in the corpus claims the chassis was read. PLA for an
 //     unpowered fit check; PETG or ASA for service; no powered A16 operation is admitted by a fit print.
 
 // The two plates the route model budgets as "two walls" behind the end: the shoulder's floor, which carries the housing's
@@ -809,13 +809,16 @@ fn plane_on_end_housing_clears_keepout(b: BlowerDuctDesign, f: EndFaceMeasuremen
 // keep-out footprint, with 2 mm of clearance at each end, so the plugged header and its latch sit in a cleared
 // window instead of pressing on plastic.
 //
-// AND WHERE IT STOPS BEING ENOUGH: the same arithmetic gives the home a limit. The declared rear bound is
-// 70 mm, the stack spends 37.5 mm, so 32.5 mm is headroom; anything protruding behind the end more than
-// 4 mm + 32.5 mm = 36.5 mm cannot be relieved and must be lifted by a standoff that no longer fits. A latch
-// clears with 33.5 mm to spare; a cable that stiffens 40 mm behind the face refuses the home outright. That
-// boundary is plane_on_end_connector_protrusion_admits, and it is why this section does not also invent a
-// standoff: at the readings on file the standoff would be zero millimetres, and printing zero millimetres of
-// standoff is not a design.
+// AND WHERE IT STOPS BEING ENOUGH: the same arithmetic gives the home a limit, and the limit is a FUNCTION
+// of the rear room rather than a number written here. Feed it the room that governs today -- 59 mm, the
+// operator's 2026-10-29 re-read of the span less the width on a by-eye figure (the 2026-10-26 allowance was
+// 70; see card_end_to_chassis_fan_2026_10_29) -- and the stack spends 37.5 mm, leaving 21.5 mm of headroom
+// under the 4 mm floor: the home admits a head that reaches 25.5 mm behind the end face and refuses past it.
+// The plugged 8-pin reaches 7 mm worst case (6 mm read + 1 mm width), so it clears with 18.5 mm to spare; a
+// cable that stiffened 30 mm back would refuse the home outright. card_cooling_route plugged_head_admits
+// plugs the reading into that boundary and returns the verdict, and it is why this section does not also
+// invent a standoff: at the readings on file the standoff computes to zero millimetres, and printing zero
+// millimetres of standoff is not a design.
 fn plane_on_end_connector_relief(f: EndFaceMeasurement, d: GpuDuctDesign, face_z: Int, floor_hi_z: Int, seat_z: Int) -> Primitive {
   let top = um(m: f.face_length) / 2
   let keep_len = connector_keepout_length(f: f, d: d)
@@ -840,7 +843,10 @@ fn plane_on_end_connector_protrusion_admits(reach: Micrometer, b: BlowerDuctDesi
 }
 
 // The largest protrusion the home still admits, published so the fit print has a number to check against
-// instead of a vibe. With the rows as read: floor 4 mm + headroom 32.5 mm = 36.5 mm.
+// instead of a vibe. Deliberately TAKES the rear room: this is geometry, and the geometry module must not get
+// to choose which reading of the span behind the end to believe -- that is the route module's job
+// (card_cooling_route rear_of_end_governing_room), and a geometry fn that reached for a chassis row could be
+// quietly handed the generous one.
 fn plane_on_end_max_admissible_protrusion(b: BlowerDuctDesign, d: GpuDuctDesign, rear_bound: Micrometer) -> Micrometer {
   micrometer(count: 2 * um(m: d.wall) + um(m: rear_bound) - um(m: plane_on_end_duct_run_back(b: b, d: d)))
 }
@@ -984,9 +990,10 @@ fn plane_on_end_readme() -> String {
   join([
     "A16 inlet duct for a Delta BFB1012M radial blower laid FLAT on the plug end. Generated from product.printed_chassis.gpu_duct.\n",
     "Admitted by product.printed_chassis.card_cooling_route on the operator's declared conservative bounds of 2026-10-26: 70 mm behind the plug end ('i would put 70mm for now - its like 73mm but i want to be conservative') and ample space on the sides ('yes, you can assume more than enough space on the sides, 70mm is fine'). Neither is a caliper reading, and the print is admitted on that ruling anyway: one PLA plate is the cheapest instrument available, and this part is it. Report what you find -- whether the housing clears the rear fan, and whether it clears the next card -- so the bound becomes a reading.\n",
-    "What goes back is the housing's thickness: 37.5 mm including its tolerance and the shoulder's two plates, against the 70 mm allowed. What it spends is width: the 97.2 mm edge runs across the slot and overhangs this card's lane by 28.28 mm on each side. One card only -- two adjacent housings would face each other's intakes across 5.04 mm.\n",
+    "What goes back is the housing's thickness: 37.5 mm including its tolerance and the shoulder's two plates. What it is checked against is the TIGHTEST reading of that span, not the most generous: the 2026-10-26 allowance was 70 mm, but on 2026-10-29 the operator read the card's back end to the 120 mm fan at 60 mm ('The gap from the card's back end to the 120 mm chassis fan is 60 mm, not the 70 mm your headroom used'), carried at 59 mm with the width on a by-eye figure, so 21.5 mm is what is actually to spare. What it spends is width: the 97.2 mm edge runs across the slot and overhangs this card's lane by 28.28 mm on each side. One card only -- two adjacent housings would face each other's intakes across 5.04 mm.\n",
     "The collector is an OPEN SHOULDER, not a spigot, because the outlet's position on Delta's housing is unread: the whole band of the housing's periphery that faces the card is left open, so any outlet position in it feeds the window.\n",
     "KNOWN OPEN POINT, AND IT IS THE SHARP ONE: the housing cannot be placed clear of the 8-pin power connector's keep-out in either orientation. The A16 end face is 97.84 mm and the connector claims a 26 mm band at its top end (2.56 mm from the edge to the connector's near pin), leaving 71.84 mm clear; the BFB1012M housing is 94.4 mm at its SHORTER edge and 97.2 mm at its longer one. The housing therefore lies over the connector's band wherever it goes on this face -- not a placement mistake, a size fact. Read the presentation fields power_keepout_crossing_um, face_clear_of_power_keepout_um and housing_shorter_edge_um. The kernel's POWER-KEEPOUT check decides whether this part is allowed through; an operator who wants it anyway is overruling a keep-out and should say so out loud.\n",
+    "PLUGGED IN, NOT BARE: the relief window over the connector band is sized for the plugged 8-pin head as read on 2026-10-29 -- 'The plugged 8-pin head protrudes 6 mm, and the cable bends almost as soon as it leaves the head' -- 7 mm worst case against a 25.5 mm window, so it fits with room. The cable's turn is NOT yet a measured keep-out: its obligation is open (product.printed_chassis.chassis_clearances cable_bend_keepout), so dress the cable as it will really sit and check that nothing plastic is where it bends.\n",
     "DUCT.stl prints shoulder-down and needs support under the collector's roof. Drive both M3 x 4 screws into the end cap through the flange before the blower goes down. PLA for an unpowered fit check; PETG or ASA for service.\n",
   ], "")
 }

@@ -437,6 +437,44 @@ data a16_chassis_readings_of_2026_10_27_are_operator_reported: DesignRuling = De
   provenance: "Operator, 2026-10-27, to session snappy-boar-382, asked to measure the chassis, giving six figures this repository asked for: 'the plug latch is 3mm', 'between the two cards is 46mm', 'the outer side of one card there are only a few mm til one edge of the chassis', 'The outer edge of the other card has 60mm until it touches the heatsink', 'There is 70mm between each card to the front of the chassis fans.', 'from floor to t he lid is 120mm', plus the fact that this chassis holds TWO cards. Ruled here, because the standing of a number is a decision and not a fact: these are OPERATOR-REPORTED and rough, carried verbatim as EstimatedByOperator in product.printed_chassis.chassis_clearances -- neither CaliperByOperator nor an observation receipt, and NOT DeclaredConservativeByOperator. That last distinction is the ruling's substance. The 2026-10-26 figures were AUTHORED allowances ('i would put 70mm for now - its like 73mm but i want to be conservative'), which is why they admit and print; these are reports of what someone saw, which is why they admit nothing, and why chassis_clearances gap_room_um turns a spoken estimate into room only after taking that estimate's own width off its face value. Two consequences are ruled rather than left to each caller: a gap given as 'a few mm' is carried at ZERO with a 3 mm width, because the only reading of it that does not invent room spends none (outer_side_at_the_wall), and the 120 mm is floor-to-lid at an unnamed place rather than deck-to-lid behind the plug ends, which is the one place the over-the-row home needs it -- so it constrains that home without settling it. 4d is satisfied on both sides: no reading here is promoted to an instrument's standing, and no home is refused on the strength of a width when the failure is tens of millimetres wide.",
 }
 
+// The span behind the plug end has now been spoken by the operator twice, three days apart, ten millimetres
+// apart. The newer figure is the one geometry is checked against, and this ruling says so -- because the
+// design had been admitted on the older one, and silently retiring the number a design was admitted on is
+// the exact failure §5 calls a hard reject.
+//
+// What the ruling does NOT do is widen the newer figure's width to cover the disagreement. 60 mm read by eye
+// is carried at 59 mm, one millimetre of width, the same width as the operator's other uninstrumented
+// readings at this scale. The 10 mm between the two readings is evidence about which to trust, and it is
+// recorded here as a disagreement; it is not a licence to turn a 60 into a 50, which would have thrown away
+// room the chassis actually has in order to express a doubt that taking the tightest reading already
+// expresses. The 2026-10-26 declaration is NOT retired: it remains what authorizes the print, and
+// RouteAdmittedOnOperatorBound now carries the two rows separately (on_bound / governed_by) precisely so a
+// report cannot blur "allowed to print" into "measured to fit".
+data a16_rear_clearance_was_re_read_tighter_and_the_tighter_governs: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_rear_clearance_was_re_read_tighter_and_the_tighter_governs"),
+  decided: "2026-10-29",
+  section: "4d",
+  provenance: "Operator, 2026-10-29, to session snappy-boar-382 via wise-bat-528: 'The gap from the card's back end to the 120 mm chassis fan is 60 mm, not the 70 mm your headroom used'. The earlier allowance it corrects was 'i would put 70mm for now - its like 73mm but i want to be conservative' (2026-10-26, recorded in a16_rear_clearance_and_sides_are_operator_declared_bounds). WHAT IT DECIDES: The rear-of-plug-end span is carried as BOTH readings -- card_end_rear_fan_clearance (declared 70, an authored allowance) and card_end_to_chassis_fan_2026_10_29 (read 60, at 1 mm of width) -- and whatever is tightest after each one's own width governs the geometry, which today is 59 mm. The declared allowance keeps its separate standing as what authorizes the print. Neither reading is promoted to a measurement. WHAT IT DOES NOT SETTLE: Which of the two figures is closer to the truth. Both are uninstrumented; the 10 mm between them is the size of that open question, and a caliper across the span settles it. It also does not settle which face of the 120 mm fan the operator judged from (rear_fan_face_ambiguity), which is worth up to a few more millimetres.",
+}
+
+// The reading the duct was still owed. Until 2026-10-29 the relief window over the 8-pin band could only be
+// published as a BOUNDARY ("the home refuses past 25.5 mm of protrusion") because nothing had read what the
+// plugged connector actually sticks out. The operator has now read it, and the check became a check: the
+// reading goes in, an admit/refuse comes out (card_cooling_route plugged_head_admits).
+//
+// The second half of the same sentence is carried as a keep-out rather than a clearance. 'the cable bends
+// almost as soon as it leaves the head' tells us WHERE the volume is -- behind the end, around the cable's
+// exit -- and not how deep it is. A cable that turns immediately and meets plastic does not fail at
+// assembly; it fails when the cable is dressed, or it strains the connector quietly for months. So the head
+// is recorded as read and the bend is recorded as owed (cable_bend_keepout), and the fit print is told to
+// look at the bend specifically.
+data a16_plugged_head_is_read_and_its_cable_bend_is_owed: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_plugged_head_is_read_and_its_cable_bend_is_owed"),
+  decided: "2026-10-29",
+  section: "4d",
+  provenance: "Operator, 2026-10-29, to session snappy-boar-382 via wise-bat-528, plugged in: 'The plugged 8-pin head protrudes 6 mm, and the cable bends almost as soon as it leaves the head'. This answers the reading a16_latch_is_accommodated_not_cut left open. WHAT IT DECIDES: The plugged 8-pin head is carried at 6 mm with 1 mm of width on it (power_connector_head_protrusion), worst case 7 mm, and it fits the relief window with 18.5 mm to spare against the 25.5 mm the governing rear room allows. The relief cut stays; no standoff is built, because the same arithmetic still puts a standoff at zero millimetres. WHAT IT DOES NOT SETTLE: The cable's turn. 'almost as soon as' locates the keep-out and does not size it, so cable_bend_keepout stays NeedsMeasurement and the fit print -- dressed cable, plugged in, in the chassis -- is the instrument.",
+}
+
 data a16_end_cap_scroll_is_the_operators_reference_design: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_end_cap_scroll_is_the_operators_reference_design"),
   decided: "2026-10-27",
@@ -524,6 +562,8 @@ fn design_rulings() -> List<DesignRuling> {
     a16_beside_the_card_is_the_chosen_home,
     a16_chassis_readings_of_2026_10_27_are_operator_reported,
     a16_end_cap_scroll_is_the_operators_reference_design,
+    a16_rear_clearance_was_re_read_tighter_and_the_tighter_governs,
+    a16_plugged_head_is_read_and_its_cable_bend_is_owed,
     pattern_atom_naming_a_visible_value_is_never_a_binder,
     unread_catch_all_binder_refuses,
   ]

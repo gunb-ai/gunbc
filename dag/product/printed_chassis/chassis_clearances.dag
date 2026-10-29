@@ -348,7 +348,69 @@ data outer_side_at_the_wall: ChassisGap = Measured {
   },
 }
 
-data chassis_gaps: List<ChassisGap> = [card_end_rear_fan_clearance, rear_fan_face_ambiguity, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, inter_card_gap, card_to_rear_fans, power_connector_latch, outer_side_at_the_wall]
+// THE SAME SPAN, RE-READ, 2026-10-29: "The gap from the card's back end to the 120 mm chassis fan is
+// 60 mm, not the 70 mm your headroom used." Carried as its own row instead of written over
+// card_end_rear_fan_clearance, because the two are different speech acts. That one is a limit the operator
+// AUTHORED to spend against ("i would put 70mm for now - its like 73mm but i want to be conservative");
+// this one is a figure they READ at the machine three days later. Overwriting the declaration would retire,
+// silently, the very allowance the design was admitted on; keeping both and letting the tighter govern is
+// the only form that cannot lose a constraint.
+//
+// Its width is the 1 mm by-eye allowance the operator's readings of small features have carried all along
+// (the 3 mm latch, and the 6 mm head below). Deliberately NOT widened to the 10 mm this figure sits below
+// the 2026-10-26 one: the disagreement between two by-eye readings of one span is evidence about WHICH
+// reading to trust, not a licence to inflate either, and widening this row to 10 mm would have thrown away
+// the room the design actually has (60 - 10 = 50, against a 37.5 mm stack) to express a doubt that the
+// tightest-of-several rule already expresses. The disagreement is recorded where it belongs -- in
+// a16_rear_clearance_was_corrected_to_sixty_mm, and in rear_of_end_room taking the minimum -- not smuggled
+// into a width.
+data card_end_to_chassis_fan_2026_10_29: ChassisGap = Measured {
+  name: "plug end to the 120 mm chassis fan (re-read)",
+  from_point: "the card's back (plug) end face",
+  to_point: "the 120 mm chassis fan -- the face the operator judged from, blade or shroud again not distinguished",
+  distance: micrometer(count: 60000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 1000),
+    date: "2026-10-29",
+    positions: "operator at the machine, one figure, correcting the allowance the design was admitted on: 'The gap from the card's back end to the 120 mm chassis fan is 60 mm, not the 70 mm your headroom used'",
+    bound_is: "the by-eye allowance carried by this operator's other uninstrumented readings of features at this scale; the 10 mm this sits under the 2026-10-26 figure is recorded as a disagreement between readings, not added to this width",
+  },
+}
+
+// THE PLUGGED 8-PIN HEAD, 2026-10-29: "The plugged 8-pin head protrudes 6 mm, and the cable bends almost as
+// soon as it leaves the head." This is the reading the design was still owed: plane_on_end_connector_relief
+// clears a window for whatever the plugged connector sticks out as, and until this number existed the
+// admissible protrusion could only be stated as a boundary (36.5 mm at a 70 mm bound) rather than checked.
+// The 1 mm is this repository's width on a by-eye figure, per the latch row's own reasoning -- on a 6 mm
+// feature, 1 mm is not pedantry, it is a sixth of the thing.
+data power_connector_head_protrusion: ChassisGap = Measured {
+  name: "plugged 8-pin head projection behind the card end face",
+  from_point: "the card's plug end face, around the connector opening",
+  to_point: "the outermost point of the plugged 8-pin head, cable excluded -- the cable leaves the head and turns almost immediately, so what reaches behind the end is the head, not the run",
+  distance: micrometer(count: 6000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 1000),
+    date: "2026-10-29",
+    positions: "operator at the machine, plugged in: 'The plugged 8-pin head protrudes 6 mm, and the cable bends almost as soon as it leaves the head'",
+    bound_is: "this repository's width on a by-eye figure of a 6 mm feature; the head is what is measured -- the bend is carried separately, below",
+  },
+}
+
+// THE CABLE BEND, 2026-10-29: the same sentence's second clause, 'the cable bends almost as soon as it
+// leaves the head'. That clause is not a clearance to spend, it is a KEEP-OUT to respect: a cable that turns
+// immediately needs room to turn, and a duct that occupies the space where it turns does not fail at
+// assembly -- it fails when the cable is dressed, or it quietly strains the connector. Carried as a
+// NeedsMeasurement so it cannot be silently spent, with the reading named. The order of magnitude the
+// operator gave ("almost as soon as") is enough to say WHERE the keep-out is -- behind the end, around the
+// cable's exit -- and not enough to say how deep it is.
+data cable_bend_keepout: ChassisGap = NeedsMeasurement {
+  name: "cable bend room behind the plug end",
+  from_point: "the plugged 8-pin head's cable exit",
+  to_point: "the first obstruction the cable meets on its way to a bend: duct wall, chassis wall, or fan",
+  read_obligation: "dress the cable as it will actually sit, plugged in, and read from the head's cable exit to whatever it first touches, plus how far the bend swings behind the end. The operator's word is that it turns almost immediately ('the cable bends almost as soon as it leaves the head'), so the answer is expected to be small and close to the connector, not a sweep across the duct",
+}
+
+data chassis_gaps: List<ChassisGap> = [card_end_rear_fan_clearance, card_end_to_chassis_fan_2026_10_29, rear_fan_face_ambiguity, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, inter_card_gap, card_to_rear_fans, power_connector_latch, power_connector_head_protrusion, cable_bend_keepout, outer_side_at_the_wall]
 
 fn chassis_gap(name: NonEmptyStr) -> ChassisGap? {
   fold(chassis_gaps, init: Absent, f: (found, g) => match found { Present { value: v } => Present { value: v } Absent => if gap_name(g: g) == name { Present { value: g } } else { Absent } })
