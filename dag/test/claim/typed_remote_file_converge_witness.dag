@@ -38,7 +38,7 @@ import gunbc.typed_remote_file_write {
   RemoteFileValidation,
   NoValidation,
   VisudoCheck,
-  SubordinateRangesUnchangedUntilRename,
+  DestinationUnchangedUntilRename,
   RemoteFileLock,
   NoFileLock,
   FleetHostLock,
@@ -463,7 +463,7 @@ test fn the_unlocked_route_adds_no_flock_at_all() -> Bool {
 // damage, and a check of the staged file would be comparing our bytes against our bytes.
 
 fn subordinate_validation() -> RemoteFileValidation {
-  SubordinateRangesUnchangedUntilRename { expected: "ghrunner:100000:65536" }
+  DestinationUnchangedUntilRename { expected: "ghrunner:100000:65536" }
 }
 
 test fn the_re_read_compare_runs_before_the_rename() -> Bool {

@@ -214,11 +214,42 @@ fn subordinate_rows_pairwise_disjoint(rs: List<SubordinateRange>) -> Bool {
   }
 }
 
+// THE NEWLINE CONVENTION BELONGS TO THE FILE, NOT TO THE RENDERER. shadow terminates every line of
+// /etc/subuid and /etc/subgid -- MEASURED on srv3 2026-10-26, where the file is 65 bytes for three rows
+// whose texts total 62. A renderer that joined the rows with "\n" and stopped would therefore differ
+// from what was read by one byte at the end of the file on EVERY converge, including the converge that
+// changes nothing, and a whole-file write is exactly the operation that has no way to notice: the
+// destination would be replaced by bytes that no host tool produced. So the convention is READ BACK from
+// the bytes the parse was made against rather than decided here. Both conventions round-trip -- a file
+// that ends mid-line is rendered to end mid-line -- and the difference between them is never a reason to
+// refuse, because refusing over a trailing byte would strand a host whose file a previous tool wrote
+// without one. What IS refused is any other difference, in plan_subordinate_file.
+fn subordinate_file_final_newline(reading: SubordinateFileReading) -> Bool {
+  let b = subordinate_file_bytes(reading: reading)
+  if b == "" {
+    // No bytes were read, so the file states no convention; an empty file takes shadow's, which is the
+    // terminated form. Rendering a rowless file as "" rather than "\n" is the same decision from the
+    // other side: the renderer never INVENTS a byte the reading did not contain.
+    true
+  } else {
+    ends_with(s: b, suffix: "\n")
+  }
+}
+
 // The rendered file, from the rows the plan leaves in place plus the rows it adds. Rows are emitted in the
 // order the caller supplies them, and the caller orders them as read-from-host order with removals dropped
-// and grants appended, so an untouched file renders as itself.
-fn render_subordinate_file(rs: List<SubordinateRange>) -> String {
-  join(map(rs, r => subordinate_range_text(r: r)), "\n")
+// and grants appended, so an untouched file renders as itself -- BYTE for byte, final newline included,
+// which is what makes the claim testable rather than aspirational. The convention comes from the READING
+// the rows were parsed from, not from a Bool a caller could get wrong: the bytes and the rows are two
+// views of one reading, and a render is only meaningful against the reading it came from.
+fn render_subordinate_file(reading: SubordinateFileReading, rs: List<SubordinateRange>) -> String {
+  if length(rs) == 0 {
+    ""
+  } else if subordinate_file_final_newline(reading: reading) {
+    concat(join(map(rs, r => subordinate_range_text(r: r)), "\n"), "\n")
+  } else {
+    join(map(rs, r => subordinate_range_text(r: r)), "\n")
+  }
 }
 
 // WHAT CONVERGE OWES THE FILE. None is a real answer, not a placeholder: a host that already declares
@@ -480,6 +511,18 @@ fn plan_subordinate_file(
               lines: filter(split(s: b, delimiter: "\n"), l => trim(s: l) != ""), rs: rs)) > 0 {
           SubordinatePlanRefused {
             reason: join([p, " holds a row whose text does not render back byte-identically; refusing to rewrite a file the model cannot reproduce"], ""),
+          }
+        // THE WHOLE FILE MUST RENDER BACK TO THE BYTES THAT WERE READ. The check above compares each
+        // parsed row against the line it came from, which catches a row whose text is not reproducible
+        // but is BLIND to everything the row parse throws away: the final newline, a blank line, a
+        // leading one, a CRLF the split left behind. This check compares FILES — the render of the rows
+        // as read against the bytes as read, with no filtering on either side — and it is what turns
+        // "untouched rows are preserved byte-identically" from an intention into a property the plan
+        // either has or refuses over. Without it an unchanged file could be rewritten by bytes no host
+        // tool ever produced, and the rewrite would be invisible in every receipt.
+        } else if render_subordinate_file(reading: reading, rs: rs) != b {
+          SubordinatePlanRefused {
+            reason: join([p, " does not render back byte-identically from its parsed rows; refusing to rewrite a file the model cannot reproduce"], ""),
           }
         // THE RENDERED RANGES MUST BE PAIRWISE DISJOINT. The guards above compare proposed-vs-as-read;
         // this one compares the RENDERED FILE to itself, which additionally catches a duplicated row,

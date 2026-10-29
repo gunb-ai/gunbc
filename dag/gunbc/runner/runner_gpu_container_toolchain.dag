@@ -191,7 +191,7 @@ import gunbc.typed_remote_file_write {
   RemoteFileModeOwnerReadWriteWorldRead,
   RemoteFileViaNonInteractiveSudo,
   NoValidation,
-  SubordinateRangesUnchangedUntilRename,
+  DestinationUnchangedUntilRename,
   FleetHostLock,
 }
 import std.measure { second }
@@ -2040,7 +2040,7 @@ fn gpu_container_provision_subordinate_write(
       ProvisionSubordinateRangesFile {
         step: step,
         path: path,
-        content: render_subordinate_file(rs: rows),
+        content: render_subordinate_file(reading: reading, rs: rows),
         expected: subordinate_file_bytes(reading: reading),
       },
     ]
@@ -2095,7 +2095,7 @@ type GpuContainerSubordinateReconcile
 //       dd conv=fsync, rename, all of it under flock(1) on fleet_generation_lock;
 //   (c) the WHOLE file is rendered from the rows that were parsed, untouched rows byte-identical, and the
 //       destination is re-read and compared against the bytes the render was made against immediately
-//       before the rename (gunbc.typed_remote_file_write, SubordinateRangesUnchangedUntilRename);
+//       before the rename (gunbc.typed_remote_file_write, DestinationUnchangedUntilRename);
 //   (d) the rendered ranges are pairwise disjoint, or the plan is refused before a leg exists.
 // A refusal on either file stops both (see above), and any unreadable row is a refusal -- the parser
 // refuses the whole file if one line does not render back byte-identically.
@@ -2176,7 +2176,7 @@ fn gpu_container_provision_subordinate_reconcile(
                       gid_reading: gid_reading),
                     report: join(
                       [subordinate_plan_text(plan: uid_plan), " | ", subordinate_plan_text(plan: gid_plan), " | ",
-                       gpu_container_provision_subordinate_write_bound()],
+                       gpu_container_provision_subordinate_write_bound],
                       ""),
                   }
                 }
@@ -2475,7 +2475,7 @@ fn gpu_container_provision_run_action(
         admission: typed_remote_file_write_seal(path: p, content: c, allowed_scope: gpu_container_provision_write_scope_tree(scope: WriteScopeSystemEtc)),
         mode: RemoteFileModeOwnerReadWriteWorldRead,
         privilege: RemoteFileViaNonInteractiveSudo,
-        validation: SubordinateRangesUnchangedUntilRename { expected: e },
+        validation: DestinationUnchangedUntilRename { expected: e },
         lock: FleetHostLock {
           lock_path: fleet_generation_lock as NonEmptyStr,
           wait: second(count: 120),

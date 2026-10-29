@@ -271,10 +271,11 @@ fn typed_remote_file_unlink_staging_argv(write: TypedRemoteFileWrite) -> List<St
 }
 
 // conv=fsync is not decoration: dd's write must reach the platter BEFORE the rename makes the staging
-// file the destination. Without it, a host that loses power between the rename and the flush can come
-// back with /etc/subuid renamed into place and its bytes still in the page cache -- a subordinate file
-// whose content was never the rendered one, which is exactly the corruption the re-read compare exists
-// to rule out on the LIVE file and rules out on nothing after a crash.
+// file the destination. Without it, a host that loses power between the rename and the flush can come back
+// with the new name in place and the bytes still in the page cache -- a destination whose content was
+// never what was staged, which is the corruption the pre-rename compare exists to rule out on the LIVE file
+// and rules out on nothing after a crash. A caller that does not care about this durability still gets it;
+// it costs one fsync per write and there is no version of a typed write that should offer the other answer.
 fn typed_remote_file_stage_argv(write: TypedRemoteFileWrite) -> List<String> {
   ["dd", "status=none", "conv=fsync", concat("of=", typed_remote_file_staging_path(write: write))]
 }
@@ -308,15 +309,20 @@ fn typed_remote_file_fresh_staging_steps(write: TypedRemoteFileWrite) -> List<Ty
 type RemoteFileValidation
   = NoValidation
   | VisudoCheck
-  // THE RE-READ COMPARE, for a file whose content was RENDERED from a reading rather than authored
-  // here. The caller read the file, rendered the new bytes from what it parsed, and hands over the
-  // EXACT bytes it read. Immediately before the rename -- after staging, chmod and this validation step
-  // -- the destination is compared against them; any difference means something outside this converge
-  // wrote the file inside the read-to-rename window, and the write is REFUSED rather than overwrite it.
-  // A stale lock holder, a hand-edit, or a non-fleet useradd/usermod all land in the same bucket, and
-  // none of them can be caught by the fleet concurrency group. It runs before the rename precisely
-  // because after the rename there is nothing left to protect: the destination is already the new file.
-  | SubordinateRangesUnchangedUntilRename { expected: String }
+  // THE RE-READ COMPARE: the destination must still equal `expected` -- the bytes the caller read, which
+  // are the bytes whatever it rendered was made against -- at the instant before the rename takes the
+  // destination's name. A caller that AUTHORS its content outright has nothing to compare against and
+  // takes NoValidation; a caller that READS a file, derives new bytes from what it parsed, and writes the
+  // result takes this arm, because between that read and this rename anything could have happened.
+  //
+  // Any difference refuses the write rather than overwriting: a stale lock holder, a hand-edit, an
+  // operator's tool run out of band all land in the same bucket, and none of them are caught by a
+  // concurrency group that only knows about fleet actuations. It runs before the rename -- not after --
+  // precisely because after the rename there is nothing left to protect: the destination is already the
+  // new file, and a comparison then is a receipt, not a guard. What it CANNOT cover is the interval from
+  // this compare to the rename itself, which is why the caller's bound has to say so rather than claim the
+  // window shut.
+  | DestinationUnchangedUntilRename { expected: String }
 
 fn typed_remote_file_re_read_compare_argv(write: TypedRemoteFileWrite) -> List<String> {
   // The same argv as the post-rename read-back: cmp -s - <path>, fed the expected bytes on stdin. The
@@ -336,7 +342,7 @@ fn typed_remote_file_validation_steps(write: TypedRemoteFileWrite, validation: R
           stdin_payload: "",
         },
       ]
-    SubordinateRangesUnchangedUntilRename { expected: e } =>
+    DestinationUnchangedUntilRename { expected: e } =>
       [
         TypedRemoteFileWriteStep {
           // NOT a content check of the staged file -- the staged bytes are ours by construction. This is
@@ -696,12 +702,13 @@ fn typed_remote_file_run_steps(
   )
 }
 
-// A LOCK FOR THE ROUTE THAT NEEDS ONE. This is NOT a shadow lock: shadow 4.13's useradd/usermod serialize
-// on fcntl/lockf over /etc/.pwd.lock and IGNORE flock(2) entirely (measured on the live hosts, where
-// /etc/subuid.lock and /etc/subgid.lock do not even exist), so a flock here buys nothing against them --
-// the re-read compare is what covers a non-fleet useradd/usermod. What this lock DOES serialize against is
-// fleet actuations: the same flock(1) the fleet converge apply takes over fleet_converge_generation_lock_path,
-// so a subordinate-range write and a fleet converge generation cannot interleave on one host.
+// A LOCK FOR THE ROUTE THAT NEEDS ONE, for a caller whose write must not interleave with some other act it
+// can name. The lock is only as wide as its NAME: flock(1) serializes against whoever else opens this same
+// path, and against nobody else. A tool with a different locking convention -- a system utility that
+// serializes on fcntl/lockf over its own lock file, say -- walks straight through it, and only the
+// pre-rename compare has any chance of noticing. So a caller takes this arm when it holds the OTHER end of
+// a specific path, and states in ITS OWN documentation what that path serializes against and what it
+// leaves open; the writer makes no claim about anyone's locking conventions beyond this file.
 //
 // The words are built by extdeps.tools.util_linux_flock, and the lock is taken INSIDE the elevated argv
 // (sudo -n /usr/bin/flock ... <step>) rather than outside it: the lock file lives under /var/lib/gunbc and
