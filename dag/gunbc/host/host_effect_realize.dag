@@ -504,6 +504,10 @@ import extdeps.provisioning.ubuntu_install_media_fetch {
 import gunbc.artifact_acquisition {
   AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquisition_refusal_text,
 }
+import gunbc.provisioning.install_media_store {
+  InstallMediaStoreReading, InstallMediaStoreReady, InstallMediaStoreUnready, install_media_store,
+}
+import gunbc.host_state_root { host_state_tree }
 import gunbc.provisioning.seeded_install_media_publish {
   SeededImagePublished,
   SeededImageAlreadyPublished,
@@ -4352,7 +4356,13 @@ fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTr
 }
 
 fn realize_install_media_fetch_in_process(intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match install_media_fetch_reconcile(artifact: srv3_ubuntu_install_media_artifact) {
+  // THE MINT GATES THE FETCH: the fetch's paths and parent directory come off the sealed record, and a
+  // store that cannot be listed converges nothing -- a fetch that could not confirm its own directory
+  // must not publish bytes nobody can read back.
+  match install_media_store(tree: host_state_tree()) {
+    InstallMediaStoreUnready { detail: d } =>
+      NotConverged { reason: concat("install-media-fetch: the install media store refused to open: ", d), applied: intent }
+    InstallMediaStoreReady { store: s } => match install_media_fetch_reconcile(store: s, artifact: srv3_ubuntu_install_media_artifact) {
     AcquisitionAlreadyPresent { identity: _, install_path: p } =>
       reconcile_grounded(
         apply_effect: intent,
@@ -4377,6 +4387,7 @@ fn realize_install_media_fetch_in_process(intent: HostEffectIntent) -> Reconcili
       )
     AcquisitionRefused { cause: why } =>
       NotConverged { reason: concat("install-media-fetch: ", acquisition_refusal_text(cause: why)), applied: intent }
+  }
   }
 }
 

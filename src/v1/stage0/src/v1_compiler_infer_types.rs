@@ -128,10 +128,10 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn join_element_type(slot: Rc<Node>) -> Rc<Node> {
-    if (slot.children.clone().len() as i64) == 0 {
+    if ((slot.children.clone().len() as i64) == 0) {
         child_type_node(slot.clone())
     } else {
-        slot
+        slot.clone()
     }
 }
 
