@@ -28,7 +28,7 @@ module test.claim.machine_intake.machine_intake_bmc_served_lockout_witness
 // fixture's served reading; the live read that would replace the fixture is
 // gunbc.machine_intake.bmc_secure::bmc_served_lockout_live_read_frontier.
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Absent, Present }
 import std.algebra { list_head }
@@ -68,7 +68,7 @@ import test.fixture.machine_intake.bmc_lockout {
 import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write }
 import test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness {
   lab_subject, lab_endpoint, lab_firmware, root_ref, goal_v1, census, world_root,
-  root_user, published_password, generation_1, generation_2,
+  root_user, published_password, generation_1,
   t_read, t_store, t_fetch, t_plan, version_identity, ready, generation_v2, lab_route_citation,
   derive_over, redfish_only,
 }
@@ -103,13 +103,13 @@ fn read_lock(password: String, shared: Bool, at: EpochMs, lockout: BmcController
     managed_user: root_user,
     managed_password: generation_1,
     census: census(),
-    published_user: 2,
+    published_user: root_user,
     published_password: published_password,
     published_account: PublishedAccountRetired,
-    break_glass: root_ref(version: "2", epoch: 1),
-    break_glass_password: generation_2,
+    break_glass: root_ref(version: "1", epoch: 1),
+    break_glass_password: generation_1,
     published_reading: if shared { derive_over(served: redfish_only) } else { derive_over(served: []) },
-    attempt: "lockout-witness" as AttemptIdentity,
+    attempt: "attempt-1" as AttemptIdentity,
     read_at_millis: at,
     lockout: lockout,
   )
@@ -126,7 +126,7 @@ fn plan_lock(
   plan_at: ObserverClockInstant,
 ) -> BmcAccountPlanOutcome {
   let route = root_route()
-  let go = approved_bmc_write(standing: route, request: redfish_account_password_write(account: "root" as NonEmptyStr), purpose: RotateCredential, attempt: "attempt-lockout" as NonEmptyStr)
+  let go = approved_bmc_write(standing: route, request: redfish_account_password_write(account: "root" as NonEmptyStr), purpose: RotateCredential, attempt: "attempt-1" as NonEmptyStr)
   match generation_v2(store_at: store_at, fetch_at: fetch_at) {
     Absent => BmcAccountPlanRefused { cause: PublishedWriteWouldRepeatTheManagedWrite { user: 1 } }
     Present { value: g } =>
@@ -362,4 +362,33 @@ test fn a_served_never_locked_threshold_licenses_what_an_unread_one_refuses() ->
   planned(plan_lock(reading: never, forced_change: none, declared_retries: retries, store_at: store_at, fetch_at: fetch_at, plan_at: plan_at))
     && refused_by_budget(plan_lock(reading: unread, forced_change: none, declared_retries: retries, store_at: store_at, fetch_at: fetch_at, plan_at: plan_at))
     && says_never
+}
+
+// ── TEMPORARY DIAGNOSTICS (delete before the PR) ────────────────────────────
+test fn diag_base_plan_admits_at_all() -> Bool {
+  let store_at = observer_clock_modeled(millis: t_store, realization: lockout_schedule)
+  let fetch_at = observer_clock_modeled(millis: t_fetch, realization: lockout_schedule)
+  let plan_at = observer_clock_modeled(millis: t_plan, realization: lockout_schedule)
+  let base = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_only(read_at: t_read, redfish_threshold: 20))
+  planned(plan_lock(reading: base, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at))
+}
+
+test fn diag_roster_at_the_refusing_threshold() -> Bool {
+  let base = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_only(read_at: t_read, redfish_threshold: 3))
+  let r = roster_of(observed: base)
+  let root = list_head(filter(r.spends, k => bmc_failed_login_budget_key_same(a: k.key, b: BmcFailedLoginBudgetKey { account: "root" as NonEmptyStr, surface: RedfishAccountServiceLogin })))
+  match root {
+    Absent => false
+    Present { value: s } => list_length(items: s.logins) == 2 && list_length(items: r.exempt) == 0
+  }
+}
+
+test fn diag_headroom_at_the_refusing_threshold() -> Bool {
+  let base = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_only(read_at: t_read, redfish_threshold: 3))
+  let h = bmc_failed_login_headroom(key: BmcFailedLoginBudgetKey { account: "root" as NonEmptyStr, surface: RedfishAccountServiceLogin }, reading: base.lockout, known: [], now: t_plan)
+  match h {
+    HeadroomKnown { threshold: t, known_failures_in_window: k, may_fail: m } => t == 3 && k == 0 && m == 2
+    AccountNotLockedOutByThisController { reason: _ } => false
+    HeadroomUnknown { cause: _ } => false
+  }
 }

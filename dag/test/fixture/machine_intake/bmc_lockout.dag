@@ -170,6 +170,35 @@ fn lockout_redfish_only(read_at: EpochMs, redfish_threshold: Int) -> BmcControll
   )
 }
 
+// THE SAME SHAPE WITH A MOVEABLE COUNTER WINDOW. AccountLockoutCounterResetAfter is
+// the served seconds since the last failed attempt over which the controller keeps
+// counting (AccountService.v1_19_0), and the budget subtracts the failures still
+// INSIDE it. A fixture that could not move the window could not tell "the reading's
+// rejected probe is still counted" from "it has been forgotten", and a gate that
+// ignored the window would be indistinguishable from one that honoured it.
+// reset_after_secs goes straight into the vendor builder; nothing here invents a
+// default window.
+fn lockout_redfish_window(read_at: EpochMs, redfish_threshold: Int, reset_after_secs: Int) -> BmcControllerLockoutReading {
+  bmc_lockout_reading(
+    surfaces: [bmc_lockout_surface(
+      surface: RedfishAccountServiceLogin,
+      policy: LockoutPolicyServed {
+        served: ServedFromRedfishAccountService {
+          properties: redfish_account_service_lockout_served(
+            account_lockout_threshold: redfish_threshold,
+            account_lockout_duration: Present { value: 300 },
+            account_lockout_counter_reset_after: Present { value: reset_after_secs },
+            account_lockout_counter_reset_enabled: Present { value: true },
+          ),
+        },
+      },
+      evidence: lockout_fixture_evidence(what: join(["redfish-threshold-", to_string(redfish_threshold), "-window-", to_string(reset_after_secs)], "")),
+      read_at: lockout_fixture_instant(millis: read_at),
+    )],
+    read_at: lockout_fixture_instant(millis: read_at),
+  )
+}
+
 // THE CONTROLLER SERVES NO LOCKOUT AT ALL on Redfish: AccountLockoutThreshold 0,
 // which the schema states as "the account shall never be locked". A plan here is
 // admitted whatever it costs, and that must be because the controller SAID so —

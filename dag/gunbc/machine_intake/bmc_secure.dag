@@ -2031,7 +2031,7 @@ type BmcAccountActionPlan sole_constructor {
 // threshold, and what is already spent inside the reset window — or the reason no
 // threshold could be planned against at all. See the section at the end of this
 // module; the rung is
-// test.bmc.served_lockout.threshold_refuses_at_the_threshold.
+// test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.threshold_three_refuses_three_failing_logins_and_admits_two.
 
 type BmcAccountPlanRefusal
   = AccountPlanNotDue { decision: UpsertDecision<BmcAccountActionDue> }
@@ -3050,7 +3050,7 @@ data bmc_secure_standing_consumer_frontier: DissolutionCondition = unbound_disso
 //
 // The -1 is because a login is refused when the count REACHES the threshold:
 // with threshold 3, two failures leave the account usable and the third locks
-// it. The witness test.bmc.served_lockout.threshold_refuses_at_the_threshold is
+// it. The witness test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.threshold_three_refuses_three_failing_logins_and_admits_two is
 // the rung — threshold N with a plan of N potentially-failing logins on that
 // account+surface refuses, and N-1 admits — which is the same N-1 rule the
 // 03.22.00 probe budget already states (bmc_probe_budget_is_sound cites the
@@ -3076,7 +3076,7 @@ data bmc_secure_standing_consumer_frontier: DissolutionCondition = unbound_disso
 // the REDFISH surface only — the IPMI lanplus row of that same build is
 // explicitly not grounded there. So the exemption is granted on the Redfish
 // surface and nowhere else; the witness
-// test.bmc.served_lockout.forced_change_exemption_is_surface_scoped is the rung
+// test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.the_forced_change_path_costs_no_failed_login_on_the_surface_it_is_grounded_for is the rung
 // that holds it to that scope: the same published-credential login under the
 // same sealed state admits over Redfish and refuses over IPMI lanplus.
 //
@@ -3085,22 +3085,22 @@ data bmc_secure_standing_consumer_frontier: DissolutionCondition = unbound_disso
 //     ZERO failed logins: nothing is probed to prove the published password
 //     fails, because the build grounds one password per account and the
 //     derivation (SharedStoreRetirement) is itself the proof. Rung:
-//     test.bmc.served_lockout.derived_retirement_costs_no_failed_logins.
+//     test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.derived_retirement_costs_nothing_and_the_probed_path_one_per_member.
 //   - The PROBED path costs ONE login per LAN member the published user may
 //     reach: the plan must try the published password on each addressed LAN
 //     channel (admitted_channel_writes refuses a member the plan does not
 //     cover), and each attempt can be rejected. Rung:
-//     test.bmc.served_lockout.probed_path_costs_one_login_per_lan_member.
+//     test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.derived_retirement_costs_nothing_and_the_probed_path_one_per_member.
 //   - A probe is charged to the account it AUTHENTICATES AS. Probing the
 //     published/ADMIN account does not spend root's budget; it spends the ADMIN
 //     account's own. Rung:
-//     test.bmc.served_lockout.probes_charge_the_account_they_authenticate_as.
+//     test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.a_retry_on_another_account_spends_that_account_and_not_root.
 //   - Declared retries (BmcDeclaredLoginRetry) count: the plan says how many
 //     further times it may present a credential, and each further presentation
 //     is another login the controller may count. A plan that declares no retry
 //     spends nothing for one — an undeclared retry is a bug in the realization,
 //     not a licence handed out here. Rung:
-//     test.bmc.served_lockout.declared_retries_are_counted.
+//     test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.declared_retries_are_charged_as_logins.
 //   - A WRITE authentication is NOT counted, and that exclusion is named:
 //     bmc_write_authentication_failed_login_frontier at the end of this section
 //     states what would make it wrong. The password write's authorization was
@@ -3953,7 +3953,7 @@ fn bmc_known_failed_logins_of(
 // for a plan to lean on (§5).
 // CONSUMER: callers of dry_read_bmc_account_state and any reader that has no
 // AccountService GET / Get LAN Configuration Parameters to report; the rung is
-// test.bmc.served_lockout.unread_threshold_refuses_a_published_probe.
+// test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.an_unread_threshold_refuses_the_failing_logins_a_served_one_admits.
 fn bmc_lockout_reading_not_read(detail: NonEmptyStr, read_at: ObserverClockInstant) -> BmcControllerLockoutReading {
   bmc_lockout_reading(surfaces: [BmcLockoutSurfaceReading {
     surface: RedfishAccountServiceLogin,
