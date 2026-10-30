@@ -1,0 +1,413 @@
+module gunbc.machine_intake.host_interface_inventory
+
+// THE PER-HostIdentity INTERFACE INVENTORY. Plan gunbc.plans.site_segment_anchor_bmc_reach named
+// this in its own discovery: "MACs are scattered across intake observations", with no per-host
+// carrier, so nothing in the corpus could answer, for one machine, which of its permanent addresses
+// belongs to an interface that answers the HOST versus one that answers the CONTROLLER. The plan's
+// BMC trap is a function confusion -- an earlier pass at this lane read the controller's second NIC
+// as the host PXE NIC -- and a function cannot be recovered from an address, so the function has to
+// be written down next to the address, per interface, per host. That is this module.
+//
+// IT MINTS NO NEW CARRIERS, AND THAT IS THE POINT.
+//   lan                 gunbc.machine_intake.ethernet ObservedEthernetLan -- the observation itself.
+//                       The row STORES the lan and derives from it: its function is
+//                       lan.binding.function and its address is lan.link, so the function is not
+//                       typed a second time beside the binding that already carries it.
+//   function            gunbc.machine_intake.ethernet EthernetFunction -- the vocabulary ethernet.dag
+//                       grew because "Bool is dedicated management" could not hold a dedicated BMC
+//                       RJ45, a BMC sharing a host port, and a host data port at once. Re-declaring a
+//                       host-OS / dedicated-BMC / shared-BMC triad here would be the §3 second home:
+//                       two carriers for one distinction, disagreeing in silence whenever one is
+//                       corrected. The task's three functions ARE this vocabulary: host OS is
+//                       HostData, dedicated BMC is BmcDedicated, shared BMC is BmcNcsi; a controller NIC enumerated on the host's bus is BmcHostBus.
+//   address             extdeps.network.mac Eui48Address, the carrier phase S1 moved the stragglers
+//                       onto, reached through lan.link. A link read off the wire is a CONFIGURED
+//                       address and stays so: the row never calls it permanent unless the reading did.
+//   provenance          gunbc.machine_intake.ethernet InterfaceReadingProvenance, carried on the
+//                       ObservedEthernetLan record itself -- provenance belongs to the reading, not to
+//                       whoever cites it later.
+//
+// NO ADDRESS IS TYPED IN THIS FILE. Every address is a field access into the observation
+// row that read it, so correcting the reading corrects the row. And a host whose readings do not exist
+// does not come back EMPTY: host_interface_inventory returns the specific function that was never read
+// and why there is no row for it, because an empty list for a host is indistinguishable, at any fold
+// over hosts, from a host nobody ever looked at.
+
+import std.types { Bool, List, NonEmptyStr }
+import std.list { duplicated_by_key, first_where }
+import std.algebra { non_empty }
+import std.decl_ref { DeclarationRef, decl_field_ref, decl_ref }
+import extdeps.network.mac { render_mac_address }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import extdeps.bmc.ipmi_channel { IpmiChannelNumber }
+import gunbc.machine_intake.ethernet {
+  AttachmentUnobserved,
+  BaseboardOnboard,
+  BmcDedicated,
+  BmcHostBus,
+  BmcNcsi,
+  ConfiguredLink,
+  EthtoolDriverInfo,
+  FunctionObserved,
+  FunctionUnobserved,
+  EthernetFunctionBinding,
+  HostData,
+  HostInterfaceListing,
+  InBandHostShell,
+  InterfaceReadingProvenance,
+  IpAddrShow,
+  IpmiLanPrint,
+  IpmiMacAddressField,
+  ModelRow,
+  NetworkctlStatus,
+  ObservedEthernetLan,
+  OperatorAtController,
+  PhysicalEthernetPort,
+  PortUnitUnobserved,
+  ObservedEthernetFunction,
+  PrebootNetwork,
+  ReadAt,
+  ReadBefore,
+  lan_configured_address,
+}
+import gunbc.machine_intake.mtjade1_factory_network { mtjade1_bmc_link_mac, mtjade1_bmc_observed_address }
+import gunbc.machine_intake.mtcollins1_platform_observation {
+  mtcollins1_dedicated_bmc_lan,
+  mtcollins1_host_nic_interface,
+  mtcollins1_second_bmc_lan,
+}
+import gunbc.host.host_primary_network_observed {
+  srv1_bmc_usb_nic_mac,
+  srv1_i210_mac,
+  srv1_primary_network_receipt_2026_10_25,
+}
+import gunbc.fleet.fleet_host_identity {
+  operator_host_mtcollins1,
+  operator_host_mtjade1,
+  operator_host_srv1,
+}
+import product.host_identity { HostIdentity, host_identity_eq }
+
+// ONE INTERFACE OF ONE HOST, AS IT WAS READ: the observation, keyed by the host that owns it. The row
+// adds the per-host key and nothing else -- function, address and provenance are all the lan's own,
+// so there is still exactly one place an address and its story live.
+type HostNetworkInterface {
+  host: HostIdentity
+  lan: ObservedEthernetLan
+}
+
+// ── mtcollins1: host OS interface, dedicated BMC interface, shared BMC interface ────────────────
+// The three addresses the plan nearly confused, now side by side with their functions stated. Each
+// row is a projection of an ObservedEthernetLan that already existed (or that phase S1 added to the
+// platform observation because the host NIC had an address but no interface record to project).
+
+// THE HOST'S OWN OPERATING-SYSTEM INTERFACE. The address is read out of the netboot CLIENT capture
+// (a firmware PXE Discover, whose vendor class is the discriminator that says the host is asking and
+// not the controller), projected through the platform observation's host-NIC record.
+data mtcollins1_host_os_interface: HostNetworkInterface = HostNetworkInterface {
+  host: operator_host_mtcollins1,
+  lan: mtcollins1_host_nic_interface,
+}
+
+// THE DEDICATED CONTROLLER INTERFACE, at 192.168.1.228: read by ipmitool lan print on the management
+// port, and bound to BmcDedicated by the platform observation itself (mtcollins1_dedicated_bmc_lan's
+// binding, which its own witness pins). The DHCP lease table is NOT the source of this row: a lease
+// answers who holds an address today, and this row is about a permanent address.
+data mtcollins1_dedicated_bmc_interface: HostNetworkInterface = HostNetworkInterface {
+  host: operator_host_mtcollins1,
+  lan: mtcollins1_dedicated_bmc_lan,
+}
+
+// THE SECOND CONTROLLER INTERFACE, at 192.168.1.231 -- whose traffic reached the DHCP server as BusyBox
+// `udhcp 1.21.1` and was misread in an earlier pass as the host PXE-booting. The two controller
+// addresses differ by ONE BIT, which is what an address-keyed view flattens into "the BMC" and what
+// this row exists to keep apart.
+//
+// ITS FUNCTION IS THE LAN'S OWN, AND THE LAN SAYS `FunctionUnobserved`: the evidence that this is a
+// controller and not a host is the vendor class in the capture, but whether it is NCSI sharing a host
+// port or a second PHY is unobserved (the platform observation's own port attachment says so). An
+// earlier cut of this module typed `BmcNcsi` on the row beside a lan that said otherwise -- two answers
+// for one fact (DESIGN.md section 3). Deriving the function from the lan removes the disagreement, and
+// the consequence is stated rather than hidden: this interface is NOT counted by
+// host_controller_dedicated_interface until a reading classifies it. The correction lands on the lan.
+data mtcollins1_shared_bmc_interface: HostNetworkInterface = HostNetworkInterface {
+  host: operator_host_mtcollins1,
+  lan: mtcollins1_second_bmc_lan,
+}
+
+// ── srv1: what the 2026-10-25 primary-network receipt already read ──────────────────────────────
+// srv1's readings come from one observation: the receipt taken over the fleet edge with ip, networkctl,
+// ethtool and /etc/netplan, read-only. srv1 is the host the plan's S2 anchor will bind a site segment
+// to, so its interfaces are the ones that most need to be enumerable before anything reaches through
+// them. The receipt carries addresses and drivers but no ObservedEthernetLan, so the lans are built
+// here FROM its fields; no octet and no instant is typed.
+
+// THE HOST'S OWN OPERATING-SYSTEM INTERFACE: the I210 (enP3p6s0), igb, admin-up with carrier present.
+// THE READING THAT DECIDES THE FUNCTION is that the recorded DHCP lease holder is this address, with the
+// default route at the operator's chosen metric: an interface that holds the host's routable address
+// and default route is the host's data port. The link is a CONFIGURED one -- `ip addr` shows what the
+// interface currently answers with, and no `ethtool -P` permanent-address reading was taken.
+data srv1_host_data_port: PhysicalEthernetPort = PhysicalEthernetPort {
+  unit: PortUnitUnobserved { discriminator: "srv1 has no unit key in the intake model; the receipt names the device by kernel name only" },
+  panel_label: "enP3p6s0 (I210, igb)",
+  connector_label: "RJ45",
+  attachment: AttachmentUnobserved { discriminator: "the receipt gives the PCI address and driver, not the attachment class" },
+}
+
+data srv1_host_os_lan: ObservedEthernetLan = ObservedEthernetLan {
+  binding: EthernetFunctionBinding { port: srv1_host_data_port, function: FunctionObserved { function: HostData } },
+  network_address: Present { value: srv1_primary_network_receipt_2026_10_25.lease.address },
+  link: ConfiguredLink { configured: srv1_i210_mac },
+  provenance: srv1_host_nic_reading,
+}
+
+// THE SHARED CONTROLLER INTERFACE: the controller's own Ethernet controller at PCI 0003:05:00.0 (the
+// Aspeed silicon) enumerated on the HOST's bus as a USB CDC-Ether device (kernel name enxaa7a13da73d3,
+// driver cdc_ether). The enumeration itself decides the function: a controller port reachable only as a
+// NIC on the host's bus, with no wire of its own in the receipt, is management sharing the host's
+// network path.
+// It is a host-bus device with no wire, so it is `BmcHostBus`, not `BmcNcsi`. It is admin-down and unconfigured in the same read, so the lan
+// has no network address.
+//
+// DISSENT ROUTE: whether that silicon also drives a physical RJ45 on this board is unobserved, and
+// BmcHostBus claims no wire of its own. If a dedicated controller port is later read on srv1, THIS LAN IS THE ONE
+// TO CORRECT.
+data srv1_shared_bmc_port: PhysicalEthernetPort = PhysicalEthernetPort {
+  unit: PortUnitUnobserved { discriminator: "srv1 has no unit key in the intake model; the receipt names the device by kernel name only" },
+  panel_label: "enxaa7a13da73d3 (controller Ethernet controller as USB CDC-Ether)",
+  connector_label: "none observed: the device is enumerated on the host's bus",
+  attachment: AttachmentUnobserved { discriminator: "enumerated as a USB CDC-Ether device at PCI 0003:05:00.0; the receipt shows no wire" },
+}
+
+data srv1_shared_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
+  binding: EthernetFunctionBinding { port: srv1_shared_bmc_port, function: FunctionObserved { function: BmcHostBus } },
+  network_address: none,
+  link: ConfiguredLink { configured: srv1_bmc_usb_nic_mac },
+  provenance: srv1_bmc_usb_nic_reading,
+}
+
+data srv1_host_os_interface: HostNetworkInterface = HostNetworkInterface {
+  host: operator_host_srv1,
+  lan: srv1_host_os_lan,
+}
+
+data srv1_shared_bmc_interface: HostNetworkInterface = HostNetworkInterface {
+  host: operator_host_srv1,
+  lan: srv1_shared_bmc_lan,
+}
+
+// THE srv1 READINGS: one receipt, one pass, read in the host's own shell. The artifact is the receipt's
+// `nics` field, a row of this repository's model, and the moment is the receipt's own `observed_at`.
+// The two NICs get their own `reading` text because the two observations differ in kind -- an ip line
+// about a network-facing port versus a device node on the host's bus.
+data srv1_host_nic_reading: InterfaceReadingProvenance = InterfaceReadingProvenance {
+  instrument: HostInterfaceListing { commands: [IpAddrShow, EthtoolDriverInfo, NetworkctlStatus] },
+  channel: InBandHostShell {
+    host_address: srv1_primary_network_receipt_2026_10_25.lease.address,
+    account: "briansrls",
+  },
+  artifact: ModelRow { row: decl_field_ref(module_path: "gunbc.host.host_primary_network_observed", decl_name: "srv1_primary_network_receipt_2026_10_25", field_name: "nics") },
+  moment: ReadAt { instant: srv1_primary_network_receipt_2026_10_25.observed_at as Rfc3339Timestamp },
+  reading: "enP3p6s0 (igb, admin-up, carrier present, 1000 Mbps); the recorded DHCP lease names THIS address as its holder, and /etc/netplan/60-enP3p6s0.yaml is the operator's dhcp4 config for exactly this device",
+}
+
+data srv1_bmc_usb_nic_reading: InterfaceReadingProvenance = InterfaceReadingProvenance {
+  instrument: HostInterfaceListing { commands: [IpAddrShow, EthtoolDriverInfo, NetworkctlStatus] },
+  channel: InBandHostShell {
+    host_address: srv1_primary_network_receipt_2026_10_25.lease.address,
+    account: "briansrls",
+  },
+  artifact: ModelRow { row: decl_field_ref(module_path: "gunbc.host.host_primary_network_observed", decl_name: "srv1_primary_network_receipt_2026_10_25", field_name: "nics") },
+  moment: ReadAt { instant: srv1_primary_network_receipt_2026_10_25.observed_at as Rfc3339Timestamp },
+  reading: "enxaa7a13da73d3 at PCI 0003:05:00.0, driver cdc_ether -- the controller's own Ethernet controller enumerated as a USB CDC-Ether NIC on the host's bus; admin-down and unconfigured in the same read",
+}
+
+// ── mtjade1: the controller interface the factory network already read ──────────────────────────
+// The address and its network address are projected out of the observation that read them
+// (mtjade1_bmc_observed_network) and never retyped here. The FUNCTION is read, not guessed -- the
+// board's specification names one BMC Ethernet PHY at its own rear RJ45 (extdeps.ocp.mt_jade.platform
+// mt_jade_bmc_management_network), and the unit's `ipmitool lan print 1` is that port's configuration.
+// A controller port with its own connector is the dedicated case.
+//
+// DISSENT ROUTE: the specification row records a PHY and a BMC silicon but NOT a controller OPN for the
+// manageability port, so "one controller port, on its own wire" rests on that port count plus the single
+// channel number in the unit's reading. If a second controller connector is ever read on a unit of this
+// class, THIS LAN IS WHERE THE DISSENT LANDS.
+data mtjade1_dedicated_bmc_port: PhysicalEthernetPort = PhysicalEthernetPort {
+  unit: PortUnitUnobserved { discriminator: "mtjade1 intake has no unit key on the factory-network observation" },
+  panel_label: "BMC manageability port (rear RJ45 per the board specification)",
+  connector_label: "RJ45",
+  attachment: BaseboardOnboard,
+}
+
+data mtjade1_dedicated_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
+  binding: EthernetFunctionBinding { port: mtjade1_dedicated_bmc_port, function: FunctionObserved { function: BmcDedicated } },
+  network_address: mtjade1_bmc_observed_address(),
+  link: ConfiguredLink { configured: mtjade1_bmc_link_mac() },
+  provenance: mtjade1_bmc_link_reading,
+}
+
+data mtjade1_dedicated_bmc_interface: HostNetworkInterface = HostNetworkInterface {
+  host: operator_host_mtjade1,
+  lan: mtjade1_dedicated_bmc_lan,
+}
+
+// THE READING RECORD FOR THE mtjade1 CONTROLLER INTERFACE. The operator read the controller's own LAN
+// configuration at the unit, corroborated by a passive capture on srv1; the artifact is the row that
+// holds the octets. THE MOMENT IS A BOUND, NOT AN INSTANT: the source row records how the address was
+// read and not when, and the corpus dates only the operator's reconfiguration of that port to DHCP,
+// which closes the window from after. Inventing a timestamp would be the same category of error as
+// typing in an octet.
+data mtjade1_bmc_link_reading: InterfaceReadingProvenance = InterfaceReadingProvenance {
+  instrument: IpmiLanPrint { channel: 1 as IpmiChannelNumber, output_field: IpmiMacAddressField },
+  channel: OperatorAtController,
+  artifact: ModelRow { row: decl_field_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "mtjade1_bmc_observed_network", field_name: "link") },
+  moment: ReadBefore {
+    bound: Iso8601CivilDate { year: 2026, month: 10, day: 3 },
+    bound_stated_by: decl_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "mtjade1_bmc_reconfigured_network"),
+  },
+  reading: "the address is the one the operator read off the controller AND the one srv1's 90s tcpdump saw originating this unit's own ARP broadcasts -- ARP does not cross a router, so seeing it on the host's port is what establishes the shared segment. Quoted from the row's basis; not restated here.",
+}
+
+// THE TABLE S2 WILL ITERATE: host by host, function by function, so a reader sees the host/controller
+// split rather than a bag of addresses. Every address of a host that has been read AND classified is
+// here; an address that has been read but not classified stays in the gap notes rather than being
+// guessed into the table.
+data host_network_interfaces: List<HostNetworkInterface> = [
+  mtcollins1_host_os_interface,
+  mtcollins1_dedicated_bmc_interface,
+  mtcollins1_shared_bmc_interface,
+  srv1_host_os_interface,
+  srv1_shared_bmc_interface,
+  mtjade1_dedicated_bmc_interface,
+]
+
+// ── the gap that is not silent ─────────────────────────────────────────────────────────────────
+// AN ADDRESS A READER EXPECTS TO FIND AND IS NOT THERE MUST BE REPORTED, NOT RETURNED AS NOTHING.
+// A row list that comes back empty for a host is indistinguishable, at any fold over hosts, from a
+// host nobody ever asked about -- which is exactly how mtjade1's missing host-OS interface stayed
+// invisible through the first draft of this module, whose own note asserted the unit had no MAC
+// anywhere. So the fold's answer is a SUM, not a list: either the host's classified rows, or the
+// specific function that has no reading and the reason there is no row for it. A caller cannot
+// mistake "nothing here" for "nobody looked", and S2's anchor refuses on a reading about the gap
+// rather than on a zero.
+// WHICH FUNCTION IS UNACCOUNTED FOR is `ethernet.dag` `ObservedEthernetFunction`, the same sum a row's
+// function is built from. The unobserved arm is not in it, so a gap that named it -- an empty list
+// wearing a carrier -- is unwritable, and there is no second function vocabulary to drift (it had:
+// review 88308).
+
+// WHY A HOST HAS NO ROW FOR A FUNCTION, as two different facts. Either something was consulted and
+// carried no reading of that function (what was consulted is named by declaration, what it lacked is
+// the statement), or the host appears in neither the rows nor the declared gaps and was never looked at.
+type HostInterfaceGap
+  = FunctionUnread { host: HostIdentity, function: ObservedEthernetFunction, consulted: List<DeclarationRef>, statement: NonEmptyStr }
+  | HostNeverInventoried { host: HostIdentity }
+  | FunctionNotInventoried { host: HostIdentity, function: ObservedEthernetFunction }
+
+// ONE FUNCTION OF ONE HOST: the interface itself, or the gap that says why there is none. The same
+// sum as the whole-host answer, narrowed to a function, so "nobody read it" and "it does not exist"
+// cannot both come back as an absent Optional.
+type HostFunctionInterface
+  = FunctionInterfaceRead { lan: ObservedEthernetLan }
+  | FunctionInterfaceUnread { gap: HostInterfaceGap }
+
+type HostInterfaceInventory
+  = InventoryRead { rows: List<HostNetworkInterface> }
+  | InventoryUnread { gap: HostInterfaceGap }
+
+data host_interface_gaps: List<HostInterfaceGap> = [
+  FunctionUnread {
+    host: operator_host_mtjade1,
+    function: HostData,
+    consulted: [
+      decl_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "mtjade1_bmc_observed_network"),
+    ],
+    statement: "the interface the unit's own operating system uses has no link address in the mtjade1 intake modules, which carry controller readings only; it is not inferred from the controller's",
+  },
+]
+
+fn host_interface_gap_host(gap: HostInterfaceGap) -> HostIdentity {
+  match gap {
+    FunctionUnread { host: h, function: _, consulted: _, statement: _ } => h
+    HostNeverInventoried { host: h } => h
+    FunctionNotInventoried { host: h, function: _ } => h
+  }
+}
+
+// THE TOTAL ANSWER FOR A HOST: its classified rows, or the gap that says what was never read.
+fn host_interface_inventory_for(host: HostIdentity) -> HostInterfaceInventory {
+  let rows = filter(xs: host_network_interfaces, predicate: row => host_identity_eq(a: row.host, b: host))
+  if non_empty(xs: rows) {
+    InventoryRead { rows: rows }
+  } else {
+    match first_where(xs: host_interface_gaps, keep: gap => host_identity_eq(a: host_interface_gap_host(gap: gap), b: host)) {
+      Present { value: gap } => InventoryUnread { gap: gap }
+      // NOTHING READ AND NOTHING DECLARED AS MISSING is itself a hole in this module, not an answer:
+      // a host that appears in neither list was never looked at, and saying so must not be possible.
+      Absent => InventoryUnread { gap: HostNeverInventoried { host: host } }
+    }
+  }
+}
+
+// THE CLASSIFIED ROWS ALONE, for a caller that has already consulted host_interface_inventory_for and only
+// wants to iterate. Returns nothing exactly when the inventory is a gap -- which is WHY the total answer
+// above exists and why a fold over hosts should go through it rather than through this.
+fn host_interface_rows(host: HostIdentity) -> List<HostNetworkInterface> {
+  match host_interface_inventory_for(host: host) {
+    InventoryRead { rows: rows } => rows
+    InventoryUnread { gap: _ } => []
+  }
+}
+
+// THE LOOKUP BY FUNCTION: the host's row for that function, else the declared gap for exactly that
+// function, else the statement that this function was never inventoried for the host (the host may have
+// other rows). Gaps are read per function and not per host, so a host with some rows still reports
+// what it lacks (review 88405).
+fn host_function_interface(host: HostIdentity, function: ObservedEthernetFunction) -> HostFunctionInterface {
+  match first_where(xs: host_interface_rows(host: host), keep: row => row.lan.binding.function == FunctionObserved { function: function }) {
+    Present { value: row } => FunctionInterfaceRead { lan: row.lan }
+    Absent => match first_where(xs: host_interface_gaps, keep: gap => match gap {
+      FunctionUnread { host: h, function: f, consulted: _, statement: _ } => host_identity_eq(a: h, b: host) && f == function
+      HostNeverInventoried { host: _ } => false
+      FunctionNotInventoried { host: _, function: _ } => false
+    }) {
+      Present { value: gap } => FunctionInterfaceUnread { gap: gap }
+      Absent => FunctionInterfaceUnread { gap: FunctionNotInventoried { host: host, function: function } }
+    }
+  }
+}
+
+// THE ADDRESS THE OPERATOR TYPES INTO A BROWSER TO REACH THE CONTROLLER'S CONSOLE: its own interface if
+// it has one, and ONLY its own. THE FALLBACK THAT IS NOT HERE is the load-bearing part of this
+// function's shape. On a shared segment the controller's console answers just as readily through the
+// host's own interface -- that is what a shared segment IS, and this corpus's own readings say so twice:
+// mtjade1's controller MAC was seen ARPing on srv1's host data port, and mtcollins1's second controller
+// interface reached this lane's host across the host's own LAN. A helper that quietly fell back to the
+// host NIC would still return a console URL that WORKS, which is why the shortcut is tempting and why it
+// is refused: an operator who believes they are on the controller's dedicated path while their traffic
+// crosses the host's production interface has been told something false about their own network, and no
+// later symptom says so. When the dedicated interface is absent the honest answer is Absent, and the
+// correction is an inventory row -- not a fallback.
+fn host_controller_dedicated_interface(host: HostIdentity) -> HostFunctionInterface {
+  host_function_interface(host: host, function: BmcDedicated)
+}
+
+// THE OPERATOR'S OWN SHELL, the interface they would SSH in through. A host with no read host-OS
+// interface returns the typed gap (see host_interface_gaps), never an absent answer; it is S2's anchor
+// that refuses on it.
+fn host_operating_system_interface(host: HostIdentity) -> HostFunctionInterface {
+  host_function_interface(host: host, function: HostData)
+}
+
+// ONE ADDRESS, ONE INTERFACE, ACROSS THE WHOLE TABLE. Two rows claiming the same address is the shape
+// that turns a controller address into a host address and back, so it has to be checkable rather than
+// noticed during an incident. Cross-host too, not merely within one host: this is one rack and one
+// broadcast domain, where a duplicate is a live outage rather than a data-quality smell.
+fn host_interface_addresses_are_disjoint() -> Bool {
+  non_empty(xs: host_network_interfaces)
+    && duplicated_by_key(
+      xs: host_network_interfaces,
+      key: row => render_mac_address(addr: lan_configured_address(lan: row.lan)) as String,
+    ).length() == 0
+}
