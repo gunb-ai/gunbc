@@ -84,8 +84,12 @@ import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string 
 
 // ONE ROW PER AMBIENT NAME: the bare call spelling, the name the import binds, and the name's ONE declared home module.
 // The generator is home-agnostic; a wave is a row here (NAMESPACE-XL), never a branch.
+// `key` IS THE ROW'S IDENTITY: (home, call) is not unique (std.algebra sort_by has a Symbol-order row and a String-order row,
+// both the same free head), and the appended text is a spelling, not an identity. A per-site selection (OnlyOccurrences)
+// names a row by its key; the key of a row with no sibling is its call.
 type RosterHeadRow {
   call: String
+  key: String
   import_name: String
   home: QualifiedName
   labels: List<RosterLabelRename>
@@ -143,7 +147,7 @@ type RosterHomeScope
 type RosterRowSelection
   = EveryRowOfHome
   | OnlyCall { call: String }
-  | OnlyOccurrences { call: String, occurrences: List<String> }
+  | OnlyOccurrences { row: String, call: String, occurrences: List<String> }
 
 fn roster_scope_admits(scope: RosterHomeScope, row: RosterHeadRow) -> Bool {
   match scope {
@@ -157,7 +161,7 @@ fn roster_selection_admits(selection: RosterRowSelection, row: RosterHeadRow) ->
   match selection {
     EveryRowOfHome => true
     OnlyCall { call: c } => c == row.call
-    OnlyOccurrences { call: c, occurrences: _ } => c == row.call
+    OnlyOccurrences { row: k, call: c, occurrences: _ } => k == row.key && c == row.call
   }
 }
 
@@ -381,20 +385,21 @@ type RosterLabelEdit {
 
 fn roster_head_rows() -> List<RosterHeadRow> {
   [
-    RosterHeadRow { call: "shell_materialize_operation_argv", import_name: "shell_materialize_operation_argv", home: qualified_name_from_dotted_string(dotted: "std.operation_argv"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "concat", import_name: "collection_concat_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "count", import_name: "collection_count_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "map", import_name: "collection_map_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "join", import_name: "collection_join_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "shell_materialize_operation_argv", key: "shell_materialize_operation_argv", import_name: "shell_materialize_operation_argv", home: qualified_name_from_dotted_string(dotted: "std.operation_argv"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "concat", key: "concat", import_name: "collection_concat_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "count", key: "count", import_name: "collection_count_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "map", key: "map", import_name: "collection_map_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "join", key: "join", import_name: "collection_join_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
     // list_push is FreeMonoid's own snoc (tidy-ant-251 ruling): one ambient name, one declared home std.algebra.
-    RosterHeadRow { call: "list_push", import_name: "list_push", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "list_push", key: "list_push", import_name: "list_push", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
     // sha256_hex_of_text: UTF-8 encode, SHA-256, lowercase hex; one declared home beside sha256_hex_digest (sleek-owl-397).
-    RosterHeadRow { call: "sha256_hex_of_text", import_name: "sha256_hex_of_text", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "sha256_hex_of_text", key: "sha256_hex_of_text", import_name: "sha256_hex_of_text", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead },
     // compile_dag_diagnostic_census is the census builtin's one declared home (root-coordinator decision, sleek-owl-397).
-    RosterHeadRow { call: "compile_dag_diagnostic_census", import_name: "compile_dag_diagnostic_census", home: qualified_name_from_dotted_string(dotted: "gunbc.compile_diagnostic_census"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "compile_dag_diagnostic_census", key: "compile_dag_diagnostic_census", import_name: "compile_dag_diagnostic_census", home: qualified_name_from_dotted_string(dotted: "gunbc.compile_diagnostic_census"), labels: [], head: KeepHead },
     // NAMESPACE-XL wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars has one declared home.
     RosterHeadRow {
       call: "chars",
+      key: "chars",
       import_name: "chars",
       home: qualified_name_from_dotted_string(dotted: "std.host_text"),
       // std.host_text declares fn chars(text: HostText); the ambient spelling's callers wrote s:.
@@ -405,6 +410,7 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     // read with the same Optional<V> answer, so the call moves to that declaration instead of minting a second name for it.
     RosterHeadRow {
       call: "map_get",
+      key: "map_get",
       import_name: "map_lookup",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
@@ -499,9 +505,9 @@ fn roster_import_sweep_apply_row_exit(root_dir: String, paths_csv: String, home:
 // (kernel Int vs kernel Nat vs Bool vs Float vs List vs record) and the sweep matches no type: the typed census, not the
 // row, decides which half is this wave's. A key that meets no site refuses the run (RefusalOccurrenceKeyUnmatched); an
 // empty key file refuses before any read (RefusalScopeSelectsNoRow).
-fn roster_import_sweep_occurrences_exit(paths_csv: String, home: String, call: String, keys_file: String) -> ProcessExit {
+fn roster_import_sweep_occurrences_exit(paths_csv: String, home: String, row_key: String, call: String, keys_file: String) -> ProcessExit {
   let selection = roster_occurrence_selection(keys_file: keys_file)
-  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: home), rows: OnlyOccurrences { call: call, occurrences: roster_selection_keys(selection: selection) } }
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: home), rows: OnlyOccurrences { row: row_key, call: call, occurrences: roster_selection_keys(selection: selection) } }
   let rows = match selection {
     RosterKeysRead { keys: _ } =>
       match dag_prepared_grammar() {
@@ -513,11 +519,11 @@ fn roster_import_sweep_occurrences_exit(paths_csv: String, home: String, call: S
   if (rows == "") { ExitSuccess } else { exit_failure(reason: rows) }
 }
 
-fn roster_import_sweep_apply_occurrences_exit(root_dir: String, paths_csv: String, home: String, call: String, keys_file: String) -> ProcessExit {
+fn roster_import_sweep_apply_occurrences_exit(root_dir: String, paths_csv: String, home: String, row_key: String, call: String, keys_file: String) -> ProcessExit {
   let selection = roster_occurrence_selection(keys_file: keys_file)
   let report = match selection {
     RosterKeysRead { keys: ks } =>
-      roster_apply_occurrences(root_dir: root_dir, paths_csv: paths_csv, home: qualified_name_from_dotted_string(dotted: home), call: call, keys: ks)
+      roster_apply_occurrences(root_dir: root_dir, paths_csv: paths_csv, home: qualified_name_from_dotted_string(dotted: home), row_key: row_key, call: call, keys: ks)
     RosterKeysRefused { detail: _ } => roster_refuse_row(path: keys_file, reason: RefusalUnreadable)
   }
   if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
@@ -564,8 +570,8 @@ fn roster_trim(text: String) -> String {
 // apply lock), with OnlyOccurrences as the selection. The gate is derived from the scope at read time, so what the
 // admission instrument recomputes from the same scope byte-equals what this applied -- the gate is a property of the
 // scope, and the instrument recomputes from the scope.
-fn roster_apply_occurrences(root_dir: String, paths_csv: String, home: QualifiedName, call: String, keys: List<String>) -> String {
-  roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, home: home, rows: OnlyOccurrences { call: call, occurrences: keys })
+fn roster_apply_occurrences(root_dir: String, paths_csv: String, home: QualifiedName, row_key: String, call: String, keys: List<String>) -> String {
+  roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, home: home, rows: OnlyOccurrences { row: row_key, call: call, occurrences: keys })
 }
 
 // ONE HomeKindSide PER ROW, READ ONCE WHEN A RUN STARTS (v2.workflow.roster_home_kind roster_home_sides_read, one census read per home directory) and carried
@@ -605,11 +611,11 @@ fn roster_scope_selection_refusal_in(table: List<RosterHeadRow>, scope: RosterHo
         // The per-site grain checks the same row-selection facts as OnlyCall, PLUS that the selection carries keys at
         // all: an OnlyOccurrences with an empty key list would gate EVERY site of the call off, sweeping nothing while
         // reporting Clean -- an empty claim is a broken claim, refused before any read.
-        OnlyOccurrences { call: c, occurrences: os } =>
+        OnlyOccurrences { row: k, call: c, occurrences: os } =>
           if is_empty(xs: os) {
-            Present { value: RefusalScopeSelectsNoRow { home: roster_qn_text(qn: h), selection: "call=" + c + " occurrences=empty" } }
+            Present { value: RefusalScopeSelectsNoRow { home: roster_qn_text(qn: h), selection: "row=" + k + " call=" + c + " occurrences=empty" } }
           } else if is_empty(xs: selected) {
-            Present { value: RefusalScopeSelectsNoRow { home: roster_qn_text(qn: h), selection: "call=" + c } }
+            Present { value: RefusalScopeSelectsNoRow { home: roster_qn_text(qn: h), selection: "row=" + k + " call=" + c } }
           } else if length(xs: selected) > 1 {
             Present { value: RefusalScopeSelectsSeveralRows { home: roster_qn_text(qn: h), call: c, count: length(xs: selected) } }
           } else {
@@ -1416,6 +1422,7 @@ fn roster_site_starts(sites: List<ScopedReferenceSite>, spans: SpanIndex) -> Lis
 // the census.
 type RosterSiteGate {
   home: String
+  row_key: String
   call: String
   keys: List<String>
   path: String
@@ -1423,7 +1430,7 @@ type RosterSiteGate {
 }
 
 fn roster_gate_ungated() -> RosterSiteGate {
-  RosterSiteGate { home: "", call: "", keys: [], path: "", starts: [0] }
+  RosterSiteGate { home: "", row_key: "", call: "", keys: [], path: "", starts: [0] }
 }
 
 fn roster_gate_active(gate: RosterSiteGate) -> Bool {
@@ -1437,7 +1444,7 @@ fn roster_gate_for(gates: List<RosterSiteGate>, row: RosterHeadRow) -> RosterSit
   fold_list(xs: gates, empty: roster_gate_ungated(), cons: fn(acc, g) {
     if acc.call != "" {
       acc
-    } else if g.home == roster_qn_text(qn: row.home) && g.call == row.call {
+    } else if g.home == roster_qn_text(qn: row.home) && g.row_key == row.key {
       g
     } else {
       acc
@@ -1458,7 +1465,7 @@ fn roster_scope_gates(scope: RosterHomeScope, path: String, text: String) -> Lis
 
 fn roster_leg_gates(home: QualifiedName, rows: RosterRowSelection, path: String, text: String) -> List<RosterSiteGate> {
   match rows {
-    OnlyOccurrences { call: c, occurrences: os } => [RosterSiteGate { home: roster_qn_text(qn: home), call: c, keys: os, path: path, starts: roster_line_starts(text: text) }]
+    OnlyOccurrences { row: k, call: c, occurrences: os } => [RosterSiteGate { home: roster_qn_text(qn: home), row_key: k, call: c, keys: os, path: path, starts: roster_line_starts(text: text) }]
     EveryRowOfHome => []
     OnlyCall { call: _ } => []
   }
@@ -1502,7 +1509,7 @@ fn roster_gate_unmet(gates: List<RosterSiteGate>, candidates: List<RosterHeadRow
           Absent
         } else {
           let row_imported = fold_list(xs: candidates, empty: false, cons: fn(hit, row) {
-            hit || (row.call == g.call && roster_qn_text(qn: row.home) == g.home && roster_symbol_imported(imported: imported, row: row))
+            hit || (row.key == g.row_key && roster_qn_text(qn: row.home) == g.home && roster_symbol_imported(imported: imported, row: row))
           })
           roster_gate_keys_all_met(gate: g, sites: sites, spans: spans, already_imported: row_imported)
         }
@@ -2856,7 +2863,9 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-key-off-the-head-refuses",
     "occurrences-empty-key-list-refuses",
     "occurrences-byte-column-after-multibyte-text",
-    "occurrences-scalar-column-after-multibyte-text-refuses"
+    "occurrences-scalar-column-after-multibyte-text-refuses",
+    "occurrences-two-rows-one-call-each-scope-rewrites-only-its-own",
+    "occurrences-unknown-row-key-refuses"
   ]
 }
 
@@ -2930,7 +2939,7 @@ fn roster_rename_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRul
 // THE PER-SITE SELECTION (OnlyOccurrences), on one home. The fixture holds two free map_get sites, lines 6 and 7; a
 // census key names a site by `<path>:<line>:<byte column>`.
 fn roster_occ_gate(text: String, keys: List<String>) -> List<RosterSiteGate> {
-  [RosterSiteGate { home: "std.algebra", call: "map_get", keys: keys, path: "control/rename.dag", starts: roster_line_starts(text: text) }]
+  [RosterSiteGate { home: "std.algebra", row_key: "map_get", call: "map_get", keys: keys, path: "control/rename.dag", starts: roster_line_starts(text: text) }]
 }
 
 fn roster_occ_outcome(text: String, keys: List<String>, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
@@ -2968,20 +2977,62 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-key-off-the-head-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-key-off-the-head-refuses", text: src, keys: ["control/rename.dag:7:4"], key: "control/rename.dag:7:4", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-empty-key-list-refuses", fail: roster_occ_empty_control()),
     roster_control_verdict(name: "occurrences-byte-column-after-multibyte-text", fail: roster_occ_expect_text(name: "occurrences-byte-column-after-multibyte-text", before: wide, keys: ["control/rename.dag:6:21"], after: wide_after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "occurrences-two-rows-one-call-each-scope-rewrites-only-its-own", fail: roster_occ_two_rows_control(prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "occurrences-unknown-row-key-refuses", fail: roster_occ_unknown_row_control()),
     roster_control_verdict(name: "occurrences-scalar-column-after-multibyte-text-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-scalar-column-after-multibyte-text-refuses", text: wide, keys: ["control/rename.dag:6:17"], key: "control/rename.dag:6:17", prepared: prepared, lex: lex))
   ]
 }
 
 fn roster_occ_empty_control() -> String {
-  match roster_scope_selection_refusal_in(table: roster_rename_production_row(), scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { call: "map_get", occurrences: [] } }) {
-    Present { value: r } => if roster_refusal_text(reason: r) == "scope-selects-no-row home=std.algebra call=map_get occurrences=empty" { "" } else { "CONTROL-FAIL occurrences-empty-key-list-refuses: refused " + roster_refusal_text(reason: r) + "\n" }
+  match roster_scope_selection_refusal_in(table: roster_rename_production_row(), scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { row: "map_get", call: "map_get", occurrences: [] } }) {
+    Present { value: r } => if roster_refusal_text(reason: r) == "scope-selects-no-row home=std.algebra row=map_get call=map_get occurrences=empty" { "" } else { "CONTROL-FAIL occurrences-empty-key-list-refuses: refused " + roster_refusal_text(reason: r) + "\n" }
     Absent => "CONTROL-FAIL occurrences-empty-key-list-refuses: an empty key list was admitted\n"
+  }
+}
+
+// ROW IDENTITY, NOT (home, call): two rows over ONE (home, call) -- the shape std.algebra sort_by has (a Symbol-order and a
+// String-order row) -- are told apart by their declared keys, and each scope rewrites only its own occurrences. The rows
+// here rename to different targets so the output names which row acted.
+fn roster_occ_twin_rows() -> List<RosterHeadRow> {
+  let algebra = qualified_name_from_dotted_string(dotted: "std.algebra")
+  [
+    RosterHeadRow { call: "map_get", key: "map_get/first", import_name: "map_lookup", home: algebra, labels: [], head: RenameHead { to: "map_lookup", positional: ["m", "key"], appended: [] } },
+    RosterHeadRow { call: "map_get", key: "map_get/second", import_name: "map_probe", home: algebra, labels: [], head: RenameHead { to: "map_probe", positional: ["m", "key"], appended: [] } }
+  ]
+}
+
+fn roster_occ_twin_outcome(row_key: String, keys: List<String>, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+  let rows = roster_occ_twin_rows()
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { row: row_key, call: "map_get", occurrences: keys } }
+  roster_sweep_text_gate(sides: roster_home_sides(rows: rows), companions: [], path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: roster_rows_for_scope_in(table: rows, scope: scope), closures: roster_control_closures(), gates: roster_scope_gates(scope: scope, path: "control/rename.dag", text: text))
+}
+
+fn roster_occ_two_rows_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let before = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  let a = map_get(m, k)\n  map_get(m, k)\n}\n"
+  let first = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  let a = map_get(m, k)\n  map_lookup(m: m, key: k)\n}\n"
+  let second = "module c.rename\n\nimport std.algebra { Cons, map_probe }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  let a = map_probe(m: m, key: k)\n  map_get(m, k)\n}\n"
+  let scope_a = match roster_applied(before: before, outcome: roster_occ_twin_outcome(row_key: "map_get/first", keys: ["control/rename.dag:7:3"], text: before, prepared: prepared, lex: lex)) {
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL occurrences-two-rows: first row refused " + roster_refusal_text(reason: r) + "\n"
+    RosterApplyWritten { content: c } => if c == first { "" } else { "CONTROL-FAIL occurrences-two-rows: first row wrote " + c + "\n" }
+  }
+  let scope_b = match roster_applied(before: before, outcome: roster_occ_twin_outcome(row_key: "map_get/second", keys: ["control/rename.dag:6:11"], text: before, prepared: prepared, lex: lex)) {
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL occurrences-two-rows: second row refused " + roster_refusal_text(reason: r) + "\n"
+    RosterApplyWritten { content: c } => if c == second { "" } else { "CONTROL-FAIL occurrences-two-rows: second row wrote " + c + "\n" }
+  }
+  scope_a + scope_b
+}
+
+fn roster_occ_unknown_row_control() -> String {
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { row: "map_get/third", call: "map_get", occurrences: ["control/rename.dag:7:3"] } }
+  match roster_scope_selection_refusal_in(table: roster_occ_twin_rows(), scope: scope) {
+    Present { value: r } => if roster_refusal_text(reason: r) == "scope-selects-no-row home=std.algebra row=map_get/third call=map_get" { "" } else { "CONTROL-FAIL occurrences-unknown-row-key-refuses: refused " + roster_refusal_text(reason: r) + "\n" }
+    Absent => "CONTROL-FAIL occurrences-unknown-row-key-refuses: an unknown row key was admitted\n"
   }
 }
 
 // AN UNDERIVABLE COMPANION REFUSES THE FILE IT WOULD GOVERN: a rename row whose callee the home does not declare.
 fn roster_companion_underivable_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  let ghost = [RosterHeadRow { call: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup", positional: ["m", "key"], appended: [] } }]
+  let ghost = [RosterHeadRow { call: "map_get", key: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup", positional: ["m", "key"], appended: [] } }]
   let companions = roster_rename_companions(rows: ghost, prepared: prepared, lex: lex)
   let text = "module c.rename\n\nimport std.algebra { Cons, no_such_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  match no_such_lookup(m: m, key: k) {\n    Present { value: _ } => true\n    Absent => false\n  }\n}\n"
   match roster_sweep_text_rows(sides: roster_home_sides(rows: ghost), companions: companions, path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: ghost, closures: roster_control_closures()) {
@@ -3393,7 +3444,7 @@ fn roster_control_row_scope(prepared: PreparedGrammar, lex: PreparedLexRules) ->
 // precedes the lock. The positive control is the same entry with a selecting call reaching the files.
 fn roster_control_scope_selects_its_row() -> String {
   let algebra = qualified_name_from_dotted_string(dotted: "std.algebra")
-  let count_row = RosterHeadRow { call: "count", import_name: "collection_count_shape", home: algebra, labels: [], head: KeepHead }
+  let count_row = RosterHeadRow { call: "count", key: "count", import_name: "collection_count_shape", home: algebra, labels: [], head: KeepHead }
   roster_scope_exit_refuses(name: "misspelled-call", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.algebra", call: "cuont"), refusal: RefusalScopeSelectsNoRow { home: "std.algebra", selection: "call=cuont" })
     + roster_scope_exit_refuses(name: "wrong-home", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.host_text", call: "count"), refusal: RefusalScopeSelectsNoRow { home: "std.host_text", selection: "call=count" })
     + roster_scope_exit_refuses(name: "unknown-home", exit: roster_import_sweep_home_exit(paths_csv: "control/none.dag", home: "std.no_such_home"), refusal: RefusalScopeSelectsNoRow { home: "std.no_such_home", selection: "every-row" })
@@ -3646,17 +3697,17 @@ fn roster_kind_specimen_aliased_type() -> String {
 }
 
 fn roster_kind_unclassified_row() -> RosterHeadRow {
-  RosterHeadRow { call: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.no_such_home"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "List", key: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.no_such_home"), labels: [], head: KeepHead }
 }
 
 // The real Wave 2 row: List at std.types, an aliased type the census now reads as TypeItem.
 fn roster_kind_wave_two_list_row() -> RosterHeadRow {
-  RosterHeadRow { call: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "List", key: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [], head: KeepHead }
 }
 
 // The identical row over a census-classified type home: only `home` differs, which is the whole point.
 fn roster_kind_classified_flipped_row() -> RosterHeadRow {
-  RosterHeadRow { call: "List", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "List", key: "List", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
 }
 
 fn roster_kind_unclassified_control(name: String, text: String, row: RosterHeadRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
@@ -3705,7 +3756,7 @@ fn roster_kind_specimen_data_in_type() -> String {
 // census keys NO row at all for that qualified name (measured kinds=[]): a census coverage gap, reported to the manager
 // as a defect, not absorbed. A control may not assert through an unkeyed census; it would measure the census's silence.
 fn roster_kind_data_row() -> RosterHeadRow {
-  RosterHeadRow { call: "kernel_algebra_profile", import_name: "kernel_algebra_profile", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "kernel_algebra_profile", key: "kernel_algebra_profile", import_name: "kernel_algebra_profile", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
 }
 
 // THE #14338 SPECIMEN ITSELF, as a position control: `fn u(chars: fn(String) -> Int, x: String) -> Int { chars(s: x) }`.
@@ -3719,7 +3770,7 @@ fn roster_kind_specimen_called_parameter() -> String {
 // THE TWO ROWS THE CONTROLS USE, defined once so the premise control and the specimens cannot drift onto different
 // declarations. Built at the same boundary the real rows are: the dotted home is read into a QualifiedName.
 fn roster_kind_type_row() -> RosterHeadRow {
-  RosterHeadRow { call: "FreeMonoid", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "FreeMonoid", key: "FreeMonoid", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
 }
 
 // THE HOME-DIRECTORY POOL PAIR (Seat 7). The home kind is read from the home module's own storage directory, so a name
@@ -3728,15 +3779,15 @@ fn roster_kind_type_row() -> RosterHeadRow {
 // counts 1. std.roster_seat7_absent_home derives dag/std/roster_seat7_absent_home.dag, whose directory holds no chars of
 // that module (chars is std.host_text's); std.9underivable derives no file at all, so its pool is empty.
 fn roster_kind_out_of_home_row() -> RosterHeadRow {
-  RosterHeadRow { call: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.roster_seat7_absent_home"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "chars", key: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.roster_seat7_absent_home"), labels: [], head: KeepHead }
 }
 
 fn roster_kind_underivable_home_row() -> RosterHeadRow {
-  RosterHeadRow { call: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.9underivable"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "chars", key: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.9underivable"), labels: [], head: KeepHead }
 }
 
 fn roster_kind_value_row() -> RosterHeadRow {
-  RosterHeadRow { call: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.host_text"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "chars", key: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.host_text"), labels: [], head: KeepHead }
 }
 
 // THE SPECIMEN'S RECORDED SITES, through the same three front-end steps roster_sweep_text_scoped runs (tokenize, parse,
