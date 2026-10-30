@@ -3350,7 +3350,7 @@ fn roster_control_closures() -> List<RosterHomeClosure> {
   ]
 }
 
-fn roster_controls_report() -> String {
+fn roster_controls_group_a() -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
     Accepted { value: prepared, diagnostics: _ } =>
@@ -3362,7 +3362,19 @@ fn roster_controls_report() -> String {
         + roster_control_no_import_anchor(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_import_closes_cycle(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_closure_inhabited()
-        + roster_control_row_scope(prepared: prepared, lex: dag_prepared_lex())
+  }
+}
+
+fn roster_import_sweep_controls_group_a_exit() -> ProcessExit {
+  let report = roster_controls_group_a()
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+fn roster_controls_group_b() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      roster_control_row_scope(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_scope_selects_its_row()
         + roster_home_exact_file_control()
         + roster_control_apply_needs_one_home()
@@ -3370,7 +3382,19 @@ fn roster_controls_report() -> String {
         + roster_control_label_method_spelling(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_imported_qualified_tag(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_unbound_qualified_tag(prepared: prepared, lex: dag_prepared_lex())
-        + roster_control_d4_value_call_positive(prepared: prepared, lex: dag_prepared_lex())
+  }
+}
+
+fn roster_import_sweep_controls_group_b_exit() -> ProcessExit {
+  let report = roster_controls_group_b()
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+fn roster_controls_group_c() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      roster_control_d4_value_call_positive(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_free_call_beside_param(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_free_call_after_param(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_nested_call_beside_param(prepared: prepared, lex: dag_prepared_lex())
@@ -3382,14 +3406,48 @@ fn roster_controls_report() -> String {
         + roster_control_nested_call_label(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_sites_disagree(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_pass2_clean(prepared: prepared, lex: dag_prepared_lex())
-        + roster_kind_controls(prepared: prepared, lex: dag_prepared_lex())
+  }
+}
+
+fn roster_import_sweep_controls_group_c_exit() -> ProcessExit {
+  let report = roster_controls_group_c()
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+fn roster_controls_group_d() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      roster_kind_controls(prepared: prepared, lex: dag_prepared_lex())
         + roster_rename_controls_counted(prepared: prepared, lex: dag_prepared_lex())
-        + roster_control_positional_past_unreadable()
+  }
+}
+
+fn roster_import_sweep_controls_group_d_exit() -> ProcessExit {
+  let report = roster_controls_group_d()
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+fn roster_controls_group_e() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      roster_control_positional_past_unreadable()
         + roster_control_edit_splices()
         + roster_control_generation()
         + roster_control_status_names()
         + roster_control_ancestor()
   }
+}
+
+fn roster_import_sweep_controls_group_e_exit() -> ProcessExit {
+  let report = roster_controls_group_e()
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+// The whole control set is the concatenation of its groups; each group has its own bounded entry (roster_import_sweep_controls_group_<a-e>_exit).
+fn roster_controls_report() -> String {
+  roster_controls_group_a() + roster_controls_group_b() + roster_controls_group_c() + roster_controls_group_d() + roster_controls_group_e()
 }
 
 // THE RENAME ROW'S CONTROLS, over the PRODUCTION map_get row (never a copy of it), so a change to the row is measured.
