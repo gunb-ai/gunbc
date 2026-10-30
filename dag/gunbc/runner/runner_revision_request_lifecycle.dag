@@ -119,6 +119,7 @@ fn revision_request_settle_transition(current: RevisionRequestResponsibility, ge
 
 // Frontier: production acceptance continues retaining the slot forever until
 // the store owner wires this model to its CAS/readback and the worker reaches
-// revision_job_run with an abstract launch authority. That authority's mint must
-// consume select_authorization_pattern; the operator has not selected its
-// approval regime. No API-key or pure transition value authorizes a launch.
+// revision_job_run with owned launch authority. The standing ruling is selected
+// through revision_request_select_launch; the installed provider binding and
+// terminal stop/cleanup readback remain unfinished. No API-key or pure
+// transition value authorizes a launch.
