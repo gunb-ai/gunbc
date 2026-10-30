@@ -2919,7 +2919,7 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-key-off-the-head-refuses",
     "occurrences-empty-key-list-refuses",
     "appended-argument-symbol-order",
-    "appended-argument-string-order", "appended-argument-int-order",
+    "appended-argument-string-order", "appended-argument-int-order", "appended-argument-digest-order",
     "sort-by-undeclared-order-refuses",
     "occurrences-byte-column-after-multibyte-text",
     "occurrences-scalar-column-after-multibyte-text-refuses",
@@ -3041,9 +3041,10 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-byte-column-after-multibyte-text", fail: roster_occ_expect_text(name: "occurrences-byte-column-after-multibyte-text", before: wide, keys: ["control/rename.dag:6:21"], after: wide_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-two-rows-one-call-each-scope-rewrites-only-its-own", fail: roster_occ_two_rows_control(prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-unknown-row-key-refuses", fail: roster_occ_unknown_row_control()),
-    roster_control_verdict(name: "appended-argument-symbol-order", fail: roster_sort_expect(name: "appended-argument-symbol-order", row_key: "sort_by/symbol", order: "symbol_total_order()", prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "appended-argument-string-order", fail: roster_sort_expect(name: "appended-argument-string-order", row_key: "sort_by/string", order: "string_total_order()", prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "appended-argument-int-order", fail: roster_sort_expect(name: "appended-argument-int-order", row_key: "sort_by/int", order: "int_total_order()", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "appended-argument-symbol-order", fail: roster_sort_expect(name: "appended-argument-symbol-order", row_key: "sort_by/symbol", elem: "Symbol", order: "symbol_total_order()", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "appended-argument-string-order", fail: roster_sort_expect(name: "appended-argument-string-order", row_key: "sort_by/string", elem: "String", order: "string_total_order()", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "appended-argument-int-order", fail: roster_sort_expect(name: "appended-argument-int-order", row_key: "sort_by/int", elem: "Int", order: "int_total_order()", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "appended-argument-digest-order", fail: roster_sort_expect(name: "appended-argument-digest-order", row_key: "sort_by/digest_hex", elem: "Fnv1a64StructuralDigestHex", order: "fnv1a64_digest_hex_total_order()", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "sort-by-undeclared-order-refuses", fail: roster_sort_undeclared_order_control()),
     roster_control_verdict(name: "occurrences-scalar-column-after-multibyte-text-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-scalar-column-after-multibyte-text-refuses", text: wide, keys: ["control/rename.dag:6:17"], key: "control/rename.dag:6:17", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-key-on-a-bound-site-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-key-on-a-bound-site-refuses", text: bound, keys: ["control/rename.dag:7:3"], key: "control/rename.dag:7:3", prepared: prepared, lex: lex)),
@@ -3125,9 +3126,9 @@ fn roster_sort_outcome(row_key: String, keys: List<String>, text: String, prepar
   roster_sweep_text_gate(sides: roster_home_sides(rows: rows), companions: [], path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: roster_rows_for_scope_in(table: rows, scope: scope), closures: roster_control_closures(), gates: roster_scope_gates(scope: scope, path: "control/rename.dag", text: text))
 }
 
-fn roster_sort_expect(name: String, row_key: String, order: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  let before = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(xs: List<Symbol>) -> List<Symbol> {\n  let a = sort_by(xs, fn(s) { s })\n  sort_by(xs, fn(s) { s })\n}\n"
-  let after = "module c.rename\n\nimport std.algebra { Cons, list_sort_by_key }\n\nfn f(xs: List<Symbol>) -> List<Symbol> {\n  let a = sort_by(xs, fn(s) { s })\n  list_sort_by_key(xs: xs, key: fn(s) { s }, order: " + order + ")\n}\n"
+fn roster_sort_expect(name: String, row_key: String, elem: String, order: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let before = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(xs: List<" + elem + ">) -> List<" + elem + "> {\n  let a = sort_by(xs, fn(s) { s })\n  sort_by(xs, fn(s) { s })\n}\n"
+  let after = "module c.rename\n\nimport std.algebra { Cons, list_sort_by_key }\n\nfn f(xs: List<" + elem + ">) -> List<" + elem + "> {\n  let a = sort_by(xs, fn(s) { s })\n  list_sort_by_key(xs: xs, key: fn(s) { s }, order: " + order + ")\n}\n"
   match roster_applied(before: before, outcome: roster_sort_outcome(row_key: row_key, keys: ["control/rename.dag:7:3"], text: before, prepared: prepared, lex: lex)) {
     RosterApplyRefused { reason: r } => "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n"
     RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL " + name + ": wrote unexpected text: " + c + "\n" }
