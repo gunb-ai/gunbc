@@ -1,0 +1,238 @@
+module gunbc.roadmap.roadmap_belt_attempt_store_root
+
+import std.algebra { trim }
+import std.types { String, NonEmptyStr, List }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  FilesystemEntryNameAdmitted, FilesystemEntryNameRefused,
+  FilesystemReadSucceeded, FilesystemReadRefused,
+  filesystem_listing_observation, filesystem_read_outcome, filesystem_listing_names_entry, admit_filesystem_entry_name,
+}
+import gunbc.roadmap.roadmap_belt_receipt_store_root { BeltReceiptWrite, BeltReceiptWritten, BeltReceiptWriteRefused, belt_receipt_write }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, host_exec_argv, dispatch_capability_program }
+import gunbc.roadmap.roadmap_execution_contract { AttemptStateDirectoryCapability }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_submission { submission_capture_basename }
+
+// THE BELT'S PER-ATTEMPT RECORD STORES (the submission capture records, the capture intent and the integration
+// receipts). Each is a directory under the attempt's own state directory, named by a member declaration
+// below, so the three stores share the attempt directory as a parent and no two share an entry: the
+// intent's directory is a sibling of the capture directory, never inside it. Sealed in place with NO format
+// change (ruling stern-ram-763 2026-10-24, plain-file stores): the file names and bytes are what the belt
+// wrote before the seal. Moving the format onto SlotStore is each store's FormatConsolidation follow-up.
+//
+// THESE DIRECTORIES ARE NOT DEPLOY MEMBERS, and so have no owned-directory row. An attempt is minted at
+// runtime, long after any apply, so a deploy member could only create directories that do not exist yet
+// (gunbc.roadmap.roadmap_dispatch_actuator, the publication directory note). The creator is the belt's own
+// `install -d` at use: attempts dispatched before this lane existed have no such subdirectory, and install -d
+// is idempotent, so ensuring keeps the old population legible (absence established by a successful listing)
+// instead of refused. The ensure's argv is derived here from the same declaration as the mint
+// (belt_*_store_ensure_argv), so the creator and the store can never name different directories. The ensure
+// runs in the belt, which owns the exec primitive (a leaf cannot import it without a cycle), and the mint
+// then lists: a directory the ensure did not create is Unready, never read as empty.
+type BeltAttemptMemberDeclaration { member: NonEmptyStr }
+
+data belt_submission_store_slots: BeltAttemptMemberDeclaration = BeltAttemptMemberDeclaration { member: "submissions" as NonEmptyStr }
+data belt_capture_intent_store_slots: BeltAttemptMemberDeclaration = BeltAttemptMemberDeclaration { member: "submissions-intent" as NonEmptyStr }
+data belt_integration_store_slots: BeltAttemptMemberDeclaration = BeltAttemptMemberDeclaration { member: "integration" as NonEmptyStr }
+
+data belt_capture_intent_entry_name: NonEmptyStr = "intent.json" as NonEmptyStr
+
+fn belt_attempt_member_path(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, member: NonEmptyStr) -> String {
+  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", member as String], "")
+}
+
+fn belt_attempt_member_ensure_argv(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, member: NonEmptyStr) -> HostExecArgv {
+  host_exec_argv(
+    program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
+    args: ["-d", "-m", "0700", belt_attempt_member_path(instance: instance, node_id: node_id, attempt_key: attempt_key, member: member)],
+  )
+}
+
+fn belt_submission_store_ensure_argv(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> HostExecArgv {
+  belt_attempt_member_ensure_argv(instance: instance, node_id: node_id, attempt_key: attempt_key, member: belt_submission_store_slots.member)
+}
+
+fn belt_capture_intent_store_ensure_argv(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> HostExecArgv {
+  belt_attempt_member_ensure_argv(instance: instance, node_id: node_id, attempt_key: attempt_key, member: belt_capture_intent_store_slots.member)
+}
+
+fn belt_integration_store_ensure_argv(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> HostExecArgv {
+  belt_attempt_member_ensure_argv(instance: instance, node_id: node_id, attempt_key: attempt_key, member: belt_integration_store_slots.member)
+}
+
+// THE THREE STORES, SEALED VALUES MINTED FROM THEIR DECLARATIONS. Each holds data only: the root derived from
+// the declaration and the attempt it was minted for. sole_constructor, non-generic and never a variant arm
+// (test.claim.sole_constructor_completeness_audit_probe f13). Field reads are not sealed (gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module); what is sealed is construction.
+type BeltSubmissionStore sole_constructor {
+  node: NonEmptyStr
+  attempt: NonEmptyStr
+  root: NonEmptyStr
+}
+
+type BeltCaptureIntentStore sole_constructor {
+  node: NonEmptyStr
+  attempt: NonEmptyStr
+  root: NonEmptyStr
+}
+
+type BeltIntegrationStore sole_constructor {
+  node: NonEmptyStr
+  attempt: NonEmptyStr
+  root: NonEmptyStr
+}
+
+type BeltSubmissionStoreReading
+  = BeltSubmissionStoreReady { store: BeltSubmissionStore }
+  | BeltSubmissionStoreUnready { detail: String }
+
+type BeltCaptureIntentStoreReading
+  = BeltCaptureIntentStoreReady { store: BeltCaptureIntentStore }
+  | BeltCaptureIntentStoreUnready { detail: String }
+
+type BeltIntegrationStoreReading
+  = BeltIntegrationStoreReady { store: BeltIntegrationStore }
+  | BeltIntegrationStoreUnready { detail: String }
+
+type BeltAttemptRootReading
+  = BeltAttemptRootListed
+  | BeltAttemptRootUnlistable { detail: String }
+
+fn belt_attempt_root_reading(root: String, what: String) -> BeltAttemptRootReading {
+  let listed = Filesystem.List(path: root)
+  match filesystem_listing_observation(directory: root, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+      BeltAttemptRootUnlistable { detail: join([what, " directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } =>
+      BeltAttemptRootUnlistable { detail: join([what, " directory could not be listed: ", root, " (", e, ")"], "") }
+    FilesystemDirectoryListed(_) => BeltAttemptRootListed
+  }
+}
+
+// THE MINTS. Each takes the instance and the attempt's business key (node, attempt) and never a path.
+fn belt_submission_store(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> BeltSubmissionStoreReading {
+  let root = belt_attempt_member_path(instance: instance, node_id: node_id, attempt_key: attempt_key, member: belt_submission_store_slots.member)
+  match belt_attempt_root_reading(root: root, what: "the submission capture") {
+    BeltAttemptRootUnlistable { detail } => BeltSubmissionStoreUnready { detail: detail }
+    BeltAttemptRootListed =>
+      BeltSubmissionStoreReady { store: BeltSubmissionStore { node: node_id as String as NonEmptyStr, attempt: attempt_key as NonEmptyStr, root: root as NonEmptyStr } }
+  }
+}
+
+fn belt_capture_intent_store(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> BeltCaptureIntentStoreReading {
+  let root = belt_attempt_member_path(instance: instance, node_id: node_id, attempt_key: attempt_key, member: belt_capture_intent_store_slots.member)
+  match belt_attempt_root_reading(root: root, what: "the capture intent") {
+    BeltAttemptRootUnlistable { detail } => BeltCaptureIntentStoreUnready { detail: detail }
+    BeltAttemptRootListed =>
+      BeltCaptureIntentStoreReady { store: BeltCaptureIntentStore { node: node_id as String as NonEmptyStr, attempt: attempt_key as NonEmptyStr, root: root as NonEmptyStr } }
+  }
+}
+
+fn belt_integration_store(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> BeltIntegrationStoreReading {
+  let root = belt_attempt_member_path(instance: instance, node_id: node_id, attempt_key: attempt_key, member: belt_integration_store_slots.member)
+  match belt_attempt_root_reading(root: root, what: "the integration receipt") {
+    BeltAttemptRootUnlistable { detail } => BeltIntegrationStoreUnready { detail: detail }
+    BeltAttemptRootListed =>
+      BeltIntegrationStoreReady { store: BeltIntegrationStore { node: node_id as String as NonEmptyStr, attempt: attempt_key as NonEmptyStr, root: root as NonEmptyStr } }
+  }
+}
+
+// THE ENTRY READ ONE OF THESE STORES SHARES: absence is established by a successful listing, a listed entry
+// that cannot be read is unreadable, and the host's words are kept. The record's own meaning (does it decode,
+// does it name this head) is the belt's.
+type BeltAttemptEntryReading
+  = BeltAttemptEntryRead { content: String }
+  | BeltAttemptEntryAbsent
+  | BeltAttemptEntryUnreadable { detail: String }
+
+fn belt_attempt_entry_reading(root: String, name: String, what: String) -> BeltAttemptEntryReading {
+  let listing = Filesystem.List(path: root)
+  if !listing.success {
+    BeltAttemptEntryUnreadable { detail: join([what, " directory could not be listed: ", root, " (", listing.error, ")"], "") }
+  } else if !filesystem_listing_names_entry(listing: listing.entries, name: name) {
+    BeltAttemptEntryAbsent
+  } else {
+    let read = Filesystem.Read(path: join([root, "/", name], ""))
+    match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+      FilesystemReadRefused { error } => BeltAttemptEntryUnreadable { detail: join([what, " was listed and then could not be read: ", error], "") }
+      FilesystemReadSucceeded { content } => BeltAttemptEntryRead { content: content }
+    }
+  }
+}
+
+// ── THE SUBMISSION CAPTURE STORE ───────────────────────────────────────────────────────────────────
+// The roster read lists the directory and reads every entry the listing names, in listing order, so the
+// belt's fold refuses at the same entry the pre-seal read refused at. An entry name the filesystem would not
+// admit as a child of the root is refused as a read, never resolved outside the root.
+type BeltCaptureRosterEntry
+  = BeltCaptureRosterEntryRead { name: String, content: String }
+  | BeltCaptureRosterEntryUnreadable { name: String, error: String }
+
+type BeltCaptureRosterReading
+  = BeltCaptureRosterListed { entries: List<BeltCaptureRosterEntry> }
+  | BeltCaptureRosterUnlistable { detail: String }
+
+fn belt_submission_store_roster(store: BeltSubmissionStore) -> BeltCaptureRosterReading {
+  let listing = Filesystem.List(path: store.root as String)
+  if !listing.success {
+    BeltCaptureRosterUnlistable {
+      detail: join(["the submission capture directory could not be listed, so the capture history is unknown: ", store.root as String, " (", listing.error, ")"], ""),
+    }
+  } else {
+    BeltCaptureRosterListed {
+      entries: split(s: listing.entries, delimiter: "\n") |> filter(e => trim(e) != "") |> map(entry => {
+        let name = trim(entry)
+        match admit_filesystem_entry_name(name: name) {
+          FilesystemEntryNameRefused { name: _, cause: c } => BeltCaptureRosterEntryUnreadable { name: name, error: c }
+          FilesystemEntryNameAdmitted(_) => {
+            let read = Filesystem.Read(path: join([store.root as String, "/", name], ""))
+            match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+              FilesystemReadRefused { error } => BeltCaptureRosterEntryUnreadable { name: name, error: error }
+              FilesystemReadSucceeded { content } => BeltCaptureRosterEntryRead { name: name, content: content }
+            }
+          }
+        }
+      }),
+    }
+  }
+}
+
+fn belt_submission_store_observe_head(store: BeltSubmissionStore, head_sha: String) -> BeltAttemptEntryReading {
+  belt_attempt_entry_reading(root: store.root as String, name: submission_capture_basename(head_sha: head_sha), what: "the submission capture for this head")
+}
+
+fn belt_submission_store_put_head(store: BeltSubmissionStore, head_sha: String, content: String) -> BeltReceiptWrite {
+  belt_receipt_write(path: join([store.root as String, "/", submission_capture_basename(head_sha: head_sha)], ""), content: content)
+}
+
+// ── THE CAPTURE INTENT STORE ───────────────────────────────────────────────────────────────────────
+type BeltCaptureIntentClear
+  = BeltCaptureIntentCleared
+  | BeltCaptureIntentClearRefused { error: String }
+
+fn belt_capture_intent_store_observe(store: BeltCaptureIntentStore) -> BeltAttemptEntryReading {
+  belt_attempt_entry_reading(root: store.root as String, name: belt_capture_intent_entry_name as String, what: "the capture intent")
+}
+
+fn belt_capture_intent_store_put(store: BeltCaptureIntentStore, content: String) -> BeltReceiptWrite {
+  belt_receipt_write(path: join([store.root as String, "/", belt_capture_intent_entry_name as String], ""), content: content)
+}
+
+fn belt_capture_intent_store_clear(store: BeltCaptureIntentStore) -> BeltCaptureIntentClear {
+  let gone = Filesystem.Delete(path: join([store.root as String, "/", belt_capture_intent_entry_name as String], ""))
+  if gone.success { BeltCaptureIntentCleared } else { BeltCaptureIntentClearRefused { error: gone.error } }
+}
+
+// ── THE INTEGRATION RECEIPT STORE ──────────────────────────────────────────────────────────────────
+// One receipt per head, named <head_sha>.json.
+fn belt_integration_store_observe_head(store: BeltIntegrationStore, head_sha: String) -> BeltAttemptEntryReading {
+  belt_attempt_entry_reading(root: store.root as String, name: join([head_sha, ".json"], ""), what: "the integration receipt for this head")
+}
+
+fn belt_integration_store_put_head(store: BeltIntegrationStore, head_sha: String, content: String) -> BeltReceiptWrite {
+  belt_receipt_write(path: join([store.root as String, "/", head_sha, ".json"], ""), content: content)
+}
