@@ -19,13 +19,7 @@ import std.occurrence_identity {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.content_hash {
-  ContentHash,
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_combine_structural,
-  as_content_hash_structural,
-}
+import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, as_content_hash_structural, fnv1a64_digest_hex_total_order }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -3174,7 +3168,7 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
 
 fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
   fold(
-    sort_by(xs, fn(h) { h.digest }),
+    list_sort_by_key(xs: xs, key: fn(h) { h.digest }, order: fnv1a64_digest_hex_total_order()),
     init: empty,
     f: fn(acc, h) {
       combine_hash(a: acc, b: h)
