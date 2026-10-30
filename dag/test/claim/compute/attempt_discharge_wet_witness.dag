@@ -849,6 +849,20 @@ test fn a_released_hold_does_not_refuse_the_lease_mint() -> Bool {
   ok && removed.success
 }
 
+// THE LEGACY SCREEN IS THE HOLD LIBRARY'S OWN SLOT-NAME GRAMMAR ("<key>.<generation>"), not "has no dot". A plain
+// file whose name carries a dot but no numeric generation suffix is NOT a hold, so the mint refuses it.
+test fn a_dotted_legacy_lease_without_a_generation_suffix_refuses_the_mint() -> Bool {
+  let root = fresh_root()
+  let ok = made(path: lease_dir_at(root: root))
+    && Filesystem.Write(path: join([lease_dir_at(root: root), "/feedface.legacy"], ""), content: "deadbeef 1800\n").success
+    && match leases_reading_at(root: root) {
+      ComputeProducerLeasesUnready { detail: d } => string_contains(s: d, pattern: "legacy plain-file lease") && string_contains(s: d, pattern: "feedface.legacy")
+      ComputeProducerLeasesReady { leases: _ } => false
+    }
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
 // A HELD LEASE REFUSES A SECOND PRODUCER AND NAMES THE HOLDER, owner text (with its newlines) round-tripping the hold codec.
 test fn a_held_lease_refuses_a_second_producer_and_names_the_holder() -> Bool {
   let root = fresh_root()

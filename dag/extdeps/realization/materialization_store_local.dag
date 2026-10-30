@@ -376,17 +376,6 @@ fn store_read_observation(read: FilesystemExactRead) -> StoreObjectRead {
   }
 }
 
-fn store_publish_observation(create: FilesystemCreateNew) -> StoreObjectPublish {
-  match create {
-    FilesystemCreated { path: _ } => StoreObjectPublished
-    FilesystemCreateTargetOccupied { path: _ } => StoreObjectOccupied
-    FilesystemCreateRefused { path: p, kind: k, error: e } =>
-      StoreObjectPublishRefused { fault: filesystem_fault(kind: k, error: concat(p, ": ", e)) }
-    FilesystemCreateKindUnrecognized { path: p, observed: o, error: e } =>
-      StoreObjectPublishRefused { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: join([p, ": unrecognized error_kind ", o, ": ", e], "") } }
-  }
-}
-
 // ---------------------------------------------------------------------------------------------
 // Open.
 
@@ -523,10 +512,17 @@ fn local_store_read(root: MaterializationStoreRoot, name: String) -> FilesystemE
   filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind)
 }
 
-fn local_store_create_new(root: MaterializationStoreRoot, name: String, content: String) -> FilesystemCreateNew {
+fn local_store_create_new(root: MaterializationStoreRoot, name: String, content: String) -> StoreObjectPublish {
   let path = store_path(root_path: materialization_store_root_path(root: root), name: name)
   let w = Filesystem.WriteCreateNew(path: path, content: content)
-  filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind)
+  match filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind) {
+    FilesystemCreated { path: _ } => StoreObjectPublished
+    FilesystemCreateTargetOccupied { path: _ } => StoreObjectOccupied
+    FilesystemCreateRefused { path: p, kind: k, error: e } =>
+      StoreObjectPublishRefused { fault: filesystem_fault(kind: k, error: concat(p, ": ", e)) }
+    FilesystemCreateKindUnrecognized { path: p, observed: o, error: e } =>
+      StoreObjectPublishRefused { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: join([p, ": unrecognized error_kind ", o, ": ", e], "") } }
+  }
 }
 
 fn local_store_open(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreOpening {
@@ -568,11 +564,11 @@ fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmp
       if !store_marker_catalog_admissible(budgets: budgets) || !store_marker_label_admissible(instance_label: instance_label) {
         LocalStoreInitializationRefused { root_path: root_path, cause: LocalStoreCatalogInadmissible { detail: "the catalog must name each family once with a supported capacity policy; the instance label must be one line" } }
       } else {
-      match store_publish_observation(create: local_store_create_new(
+      match local_store_create_new(
         root: root,
         name: materialization_store_marker_name,
         content: store_marker_content(root: root, instance_label: instance_label, budgets: budgets)
-      )) {
+      ) {
         StoreObjectPublishRefused { fault: f } =>
           LocalStoreInitializationRefused { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: f } }
         StoreObjectPublished => LocalStoreInitialized { opening: local_store_open(root: root, budgets: budgets) }
@@ -878,7 +874,7 @@ type LocalStoreRetentionRefusal
   | LocalStoreRetentionHoldRefused { refusal: LocalStoreHoldRefusal }
   | LocalStoreRetentionBindingMismatch { path: String, expected: NonEmptyStr, observed: String }
   | LocalStoreRetentionBindingReadUnavailable { reading: FilesystemExactRead }
-  | LocalStoreRetentionBindingCreateUnavailable { creation: FilesystemCreateNew }
+  | LocalStoreRetentionBindingCreateUnavailable { fault: StoreFault }
   | LocalStoreRetentionRootsRefused { roots: List<ArtifactRequest> }
   | LocalStoreRetentionIndexRefused { refusal: LocalStoreIndexRefusal }
   | LocalStoreRetentionIndexMoved
@@ -899,15 +895,15 @@ fn local_store_bind_retention(held: LocalStoreFamilyHeld, scope: NonEmptyStr) ->
           let name = concat("retention-", held.family as String)
           let path = store_path(root_path: local_store_binding_path(b: held.binding), name: name)
           match local_store_create_new(root: held.binding.root, name: name, content: scope as String) {
-            FilesystemCreated { path: _ } => none
-            FilesystemCreateTargetOccupied { path: _ } => {
+            StoreObjectPublished => none
+            StoreObjectOccupied => {
               match local_store_read(root: held.binding.root, name: name) {
                 FilesystemExactPathRead { path: _, content: content } => if content == (scope as String) { none }
                   else { Present { value: LocalStoreRetentionBindingMismatch { path: path, expected: scope, observed: content } } }
                 unavailable => Present { value: LocalStoreRetentionBindingReadUnavailable { reading: unavailable } }
               }
             }
-            unavailable => Present { value: LocalStoreRetentionBindingCreateUnavailable { creation: unavailable } }
+            StoreObjectPublishRefused { fault: f } => Present { value: LocalStoreRetentionBindingCreateUnavailable { fault: f } }
           }
         }
         observed => Present { value: LocalStoreRetentionPolicyIncompatible { observed: observed } }
@@ -2136,13 +2132,6 @@ fn local_store_commit_hold_refused(key: ContentHash, refusal: LocalStoreHoldRefu
   }
 }
 
-fn local_store_commit_released(c: LocalStoreCommit, settled_release: LocalStoreHoldRelease) -> LocalStoreCommit {
-  LocalStoreCommit {
-    commit: c.commit, evicted: c.evicted, eviction_delete_refused: c.eviction_delete_refused, retired: c.retired,
-    index_reclamation: c.index_reclamation, index_refusal: c.index_refusal, hold_refusal: c.hold_refusal, hold_release: Present { value: settled_release }
-  }
-}
-
 // THE WRITE, INSIDE THE FAMILY HOLD: ask whether the exact object is already present (verified, absent,
 // or unavailable -- the last refuses before any index write), reserve, delete what the reservation
 // evicted, and ONLY IF THE HOST CONFIRMED EVERY ONE OF THOSE DELETES publish -- otherwise refuse as
@@ -2207,7 +2196,7 @@ fn local_store_commit_verified(
         prepared_key: key,
         offered_digest: offered,
         offered_result: offered_result,
-        publish: store_publish_observation(create: local_store_create_new(root: held.binding.root, name: name, content: object)),
+        publish: local_store_create_new(root: held.binding.root, name: name, content: object),
         read_back: local_store_lookup_bound(binding: held.binding, addressed: addressed)
       ))
   }
@@ -2264,7 +2253,7 @@ fn local_store_commit_reserved(
             prepared_key: key,
             offered_digest: offered,
             offered_result: offered_result,
-            publish: store_publish_observation(create: local_store_create_new(root: held.binding.root, name: name, content: object)),
+            publish: local_store_create_new(root: held.binding.root, name: name, content: object),
             read_back: local_store_lookup_bound(binding: held.binding, addressed: addressed)
             )
           },
@@ -2454,7 +2443,10 @@ fn local_store_commit(capability: LocalStoreCapability, req: ArtifactRequest, pa
 fn local_store_commit_addressed(capability: LocalStoreCapability, addressed: AddressedRequest, payloads: List<ArtifactPayload>, parts: List<LocalStoreStagedPart>) -> LocalStoreCommit {
   match local_store_with_family(capability: capability, of: addressed.request, run: h => local_store_commit_under(held: h, addressed: addressed, payloads: payloads, parts: parts)) {
     LocalStoreBracketRefused { refusal: r } => local_store_commit_hold_refused(key: request_key(req: addressed.request), refusal: r)
-    LocalStoreBracketRan { value: written, hold_release: rel } => local_store_commit_released(c: written, settled_release: rel)
+    LocalStoreBracketRan { value: written, hold_release: rel } => LocalStoreCommit {
+      commit: written.commit, evicted: written.evicted, eviction_delete_refused: written.eviction_delete_refused, retired: written.retired,
+      index_reclamation: written.index_reclamation, index_refusal: written.index_refusal, hold_refusal: written.hold_refusal, hold_release: Present { value: rel }
+    }
   }
 }
 

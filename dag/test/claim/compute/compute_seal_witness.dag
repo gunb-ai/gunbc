@@ -68,3 +68,21 @@ test fn the_lawful_work_mint_is_admitted() -> ProcessExit {
     census_verdict(census: seal_violations(source: work_lawful_source, subject: "ComputeWorkRecords"), holds: fn(n) { n == 0 }),
   ])
 }
+
+// THE RELEASE OUTCOME IS NOT AUTHORED. compute_producer_lease_release_committed folded an authored FileHoldReleased into
+// ComputeProducerLeaseReleased; it is deleted, and the only route to Released is the inline match on file_hold_release_commit.
+// A probe importing the deleted callable is EXACTLY ONE blocking MissingExport keyed on its name; the control imports the
+// lawful release (compute_producer_lease_release_observed) and has none.
+data release_fold_source: String = "module probe_release_fold\nimport gunbc.compute.compute_producer_lease { compute_producer_lease_release_committed }\nfn f() -> Int {\n  1\n}\n"
+data release_lawful_source: String = "module probe_release_lawful\nimport gunbc.compute.compute_producer_lease { compute_producer_lease_release_observed }\nfn f() -> Int {\n  1\n}\n"
+
+test fn the_authored_release_fold_is_gone_with_one_keyed_missing_export() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: release_fold_source, wanted_class: "MissingExport", wanted_subject: "compute_producer_lease_release_committed"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_release_route_resolves() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_subject_census(source: release_lawful_source, wanted_class: "MissingExport", wanted_subject: "compute_producer_lease_release_observed"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: release_lawful_source, safe: lease_baseline_source, holds: fn(n) { n <= 0 }),
+  ])
+}

@@ -89,8 +89,8 @@ fn blocking_delta(hostile: String, safe: String) -> CensusVerdict {
   census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: fn(n) { n >= 1 })
 }
 
-data path_create_new_source: String = "module probe_store_path_create_new\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { FilesystemCreateNew }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nfn direct(p: String, c: String) -> FilesystemCreateNew {\n  local_store_create_new(path: p, content: c)\n}\n"
-data root_create_new_source: String = "module probe_store_root_create_new\nimport std.types { String }\nimport std.materialization_store_grant { MaterializationStoreRoot }\nimport extdeps.filesystem.filesystem_io { FilesystemCreateNew }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nfn direct(r: MaterializationStoreRoot, c: String) -> FilesystemCreateNew {\n  local_store_create_new(root: r, name: \"x\", content: c)\n}\n"
+data path_create_new_source: String = "module probe_store_path_create_new\nimport std.types { String }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nimport std.materialization_object { StoreObjectPublish }\nfn direct(p: String, c: String) -> StoreObjectPublish {\n  local_store_create_new(path: p, content: c)\n}\n"
+data root_create_new_source: String = "module probe_store_root_create_new\nimport std.types { String }\nimport std.materialization_store_grant { MaterializationStoreRoot }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nimport std.materialization_object { StoreObjectPublish }\nfn direct(r: MaterializationStoreRoot, c: String) -> StoreObjectPublish {\n  local_store_create_new(root: r, name: \"x\", content: c)\n}\n"
 data path_read_source: String = "module probe_store_path_read\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { FilesystemExactRead }\nimport extdeps.realization.materialization_store_local { local_store_read }\nfn direct(p: String) -> FilesystemExactRead {\n  local_store_read(path: p)\n}\n"
 data root_read_source: String = "module probe_store_root_read\nimport std.types { String }\nimport std.materialization_store_grant { MaterializationStoreRoot }\nimport extdeps.filesystem.filesystem_io { FilesystemExactRead }\nimport extdeps.realization.materialization_store_local { local_store_read }\nfn direct(r: MaterializationStoreRoot) -> FilesystemExactRead {\n  local_store_read(root: r, name: \"x\")\n}\n"
 
@@ -186,4 +186,24 @@ test fn a_direct_held_session_call_is_an_admission_refusal() -> ProcessExit {
 
 test fn a_direct_named_window_observe_call_is_an_admission_refusal() -> ProcessExit {
   census_exit(census_verdict(census: admission_refusals(source: direct_named_window_observe_source, callee: "cas_verify_named_window_head"), holds: fn(n) { n == 1 }))
+}
+
+// THE EFFECT OUTCOME IS NOT LAUNDERED INTO A SUCCESS BY AN EXPORTED FOLD. store_publish_observation (a FilesystemCreateNew
+// into StoreObjectPublished) and local_store_commit_released (a settled release into a commit) are deleted; the fold lives
+// inline in local_store_create_new and in the bracket arm. A probe importing either deleted name is EXACTLY ONE blocking
+// MissingExport keyed on it; the control imports the lawful local_store_create_new and has none.
+data publish_fold_source: String = "module probe_publish_fold\nimport extdeps.realization.materialization_store_local { store_publish_observation }\nfn f() -> Int {\n  1\n}\n"
+data commit_released_fold_source: String = "module probe_commit_released_fold\nimport extdeps.realization.materialization_store_local { local_store_commit_released }\nfn f() -> Int {\n  1\n}\n"
+data publish_lawful_source: String = "module probe_publish_lawful\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nfn f() -> Int {\n  1\n}\n"
+
+test fn the_publish_fold_is_gone_with_one_keyed_missing_export() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: publish_fold_source, wanted_class: "MissingExport", wanted_subject: "store_publish_observation"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_commit_released_fold_is_gone_with_one_keyed_missing_export() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: commit_released_fold_source, wanted_class: "MissingExport", wanted_subject: "local_store_commit_released"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_publish_route_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: publish_lawful_source, wanted_class: "MissingExport", wanted_subject: "local_store_create_new"), holds: fn(n) { n == 0 }))
 }
