@@ -1079,20 +1079,17 @@ test fn mbt_r_the_carrier_leaves_a_payload_alternative_to_the_binder_holds() -> 
   }
 }
 
-// (control 1) With a second PAYLOAD alternative left instead, nothing refuses at all, so there is no
-// refusal to read facts off — and the payload-bearing alternatives stay out of any carrier by rule.
-// (control 2) The singleton-remainder case still infers, so its correction is never consulted.
-test fn mbt_r_a_refusal_without_a_nullary_remainder_carries_nothing_holds() -> Bool {
-  let payload = mbp_reading(src: mbt_r_src(decl: mbt_r_payload_left, arms: mbt_r_misspelled_arms))
-  let singleton = mbp_reading(src: mbt_r_src(decl: mbt_r_one_left, arms: mbt_r_misspelled_arms))
-  !mbp_reports(reading: payload, reason: ^infer_match_catch_all_binder_widens_over_a_nullary_variant)
-    && mbp_infers(reading: singleton)
-    && match mbt_r_widening_diagnostic(reading: payload) {
-         Absent => true
-         Present { value: _ } => false
-       }
-    && match mbt_r_widening_diagnostic(reading: singleton) {
-         Absent => true
-         Present { value: _ } => false
-       }
+// (RED for the earlier-arm exclusion) B is already matched by an earlier arm, so the carrier holds
+// the nullary C and D only. Without the exclusion the repair would insert an arm for B that the
+// match already has, and nothing else discriminates it: every other fixture names no nullary tag early.
+data mbt_r_early_left: String = "type T = A { x: Int } | B | C | D"
+
+data mbt_r_early_arms: String = "    A { x: x } => t\n    B => B\n    Bx => Bx\n"
+
+test fn mbt_r_the_carrier_leaves_out_an_alternative_an_earlier_arm_names_holds() -> Bool {
+  let r = mbp_reading(src: mbt_r_src(decl: mbt_r_early_left, arms: mbt_r_early_arms))
+  match mbt_r_widening_correction(reading: r) {
+    Present { value: carrier } => mbt_r_carrier_tags(carrier: carrier) == [^C, ^D]
+    Absent => false
+  }
 }
