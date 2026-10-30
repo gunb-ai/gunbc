@@ -1,0 +1,138 @@
+module gunbc.runner.runner_machine_boot_teardown
+
+import std.types { Bool, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
+import extdeps.filesystem.linux {
+  LinuxProcMountsParse, LinuxProcMountsParsed, LinuxProcMountsRefused, LinuxProcMountRow,
+  linux_filesystem_is_memory_backed, linux_proc_mount_is_read_only,
+  LinuxOverlayFs, LinuxSquashFs, LinuxJffs2, OtherLinuxFilesystem, LinuxFilesystemKind,
+}
+import gunbc.runner.runner_lost_boot_sweep_run { CurrentBootObservation, CurrentBootObserved, CurrentBootUnobserved }
+import gunbc.runner.runner_teardown_receipt {
+  MachineBootEnvironmentInventory, mint_machine_boot_inventory,
+  RunnerResourceReading, RunnerResourcePresent, RunnerResourceAbsent, RunnerResourceUnreadable,
+}
+
+// THE TEARDOWN OF A WHOLE BOOT, OBSERVED FROM OUTSIDE IT (gunbc.plans.mtcollins1_ci_service_legs S7; merry-fox-82's
+// decision of 2026-10-30, BMC observer). The qualification attempt runs on a boot that holds nothing persistent, so
+// the boot IS its environment and the boot ending is its teardown (gunbc.runner.runner_teardown_receipt
+// MachineBootInventory). Three facts, one per declaration below:
+//
+//   1. WHICH BOOTS QUALIFY. A boot is admitted as an environment only when its own mount table reads RAM-only:
+//      every writable mount is memory-backed. That is read, never assumed of a host or an image.
+//   2. WHAT ENDS IT. The attempt unit's manager powers the host off when the unit stops, on every arm
+//      (gunbc.runner.runner_host_unit_slot ListenerEndsTheBoot). The destroyer is on the subject boot.
+//   3. WHO SAYS IT ENDED. The BMC's chassis power line, read by a process off the machine, beside the boot's own id.
+//      Power off clears RAM, so every unit, cgroup and tmpfs of that boot is gone with no per-resource read. The
+//      instrument is not the destroyer (the BMC does not power the host off here), so the observation is not the
+//      teardown reporting itself.
+
+// ── 1. which boots qualify ───────────────────────────────────────────────────────────────────────
+
+type MachineBootVolatility
+  = MachineBootRamOnly
+  | MachineBootHoldsWritablePersistence { target: NonEmptyStr, filesystem: NonEmptyStr }
+  | MachineBootMountsUnread { cause: NonEmptyStr }
+
+fn mount_type_text(kind: LinuxFilesystemKind) -> NonEmptyStr {
+  match kind {
+    LinuxOverlayFs => "overlay" as NonEmptyStr
+    LinuxSquashFs => "squashfs" as NonEmptyStr
+    LinuxJffs2 => "jffs2" as NonEmptyStr
+    OtherLinuxFilesystem { mount_type: t } => t
+  }
+}
+
+fn mount_keeps_nothing(row: LinuxProcMountRow) -> Bool {
+  linux_proc_mount_is_read_only(row: row) || linux_filesystem_is_memory_backed(kind: row.mount.filesystem)
+}
+
+// A WRITABLE MOUNT THAT IS NOT MEMORY-BACKED REFUSES, whatever it is: a disk, an overlay (its upper layer is not
+// read here), firmware NVRAM (efivarfs and pstore are writable by default under systemd, so a first live read may
+// well refuse on them -- the remedy is the image mounting them read-only, not this rule widening). A read-only mount
+// keeps nothing the attempt wrote. An empty table is not a reading: every Linux boot has a root mount.
+fn machine_boot_volatility(mounts: LinuxProcMountsParse) -> MachineBootVolatility {
+  match mounts {
+    LinuxProcMountsRefused { line_number: _, cause: _ } =>
+      MachineBootMountsUnread { cause: "the boot's /proc/mounts did not parse, so its persistence is unread" as NonEmptyStr }
+    LinuxProcMountsParsed { rows: rows } =>
+      if rows.length() == 0 {
+        MachineBootMountsUnread { cause: "the boot's /proc/mounts named no mount, so its persistence is unread" as NonEmptyStr }
+      } else {
+        match rows |> filter(row => !mount_keeps_nothing(row: row)) |> first {
+          Absent => MachineBootRamOnly
+          Present { value: row } =>
+            MachineBootHoldsWritablePersistence { target: row.mount.target, filesystem: mount_type_text(kind: row.mount.filesystem) }
+        }
+      }
+  }
+}
+
+type MachineBootInventoryAdmission
+  = MachineBootAdmitted { inventory: MachineBootEnvironmentInventory }
+  | MachineBootRefused { cause: NonEmptyStr }
+
+// THE ONLY MINT OF A MACHINE-BOOT INVENTORY. The boot is the one the host's own route reported (the #14728 observer,
+// gunbc.runner.runner_lost_boot_sweep_run lost_boot_observe_current_boot), and its mount table is read through the
+// same host-bound transport; that transport is anchored to one boot's host key (#14894), which is why the two
+// readings are of one boot. The mount table is read before the launch and the attempt runs as an unprivileged user
+// that cannot mount, so the table it ran under is the one read.
+fn admit_machine_boot_inventory(boot: CurrentBootObservation, mounts: LinuxProcMountsParse) -> MachineBootInventoryAdmission {
+  match boot {
+    CurrentBootUnobserved { cause: c } =>
+      MachineBootRefused { cause: join(["the subject boot is unobserved, so no boot can be the environment: ", c], "") as NonEmptyStr }
+    CurrentBootObserved { evidence: e } =>
+      if e.host == "" {
+        MachineBootRefused { cause: "the boot observation names no host" as NonEmptyStr }
+      } else {
+        match machine_boot_volatility(mounts: mounts) {
+          MachineBootMountsUnread { cause: c } => MachineBootRefused { cause: c }
+          MachineBootHoldsWritablePersistence { target: t, filesystem: f } =>
+            MachineBootRefused { cause: join(["the boot holds a writable ", f as String, " mount at ", t as String, ", so powering it off does not tear the attempt down"], "") as NonEmptyStr }
+          MachineBootRamOnly =>
+            MachineBootAdmitted { inventory: mint_machine_boot_inventory(host: e.host as NonEmptyStr, boot_id: e.boot.boot_id as NonEmptyStr) }
+        }
+      }
+  }
+}
+
+// ── 3. who says it ended ─────────────────────────────────────────────────────────────────────────
+
+// THE BOOT'S READING, ONE RULE FOR BEFORE AND AFTER (this is the producer
+// gunbc.runner.runner_teardown_receipt machine_boot_observation_producer names):
+//   - power off: the boot is absent. Power loss clears RAM; this is the reading AFTER the teardown owes.
+//   - power on and the host reports the subject boot: present. This is the positive control BEFORE owes.
+//   - power on and the host reports another boot: the subject boot is absent -- its kernel is gone -- and a new one
+//     runs. A before-reading of that kind refuses as a missing positive control.
+//   - power on and the boot unread, or the chassis unread, or the boot read of another host: unreadable, never a guess.
+fn machine_boot_reading(inventory: MachineBootEnvironmentInventory, power: ChassisPowerObservation, current: CurrentBootObservation) -> RunnerResourceReading {
+  match power {
+    ChassisUnreadable => RunnerResourceUnreadable { cause: "the BMC's chassis status was unreadable" as NonEmptyStr }
+    ChassisStatusUndecodable { cause: c } =>
+      RunnerResourceUnreadable { cause: join(["the BMC's chassis status did not decode: ", c as String], "") as NonEmptyStr }
+    ChassisPowerRead { power_on: on } =>
+      if !on {
+        RunnerResourceAbsent
+      } else {
+        match current {
+          CurrentBootUnobserved { cause: c } =>
+            RunnerResourceUnreadable { cause: join(["the chassis is on and its boot is unobserved: ", c], "") as NonEmptyStr }
+          CurrentBootObserved { evidence: e } =>
+            if e.host != (inventory.host as String) {
+              RunnerResourceUnreadable { cause: join(["the boot was read on ", e.host, ", not on ", inventory.host as String], "") as NonEmptyStr }
+            } else if (e.boot.boot_id as String) == (inventory.boot_id as String) {
+              RunnerResourcePresent
+            } else {
+              RunnerResourceAbsent
+            }
+        }
+      }
+  }
+}
+
+// WHAT THIS MODULE DOES NOT YET HAVE (DESIGN section 3c).
+data machine_boot_teardown_production_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the qualification attempt's wet route (gunbc.runner.runner_qualification_attempt_run qualification_attempt_bound), which (a) reads the subject boot's id and its /proc/mounts over the one anchored transport and admits the boot through admit_machine_boot_inventory before the launch, (b) launches the attempt unit with ListenerEndsTheBoot instead of ListenerOwnLifetime, (c) reads the BMC chassis power and the boot id before the launch and polls chassis power after the listener's summary until it reads off or its bound runs out (extdeps.bmc.ipmi_chassis_control chassis_power_off_poll_settled), each through machine_boot_reading on the controller's clock, and (d) folds the two observations through produce_runner_teardown_receipt and refuses to qualify an attempt whose teardown was refused. NOT ESTABLISHED: that route; a /proc/mounts read as a host operation (gunbc.host.host_operation_exec has none). TRIGGER: the S7b PR of gunbc.plans.mtcollins1_ci_service_legs, due with this one's merge; the first wet run on merry-fox-82's go executes it."
+)

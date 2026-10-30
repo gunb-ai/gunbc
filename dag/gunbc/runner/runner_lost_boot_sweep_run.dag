@@ -137,6 +137,7 @@ type CurrentBootObservation
 fn mint_current_boot_evidence(host: String, boot: ServiceBootId) -> CurrentBootEvidence admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "lost_boot_observed_over"),
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "observed_on"),
+  decl_ref(module_path: "test.claim.runner.runner_machine_boot_teardown_witness", decl_name: "observed_boot"),
 ] {
   CurrentBootEvidence { host: host, boot: boot }
 }

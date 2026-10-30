@@ -287,6 +287,46 @@ fn linux_proc_mounts_parse(proc_mounts: String) -> LinuxProcMountsParse {
   folded.parse
 }
 
+data linux_proc_mounts_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "man7.org/linux/man-pages/man5/proc_mounts.5.html",
+  },
+}
+
+data linux_filesystems_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.kernel.org/filesystems/index.html",
+  },
+}
+
+// proc_mounts(5) / fstab(5): the fourth field is the comma-separated mount options, and `ro` is the read-only one.
+fn linux_proc_mount_is_read_only(row: LinuxProcMountRow) -> Bool {
+  row.options |> any(option => trim(option) == "ro")
+}
+
+// THE KERNEL FILESYSTEMS WHOSE CONTENT EXISTS ONLY IN MEMORY (docs.kernel.org/filesystems): tmpfs and ramfs (and the
+// initramfs `rootfs`, which is one of them) hold pages and nothing else; proc, sysfs, devtmpfs, devpts, cgroup,
+// cgroup2, mqueue, securityfs, debugfs, tracefs, configfs, fusectl, bpf, hugetlbfs and binfmt_misc are kernel
+// interfaces with no backing store. A mount of one of these keeps nothing across a power cycle. Deliberately NOT
+// here: efivarfs and pstore, which are interfaces to firmware NVRAM and persist across power cycles; overlay, whose
+// persistence is its upper layer's; squashfs and jffs2, which are images on a device. An unlisted type is not memory-backed --
+// absence from this list is never evidence of volatility.
+data linux_memory_backed_mount_types: List<String> = [
+  "tmpfs", "ramfs", "rootfs", "proc", "sysfs", "devtmpfs", "devpts", "cgroup", "cgroup2", "mqueue", "securityfs",
+  "debugfs", "tracefs", "configfs", "fusectl", "bpf", "hugetlbfs", "binfmt_misc",
+]
+
+fn linux_filesystem_is_memory_backed(kind: LinuxFilesystemKind) -> Bool {
+  match kind {
+    LinuxOverlayFs => false
+    LinuxSquashFs => false
+    LinuxJffs2 => false
+    OtherLinuxFilesystem { mount_type: t } => linux_memory_backed_mount_types |> any(m => m == (t as String))
+  }
+}
+
 fn linux_proc_mount_row_for_target(
   rows: List<LinuxProcMountRow>,
   target: NonEmptyStr,

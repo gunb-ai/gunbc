@@ -22,7 +22,8 @@ import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWait, SystemdSummaryPrintingWaitReady, SystemdSummaryPrintingWaitRefused,
   systemd_run_transient_wait_pipe_summary_command,
 }
-import extdeps.systemd { User, DelegateProperty, PartOf, AfterProperty }
+import extdeps.systemd { User, DelegateProperty, PartOf, AfterProperty, SuccessActionProperty, FailureActionProperty }
+import extdeps.systemd.unit_file { SystemdUnitStateAction, UnitActionPoweroff, systemd_unit_state_action_wire }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
 import extdeps.posix.sh_invocation { posix_sh_export_from_stdin_then_exec_command, PosixShExportExecReady, PosixShExportExecEmitRefused }
 import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_command, ephemeral_slot_labels, ephemeral_slot_properties }
@@ -139,14 +140,35 @@ type HostUnitListenerWait
 // must reach the listener FIRST: PartOf= propagates the controller's stop to the listener, and After= orders the
 // listener's stop before the controller's, so the controller's ExecStop runs only once the listener has ended. The
 // attempt slot's listener has no owning unit on the host; its driver ends it and tears it down.
+//
+// A LISTENER THAT ENDS ITS BOOT (gunbc.plans.mtcollins1_ci_service_legs S7, merry-fox-82's BMC-observer decision of
+// 2026-10-30): on a RAM-only image the boot IS the attempt's environment, so the teardown is the boot ending, and the
+// manager ends it -- SuccessAction= and FailureAction= both name the end action, so the listener exiting 0, exiting
+// nonzero, being killed and failing to start all power the host off. That is the rule
+// gunbc.runner.runner_guest_image runner_guest_agent_unit already carries for a microVM guest, after an
+// ExecStopPost= poweroff was found to miss the arms on which systemd could no longer spawn a command; it is the same
+// two directives here, set on the transient unit. The ACTION diverges, with this reason: the guest's exit travels
+// on its serial console, so `poweroff-force` costs it nothing, while this listener's Result is read by a REMOTE
+// systemd-run --wait client over this same machine's sshd (attempt_listener_run_of), and a forced poweroff kills
+// that session before the summary can leave. The orderly `poweroff` stops the session late in shutdown, which is the
+// window the summary needs. It is a window, not a guarantee: a summary lost to it is ListenerOutcomeUnobserved, and
+// the attempt refuses to qualify on that (gunbc.runner.runner_qualification_attempt_run
+// qualification_attempt_run_verdict) -- loud, never a silent pass.
 type HostUnitListenerLifetime
   = ListenerOwnLifetime
   | ListenerPartOf { unit: NonEmptyStr }
+  | ListenerEndsTheBoot
+
+data host_unit_listener_boot_end_action: SystemdUnitStateAction = UnitActionPoweroff
 
 fn host_unit_listener_lifetime_properties(lifetime: HostUnitListenerLifetime) -> List<SystemdRunProperty> {
   match lifetime {
     ListenerOwnLifetime => []
     ListenerPartOf { unit: u } => [NamedUnitSetting { property: PartOf, value: u }, NamedUnitSetting { property: AfterProperty, value: u }]
+    ListenerEndsTheBoot => {
+      let action = systemd_unit_state_action_wire(action: host_unit_listener_boot_end_action) as NonEmptyStr
+      [NamedUnitSetting { property: SuccessActionProperty, value: action }, NamedUnitSetting { property: FailureActionProperty, value: action }]
+    }
   }
 }
 
