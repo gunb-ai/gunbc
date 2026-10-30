@@ -1,0 +1,50 @@
+module gunbc.runner.runner_revision_request_worker
+
+import std.types { String }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.durable_handoff_host { HostAcceptedRequest }
+import gunbc.runner.runner_revision_request_context { RevisionRequestContext }
+import gunbc.runner.runner_revision_job_spec { RevisionJobSpec, decode_revision_job_spec, RevisionJobSpecDecoded, RevisionJobSpecRefused }
+import gunbc.runner.runner_revision_job_main { revision_job_slot }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+
+// A worker invocation PLAN, never launch authority. The planner preserves the
+// abstract authority supplied to it; it cannot select an authorization pattern,
+// issue a grant, run systemctl, or execute revision_job_run. The eventual owner
+// must require a sealed launch carrier produced by select_authorization_pattern.
+// No approval regime is chosen here while the operator decision is pending.
+type RevisionRequestWorkerPlan<LaunchAuthority> {
+  request: HostAcceptedRequest
+  spec: RevisionJobSpec
+  slot: RunnerSlotIdentity
+  launch_authority: LaunchAuthority
+  executor: DeclarationRef
+}
+
+// The API key selects the accepted request's principal, not a root operation.
+// The worker consumes that existing durable acceptance and its exact payload;
+// it cannot substitute a new body when selecting the revision-job executor.
+fn revision_request_worker_plan<LaunchAuthority>(context: RevisionRequestContext,
+  request: HostAcceptedRequest, slot_instance: String,
+  launch_authority: LaunchAuthority) -> Result<RevisionRequestWorkerPlan<LaunchAuthority>, String> {
+  if (request.root != context.request_root) {
+    return Err { value: "accepted request belongs to another request store" }
+  }
+  let slot = match revision_job_slot(instance: slot_instance) {
+    Absent => { return Err { value: "revision-job slot is not declared" } }
+    Present { value: value } => value
+  }
+  match decode_revision_job_spec(text: request.payload as String) {
+    RevisionJobSpecRefused { refusal: _ } => Err { value: "accepted revision-job payload is no longer admissible" }
+    RevisionJobSpecDecoded { spec: spec } => Ok { value: RevisionRequestWorkerPlan {
+      request: request, spec: spec, slot: slot, launch_authority: launch_authority,
+      executor: decl_ref(module_path: "gunbc.runner.runner_revision_job_main", decl_name: "revision_job_run") } }
+  }
+}
+
+// Execution frontier: the store owner must first CAS/read back the worker claim,
+// then the selected privileged-effect owner validates launch_authority against
+// this request, payload and slot. The runner's own receipt/stop/sanitation result
+// feeds settlement; this plan and a published result cannot free the user slot.

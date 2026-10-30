@@ -1,0 +1,124 @@
+module gunbc.runner.runner_revision_request_lifecycle
+
+import std.types { NonEmptyStr, String, Bool }
+import std.error_primitives { Result, Ok, Err }
+import std.durable_compare_and_set { CasGeneration, CasExpectation, ExpectSlotGeneration, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldObservation, DurableHoldAcquireAssessment,
+  HoldSlotAbsent, HoldSlotHeld, HoldAcquireEligible, HoldAcquireRefused,
+  durable_hold_acquire_assess,
+}
+import product.fabric.identity { FabricIdentity, DemandKey }
+
+// PURE TRANSITION PROPOSALS, not execution authority or effect receipts. The
+// durable request owner must read its own slot, apply the derived CAS expectation,
+// and read back the committed value before returning a sealed execution carrier.
+// No exported fold over these values may mint such a carrier.
+//
+// One bounded responsibility per user. Immutable request history and results stay
+// outside this record. Queued, running and cleanup-pending all occupy the user
+// slot; a published result alone never proves stopped-and-cleaned settlement.
+type RevisionRequestPhase
+  = RevisionRequestQueued
+  | RevisionRequestRunning { worker: DurableHoldOwnerRef, claimed_generation: CasGeneration }
+  | RevisionRequestCleanupPending { worker: DurableHoldOwnerRef, claimed_generation: CasGeneration }
+  | RevisionRequestSettled { receipt: NonEmptyStr }
+
+type RevisionRequestResponsibility {
+  identity: FabricIdentity<NonEmptyStr, DemandKey>
+  payload: NonEmptyStr
+  phase: RevisionRequestPhase
+}
+
+type RevisionRequestTransition {
+  expected: CasExpectation
+  next: RevisionRequestResponsibility
+}
+
+fn revision_request_holds_user_slot(phase: RevisionRequestPhase) -> Bool {
+  match phase {
+    RevisionRequestSettled { receipt: _ } => false
+    _ => true
+  }
+}
+
+fn revision_request_worker_hold(phase: RevisionRequestPhase, generation: CasGeneration) -> Result<DurableHoldObservation, String> {
+  match phase {
+    RevisionRequestQueued => Ok { value: HoldSlotAbsent }
+    RevisionRequestRunning { worker: worker, claimed_generation: _ } => Ok { value: HoldSlotHeld { generation: generation, owner: worker } }
+    RevisionRequestCleanupPending { worker: worker, claimed_generation: _ } => Ok { value: HoldSlotHeld { generation: generation, owner: worker } }
+    RevisionRequestSettled { receipt: _ } => Err { value: "settled requests cannot be executed again" }
+  }
+}
+
+// Acquisition uses the existing occupancy law: even the same worker spelling
+// cannot claim twice. A process restart requires reconciliation, not takeover.
+fn revision_request_claim_transition(current: RevisionRequestResponsibility, generation: CasGeneration,
+  worker: DurableHoldOwnerRef) -> Result<RevisionRequestTransition, String> {
+  let observed = match revision_request_worker_hold(phase: current.phase, generation: generation) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  let successor = match cas_generation_successor(g: generation) {
+    CasSuccessorExhausted { head: _ } => { return Err { value: "request generation space exhausted" } }
+    CasSuccessorGeneration { generation: next } => next
+  }
+  match durable_hold_acquire_assess(observed: observed) {
+    HoldAcquireRefused { refusal: _ } => Err { value: "request execution is already claimed; reconcile its existing worker" }
+    HoldAcquireEligible { expected: _ } => Ok { value: RevisionRequestTransition {
+      expected: ExpectSlotGeneration { generation: generation },
+      next: RevisionRequestResponsibility { identity: current.identity, payload: current.payload,
+        phase: RevisionRequestRunning { worker: worker, claimed_generation: successor } } } }
+  }
+}
+
+// The caller provides the observed slot generation for CAS; worker ownership is
+// independently compared to its retained claim generation. Neither substitutes
+// for the other. This function proposes cleanup state and releases nothing.
+fn revision_request_cleanup_transition(current: RevisionRequestResponsibility, generation: CasGeneration,
+  worker: DurableHoldOwnerRef, claimed_generation: CasGeneration) -> Result<RevisionRequestTransition, String> {
+  match current.phase {
+    RevisionRequestRunning { worker: held, claimed_generation: acquired } =>
+      if (held == worker && acquired == claimed_generation) {
+        Ok { value: RevisionRequestTransition { expected: ExpectSlotGeneration { generation: generation },
+          next: RevisionRequestResponsibility { identity: current.identity, payload: current.payload,
+            phase: RevisionRequestCleanupPending { worker: worker, claimed_generation: claimed_generation } } } }
+      } else { Err { value: "request execution belongs to another worker or claim generation" } }
+    _ => Err { value: "only a running request can enter cleanup" }
+  }
+}
+
+// Settlement planning requires three separate observations. These are facts for
+// this pure model, NEVER trusted inputs to a durable write API. The worker owner
+// must obtain them from revision_job_run's own terminal receipt, runtime stop
+// observation and cell-sanitation settlement before it can act on this proposal.
+type RevisionRequestSettlementStanding
+  = RevisionRequestTerminalStoppedAndCleaned { receipt: NonEmptyStr }
+  | RevisionRequestTerminalStillRunning
+  | RevisionRequestTerminalCleanupUnproven
+  | RevisionRequestTerminalReceiptUnproven
+
+fn revision_request_settle_transition(current: RevisionRequestResponsibility, generation: CasGeneration,
+  worker: DurableHoldOwnerRef, claimed_generation: CasGeneration,
+  standing: RevisionRequestSettlementStanding) -> Result<RevisionRequestTransition, String> {
+  match current.phase {
+    RevisionRequestCleanupPending { worker: held, claimed_generation: acquired } => {
+      if (held != worker || acquired != claimed_generation) {
+        return Err { value: "request settlement belongs to another worker or claim generation" }
+      }
+      match standing {
+        RevisionRequestTerminalStoppedAndCleaned { receipt: receipt } => Ok { value: RevisionRequestTransition {
+          expected: ExpectSlotGeneration { generation: generation },
+          next: RevisionRequestResponsibility { identity: current.identity, payload: current.payload,
+            phase: RevisionRequestSettled { receipt: receipt } } } }
+        _ => Err { value: "request remains responsible until its receipt, stop and cleanup are confirmed" }
+      }
+    }
+    _ => Err { value: "request must enter cleanup before settlement" }
+  }
+}
+
+// Frontier: production acceptance continues retaining the slot forever until
+// the store owner wires this model to its CAS/readback and the worker reaches
+// revision_job_run with an abstract launch authority. That authority's mint must
+// consume select_authorization_pattern; the operator has not selected its
+// approval regime. No API-key or pure transition value authorizes a launch.
