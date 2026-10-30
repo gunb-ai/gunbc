@@ -3,7 +3,7 @@ module gunbc.live_deploy.capacity_drain_wire
 import std.durable_exclusive_hold { DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef }
 import std.durable_compare_and_set { cas_generation, cas_generation_count }
 import std.types { String, NonEmptyStr, List, Int }
-import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
@@ -35,7 +35,12 @@ fn drain_memory_read(value: JsonValue) -> Result<Kibibyte, String> {
   match drain_text_read(value: value) {
     Err { value: why } => Err { value: why }
     Ok { value: text } => match parse_int(s: text as String) {
-      Present { value: n } => if n >= 0 && to_string(n) == (text as String) { Ok { value: kibibyte(count: n as Nat) } } else { Err { value: "invalid drain memory quantity" } }
+      Present { value: n } => if to_string(n) == (text as String) {
+        match checked_int_to_nat(n: n) {
+          Present { value: quantity } => Ok { value: kibibyte(count: quantity) }
+          Absent => Err { value: "invalid drain memory quantity" }
+        }
+      } else { Err { value: "invalid drain memory quantity" } }
       Absent => Err { value: "invalid drain memory quantity" }
     }
   }

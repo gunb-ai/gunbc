@@ -8,7 +8,7 @@ import std.decl_ref { decl_ref }
 import std.types { String, NonEmptyStr, Timestamp, List, Bool }
 import gunbc.owned_directory { OwnedDirectoryTarget }
 import std.content_hash { Sha256Digest, sha256_hex_of_text }
-import std.scoped_authorization { AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided, ScopedAuthorization, ClaimedBy }
+import std.scoped_authorization { AttemptIdentity, AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided, ScopedAuthorization, ClaimedBy }
 import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
@@ -346,6 +346,24 @@ fn capacity_capture_finish_held(store: CapacityCaptureStore, provider: LocalStor
 // The initial journal CAS IS the apply claim: the original grant cannot be
 // spent separately and then crash before retaining its plan. The existing claim
 // kernel validates the whole request before invoking this one commit boundary.
+fn capacity_initial_claim_decide(request: Srv1CutoverRequest, record: CapacityCutoverRecord,
+  escalation: NonEmptyStr, attempt: AttemptIdentity, claimed_at: Timestamp,
+  commit: fn(VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>) -> AuthorizationClaimOutcome {
+  if (escalation != request.request.escalation_id || attempt != request.request.attempt) {
+    return ClaimUndecided { reason: "initial journal claim differs from the original approval" }
+  }
+  match admit_cas_attempt_for_derived_payload(key: "record", expected: ExpectSlotAbsent,
+    proposed: capacity_cutover_record_encode(record: record)) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => ClaimUndecided { reason: "initial journal key is not slot-addressable" }
+    DerivedPayloadAdmitted { verified: verified } => match commit(verified) {
+      CasCommitted { committed: committed } => ClaimHeld {
+        state: ClaimedBy { attempt: attempt, claimed_at: claimed_at }, generation: committed.generation }
+      CasPreconditionFailed { expected: _, observed: _ } => ClaimLost { holder: "existing-cutover-journal" }
+      CasStoreRefused { cause: _ } => ClaimUndecided { reason: "initial journal commit unconfirmed; no capture or inhibition permitted" }
+    }
+  }
+}
+
 fn capacity_cutover_claim_initial(intent: CapacityCutoverIntent, request: Srv1CutoverRequest,
   authorization: ScopedAuthorization<Srv1RootMutationApproval>, planned_paths: List<CapacityInhibitionPath>,
   at: Timestamp, commit: fn(VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>) -> Result<CapacityCutoverAuthorization, String> {
@@ -372,21 +390,9 @@ fn capacity_cutover_claim_initial(intent: CapacityCutoverIntent, request: Srv1Cu
     attempt: intent.attempt, target_revision: intent.revision,
     prior: [], target: [], planned_paths: planned_paths, created_paths: [], artifacts: [], phase: CapacityCapturingGeneration }
   capacity_cutover_claim(intent: intent, request: request, authorization: authorization, at: at,
-    claim: (escalation, attempt, claimed_at) => {
-      if (escalation != request.request.escalation_id || attempt != request.request.attempt) {
-        return ClaimUndecided { reason: "initial journal claim differs from the original approval" }
-      }
-      match admit_cas_attempt_for_derived_payload(key: "record", expected: ExpectSlotAbsent,
-        proposed: capacity_cutover_record_encode(record: record)) {
-        DerivedPayloadKeyNotSlotAddressable { key: _ } => ClaimUndecided { reason: "initial journal key is not slot-addressable" }
-        DerivedPayloadAdmitted { verified: verified } => match commit(verified) {
-          CasCommitted { committed: committed } => ClaimHeld {
-            state: ClaimedBy { attempt: attempt, claimed_at: claimed_at }, generation: committed.generation }
-          CasPreconditionFailed { expected: _, observed: _ } => ClaimLost { holder: "existing-cutover-journal" }
-          CasStoreRefused { cause: _ } => ClaimUndecided { reason: "initial journal commit unconfirmed; no capture or inhibition permitted" }
-        }
-      }
-    })
+    claim: (escalation, attempt, claimed_at) => capacity_initial_claim_decide(
+      request: request, record: record, escalation: escalation, attempt: attempt,
+      claimed_at: claimed_at, commit: commit))
 }
 
 // The locked root helper calls this before its first capture publication. An
