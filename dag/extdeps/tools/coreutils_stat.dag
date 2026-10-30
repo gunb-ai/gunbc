@@ -222,10 +222,11 @@ fn coreutils_stat_path_mode(path: NonEmptyStr) -> PathModeObservation {
   }
 }
 
-// MODE, OWNER NAME AND PATH, one line per operand. stat(1) `-c FORMAT`: %a is the access rights in octal
+// MODE, OWNER NAME AND PATH, one line per operand, COLON-SEPARATED: a format containing a space is one argv
+// word with a space in it, which the transports' portable-word wall refuses (measured on srv3). stat(1) `-c FORMAT`: %a is the access rights in octal
 // (so a setuid bit reads as a leading 4), %U the owner's user name, %n the file name. `--` ends options so
 // a path cannot be read as one. A path stat cannot read makes stat exit nonzero for the whole call, which
 // the caller sees as a nonzero exit and never as a line with a blank mode.
 fn stat_mode_owner_name_argv(paths: List<NonEmptyStr>) -> List<String> {
-  concat(["stat", "-c", "%a %U %n", "--"], map(paths, p => p as String))
+  concat(["stat", "-c", "%a:%U:%n", "--"], map(paths, p => p as String))
 }

@@ -128,6 +128,8 @@ import extdeps.tools.env { env_path_resolved_program }
 import extdeps.docker.cli {
   docker_info_command, docker_program, docker_gpu_cdi_probe_run_command,
 }
+import extdeps.container.docker_ce { docker_ce_packages, docker_ce_rootless_prerequisite_packages }
+import gunbc.runner.runner_host_deploy { runner_host_gpu_container_toolchain_for, RunnerHostGpuToolchainFound, RunnerHostGpuToolchainAbsent, GpuContainerToolchainDesired, GpuContainerToolchainNotWanted, GpuContainerToolchainUnmeasured }
 import extdeps.container.nvidia_container_toolkit {
   nvidia_ctk_cdi_generate_command, nvidia_ctk_cdi_list_command, nvidia_ctk_program,
   nvidia_cdi_all_gpu_device,
@@ -1506,9 +1508,25 @@ test fn the_unit_start_leg_captures_status_and_the_users_journal_on_refusal() ->
     && leg.on_refusal.any(a => a == ["systemctl", "--user", "--machine=999@", "status", "--no-pager", "--full", "docker.service"])
     && leg.on_refusal.any(a => a == ["journalctl", "--user-unit=docker.service", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
     && leg.on_refusal.any(a => a == ["journalctl", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
-    && leg.on_refusal.any(a => a == ["stat", "-c", "%a %U %n", "--", "/usr/bin/newuidmap", "/usr/bin/newgidmap"])
+    && leg.on_refusal.any(a => a == ["stat", "-c", "%a:%U:%n", "--", "/usr/bin/newuidmap", "/usr/bin/newgidmap"])
     && leg.on_refusal.any(a => a == ["sysctl", "-n", "kernel.apparmor_restrict_unprivileged_userns"])
     && leg.on_refusal.any(a => a == ["setpriv", "--reuid=999", "--regid=999", "--clear-groups", "unshare", "--user", "--map-root-user", "true"])
     && leg.on_refusal.any(a => a == ["grep", "-H", "-F", "-e", "ghrunner", "--", "/etc/subuid", "/etc/subgid"])
     && leg.argv == ["systemctl", "--user", "--machine=999@", "start", "docker.service"]
+}
+
+// THE ROOTLESS PREREQUISITES ARE INHABITED, NOT VALIDATED: every declared prerequisite is a member of
+// docker_ce_packages and of the package set srv3's row resolves to (the set the apt ensure installs). Dropping
+// uidmap from either makes this false; srv3 run 40997904513 lived in that state. The end-to-end proof that
+// newuidmap works is the rerun's job_user_daemon reading ok.
+test fn every_rootless_prerequisite_is_in_the_docker_package_set_and_srv3s_resolved_ensure_set() -> Bool {
+  let srv3_packages = match runner_host_gpu_container_toolchain_for(host: operator_host_srv3) {
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainDesired { repo: _, docker_repo: _, packages: ps } } => ps
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainNotWanted { reason: _ } } => []
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainUnmeasured { } } => []
+    RunnerHostGpuToolchainAbsent { host: _ } => []
+  }
+  length(docker_ce_rootless_prerequisite_packages) > 0
+    && docker_ce_rootless_prerequisite_packages.all(p => docker_ce_packages.any(q => q == p))
+    && docker_ce_rootless_prerequisite_packages.all(p => srv3_packages.any(q => q == p))
 }
