@@ -1,5 +1,6 @@
 module gunbc.host.host_cli_dependency
 
+import std.optional { optional_absent, optional_present }
 import extdeps.tools { CliTool, install_hint }
 import extdeps.tools.npm { npm_cli_tool }
 import extdeps.tools.sshpass { sshpass_cli_tool }

@@ -1,5 +1,6 @@
 module gunbc.package_delivery
 
+import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
 import std.types { String, NonEmptyStr, List, FilePath, Bool, Int, Set }
 import std.algebra { trim }
 import std.content_hash {

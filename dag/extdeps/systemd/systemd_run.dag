@@ -1,5 +1,6 @@
 module extdeps.systemd.systemd_run
 
+import std.algebra { list_append }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { NonEmptyStr, List, Bool, Int, Unit, String }

@@ -1,5 +1,6 @@
 module gunbc.heal_candidate
 
+import std.bytes { utf8_encode_bytes }
 import std.types { NonEmptyStr, String, List, Int, Bool, CommitSha, FilePath }
 import std.integer { UInt8 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
