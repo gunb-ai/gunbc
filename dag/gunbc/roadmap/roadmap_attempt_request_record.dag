@@ -109,13 +109,17 @@ type AttemptRequestBindingCommit
   = RequestBindingCommitted { binding: AttemptRequestBinding }
   | RequestBindingCommitRefused { step: String, detail: String }
 
-fn attempt_request_binding_commit_of(binding: AttemptRequestBinding, created: FilesystemCreateNew, existing: AttemptRequestBindingRead) -> AttemptRequestBindingCommit {
+// THE CREATE-ONLY WRITE: publish the binding with a create that fails when the file exists, then
+// decide with attempt_request_binding_commit_of over what the create answered and, only when the
+// target was occupied, what is recorded there.
+fn attempt_request_binding_create_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, binding: AttemptRequestBinding) -> AttemptRequestBindingCommit {
+  let created = attempt_state_create_new_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptRequestBindingFile, content: attempt_request_binding_json(binding: binding))
   match created {
     FilesystemCreated { path: _ } => RequestBindingCommitted { binding: binding }
     FilesystemCreateRefused { path: _, kind: _, error } => RequestBindingCommitRefused { step: "attempt-request-binding-persist", detail: error }
     FilesystemCreateKindUnrecognized { path: _, observed, error } => RequestBindingCommitRefused { step: "attempt-request-binding-persist", detail: join([observed, ": ", error], "") }
     FilesystemCreateTargetOccupied { path: _ } =>
-      match existing {
+      match attempt_request_binding_read_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key) {
         RequestBindingRead { binding: recorded } =>
           if recorded == binding { RequestBindingCommitted { binding: recorded } }
           else { RequestBindingCommitRefused { step: "attempt-request-binding-conflict", detail: join(["the attempt is already bound (", attempt_request_binding_json(binding: recorded), ") and cannot be re-bound (", attempt_request_binding_json(binding: binding), ")"], "") } }
@@ -123,23 +127,6 @@ fn attempt_request_binding_commit_of(binding: AttemptRequestBinding, created: Fi
         RequestBindingUnreadable { reason } => RequestBindingCommitRefused { step: "attempt-request-binding-conflict", detail: join(["the attempt already has a binding that cannot be read, which is not replaced: ", reason], "") }
       }
   }
-}
-
-// THE CREATE-ONLY WRITE: publish the binding with a create that fails when the file exists, then
-// decide with attempt_request_binding_commit_of over what the create answered and, only when the
-// target was occupied, what is recorded there.
-fn attempt_request_binding_create_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, binding: AttemptRequestBinding) -> AttemptRequestBindingCommit {
-  let created = attempt_state_create_new_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptRequestBindingFile, content: attempt_request_binding_json(binding: binding))
-  attempt_request_binding_commit_of(
-    binding: binding,
-    created: created,
-    existing: match created {
-      FilesystemCreateTargetOccupied { path: _ } => attempt_request_binding_read_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-      FilesystemCreated { path: _ } => RequestBindingAbsent
-      FilesystemCreateRefused { path: _, kind: _, error: _ } => RequestBindingAbsent
-      FilesystemCreateKindUnrecognized { path: _, observed: _, error: _ } => RequestBindingAbsent
-    },
-  )
 }
 
 // THE BINDING AS A LATER READER FINDS IT. Absent is an attempt launched before bindings were

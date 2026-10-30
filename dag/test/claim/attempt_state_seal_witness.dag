@@ -1,0 +1,145 @@
+module test.claim.attempt_state_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE PER-ATTEMPT DISPATCH STATE (gunbc.roadmap.roadmap_attempt_state_store) IS MINTED FROM instance+node+attempt_key
+// AND CANNOT BE SPELLED OR MINTED FROM A PATH. AttemptState (the listed store) and AttemptStateProvision (the
+// plan-time path) are sole_constructor. Each RED hands the compiler a module outside the defining file and asserts
+// the refusal on the real acceptance path: a forged literal and a forged cast are each EXACTLY ONE
+// SoleConstructorViolation on the record's own subject; the mint handed a path, and a handle of the other record
+// returned where this one is required, each add at least one blocking diagnostic beyond a baseline importing the
+// same closure. The expecting-RED probes (a directory read out of either record) record the declared residual that a
+// sole_constructor record's field reads are not module-private (the existing specimen a_slot_store_is_built_over_a_literal_path_by_any_module,
+// route 2); they go red, and are inverted, in the change that makes sealed fields readable only by the declaring module.
+// The GREEN is the lawful route: the mint from the business key into the external-hand-off path / the provision.
+// THE DECLARATION CONTROLS name a symbol each reader module no longer declares (the path-returning family and the
+// two verification walks): importing it must add a blocking diagnostic, so a reader cannot quietly regain a raw-path route.
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+data baseline_source: String = "module probe_attempt_state_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data state_literal_source: String = "module probe_attempt_state_state_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\nfn f(i: NonEmptyStr) -> AttemptState {\n  AttemptState { instance: i, node: \"n\", directory: \"/tmp/forged-attempt\" }\n}\n"
+
+data state_cast_source: String = "module probe_attempt_state_state_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\nfn f(r: NonEmptyStr) -> AttemptState {\n  r as AttemptState\n}\n"
+
+data provision_literal_source: String = "module probe_attempt_state_provision_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\nfn f(i: NonEmptyStr) -> AttemptStateProvision {\n  AttemptStateProvision { instance: i, node: \"n\", directory: \"/tmp/forged-attempt\" }\n}\n"
+
+data provision_cast_source: String = "module probe_attempt_state_provision_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\nfn f(r: NonEmptyStr) -> AttemptStateProvision {\n  r as AttemptStateProvision\n}\n"
+
+data state_other_source: String = "module probe_attempt_state_state_other\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\nfn f(p: AttemptStateProvision) -> AttemptState {\n  p\n}\n"
+
+data provision_other_source: String = "module probe_attempt_state_provision_other\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\nfn f(s: AttemptState) -> AttemptStateProvision {\n  s\n}\n"
+
+data state_path_minter_source: String = "module probe_attempt_state_state_path_minter\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\nfn f(i: HostDashboardInstance) -> NonEmptyStr {\n  match attempt_state_open(instance: i, node: \"n\", attempt_key: \"k\", directory: \"/tmp/forged-attempt\") {\n    AttemptStateReady { store: _ } => \"minted\"\n    AttemptStateUnready { detail: _ } => \"unready\"\n  }\n}\n"
+
+data state_dir_out_source: String = "module probe_attempt_state_state_dir_out\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\nfn f(s: AttemptState) -> NonEmptyStr {\n  s.directory\n}\n"
+
+data provision_dir_out_source: String = "module probe_attempt_state_provision_dir_out\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\nfn f(p: AttemptStateProvision) -> NonEmptyStr {\n  p.directory\n}\n"
+
+data lawful_source: String = "module probe_attempt_state_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\nfn f(i: HostDashboardInstance) -> String {\n  match attempt_state_open(instance: i, node: \"n\", attempt_key: \"k\") {\n    AttemptStateReady { store } => attempt_state_external_path(store: store, member: AttemptWorkerLog)\n    AttemptStateUnready { detail } => detail\n  }\n}\n"
+
+data lawful_provision_source: String = "module probe_attempt_state_lawful_provision\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\nfn f(i: HostDashboardInstance) -> AttemptStateProvision {\n  attempt_state_provision(instance: i, node: \"n\", attempt_key: \"k\")\n}\n"
+
+data ctl_request_record_source: String = "module probe_attempt_state_ctl_request_record\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\n\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_path_for_instance }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}"
+
+data ctl_verification_receipt_source: String = "module probe_attempt_state_ctl_verification_receipt\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\n\nimport gunbc.roadmap.roadmap_verification_receipt { exact_verification_receipt_source_read }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}"
+
+data ctl_verification_selection_source: String = "module probe_attempt_state_ctl_verification_selection\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\n\nimport gunbc.roadmap.roadmap_verification_receipt { current_verification_selection_observe }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}"
+
+data ctl_belt_actuate_source: String = "module probe_attempt_state_ctl_belt_actuate\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\n\nimport gunbc.roadmap.roadmap_belt_actuate { belt_read_or_empty }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}"
+
+data ctl_actuator_source: String = "module probe_attempt_state_ctl_actuator\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\n\nimport gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_state_path_for_instance }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}"
+
+test fn a_forged_state_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: state_literal_source, subject: "AttemptState"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_state_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: state_cast_source, subject: "AttemptState"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_provision_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: provision_literal_source, subject: "AttemptStateProvision"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_provision_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: provision_cast_source, subject: "AttemptStateProvision"), holds: fn(n) { n == 1 }))
+}
+
+test fn no_attempt_state_mint_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: state_path_minter_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn a_provision_is_not_an_attempt_state() -> ProcessExit {
+  census_exit(blocking_delta(hostile: state_other_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn an_attempt_state_is_not_a_provision() -> ProcessExit {
+  census_exit(blocking_delta(hostile: provision_other_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn a_directory_is_readable_through_an_attempt_state_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: state_dir_out_source, safe: baseline_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_directory_is_readable_through_a_provision_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: provision_dir_out_source, safe: baseline_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn the_lawful_attempt_state_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: lawful_source, safe: baseline_source, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: lawful_source, subject: "AttemptState"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn the_lawful_provision_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: lawful_provision_source, safe: baseline_source, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: lawful_provision_source, subject: "AttemptStateProvision"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn ctl_request_record_no_longer_declares_attempt_request_binding_path_for_instance() -> ProcessExit {
+  census_exit(blocking_delta(hostile: ctl_request_record_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn ctl_verification_receipt_no_longer_declares_exact_verification_receipt_source_read() -> ProcessExit {
+  census_exit(blocking_delta(hostile: ctl_verification_receipt_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn ctl_verification_selection_no_longer_declares_current_verification_selection_observe() -> ProcessExit {
+  census_exit(blocking_delta(hostile: ctl_verification_selection_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn ctl_belt_actuate_no_longer_declares_belt_read_or_empty() -> ProcessExit {
+  census_exit(blocking_delta(hostile: ctl_belt_actuate_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn ctl_actuator_no_longer_declares_dispatch_attempt_state_path_for_instance() -> ProcessExit {
+  census_exit(blocking_delta(hostile: ctl_actuator_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+data ctl_commit_of_source: String = "module probe_attempt_state_ctl_commit_of\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\n\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_commit_of }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}"
+
+data ctl_create_entry_source: String = "module probe_attempt_state_ctl_create_entry\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\n\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_create_for_instance }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}"
+
+// THE OUTCOME-TO-SUCCESS EXPORT (lane sweep, row attempt_request_binding_commit_of) IS DELETED: importing it is a
+// MissingExport; the effect entry that now carries the decision imports clean.
+test fn attempt_request_record_no_longer_declares_the_commit_decision() -> ProcessExit {
+  census_exit(blocking_delta(hostile: ctl_commit_of_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn attempt_request_record_declares_the_create_entry() -> ProcessExit {
+  census_exit(blocking_delta(hostile: ctl_create_entry_source, safe: baseline_source, holds: fn(n) { n <= 0 }))
+}
