@@ -22,10 +22,10 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap.roadmap_belt_attempt_store_root { belt_attempt_member_path, belt_submission_store_slots }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_scm_recapture, belt_commit_outcome_persist, BeltCommitOutcome, CommitSkipped, Recaptured, RecaptureRefused, RecapturePoisoned,
   belt_exec, ExecOk, ExecFailed, ExecRefused,
-  belt_attempt_submission_dir_for_instance,
   recapture_capture_absent_detail,
 }
 import gunbc.roadmap.roadmap_submission {
@@ -109,10 +109,11 @@ fn plant_worktree(instance: HostDashboardInstance) -> String {
       && run_git(dir: worktree, args: ["commit", "-q", "-m", "worker"])
     if origin_ok && worker {
       let worker_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
-      let submissions = belt_attempt_submission_dir_for_instance(
+      let submissions = belt_attempt_member_path(
         instance: instance,
         node_id: recapture_node as RoadmapNodeId,
         attempt_key: recapture_attempt,
+        member: belt_submission_store_slots.member,
       )
       let _sub = shell.Mkdir.Parents(path: submissions as FilePath)
       let capture = SubmissionCapture {
@@ -219,10 +220,11 @@ test fn a_capture_claiming_this_head_stored_under_another_basename_refuses_by_re
   let worktree = plant_worktree(instance: instance)
   let worker_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
   let base_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD~1"])
-  let submissions = belt_attempt_submission_dir_for_instance(
+  let submissions = belt_attempt_member_path(
     instance: instance,
     node_id: recapture_node as RoadmapNodeId,
     attempt_key: recapture_attempt,
+    member: belt_submission_store_slots.member,
   )
   let misplaced = worktree != "" && worker_sha != "" && base_sha != "" && worker_sha != base_sha
     && shell.Remove.FileForce(path: join([submissions, "/", submission_capture_basename(head_sha: worker_sha)], "") as FilePath).success
@@ -310,10 +312,11 @@ test fn no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent() ->
   let worktree = plant_worktree(instance: instance)
   let worker_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
   let base_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD~1"])
-  let submissions = belt_attempt_submission_dir_for_instance(
+  let submissions = belt_attempt_member_path(
     instance: instance,
     node_id: recapture_node as RoadmapNodeId,
     attempt_key: recapture_attempt,
+    member: belt_submission_store_slots.member,
   )
   let misplaced = worktree != "" && worker_sha != "" && base_sha != ""
     && shell.Remove.FileForce(path: join([submissions, "/", submission_capture_basename(head_sha: worker_sha)], "") as FilePath).success
