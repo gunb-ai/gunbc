@@ -182,7 +182,7 @@ test fn w_the_read_card_selects_through_the_same_function() -> Bool {
 // names (the CARD name changed at that commit). A red here means a printed dimension moved OR text changed;
 // a reviewer must tell which before re-recording. It becomes a grounded control when a print record carries the
 // FIT-RING part geometry to digest instead. The root is now spelled as a catalogued card joined to a shape
-// (printable_assembly_selection duct_card_root); the two literals below are byte-for-byte what they were.
+// (printable_assembly_selection duct_card_root); the root wire spelling below is byte-for-byte what it was, and the digest was re-recorded for the schema-string change only (see the note above the test).
 // Digest re-recorded for the schema-string change ONLY (gunbc.a16-inlet-duct-review.v2 -> gunbc.printed-duct-review.v3):
 // a field-by-field diff of the manifest against main 18a76b7 shows that string as the sole difference, and main's
 // digest reproduced the previous literal.
