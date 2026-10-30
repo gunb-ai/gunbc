@@ -7,9 +7,9 @@ import product.printed_chassis.card_cooling_route {
   PlaneOnEnd, PlaneAcrossRowStanding, OverTheRow, BesideTheRow,
   RouteAdmission, RouteAdmitted, RouteAdmittedOnOperatorBound, RouteProposalOnly, RouteRefusedByChassis, RouteHomeUnmeasured,
   RouteDemand, ShapeExtent,
-  admit_home, admit_plane_on_end, admit_home_over, ask,
+  admit_home, RouteSubject, a16_route_subject, admit_plane_on_end, admit_home_over, ask,
   plane_on_end_run_back, plane_on_end_slot_demand, plane_across_row_run_back, plane_on_end_overhang_per_side,
-  beside_the_row_demand, over_the_row_height, smaller_i, a16_slot_pitch,
+  beside_the_row_demand, over_the_row_height, smaller_i,
   shape_um, shape_max_for_home, extent_display, flat_on_end_pair_need, flat_on_end_pair_span, flat_on_end_twin_verdict,
   fan_poses, fan_pose_checks, fan_pose_admits, admitting_fan_poses, sideways_fan_poses, printed_pose, fan_pose_rear_shortfall, best_sideways_rear_shortfall, fan_pose_displays, scroll_is_not_a_second_geometry,
   card_intake, CardIntake, Facing, RowEmpty, NoSuchCard, BlockedSide, NeighbourCard, ChassisWall,
@@ -18,7 +18,7 @@ import product.printed_chassis.card_cooling_route {
   cable_bend_path, CableBendPath, ClearOfPrintedMaterial, MeetsPrintedSeat, PastTheReliefEdge,
   plane_on_end_head_vs_blower_overlap_without_the_seat, plane_on_end_original_seat_ceiling, plane_on_end_head_clearance, plane_on_end_plugged_head_clears_blower, plane_on_end_fan_standoff_required, plane_on_end_standoff_admits,
 }
-import product.printed_chassis.gpu_duct {a16_blower_duct_design, blower_reach_behind, um, plane_on_end_connector_protrusion_admits, plane_on_end_readme}
+import product.printed_chassis.gpu_duct {BlowerDuctDesign, a16_blower_duct_design, blower_reach_behind, um, plane_on_end_connector_protrusion_admits, plane_on_end_readme}
 import product.printed_chassis.chassis_clearances {ChassisGap, Measured, DeclaredConservativeByOperator, EstimatedByOperator, NeedsMeasurement, card_end_rear_fan_clearance, neighbour_lane_width, side_lane_width, deck_to_lid_clearance, chassis_gaps, chassis_gap, gap_display, gap_name, gap_is_measured, gap_is_estimate, gap_may_be_printed_on, gap_room, remeasure_before_print, measured_distance, standing_origin}
 import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
 import extdeps.fans.delta {delta_bfb1012m_envelope, delta_bfb1012m_rating}
@@ -82,8 +82,8 @@ fn refused_against(a: RouteAdmission, wanted: NonEmptyStr) -> Bool {
 // this fn used to assume: 33.0 + 0.5 + 7.5 = 41.0 mm of the operator's 70 mm. If Delta's number, the wall or
 // the head moves, this test moves with it -- that is the point of the literal.
 test fn w_plane_on_end_spends_its_thickness_not_its_face_behind_the_end() -> Bool {
-  plane_on_end_run_back(d: a16_wall_design()) == 33000 + 500 + 7500
-    && plane_on_end_run_back(d: a16_wall_design()) <= 59000
+  plane_on_end_run_back(fan: a16_blower_duct_design, d: a16_wall_design()) == 33000 + 500 + 7500
+    && plane_on_end_run_back(fan: a16_blower_duct_design, d: a16_wall_design()) <= 59000
 }
 
 // THE SAME HOME PAYS ACROSS THE SLOT. Plane on end, the housing's LONG face (97.2 mm) spans the slot
@@ -101,23 +101,23 @@ test fn w_plane_on_end_spills_into_the_neighbour_lane() -> Bool {
 // putting the whole 97.2 under a per-side allowance would be a unit error dressed as caution, and putting
 // the per-side figure under the whole span would be the same error the other way.
 test fn w_the_overhang_asks_per_side_what_the_sides_gave_per_side() -> Bool {
-  um(m: plane_on_end_overhang_per_side(b: a16_blower())) == (97200 - 40640) / 2
-    && um(m: plane_on_end_overhang_per_side(b: a16_blower())) == 28280
-    && um(m: a16_slot_pitch()) == 40640
+  um(m: plane_on_end_overhang_per_side(fan: a16_blower_duct_design)) == (97200 - 40640) / 2
+    && um(m: plane_on_end_overhang_per_side(fan: a16_blower_duct_design)) == 28280
+    && um(m: a16_blower_duct_design.slot_pitch) == 40640
 }
 
 // THE STRAIGHT BACK, MEASURED HONESTLY: what the duct built today asks for behind the end is the socket's
 // bound -- the housing's longer edge while the outlet's edge on the drawing stays unread -- plus the
 // socket's depth and a wall. That is well over the 70 mm, which is the whole reason this module exists.
 test fn w_the_straight_back_asks_the_chassis_for_more_than_it_has() -> Bool {
-  let asked = plane_across_row_run_back(b: a16_blower(), d: a16_wall_design())
+  let asked = plane_across_row_run_back(fan: a16_blower_duct_design, d: a16_wall_design())
   asked == blower_reach_behind(b: a16_blower_duct_design) + 10000 + 2000 && asked > 70000
 }
 
 // ADMISSION: the straight-back home is refused BY THE CHASSIS, not by an unread gap -- its verdict does
 // not change when the unmeasured gaps are read, and a reader must not be sent to measure the wrong thing.
 test fn w_straight_back_is_refused_by_the_chassis_itself() -> Bool {
-  is_chassis_refusal(a: admit_home(home: PlaneAcrossRowStanding))
+  is_chassis_refusal(a: admit_home(s: a16_route_subject(), home: PlaneAcrossRowStanding))
 }
 
 // ADMISSION, 2026-10-26. The two blanks that refused the flat-on-the-plug-end home now carry the
@@ -130,7 +130,7 @@ test fn w_straight_back_is_refused_by_the_chassis_itself() -> Bool {
 // about the rear and the sides, and a rule that admitted those two as well would be a rule the quotes do
 // not support (DESIGN.md 4d, "do not over-forbid" has a twin -- do not over-admit either).
 test fn w_plane_on_end_is_admitted_on_the_operators_bounds_and_the_rest_still_refuse() -> Bool {
-  is_admitted_on_operator_bound(a: admit_home(home: PlaneOnEnd))
+  is_admitted_on_operator_bound(a: admit_home(s: a16_route_subject(), home: PlaneOnEnd))
     // The other two homes no longer refuse for want of a reading. The operator's 2026-10-27 figures put
     // numbers under them -- 'from floor to t he lid is 120mm' and 'The outer edge of the other card has
     // 60mm until it touches the heatsink' -- and against those numbers they REFUSE, which is a stronger and
@@ -138,13 +138,13 @@ test fn w_plane_on_end_is_admitted_on_the_operators_bounds_and_the_rest_still_re
     // it usable above the card), beside the row needs 100.4 mm of a lane whose tight side is "a few mm".
     // Pinned by which gap each refusal is against, so the day the operator reads the free lane properly and
     // this becomes a RouteProposalOnly, the witness says so by going red, not by silently agreeing.
-    && is_chassis_refusal(a: admit_home(home: OverTheRow {riser: micrometer(count: 6000)}))
-    && refused_against(a: admit_home(home: OverTheRow {riser: micrometer(count: 6000)}), wanted: "deck to chassis lid, behind the plug end")
-    && is_chassis_refusal(a: admit_home(home: BesideTheRow))
-    && refused_against(a: admit_home(home: BesideTheRow), wanted: "free lane beside the card row")
+    && is_chassis_refusal(a: admit_home(s: a16_route_subject(), home: OverTheRow {riser: micrometer(count: 6000)}))
+    && refused_against(a: admit_home(s: a16_route_subject(), home: OverTheRow {riser: micrometer(count: 6000)}), wanted: "deck to chassis lid, behind the plug end")
+    && is_chassis_refusal(a: admit_home(s: a16_route_subject(), home: BesideTheRow))
+    && refused_against(a: admit_home(s: a16_route_subject(), home: BesideTheRow), wanted: "free lane beside the card row")
     // and none of the three is ever reported as a caliper-grounded admission: the only admitted home is
     // admitted on a declaration, and the two refusals are refusals.
-    && !is_admitted(a: admit_home(home: PlaneOnEnd))
+    && !is_admitted(a: admit_home(s: a16_route_subject(), home: PlaneOnEnd))
 }
 
 // THE OPERATOR'S BOUND PRINTS, AND IT DOES NOT BECOME A MEASUREMENT BY DOING SO. Their two sentences
@@ -159,7 +159,7 @@ test fn w_the_operators_bound_prints_without_becoming_a_measurement() -> Bool {
     && gap_may_be_printed_on(g: neighbour_lane_width)
     && !gap_is_measured(g: card_end_rear_fan_clearance)
     && !gap_is_measured(g: neighbour_lane_width)
-    && is_operator_admission_that_prints_as_a_fit_print(a: admit_home(home: PlaneOnEnd))
+    && is_operator_admission_that_prints_as_a_fit_print(a: admit_home(s: a16_route_subject(), home: PlaneOnEnd))
 }
 
 // THE TWO STANDINGS THAT ARE NOT RULINGS STILL REFUSE THE PRINT. An estimate is a guess about a fact that
@@ -177,16 +177,16 @@ test fn w_the_operators_bound_prints_without_becoming_a_measurement() -> Bool {
 // operator said the 70 was "like". That figure was called rough and deliberately discounted; checking
 // against it would promote a number the operator themselves refused to spend.
 test fn w_the_margin_is_the_governing_readings_and_the_report_says_which_row_governed() -> Bool {
-  match admit_home(home: PlaneOnEnd) {
+  match admit_home(s: a16_route_subject(), home: PlaneOnEnd) {
     RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: b, governed_by: gov, margin: mg} =>
       // the print is authorized by the operator's authored allowance...
       gap_name(g: b) == "plug end to rear chassis fan"
       // ...but the number was set by the tighter re-read, and that is recorded, not implied
       && match gov { Present {value: row} => gap_name(g: row) == "plug end to the 120 mm chassis fan (re-read)" Absent => false }
-      && um(m: mg) == 59000 - plane_on_end_run_back(d: a16_wall_design())
+      && um(m: mg) == 59000 - plane_on_end_run_back(fan: a16_blower_duct_design, d: a16_wall_design())
       && um(m: mg) == 18000
       // and neither reading's authority comes from the 73 the operator discounted
-      && um(m: mg) < 73000 - plane_on_end_run_back(d: a16_wall_design())
+      && um(m: mg) < 73000 - plane_on_end_run_back(fan: a16_blower_duct_design, d: a16_wall_design())
     _ => false
   }
 }
@@ -318,7 +318,7 @@ test fn w_the_head_window_is_set_by_the_stack_not_by_the_shoulder() -> Bool {
 // "32.5 mm to spare (70 mm declared)" after the re-read would be the §5 fabrication this whole file exists
 // to prevent.
 test fn w_the_admission_report_shows_both_the_authorizing_bound_and_the_governing_reading() -> Bool {
-  let report = route_admission_display(a: admit_home(home: PlaneOnEnd))
+  let report = route_admission_display(a: admit_home(s: a16_route_subject(), home: PlaneOnEnd))
   string_contains(s: report, pattern: "70 mm")
     && string_contains(s: report, pattern: "TIGHTER")
     && string_contains(s: report, pattern: "120 mm chassis fan (re-read)")
@@ -340,7 +340,7 @@ test fn w_the_rear_room_is_the_tightest_reading_after_each_ones_own_width() -> B
 // rather than the print discovering 4 mm that the chassis never agreed to.
 test fn w_the_printable_part_budgets_exactly_the_admitted_run_back() -> Bool {
   um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design()))
-    == plane_on_end_run_back(d: a16_wall_design())
+    == plane_on_end_run_back(fan: a16_blower_duct_design, d: a16_wall_design())
     && um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design())) == 41000
 }
 
@@ -414,25 +414,24 @@ fn bench_rear_bound(total: Micrometer) -> ChassisGap {
 }
 
 test fn w_the_same_home_is_refused_at_thirty_mm_behind_the_end() -> Bool {
-  is_chassis_refusal(a: admit_plane_on_end(rear: bench_rear_bound(total: micrometer(count: 30000)), lane: neighbour_lane_width))
-    && is_admitted_on_operator_bound(a: admit_plane_on_end(rear: card_end_rear_fan_clearance, lane: neighbour_lane_width))
+  is_chassis_refusal(a: admit_plane_on_end(s: a16_route_subject(), rear: bench_rear_bound(total: micrometer(count: 30000)), lane: neighbour_lane_width))
+    && is_admitted_on_operator_bound(a: admit_plane_on_end(s: a16_route_subject(), rear: card_end_rear_fan_clearance, lane: neighbour_lane_width))
 }
 
 // A SHORT REAR BOUND REFUSES THE REAR, NOT THE SIDES. The refusal must name the rear demand and carry the
 // rear gap, so the operator is sent back to the thing that actually failed. Blaming the sides would be the
 // model lying about which of the two bounds the design exhausted.
 test fn w_the_thirty_mm_refusal_blames_the_rear_and_not_the_sides() -> Bool {
-  match admit_plane_on_end(rear: bench_rear_bound(total: micrometer(count: 30000)), lane: neighbour_lane_width) {
+  match admit_plane_on_end(s: a16_route_subject(), rear: bench_rear_bound(total: micrometer(count: 30000)), lane: neighbour_lane_width) {
     RouteRefusedByChassis {home: PlaneOnEnd, unmet: n, gap: g} => (n.of_gap as String) == "plug end to rear chassis fan"
       && string_contains(s: gap_display(g: g), pattern: "DECLARED BY THE OPERATOR")
     _ => false
   }
 }
 
-// AND A TIGHT SIDE BOUND REFUSES THE SIDES, NOT THE REAR: at 20 mm per side the overhang fails while the
-// rear still fits, which is the other half of the same honesty.
-test fn w_a_twenty_mm_side_bound_refuses_on_the_overhang() -> Bool {
-  let tight = Measured {
+// A 20 mm side bound that nobody has given: a bench stand-in to exercise a tight side.
+fn tight_side_lane() -> ChassisGap {
+  Measured {
     name: "lane between adjacent cards, behind the plug ends (bench bound, not this chassis)",
     from_point: "this card's own centre plane across the slot",
     to_point: "the nearest surface of the adjacent card's own duct or blower behind the plug ends",
@@ -446,7 +445,14 @@ test fn w_a_twenty_mm_side_bound_refuses_on_the_overhang() -> Bool {
       does_not_settle: "everything: nobody has given this bound",
     },
   }
-  match admit_plane_on_end(rear: card_end_rear_fan_clearance, lane: tight) {
+}
+
+// AND A TIGHT SIDE BOUND REFUSES THE SIDES, NOT THE REAR: at 20 mm per side the overhang fails while the
+// rear still fits, which is the other half of the same honesty.
+test fn w_a_twenty_mm_side_bound_refuses_on_the_overhang() -> Bool {
+  let tight = tight_side_lane()
+
+  match admit_plane_on_end(s: a16_route_subject(), rear: card_end_rear_fan_clearance, lane: tight) {
     RouteRefusedByChassis {home: PlaneOnEnd, unmet: n, gap: _} => (n.of_gap as String) == "space on the sides of the card row"
     _ => false
   }
@@ -456,7 +462,7 @@ test fn w_a_twenty_mm_side_bound_refuses_on_the_overhang() -> Bool {
 // visible -- the slot span, the per-side overhang and the run back -- so a reader sees everything the
 // bound was asked to cover, and the verdict says whose bound it was.
 test fn w_the_admitted_home_reports_everything_it_spends() -> Bool {
-  match admit_home(home: PlaneOnEnd) {
+  match admit_home(s: a16_route_subject(), home: PlaneOnEnd) {
     RouteAdmittedOnOperatorBound {home: _, needs: ns, on_bound: g, governed_by: _, margin: _} => length(list: ns) == 3
       && string_contains(s: gap_display(g: g), pattern: "DECLARED BY THE OPERATOR")
     _ => false
@@ -551,7 +557,7 @@ test fn w_two_ducted_cards_clear_the_gap_between_them_and_the_arithmetic_is_the_
   // 56.56 mm of overhang against pitch + the estimated gap = 40.64 + 41 = 81.64 mm. Comparing the
   // overhang against the 46 mm gap alone would refuse this and would be wrong; the margin is pinned so a
   // future edit cannot swap the comparison without failing here.
-  micrometer_count(m: flat_on_end_pair_need(b: a16_blower())) == 56560
+  micrometer_count(m: flat_on_end_pair_need(fan: a16_blower_duct_design)) == 56560
     && room_ok(r: flat_on_end_pair_span(), at_most: micrometer(count: 81640))
     // The report is checked against the SAME carriers the arithmetic used, not against a number typed into
     // this witness: the margin is 81640 - 56560 = 25.08 mm, and mm_text renders that as 25.1. Pinning the
@@ -772,3 +778,13 @@ test fn w_the_required_air_sits_above_the_blowers_free_air_rating_and_says_so() 
     && string_contains(s: bfb1012m_flow_context(), pattern: "TranscribedUncited")
 }
 
+
+// The verdict is a function of the subject, not of the A16: the same home over the same tight side bound refuses
+// the A16 subject on its 28.28 mm overhang and admits a subject whose slot pitch holds the whole housing, which
+// overhangs nothing. The A16 half is the control, so the difference is the subject's doing.
+test fn w_the_route_verdict_follows_the_subject_it_is_given() -> Bool {
+  let a16 = a16_route_subject()
+  let wide = RouteSubject { face: a16.face, wall: a16.wall, fan: BlowerDuctDesign { blower: a16.fan.blower, outlet_edge: a16.fan.outlet_edge, socket_clearance: a16.fan.socket_clearance, socket_depth: a16.fan.socket_depth, screw_tool_clearance_radius: a16.fan.screw_tool_clearance_radius, card_count: a16.fan.card_count, slot_pitch: micrometer(count: 100000) } }
+  is_chassis_refusal(a: admit_plane_on_end(s: a16, rear: card_end_rear_fan_clearance, lane: tight_side_lane()))
+    && is_admitted_on_operator_bound(a: admit_plane_on_end(s: wide, rear: card_end_rear_fan_clearance, lane: tight_side_lane()))
+}
