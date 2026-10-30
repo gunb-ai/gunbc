@@ -130,7 +130,7 @@ data bad_process_is_worse_than_no_process: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bad_process_is_worse_than_no_process"),
   decided: "2026-10-30",
   section: "6",
-  provenance: "Operator ruling, 2026-10-30: a bad process is worse than no process. A six-hour census that does not answer the decision is a broken method, not a standard to enforce. Until real lenses have bounded, discriminating consumers, prefer grep, qualitative source inspection and small real-route witnesses for investigation. These establish facts only over their inspected scope; they never silently discharge a completeness obligation. If complete evidence is necessary and unaffordable, narrow or hold the cut. The cost/coverage rule is permanent, including after lens support lands.",
+  provenance: "Operator ruling, 2026-10-30: a bad process is worse than no process. A six-hour census that does not answer the decision is a broken method, not a standard to enforce. Until real lenses have bounded, discriminating consumers, prefer grep, qualitative source inspection and small real-route witnesses for investigation. These establish facts only over their inspected scope; they never silently discharge a completeness obligation. Census process is retired by default: existing census instruments and census-conditioned prerequisites are removed without successor instruments; the semantic requirements they served remain. The cost/coverage rule is permanent, and lens support landing does not revive the retired censuses.",
 }
 
 data job_roster_closed_to_growth: DesignRuling = DesignRuling {
