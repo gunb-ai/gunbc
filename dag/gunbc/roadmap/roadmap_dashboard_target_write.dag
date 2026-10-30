@@ -17,7 +17,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 // when the path exists), NOT a second route beside it: Filesystem has no target transport, and the
 // target host is reached only through typed argv. The contract is realized as ONE modelled argv --
 // extdeps.tools.gnu_coreutils dd_create_new_path_command -- with the payload on stdin, so no byte of it
-// is ever shell-parsed or an argv element. It takes the place of an inline `sh -c 'set -C; printf ...'`.
+// is ever shell-parsed or an argv element. Declared frontier (DESIGN §3c): its consumer is #15413 B1 (DashboardMoveAttemptStateEntries), which will call it in place of its inline sh create-only step (that inline lives on #15413's branch, not main); trigger = this module landing on main.
 //
 // The transport dispatch is gunbc.roadmap.roadmap_dashboard_instance_observe dashboard_target_run, the one
 // dispatch shared with dashboard_target_exec and dashboard_target_probe; this module adds only the
