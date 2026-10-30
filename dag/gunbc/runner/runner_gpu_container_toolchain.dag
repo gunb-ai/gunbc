@@ -57,7 +57,7 @@ import extdeps.systemd.systemctl {
   systemctl_is_enabled_verb,
   systemctl_user_status_for_uid_argv,
 }
-import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, readlink_command, rm_force_command, ls_one_per_line_command, ls_long_numeric_command }
+import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, readlink_command, rm_force_command, ls_one_per_line_command, ls_long_directory_numeric_command }
 import extdeps.posix.getent { getent_passwd_command }
 import extdeps.linux.user_namespaces {
   unshare_map_root_user_as_uid_argv,
@@ -1410,15 +1410,17 @@ data gpu_container_provision_uidmap_paths: List<NonEmptyStr> = ["/usr/bin/newuid
 data gpu_container_provision_subordinate_paths: List<NonEmptyStr> = ["/etc/subuid" as NonEmptyStr, "/etc/subgid" as NonEmptyStr]
 
 fn gpu_container_provision_start_discriminators(uid: Int, job_user: NonEmptyStr) -> List<List<String>> {
+  append(
   [
     journalctl_uid_tail_argv(uid: uid, lines: gpu_container_provision_unit_journal_lines),
-    argv_words(command: ls_long_numeric_command(paths: map(gpu_container_provision_uidmap_paths, p => p as String))),
     sysctl_read_value_argv(name: apparmor_restrict_unprivileged_userns_sysctl_name),
     argv_words(command: ls_one_per_line_command(path: "/etc/apparmor.d")),
     unshare_map_root_user_as_uid_argv(uid: uid),
     argv_words(command: getent_passwd_command(key: job_user)),
     grep_fixed_string_lines_in_files_argv(pattern: job_user, paths: gpu_container_provision_subordinate_paths),
-  ]
+  ],
+  items: map(gpu_container_provision_uidmap_paths, p => argv_words(command: ls_long_directory_numeric_command(path: p as String))),
+  )
 }
 
 fn gpu_container_provision_start_leg(uid: Int, job_user: NonEmptyStr) -> GpuContainerProvisionLeg {

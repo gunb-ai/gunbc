@@ -1508,11 +1508,12 @@ test fn the_re_read_compare_names_its_exit_code_and_no_step_refuses_with_an_empt
 // journal read of the wrong account.
 test fn the_unit_start_leg_captures_status_and_the_users_journal_on_refusal() -> Bool {
   let leg = gpu_container_provision_start_leg(uid: 999, job_user: "ghrunner" as NonEmptyStr)
-  length(leg.on_refusal) == 9
+  length(leg.on_refusal) == 10
     && leg.on_refusal.any(a => a == ["systemctl", "--user", "--machine=999@", "status", "--no-pager", "--full", "docker.service"])
     && leg.on_refusal.any(a => a == ["journalctl", "--user-unit=docker.service", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
     && leg.on_refusal.any(a => a == ["journalctl", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
-    && leg.on_refusal.any(a => a == ["ls", "-ln", "--", "/usr/bin/newuidmap", "/usr/bin/newgidmap"])
+    && leg.on_refusal.any(a => a == ["ls", "-ldn", "--", "/usr/bin/newuidmap"])
+    && leg.on_refusal.any(a => a == ["ls", "-ldn", "--", "/usr/bin/newgidmap"])
     && leg.on_refusal.any(a => a == ["sysctl", "-n", "kernel.apparmor_restrict_unprivileged_userns"])
     && leg.on_refusal.any(a => a == ["setpriv", "--reuid=999", "--regid=999", "--clear-groups", "unshare", "--user", "--map-root-user", "true"])
     && leg.on_refusal.any(a => a == ["grep", "-H", "-F", "-e", "ghrunner", "--", "/etc/subuid", "/etc/subgid"])

@@ -64,14 +64,6 @@ fn ls_one_per_line_command(path: String) -> ArgvCommand {
   argv_command(program: ls_program(), arguments: ["-1", path])
 }
 
-// -l -n: MODE, NUMERIC OWNER, SIZE AND NAME, one line per operand. ls(1) `-l` is the long listing (the
-// mode column shows a setuid bit as `s`), `-n` prints numeric uid/gid. The flags are ONE word with no
-// space or percent sign, which the transports' portable-word wall admits (stat's `-c FORMAT` was refused on
-// srv3). `--` ends options so a path cannot be read as one. A path ls cannot read makes ls exit nonzero.
-fn ls_long_numeric_command(paths: List<String>) -> ArgvCommand {
-  argv_command(program: ls_program(), arguments: concat(["-ln", "--"], paths))
-}
-
 // -1 -A: ONE ENTRY PER LINE, INCLUDING DOTFILES. ls(1) `-A, --almost-all`: do not ignore entries
 // starting with `.`, but omit the implied `.` and `..`. A caller asking "does this directory hold an
 // entry named N" must see a dot-prefixed N, or a hidden entry reads as absent. `--` ends options so a
