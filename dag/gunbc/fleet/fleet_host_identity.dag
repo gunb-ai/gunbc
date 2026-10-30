@@ -89,6 +89,13 @@ data operator_host_3dde7f: HostIdentity = "host-3dde7f"
 // here; this row names the slot and licenses nothing.
 data operator_host_94c81d: HostIdentity = "host-94c81d"
 
+// SUPERMICRO H11SSL UNIT 1 (operator, 2026-10-30; gunbc.plans.gpu_card_host_program row N0b, "an
+// opaque identity for the H11 host"). The host that serves the A16 Strata pool. Its board, BMC, DIMM
+// and fan readings are keyed by its BMC MAC under gunbc.machine_intake (supermicro_h11ssl_unit1_*); its
+// operator-facing hostname is the LEGACY spelling gunbc.hostname_allocation records. OPAQUE per the rule
+// above: neither the board nor its GPUs are read off this spelling, and either can change under it.
+data operator_host_6ce85c: HostIdentity = "host-6ce85c"
+
 // THE NAMED ROSTER, ONE LIST BESIDE THE ROWS. A step subject or other label resolves to a host only
 // by joining this membership; a spelling that is not a row here is not a fleet host.
 data operator_hosts: List<HostIdentity> = [
@@ -109,6 +116,7 @@ data operator_hosts: List<HostIdentity> = [
   operator_host_183527,
   operator_host_3dde7f,
   operator_host_94c81d,
+  operator_host_6ce85c,
 ]
 
 fn operator_host_named(label: NonEmptyStr) -> HostIdentity? {

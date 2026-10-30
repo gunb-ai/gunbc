@@ -15,7 +15,7 @@ import gunbc.serving.serving_host_memory {
   ServingMemoryVerdict, ServingMemoryEngineMaySwap, ServingMemoryOversubscribed, ServingMemoryEngineOverCap,
   ServingMemoryUndetermined, ServingMemoryFits,
   serving_host_memory_verdict, serving_engine_cache_allowance, engine_warm_sessions, conversation_snapshot_bytes,
-  strata_iq3_s_snapshot_cost, h11_serving_memory_observed, h11_engine_as_launched,
+  strata_iq3_s_snapshot_cost, host_6ce85c_serving_memory_observed, host_6ce85c_engine_as_launched,
   srv1_vllm_engine_memory, srv3_strata_engine_memory, srv4_serving_engine_memory, serving_engine_missing,
 }
 
@@ -59,9 +59,9 @@ fn is_fits(v: ServingMemoryVerdict) -> Bool {
 
 // h11 with every engine's swap cap set to zero and nothing else changed.
 fn h11_without_swap() -> ServingDedicatedHostMemory {
-  let h = h11_serving_memory_observed
+  let h = host_6ce85c_serving_memory_observed
   ServingDedicatedHostMemory {
-    name: h.name,
+    host: h.host,
     usable_ram: h.usable_ram,
     overhead: h.overhead,
     shared_resident: h.shared_resident,
@@ -81,9 +81,9 @@ fn fixture_engine(name: String, cache: ByteSize, base: ServingMemoryReading) -> 
 
 // A four-engine h11 with every figure read: 12 GiB caps, no swap, a 6 GiB base and a given cache each.
 fn h11_four_engines(cache: ByteSize, base: ServingMemoryReading) -> ServingDedicatedHostMemory {
-  let h = h11_serving_memory_observed
+  let h = host_6ce85c_serving_memory_observed
   ServingDedicatedHostMemory {
-    name: h.name,
+    host: h.host,
     usable_ram: h.usable_ram,
     overhead: HostFixedOverheadAllowance { bytes: shm_gib(n: 4), reason: "witness fixture" as NonEmptyStr },
     shared_resident: h.shared_resident,
@@ -96,7 +96,7 @@ fn h11_four_engines(cache: ByteSize, base: ServingMemoryReading) -> ServingDedic
 
 // THE RULE FIRES ON WHAT RUNS TODAY: h11's engines are each allowed 32 GiB of swap.
 test fn witness_h11_as_launched_is_refused_for_swap() -> Bool {
-  is_may_swap(v: serving_host_memory_verdict(h: h11_serving_memory_observed))
+  is_may_swap(v: serving_host_memory_verdict(h: host_6ce85c_serving_memory_observed))
 }
 
 // WITH SWAP REMOVED, THE SAME LAYOUT IS OVER BUDGET: six 16 GiB caps plus the 47 GiB locked weights exceed
@@ -120,7 +120,7 @@ test fn witness_unread_base_is_undetermined_not_fits() -> Bool {
 // GiB base leaves six engines nothing at all.
 test fn witness_cache_allowance_trades_engines_for_warm_sessions() -> Bool {
   let ram = kibibyte_to_byte_size(k: kibibyte(count: 115192288))
-  let shared = h11_serving_memory_observed.shared_resident
+  let shared = host_6ce85c_serving_memory_observed.shared_resident
   let six = serving_engine_cache_allowance(usable_ram: ram, overhead: shm_gib(n: 4), shared_resident: shared, engines: 6, base: shm_gib(n: 8))
   let four = serving_engine_cache_allowance(usable_ram: ram, overhead: shm_gib(n: 4), shared_resident: shared, engines: 4, base: shm_gib(n: 8))
   let none = serving_engine_cache_allowance(usable_ram: ram, overhead: shm_gib(n: 4), shared_resident: shared, engines: 6, base: shm_gib(n: 10))
@@ -138,7 +138,7 @@ test fn witness_cache_allowance_trades_engines_for_warm_sessions() -> Bool {
 
 // AN 8 GiB, 6-SLOT ENGINE KEEPS FIVE 80K SESSIONS WARM AND THREE 176K ONES.
 test fn witness_warm_sessions_of_an_h11_engine() -> Bool {
-  let e = h11_engine_as_launched(bus: "87")
+  let e = host_6ce85c_engine_as_launched(bus: "87")
   is_present_count(x: engine_warm_sessions(e: e, cost: strata_iq3_s_snapshot_cost, context: token_count(count: 80000)), n: 5)
     && is_present_count(x: engine_warm_sessions(e: e, cost: strata_iq3_s_snapshot_cost, context: token_count(count: 176183)), n: 3)
 }

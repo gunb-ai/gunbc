@@ -11,6 +11,8 @@ import std.measure {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves_local }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
 import gunbc.host.host_memory_observation {
   HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
   HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured,
@@ -54,7 +56,7 @@ type ServingEngineMemory {
 // sessions (srv1, srv3, srv4) is NOT one: its RAM is already partitioned by gunbc.fleet.fleet_host_budget,
 // and a second tree over the same RAM would be a second authority for it (DESIGN section 3).
 type ServingDedicatedHostMemory {
-  name: NonEmptyStr
+  host: HostIdentity
   usable_ram: HostUsableRam
   overhead: HostFixedOverhead
   // Weights resident once and mapped by every engine (h11's routed-expert GGUF, locked in page cache by
@@ -127,7 +129,7 @@ fn serving_engine_budget_node(e: ServingEngineMemory) -> BudgetNode {
 
 fn serving_host_budget_tree(h: ServingDedicatedHostMemory) -> BudgetNode {
   BudgetNode {
-    name: h.name as String,
+    name: h.host as String,
     appropriation: Appropriation { ceiling: serving_usable_ram_bytes_or_zero(r: h.usable_ram) },
     claims: [
       serving_claim(purpose: "host_fixed_overhead", amount: serving_overhead_bytes_or_zero(o: h.overhead)),
@@ -272,7 +274,7 @@ data strata_iq3_s_snapshot_cost: ConversationSnapshotCost = ConversationSnapshot
   provenance: "h11-a16 Strata 0.1.48 conversation-cache park lines, engine-87.log and engine-88.log, read 2026-10-30" as NonEmptyStr,
 }
 
-fn h11_engine_as_launched(bus: String) -> ServingEngineMemory {
+fn host_6ce85c_engine_as_launched(bus: String) -> ServingEngineMemory {
   ServingEngineMemory {
     name: ("h11-strata@" + bus) as NonEmptyStr,
     memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 16)), provenance: "systemctl show h11-strata@87 MemoryMax=17179869184, the template unit every bus shares, read 2026-10-30T16:18Z" as NonEmptyStr },
@@ -283,19 +285,19 @@ fn h11_engine_as_launched(bus: String) -> ServingEngineMemory {
   }
 }
 
-// h11-a16 AS IT RUNS ON 2026-10-30: six engines (buses 85 87 88 c5 c7 c8; 86 and c6 disabled on 10-26), each
+// HOST host-6ce85c (H11SSL unit 1, hostname h11-a16) AS IT RUNS ON 2026-10-30: six engines (buses 85 87 88 c5 c7 c8; 86 and c6 disabled on 10-26), each
 // capped at 16 GiB of RAM and allowed 32 GiB of swap, beside the routed-expert GGUF locked once in RAM.
 // Eight 16 GB DIMMs are fitted, but slot H1 trains on some boots and is disabled on others
 // (gunbc.machine_intake.supermicro_h11ssl_unit1_platform_standing supermicro_h11ssl_unit1_dimmh1_standing),
 // and the boot this row was read on is one where it was disabled, so MemTotal is 110 GiB and not 125.
-data h11_serving_memory_observed: ServingDedicatedHostMemory = ServingDedicatedHostMemory {
-  name: "h11-a16" as NonEmptyStr,
+data host_6ce85c_serving_memory_observed: ServingDedicatedHostMemory = ServingDedicatedHostMemory {
+  host: operator_host_6ce85c,
   usable_ram: HostUsableRamMeasured { bytes: kibibyte_to_byte_size(k: kibibyte(count: 115192288)), provenance: "h11-a16 /proc/meminfo MemTotal 115192288 kB, read 2026-10-30T16:18Z" as NonEmptyStr },
   overhead: HostFixedOverheadUnmeasured { reason: "h11 host overhead: the OS, sshd and the six server.py front ends, read with every engine stopped" as NonEmptyStr },
   shared_resident: kibibyte_to_byte_size(k: kibibyte(count: 49560204)),
   engines: [
-    h11_engine_as_launched(bus: "85"), h11_engine_as_launched(bus: "87"), h11_engine_as_launched(bus: "88"),
-    h11_engine_as_launched(bus: "c5"), h11_engine_as_launched(bus: "c7"), h11_engine_as_launched(bus: "c8"),
+    host_6ce85c_engine_as_launched(bus: "85"), host_6ce85c_engine_as_launched(bus: "87"), host_6ce85c_engine_as_launched(bus: "88"),
+    host_6ce85c_engine_as_launched(bus: "c5"), host_6ce85c_engine_as_launched(bus: "c7"), host_6ce85c_engine_as_launched(bus: "c8"),
   ],
 }
 
