@@ -219,9 +219,12 @@ fn cold_commit_and_attach(instance: HostDashboardInstance, layout: ComputeLayout
               let op = work_default_build()
               let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
               // The hermetic frame root holds no store yet (a durable host volume is provisioned ahead of the first request).
-              let staged = mkdir_ok(instance: instance, path: materialization_store_root_path(root: store.root)) && mkdir_ok(instance: instance, path: layout.staging_dir) && mkdir_ok(instance: instance, path: compute_producer_leases_reading_path(reading: layout.leases, identity: ""))
+              let staged = mkdir_ok(instance: instance, path: materialization_store_root_path(root: store.root)) && mkdir_ok(instance: instance, path: layout.staging_dir) && match compute_producer_leases_reading_path(reading: layout.leases, identity: "") {
+                Absent => false
+                Present { value: lease_dir } => mkdir_ok(instance: instance, path: lease_dir)
+              }
               let log = Filesystem.Write(path: compute_work_log_path(records: layout.records), content: exec_log)
-              if !(staged && log.success) { "staging or the run log could not be written" } else {
+              if !(staged && log.success) { "staging, the producer leases directory or the run log could not be made (a legacy lease refuses the lease mint)" } else {
                 match compute_return_outputs(instance: instance, layout: layout, declared: work_declared_outputs(op: op)) {
                   OutputsMismatch { detail } => join(["capture mismatched: ", detail], "")
                   OutputsReturned { outputs } => {

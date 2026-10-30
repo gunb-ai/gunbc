@@ -247,13 +247,20 @@ fn fleet_scratch_listing() -> String {
 // than inferred from a directory diff. The second half is the departure WitnessScratchRoot buys: the
 // staging tree the capture installs into must NOT be the fleet's frame scratch, so it may not sit
 // under the frame-scratch prefix even though both live under /tmp.
+fn lease_path_is_under(layout: ComputeLayout, under: String) -> Bool {
+  match compute_producer_leases_reading_path(reading: layout.leases, identity: layout.identity_hex) {
+    Absent => false
+    Present { value: p } => p.starts_with(prefix: under)
+  }
+}
+
 fn production_paths_stay_inside_root(layout: ComputeLayout, instance: HostDashboardInstance, root: String) -> Bool {
   let under = join([root, "/"], "")
   layout.root.starts_with(prefix: under)
     && layout.work_dir.starts_with(prefix: under)
     && layout.checkout.starts_with(prefix: under)
     && layout.out_dir.starts_with(prefix: under)
-    && compute_producer_leases_reading_path(reading: layout.leases, identity: layout.identity_hex).starts_with(prefix: under)
+    && lease_path_is_under(layout: layout, under: under)
     && layout.staging_dir.starts_with(prefix: under)
     && layout.target_dir.starts_with(prefix: under)
     && compute_work_log_path(records: layout.records).starts_with(prefix: under)

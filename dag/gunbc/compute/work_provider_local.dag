@@ -88,7 +88,7 @@ import gunbc.compute.host_capacity {
 }
 import gunbc.compute.compute_work_records { ComputeWorkRecords, ComputeWorkRecordWritten, ComputeWorkRecordUnwritten, ComputeWorkRecordPresent, ComputeWorkRecordUnread, compute_work_root, compute_work_records, compute_work_dir, compute_work_consumption_write, compute_work_consumption_path, compute_work_log_read, compute_work_log_write, compute_work_log_path }
 import gunbc.compute.compute_producer_lease {
-  ComputeProducerLeases, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_producer_leases, compute_producer_leases_reading_path, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused,
+  ComputeProducerLeases, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_producer_leases, compute_producer_leases_reading_label, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused,
   ComputeProducerLeaseReleased, ComputeProducerLeaseKept,
   compute_producer_leases, compute_producer_lease_path, compute_producer_lease_acquire, compute_producer_lease_release_current,
 }
@@ -1687,7 +1687,7 @@ fn compute_with_lost_host_record(
     "; the consumption reading is lost, and ",
     match dropped {
       LeaseDropped => "the producer lease was dropped, so nothing else is outstanding"
-      LeaseNotDropped { detail: d } => join(["THE PRODUCER LEASE AT ", compute_producer_leases_reading_path(reading: layout.leases, identity: layout.identity_hex), " IS ALSO STILL HELD (", d, ") AND NOTHING NOW RECORDS THAT IT IS STALE: an operator must remove the name before this identity can be produced again"], "")
+      LeaseNotDropped { detail: d } => join(["THE PRODUCER LEASE AT ", compute_producer_leases_reading_label(reading: layout.leases, identity: layout.identity_hex), " IS ALSO STILL HELD (", d, ") AND NOTHING NOW RECORDS THAT IT IS STALE: an operator must remove the name before this identity can be produced again"], "")
     },
   ], "")
   provide_result_with_host_record(r: settled, carried: HostRecordLost { detail: detail })
@@ -1706,7 +1706,7 @@ fn compute_with_lost_host_record(
 // stale name only blocks a request that must PRODUCE again.
 fn compute_stale_lease_note(layout: ComputeLayout, error: String) -> String {
   join([
-    "STALE PRODUCER LEASE: ", compute_producer_leases_reading_path(reading: layout.leases, identity: layout.identity_hex), " could not be dropped: ", error,
+    "STALE PRODUCER LEASE: ", compute_producer_leases_reading_label(reading: layout.leases, identity: layout.identity_hex), " could not be dropped: ", error,
     "; the record for this identity is committed in the materialization store under that identity and is authoritative, ",
     "and a caller reaching that record ATTACHES to it -- the attach is decided before this name is ",
     "consulted. The stale name matters only to a request that must PRODUCE again, which it will ",

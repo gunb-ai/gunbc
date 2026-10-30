@@ -90,10 +90,19 @@ fn compute_producer_lease_path(leases: ComputeProducerLeases, identity: String) 
   join([leases.root as String, "/", identity], "")
 }
 
-fn compute_producer_leases_reading_path(reading: ComputeProducerLeasesReading, identity: String) -> String {
+fn compute_producer_leases_reading_path(reading: ComputeProducerLeasesReading, identity: String) -> String? {
+  match reading {
+    ComputeProducerLeasesReady { leases: l } => Present { value: compute_producer_lease_path(leases: l, identity: identity) }
+    ComputeProducerLeasesUnready { detail: _ } => Absent
+  }
+}
+
+// FOR DIAGNOSTIC TEXT ONLY: the path when the leases are admissible, else a labelled refusal that cannot be
+// mistaken for a path.
+fn compute_producer_leases_reading_label(reading: ComputeProducerLeasesReading, identity: String) -> String {
   match reading {
     ComputeProducerLeasesReady { leases: l } => compute_producer_lease_path(leases: l, identity: identity)
-    ComputeProducerLeasesUnready { detail: d } => d
+    ComputeProducerLeasesUnready { detail: d } => join(["<producer leases not admissible: ", d, ">"], "")
   }
 }
 

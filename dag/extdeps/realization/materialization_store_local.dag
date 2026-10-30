@@ -517,25 +517,14 @@ fn local_store_open_swept(pre: LocalStorePreOpen, durability: MaterializationSto
   }
 }
 
-fn local_store_read(path: String) -> FilesystemExactRead
-  admit_callers: [
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_bind_retention"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_open"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_lookup"),
-  ]
-{
+fn local_store_read(root: MaterializationStoreRoot, name: String) -> FilesystemExactRead {
+  let path = store_path(root_path: materialization_store_root_path(root: root), name: name)
   let r = Filesystem.Read(path: path)
   filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind)
 }
 
-fn local_store_create_new(path: String, content: String) -> FilesystemCreateNew
-  admit_callers: [
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_bind_retention"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_initialize"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_verified"),
-  ]
-{
+fn local_store_create_new(root: MaterializationStoreRoot, name: String, content: String) -> FilesystemCreateNew {
+  let path = store_path(root_path: materialization_store_root_path(root: root), name: name)
   let w = Filesystem.WriteCreateNew(path: path, content: content)
   filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind)
 }
@@ -551,7 +540,7 @@ fn local_store_open(root: MaterializationStoreRoot, budgets: List<LocalStoreFami
     Permit =>
       match local_store_open_decide(
         root: root,
-        marker_read: local_store_read(path: store_path(root_path: root_path, name: materialization_store_marker_name)),
+        marker_read: local_store_read(root: root, name: materialization_store_marker_name),
         budgets: budgets
       ) {
         LocalStorePreOpenRefused { root_path: p, cause: c } => LocalStoreUnavailable { root_path: p, cause: c }
@@ -580,7 +569,8 @@ fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmp
         LocalStoreInitializationRefused { root_path: root_path, cause: LocalStoreCatalogInadmissible { detail: "the catalog must name each family once with a supported capacity policy; the instance label must be one line" } }
       } else {
       match store_publish_observation(create: local_store_create_new(
-        path: store_path(root_path: root_path, name: materialization_store_marker_name),
+        root: root,
+        name: materialization_store_marker_name,
         content: store_marker_content(root: root, instance_label: instance_label, budgets: budgets)
       )) {
         StoreObjectPublishRefused { fault: f } =>
@@ -906,11 +896,12 @@ fn local_store_bind_retention(held: LocalStoreFamilyHeld, scope: NonEmptyStr) ->
       Absent => Present { value: LocalStoreRetentionBudgetMissing { family: held.family } }
       Present { value: b } => match b.at_capacity {
         RefuseNewStore => {
-          let path = store_path(root_path: local_store_binding_path(b: held.binding), name: concat("retention-", held.family as String))
-          match local_store_create_new(path: path, content: scope as String) {
+          let name = concat("retention-", held.family as String)
+          let path = store_path(root_path: local_store_binding_path(b: held.binding), name: name)
+          match local_store_create_new(root: held.binding.root, name: name, content: scope as String) {
             FilesystemCreated { path: _ } => none
             FilesystemCreateTargetOccupied { path: _ } => {
-              match local_store_read(path: path) {
+              match local_store_read(root: held.binding.root, name: name) {
                 FilesystemExactPathRead { path: _, content: content } => if content == (scope as String) { none }
                   else { Present { value: LocalStoreRetentionBindingMismatch { path: path, expected: scope, observed: content } } }
                 unavailable => Present { value: LocalStoreRetentionBindingReadUnavailable { reading: unavailable } }
@@ -1995,7 +1986,7 @@ fn local_store_record_lookup(binding: LocalStoreBinding, addressed: AddressedReq
       store_lookup_from_address(
         store: store,
         addressed: addressed,
-        read: store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addressed.address))))
+        read: store_read_observation(read: local_store_read(root: root, name: store_object_name(address: addressed.address)))
       )
     }
   }
@@ -2216,7 +2207,7 @@ fn local_store_commit_verified(
         prepared_key: key,
         offered_digest: offered,
         offered_result: offered_result,
-        publish: store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object)),
+        publish: store_publish_observation(create: local_store_create_new(root: held.binding.root, name: name, content: object)),
         read_back: local_store_lookup_bound(binding: held.binding, addressed: addressed)
       ))
   }
@@ -2273,7 +2264,7 @@ fn local_store_commit_reserved(
             prepared_key: key,
             offered_digest: offered,
             offered_result: offered_result,
-            publish: store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object)),
+            publish: store_publish_observation(create: local_store_create_new(root: held.binding.root, name: name, content: object)),
             read_back: local_store_lookup_bound(binding: held.binding, addressed: addressed)
             )
           },

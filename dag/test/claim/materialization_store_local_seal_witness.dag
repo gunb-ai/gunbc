@@ -71,7 +71,6 @@ test fn a_direct_verified_settle_is_an_admission_refusal() -> ProcessExit {
 // THE REMAINING EFFECTFUL HELPERS ARE SEALED: creating a store file, and reclaiming a slot's
 // generations, are reachable only from the store's own paths -- a direct call could write an
 // unindexed file, or apply this store's window to a slot that keeps every generation.
-data direct_create_new_source: String = "module probe_store_direct_create_new\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { FilesystemCreateNew }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nfn direct(p: String, c: String) -> FilesystemCreateNew {\n  local_store_create_new(path: p, content: c)\n}\n"
 
 data path_settle_slot_source: String = "module probe_store_path_settle_slot\nimport std.types { String, NonEmptyStr }\nimport extdeps.realization.materialization_store_local { LocalStoreSlotSettlement, local_store_settle_slot }\nfn direct(r: String, k: NonEmptyStr) -> LocalStoreSlotSettlement {\n  local_store_settle_slot(root_path: r, key: k)\n}\n"
 
@@ -81,9 +80,6 @@ data path_read_index_source: String = "module probe_store_path_read_index\nimpor
 
 data binding_read_index_source: String = "module probe_store_binding_read_index\nimport std.cache_identity { ArtifactKindId }\nimport extdeps.realization.materialization_store_local { LocalStoreBinding, LocalStoreIndexRead, local_store_read_index }\nfn direct(b: LocalStoreBinding, f: ArtifactKindId) -> LocalStoreIndexRead {\n  local_store_read_index(binding: b, family: f)\n}\n"
 
-test fn a_direct_store_file_create_is_an_admission_refusal() -> ProcessExit {
-  census_exit(census_verdict(census: admission_refusals(source: direct_create_new_source, callee: "local_store_create_new"), holds: fn(n) { n == 1 }))
-}
 
 // THE INDEX AND ITS SLOT SETTLEMENT TAKE THE SEALED BINDING, NEVER A PATH. They once took root_path: String behind
 // an admit_callers roster; the roster is deleted and the parameter is the binding, which only the open mints
@@ -91,6 +87,23 @@ test fn a_direct_store_file_create_is_an_admission_refusal() -> ProcessExit {
 // same call handed a binding. Claimed: a consumer cannot be handed a forged binding or one over a root it chose.
 fn blocking_delta(hostile: String, safe: String) -> CensusVerdict {
   census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: fn(n) { n >= 1 })
+}
+
+data path_create_new_source: String = "module probe_store_path_create_new\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { FilesystemCreateNew }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nfn direct(p: String, c: String) -> FilesystemCreateNew {\n  local_store_create_new(path: p, content: c)\n}\n"
+data root_create_new_source: String = "module probe_store_root_create_new\nimport std.types { String }\nimport std.materialization_store_grant { MaterializationStoreRoot }\nimport extdeps.filesystem.filesystem_io { FilesystemCreateNew }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nfn direct(r: MaterializationStoreRoot, c: String) -> FilesystemCreateNew {\n  local_store_create_new(root: r, name: \"x\", content: c)\n}\n"
+data path_read_source: String = "module probe_store_path_read\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { FilesystemExactRead }\nimport extdeps.realization.materialization_store_local { local_store_read }\nfn direct(p: String) -> FilesystemExactRead {\n  local_store_read(path: p)\n}\n"
+data root_read_source: String = "module probe_store_root_read\nimport std.types { String }\nimport std.materialization_store_grant { MaterializationStoreRoot }\nimport extdeps.filesystem.filesystem_io { FilesystemExactRead }\nimport extdeps.realization.materialization_store_local { local_store_read }\nfn direct(r: MaterializationStoreRoot) -> FilesystemExactRead {\n  local_store_read(root: r, name: \"x\")\n}\n"
+
+// THE OPEN PATH TAKES THE SEALED ROOT GRANT, NEVER A PATH, AND CARRIES NO ROSTER. local_store_read and
+// local_store_create_new once took path: String behind an admit_callers roster; they now take the
+// MaterializationStoreRoot grant (the same sealed input local_store_open takes) and a name inside it.
+
+test fn no_store_file_create_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: path_create_new_source, safe: root_create_new_source))
+}
+
+test fn no_store_file_read_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: path_read_source, safe: root_read_source))
 }
 
 test fn no_slot_settle_takes_a_path() -> ProcessExit {

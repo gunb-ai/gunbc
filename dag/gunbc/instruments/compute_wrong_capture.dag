@@ -14,7 +14,7 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.roadmap.roadmap_dashboard_instance { fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance, IsolatedJobToolchainHomes }
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_request { work_default_build, work_declared_outputs, WorkOutput }
-import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_path }
+import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_label }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
@@ -262,7 +262,7 @@ fn wrong_capture_report(instance: HostDashboardInstance, layout_a: ComputeLayout
     join(arm.preamble, ""),
     "shared_target_dir_same_for_both=", if layout_a.target_dir == layout_b.target_dir { "true" } else { "false" }, "\n",
     "target_dir=", layout_a.target_dir, "\n",
-    "lease_path_a=", compute_producer_leases_reading_path(reading: layout_a.leases, identity: layout_a.identity_hex), "\nlease_path_b=", compute_producer_leases_reading_path(reading: layout_b.leases, identity: layout_b.identity_hex), "\n",
+    "lease_path_a=", compute_producer_leases_reading_label(reading: layout_a.leases, identity: layout_a.identity_hex), "\nlease_path_b=", compute_producer_leases_reading_label(reading: layout_b.leases, identity: layout_b.identity_hex), "\n",
     "leases_disjoint=", if layout_a.identity_hex != layout_b.identity_hex { "true" } else { "false" }, "\n",
     join(rows, ""),
     if direction != "" { join(["VERDICT: wrong capture reproduced (", direction, "): ",
