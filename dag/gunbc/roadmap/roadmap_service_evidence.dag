@@ -1,12 +1,11 @@
 module gunbc.roadmap.roadmap_service_evidence
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptLaunchIdentity, attempt_state_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptLaunchIdentity, attempt_state_observe_at }
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io {
   FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
 }
-import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, serialize_json, json_object, json_kv, json_string, json_int, json_array }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, json_field_string, json_field_int, FieldRead, FieldAbsent, FieldMalformed }
 import std.content_hash { content_hash_of_value, lower_hex_40 }
@@ -728,7 +727,7 @@ fn service_evidence_binding_for_attempt(instance: HostDashboardInstance, node_id
     instance_id: instance.instance_id as String,
     node_id: node_id as String,
     attempt_key: attempt_key,
-    launch: filesystem_file_observation_of_path(path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptLaunchIdentity)),
+    launch: attempt_state_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptLaunchIdentity),
   )
 }
 

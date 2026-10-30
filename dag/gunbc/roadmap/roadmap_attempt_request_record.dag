@@ -1,15 +1,14 @@
 module gunbc.roadmap.roadmap_attempt_request_record
 
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, attempt_state_directory_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptRequestBindingFile, attempt_state_create_new_at, attempt_state_observe_at }
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io {
-  Filesystem, FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
-  FilesystemCreateKindUnrecognized, filesystem_create_new,
+  FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
+  FilesystemCreateKindUnrecognized,
   FilesystemFileObservation, FilesystemFileRead, FilesystemFileAbsent, FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
 }
-import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
@@ -36,12 +35,6 @@ type AttemptRequestBinding
   | RequestAutonomous
 
 data attempt_request_binding_schema: String = "roadmap-attempt-request-binding/v1"
-data attempt_request_binding_basename: String = "request-binding.json"
-
-fn attempt_request_binding_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot), "/", attempt_request_binding_basename], "")
-}
-
 fn attempt_request_binding_json(binding: AttemptRequestBinding) -> String {
   serialize_json(v: json_object(members: match binding {
     RequestClaimBound { claim } => [
@@ -136,9 +129,7 @@ fn attempt_request_binding_commit_of(binding: AttemptRequestBinding, created: Fi
 // decide with attempt_request_binding_commit_of over what the create answered and, only when the
 // target was occupied, what is recorded there.
 fn attempt_request_binding_create_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, binding: AttemptRequestBinding) -> AttemptRequestBindingCommit {
-  let path = attempt_request_binding_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let write = Filesystem.WriteCreateNew(path: path, content: attempt_request_binding_json(binding: binding))
-  let created = filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind)
+  let created = attempt_state_create_new_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptRequestBindingFile, content: attempt_request_binding_json(binding: binding))
   attempt_request_binding_commit_of(
     binding: binding,
     created: created,
@@ -175,8 +166,6 @@ fn attempt_request_binding_read_from_observation(observation: FilesystemFileObse
 
 fn attempt_request_binding_read_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptRequestBindingRead {
   attempt_request_binding_read_from_observation(
-    observation: filesystem_file_observation_of_path(
-      path: attempt_request_binding_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    ),
+    observation: attempt_state_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptRequestBindingFile),
   )
 }

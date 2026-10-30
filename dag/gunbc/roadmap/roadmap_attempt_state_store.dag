@@ -1,16 +1,27 @@
 module gunbc.roadmap.roadmap_attempt_state_store
 
-import std.types { String, NonEmptyStr, FilePath, Int, List }
+import std.types { String, NonEmptyStr, FilePath, Int, List, Bool }
+import std.optional { Optional, Present, Absent }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
-  FilesystemReadOutcome, filesystem_read_outcome,
-  FilesystemWriteOutcome, filesystem_write_outcome,
+  FilesystemReadOutcome, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome,
+  FilesystemWriteOutcome, FilesystemWritten, FilesystemWriteRefused, filesystem_write_outcome,
+  FilesystemFileObservation, FilesystemFileIndeterminate, filesystem_file_observation,
   FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
   filesystem_listing_observation,
+  FilesystemEntryPresence, filesystem_entry_presence,
+  FilesystemCreateNew, FilesystemCreateRefused, FilesystemNotFound, filesystem_create_new,
+  FilesystemEntrySubjectRefused, FilesystemEntryPresenceIndeterminate, FilesystemEntryAbsent, FilesystemEntryListed,
+  FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused, FilesystemFileAbsent, FilesystemFileRead,
 }
+import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
-import gunbc.roadmap.roadmap_verification_receipt { verification_directory_segment, exact_verification_receipt_basename, current_verification_selection_basename }
+import gunbc.roadmap.roadmap_verification_receipt {
+  verification_directory_segment, exact_verification_receipt_basename, current_verification_selection_basename,
+  CurrentVerificationSelectionObservation, SelectionUnreadable, SelectionAbsent, current_verification_selection_decode_document,
+  ExactVerificationReceiptSource, ExactVerificationReceiptUnreadable, ExactVerificationReceiptAbsent, ExactVerificationReceiptPresent,
+}
 import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.owned_directory { OwnedDirectoryTarget }
@@ -69,6 +80,8 @@ type AttemptStateMember
   | AttemptSpawnOrigin
   | AttemptVerificationRecord
   | AttemptSpawnFailure
+  | AttemptRequestBindingFile
+  | AttemptCommitOutcomeLast
   | AttemptOracleIdentity
   | AttemptOracleRevision
   | AttemptOraclePinRefused
@@ -124,6 +137,8 @@ fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDir
     AttemptSpawnOrigin => AttemptDirectoryRoot
     AttemptVerificationRecord => AttemptDirectoryRoot
     AttemptSpawnFailure => AttemptDirectoryRoot
+    AttemptRequestBindingFile => AttemptDirectoryRoot
+    AttemptCommitOutcomeLast => AttemptDirectoryRoot
     AttemptOracleIdentity => AttemptDirectoryRoot
     AttemptOracleRevision => AttemptDirectoryRoot
     AttemptOraclePinRefused => AttemptDirectoryRoot
@@ -142,6 +157,8 @@ fn attempt_state_member_name(member: AttemptStateMember) -> String {
     AttemptSpawnOrigin => dispatch_spawn_origin_basename
     AttemptVerificationRecord => "verification.json"
     AttemptSpawnFailure => "spawn-failure.txt"
+    AttemptRequestBindingFile => "request-binding.json"
+    AttemptCommitOutcomeLast => "commit-outcome-last.json"
     AttemptOracleIdentity => "validation-oracle-identity"
     AttemptOracleRevision => "validation-oracle-revision"
     AttemptOraclePinRefused => "validation-oracle-pin-refused"
@@ -268,6 +285,131 @@ fn attempt_state_list(store: AttemptState, directory: AttemptStateDirectory) -> 
   attempt_state_listing(path: attempt_state_directory_path(store: store, directory: directory), what: "an attempt state directory")
 }
 
+// THE ONE-SHOT RUNTIME ROUTES: mint the listed store from the business key and apply the operation, so a
+// function that touches one member does not hand-write the mint's match. An attempt directory that does not
+// list is the typed refusal of the operation (a write refused, a read refused, an observation indeterminate),
+// never an empty or absent value. The observation names absence only from a successful listing of the member's
+// own directory (filesystem_file_observation), the carrier the belt's absence-establishing readers already use.
+fn attempt_state_observe(store: AttemptState, member: AttemptStateMember) -> FilesystemFileObservation {
+  let dir = attempt_state_directory_path(store: store, directory: attempt_state_member_directory(member: member))
+  let path = attempt_state_member_path(store: store, member: member)
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: attempt_state_member_name(member: member),
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
+
+fn attempt_state_observe_at(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStateMember) -> FilesystemFileObservation {
+  match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+    AttemptStateUnready { detail } => FilesystemFileIndeterminate { cause: detail }
+    AttemptStateReady { store } => attempt_state_observe(store: store, member: member)
+  }
+}
+
+// Whether the attempt's directory exists, observed in its parent: the census distinction between an attempt
+// that was never provisioned (absent: no record) and one whose directory cannot be observed (a hole), which
+// the mint's Unready conflates by design.
+// Whether one of the listed attempt directory's subdirectories exists, named in the attempt's own listing:
+// absence is established only by a successful listing of the attempt directory.
+fn attempt_state_directory_presence(store: AttemptState, directory: AttemptStateDirectory) -> FilesystemEntryPresence {
+  let listing = Filesystem.List(path: store.directory as String)
+  filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: store.directory as String, success: listing.success, entries: listing.entries, error: listing.error),
+    name: attempt_state_directory_segment(directory: directory),
+  )
+}
+
+fn attempt_state_presence_at(instance: HostDashboardInstance, node: String, attempt_key: String) -> FilesystemEntryPresence {
+  filesystem_entry_presence_of_path(path: attempt_state_provision(instance: instance, node: node, attempt_key: attempt_key).directory as String)
+}
+
+fn attempt_state_presence_current(instance: HostDashboardInstance, node: String) -> FilesystemEntryPresence {
+  filesystem_entry_presence_of_path(path: attempt_state_provision_current(instance: instance, node: node).directory as String)
+}
+
+fn attempt_state_observe_current(instance: HostDashboardInstance, node: String, member: AttemptStateMember) -> FilesystemFileObservation {
+  match attempt_state_open_current(instance: instance, node: node) {
+    AttemptStateUnready { detail } => FilesystemFileIndeterminate { cause: detail }
+    AttemptStateReady { store } => attempt_state_observe(store: store, member: member)
+  }
+}
+
+fn attempt_state_read_at(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStateMember) -> FilesystemReadOutcome {
+  match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+    AttemptStateUnready { detail } => FilesystemReadRefused { error: detail }
+    AttemptStateReady { store } => attempt_state_read(store: store, member: member)
+  }
+}
+
+fn attempt_state_read_current(instance: HostDashboardInstance, node: String, member: AttemptStateMember) -> FilesystemReadOutcome {
+  match attempt_state_open_current(instance: instance, node: node) {
+    AttemptStateUnready { detail } => FilesystemReadRefused { error: detail }
+    AttemptStateReady { store } => attempt_state_read(store: store, member: member)
+  }
+}
+
+fn attempt_state_write_at(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStateMember, content: String) -> FilesystemWriteOutcome {
+  match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+    AttemptStateUnready { detail } =>
+      FilesystemWriteRefused { path: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node, attempt_key: attempt_key), member: member), error: detail }
+    AttemptStateReady { store } => attempt_state_write(store: store, member: member, content: content)
+  }
+}
+
+// The evidence record's own pair (readable, content) projects a read outcome; the refusal is carried by the
+// readable flag the record's consumers already branch on, never by the content.
+fn attempt_state_read_succeeded(outcome: FilesystemReadOutcome) -> Bool {
+  match outcome {
+    FilesystemReadSucceeded { content: _ } => true
+    FilesystemReadRefused { error: _ } => false
+  }
+}
+
+fn attempt_state_read_content(outcome: FilesystemReadOutcome) -> String {
+  match outcome {
+    FilesystemReadSucceeded { content: c } => c
+    FilesystemReadRefused { error: _ } => ""
+  }
+}
+
+// The create-only write: fails when the member exists, so the first writer binds and a later one reads what
+// is there. An attempt directory that does not list is a refused create, never a created one.
+fn attempt_state_create_new_at(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStateMember, content: String) -> FilesystemCreateNew {
+  match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+    AttemptStateUnready { detail } =>
+      FilesystemCreateRefused { path: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node, attempt_key: attempt_key), member: member), kind: FilesystemNotFound, error: detail }
+    AttemptStateReady { store } => {
+      let write = Filesystem.WriteCreateNew(path: attempt_state_member_path(store: store, member: member), content: content)
+      filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind)
+    }
+  }
+}
+
+fn attempt_state_write_succeeded(outcome: FilesystemWriteOutcome) -> Bool {
+  match outcome {
+    FilesystemWritten { path: _ } => true
+    FilesystemWriteRefused { path: _, error: _ } => false
+  }
+}
+
+fn attempt_state_write_error(outcome: FilesystemWriteOutcome) -> String {
+  match outcome {
+    FilesystemWritten { path: _ } => ""
+    FilesystemWriteRefused { path: _, error: e } => e
+  }
+}
+
+fn attempt_state_write_refusal(outcome: FilesystemWriteOutcome) -> Optional<String> {
+  match outcome {
+    FilesystemWritten { path: _ } => Absent
+    FilesystemWriteRefused { path: _, error: e } => Present { value: e }
+  }
+}
+
 // THE EXTERNAL-CONSUMER ROUTE. The tmux pane cwd, the systemd ReadWritePaths and ExecStart argv, the worker's
 // --arg events_path / verdict_dir, the sandbox allowlists and the shell steps that run outside this
 // process's filesystem handle the attempt's paths as text. These two accessors are the only text producers;
@@ -334,4 +476,61 @@ fn attempt_state_current_text(instance: HostDashboardInstance, node_id: RoadmapN
 
 fn attempt_state_current_directory_text(instance: HostDashboardInstance, node_id: RoadmapNodeId, directory: AttemptStateDirectory) -> String {
   attempt_state_provision_directory(provision: attempt_state_provision_current(instance: instance, node: node_id as String), directory: directory)
+}
+
+// THE VERIFICATION READERS. Both walks establish absence positively (a successful listing of the attempt
+// directory names no verification directory, then the member's own listing and read), and both take the
+// listed store, so they cannot be pointed at a directory the mint did not list. A refused subject is
+// unreadable, never absent.
+fn attempt_state_verification_selection_observe(store: AttemptState, head_sha: String) -> CurrentVerificationSelectionObservation {
+  match attempt_state_directory_presence(store: store, directory: AttemptDirectoryVerification) {
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
+      SelectionUnreadable { cause: join(["the verification root ", d, " is not a directory subject, so ", n, " is established by nothing the fold received: ", c], "") }
+    FilesystemEntryPresenceIndeterminate { cause: c } =>
+      SelectionUnreadable { cause: join(["whether a current verification selection exists was not established: ", c], "") }
+    FilesystemEntryAbsent(_) => SelectionAbsent
+    FilesystemEntryListed { directory: _, name: _ } =>
+      match attempt_state_observe(store: store, member: AttemptVerificationSelection { head_sha: head_sha }) {
+        FilesystemFileIndeterminate { cause: c } => SelectionUnreadable { cause: c }
+        FilesystemFileObservationsDisagree { path: _, cause: c } => SelectionUnreadable { cause: c }
+        FilesystemFileSubjectRefused { directory: d, name: n, cause: c } =>
+          SelectionUnreadable { cause: join([d, " is not a directory subject, so ", n, " is established by nothing the fold received: ", c], "") }
+        FilesystemFileAbsent(_) => SelectionAbsent
+        FilesystemFileRead { path: p, content: text } =>
+          current_verification_selection_decode_document(selection_path: p, expected_head_sha: head_sha, content: text)
+      }
+  }
+}
+
+fn attempt_state_verification_receipt_read(store: AttemptState, head_sha: String, window_identity_hex: String) -> ExactVerificationReceiptSource {
+  match attempt_state_directory_presence(store: store, directory: AttemptDirectoryVerification) {
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
+      ExactVerificationReceiptUnreadable { detail: join(["the verification root ", d, " is not a directory subject, so ", n, " is established by nothing the fold received: ", c], "") }
+    FilesystemEntryPresenceIndeterminate { cause: c } =>
+      ExactVerificationReceiptUnreadable { detail: join(["whether a verification receipt exists was not established: ", c], "") }
+    FilesystemEntryAbsent(_) => ExactVerificationReceiptAbsent
+    FilesystemEntryListed { directory: _, name: _ } =>
+      match attempt_state_observe(store: store, member: AttemptVerificationReceipt { head_sha: head_sha, window_identity_hex: window_identity_hex }) {
+        FilesystemFileIndeterminate { cause: c } => ExactVerificationReceiptUnreadable { detail: c }
+        FilesystemFileObservationsDisagree { path: _, cause: c } => ExactVerificationReceiptUnreadable { detail: c }
+        FilesystemFileSubjectRefused { directory: d, name: n, cause: c } =>
+          ExactVerificationReceiptUnreadable { detail: join([d, " is not a directory subject, so ", n, " is established by nothing the fold received: ", c], "") }
+        FilesystemFileAbsent(_) => ExactVerificationReceiptAbsent
+        FilesystemFileRead { path: _, content: text } => ExactVerificationReceiptPresent { text: text }
+      }
+  }
+}
+
+fn attempt_state_verification_selection_observe_at(instance: HostDashboardInstance, node: String, attempt_key: String, head_sha: String) -> CurrentVerificationSelectionObservation {
+  match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+    AttemptStateUnready { detail } => SelectionUnreadable { cause: detail }
+    AttemptStateReady { store } => attempt_state_verification_selection_observe(store: store, head_sha: head_sha)
+  }
+}
+
+fn attempt_state_verification_receipt_read_at(instance: HostDashboardInstance, node: String, attempt_key: String, head_sha: String, window_identity_hex: String) -> ExactVerificationReceiptSource {
+  match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+    AttemptStateUnready { detail } => ExactVerificationReceiptUnreadable { detail: detail }
+    AttemptStateReady { store } => attempt_state_verification_receipt_read(store: store, head_sha: head_sha, window_identity_hex: window_identity_hex)
+  }
 }

@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_verify
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptVerificationRecord, attempt_state_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptVerificationRecord, attempt_state_write_error, attempt_state_write_at, attempt_state_write_succeeded, attempt_state_provision, attempt_state_provision_path }
 import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
@@ -586,16 +586,12 @@ fn persist_verification_receipt(
         ], ""),
       }
     DashboardLocalProvision => {
-      let path = attempt_state_text(instance: instance, node_id: node.node, attempt_key: receipt.attempt_key, member: AttemptVerificationRecord)
-      let write = Filesystem.Write(
-        path: path,
-        content: legacy_single_validation_verification_receipt_json(receipt: receipt),
-      )
-      if write.success {
-        ReceiptPersisted { path: path }
+      let write = attempt_state_write_at(instance: instance, node: node.node as String, attempt_key: receipt.attempt_key, member: AttemptVerificationRecord, content: legacy_single_validation_verification_receipt_json(receipt: receipt))
+      if attempt_state_write_succeeded(outcome: write) {
+        ReceiptPersisted { path: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node.node as String, attempt_key: receipt.attempt_key), member: AttemptVerificationRecord) }
       } else {
         ReceiptPersistRefused {
-          reason: join(["verification receipt write failed: ", write.error], ""),
+          reason: join(["verification receipt write failed: ", attempt_state_write_error(outcome: write)], ""),
         }
       }
     }

@@ -1,7 +1,7 @@
 module test.claim.roadmap.roadmap_dogfood_route_wet_witness
 
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptLaunchIdentity, attempt_state_directory_text, attempt_state_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptLaunchIdentity, AttemptRequestBindingFile, attempt_state_directory_text, attempt_state_text }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, String, NonEmptyStr, FilePath }
@@ -31,7 +31,7 @@ import std.materialization_provider { wire_content_hash_to_hex }
 import gunbc.roadmap.roadmap_launch_admission { LaunchIdentity, attempt_launch_record_json, launch_identity_null_revision, Operator, launch_host_unobserved_static_render }
 import gunbc.roadmap.roadmap_belt { ManualReady }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json, attempt_request_binding_path_for_instance, RequestClaimBound }
+import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json, RequestClaimBound }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventId, LegacyEmailPrincipal, ResultPublished }
 import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
 import product.capacity.event_chain { PartitionId }
@@ -76,7 +76,7 @@ fn plant_launch(instance: HostDashboardInstance) -> Bool {
   let _dir = shell.Mkdir.Parents(path: attempt_state_directory_text(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1", directory: AttemptDirectoryRoot) as FilePath)
   let id = LaunchIdentity { node_id: "n1" as NonEmptyStr as RoadmapNodeId, cause: Operator, mode: ManualReady, instance_id: instance.instance_id, revision: launch_identity_null_revision() }
   Filesystem.Write(path: path, content: serialize_json(v: attempt_launch_record_json(id: id, attempt_key: "k1" as NonEmptyStr))).success
-    && Filesystem.Write(path: attempt_request_binding_path_for_instance(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1"), content: request_wire()).success
+    && Filesystem.Write(path: attempt_state_text(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1", member: AttemptRequestBindingFile), content: request_wire()).success
 }
 
 fn converge_root(instance: HostDashboardInstance) -> HostDashboardInstance {

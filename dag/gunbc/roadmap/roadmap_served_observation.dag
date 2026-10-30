@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_served_observation
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptLaunchIdentity, attempt_state_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptLaunchIdentity, attempt_state_read_at, attempt_state_read_content, attempt_state_read_succeeded }
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_page { issue_query_snapshot_for_projection }
 import gunbc.site.markup { page_render_refusal_body }
@@ -228,13 +228,11 @@ fn served_current_revision_hex(launch: LaunchHostStanding) -> String {
 }
 
 fn attempt_launch_revision_hex(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> String {
-  let read = Filesystem.Read(
-    path: attempt_state_text(instance: instance, node_id: node_id as NonEmptyStr as RoadmapNodeId, attempt_key: attempt_key, member: AttemptLaunchIdentity),
-  )
-  if !read.success {
+  let read = attempt_state_read_at(instance: instance, node: node_id, attempt_key: attempt_key, member: AttemptLaunchIdentity)
+  if !attempt_state_read_succeeded(outcome: read) {
     ""
   } else {
-    match parse_json_document(s: read.content) {
+    match parse_json_document(s: attempt_state_read_content(outcome: read)) {
       JsonDocumentUnreadable { gap: _ } => ""
       JsonDocumentParsed { value: doc } =>
         match launch_identity_of_json(doc: doc) {
