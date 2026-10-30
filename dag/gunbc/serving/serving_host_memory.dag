@@ -313,7 +313,10 @@ data host_6ce85c_serving_memory_observed: ServingDedicatedHostMemory = ServingDe
   host: operator_host_6ce85c,
   usable_ram: HostUsableRamMeasured { bytes: kibibyte_to_byte_size(k: kibibyte(count: 115192288)), provenance: "h11-a16 /proc/meminfo MemTotal 115192288 kB, read 2026-10-30T16:18Z" as NonEmptyStr },
   overhead: HostFixedOverheadUnmeasured { reason: "h11 host overhead: the OS, sshd and the six server.py front ends, read with every engine stopped" as NonEmptyStr },
-  shared_resident: kibibyte_to_byte_size(k: kibibyte(count: 49560204)),
+  // The whole routed-expert file, as strata-expert-lock holds it once it has locked all of it (VmLck 53532740
+  // kB on 2026-10-30T19:05Z, equal to the 54,817,524,224-byte file). The 49,560,204 kB Mlocked read at 16:18Z
+  // was the lock only partly held under that boot's memory pressure, not a smaller file.
+  shared_resident: kibibyte_to_byte_size(k: kibibyte(count: 53532740)),
   swap_bound: serving_engine_swap_bound,
   engines: [
     host_6ce85c_engine_as_launched(bus: "85"), host_6ce85c_engine_as_launched(bus: "87"), host_6ce85c_engine_as_launched(bus: "88"),

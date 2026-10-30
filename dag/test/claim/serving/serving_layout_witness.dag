@@ -78,7 +78,7 @@ fn sl_all_grow_to_ceiling(r: ServingLayoutResult) -> Bool {
     && byte_size_count(b: c.retention_budget) < byte_size_count(b: c.memory_max))
 }
 
-// h11 AS GRANTED: six independent replicas, nine conversations guaranteed to the ceiling (2,2,2,1,1,1), the
+// h11 AS GRANTED: six independent replicas, eight conversations guaranteed to the ceiling (2,2,1,1,1,1), the
 // budget verdict Fits with its three assumptions named, the backend supports the topology, and nothing is
 // qualified live yet.
 test fn witness_h11_layout_is_derived_and_fits_under_named_assumptions() -> Bool {
@@ -86,7 +86,7 @@ test fn witness_h11_layout_is_derived_and_fits_under_named_assumptions() -> Bool
     ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: e } =>
       rs.length() == 6
         && rs.all(c => c.admitted_conversations >= 1 && c.active_slots == 1)
-        && sl_admitted_total(r: host_6ce85c_layout) == 9
+        && sl_admitted_total(r: host_6ce85c_layout) == 8
         && (match e.budget { ServingMemoryFits { spare: _ } => true  _ => false })
         && e.assumptions.length() == 3
         && (match e.backend { ServingBackendSupportsTopology => true  _ => false })
