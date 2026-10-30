@@ -3,10 +3,11 @@ module extdeps.tailscale.status
 import std.types { List, NonEmptyStr, Optional, String }
 import std.optional { Absent, Present }
 import std.algebra { string_concat_join, trim }
+import std.integer { int_to_decimal_string }
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.languages.json.parse {
   JsonFieldRead, JsonMemberPresence, JsonDocumentParse,
-  json_field_string, json_field_string_list, json_member_presence, parse_json_document,
+  json_field_string, json_field_string_list, json_field_int, json_member_presence, parse_json_document,
 }
 import extdeps.tailscale.devices {
   DeviceKey, NodeId, StableNodeId,
@@ -203,18 +204,32 @@ fn stable_node_field(document: JsonValue) -> StableNodeField {
   }
 }
 
-// Self's "NodeID" -- ipnstate: "NodeID is the node ID, a 64-bit unsigned integer", printed as decimal.
+// Self's "NodeID" -- ipnstate.PeerStatus declares `NodeID tailcfg.NodeID`, an int64, so the document carries
+// it as an UNQUOTED JSON NUMBER (srv2: "NodeID": 5112399786040428). It is read as a number and rendered to
+// its decimal text for the textual NodeId carrier; a quoted NodeID is a different document and refuses, and
+// a negative one is no identifier the control server assigns ("a sequential integer beginning at 1").
 fn node_field(document: JsonValue) -> NodeField {
-  match member_string(document: document, key: "NodeID") {
-    Absent => NodeGone {
+  match json_field_int(obj: document, key: "NodeID") {
+    FieldAbsent => NodeGone {
       field: "NodeId" as NonEmptyStr,
-      cause: "the status document's Self record carries no readable \"NodeID\" member (ipnstate: \"NodeID is the node ID, a 64-bit unsigned integer\")" as NonEmptyStr,
+      cause: "the status document's Self record carries no \"NodeID\" member (ipnstate: \"NodeID is the node ID\", an integer)" as NonEmptyStr,
     }
-    Present { value: text } => match parse_node_id(text: text) {
-      NodeIdOk { value: id } => NodeHere { value: id }
-      NodeIdBad { failure: f } => NodeGone {
+    FieldMalformed { cause: c } => NodeGone {
+      field: "NodeId" as NonEmptyStr,
+      cause: string_concat_join(fields: ["the status document's \"NodeID\" member is not a JSON number: ", c], separator: "") as NonEmptyStr,
+    }
+    FieldRead { value: n } => if n < 1 {
+      NodeGone {
         field: "NodeId" as NonEmptyStr,
-        cause: string_concat_join(fields: ["the status document's \"NodeID\" member is not a node id: ", f.reason], separator: "") as NonEmptyStr,
+        cause: "the status document's \"NodeID\" member is below 1: the control server assigns a sequential integer beginning at 1" as NonEmptyStr,
+      }
+    } else {
+      match parse_node_id(text: int_to_decimal_string(value: n)) {
+        NodeIdOk { value: id } => NodeHere { value: id }
+        NodeIdBad { failure: f } => NodeGone {
+          field: "NodeId" as NonEmptyStr,
+          cause: string_concat_join(fields: ["the status document's \"NodeID\" member is not a node id: ", f.reason], separator: "") as NonEmptyStr,
+        }
       }
     }
   }

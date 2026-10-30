@@ -4,6 +4,9 @@ import std.types { Bool, Int, List, NonEmptyStr, Optional, Secret, String }
 import std.algebra { string_concat_join }
 import std.optional { Absent, Present }
 import product.host_identity { HostIdentity }
+import std.decl_ref { decl_ref }
+import std.dissolution { BoundDissolution, DeclarationAppears }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.dns.domain_name { DnsLabel }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import gunbc.fleet.fleet_enrollment { FleetParticipation, enrollment_for_host }
@@ -177,6 +180,7 @@ type OverlayCensusRefusal =
     member: NonEmptyStr
     observed_node_keys: List<DeviceKey>
     observed_stable_node_ids: List<StableNodeId>
+    observed_node_ids: List<NodeId>
   }
 // NODE KEY MATCHES, NODE ID DISAGREES. The provider device carrying the member's node key names a
 // different node id than the member reports about itself. The plan joins on device AND node identity, so
@@ -279,6 +283,16 @@ fn observed_stable_node_ids(identities: List<StatusIdentity>) -> List<StableNode
   )
 }
 
+// The distinct numeric node ids the admitted observations named: same key and stable id with two NodeIDs
+// is still two accounts of one machine.
+fn observed_node_ids(identities: List<StatusIdentity>) -> List<NodeId> {
+  fold(
+    identities,
+    init: [],
+    f: (acc, i) => if any(acc, existing => (existing as String) == (i.node_id as String)) { acc } else { append(acc, [i.node_id]) },
+  )
+}
+
 // An observation failure becomes the census's failure, keeping the observer's reason and separating the
 // one arm the census reports under its own plan-named heading.
 fn refusal_of(member: NonEmptyStr, failure: StatusObservationFailure) -> OverlayCensusRefusal {
@@ -306,12 +320,14 @@ fn census_member(
   let admitted = admitted_identities(observations: observations)
   let keys = observed_node_keys(identities: admitted)
   let stable_ids = observed_stable_node_ids(identities: admitted)
-  if keys.count() > 1 || stable_ids.count() > 1 {
+  let node_ids = observed_node_ids(identities: admitted)
+  if keys.count() > 1 || stable_ids.count() > 1 || node_ids.count() > 1 {
     CensusRefused {
       refusal: ObservationsNameDifferentNodes {
         member: member,
         observed_node_keys: keys,
         observed_stable_node_ids: stable_ids,
+        observed_node_ids: node_ids,
       },
     }
   } else {
@@ -437,3 +453,26 @@ fn provider_device_list(api_token: Secret?) -> DevicesListResult {
     Present { value: token } => list_devices(api_token: token, tailnet: "-" as NonEmptyStr)
   }
 }
+
+// THE DECLARED FRONTIER (DESIGN 3c). The live run named in the module head is not prose: it is this row,
+// whose trigger is a bound DeclarationAppears over the entry that will call census_fleet_overlay, so
+// dissolution_status computes Pending until that entry exists and Fired once it does, with no edit here.
+// Enrolled in gunbc.census_closure_frontier census_closure_frontier_row_groups so gunbc.dissolution_census
+// folds it like every sibling frontier.
+//
+// THE NAME IS CHOSEN, NOT FOUND: no such module exists yet, so the ref is the commitment of the change that
+// lands it -- gunbc.instruments.fleet_overlay_census_live `fleet_overlay_census_live`, an instrument entry
+// (gunbc.instrument_targets row) that observes each member's `tailscale status --json`, takes the provider
+// credential from select_authorization_pattern and passes provider_device_list's answer to
+// census_fleet_overlay. A reader landing a differently named entry edits this ref in the same change.
+data fleet_overlay_census_live_run_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.fleet_overlay_census", decl_name: "census_fleet_overlay"),
+    reason: "census_fleet_overlay and provider_device_list have no executing caller in this tree: the only consumer is the claim witness, which the required v2-bootstrap job parses and does not run. The live census needs a provisioned devices:read credential reachable through select_authorization_pattern and a runner to execute `tailscale status --json` on each member, and neither exists at this writing",
+    dissolution: BoundDissolution {
+      trigger: DeclarationAppears {
+        ref: decl_ref(module_path: "gunbc.instruments.fleet_overlay_census_live", decl_name: "fleet_overlay_census_live"),
+      },
+    },
+  ),
+]

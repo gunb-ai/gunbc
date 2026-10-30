@@ -60,8 +60,9 @@ import gunbc.fleet.fleet_overlay_census {
   ObservationsNameDifferentNodes,
   OverlayCensus, OverlayCensusEntry, OverlayCensusRefusal, OverlayCensusRow, OverlayHostBinding,
   ProviderListUnavailable, SeveralMatchingDevices, StatusObservationUnavailable,
-  census_fleet_overlay, census_member, provider_device_list,
+  census_fleet_overlay, census_member, provider_device_list, fleet_overlay_census_live_run_frontier_rows,
 }
+import std.dissolution { BoundDissolution, DeclarationAppears }
 
 // ── The fixture vocabulary ────────────────────────────────────────────────────────────────────
 
@@ -155,7 +156,7 @@ data device_lookalike: Device = device(
 fn status_document(node_key: String, stable: String, node_id: String, host_name: String) -> String {
   string_concat_join(fields: [
     "{\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"", host_name, "\",\"TailscaleIPs\":[\"100.73.169.40\"],\"PublicKey\":\"",
-    node_key, "\",\"ID\":\"", stable, "\",\"NodeID\":\"", node_id, "\"}}",
+    node_key, "\",\"ID\":\"", stable, "\",\"NodeID\":", node_id, "}}",
   ], separator: "") as String
 }
 
@@ -182,7 +183,7 @@ data srv2_status_other_node: StatusObservation = observation(
 
 // The document text is the fixture form of what `tailscale status --json` prints -- srv2's real Self record,
 // with the fields the model reads.
-data srv2_status_document: String = "{\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"srv2\",\"TailscaleIPs\":[\"100.73.169.40\"],\"PublicKey\":\"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927\",\"ID\":\"nm17WF5Rvg11CNTRL\",\"NodeID\":\"5112399786040428\"}}"
+data srv2_status_document: String = "{\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"srv2\",\"TailscaleIPs\":[\"100.73.169.40\"],\"PublicKey\":\"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927\",\"ID\":\"nm17WF5Rvg11CNTRL\",\"NodeID\":5112399786040428}}"
 
 // ── The check plumbing ────────────────────────────────────────────────────────────────────────
 
@@ -240,7 +241,7 @@ fn refusal_member(refusal: OverlayCensusRefusal) -> NonEmptyStr {
     NoMatchingDevice { member: m, observed_node_key: _, observed_stable_node_id: _, observed_node_id: _ } => m
     SeveralMatchingDevices { member: m, node_key: _, device_ids: _ } => m
     NameMatchWithDifferentIdentity { member: m, agreed_name: _, observed_node_key: _, candidate: _ } => m
-    ObservationsNameDifferentNodes { member: m, observed_node_keys: _, observed_stable_node_ids: _ } => m
+    ObservationsNameDifferentNodes { member: m, observed_node_keys: _, observed_stable_node_ids: _, observed_node_ids: _ } => m
     NodeKeyMatchWithDifferentNodeId { member: m, candidate: _, provider_node_id: _, observed_stable_node_id: _ } => m
     ProviderListUnavailable { cause: _ } => "provider" as NonEmptyStr
     StatusObservationUnavailable { member: m, cause: _ } => m
@@ -253,7 +254,7 @@ fn refusal_arm(refusal: OverlayCensusRefusal) -> String {
     NoMatchingDevice { member: _, observed_node_key: _, observed_stable_node_id: _, observed_node_id: _ } => "NoMatchingDevice"
     SeveralMatchingDevices { member: _, node_key: _, device_ids: _ } => "SeveralMatchingDevices"
     NameMatchWithDifferentIdentity { member: _, agreed_name: _, observed_node_key: _, candidate: _ } => "NameMatchWithDifferentIdentity"
-    ObservationsNameDifferentNodes { member: _, observed_node_keys: _, observed_stable_node_ids: _ } => "ObservationsNameDifferentNodes"
+    ObservationsNameDifferentNodes { member: _, observed_node_keys: _, observed_stable_node_ids: _, observed_node_ids: _ } => "ObservationsNameDifferentNodes"
     NodeKeyMatchWithDifferentNodeId { member: _, candidate: _, provider_node_id: _, observed_stable_node_id: _ } => "NodeKeyMatchWithDifferentNodeId"
     ProviderListUnavailable { cause: _ } => "ProviderListUnavailable"
     StatusObservationUnavailable { member: _, cause: _ } => "StatusObservationUnavailable"
@@ -406,7 +407,7 @@ fn census_witness_checks() -> List<Check> {
   )
   let c20 = check(
     name: "a malformed identity field names the field",
-    holds: match observe_local_node_identity(document_text: "{\"Self\":{\"PublicKey\":\"nodekey:not-hex\",\"ID\":\"nm17WF5Rvg11CNTRL\",\"NodeID\":\"5112399786040428\",\"HostName\":\"srv2\"}}") {
+    holds: match observe_local_node_identity(document_text: "{\"Self\":{\"PublicKey\":\"nodekey:not-hex\",\"ID\":\"nm17WF5Rvg11CNTRL\",\"NodeID\":5112399786040428,\"HostName\":\"srv2\"}}") {
       Refused { failure: MemberIdentityFieldMalformed { field: f, cause: _ } } => (f as String) == "DeviceKey"
       _ => false
     },
@@ -414,7 +415,7 @@ fn census_witness_checks() -> List<Check> {
   )
   let c21 = check(
     name: "a missing identity field is refused rather than defaulted",
-    holds: match observe_local_node_identity(document_text: "{\"Self\":{\"PublicKey\":\"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927\",\"NodeID\":\"5112399786040428\",\"HostName\":\"srv2\"}}") {
+    holds: match observe_local_node_identity(document_text: "{\"Self\":{\"PublicKey\":\"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927\",\"NodeID\":5112399786040428,\"HostName\":\"srv2\"}}") {
       Refused { failure: MemberIdentityFieldMalformed { field: f, cause: _ } } => (f as String) == "StableNodeId"
       Observed { identity: _ } => false
       _ => false
@@ -462,12 +463,7 @@ fn census_witness_checks() -> List<Check> {
 // not.
   let rebuilt = census_member(
     member: "srv2" as NonEmptyStr,
-    observations: [observation(
-      node_key: "nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a926",
-      stable: "nm17WF5Rvg11CNTRL",
-      node_id: "5112399786040428",
-      host_name: "srv2",
-    )],
+    observations: [srv2_status],
     devices: [device_lookalike],
     bindings: [],
   )
@@ -481,7 +477,7 @@ fn census_witness_checks() -> List<Check> {
     name: "the name-mismatch refusal names what disagreed",
     holds: match rebuilt {
       CensusRefused { refusal: NameMatchWithDifferentIdentity { member: _, agreed_name: n, observed_node_key: k, candidate: c } } =>
-        (n as String) == "srv2" && (k as String) == key_near_miss
+        (n as String) == "srv2" && (k as String) == key_srv2
           && (c.node_key as String) == key_near_miss && (c.device_id as String) == "50054"
       _ => false
     },
@@ -562,7 +558,7 @@ fn census_witness_checks() -> List<Check> {
   let c26 = check(
     name: "the two-observation refusal names both node keys it could not reconcile",
     holds: match two_nodes {
-      CensusRefused { refusal: ObservationsNameDifferentNodes { member: _, observed_node_keys: ks, observed_stable_node_ids: _ } } =>
+      CensusRefused { refusal: ObservationsNameDifferentNodes { member: _, observed_node_keys: ks, observed_stable_node_ids: _, observed_node_ids: _ } } =>
         ks.count() == 2
           && any(ks, k => (k as String) == key_srv2)
           && any(ks, k => (k as String) == (key_fixture as String))
@@ -646,7 +642,7 @@ fn census_witness_checks() -> List<Check> {
 
 // ── THE CENSUS OVER SEVERAL MEMBERS ───────────────────────────────────────────────────────────
   let fleet = census_fleet_overlay(
-    provider: DevicesListed { devices: [device_srv2, device_lookalike, device_srv2_duplicate] },
+    provider: DevicesListed { devices: [device_srv2, device_lookalike] },
     members: [
       MemberObservations { member: "srv2" as NonEmptyStr, observations: [srv2_status] },
       MemberObservations { member: "srv9" as NonEmptyStr, observations: [observation(
@@ -667,7 +663,7 @@ fn census_witness_checks() -> List<Check> {
         && refused_with(census: fleet, member: "srv9", arm: "NoMatchingDevice")
       Absent => false
     },
-    why: "a census that stops at the first refusal reports a smaller fleet than it saw. (srv9's key is on no listed device here, so its arm is NoMatchingDevice; srv2's key is on two, which is what the next pair of checks pins down alone.)",
+    why: "a census that stops at the first refusal reports a smaller fleet than it saw. (srv9's key is on no listed device here, so its arm is NoMatchingDevice; the duplicate-key case is c30b's alone, so no duplicate is listed here.)",
   )
   let fleet_dup = census_fleet_overlay(
     provider: DevicesListed { devices: [device_srv2, device_srv2_duplicate] },
@@ -809,16 +805,67 @@ fn census_witness_checks() -> List<Check> {
   )
   let c41 = check(
     name: "a status document using the invented member Key (not PublicKey) yields no identity",
-    holds: match observe_local_node_identity(document_text: "{\"Self\":{\"Key\":\"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927\",\"ID\":\"nm17WF5Rvg11CNTRL\",\"NodeID\":\"5112399786040428\",\"HostName\":\"srv2\"}}") {
+    holds: match observe_local_node_identity(document_text: "{\"Self\":{\"Key\":\"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927\",\"ID\":\"nm17WF5Rvg11CNTRL\",\"NodeID\":5112399786040428,\"HostName\":\"srv2\"}}") {
       Refused { failure: MemberIdentityFieldMalformed { field: f, cause: _ } } => (f as String) == "DeviceKey"
       _ => false
     },
     why: "ipnstate.PeerStatus names the key PublicKey; a reader for the invented spelling would refuse every real document, and the RED here pins that the invented one is not accepted",
   )
 
+  let quoted_node_id = observe_local_node_identity(document_text: "{\"Self\":{\"PublicKey\":\"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927\",\"ID\":\"nm17WF5Rvg11CNTRL\",\"NodeID\":\"5112399786040428\",\"HostName\":\"srv2\"}}")
+  let c42 = check(
+    name: "RED: a QUOTED NodeID is refused; the real unquoted number is read (positive control: srv2_status)",
+    holds: (match quoted_node_id {
+      Refused { failure: MemberIdentityFieldMalformed { field: f, cause: _ } } => (f as String) == "NodeId"
+      _ => false
+    }) && (match srv2_status {
+      Observed { identity: i } => (i.node_id as String) == "5112399786040428"
+      Refused { failure: _ } => false
+    }),
+    why: "ipnstate.PeerStatus.NodeID is an int64 and the real document prints it unquoted; a reader of a string rejects every real document, and a fixture that quotes it hides that",
+  )
+  let other_node_id = census_member(
+    member: "srv2" as NonEmptyStr,
+    observations: [srv2_status, observation(
+      node_key: "nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927",
+      stable: "nm17WF5Rvg11CNTRL",
+      node_id: "5112399786040429",
+      host_name: "srv2",
+    )],
+    devices: [device_srv2],
+    bindings: [],
+  )
+  let c43 = check(
+    name: "same node key and stable id but a different numeric NodeID is observations naming different nodes",
+    holds: refused_with(census: census_of(entry: other_node_id), member: "srv2", arm: "ObservationsNameDifferentNodes")
+      && !entry_is_row(entry: other_node_id),
+    why: "the consistency fold gathers the numeric NodeID as well; ignoring it lets two accounts that disagree on the node id pass as one clean row",
+  )
+  let c44 = check(
+    name: "an id with surrounding whitespace is refused, not normalized (opaque device id and stable node id)",
+    holds: !device_id_accepted(result: parse_device_id(text: " 50052"))
+      && !device_id_accepted(result: parse_device_id(text: "50052 "))
+      && !stable_node_id_accepted(result: parse_stable_node_id(text: "nm17WF5Rvg11CNTRL\n"))
+      && !stable_node_id_accepted(result: parse_stable_node_id(text: " nm17WF5Rvg11CNTRL"))
+      && stable_node_id_accepted(result: parse_stable_node_id(text: "nm17WF5Rvg11CNTRL")),
+    why: "minting the trimmed text would give one identity two accepted spellings; the brand is the text the wire carried or nothing",
+  )
+  let c45 = check(
+    name: "the live run is a bound frontier row, not prose",
+    holds: match fleet_overlay_census_live_run_frontier_rows.first() {
+      Present { value: row } => match row.dissolution {
+        BoundDissolution { trigger: DeclarationAppears { ref: r } } =>
+          r.module_path == "gunbc.instruments.fleet_overlay_census_live" && r.decl_name == "fleet_overlay_census_live"
+        _ => false
+      }
+      Absent => false
+    },
+    why: "DESIGN 3c: a deferred consumer is a computed dissolution trigger over the declaration that will consume it",
+  )
+
   return [c1, c2, c3, c4, c13, c16, c17, c18, c19, c14, c15, c20, c21,
     c22, c23, c5, c24, c25, c6, c7, c8, c9, c26, c10, c11, c12,
-    c27, c28, c29, c30, c30b, c31, c32, c33, c34, c35, c36, c37, c38, c39, c40, c41]
+    c27, c28, c29, c30, c30b, c31, c32, c33, c34, c35, c36, c37, c38, c39, c40, c41, c42, c43, c44, c45]
 }
 
 // THE CLAIM. Pure over the fixtures above -- no live tree, no substrate, no credential -- which is what

@@ -240,17 +240,19 @@ fn prefixed_hex_check(text: String, prefix: String, body_len: Int) -> ShapeCheck
 // THE DEVICE ID is OPAQUE, because upstream says it is legacy and its own fixture shows what it holds:
 // ids "50052" and "50053" (tailscale-client-go-v2 testdata/devices.json), short decimal strings, while
 // the vendor comment says "The legacy identifier for a device. Use NodeId instead." The only rules are
-// therefore non-empty and whitespace-free, and the value minted is the TRIMMED one -- asserting a shape
+// therefore non-empty and whitespace-free, and surrounding whitespace REFUSES (the value minted is the text itself, never a normalized one) -- asserting a shape
 // here ("dev" + 16 hex, which an earlier version of this module did) would have refused every device in
 // the vendor's own recorded response, and no upstream source was ever cited for it.
 fn parse_device_id(text: String) -> DeviceIdParse {
   let trimmed = trim(s: text)
   if string_length(s: trimmed) == 0 {
     DeviceIdBad { failure: IdentityParseFailure { field: "DeviceId" as NonEmptyStr, reason: "an empty device id is a missing device id: the provider names no device with it" as NonEmptyStr } }
+  } else if trimmed != text {
+    DeviceIdBad { failure: IdentityParseFailure { field: "DeviceId" as NonEmptyStr, reason: "an id with leading or trailing whitespace is refused, not normalized: minting the trimmed text would admit a second spelling of one identity" as NonEmptyStr } }
   } else if carries_whitespace(text: trimmed, pos: 0) {
     DeviceIdBad { failure: IdentityParseFailure { field: "DeviceId" as NonEmptyStr, reason: "an id carrying whitespace is a rendering, not an id -- and the id is used as a path segment upstream" as NonEmptyStr } }
   } else {
-    DeviceIdOk { value: trimmed as DeviceId }
+    DeviceIdOk { value: text as DeviceId }
   }
 }
 
@@ -290,17 +292,19 @@ fn parse_node_id(text: String) -> NodeIdParse {
 
 // THE STABLE NODE ID is opaque upstream, so the only rules are non-empty and whitespace-free --
 // inventing a shape upstream does not promise would refuse real devices. ipnstate prints "<none>" for an
-// unassigned id; that is a rendering of an absence, not an identity. Note the value minted is the
-// TRIMMED one: the check and the mint are the same value, so a brand never carries whitespace that its
-// own validator was fooled by.
+// unassigned id; that is a rendering of an absence, not an identity. Surrounding whitespace refuses rather
+// than trimming: the check and the mint are the same text, so a brand never carries a spelling its
+// own validator rewrote.
 fn parse_stable_node_id(text: String) -> StableNodeIdParse {
   let trimmed = trim(s: text)
   if string_length(s: trimmed) == 0 || trimmed == "<none>" {
     StableNodeIdBad { failure: IdentityParseFailure { field: "StableNodeId" as NonEmptyStr, reason: "ipnstate prints \"<none>\" for an unassigned id; an unassigned stable node id identifies nothing" as NonEmptyStr } }
+  } else if trimmed != text {
+    StableNodeIdBad { failure: IdentityParseFailure { field: "StableNodeId" as NonEmptyStr, reason: "an id with leading or trailing whitespace is refused, not normalized: minting the trimmed text would admit a second spelling of one identity" as NonEmptyStr } }
   } else if carries_whitespace(text: trimmed, pos: 0) {
     StableNodeIdBad { failure: IdentityParseFailure { field: "StableNodeId" as NonEmptyStr, reason: "an opaque id carrying whitespace is a rendering, not an id" as NonEmptyStr } }
   } else {
-    StableNodeIdOk { value: trimmed as StableNodeId }
+    StableNodeIdOk { value: text as StableNodeId }
   }
 }
 
