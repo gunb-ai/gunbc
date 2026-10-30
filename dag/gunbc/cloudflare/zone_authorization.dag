@@ -5,10 +5,7 @@ import std.optional { Absent, Optional, Present }
 import std.algebra { FreeSemigroup, non_empty_append, non_empty_singleton }
 import std.decl_ref { declaration_ref_eq }
 import std.human_intervention { FleetOnce }
-import gunbc.spark.bootstrap_provision {
-  fleet_cloud_principal_standing,
-  CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
-}
+import gunbc.auth.fleet_workload_identity { convergence_principal }
 import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ApiSurface, WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -66,19 +63,6 @@ fn zone_r2_custom_domain_bind_effect(identity: WorkloadIdentityStanding) -> Priv
   }
 }
 
-// THE FLEET IDENTITY THE ZONE EFFECTS ARE SELECTED UNDER, resolved from the standing and never spelled: an
-// unallocated principal is an unbindable identity, the truthful input to the selection. It lives here so the
-// zone fold (gunbc.cloudflare.zone) and the census (gunbc.auth.privileged_effect_census) read ONE resolution;
-// the census imports it rather than carrying a second copy.
-fn convergence_principal() -> WorkloadIdentityStanding {
-  match fleet_cloud_principal_standing() {
-    CloudPrincipalAllocated { principal: _, member: m, readback: _ } => WorkloadIdentityBindable { member: m as NonEmptyStr }
-    CloudPrincipalReported { principal: _, reported_member: m, source: _ } => WorkloadIdentityBindable { member: m as NonEmptyStr }
-    CloudPrincipalUnallocated { principal: _ } =>
-      WorkloadIdentityUnbindable { cause: "no allocated member is recorded for the fleet cloud principal" as NonEmptyStr }
-  }
-}
-
 // ── THE REALIZATION STANDING: does the selected route have a credential to fetch? ─────────────
 // The selected federated grant fetches a zone-scoped token from Secret Manager over workload identity, so it
 // is realized exactly when the fleet accessor roster carries a cell on that secret. The standing is a fold
@@ -99,7 +83,7 @@ data zone_token_accessor_unlanded: FreeSemigroup<NonEmptyStr> = non_empty_append
       item: "a zone-scoped Cloudflare API token (zone-read, DNS-edit and R2 custom-domain scopes) minted through the mint route, never pasted by the operator"
     ),
     right: non_empty_singleton(
-      item: "its Secret Manager container (secret id cloudflare-zone-token under the fleet secrets project)"
+      item: "its Secret Manager container (under the fleet secrets project, named by cloudflare_zone_token_secret_id)"
     )
   ),
   right: non_empty_singleton(

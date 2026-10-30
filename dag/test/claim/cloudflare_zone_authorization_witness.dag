@@ -17,7 +17,7 @@ import gunbc.auth.privileged_effect_census {
 }
 import gunbc.cloudflare.zone_authorization {
   zone_dns_record_copy_effect, zone_r2_custom_domain_bind_effect,
-  zone_routes_unrealized, zone_token_accessor_cell_landed, convergence_principal,
+  zone_routes_unrealized, zone_token_accessor_cell_landed,
 }
 import gunbc.cloudflare.zone { zone_route_gap, SelectedRouteUnrealized, CloudflareRecordListUnread }
 import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster }

@@ -44,7 +44,8 @@ import gunbc.auth.branch_dispatch_federation {
   boot_credential_effect_on_reviewed_main, boot_credential_effect_off_reviewed_main,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_route { bootstrap_delta_privileged_effect }
-import gunbc.cloudflare.zone_authorization { zone_dns_record_copy_effect, zone_r2_custom_domain_bind_effect, convergence_principal, zone_routes_unrealized }
+import gunbc.cloudflare.zone_authorization { zone_dns_record_copy_effect, zone_r2_custom_domain_bind_effect, zone_routes_unrealized }
+import gunbc.auth.fleet_workload_identity { convergence_principal }
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
