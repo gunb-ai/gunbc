@@ -57,9 +57,10 @@ import extdeps.systemd.systemctl {
   systemctl_is_enabled_verb,
   systemctl_user_status_for_uid_argv,
 }
-import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, readlink_command, rm_force_command }
+import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, readlink_command, rm_force_command, ls_one_per_line_command }
 import extdeps.posix.getent { getent_passwd_command }
 import extdeps.linux.user_namespaces {
+  unshare_map_root_user_as_uid_argv,
   user_namespace_map_row_column_count,
   user_namespace_map_outside_column,
   user_namespace_map_length_column,
@@ -123,7 +124,11 @@ import extdeps.shadow.subordinate_ids {
   subordinate_plan_text,
 }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
-import extdeps.systemd.journalctl { journalctl_user_unit_tail_argv }
+import extdeps.systemd.journalctl { journalctl_user_unit_tail_argv, journalctl_uid_tail_argv }
+import extdeps.procps.sysctl { sysctl_read_value_argv }
+import extdeps.tools.coreutils_stat { stat_mode_owner_name_argv }
+import extdeps.tools.grep { grep_fixed_string_lines_in_files_argv }
+import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
 import extdeps.systemd.loginctl { loginctl_binary_name, loginctl_enable_linger_argv }
 import extdeps.tools.gnu_coreutils {
   coreutils_install_directory_argv,
@@ -1393,14 +1398,39 @@ fn gpu_container_provision_leg(step: String, words: List<String>) -> GpuContaine
 // the unit's journal tail. Both address the job user's manager, the one the failed start addressed.
 data gpu_container_provision_unit_journal_lines: Int = 100
 
-fn gpu_container_provision_start_leg(uid: Int) -> GpuContainerProvisionLeg {
+// WHAT SEPARATES THE THREE START-FAILURE READINGS, all read-only. The first srv3 capture showed the unit
+// exiting 1 in 58ms with an EMPTY unit-keyed journal, so the error text is not in the place the unit read
+// looks. These name the causes directly instead: (b) the setuid bits on newuidmap/newgidmap, (a) the AppArmor
+// userns sysctl, the profiles under /etc/apparmor.d, and whether the account can create a user namespace at
+// all, (c) the account's passwd row and its subordinate rows. The uid-keyed journal with no unit match says
+// whether the user journal exists. journalctl -M takes a container name and cannot spell UID@, so the
+// brief's `journalctl --user -M 999@` form is not offered.
+data gpu_container_provision_uidmap_paths: List<NonEmptyStr> = ["/usr/bin/newuidmap" as NonEmptyStr, "/usr/bin/newgidmap" as NonEmptyStr]
+data gpu_container_provision_subordinate_paths: List<NonEmptyStr> = ["/etc/subuid" as NonEmptyStr, "/etc/subgid" as NonEmptyStr]
+
+fn gpu_container_provision_start_discriminators(uid: Int, job_user: NonEmptyStr) -> List<List<String>> {
+  [
+    journalctl_uid_tail_argv(uid: uid, lines: gpu_container_provision_unit_journal_lines),
+    stat_mode_owner_name_argv(paths: gpu_container_provision_uidmap_paths),
+    sysctl_read_value_argv(name: apparmor_restrict_unprivileged_userns_sysctl_name),
+    argv_words(command: ls_one_per_line_command(path: "/etc/apparmor.d")),
+    unshare_map_root_user_as_uid_argv(uid: uid),
+    argv_words(command: getent_passwd_command(key: job_user)),
+    grep_fixed_string_lines_in_files_argv(pattern: job_user, paths: gpu_container_provision_subordinate_paths),
+  ]
+}
+
+fn gpu_container_provision_start_leg(uid: Int, job_user: NonEmptyStr) -> GpuContainerProvisionLeg {
   GpuContainerProvisionLeg {
     step: "unit start",
     argv: gpu_container_provision_start_argv(uid: uid),
-    on_refusal: [
-      systemctl_user_status_for_uid_argv(unit: gpu_container_provision_rootless_unit_name, uid: uid),
-      journalctl_user_unit_tail_argv(unit: gpu_container_provision_rootless_unit_name, uid: uid, lines: gpu_container_provision_unit_journal_lines),
-    ],
+    on_refusal: append(
+      [
+        systemctl_user_status_for_uid_argv(unit: gpu_container_provision_rootless_unit_name, uid: uid),
+        journalctl_user_unit_tail_argv(unit: gpu_container_provision_rootless_unit_name, uid: uid, lines: gpu_container_provision_unit_journal_lines),
+      ],
+      items: gpu_container_provision_start_discriminators(uid: uid, job_user: job_user),
+    ),
   }
 }
 
@@ -2958,7 +2988,7 @@ fn gpu_container_provision_plan(
           ProvisionLegs { legs: [gpu_container_provision_leg(step: "user daemon-reload", words: gpu_container_provision_reload_argv(uid: uid_value))] },
           ProvisionLegs { legs: [gpu_container_provision_leg(step: "unit enable", words: gpu_container_provision_enable_argv(uid: uid_value))] },
           ProvisionVerify { step: "unit enabled verified", check: VerifyUnitEnabled { uid: uid_value } },
-          ProvisionLegs { legs: [gpu_container_provision_start_leg(uid: uid_value)] },
+          ProvisionLegs { legs: [gpu_container_provision_start_leg(uid: uid_value, job_user: spec.job_user)] },
           ProvisionVerify { step: "unit active verified", check: VerifyUnitActive { uid: uid_value } },
         ],
       ),
