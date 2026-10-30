@@ -64,10 +64,24 @@ import std.durable_compare_and_set {
 // module is the MODEL; extdeps.apple.* and extdeps.google/android.* model the upstream interfaces.
 //
 // WHY A DEVICE SIGNATURE. The loopback deployment cannot attribute Tailscale-User-Login to the proxy
-// (gunbc.auth.approval_decision_store approval_identity_attribution_frontier), so a capability-only
-// redemption records the capability's bearer. A signature under an enrolled key the enclave (or
+// (gunbc.auth.approval_decision_store approval_identity_attribution_frontier), so a capability alone
+// could only ever have recorded its bearer. A signature under an enrolled key the enclave (or
 // Keystore) releases only on the operator's biometric attributes the decision to that enrolment
-// without trusting anything on the socket. On the device route the signature is REQUIRED.
+// without trusting anything on the socket.
+//
+// THIS IS THE ONE REDEMPTION ROUTE (ruling gunbc.design_ruling
+// one_approval_route_for_every_privileged_action). The bearer route that redeemed a capability
+// alone -- gunbc.auth.approval_broker redeem_capability behind POST /approve/{capability}, its link
+// delivered by ntfy -- was deleted in the device cutover, together with the ntfy publish and the
+// header arms that let a record name "the bearer of capability ...". The cutover's own frontiers
+// (gunbc.auth.approval_device_cutover_frontier, gunbc.auth.approval_device_routes_frontier) were
+// deleted with it and are replaced by the reading they demanded, taken in the Approve app on the
+// operator's phone: escalation
+// gcp-iam-bootstrap-delta-b6408304fcc2908fa37769be958b1b6555902f00244b91d0b7a25994fb14f1e3-run-40767618826-attempt-1,
+// decided_by brian@gunb.ai at 2026-10-28T21:30:31Z, read back from the decision store record
+// /var/lib/gunbc/approvals/<escalation_id>.2 on srv1. redeem_device_over_store is
+// the one-off approved access redemption authority: every admitted redemption names an enrolled
+// Google login, and a disclosed capability admits nothing without the enrolled device.
 //
 // ENROLMENT IS GOOGLE SIGN-IN (ruling gunbc.design_ruling approval_enrolment_is_google_sign_in):
 // the enrolment and the admission that mints it are gunbc.auth.approval_google_enrolment's, and this
@@ -137,11 +151,10 @@ fn push_outcome_of_apns(o: ApnsSendOutcome) -> PushProviderOutcome {
 }
 
 // ── Redemption admission ─────────────────────────────────────────────────────────────────────
-// THE DEVICE ROUTE'S FOLD, BESIDE redeem_over_store AND REUSING ITS PARTS: the same slot read
-// (observe_escalation), claims (claims_for), capability verification (verify_capability) and
-// generation-2 commit (commit_broker_decision). Nothing in the store or broker changes; this route
-// differs only in WHAT ADMITS -- a verified device signature and platform proof under a verified,
-// active enrolment of the expected operator -- and so in what decided_by names.
+// THE ONE REDEMPTION FOLD over the store's parts: the slot read (observe_escalation), claims
+// (claims_for), capability verification (verify_capability) and generation-2 commit
+// (commit_broker_decision). What ADMITS is a verified device signature and platform proof under a
+// verified, active enrolment of an approver, and decided_by names that enrolment's Google login.
 type DeviceRedemptionOutcome
   = DeviceRedeemed { decision: BrokerDecision }
   | DeviceAlreadyDecided { decision: BrokerDecision }
@@ -551,7 +564,7 @@ fn list_google_enrolments(root: NonEmptyStr) -> GoogleEnrolmentListing {
 // one's -- so it is a WINDOWED compare-and-set slot in the device store (gunbc.durable_cas_file_store
 // file_compare_and_set_windowed), never a growing generation line and never a last-write-wins file.
 // It used to be the second: an owner-only create-new file under a root nothing ensured, so a ROTATED
-// token -- the frontier's own case (approval_device_routes_frontier: "a rotated APNs token to reach
+// token -- the device routes' own case ("a rotated APNs token to reach
 // the server without a new enrolment") -- refused on the existing file. The key is server-derived from
 // the verified enrolment's id, and its "push-" prefix keeps it out of list_google_enrolments.
 data approval_push_slot_window_k: Int = 2
@@ -632,10 +645,6 @@ fn push_registration_cas(root: NonEmptyStr, enrollment_id: NonEmptyStr, expected
 }
 
 // ── Frontiers ────────────────────────────────────────────────────────────────────────────────
-data approval_device_routes_frontier: DissolutionCondition = unbound_dissolution(
-  description: "gunbc.roadmap.roadmap_serve gains, BESIDE the existing /approve route and without changing it or the store record: POST approval_device_enrol_path decoding gunbc.auth.approval_device_wire GoogleEnrolmentRequest and enrolling through gunbc.auth.approval_google_enrolment as ONE CAS create; reads at approval_device_pending_path and at device_request_path(escalation_id) (suffix read back through decode_path_segment) authenticated by an App Attest assertion over device_read_client_data within approval_device_read_skew that return the stored request, a RedemptionChallenge and both verbs' capabilities; and POST approval_device_redeem_path decoding SignedRedemption, verifying its signature and platform_proof at the seams, and folding through redeem_device_over_store; GET device_enrollment_path(enrollment_id), its suffix read back through decode_path_segment, answering enrolment_readback_of(observe_google_enrolment(...)) and refusing when it is none, authenticated by an assertion over device_read_client_data; PUT approval_device_push_path decoding decode_push_update and storing the PushRegistration against the active enrolment, authenticated by an assertion over device_push_update_client_data; and file_and_notify's APNs publish rendering extdeps.apple.apns apns_push_type_wire, apns_priority_wire and apns_interruption_level_wire into headers and payload with approval_push_alert_title and approval_push_custom_keys, and the verifier configured with app_attest_app_id -- SUFFICIENT FOR one approval decided on the phone to be read back from approval_decision_store with decided_by naming the enrolled Google email, for an enrolment whose POST answer was lost to be read back instead of re-created, and for a rotated APNs token to reach the server without a new enrolment",
-)
-
 data ecdsa_verification_realization_frontier: DissolutionCondition = unbound_dissolution(
   description: "THE VERIFIERS ARE .dag, NOT HOST PRIMITIVES (operator refusal of the host-Rust route on gunbc#11588/#11592; decision msg_54c92f2f 2026-09-21), and they are AUTHORED: extdeps.crypto.signature verify_signature binds nist_p256 through signature_verification_from_implementation, and extdeps.apple.app_attest verify_attestation / verify_assertion run Apple's steps over the CBOR, COSE, WebAuthn, DER/X.509/PEM readers, SHA-256/SHA-384 and the P-256/P-384 family fold, supplying attestation_verification_from_implementation and assertion_verification_from_implementation (gunbc#11970, #11975, #11981 and the verifier change beside them; Apple's real assertion signature verifies under the sample credential key by execution). WHAT REMAINS IS AN EXECUTION ROUTE: one interpreted P-256 verification costs what the roadmap row v1-interpreter-p256-verify-cost-shape's named instrument re-derives (gunbc#11645's cost shape) and a P-384 chain link is more, so the interpreted broker cannot run them per request; the folds bind as ONE natively emitted realization handler of the seams once MachineWidth<N> reification (gunbc#11819) lets the crypto closure emit, and the interpreter cost itself is the v1-performance row v1-interpreter-p256-verify-cost-shape, not this frontier's -- SUFFICIENT FOR the device routes to mint SignatureVerified, AttestationVerified and AssertionAuthentic from real bytes in usable time, AND FOR ONE NAMED PARAMETER FACT THAT VERIFICATION DOES NOT ESTABLISH: test.claim.p256_dag_ecdsa_witness the_base_point_has_order_n, or a native claim asserting exactly n*G == infinity for the published base point together with a discriminating control that (n-1)*G != infinity. That fact is named HERE rather than left inside the generic verifier statement because a passing signature vector does not imply the published base point has the declared order, so a frontier that only promised working verification would retire while the order fact stayed dead (DESIGN section 4b(3): a trigger naming less than the capability it restores is satisfied while the capability stays dead). It left the required floor because the scalar multiplication reached the 8000ms wall deadline before any verdict, which no declared eval-step drop may cover; its cheap conjunct, the_base_point_is_on_the_curve, stays on the floor",
 )
@@ -646,10 +655,6 @@ data ios_realization_frontier: DissolutionCondition = unbound_dissolution(
 
 data approval_target_frontier: DissolutionCondition = unbound_dissolution(
   description: "gunbc.auth.approval_decision_store StoredApprovalRequest gains a typed ApprovalTarget (authority, subject, operator sentence derived from the subject) rendered by stored_request_json, and carries the access lifetime (gunbc.auth.access_request AccessLifetime) distinct from the link's expires_at, landed after the Mt. Collins first boot releases the store -- SUFFICIENT FOR the app to show the host and what is granted for how long from the one stored record, never the link expiry in its place, and for the device signature to cover both",
-)
-
-data approval_device_cutover_frontier: DissolutionCondition = unbound_dissolution(
-  description: "one real approval decided on the enrolled phone reads back from the store with decided_by naming the login, after which ONE change routes file_and_notify to APNs, deletes the ntfy publish, the bearer-only /approve route and gunbc.auth.approval_broker IdentityAttribution's header arms together -- SUFFICIENT FOR no admitted redemption to lack an attributable principal and for a disclosed capability to admit nothing without the enrolled device",
 )
 
 data android_realization_frontier: DissolutionCondition = unbound_dissolution(

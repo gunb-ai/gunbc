@@ -495,8 +495,8 @@ fn aw_wire_decode() -> SwiftDecl {
     sw_doc(
       c: [
         "approval_push_custom_keys: the hint travels as the top-level custom key \"notification_id\"",
-        "beside aps. It is decoded and then used for NOTHING but being present: the push wakes the",
-        "list and never selects what is shown.",
+        "beside aps. It is a locator and never authority: a tapped alert brings the pending request it",
+        "names to the front of the list, and the request itself is still read over the authenticated route.",
       ],
       d: aw_decode_fn(n: "pushHint", p: [sw_p_(n: "userInfo", t: sw_tdict(k: sw_t(n: "AnyHashable"), v: sw_t(n: "Any")))], r: sw_t(n: "ApprovalPushHint"), b: [
         sw_guard(c: aw_nonempty_cast(n: "id", v: sw_sub(b: sw_id(n: "userInfo"), a: [sw_pos(v: sw_str(s: "notification_id"))]), t: "String"), e: [aw_refuse(at: sw_str(s: "notification_id"), cause: sw_str(s: "missing"))]),
