@@ -1,5 +1,6 @@
 module gunbc.live_deploy.capacity_cutover_record
 
+import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan, CapacityPlanNotRetained, capacity_retained_plan_read, capacity_retained_plan_result }
 import std.types { String, NonEmptyStr, List, Int, Bool, CommitSha }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
@@ -145,7 +146,10 @@ fn capacity_cutover_phase_read(obj: JsonValue) -> Result<CapacityCutoverPhase, S
 }
 
 fn capacity_cutover_record_encode(record: CapacityCutoverRecord) -> NonEmptyStr {
-  serialize_json(v: json_object(members: [json_kv(key: "schema", value: json_string(s: "gunbc.capacity-cutover.v4")),
+  serialize_json(v: json_object(members: [json_kv(key: "schema", value: json_string(s: "gunbc.capacity-cutover.v5")),
+    json_kv(key: "plan", value: json_string(s: record.plan.envelope as String)),
+    json_kv(key: "plan_digest", value: json_string(s: record.plan.digest.hex as String)),
+    json_kv(key: "approved_plan_digest", value: json_string(s: record.plan.approved_digest.hex as String)),
     json_kv(key: "attempt", value: json_string(s: record.attempt as String)), json_kv(key: "revision", value: json_string(s: record.target_revision as String)),
     json_kv(key: "prior", value: json_array(elements: map(record.prior, file => capacity_generation_file_wire(file: file)))),
     json_kv(key: "target", value: json_array(elements: map(record.target, file => capacity_generation_file_wire(file: file)))),
@@ -162,7 +166,14 @@ fn capacity_cutover_record_decode(text: String) -> Result<CapacityCutoverRecord,
     JsonDocumentParsed { value: value } => value
   }
   let schema = match capacity_record_text(obj: obj, key: "schema") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
-  if (schema as String) != "gunbc.capacity-cutover.v4" { return Err { value: "unknown cutover record schema" } }
+  if (schema as String) == "gunbc.capacity-cutover.v4" { return match capacity_retained_plan_result(finding: CapacityPlanNotRetained) { Err { value: why } => Err { value: why } Ok { value: _ } => Err { value: "plan not retained" } } }
+  if (schema as String) != "gunbc.capacity-cutover.v5" { return Err { value: "unknown cutover record schema" } }
+  let envelope = match capacity_record_text(obj: obj, key: "plan") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let digest_hex = match capacity_record_text(obj: obj, key: "plan_digest") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let approved_hex = match capacity_record_text(obj: obj, key: "approved_plan_digest") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let digest = match sha256_hex_digest(hex: digest_hex as String) { Absent => { return Err { value: "invalid retained plan digest" } } Present { value: value } => value }
+  let approved = match sha256_hex_digest(hex: approved_hex as String) { Absent => { return Err { value: "invalid retained plan digest" } } Present { value: value } => value }
+  let intent = match capacity_retained_plan_result(finding: capacity_retained_plan_read(envelope: envelope, digest: digest, approved_digest: approved)) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   let attempt = match capacity_record_text(obj: obj, key: "attempt") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   let revision = match capacity_record_text(obj: obj, key: "revision") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   match sha1_hex_digest(hex: revision as String) { Absent => { return Err { value: "cutover revision is not a full git commit" } } Present { value: _ } => {} }
@@ -173,6 +184,7 @@ fn capacity_cutover_record_decode(text: String) -> Result<CapacityCutoverRecord,
   let artifacts = match capacity_record_list(obj: obj, key: "artifacts", decode: value => capacity_inhibition_artifact_read(obj: value)) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   let phase_value = match capacity_record_value(obj: obj, key: "phase") { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   let phase = match capacity_cutover_phase_read(obj: phase_value) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
-  Ok { value: CapacityCutoverRecord { attempt: attempt as AttemptIdentity, target_revision: revision as CommitSha,
+  if intent.attempt != (attempt as AttemptIdentity) || intent.revision != (revision as CommitSha) { return Err { value: "retained plan differs from original apply identity" } }
+  Ok { value: CapacityCutoverRecord { plan: CapacityRetainedPlan { envelope: envelope, digest: digest, approved_digest: approved }, attempt: attempt as AttemptIdentity, target_revision: revision as CommitSha,
     prior: prior, target: target, planned_paths: planned, created_paths: created, artifacts: artifacts, phase: phase } }
 }

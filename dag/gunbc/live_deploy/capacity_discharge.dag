@@ -8,7 +8,7 @@ import extdeps.systemd.systemctl { systemctl_show_property_value }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 import gunbc.live_deploy.capacity_inhibition_ownership { CapacityMaskEntry }
-import gunbc.live_deploy.capacity_migration_approval { CapacityAfterRemoval }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityAfterRemoval }
 import gunbc.live_deploy.capacity_manager_reload { CapacityReloadCompleted }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityCleanupOnly, CapacityRemovingInhibition, capacity_recovery_has_artifact }
 

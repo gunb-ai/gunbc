@@ -5,9 +5,8 @@ import std.error_primitives { Result, Ok, Err }
 import std.scoped_authorization { AuthorizationGranted, OperatorGrant, Unclaimed, ClaimHeld, ClaimedBy, ClaimLost, AttemptIdentity }
 import std.durable_compare_and_set { cas_generation_first }
 import extdeps.systemd.manager { SystemManager, UserManager }
-import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverIntent, CapacityCutoverAuthorization, CapacityManagerReload,
-  CapacityAfterInhibition, CapacityAfterInstall, CapacityAfterRemoval,
-  capacity_cutover_claim, capacity_cutover_reload_admission, capacity_cutover_reload_plan_lines }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, capacity_cutover_claim, capacity_cutover_reload_admission, capacity_cutover_reload_plan_lines }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityManagerReload, CapacityAfterInhibition, CapacityAfterInstall, CapacityAfterRemoval }
 import gunbc.live_deploy.capacity_manager_reload { capacity_reload_record_admission, capacity_reload_claim_admission, capacity_reload_claim_key }
 import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent, approval_fixture_request, approval_fixture_grant }
 import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
@@ -16,7 +15,7 @@ import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, Capa
 fn reload_fixture_intent(rows: List<CapacityManagerReload>) -> CapacityCutoverIntent {
   let prior = approval_fixture_intent()
   let record = recovery_fixture_record()
-  CapacityCutoverIntent { instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host, revision: record.target_revision, attempt: record.attempt,
+  CapacityCutoverIntent { drain: prior.drain, controller_slot: prior.controller_slot, instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host, revision: record.target_revision, attempt: record.attempt,
     operations: prior.operations, file_operations: prior.file_operations, captures: prior.captures,
     generations: prior.generations, reloads: rows }
 }
@@ -32,7 +31,7 @@ fn reload_fixture_approval(rows: List<CapacityManagerReload>) -> Result<Capacity
 
 fn reload_fixture_record(complete: Bool) -> CapacityCutoverRecord {
   let record = recovery_fixture_record()
-  CapacityCutoverRecord { attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
+  CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
     target: record.target, planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts,
     phase: CapacityInstalling { completed: if complete { count(record.target) } else { 0 } } }
 }

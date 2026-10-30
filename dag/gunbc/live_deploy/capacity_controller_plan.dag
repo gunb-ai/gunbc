@@ -7,7 +7,7 @@ import std.error_primitives { Result, Ok, Err }
 import extdeps.systemd.manager { SystemdManager }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
 import gunbc.live_deploy.apply_legs { DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, ApplyLegInstallUnit, deploy_apply_leg_step }
-import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyRequest }
+import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest }
 
 // The exception covers this closed program, never the general apply interpreter.
 // Drain includes the source-owned observation and lifecycle protocol. Install does

@@ -26,3 +26,7 @@ test fn duplicate_schema_fields_are_refused_by_the_json_owner() -> Bool {
     Ok { value: _ } => false
   }
 }
+
+test fn a_pre_retention_journal_never_infers_a_plan() -> Bool {
+  capacity_cutover_record_decode(text: "{\"schema\":\"gunbc.capacity-cutover.v4\"}") == Err { value: "plan not retained" }
+}

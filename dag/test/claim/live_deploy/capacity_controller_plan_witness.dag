@@ -3,7 +3,7 @@ module test.claim.live_deploy.capacity_controller_plan_witness
 import std.types { Bool }
 import std.decl_ref { decl_ref }
 import gunbc.compute.capacity_migration { CapacityMigrationPopulation }
-import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyRequest }
+import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest }
 import std.error_primitives { Ok, Err }
 import extdeps.systemd.manager { SystemManager }
 import extdeps.systemd.systemctl { systemctl_start_command }

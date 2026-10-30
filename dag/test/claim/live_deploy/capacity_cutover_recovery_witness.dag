@@ -1,5 +1,10 @@
 module test.claim.live_deploy.capacity_cutover_recovery_witness
 
+import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest }
+import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, capacity_cutover_intent_text }
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent }
+import std.content_hash { Sha256Digest, sha256_hex_of_text }
 import std.types { Bool, NonEmptyStr, String }
 import std.error_primitives { Ok, Err }
 import std.scoped_authorization { AttemptIdentity }
@@ -9,9 +14,9 @@ import extdeps.filesystem.posix { PosixFileIdentity }
 import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact }
 import std.optional { Present, Absent }
 import extdeps.systemd.manager { SystemManager }
-import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityMigrationPopulation }
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
-import gunbc.live_deploy.capacity_cutover_recovery {
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryRecheckDrain,
   CapacityGenerationFile, CapacityCutoverRecord, CapacityInstalling,
   CapacityResume, CapacityRollback, capacity_recovery_plan, capacity_recovery_finding, CapacityRecoveryOrphanMasks,
   CapacityRecoveryInstall, CapacityRecoveryVerifyGeneration, capacity_generation_same_subjects,
@@ -26,9 +31,20 @@ fn recovery_fixture_file(name: NonEmptyStr, digest: NonEmptyStr) -> CapacityGene
   }
 }
 
+fn recovery_fixture_intent() -> CapacityCutoverIntent {
+  let prior = approval_fixture_intent()
+  CapacityCutoverIntent { drain: prior.drain, controller_slot: prior.controller_slot,
+    instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host,
+    revision: prior.revision, attempt: "fixture-cutover" as NonEmptyStr as AttemptIdentity,
+    operations: prior.operations, file_operations: prior.file_operations, captures: prior.captures,
+    reloads: prior.reloads, generations: prior.generations }
+}
+
 fn recovery_fixture_record() -> CapacityCutoverRecord {
   let path = CapacityInhibitionPath { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }, path: "/etc/systemd/system.control/fixture.service" }
-  CapacityCutoverRecord { attempt: "fixture-cutover" as NonEmptyStr as AttemptIdentity,
+  let envelope = capacity_cutover_intent_text(intent: recovery_fixture_intent())
+  let digest = Sha256Digest { hex: sha256_hex_of_text(text: envelope as String) as NonEmptyStr }
+  CapacityCutoverRecord { plan: CapacityRetainedPlan { envelope: envelope, digest: digest, approved_digest: digest }, attempt: "fixture-cutover" as NonEmptyStr as AttemptIdentity,
     target_revision: "1111111111111111111111111111111111111111",
     prior: match recovery_fixture_file(name: "fixture.service", digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") { Present { value: file } => [file] Absent => [] },
     target: match recovery_fixture_file(name: "fixture.service", digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") { Present { value: file } => [file] Absent => [] },
@@ -69,5 +85,66 @@ test fn recovery_generation_membership_includes_the_source_host() -> Bool {
     Absent => false
     Present { value: file } => !capacity_generation_same_subjects(left: [file], right: [CapacityGenerationFile {
       host: "other-host", manager: file.manager, unit: file.unit, destination: file.destination, address: file.address, digest: file.digest }])
+  }
+}
+
+test fn recovery_rechecks_the_retained_digest_before_emitting_a_drain() -> Bool {
+  let record = recovery_fixture_record()
+  let changed = CapacityCutoverRecord { plan: CapacityRetainedPlan { envelope: concat(record.plan.envelope as String, " ") as NonEmptyStr,
+    digest: record.plan.digest, approved_digest: record.plan.approved_digest },
+    attempt: record.attempt, target_revision: record.target_revision, prior: record.prior, target: record.target,
+    planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts, phase: record.phase }
+  match capacity_recovery_plan(record: changed, choice: CapacityResume) {
+    Err { value: why } => why == "retained plan digest differs from its envelope or original approval"
+    Ok { value: _ } => false
+  }
+}
+
+test fn retained_digest_also_has_to_match_the_original_request_reference() -> Bool {
+  let record = recovery_fixture_record()
+  let changed = CapacityCutoverRecord { plan: CapacityRetainedPlan { envelope: record.plan.envelope,
+    digest: record.plan.digest, approved_digest: Sha256Digest { hex: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" } },
+    attempt: record.attempt, target_revision: record.target_revision, prior: record.prior, target: record.target,
+    planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts, phase: record.phase }
+  match capacity_recovery_plan(record: changed, choice: CapacityResume) {
+    Err { value: why } => why == "retained plan digest differs from its envelope or original approval"
+    Ok { value: _ } => false
+  }
+}
+
+test fn recovery_drain_uses_the_retained_population_and_not_a_new_roster() -> Bool {
+  let record = recovery_fixture_record()
+  let original = approval_fixture_intent()
+  match capacity_recovery_plan(record: record, choice: CapacityResume) {
+    Err { value: _ } => false
+    Ok { value: legs } => count(filter(legs, leg => match leg {
+      CapacityRecoveryRecheckDrain { request: request, controller_slot: slot } => request == original.drain && slot == original.controller_slot
+      _ => false
+    })) == 1
+  }
+}
+
+test fn a_later_roster_value_does_not_change_the_retained_recovery_drain() -> Bool {
+  let record = recovery_fixture_record()
+  let before = recovery_fixture_intent()
+  // A changed plan-time input would produce a different envelope. Recovery must
+  // still return the population approved before that later value existed.
+  let after = CapacityCutoverIntent { instance_id: before.instance_id, selected_identity: before.selected_identity,
+    host: before.host, revision: before.revision, attempt: before.attempt,
+    operations: before.operations, file_operations: before.file_operations, captures: before.captures,
+    generations: before.generations, reloads: before.reloads, controller_slot: before.controller_slot,
+    drain: CapacityMigrationApplyRequest { population: CapacityMigrationPopulation {
+      source: before.drain.population.source,
+      installed: before.drain.population.installed + [CapacityManagedUnit { manager: SystemManager, unit: "later-runner.service" }],
+      writer_parents: before.drain.population.writer_parents, transients: before.drain.population.transients,
+      children: before.drain.population.children }, target_revision: before.drain.target_revision,
+      bindings: before.drain.bindings, child_subjects: before.drain.child_subjects } }
+  if capacity_cutover_intent_text(intent: after) == record.plan.envelope { return false }
+  match capacity_recovery_plan(record: record, choice: CapacityResume) {
+    Err { value: _ } => false
+    Ok { value: legs } => count(filter(legs, leg => match leg {
+      CapacityRecoveryRecheckDrain { request: request, controller_slot: _ } => request == before.drain && request != after.drain
+      _ => false
+    })) == 1
   }
 }

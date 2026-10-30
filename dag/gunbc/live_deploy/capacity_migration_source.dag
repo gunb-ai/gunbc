@@ -1,5 +1,8 @@
 module gunbc.live_deploy.capacity_migration_source
 
+import std.scoped_authorization { AttemptIdentity }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation, CapacityCutoverFileOperation, CapacityManagerReload }
+import gunbc.live_deploy.capacity_quiescence { CapacityQuiescenceStep }
 import std.types { String, List, NonEmptyStr, CommitSha }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
@@ -26,7 +29,7 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
 import gunbc.live_deploy.capacity_migration { deployment_capacity_population_from_installs }
-import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyRequest, CapacityProbeBinding }
+import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest, CapacityProbeBinding, capacity_drain_input_admit }
 import gunbc.live_deploy.capacity_quiescence { capacity_probe_requirement, CapacityProbeUnknown, CapacityProbeProcess }
 
 // Main's producers, derived from their actual naming functions. The lab's extra
@@ -108,5 +111,32 @@ fn capacity_main_apply_request(spec: DeploymentSpec, revision: CommitSha, instal
         } }
       }
     }
+  }
+}
+
+// Plan-time producer. Resolve the naming/runner populations exactly once and
+// carry the resulting values into the operator-visible signed envelope.
+fn capacity_main_cutover_intent(spec: DeploymentSpec, selected_identity: DeclarationRef,
+  host: NonEmptyStr, revision: CommitSha, attempt: AttemptIdentity,
+  installed: List<DeploymentUnitInstall>, runners: Result<List<CapacityManagedUnit>, String>,
+  controller_slot: CapacityManagedUnit?, operations: List<CapacityQuiescenceStep>,
+  file_operations: List<CapacityCutoverFileOperation>, captures: List<CapacityCaptureOperation>,
+  reloads: List<CapacityManagerReload>, generations: List<CapacityGenerationOperation>) -> Result<CapacityCutoverIntent, String> {
+  let roster = match runners { Err { value: why } => { return Err { value: why } } Ok { value: units } => units }
+  let drained_runners = match controller_slot {
+    Absent => roster
+    Present { value: slot } => {
+      if count(filter(roster, unit => unit == slot)) != 1 { return Err { value: "controller exception does not name one observed runner slot" } }
+      filter(roster, unit => unit != slot)
+    }
+  }
+  match capacity_main_apply_request(spec: spec, revision: revision, installed: installed, runners: Ok { value: drained_runners }) {
+    Err { value: why } => Err { value: why }
+    Ok { value: resolved } => match capacity_drain_input_admit(request: resolved, controller_slot: controller_slot) {
+    Err { value: why } => Err { value: why }
+    Ok { value: drain } => Ok { value: CapacityCutoverIntent { instance_id: spec.instance_id, selected_identity: selected_identity,
+      host: host, revision: revision, attempt: attempt, drain: drain, controller_slot: controller_slot,
+      operations: operations, file_operations: file_operations, captures: captures, reloads: reloads, generations: generations } }
+  }
   }
 }

@@ -1,5 +1,9 @@
 module test.claim.live_deploy.capacity_capture_provider_witness
 
+import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan }
+import gunbc.live_deploy.capacity_cutover_intent { capacity_cutover_intent_text }
+import std.content_hash { Sha256Digest, sha256_hex_of_text }
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_drain }
 import std.decl_ref { decl_ref }
 import std.types { Bool, NonEmptyStr, String }
 import std.error_primitives { Result, Ok, Err }
@@ -10,13 +14,13 @@ import std.durable_compare_and_set { cas_generation_first }
 import gunbc.live_deploy.capacity_capture_provider { capacity_capture_claim_admission, capacity_capture_claim_key, capacity_capture_record_result, capacity_capture_manifest_complete }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityGenerationFile, CapacityCutoverRecord, CapacityCapturingGeneration, CapacityInstalling, capacity_generation_request }
 import gunbc.live_deploy.capacity_capture_store { capacity_capture_blob_path }
-import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation }
 import test.claim.live_deploy.capacity_capture_store_witness { capture_fixture_store }
 import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
 
 fn capture_preparing_record() -> CapacityCutoverRecord {
   let record = recovery_fixture_record()
-  CapacityCutoverRecord { attempt: record.attempt, target_revision: record.target_revision,
+  CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision,
     prior: record.prior, target: record.target, planned_paths: record.planned_paths,
     created_paths: [], artifacts: [], phase: CapacityCapturingGeneration }
 }
@@ -67,11 +71,13 @@ fn capture_manifest_fixture(outside: Bool, missing: Bool, wrong_target: Bool) ->
         Ok { value: address } => {
           let captured = CapacityGenerationFile { host: file.host, manager: file.manager, unit: file.unit,
             destination: file.destination, digest: file.digest, address: if outside { "/outside/provider" as NonEmptyStr } else { address } }
-          let supplied = CapacityCutoverRecord { attempt: record.attempt, target_revision: record.target_revision,
+          let intent = CapacityCutoverIntent { drain: approval_fixture_drain(), controller_slot: none, instance_id: "fixture-deployment", selected_identity: decl_ref(module_path: "test.claim.live_deploy.capacity_migration_approval_witness", decl_name: "approval_fixture_intent"), host: "srv1", revision: record.target_revision, attempt: store.attempt,
+            operations: [], file_operations: [], reloads: [], generations: [CapacityGenerationOperation { subject: CapacityManagedUnit { manager: file.manager, unit: file.unit }, destination: if wrong_target { "/etc/systemd/system/unapproved.service" as NonEmptyStr } else { file.destination }, root: store.root, digest: file.digest }], captures: [CapacityCaptureOperation { source: file.destination, root: store.root }] }
+          let envelope = capacity_cutover_intent_text(intent: intent)
+          let digest = Sha256Digest { hex: sha256_hex_of_text(text: envelope as String) as NonEmptyStr }
+          let supplied = CapacityCutoverRecord { plan: CapacityRetainedPlan { envelope: envelope, digest: digest, approved_digest: digest }, attempt: record.attempt, target_revision: record.target_revision,
             prior: if missing { [] } else { [captured] }, target: [captured], planned_paths: record.planned_paths,
             created_paths: [], artifacts: [], phase: record.phase }
-          let intent = CapacityCutoverIntent { instance_id: "fixture-deployment", selected_identity: decl_ref(module_path: "test.claim.live_deploy.capacity_migration_approval_witness", decl_name: "approval_fixture_intent"), host: "srv1", revision: record.target_revision, attempt: store.attempt,
-            operations: [], file_operations: [], reloads: [], generations: [CapacityGenerationOperation { subject: CapacityManagedUnit { manager: file.manager, unit: file.unit }, destination: if wrong_target { "/etc/systemd/system/unapproved.service" as NonEmptyStr } else { file.destination }, root: store.root, digest: file.digest }], captures: [CapacityCaptureOperation { source: file.destination, root: store.root }] }
           capacity_capture_manifest_complete(store: store, intent: intent, record: supplied)
         }
       }

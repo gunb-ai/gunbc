@@ -5,7 +5,7 @@ import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import extdeps.systemd.manager { SystemManager }
 import extdeps.filesystem.posix { PosixFileIdentity, S_IFLNK }
-import gunbc.live_deploy.capacity_migration_approval { CapacityManagerReload, CapacityAfterRemoval }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityManagerReload, CapacityAfterRemoval }
 import gunbc.live_deploy.capacity_manager_reload { CapacityReloadCompleted, capacity_reload_completed }
 import gunbc.live_deploy.capacity_discharge { CapacityDischargeReady, capacity_discharge_admit }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityRemovingInhibition }
@@ -15,7 +15,7 @@ import test.claim.live_deploy.capacity_manager_reload_witness { reload_fixture_a
 
 fn discharge_fixture_record() -> CapacityCutoverRecord {
   let record = recovery_fixture_record()
-  CapacityCutoverRecord { attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
+  CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
     target: record.target, planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts,
     phase: CapacityRemovingInhibition { completed: count(record.created_paths) } }
 }

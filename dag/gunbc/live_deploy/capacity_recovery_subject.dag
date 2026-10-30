@@ -5,7 +5,10 @@ import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryChoice, CapacityResume, CapacityRollback, capacity_recovery_plan }
 import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode }
-import std.scoped_authorization { AttemptIdentity, AuthorizationScope }
+import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction }
+import std.effect_grant { Execute, NamespacePosition, ServiceOpTree }
+import gunbc.live_deploy.capacity_root_helper { capacity_root_helper_scope }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryLeg, CapacityRecoveryRequireApproval, CapacityRecoveryReconcileOwnedInhibition, CapacityRecoveryRecheckDrain, CapacityRecoveryInstall, CapacityRecoveryVerifyGeneration, CapacityRecoveryVerifyInhibition, CapacityRecoveryRemoveRecordedLinks, CapacityRecoveryVerifyDischarge, CapacityRecoveryRemoveCaptures, CapacityRecoveryPersistCleanupOnly, CapacityRecoveryCloseRecord, CapacityRecoveryReload }
 import std.durable_compare_and_set { CasGeneration, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
 import std.content_hash { Sha256Digest, sha256_hex_of_text, sha256_hex_digest }
 
@@ -31,7 +34,7 @@ fn capacity_recovery_choice_text(choice: CapacityRecoveryChoice) -> String {
 // The digest covers the observed payload, not a reconstructed or cached record.
 fn capacity_recovery_observed(journal_root: NonEmptyStr, journal_key: NonEmptyStr,
   observed: CasSlotObservation<NonEmptyStr>, choice: CapacityRecoveryChoice,
-  helper_digest: Sha256Digest, scopes: List<AuthorizationScope>) -> Result<CapacityRecoverySubject, String> {
+  helper_digest: Sha256Digest) -> Result<CapacityRecoverySubject, String> {
   match observed {
     CasObservedUnreadable { cause: _ } => Err { value: "recovery journal unreadable" }
     CasObservedReadable { readable: CasReadableAbsent } => Err { value: "recovery journal absent" }
@@ -42,15 +45,46 @@ fn capacity_recovery_observed(journal_root: NonEmptyStr, journal_key: NonEmptySt
       // Includes the cleanup-only Rollback refusal, before a request can be filed.
       match capacity_recovery_plan(record: record, choice: choice) {
         Err { value: why } => Err { value: why }
-        Ok { value: _ } => match sha256_hex_digest(hex: sha256_hex_of_text(text: version.value as String)) {
+        Ok { value: legs } => match sha256_hex_digest(hex: sha256_hex_of_text(text: version.value as String)) {
           Absent => Err { value: "recovery record SHA-256 unreadable" }
           Present { value: digest } => Ok { value: CapacityRecoverySubject {
             journal_root: journal_root, journal_key: journal_key, generation: version.generation,
             record_digest: digest, apply_reference: record.attempt, choice: choice,
-            helper_digest: helper_digest, scopes: scopes } }
+            helper_digest: helper_digest, scopes: capacity_recovery_leg_scopes(legs: legs, record_digest: digest, choice: choice) } }
         }
       }
     }
   }
 }
 
+
+// Each executable leg is addressed within the freshly observed, digest-bound
+// record and choice. The ordinal selects an exact file/population from that
+// retained plan, never a caller-selected path or a newly evaluated roster.
+fn capacity_recovery_leg_action(leg: CapacityRecoveryLeg) -> NonEmptyStr {
+  match leg {
+    CapacityRecoveryRequireApproval { attempt: _, choice: _ } => "request-approval"
+    CapacityRecoveryReconcileOwnedInhibition { record: _ } => "reconcile-owned-inhibition"
+    CapacityRecoveryRecheckDrain { request: _, controller_slot: _ } => "recheck-retained-drain"
+    CapacityRecoveryInstall { file: _ } => "install-recorded-file"
+    CapacityRecoveryVerifyGeneration { files: _ } => "verify-recorded-generation"
+    CapacityRecoveryVerifyInhibition { paths: _ } => "verify-inhibition"
+    CapacityRecoveryRemoveRecordedLinks { artifacts: _ } => "remove-recorded-links"
+    CapacityRecoveryVerifyDischarge { artifacts: _ } => "verify-discharge"
+    CapacityRecoveryRemoveCaptures { files: _ } => "remove-recorded-captures"
+    CapacityRecoveryPersistCleanupOnly => "persist-cleanup-only"
+    CapacityRecoveryCloseRecord => "close-record"
+    CapacityRecoveryReload => "reload-recorded-managers"
+  }
+}
+
+fn capacity_recovery_leg_scopes(legs: List<CapacityRecoveryLeg>, record_digest: Sha256Digest,
+  choice: CapacityRecoveryChoice) -> List<AuthorizationScope> {
+  fold(legs, init: [capacity_root_helper_scope], f: (scopes, leg) => match leg {
+    CapacityRecoveryRequireApproval { attempt: _, choice: _ } => scopes
+    _ => scopes + [AuthorizationScope { verb: Execute,
+      resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc.cutover.recovery" },
+        path: [record_digest.hex as String, capacity_recovery_choice_text(choice: choice), to_string(count(scopes))] },
+      action: capacity_recovery_leg_action(leg: leg) as AuthorizedAction }]
+  })
+}

@@ -29,7 +29,7 @@ fn recovery_approval_observation(record: CapacityCutoverRecord, generation: CasG
   choice: CapacityRecoveryChoice) -> Result<CapacityRecoverySubject, String> {
   capacity_recovery_observed(journal_root: "/fixture/journal", journal_key: "record",
     observed: recovery_approval_slot(record: record, generation: generation),
-    choice: choice, helper_digest: approval_fixture_helper_digest, scopes: [capacity_root_helper_scope])
+    choice: choice, helper_digest: approval_fixture_helper_digest)
 }
 
 fn recovery_approval_request(choice: CapacityRecoveryChoice, generation: CasGeneration,
@@ -142,7 +142,7 @@ test fn a_second_approval_cannot_spend_the_same_journal_generation() -> Bool {
 
 test fn cleanup_only_rollback_refuses_before_request_construction() -> Bool {
   let prior = recovery_fixture_record()
-  let record = CapacityCutoverRecord { attempt: prior.attempt, target_revision: prior.target_revision,
+  let record = CapacityCutoverRecord { plan: prior.plan, attempt: prior.attempt, target_revision: prior.target_revision,
     prior: prior.prior, target: prior.target, planned_paths: prior.planned_paths, created_paths: prior.created_paths,
     artifacts: prior.artifacts, phase: CapacityCleanupOnly }
   match capacity_recovery_request(leg: CapacityRecoveryRequireApproval { attempt: record.attempt, choice: CapacityRollback },
@@ -174,7 +174,7 @@ test fn changed_record_bytes_at_the_same_generation_refuse() -> Bool {
     Err { value: _ } => { return false } Ok { value: value } => value
   }
   let prior = recovery_fixture_record()
-  let record = CapacityCutoverRecord { attempt: prior.attempt, target_revision: prior.target_revision,
+  let record = CapacityCutoverRecord { plan: prior.plan, attempt: prior.attempt, target_revision: prior.target_revision,
     prior: prior.prior, target: prior.target, planned_paths: prior.planned_paths, created_paths: prior.created_paths,
     artifacts: prior.artifacts, phase: CapacityCleanupOnly }
   match capacity_recovery_execute(request: request,

@@ -1,0 +1,57 @@
+module gunbc.live_deploy.capacity_plan_data
+
+import std.types { String, NonEmptyStr, List, Int }
+import std.algebra { list_at_optional }
+import std.optional { Present, Absent }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonString }
+import extdeps.systemd.manager { SystemdManager, SystemManager, UserManager }
+
+// Shared closed JSON data readers for the approved cutover envelope.
+fn capacity_plan_array(value: JsonValue, size: Int) -> Result<List<JsonValue>, String> {
+  match value { JsonArray { elements: elements } => if count(elements) == size { Ok { value: elements } }
+    else { Err { value: "cutover plan row has the wrong arity" } }
+    _ => Err { value: "cutover plan row is not an array" } }
+}
+
+fn capacity_plan_at(rows: List<JsonValue>, index: Int) -> Result<JsonValue, String> {
+  match list_at_optional(xs: rows, index: index) {
+    Present { value: value } => Ok { value: value } Absent => Err { value: "cutover plan row is incomplete" }
+  }
+}
+
+fn capacity_plan_text(rows: List<JsonValue>, index: Int) -> Result<NonEmptyStr, String> {
+  match capacity_plan_at(rows: rows, index: index) {
+    Ok { value: JsonString { value: text } } => if text == "" { Err { value: "empty cutover plan string" } } else { Ok { value: text as NonEmptyStr } }
+    _ => Err { value: "cutover plan field is not a string" }
+  }
+}
+
+fn capacity_plan_rows<T>(value: JsonValue, decode: fn(JsonValue) -> Result<T, String>) -> Result<List<T>, String> {
+  match value {
+    JsonArray { elements: rows } => fold(rows, init: Ok { value: [] }, f: (prior, row) => { match prior {
+      Err { value: why } => Err { value: why }
+      Ok { value: out } => match decode(row) { Err { value: why } => Err { value: why } Ok { value: decoded } => Ok { value: out + [decoded] } }
+    } })
+    _ => Err { value: "cutover plan population is not an array" }
+  }
+}
+
+fn capacity_plan_manager(text: NonEmptyStr) -> Result<SystemdManager, String> {
+  if text == "system" { Ok { value: SystemManager } }
+  else if starts_with(s: text as String, prefix: "user:") {
+    let uid_text = substring(s: text as String, start: 5, end: string_length(s: text as String))
+    match parse_int(s: uid_text) {
+      Present { value: uid } => if uid >= 0 && to_string(uid) == uid_text { Ok { value: UserManager { uid: uid } } }
+        else { Err { value: "noncanonical cutover user manager" } }
+      Absent => Err { value: "invalid cutover user manager" }
+    }
+  } else { Err { value: "unknown cutover manager" } }
+}
+
+fn capacity_plan_population<T>(rows: List<JsonValue>, index: Int, decode: fn(JsonValue) -> Result<T, String>) -> Result<List<T>, String> {
+  match capacity_plan_at(rows: rows, index: index) {
+    Err { value: why } => Err { value: why } Ok { value: raw } => capacity_plan_rows(value: raw, decode: decode)
+  }
+}
+

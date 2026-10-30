@@ -17,9 +17,8 @@ import std.process { ExitSuccess, ExitFailure }
 import extdeps.languages.json.emit { serialize_json, json_array, json_string }
 import extdeps.systemd.manager { SystemdManager }
 import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim }
-import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, CapacityReloadBoundary,
-  CapacityAfterInhibition, CapacityAfterInstall, CapacityAfterRemoval,
-  capacity_reload_manager_text, capacity_reload_boundary_text, capacity_cutover_reload_admission }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, capacity_cutover_reload_admission }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityReloadBoundary, CapacityAfterInhibition, CapacityAfterInstall, CapacityAfterRemoval, capacity_reload_manager_text, capacity_reload_boundary_text }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord,
   CapacityPreparingInhibition, CapacityInstalling, CapacityRemovingInhibition }
 

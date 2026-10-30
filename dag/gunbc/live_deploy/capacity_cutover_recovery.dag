@@ -1,5 +1,7 @@
 module gunbc.live_deploy.capacity_cutover_recovery
 
+import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan, capacity_retained_plan_read, capacity_retained_plan_result }
+import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest }
 import std.types { String, NonEmptyStr, List, Int, Bool, CommitSha }
 import std.error_primitives { Result, Ok, Err }
 import std.scoped_authorization { AttemptIdentity }
@@ -10,6 +12,7 @@ import std.materialization_provider { ArtifactRequest, CutoverCaptureRequest }
 import extdeps.systemd.manager { SystemdManager }
 import gunbc.live_deploy.capacity_capture_store { CapturedUnitBlob }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall, CapturedUnitDocument }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact }
 
@@ -39,6 +42,7 @@ type CapacityCutoverPhase
 // only links whose exclusive creation was recorded by this attempt. A crash
 // between creation and receipt is uncertain ownership, never permission to unlink.
 type CapacityCutoverRecord {
+  plan: CapacityRetainedPlan
   attempt: AttemptIdentity
   target_revision: CommitSha
   prior: List<CapacityGenerationFile>
@@ -54,7 +58,7 @@ type CapacityRecoveryChoice = CapacityResume | CapacityRollback
 type CapacityRecoveryLeg
   = CapacityRecoveryRequireApproval { attempt: AttemptIdentity, choice: CapacityRecoveryChoice }
   | CapacityRecoveryReconcileOwnedInhibition { record: CapacityCutoverRecord }
-  | CapacityRecoveryRecheckDrain
+  | CapacityRecoveryRecheckDrain { request: CapacityMigrationApplyRequest, controller_slot: CapacityManagedUnit? }
   | CapacityRecoveryInstall { file: CapacityGenerationFile }
   | CapacityRecoveryVerifyGeneration { files: List<CapacityGenerationFile> }
   | CapacityRecoveryVerifyInhibition { paths: List<CapacityInhibitionPath> }
@@ -69,6 +73,12 @@ type CapacityRecoveryLeg
 // The cursor is diagnostic, never authority to skip a file or trust a hash.
 // Both branches re-prove drain and the entire selected generation before removal.
 fn capacity_recovery_plan(record: CapacityCutoverRecord, choice: CapacityRecoveryChoice) -> Result<List<CapacityRecoveryLeg>, String> {
+  let intent = match capacity_retained_plan_result(finding: capacity_retained_plan_read(envelope: record.plan.envelope, digest: record.plan.digest, approved_digest: record.plan.approved_digest)) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  if intent.attempt != record.attempt || intent.revision != record.target_revision {
+    return Err { value: "retained plan differs from original apply identity" }
+  }
   if (record.phase == CapacityClosed) { return Err { value: "cutover is closed; its apply identity cannot be reused" } }
   if (record.phase == CapacityCleanupOnly) {
     return match choice {
@@ -92,7 +102,7 @@ fn capacity_recovery_plan(record: CapacityCutoverRecord, choice: CapacityRecover
     return Err { value: "generation membership changed; recovery needs modeled removal of added units" }
   }
   Ok { value: [CapacityRecoveryRequireApproval { attempt: record.attempt, choice: choice },
-    CapacityRecoveryReconcileOwnedInhibition { record: record }, CapacityRecoveryRecheckDrain]
+    CapacityRecoveryReconcileOwnedInhibition { record: record }, CapacityRecoveryRecheckDrain { request: intent.drain, controller_slot: intent.controller_slot }]
     + map(selected, file => CapacityRecoveryInstall { file: file })
     + [CapacityRecoveryVerifyGeneration { files: selected },
       CapacityRecoveryVerifyInhibition { paths: record.planned_paths },

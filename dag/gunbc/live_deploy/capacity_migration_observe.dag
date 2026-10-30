@@ -14,7 +14,8 @@ import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityMigration
 import gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityStanding, ComputeCapacityStandingUnread, compute_capacity_standing_on }
 import gunbc.compute.recorded_cgroup_drain { observe_recorded_cgroup_path }
 import gunbc.live_deploy.capacity_quiescence { capacity_quiescence_step_command, CapacityReadUnit }
-import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyRequest, CapacityMigrationApplyPorts }
+import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyPorts }
+import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest }
 
 // Reuse the existing systemctl row-field reader; globs remain systemd's. An
 // incomplete row is a failed reading, not an absent unit. Empty successful output

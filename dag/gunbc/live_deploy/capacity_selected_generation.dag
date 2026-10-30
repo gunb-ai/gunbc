@@ -5,7 +5,7 @@ import std.measure { Second }
 import std.error_primitives { Result, Ok, Err }
 import std.decl_ref { declaration_ref_eq }
 import std.content_hash { sha256_hex_of_text }
-import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverIntent, CapacityGenerationOperation }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityGenerationOperation }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument, CapturedUnitDocument }
 import gunbc.live_deploy.apply_legs { apply_modeled_unit_install_payload }
 import gunbc.live_deploy.unit_install_roster { deployment_desired_unit_installs }

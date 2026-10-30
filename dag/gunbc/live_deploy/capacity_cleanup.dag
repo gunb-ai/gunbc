@@ -17,7 +17,8 @@ import gunbc.live_deploy.capacity_discharge { CapacityDischargeReady, capacity_d
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 import gunbc.live_deploy.capacity_inhibition_ownership { CapacityMaskEntry }
 import gunbc.live_deploy.capacity_manager_reload { CapacityReloadCompleted }
-import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, CapacityCutoverFileOperation, CapacityCaptureRemove, capacity_cutover_file_admission }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, capacity_cutover_file_admission }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverFileOperation, CapacityCaptureRemove }
 
 type CapacityCleanupCompleted {
   record: CapacityCutoverRecord
@@ -31,7 +32,7 @@ type CapacityCleanupFault
 
 fn capacity_cleanup_begin(ready: CapacityDischargeReady) -> CapacityCutoverRecord {
   let record = ready.record
-  CapacityCutoverRecord { attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
+  CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
     target: record.target, planned_paths: record.planned_paths, created_paths: record.created_paths,
     artifacts: record.artifacts, phase: CapacityCleanupOnly }
 }
@@ -44,7 +45,7 @@ fn capacity_cleanup_admission(record: CapacityCutoverRecord) -> Result<CapacityC
 fn capacity_cleanup_close(record: CapacityCutoverRecord) -> CapacityCutoverRecord
   admit_callers: [decl_ref(module_path: "gunbc.live_deploy.capacity_cleanup", decl_name: "capacity_cleanup_held")]
 {
-  CapacityCutoverRecord { attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
+  CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
     target: record.target, planned_paths: record.planned_paths, created_paths: record.created_paths,
     artifacts: record.artifacts, phase: CapacityClosed }
 }

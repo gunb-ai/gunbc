@@ -20,9 +20,9 @@ import gunbc.fleet.srv1_root_mutation_approval_run {
 }
 
 fn capacity_recovery_read(journal: SlotStore, key: NonEmptyStr, choice: CapacityRecoveryChoice,
-  helper_digest: Sha256Digest, scopes: List<AuthorizationScope>) -> Result<CapacityRecoverySubject, String> {
+  helper_digest: Sha256Digest) -> Result<CapacityRecoverySubject, String> {
   capacity_recovery_observed(journal_root: journal.root, journal_key: key,
-    observed: slot_observe(store: journal, key: key), choice: choice, helper_digest: helper_digest, scopes: scopes)
+    observed: slot_observe(store: journal, key: key), choice: choice, helper_digest: helper_digest)
 }
 
 // Consume the approval leg emitted by the existing recovery plan. The leg is
@@ -81,7 +81,7 @@ fn capacity_recovery_consume_journal(subject: CapacityRecoverySubject,
   observed: CasSlotObservation<NonEmptyStr>, attempt: AttemptIdentity, at: Timestamp,
   commit: fn(VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>) -> AuthorizationClaimOutcome {
   let reread = capacity_recovery_observed(journal_root: subject.journal_root, journal_key: subject.journal_key,
-    observed: observed, choice: subject.choice, helper_digest: subject.helper_digest, scopes: subject.scopes)
+    observed: observed, choice: subject.choice, helper_digest: subject.helper_digest)
   match reread {
     Err { value: why } => { return ClaimUndecided { reason: why as NonEmptyStr } }
     Ok { value: current } => if current != subject {
@@ -105,10 +105,10 @@ fn capacity_recovery_consume_journal(subject: CapacityRecoverySubject,
 }
 
 fn capacity_recovery_claim_over_store(request: Srv1RecoveryRequest, journal: SlotStore, key: NonEmptyStr,
-  choice: CapacityRecoveryChoice, helper_digest: Sha256Digest, scopes: List<AuthorizationScope>,
+  choice: CapacityRecoveryChoice, helper_digest: Sha256Digest,
   authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp) -> Result<CapacityRecoveryAuthorization, String> {
   capacity_recovery_claim(request: request,
-    reread: fn() { capacity_recovery_read(journal: journal, key: key, choice: choice, helper_digest: helper_digest, scopes: scopes) },
+    reread: fn() { capacity_recovery_read(journal: journal, key: key, choice: choice, helper_digest: helper_digest) },
     authorization: authorization, at: at,
     claim: (subject, attempt, instant) => {
       if subject != request.subject || journal.root != subject.journal_root || key != subject.journal_key {

@@ -8,7 +8,7 @@ import extdeps.systemd.unit_file { ServiceUnitFile, NotInstallable, Description 
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument }
 import gunbc.live_deploy.apply_legs { apply_modeled_unit_install_payload }
-import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverIntent, CapacityGenerationOperation }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityGenerationOperation }
 import gunbc.live_deploy.capacity_selected_generation { capacity_cutover_selected_deployment, capacity_cutover_projection_admit }
 import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent }
 import test.claim.live_deploy.capacity_controller_plan_witness { controller_fixture_install }
@@ -21,7 +21,7 @@ fn selected_generation_fixture() -> Result<CapacityCutoverIntent, String> {
   let text = match install.file { ModeledUnitDocument { file: file } => apply_modeled_unit_install_payload(file: file) _ => "" }
   match sha256_hex_digest(hex: sha256_hex_of_text(text: text)) {
     Absent => Err { value: "fixture digest refused" }
-    Present { value: digest } => Ok { value: CapacityCutoverIntent {
+    Present { value: digest } => Ok { value: CapacityCutoverIntent { drain: prior.drain, controller_slot: prior.controller_slot,
       instance_id: prior.instance_id, selected_identity: prior.selected_identity,
       host: prior.host, revision: prior.revision, attempt: prior.attempt,
       operations: prior.operations, captures: prior.captures, file_operations: prior.file_operations, reloads: prior.reloads,
@@ -70,9 +70,9 @@ test fn missing_duplicate_or_extra_units_cannot_disappear_in_projection() -> Boo
   }
 }
 
-fn selected_generation_row_intent(row: DesiredDeployment, identity: DeclarationRef) -> CapacityCutoverIntent {
+fn selected_generation_row_intent(row: DesiredDeployment, identity: DeclarationRef) -> CapacityCutoverIntent { drain: prior.drain, controller_slot: prior.controller_slot,
   let prior = approval_fixture_intent()
-  CapacityCutoverIntent { instance_id: row.instance.instance_id, selected_identity: identity,
+  CapacityCutoverIntent { drain: prior.drain, controller_slot: prior.controller_slot, instance_id: row.instance.instance_id, selected_identity: identity,
     host: row.target.host.identity as NonEmptyStr, revision: prior.revision, attempt: prior.attempt,
     operations: prior.operations, file_operations: prior.file_operations, captures: prior.captures,
     generations: prior.generations, reloads: prior.reloads }

@@ -1,0 +1,59 @@
+module gunbc.live_deploy.capacity_drain_input
+
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.types { List, CommitSha, String, Bool }
+import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityMigrationPopulation, capacity_migration_parent_requirements }
+import gunbc.compute.host_capacity { ComputeCapacitySubject }
+import gunbc.live_deploy.capacity_quiescence { CapacityProbeRequirement, CapacityProbeUnknown }
+
+// Resolved data shared by plan approval and the drain executor. No roster or
+// naming producer is reachable through this carrier.
+type CapacityProbeBinding {
+  subject: CapacityManagedUnit
+  requirement: CapacityProbeRequirement
+}
+
+type CapacityMigrationApplyRequest {
+  population: CapacityMigrationPopulation
+  target_revision: CommitSha
+  bindings: List<CapacityProbeBinding>
+  child_subjects: List<ComputeCapacitySubject>
+}
+
+
+fn capacity_drain_input_admit(request: CapacityMigrationApplyRequest,
+  controller_slot: CapacityManagedUnit?) -> Result<CapacityMigrationApplyRequest, String> {
+  let population = request.population
+  if count(population.installed) == 0 || count(population.transients) == 0 || count(population.children) == 0 {
+    return Err { value: "plan incomplete: drain population is empty" }
+  }
+  let parents = fold(capacity_migration_parent_requirements(population: population), init: Ok { value: [] }, f: (prior, row) => match prior {
+    Err { value: why } => Err { value: why }
+    Ok { value: units } => match row.parents {
+      Err { value: why } => Err { value: why }
+      Ok { value: required } => if count(required) == 0 { Err { value: "plan incomplete: drain parents empty" } } else { Ok { value: units + required } }
+    }
+  })
+  let required_parents = match parents { Err { value: why } => { return Err { value: why } } Ok { value: units } => units }
+  let required = population.installed + required_parents + flat_map(population.transients, family => family.activators)
+  if any(population.transients, family => count(family.patterns) == 0 || count(family.activators) == 0) {
+    return Err { value: "plan incomplete: transient patterns or activators absent" }
+  }
+  if any(request.bindings, binding => match binding.requirement { CapacityProbeUnknown { cause: _ } => true _ => false })
+    || any(required, unit => count(filter(request.bindings, binding => binding.subject == unit)) != 1) {
+    return Err { value: "plan incomplete: missing, ambiguous or unresolved probe binding" }
+  }
+  if count(request.child_subjects) != count(population.children)
+    || any(population.children, child => count(filter(request.child_subjects, subject => subject.root == child.root && subject.partition == child.partition)) != 1)
+    || any(request.child_subjects, subject => count(filter(population.children, child => subject.root == child.root && subject.partition == child.partition)) != 1) {
+    return Err { value: "plan incomplete: child subjects differ from the drain population" }
+  }
+  match controller_slot {
+    Absent => {}
+    Present { value: slot } => if any(required, unit => unit == slot) || any(request.bindings, binding => binding.subject == slot) {
+      return Err { value: "controller exception is also in the fixed drain set" }
+    } else { {} }
+  }
+  Ok { value: request }
+}

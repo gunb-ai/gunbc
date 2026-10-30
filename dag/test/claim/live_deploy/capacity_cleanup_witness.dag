@@ -13,7 +13,7 @@ import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixtu
 
 fn cleanup_fixture_record(phase: CapacityCutoverPhase) -> CapacityCutoverRecord {
   let record = recovery_fixture_record()
-  CapacityCutoverRecord { attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
+  CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
     target: record.target, planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts, phase: phase }
 }
 

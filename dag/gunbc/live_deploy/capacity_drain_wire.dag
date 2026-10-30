@@ -1,0 +1,239 @@
+module gunbc.live_deploy.capacity_drain_wire
+
+import std.types { String, NonEmptyStr, List, Int }
+import std.nat { Nat }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
+import std.measure { Kibibyte, kibibyte, kibibyte_count }
+import product.capacity.event_chain { PartitionId }
+import extdeps.systemd.manager { SystemdManager, SystemManager, UserManager }
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonString }
+import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityMigrationPopulation, CapacityMigrationParentRequirement, CapacityTransientFamily, CapacityMigrationChild, CapacityWriterStanding, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified, CapacityFamilyPlacement, CapacityFamilyParents, CapacityActivationFamily }
+import gunbc.compute.host_capacity { ComputeCapacitySubject }
+import gunbc.live_deploy.capacity_quiescence { CapacityProbeRequirement, CapacityProbeProcess, CapacityProbeActivation, CapacityProbeUnknown }
+import gunbc.live_deploy.capacity_drain_input { CapacityProbeBinding }
+import gunbc.live_deploy.capacity_plan_data { capacity_plan_array, capacity_plan_at, capacity_plan_text, capacity_plan_population, capacity_plan_manager }
+
+// Resolved values only. Reading this wire cannot call a roster, naming function,
+// desired-state resolver or source evaluator.
+fn drain_text_wire(value: NonEmptyStr) -> JsonValue { JsonString { value: value as String } }
+fn drain_text_read(value: JsonValue) -> Result<NonEmptyStr, String> {
+  match value { JsonString { value: text } => if text == "" { Err { value: "empty drain identity" } } else { Ok { value: text as NonEmptyStr } }
+    _ => Err { value: "drain identity is not text" } }
+}
+fn drain_manager_wire(value: SystemdManager) -> JsonValue {
+  JsonString { value: match value { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) } }
+}
+fn drain_manager_read(value: JsonValue) -> Result<SystemdManager, String> {
+  match drain_text_read(value: value) { Err { value: why } => Err { value: why } Ok { value: text } => capacity_plan_manager(text: text) }
+}
+fn drain_memory_wire(value: Kibibyte) -> JsonValue { JsonString { value: to_string(kibibyte_count(k: value)) } }
+fn drain_memory_read(value: JsonValue) -> Result<Kibibyte, String> {
+  match drain_text_read(value: value) {
+    Err { value: why } => Err { value: why }
+    Ok { value: text } => match parse_int(s: text as String) {
+      Present { value: n } => if n >= 0 && to_string(n) == (text as String) { Ok { value: kibibyte(count: n as Nat) } } else { Err { value: "invalid drain memory quantity" } }
+      Absent => Err { value: "invalid drain memory quantity" }
+    }
+  }
+}
+fn drain_partition_wire(value: PartitionId) -> JsonValue { drain_text_wire(value: value as NonEmptyStr) }
+fn drain_partition_read(value: JsonValue) -> Result<PartitionId, String> {
+  match drain_text_read(value: value) { Err { value: why } => Err { value: why } Ok { value: text } => Ok { value: text as PartitionId } }
+}
+
+fn drain_unit_wire(value: CapacityManagedUnit) -> JsonValue {
+  JsonArray { elements: [drain_manager_wire(value: value.manager), drain_text_wire(value: value.unit)] }
+}
+fn drain_unit_read(value: JsonValue) -> Result<CapacityManagedUnit, String> {
+  let row = match capacity_plan_array(value: value, size: 2) { Err { value: why } => { return Err { value: why } } Ok { value: row } => row }
+  let raw_manager = match capacity_plan_at(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let manager = match drain_manager_read(value: raw_manager) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_unit = match capacity_plan_at(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let unit = match drain_text_read(value: raw_unit) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  Ok { value: CapacityManagedUnit { manager: manager, unit: unit } }
+}
+
+fn drain_optional_unit_wire(value: CapacityManagedUnit?) -> JsonValue {
+  JsonArray { elements: match value { Absent => [] Present { value: unit } => [drain_unit_wire(value: unit)] } }
+}
+fn drain_optional_unit_read(value: JsonValue) -> Result<CapacityManagedUnit?, String> {
+  match value {
+    JsonArray { elements: rows } => if count(rows) == 0 { Ok { value: none } }
+      else if count(rows) == 1 { match capacity_plan_at(rows: rows, index: 0) {
+        Err { value: why } => Err { value: why }
+        Ok { value: raw } => match drain_unit_read(value: raw) { Err { value: why } => Err { value: why } Ok { value: unit } => Ok { value: Present { value: unit } } }
+      } } else { Err { value: "ambiguous drain optional unit" } }
+    _ => Err { value: "drain optional unit is not an array" }
+  }
+}
+fn drain_ref_wire(value: DeclarationRef) -> JsonValue {
+  JsonArray { elements: [drain_text_wire(value: value.module_path), drain_text_wire(value: value.decl_name),
+    JsonString { value: match value.field { WholeDeclaration => "whole" NamedField { field_name: name } => concat("field:", name as String) TypeParameter { name: name } => concat("type-parameter:", name as String) } }] }
+}
+fn drain_ref_read(value: JsonValue) -> Result<DeclarationRef, String> {
+  let row = match capacity_plan_array(value: value, size: 3) { Err { value: why } => { return Err { value: why } } Ok { value: row } => row }
+  let module_path = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: text } => text }
+  let decl_name = match capacity_plan_text(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: text } => text }
+  let field = match capacity_plan_text(rows: row, index: 2) { Err { value: why } => { return Err { value: why } } Ok { value: text } => text }
+  if field != "whole" { return Err { value: "drain producer must identify a whole declaration" } }
+  Ok { value: DeclarationRef { module_path: module_path, decl_name: decl_name, field: WholeDeclaration } }
+}
+fn drain_standing_wire(value: CapacityWriterStanding) -> JsonValue {
+  JsonArray { elements: match value {
+    CapacityConfirmedWriter => [JsonString { value: "writer" }]
+    CapacityConfirmedNonWriter => [JsonString { value: "nonwriter" }]
+    CapacityUnclassified { detail: detail } => [JsonString { value: "unclassified" }, JsonString { value: detail }]
+  } }
+}
+fn drain_standing_read(value: JsonValue) -> Result<CapacityWriterStanding, String> {
+  match value {
+    JsonArray { elements: row } => {
+      let tag = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: text } => text }
+      if tag == "writer" && count(row) == 1 { Ok { value: CapacityConfirmedWriter } }
+      else if tag == "nonwriter" && count(row) == 1 { Ok { value: CapacityConfirmedNonWriter } }
+      else if tag == "unclassified" && count(row) == 2 { match capacity_plan_text(rows: row, index: 1) {
+        Err { value: why } => Err { value: why } Ok { value: text } => Ok { value: CapacityUnclassified { detail: text as String } }
+      } } else { Err { value: "unknown drain writer standing" } }
+    }
+    _ => Err { value: "drain writer standing is not an array" }
+  }
+}
+fn drain_parents_wire(value: Result<List<CapacityManagedUnit>, String>) -> JsonValue {
+  JsonArray { elements: match value {
+    Ok { value: units } => [JsonString { value: "resolved" }, JsonArray { elements: map(units, unit => drain_unit_wire(value: unit)) }]
+    Err { value: why } => [JsonString { value: "unresolved" }, JsonString { value: why }]
+  } }
+}
+fn drain_parents_read(value: JsonValue) -> Result<Result<List<CapacityManagedUnit>, String>, String> {
+  let row = match capacity_plan_array(value: value, size: 2) { Err { value: why } => { return Err { value: why } } Ok { value: row } => row }
+  let tag = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: text } => text }
+  if tag != "resolved" { return Err { value: "plan incomplete: drain parents unresolved" } }
+  match capacity_plan_population(rows: row, index: 1, decode: item => drain_unit_read(value: item)) {
+    Err { value: why } => Err { value: why }
+    Ok { value: units } => if count(units) == 0 { Err { value: "plan incomplete: drain parents empty" } } else { Ok { value: Ok { value: units } } }
+  }
+}
+fn drain_placement_wire(value: CapacityFamilyPlacement) -> JsonValue {
+  JsonArray { elements: match value {
+    CapacityFamilyParents { parents: parents } => [JsonString { value: "parents" }, drain_parents_wire(value: parents)]
+    CapacityActivationFamily { targets: targets } => [JsonString { value: "activation" }, JsonArray { elements: map(targets, unit => drain_unit_wire(value: unit)) }]
+  } }
+}
+fn drain_placement_read(value: JsonValue) -> Result<CapacityFamilyPlacement, String> {
+  let row = match capacity_plan_array(value: value, size: 2) { Err { value: why } => { return Err { value: why } } Ok { value: row } => row }
+  let tag = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: text } => text }
+  if tag == "parents" { match capacity_plan_at(rows: row, index: 1) {
+    Err { value: why } => Err { value: why } Ok { value: raw } => match drain_parents_read(value: raw) { Err { value: why } => Err { value: why } Ok { value: parents } => Ok { value: CapacityFamilyParents { parents: parents } } }
+  } } else if tag == "activation" { match capacity_plan_population(rows: row, index: 1, decode: item => drain_unit_read(value: item)) {
+    Err { value: why } => Err { value: why } Ok { value: targets } => if count(targets) == 0 { Err { value: "plan incomplete: activation targets empty" } } else { Ok { value: CapacityActivationFamily { targets: targets } } }
+  } } else { Err { value: "unknown drain family placement" } }
+}
+fn drain_probe_wire(value: CapacityProbeRequirement) -> JsonValue {
+  JsonArray { elements: match value {
+    CapacityProbeProcess { parent: parent } => [JsonString { value: "process" }, drain_optional_unit_wire(value: parent)]
+    CapacityProbeActivation { targets: targets } => [JsonString { value: "activation" }, JsonArray { elements: map(targets, unit => drain_unit_wire(value: unit)) }]
+    CapacityProbeUnknown { cause: why } => [JsonString { value: "unresolved" }, JsonString { value: why }]
+  } }
+}
+fn drain_probe_read(value: JsonValue) -> Result<CapacityProbeRequirement, String> {
+  let row = match capacity_plan_array(value: value, size: 2) { Err { value: why } => { return Err { value: why } } Ok { value: row } => row }
+  let tag = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: text } => text }
+  if tag == "process" { match capacity_plan_at(rows: row, index: 1) {
+    Err { value: why } => Err { value: why } Ok { value: raw } => match drain_optional_unit_read(value: raw) { Err { value: why } => Err { value: why } Ok { value: parent } => Ok { value: CapacityProbeProcess { parent: parent } } }
+  } } else if tag == "activation" { match capacity_plan_population(rows: row, index: 1, decode: item => drain_unit_read(value: item)) {
+    Err { value: why } => Err { value: why } Ok { value: targets } => if count(targets) == 0 { Err { value: "plan incomplete: probe targets empty" } } else { Ok { value: CapacityProbeActivation { targets: targets } } }
+  } } else { Err { value: "plan incomplete: drain probe unresolved" } }
+}
+
+fn drain_parent_requirement_wire(value: CapacityMigrationParentRequirement) -> JsonValue {
+  JsonArray { elements: [drain_standing_wire(value: value.standing), drain_ref_wire(value: value.source), drain_parents_wire(value: value.parents)] }
+}
+fn drain_parent_requirement_read(value: JsonValue) -> Result<CapacityMigrationParentRequirement, String> {
+  let row = match capacity_plan_array(value: value, size: 3) { Err { value: why } => { return Err { value: why } } Ok { value: row } => row }
+  let raw_standing = match capacity_plan_at(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let standing = match drain_standing_read(value: raw_standing) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_source = match capacity_plan_at(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let source = match drain_ref_read(value: raw_source) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_parents = match capacity_plan_at(rows: row, index: 2) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let parents = match drain_parents_read(value: raw_parents) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  Ok { value: CapacityMigrationParentRequirement { standing: standing, source: source, parents: parents } }
+}
+
+fn drain_family_wire(value: CapacityTransientFamily) -> JsonValue {
+  JsonArray { elements: [drain_standing_wire(value: value.standing), drain_manager_wire(value: value.manager), drain_ref_wire(value: value.source), JsonArray { elements: map(value.patterns, item => drain_text_wire(value: item)) }, JsonArray { elements: map(value.exclude_patterns, item => drain_text_wire(value: item)) }, JsonArray { elements: map(value.activators, item => drain_unit_wire(value: item)) }, drain_placement_wire(value: value.placement)] }
+}
+fn drain_family_read(value: JsonValue) -> Result<CapacityTransientFamily, String> {
+  let row = match capacity_plan_array(value: value, size: 7) { Err { value: why } => { return Err { value: why } } Ok { value: row } => row }
+  let raw_standing = match capacity_plan_at(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let standing = match drain_standing_read(value: raw_standing) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_manager = match capacity_plan_at(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let manager = match drain_manager_read(value: raw_manager) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_source = match capacity_plan_at(rows: row, index: 2) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let source = match drain_ref_read(value: raw_source) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let patterns = match capacity_plan_population(rows: row, index: 3, decode: item => drain_text_read(value: item)) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let exclude_patterns = match capacity_plan_population(rows: row, index: 4, decode: item => drain_text_read(value: item)) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let activators = match capacity_plan_population(rows: row, index: 5, decode: item => drain_unit_read(value: item)) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_placement = match capacity_plan_at(rows: row, index: 6) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let placement = match drain_placement_read(value: raw_placement) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  Ok { value: CapacityTransientFamily { standing: standing, manager: manager, source: source, patterns: patterns, exclude_patterns: exclude_patterns, activators: activators, placement: placement } }
+}
+
+fn drain_child_wire(value: CapacityMigrationChild) -> JsonValue {
+  JsonArray { elements: [drain_text_wire(value: value.root), drain_partition_wire(value: value.partition)] }
+}
+fn drain_child_read(value: JsonValue) -> Result<CapacityMigrationChild, String> {
+  let row = match capacity_plan_array(value: value, size: 2) { Err { value: why } => { return Err { value: why } } Ok { value: row } => row }
+  let raw_root = match capacity_plan_at(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let root = match drain_text_read(value: raw_root) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_partition = match capacity_plan_at(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let partition = match drain_partition_read(value: raw_partition) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  Ok { value: CapacityMigrationChild { root: root, partition: partition } }
+}
+
+fn drain_population_wire(value: CapacityMigrationPopulation) -> JsonValue {
+  JsonArray { elements: [drain_ref_wire(value: value.source), JsonArray { elements: map(value.installed, item => drain_unit_wire(value: item)) }, JsonArray { elements: map(value.writer_parents, item => drain_parent_requirement_wire(value: item)) }, JsonArray { elements: map(value.transients, item => drain_family_wire(value: item)) }, JsonArray { elements: map(value.children, item => drain_child_wire(value: item)) }] }
+}
+fn drain_population_read(value: JsonValue) -> Result<CapacityMigrationPopulation, String> {
+  let row = match capacity_plan_array(value: value, size: 5) { Err { value: why } => { return Err { value: why } } Ok { value: row } => row }
+  let raw_source = match capacity_plan_at(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let source = match drain_ref_read(value: raw_source) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let installed = match capacity_plan_population(rows: row, index: 1, decode: item => drain_unit_read(value: item)) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let writer_parents = match capacity_plan_population(rows: row, index: 2, decode: item => drain_parent_requirement_read(value: item)) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let transients = match capacity_plan_population(rows: row, index: 3, decode: item => drain_family_read(value: item)) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let children = match capacity_plan_population(rows: row, index: 4, decode: item => drain_child_read(value: item)) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  Ok { value: CapacityMigrationPopulation { source: source, installed: installed, writer_parents: writer_parents, transients: transients, children: children } }
+}
+
+fn drain_subject_wire(value: ComputeCapacitySubject) -> JsonValue {
+  JsonArray { elements: [drain_text_wire(value: value.root), drain_partition_wire(value: value.partition), drain_memory_wire(value: value.appropriation), drain_partition_wire(value: value.parent_partition), drain_memory_wire(value: value.parent_appropriation), drain_memory_wire(value: value.request)] }
+}
+fn drain_subject_read(value: JsonValue) -> Result<ComputeCapacitySubject, String> {
+  let row = match capacity_plan_array(value: value, size: 6) { Err { value: why } => { return Err { value: why } } Ok { value: row } => row }
+  let raw_root = match capacity_plan_at(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let root = match drain_text_read(value: raw_root) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_partition = match capacity_plan_at(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let partition = match drain_partition_read(value: raw_partition) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_appropriation = match capacity_plan_at(rows: row, index: 2) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let appropriation = match drain_memory_read(value: raw_appropriation) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_parent_partition = match capacity_plan_at(rows: row, index: 3) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let parent_partition = match drain_partition_read(value: raw_parent_partition) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_parent_appropriation = match capacity_plan_at(rows: row, index: 4) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let parent_appropriation = match drain_memory_read(value: raw_parent_appropriation) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_request = match capacity_plan_at(rows: row, index: 5) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let request = match drain_memory_read(value: raw_request) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  Ok { value: ComputeCapacitySubject { root: root, partition: partition, appropriation: appropriation, parent_partition: parent_partition, parent_appropriation: parent_appropriation, request: request } }
+}
+
+fn drain_binding_wire(value: CapacityProbeBinding) -> JsonValue {
+  JsonArray { elements: [drain_unit_wire(value: value.subject), drain_probe_wire(value: value.requirement)] }
+}
+fn drain_binding_read(value: JsonValue) -> Result<CapacityProbeBinding, String> {
+  let row = match capacity_plan_array(value: value, size: 2) { Err { value: why } => { return Err { value: why } } Ok { value: row } => row }
+  let raw_subject = match capacity_plan_at(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let subject = match drain_unit_read(value: raw_subject) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  let raw_requirement = match capacity_plan_at(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
+  let requirement = match drain_probe_read(value: raw_requirement) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
+  Ok { value: CapacityProbeBinding { subject: subject, requirement: requirement } }
+}

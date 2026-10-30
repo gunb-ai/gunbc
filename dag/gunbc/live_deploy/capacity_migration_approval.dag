@@ -1,5 +1,6 @@
 module gunbc.live_deploy.capacity_migration_approval
 
+import gunbc.live_deploy.capacity_cutover_plan_input { capacity_cutover_plan_input }
 import std.types { String, NonEmptyStr, List, CommitSha, Timestamp, ShellResponse }
 import std.error_primitives { Result, Ok, Err }
 import std.content_hash { Sha256Digest, sha256_hex_of_text, sha256_hex_digest }
@@ -25,194 +26,7 @@ import gunbc.live_deploy.capacity_quiescence {
   capacity_quiescence_step_subject,
 }
 
-// Filesystem mutations are separate from systemd lifecycle probes. Consent is
-// exact per path and operation, never permission for a whole capture directory.
-// Ownership, create-only publication and inode checks remain provider obligations.
-type CapacityCutoverFileVerb = CapacityCaptureRemove | CapacityInhibitionCreate | CapacityInhibitionRemove
-
-type CapacityCutoverFileOperation {
-  path: NonEmptyStr
-  verb: CapacityCutoverFileVerb
-}
-
-fn capacity_cutover_file_action(operation: CapacityCutoverFileOperation) -> AuthorizedAction {
-  (match operation.verb {
-    CapacityCaptureRemove => "capture-remove"
-    CapacityInhibitionCreate => "inhibit-create"
-    CapacityInhibitionRemove => "inhibit-remove"
-  }) as NonEmptyStr as AuthorizedAction
-}
-
-fn capacity_cutover_file_scope(operation: CapacityCutoverFileOperation) -> AuthorizationScope {
-  AuthorizationScope { verb: Write,
-    resource: absolute_path_position(path: operation.path as String),
-    action: capacity_cutover_file_action(operation: operation) }
-}
-
-// Capture approves one closed provider operation. The byte digest and result
-// address are learned under this consent, never prerequisites to requesting it.
-type CapacityCaptureOperation {
-  source: NonEmptyStr
-  root: NonEmptyStr
-}
-
-// Absolute filesystem paths are data within this operation tuple, not namespace
-// path segments (the authorization wire rejects '/' inside a segment). Address
-// the canonical exact tuple by SHA-256; the plan retains its operator-visible
-// source/root fields and the broker binds that plan digest alongside these scopes.
-fn capacity_capture_scope(intent: CapacityCutoverIntent, operation: CapacityCaptureOperation) -> AuthorizationScope {
-  AuthorizationScope { verb: Execute,
-    resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc.cutover.capture" },
-      path: [sha256_hex_of_text(text: serialize_json(v: JsonArray { elements: [
-        JsonString { value: intent.host as String }, JsonString { value: intent.attempt as String },
-        JsonString { value: operation.source as String }, JsonString { value: operation.root as String }
-      ] }))] },
-    action: "capture-create" as NonEmptyStr as AuthorizedAction }
-}
-
-// Destination is included in the unit identity: consent for one unit must not
-// be reusable with a changed install path. Bytes are known from typed rendering.
-type CapacityGenerationOperation {
-  subject: CapacityManagedUnit
-  destination: NonEmptyStr
-  root: NonEmptyStr
-  digest: Sha256Digest
-}
-
-fn capacity_generation_scope(intent: CapacityCutoverIntent, operation: CapacityGenerationOperation) -> AuthorizationScope {
-  AuthorizationScope { verb: Execute,
-    resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc.cutover.generation" },
-      path: [sha256_hex_of_text(text: serialize_json(v: JsonArray { elements: [
-        JsonString { value: intent.host as String }, JsonString { value: intent.attempt as String },
-        JsonString { value: capacity_reload_manager_text(manager: operation.subject.manager) },
-        JsonString { value: operation.subject.unit as String }, JsonString { value: operation.destination as String },
-        JsonString { value: operation.root as String }, JsonString { value: operation.digest.hex as String }
-      ] }))] },
-    action: "generation-publish" as NonEmptyStr as AuthorizedAction }
-}
-
-// systemctl(1), Manager State Commands, daemon-reload:
-// https://www.freedesktop.org/software/systemd/man/latest/systemctl.html#daemon-reload
-// Reload reconstructs a manager's unit/dependency configuration, not one unit.
-type CapacityReloadBoundary = CapacityAfterInhibition | CapacityAfterInstall | CapacityAfterRemoval
-
-type CapacityManagerReload {
-  manager: SystemdManager
-  boundaries: List<CapacityReloadBoundary>
-}
-
-fn capacity_reload_manager_text(manager: SystemdManager) -> String {
-  match manager { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) }
-}
-
-fn capacity_reload_boundary_text(boundary: CapacityReloadBoundary) -> String {
-  match boundary {
-    CapacityAfterInhibition => "after-inhibition"
-    CapacityAfterInstall => "after-install"
-    CapacityAfterRemoval => "after-owned-inhibition-removal"
-  }
-}
-
-fn capacity_reload_scope(intent: CapacityCutoverIntent, manager: SystemdManager) -> AuthorizationScope {
-  AuthorizationScope { verb: Execute,
-    resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc.cutover.manager" },
-      path: [intent.host as String, intent.attempt as String, capacity_reload_manager_text(manager: manager)] },
-    action: "reload" as NonEmptyStr as AuthorizedAction }
-}
-
-type CapacityCutoverIntent {
-  instance_id: NonEmptyStr
-  selected_identity: DeclarationRef
-  host: NonEmptyStr
-  revision: CommitSha
-  attempt: AttemptIdentity
-  operations: List<CapacityQuiescenceStep>
-  file_operations: List<CapacityCutoverFileOperation>
-  captures: List<CapacityCaptureOperation>
-  reloads: List<CapacityManagerReload>
-  generations: List<CapacityGenerationOperation>
-}
-
-fn capacity_cutover_operation_action(operation: CapacityQuiescenceStep) -> AuthorizedAction {
-  (match operation {
-    CapacityReadUnit { subject: _ } => "show"
-    CapacityInhibitUnit { subject: _ } => "mask-now"
-    CapacityPlantStart { subject: _ } => "start"
-    CapacityContainStart { subject: _ } => "stop"
-  }) as NonEmptyStr as AuthorizedAction
-}
-
-fn capacity_cutover_operation_scope(intent: CapacityCutoverIntent, operation: CapacityQuiescenceStep) -> AuthorizationScope {
-  let subject = capacity_quiescence_step_subject(step: operation)
-  let manager = match subject.manager {
-    SystemManager => ["system"]
-    UserManager { uid: uid } => ["user", to_string(uid)]
-  }
-  AuthorizationScope {
-    verb: Execute,
-    resource: NamespacePosition { tree: ServiceOpTree { service: "org.freedesktop.systemd1" },
-      path: ["hosts", intent.host as String, "managers"] + manager + ["units", subject.unit as String] },
-    action: capacity_cutover_operation_action(operation: operation),
-  }
-}
-
-// JSON framing keeps identity inputs injective even when a name contains punctuation.
-// The full operation set is fixed before consent; late-discovered units cannot borrow it.
-fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
-  serialize_json(v: JsonArray { elements: [JsonString { value: "gunbc.capacity-cutover.v6" },
-    JsonString { value: intent.host as String }, JsonString { value: intent.revision as String },
-    JsonString { value: intent.attempt as String },
-    JsonArray { elements: map(intent.operations, op => {
-      let subject = capacity_quiescence_step_subject(step: op)
-      JsonArray { elements: [JsonString { value: match subject.manager {
-        SystemManager => "system"
-        UserManager { uid: uid } => concat("user:", to_string(uid))
-      } }, JsonString { value: subject.unit as String }, JsonString { value: capacity_cutover_operation_action(operation: op) as String }] }
-    }) },
-    JsonArray { elements: map(intent.reloads, row => JsonArray { elements: [
-      JsonString { value: capacity_reload_manager_text(manager: row.manager) },
-      JsonArray { elements: map(row.boundaries, boundary => JsonString { value: capacity_reload_boundary_text(boundary: boundary) }) }
-    ] }) },
-    JsonArray { elements: map(intent.generations, op => JsonArray { elements: [
-      JsonString { value: match op.subject.manager { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) } },
-      JsonString { value: op.subject.unit as String }, JsonString { value: op.destination as String },
-      JsonString { value: op.root as String }, JsonString { value: op.digest.hex as String }
-    ] }) },
-    JsonArray { elements: map(intent.captures, op => JsonArray { elements: [
-      JsonString { value: op.source as String }, JsonString { value: op.root as String }
-    ] }) },
-    JsonArray { elements: map(intent.file_operations, op => JsonArray { elements: [
-      JsonString { value: op.path as String },
-      JsonString { value: capacity_cutover_file_action(operation: op) as String },
-    ] }) },
-    JsonString { value: intent.instance_id as String },
-    JsonArray { elements: [JsonString { value: intent.selected_identity.module_path as String },
-      JsonString { value: intent.selected_identity.decl_name as String },
-      JsonString { value: match intent.selected_identity.field {
-        WholeDeclaration => "whole"
-        NamedField { field_name: name } => concat("field:", name as String)
-        TypeParameter { name: name } => concat("type-parameter:", name as String)
-      } }] },
-  ] }) as NonEmptyStr
-}
-
-// This canonical operation manifest is the plan input signed by the fleet
-// request. Every internal operation and target content digest is included; source
-// roster/placement remains derived from the pinned helper revision, not input code.
-fn capacity_cutover_plan_digest(intent: CapacityCutoverIntent) -> Result<Sha256Digest, String> {
-  match sha256_hex_digest(hex: sha256_hex_of_text(text: capacity_cutover_intent_text(intent: intent) as String)) {
-    Present { value: digest } => Ok { value: digest }
-    Absent => Err { value: "cutover plan digest is unreadable" }
-  }
-}
-
-fn capacity_cutover_internal_scopes(intent: CapacityCutoverIntent) -> List<AuthorizationScope> {
-  map(intent.operations, op => capacity_cutover_operation_scope(intent: intent, operation: op))
-    + map(intent.file_operations, op => capacity_cutover_file_scope(operation: op))
-    + map(intent.captures, op => capacity_capture_scope(intent: intent, operation: op))
-    + map(intent.generations, op => capacity_generation_scope(intent: intent, operation: op))
-    + map(intent.reloads, row => capacity_reload_scope(intent: intent, manager: row.manager))
-}
+import gunbc.live_deploy.capacity_cutover_intent { CapacityAfterInhibition, CapacityAfterInstall, CapacityAfterRemoval, CapacityCaptureOperation, CapacityCaptureRemove, CapacityCutoverFileOperation, CapacityCutoverFileVerb, CapacityCutoverIntent, CapacityGenerationOperation, CapacityInhibitionCreate, CapacityInhibitionRemove, CapacityManagerReload, CapacityReloadBoundary, capacity_capture_scope, capacity_cutover_file_action, capacity_cutover_file_scope, capacity_cutover_intent_text, capacity_cutover_internal_scopes, capacity_cutover_operation_action, capacity_cutover_operation_scope, capacity_cutover_plan_digest, capacity_generation_scope, capacity_reload_boundary_text, capacity_reload_manager_text, capacity_reload_scope }
 
 fn capacity_cutover_request(intent: CapacityCutoverIntent, escalation_id: NonEmptyStr,
   helper_digest: Sha256Digest) -> Result<Srv1CutoverRequest, String> {
@@ -231,6 +45,7 @@ fn capacity_cutover_request(intent: CapacityCutoverIntent, escalation_id: NonEmp
 
 type CapacityCutoverAuthorization sole_constructor {
   intent: CapacityCutoverIntent
+  approved_plan_digest: Sha256Digest
   request: AuthorizationRequest<Srv1RootMutationApproval>
   grant: OperatorGrant<Srv1RootMutationApproval>
   claim: AuthorizationClaimState
@@ -257,7 +72,7 @@ fn capacity_cutover_claim(
       ClaimLost { holder: holder } => Err { value: concat("cutover approval already consumed: ", holder as String) }
       ClaimUndecided { reason: reason } => Err { value: reason as String }
       ClaimHeld { state: state, generation: _ } => Ok { value: CapacityCutoverAuthorization {
-        intent: intent, request: request.request, grant: grant, claim: state } }
+        intent: intent, approved_plan_digest: request.plan_digest, request: request.request, grant: grant, claim: state } }
     }
   }
 }
@@ -365,4 +180,15 @@ fn capacity_cutover_reload_plan_lines(intent: CapacityCutoverIntent) -> List<Str
     capacity_reload_boundary_text(boundary: boundary), " declared-count=", to_string(count(row.boundaries)),
     " apply=", intent.attempt as String
   ], "")))
+}
+
+// The consumer of the decoder. The original fleet grant is reauthorized by the
+// existing claim kernel; no inner-subject grant is manufactured from it.
+fn capacity_cutover_claim_input(text: String, request: Srv1CutoverRequest,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
+  claim: fn(NonEmptyStr, AttemptIdentity, Timestamp) -> AuthorizationClaimOutcome) -> Result<CapacityCutoverAuthorization, String> {
+  match capacity_cutover_plan_input(text: text, approved: request.plan_digest) {
+    Err { value: why } => Err { value: why }
+    Ok { value: intent } => capacity_cutover_claim(intent: intent, request: request, authorization: authorization, at: at, claim: claim)
+  }
 }

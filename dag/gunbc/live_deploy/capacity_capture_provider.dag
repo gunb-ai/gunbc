@@ -1,5 +1,8 @@
 module gunbc.live_deploy.capacity_capture_provider
 
+import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan, capacity_retained_plan_read, capacity_retained_plan_result }
+import gunbc.live_deploy.capacity_cutover_intent { capacity_cutover_intent_text }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 import std.decl_ref { decl_ref }
 import std.types { String, NonEmptyStr, Timestamp, List, Bool }
 import gunbc.owned_directory { OwnedDirectoryTarget }
@@ -29,7 +32,7 @@ import gunbc.durable_cas_file_store {
 }
 import std.durable_compare_and_set {
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasGeneration,
-  ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
 }
 import extdeps.languages.json.emit { serialize_json, json_array, json_string }
 import gunbc.live_deploy.capacity_capture_store {
@@ -41,10 +44,8 @@ import gunbc.live_deploy.capacity_cutover_recovery {
   capacity_generation_request, capacity_generation_install, capacity_generation_same_subjects,
 }
 import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode, capacity_cutover_record_encode }
-import gunbc.live_deploy.capacity_migration_approval {
-  CapacityCutoverAuthorization, CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation,
-  capacity_cutover_capture_admission, capacity_cutover_generation_admission,
-}
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, capacity_cutover_capture_admission, capacity_cutover_generation_admission }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation }
 
 type CapacityCaptureFault
   = CapacityCaptureBoundaryRefused { detail: String }
@@ -121,8 +122,7 @@ fn capacity_capture_record_result(record: CapacityCutoverRecord, file: CapacityG
     Err { value: "capture results cannot be appended after inhibition begins" }
   } else if any(record.prior, existing => existing.host == file.host && existing.destination == file.destination) {
     Err { value: "capture result already recorded for this source" }
-  } else { Ok { value: CapacityCutoverRecord {
-    attempt: record.attempt, target_revision: record.target_revision, prior: record.prior + [file], target: record.target,
+  } else { Ok { value: CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior + [file], target: record.target,
     planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts, phase: record.phase
   } } }
 }
@@ -185,7 +185,7 @@ fn capacity_capture_publish_held(store: CapacityCaptureStore, provider: LocalSto
   let prior = match capacity_capture_journal_open(store: store, journal: journal, key: key) {
     Err { value: why } => { return Err { value: CapacityCaptureBoundaryRefused { detail: why } } } Ok { value: value } => value
   }
-  if prior.record.target_revision != approval.intent.revision {
+  if prior.record.target_revision != approval.intent.revision || prior.record.plan.approved_digest != approval.approved_plan_digest {
     return Err { value: CapacityCaptureBoundaryRefused { detail: "capture journal revision differs from the approved revision" } }
   }
   if any(prior.record.prior, file => file.host == approval.intent.host && file.destination == source) {
@@ -253,7 +253,7 @@ fn capacity_capture_provisioning_targets(store: CapacityCaptureStore) -> Result<
 // additionally looks up every prior and target part before its phase CAS.
 fn capacity_capture_manifest_complete(store: CapacityCaptureStore, intent: CapacityCutoverIntent,
   record: CapacityCutoverRecord) -> Result<CapacityCutoverRecord, String> {
-  if record.attempt != store.attempt || record.attempt != intent.attempt || record.target_revision != intent.revision
+  if record.plan.envelope != capacity_cutover_intent_text(intent: intent) || record.attempt != store.attempt || record.attempt != intent.attempt || record.target_revision != intent.revision
     || record.phase != CapacityCapturingGeneration || count(record.created_paths) != 0 {
     return Err { value: "capture completion names another apply, revision or phase" }
   }
@@ -356,8 +356,39 @@ fn capacity_capture_finish_held(store: CapacityCaptureStore, provider: LocalStor
     Present { value: _ } => { return Err { value: "capture journal retention binding or hold is not current" } }
     Absent => {}
   }
-  capacity_capture_record_replace(journal: journal, key: key, prior: prior, record: CapacityCutoverRecord {
-    attempt: record.attempt, target_revision: record.target_revision, prior: record.prior, target: record.target,
+  capacity_capture_record_replace(journal: journal, key: key, prior: prior, record: CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior, target: record.target,
     planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts, phase: CapacityPreparingInhibition
   })
+}
+
+// First journal mutation, before capture publication or inhibition. Existing slots
+// refuse; this cannot restart a spent apply or replace its recovery authority.
+// The fleet controller must call under its host lock before any capture port.
+fn capacity_capture_journal_begin(store: CapacityCaptureStore, journal: SlotStore,
+  approval: CapacityCutoverAuthorization, planned_paths: List<CapacityInhibitionPath>,
+  at: Timestamp) -> Result<CapacityCutoverRecord, String> {
+  if journal.root != capacity_capture_journal_root(store: store) || store.attempt != approval.intent.attempt {
+    return Err { value: "initial journal belongs to another apply" }
+  }
+  match capacity_capture_generation_consent(approval: approval, at: at) {
+    Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
+  }
+  let envelope = capacity_cutover_intent_text(intent: approval.intent)
+  match capacity_retained_plan_result(finding: capacity_retained_plan_read(envelope: envelope,
+    digest: approval.approved_plan_digest, approved_digest: approval.approved_plan_digest)) {
+    Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
+  }
+  let record = CapacityCutoverRecord {
+    plan: CapacityRetainedPlan { envelope: envelope, digest: approval.approved_plan_digest, approved_digest: approval.approved_plan_digest },
+    attempt: approval.intent.attempt, target_revision: approval.intent.revision,
+    prior: [], target: [], planned_paths: planned_paths, created_paths: [], artifacts: [], phase: CapacityCapturingGeneration }
+  match admit_cas_attempt_for_derived_payload(key: "record", expected: ExpectSlotAbsent,
+    proposed: capacity_cutover_record_encode(record: record)) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => Err { value: "initial journal key is not slot-addressable" }
+    DerivedPayloadAdmitted { verified: verified } => match slot_commit(store: journal, publication: OwnerOnlyCreateOnly, verified: verified) {
+      CasCommitted { committed: _ } => Ok { value: record }
+      CasPreconditionFailed { expected: _, observed: _ } => Err { value: "cutover journal already exists; require explicit recovery" }
+      CasStoreRefused { cause: _ } => Err { value: "initial journal commit unconfirmed; no capture or inhibition permitted" }
+    }
+  }
 }

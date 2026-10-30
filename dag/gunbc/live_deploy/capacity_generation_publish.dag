@@ -34,9 +34,8 @@ import gunbc.live_deploy.capacity_capture_store {
   capacity_capture_directory_target,
 }
 import gunbc.live_deploy.capacity_capture_provider { capacity_capture_journal_root, capacity_capture_journal_open, capacity_capture_record_replace }
-import gunbc.live_deploy.capacity_migration_approval {
-  CapacityGenerationOperation, CapacityCutoverAuthorization, capacity_cutover_generation_admission,
-}
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, capacity_cutover_generation_admission }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityGenerationOperation }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityGenerationFile, CapacityCapturingGeneration }
 
 // This mint accepts only the modeled document arm. It cannot render an old or
@@ -150,8 +149,7 @@ fn capacity_generation_record_result(record: CapacityCutoverRecord, file: Capaci
     Err { value: "target publication cannot follow inhibition" }
   } else if any(record.target, existing => existing.manager == file.manager && existing.unit == file.unit) {
     Err { value: "target unit already published in this apply" }
-  } else { Ok { value: CapacityCutoverRecord {
-    attempt: record.attempt, target_revision: record.target_revision, prior: record.prior, target: record.target + [file],
+  } else { Ok { value: CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior, target: record.target + [file],
     planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts, phase: record.phase
   } } }
 }
@@ -180,7 +178,7 @@ fn capacity_generation_publish_held(plan: CapacityPlannedGeneration, provider: L
   let prior = match capacity_capture_journal_open(store: plan.store, journal: journal, key: key) {
     Err { value: why } => { return Err { value: why } } Ok { value: value } => value
   }
-  if prior.record.target_revision != approval.intent.revision {
+  if prior.record.target_revision != approval.intent.revision || prior.record.plan.approved_digest != approval.approved_plan_digest {
     return Err { value: "target journal revision differs from approval" }
   }
   let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }

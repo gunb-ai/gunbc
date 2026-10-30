@@ -1,5 +1,6 @@
 module gunbc.live_deploy.capacity_migration_apply
 
+import gunbc.live_deploy.capacity_drain_input { CapacityProbeBinding, CapacityMigrationApplyRequest }
 import std.types { String, List, CommitSha, NonEmptyStr, ShellResponse, Timestamp }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
@@ -17,18 +18,6 @@ import gunbc.compute.recorded_cgroup_drain { RecordedCgroupPathStanding }
 import gunbc.live_deploy.capacity_quiescence {
   CapacityProbeRequirement, CapacityProbeProcess, CapacityProbeActivation, CapacityProbeUnknown,
   CapacityQuiescenceStep, capacity_quiescence_probe_inhibited,
-}
-
-type CapacityProbeBinding {
-  subject: CapacityManagedUnit
-  requirement: CapacityProbeRequirement
-}
-
-type CapacityMigrationApplyRequest {
-  population: CapacityMigrationPopulation
-  target_revision: CommitSha
-  bindings: List<CapacityProbeBinding>
-  child_subjects: List<ComputeCapacitySubject>
 }
 
 type CapacityMigrationApplyPorts {

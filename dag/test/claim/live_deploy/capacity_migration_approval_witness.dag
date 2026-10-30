@@ -1,5 +1,11 @@
 module test.claim.live_deploy.capacity_migration_approval_witness
 
+import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest, CapacityProbeBinding }
+import gunbc.live_deploy.capacity_quiescence { CapacityProbeProcess }
+import gunbc.compute.capacity_migration { CapacityMigrationPopulation, CapacityTransientFamily, CapacityUnclassified, CapacityFamilyParents, CapacityMigrationChild, CapacityMigrationParentRequirement }
+import gunbc.compute.host_capacity { ComputeCapacitySubject }
+import product.capacity.event_chain { PartitionId }
+import std.measure { kibibyte }
 import std.decl_ref { decl_ref }
 import std.types { Bool, NonEmptyStr, String, Timestamp, ShellResponse }
 import std.error_primitives { Result, Ok, Err }
@@ -19,19 +25,30 @@ import gunbc.runner.runner_slot_retirement {
 }
 import gunbc.host.host_operation_exec { SystemctlMaskNow }
 import gunbc.live_deploy.capacity_quiescence { CapacityPlantStart, CapacityContainStart, CapacityInhibitUnit }
-import gunbc.live_deploy.capacity_migration_approval {
-  CapacityCutoverIntent, capacity_cutover_request, capacity_cutover_claim, CapacityCaptureOperation,
-  capacity_capture_scope, capacity_generation_scope, CapacityGenerationOperation,
-  capacity_cutover_capture_admission, capacity_cutover_capture_plan_lines, CapacityCutoverFileOperation,
-  CapacityInhibitionCreate, CapacityCaptureRemove, capacity_cutover_file_admission,
-  capacity_cutover_file_run_authorized, capacity_cutover_operation_admission, capacity_cutover_run_authorized,
-}
+import gunbc.live_deploy.capacity_migration_approval { capacity_cutover_request, capacity_cutover_claim, capacity_cutover_capture_admission, capacity_cutover_capture_plan_lines, capacity_cutover_file_admission, capacity_cutover_file_run_authorized, capacity_cutover_operation_admission, capacity_cutover_run_authorized }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityCaptureOperation, capacity_capture_scope, capacity_generation_scope, CapacityGenerationOperation, CapacityCutoverFileOperation, CapacityInhibitionCreate, CapacityCaptureRemove }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved }
 import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
 
+fn approval_fixture_drain() -> CapacityMigrationApplyRequest {
+  let unit = CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }
+  let source = decl_ref(module_path: "test.claim.live_deploy.capacity_migration_approval_witness", decl_name: "approval_fixture_drain")
+  let standing = CapacityUnclassified { detail: "fixture drain includes all writers" }
+  let partition = "fixture" as NonEmptyStr as PartitionId
+  CapacityMigrationApplyRequest { target_revision: "1111111111111111111111111111111111111111",
+    population: CapacityMigrationPopulation { source: source, installed: [unit],
+      writer_parents: [CapacityMigrationParentRequirement { source: source, standing: standing, parents: Ok { value: [unit] } }],
+      transients: [CapacityTransientFamily { source: source, standing: standing, manager: SystemManager,
+        patterns: ["fixture-*.service"], exclude_patterns: [], activators: [unit], placement: CapacityFamilyParents { parents: Ok { value: [unit] } } }],
+      children: [CapacityMigrationChild { root: "/fixture/capacity", partition: partition }] },
+    bindings: [CapacityProbeBinding { subject: unit, requirement: CapacityProbeProcess { parent: none } }],
+    child_subjects: [ComputeCapacitySubject { root: "/fixture/capacity", partition: partition, appropriation: kibibyte(count: 100),
+      parent_partition: partition, parent_appropriation: kibibyte(count: 100), request: kibibyte(count: 0) }] }
+}
+
 fn approval_fixture_intent() -> CapacityCutoverIntent {
-  CapacityCutoverIntent {
+  CapacityCutoverIntent { drain: approval_fixture_drain(), controller_slot: none,
     instance_id: "fixture-deployment", selected_identity: decl_ref(module_path: "test.claim.live_deploy.capacity_migration_approval_witness", decl_name: "approval_fixture_intent"),
     host: "srv1", revision: "1111111111111111111111111111111111111111",
     attempt: "cutover-fixture" as NonEmptyStr as AttemptIdentity,
@@ -237,7 +254,7 @@ test fn an_independently_substituted_intent_refuses_before_the_claim() -> Bool {
   let request = match approval_fixture_request(intent: intent, escalation_id: "fixture-approval") {
     Err { value: _ } => { return false } Ok { value: value } => value
   }
-  let other = CapacityCutoverIntent { instance_id: intent.instance_id, selected_identity: intent.selected_identity, host: intent.host, revision: intent.revision, attempt: intent.attempt,
+  let other = CapacityCutoverIntent { drain: intent.drain, controller_slot: intent.controller_slot, instance_id: intent.instance_id, selected_identity: intent.selected_identity, host: intent.host, revision: intent.revision, attempt: intent.attempt,
     operations: [], file_operations: intent.file_operations, captures: intent.captures,
     reloads: intent.reloads, generations: intent.generations }
   match capacity_cutover_claim(intent: other, request: request, authorization: approval_fixture_grant(request: request),
