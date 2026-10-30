@@ -9,7 +9,12 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, Node, Edge, Positional, TypeNode, Instantiation, NotADeclaration, node_synthetic }
+import v2.std.inhabitance { DeclaredTypeObligation, InhabitanceRefused, InhabitanceUndecidable, Inhabits, declared_type_inhabitance, position_declared_return }
+import v2.extdeps.languages.dag { dag_type_atom_node }
+import v2.std.qualified_name { declaration_reference_node }
+import v2.std.list_introduction { list_introduction_head_path }
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Absent, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -27,16 +32,19 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
 
 // A TYPE VARIABLE UNDECIDES ONLY ITS OWN POSITION; A CONCRETE SIBLING IS STILL JUDGED.
 //
-// The specimen is `fn skp_ret<T>(p: Pair<T, Int>) -> Pair<T, String> { p }`: T is rigid at the declared
-// return, so its position is undecided, but the second position is concrete and disagrees (Int at
-// String). v2.std.inhabitance inhabitance_pair_undecidable_reason used to make the WHOLE pair
-// UndecidableGenericFormal as soon as either side mentioned a variable anywhere, so infer admitted it
-// with an advisory; it now judges the sibling positions (inhabitance_positions_disagree) and a
-// disagreeing sibling wins over the undecided position. A CALL ARGUMENT is not the specimen: infer's
-// instantiation (infer_match_generic_formal) already refuses a concrete sibling before the pair
-// judgment, so a call-site RED would pass before the fix. v1's counterpart is v1.compiler.types
-// application_arguments_verdict; the relation is mirrored, not imported.
-// THE CONTROLS ARE ONE TERM AWAY: identical pairs stay accepted, and stay UNDECIDED (never Inhabits).
+// v2.std.inhabitance inhabitance_pair_undecidable_reason used to make the WHOLE declared/produced pair
+// UndecidableGenericFormal as soon as either side mentioned a type variable anywhere; it now judges the
+// sibling positions (inhabitance_positions_disagree), and a disagreeing sibling wins over the undecided
+// position. v1's counterpart is v1.compiler.types application_arguments_verdict; the relation is mirrored,
+// not imported.
+//
+// TWO LAYERS, because the whole-pair abstention is reached only where an obligation carries variables
+// (call-argument formals not yet instantiated, fold members and carriers). THE RELATION CLAIMS pin the
+// pair judgment at its interface with supplied nodes: the RED is Pair<T, String> declared against
+// Pair<T, Int> produced, Undecidable before the change and Refused after. THE SOURCE-ROUTE CLAIMS are
+// controls that refuse BEFORE the change too: infer_judge_generic_formal instantiates per position
+// (infer_match_generic_formal) ahead of the pair judgment, so a call-site specimen is the sibling that
+// already judges per position, not the discriminator.
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -44,14 +52,14 @@ data skp_types_source: String = "module std.types\n\nimport std.algebra { FreeMo
 data skp_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
 
 fn skp_probe_source_with(module_name: String, declared: String, produced: String) -> String {
-  join(["module ", module_name, "\n\nimport std.types { List, Pair }\n\nfn skp_ret<T>(p: ", produced, ") -> ", declared, " {\n  p\n}\n"], "")
+  join(["module ", module_name, "\n\nimport std.types { List, Pair }\n\nfn skp_take<K>(m: ", declared, ") -> Int {\n  0\n}\n\nfn skp_call(p: ", produced, ") -> Int {\n  skp_take(m: p)\n}\n"], "")
 }
 
-data skp_red_source: String = skp_probe_source_with(module_name: "gunbc.skp_red", declared: "Pair<T, String>", produced: "Pair<T, Int>")
-data skp_nested_var_red_source: String = skp_probe_source_with(module_name: "gunbc.skp_nested_var_red", declared: "Pair<List<T>, String>", produced: "Pair<List<T>, Int>")
-data skp_nested_sibling_red_source: String = skp_probe_source_with(module_name: "gunbc.skp_nested_sibling_red", declared: "Pair<Pair<T, String>, Int>", produced: "Pair<Pair<T, Int>, Int>")
-data skp_nested_var_control_source: String = skp_probe_source_with(module_name: "gunbc.skp_nested_var_control", declared: "Pair<List<T>, String>", produced: "Pair<List<T>, String>")
-data skp_control_source: String = skp_probe_source_with(module_name: "gunbc.skp_control", declared: "Pair<T, String>", produced: "Pair<T, String>")
+data skp_red_source: String = skp_probe_source_with(module_name: "gunbc.skp_red", declared: "Pair<K, String>", produced: "Pair<Int, Int>")
+data skp_nested_var_red_source: String = skp_probe_source_with(module_name: "gunbc.skp_nested_var_red", declared: "Pair<List<K>, String>", produced: "Pair<List<Int>, Int>")
+data skp_nested_sibling_red_source: String = skp_probe_source_with(module_name: "gunbc.skp_nested_sibling_red", declared: "Pair<Pair<K, String>, Int>", produced: "Pair<Pair<Int, Int>, Int>")
+data skp_nested_var_control_source: String = skp_probe_source_with(module_name: "gunbc.skp_nested_var_control", declared: "Pair<List<K>, String>", produced: "Pair<List<Int>, String>")
+data skp_control_source: String = skp_probe_source_with(module_name: "gunbc.skp_control", declared: "Pair<K, String>", produced: "Pair<Int, String>")
 
 data skp_ingest: SourceRootIngest = [
   rcf_read_in(tree: DagTree, source: skp_algebra_source, id: ^skp_algebra_read, unit: ^skp_algebra_cu, path: "dag/std/algebra.dag"),
@@ -77,8 +85,8 @@ fn skp_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   }
 }
 
-fn skp_refused_at_the_return(subject: String) -> Bool {
-  match rcf_refusal(resolved: skp_resolve_subject(subject: subject), reason: ^arrow_body_does_not_inhabit_declared_return) {
+fn skp_refused_at_the_argument(subject: String) -> Bool {
+  match rcf_refusal(resolved: skp_resolve_subject(subject: subject), reason: ^application_argument_does_not_inhabit) {
     Absent => false
     Present { value: _ } => true
   }
@@ -92,40 +100,109 @@ fn skp_accepted(subject: String) -> Bool {
   }
 }
 
-// The decided-vs-undecided cell: a pair whose concrete positions all agree stays UNDECIDED (accepted
-// carrying the generic-formal advisory), never Inhabits. Only infer_grounding_not_derived is admitted.
-fn skp_only_admitted_advisories(d: Diagnostics) -> Bool {
-  match d {
-    None => true
-    Some { diagnostics: nd } =>
-      fold(concat([nd.head], nd.tail), init: true, f: fn(acc, x) { acc && (x.reason == ^infer_grounding_not_derived) })
-  }
+test fn skp_call_argument_with_a_nested_variable_beside_a_concrete_mismatch_refuses_holds() -> Bool {
+  skp_refused_at_the_argument(subject: "gunbc.skp_nested_var_red")
 }
 
-fn skp_accepted_but_undecided(subject: String) -> Bool {
-  match rcf_verdict(resolved: skp_resolve_subject(subject: subject)) {
-    RcfInferAccepted { diagnostics: ds } => !skp_only_admitted_advisories(d: ds)
-    RcfInferRefused { diagnostics: _ } => false
-    RcfResolveRefused => false
-  }
+test fn skp_call_argument_with_a_nested_concrete_mismatch_beside_a_variable_refuses_holds() -> Bool {
+  skp_refused_at_the_argument(subject: "gunbc.skp_nested_sibling_red")
 }
 
-test fn skp_a_variable_nested_in_a_position_does_not_hide_a_concrete_sibling_refuses_holds() -> Bool {
-  skp_refused_at_the_return(subject: "gunbc.skp_nested_var_red")
+test fn skp_call_argument_with_a_variable_beside_a_concrete_mismatch_refuses_holds() -> Bool {
+  skp_refused_at_the_argument(subject: "gunbc.skp_red")
 }
 
-test fn skp_a_concrete_mismatch_nested_beside_a_variable_refuses_holds() -> Bool {
-  skp_refused_at_the_return(subject: "gunbc.skp_nested_sibling_red")
-}
-
-test fn skp_agreeing_concrete_positions_beside_a_variable_stay_undecided_holds() -> Bool {
-  skp_accepted_but_undecided(subject: "gunbc.skp_control") && skp_accepted_but_undecided(subject: "gunbc.skp_nested_var_control")
-}
-
-test fn skp_a_variable_at_the_first_position_does_not_hide_a_concrete_second_mismatch_refuses_holds() -> Bool {
-  skp_refused_at_the_return(subject: "gunbc.skp_red")
-}
-
-test fn skp_a_variable_at_the_first_position_with_an_agreeing_second_is_accepted_holds() -> Bool {
+test fn skp_call_argument_with_a_variable_and_agreeing_siblings_is_accepted_holds() -> Bool {
   skp_accepted(subject: "gunbc.skp_control")
+}
+
+// THE RELATION CLAIMS: declared_type_inhabitance over supplied nodes, T a variable of the obligation.
+fn skp_pair_of(first: Node, second: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "gunbc.skp_pair"), occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration },
+      Edge { label: Positional, target: first, declaration: NotADeclaration },
+      Edge { label: Positional, target: second, declaration: NotADeclaration }
+    ]
+  )
+}
+
+fn skp_list_of(element: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration },
+      Edge { label: Positional, target: element, declaration: NotADeclaration }
+    ]
+  )
+}
+
+fn skp_atom(identity: Symbol) -> Node {
+  dag_type_atom_node(identity: identity)
+}
+
+fn skp_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position_declared_return(),
+    parameter_identity: ^declared_return,
+    declared: declared,
+    produced: produced,
+    produced_declared_carrier: Absent,
+    application: node_synthetic(kind: TypeNode { connective: Conj }, children: []),
+    type_variables: [^skp_t]
+  }
+}
+
+fn skp_refuses(declared: Node, produced: Node) -> Bool {
+  match declared_type_inhabitance(obligation: skp_obligation(declared: declared, produced: produced)) {
+    InhabitanceRefused { find_witness_reason: _ } => true
+    Inhabits { homomorphism: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
+  }
+}
+
+fn skp_undecided(declared: Node, produced: Node) -> Bool {
+  match declared_type_inhabitance(obligation: skp_obligation(declared: declared, produced: produced)) {
+    InhabitanceUndecidable { reason: _ } => true
+    Inhabits { homomorphism: _ } => false
+    InhabitanceRefused { find_witness_reason: _ } => false
+  }
+}
+
+test fn skp_relation_variable_beside_a_concrete_mismatch_refuses_holds() -> Bool {
+  skp_refuses(
+    declared: skp_pair_of(first: skp_atom(identity: ^skp_t), second: skp_atom(identity: ^dag_binding_type_int)),
+    produced: skp_pair_of(first: skp_atom(identity: ^skp_t), second: skp_atom(identity: ^bool_node_symbol))
+  )
+}
+
+test fn skp_relation_nested_variable_beside_a_concrete_mismatch_refuses_holds() -> Bool {
+  skp_refuses(
+    declared: skp_pair_of(first: skp_list_of(element: skp_atom(identity: ^skp_t)), second: skp_atom(identity: ^dag_binding_type_int)),
+    produced: skp_pair_of(first: skp_list_of(element: skp_atom(identity: ^skp_t)), second: skp_atom(identity: ^bool_node_symbol))
+  )
+}
+
+test fn skp_relation_concrete_mismatch_nested_beside_a_variable_refuses_holds() -> Bool {
+  skp_refuses(
+    declared: skp_pair_of(first: skp_pair_of(first: skp_atom(identity: ^skp_t), second: skp_atom(identity: ^dag_binding_type_int)), second: skp_atom(identity: ^dag_binding_type_int)),
+    produced: skp_pair_of(first: skp_pair_of(first: skp_atom(identity: ^skp_t), second: skp_atom(identity: ^bool_node_symbol)), second: skp_atom(identity: ^dag_binding_type_int))
+  )
+}
+
+// THE CONTROLS: agreeing concrete positions beside a variable stay UNDECIDED (never Inhabits, never Refused),
+// and a variable against a concrete type with every sibling agreeing stays undecided too.
+test fn skp_relation_variable_with_agreeing_siblings_stays_undecided_holds() -> Bool {
+  skp_undecided(
+    declared: skp_pair_of(first: skp_atom(identity: ^skp_t), second: skp_atom(identity: ^dag_binding_type_int)),
+    produced: skp_pair_of(first: skp_atom(identity: ^skp_t), second: skp_atom(identity: ^dag_binding_type_int))
+  )
+}
+
+test fn skp_relation_nested_variable_with_agreeing_siblings_stays_undecided_holds() -> Bool {
+  skp_undecided(
+    declared: skp_pair_of(first: skp_list_of(element: skp_atom(identity: ^skp_t)), second: skp_atom(identity: ^dag_binding_type_int)),
+    produced: skp_pair_of(first: skp_list_of(element: skp_atom(identity: ^bool_node_symbol)), second: skp_atom(identity: ^dag_binding_type_int))
+  )
 }
