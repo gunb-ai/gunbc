@@ -5,7 +5,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
 import v1.compiler.type_head_exposure { type_declaration_identity_key }
 
-import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type, generic_actual_position_type }
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
@@ -1267,6 +1267,66 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
     else {
       type_name_compatible(a: authored_name_at(source_indices: source_indices, node: left), b: authored_name_at(source_indices: source_indices, node: right))
         || alias_identity_in_judgment(left: left, right: right, source_indices: source_indices, text: text)
+    }
+  }
+}
+
+// A DECLARED APPLICATION IS JUDGED AT EVERY ARGUMENT POSITION, NOT BY ITS HEAD. Two applications of
+// one container template (List<A> against List<B>, Map<K, V> against Map<K2, V2>) agree only when
+// every argument pair agrees, compared positionally and recursively, each argument read through the
+// one routed read (generic_actual_position_type, the read #15132 put at the generic binding) and each
+// leaf through node_type_compatible, which owns alias identity. Before this rule the declared-position
+// judgment compared the first child of an element collection one level deep and accepted every keyed
+// collection unjudged, so `let q: Map<Bool, Bool> = m` over a Map<String, Int> was accepted and
+// emitted (gunbc.recurring_failure_mode a_declared_container_type_is_checked_by_head_only).
+// THREE-VALUED, because a position holding a type variable or a compiler error is not evidence of
+// agreement: such a position is ArgumentsUndecided, but a concrete disagreement at a SIBLING position
+// still refuses -- an unsolved K does not license a wrong V. The recursion descends the finite type
+// tree, one child per step.
+type ApplicationArgumentsVerdict = ArgumentsAgree | ArgumentsDisagree | ArgumentsUndecided | NotAnApplicationPair
+
+fn application_arguments_verdict(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> ApplicationArgumentsVerdict {
+  let both_collections = node_is_collection(n: declared, source_indices: source_indices)
+    && node_is_collection(n: produced, source_indices: source_indices)
+  if !both_collections || declared.return_cardinality != produced.return_cardinality { NotAnApplicationPair }
+  else if canonical_template_name(n: declared, source_indices: source_indices) != canonical_template_name(n: produced, source_indices: source_indices) { ArgumentsDisagree }
+  else if (declared.children |> count) != (produced.children |> count) { ArgumentsDisagree }
+  else { application_argument_pairs_verdict(declared: declared.children, produced: produced.children, acc: ArgumentsAgree, source_indices: source_indices, text: text) }
+}
+
+fn application_argument_pairs_verdict(declared: List<Node>, produced: List<Node>, acc: ApplicationArgumentsVerdict, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> ApplicationArgumentsVerdict {
+  match declared |> first {
+    Absent => acc
+    Present { value: d } =>
+      match produced |> first {
+        Absent => acc
+        Present { value: p } =>
+          match application_argument_verdict(
+              declared: generic_actual_position_type(slot: join_element_type(slot: d)),
+              produced: generic_actual_position_type(slot: join_element_type(slot: p)),
+              source_indices: source_indices, text: text) {
+            ArgumentsDisagree => ArgumentsDisagree
+            ArgumentsUndecided => application_argument_pairs_verdict(declared: declared |> skip(1), produced: produced |> skip(1), acc: ArgumentsUndecided, source_indices: source_indices, text: text)
+            _ => application_argument_pairs_verdict(declared: declared |> skip(1), produced: produced |> skip(1), acc: acc, source_indices: source_indices, text: text)
+          }
+      }
+  }
+}
+
+fn type_node_is_opaque_argument(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: v } => is_type_variable(inferred: v) || is_compiler_error(inferred: v)
+    Absent => false
+  }
+}
+
+fn application_argument_verdict(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> ApplicationArgumentsVerdict {
+  if type_node_is_opaque_argument(n: declared) || type_node_is_opaque_argument(n: produced) || is_unit_like(n: declared) || is_unit_like(n: produced) { ArgumentsUndecided }
+  else {
+    match application_arguments_verdict(declared: declared, produced: produced, source_indices: source_indices, text: text) {
+      NotAnApplicationPair =>
+        if node_type_compatible(left: declared, right: produced, source_indices: source_indices, text: text) { ArgumentsAgree } else { ArgumentsDisagree }
+      v => v
     }
   }
 }
