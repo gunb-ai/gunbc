@@ -109,6 +109,10 @@ fn runner_host_spec_of(deploy: RunnerHostDeploy) -> RunnerHostSpec {
 
 data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
 
+// The listener's JIT registration group (ctrl scripts/session-dashboard/host/jit-runner.sh reads it
+// into runner_group_id, defaulting to the org's Default group).
+data runner_group_id_env_name: String = "RUNNER_GROUP_ID"
+
 // runner_user is the fragment's User= (the account that owns the runner tree). unit_user is the
 // depriv drop-in's User= (root mints the JIT config). job_user is CTRL_RUNNER_JOB_USER after
 // setpriv. Borrowing another host's principal for any of the three is the neighbour-row arm
@@ -377,9 +381,20 @@ data runner_host_spec_rows: List<RunnerHostSpecRow> = [
 // converges it: enable-linger for the host's job_user, then a readback that logind records Linger=yes AND the
 // manager answers over /run/user/<uid>/bus. srv4 only (operator decision relayed on gunbc#14972, 2026-10-25); a
 // host joins by joining this list. Declared frontier (DESIGN 3c), in order: once this converge's readback has held
-// on a host from main, a capability runner label derived from this row (gunbc.runner.runner_registration_labels);
-// then gunbc#14972's systemd credential rows select on that label. The label is not derived here yet because it
-// would claim a user manager srv4 is known not to have.
+// on a host from main, a capability runner label derived from this row (gunbc.runner.runner_registration_labels)
+// -- DONE: gunbc_user_session_label, added to the job composition only by the EVIDENCE ENTRY
+// (runner_registration_labels_with_user_session_receipt, which takes a converge receipt parsed by
+// gunbc.runner.runner_user_session_receipt from the bytes a converge run wrote -- the roster here is the
+// converge's INPUT population, and the receipt is the EVIDENCE; hand-copied receipt rows were rejected as
+// DESIGN 6's transcribed output), and stripped from any caller-spelled or offer-spelled half; until the
+// fleet-converge receipt read (the follow-up carried on a FrontierRow in gunbc.runner
+// .runner_user_session_receipt runner_user_session_label_frontier_rows, registered in
+// gunbc.census_closure_frontier) supplies a receipt, the label is
+// granted to nobody in production; then gunbc#14972's systemd credential
+// rows select on that label -- the CONSUMER of the label, the jobs that run a command under the job account's
+// user manager. gunbc.runner.runner_user_session runner_user_session_converge_ci_wet is the leg that
+// establishes the capability; the credential rows' runs-on switch is the next step, to land once every host in
+// that pool reads ready -- until then a row for a host without the label would strand its runs-on).
 data runner_job_user_session_hosts: List<HostIdentity> = [operator_host_srv4]
 
 fn runner_job_user_session_on(host: HostIdentity) -> Bool {

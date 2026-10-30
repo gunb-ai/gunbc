@@ -37,7 +37,8 @@ module gunbc.runner.runner_capability_labels
 // the files without importing either converge, and the converges depend on the table rather than the table
 // on them.
 
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.algebra { string_contains }
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_unit { runner_unit_dropin_path }
 import gunbc.runner.runner_registration_labels {
@@ -143,6 +144,51 @@ fn host_capability_label_is_declared(label: String) -> Bool {
     HostCapabilityRow { label: l, dropin_path: _ } => l == label
   })
 }
+
+// WHETHER A ROW'S DROP-IN EXISTS, three-valued. ABSENT is a decided fact (the host does not hold that
+// capability) and contributes no label; UNREADABLE is "could not look" (sudo refused, a directory
+// unreadable, transport failure) and keeps refusing. The presence probe is a directory walk that exits 0
+// with empty stdout for a missing entry, so the verdict comes from the exit status and stdout and never from
+// parsing a tool's error text.
+type HostCapabilityDropinPresence
+  = DropinPresent
+  | DropinAbsent
+  | DropinUnreadable { cause: String }
+
+fn host_capability_dropin_presence(exit_code: Int, stdout: String, unreadable_cause: String) -> HostCapabilityDropinPresence {
+  if exit_code != 0 {
+    DropinUnreadable { cause: unreadable_cause }
+  } else if stdout == "" {
+    DropinAbsent
+  } else {
+    DropinPresent
+  }
+}
+
+// THE WITNESS FOR ONE ROW, from its presence verdict and, when present, the read of its bytes. `read` is
+// consulted only for a present drop-in; a failed read of a drop-in that exists is unreadable, not absent.
+fn host_capability_witness_of_reads(
+  label: String,
+  presence: HostCapabilityDropinPresence,
+  read_exit_code: Int,
+  read_stdout: String,
+  read_cause: String,
+) -> HostCapabilityWitness {
+  match presence {
+    DropinUnreadable { cause: c } => CapabilityUnobservable { label: label, cause: c }
+    DropinAbsent => CapabilityAbsent { label: label }
+    DropinPresent =>
+      if read_exit_code != 0 {
+        CapabilityUnobservable { label: label, cause: read_cause }
+      } else if string_contains(s: read_stdout, pattern: label) {
+        CapabilityHeld { label: label }
+      } else {
+        CapabilityAbsent { label: label }
+      }
+  }
+}
+
+data runner_unit_dropin_search_root: String = "/etc/systemd/system"
 
 // THE ONE PRODUCER OF A CAPABILITY-BEARING LABEL SET. Every LABELS_JSON drop-in that advertises a
 // capability composes its set here: the host's own offered set, plus the label this converge earned, plus

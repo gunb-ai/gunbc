@@ -90,20 +90,21 @@ pub use crate::v1_std_core::{
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, file_transport_node, import_node, intern,
     intern_table_with_authored_token_ordinals, is_compiler_error, kernel_span, leaf_node_with_span,
-    local_transport_node, locate_span, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
-    make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
+    locate_span, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
+    make_expr_node, make_field_binding_node, make_field_init_node, make_field_node,
+    make_interp_part_node, make_named_expr_node, make_param_node,
     make_pattern_binder_declaration_node, make_resource_use_node, make_text_part_node,
     make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
     param_node_type_expr, pre_intern_tokens, render_span_location, rest_transport_node,
     service_config_properties, shell_transport_node, transport_auth_basic_key, transport_body_key,
     transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
     transport_query_key, transport_response_format_key, transport_stdin_key, transport_tls_key,
-    transport_url_key, type_param_kind_property_name, unlocated_cause_phrase, variant_node_fields,
-    variant_node_name_at, with_required_cardinality, Cardinality, CompilerDiagnostic, Connective,
-    DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, InferredNode,
-    InternResult, InternTable, MatchPattern, NewlineIndex, Node, OperationModifier,
-    ParsedModuleItemKind, SpanLocation, StringPart, Token, TokenShape, UnaryOpKind,
+    transport_url_key, type_param_kind_property_name, undeclared_transport_node,
+    unlocated_cause_phrase, variant_node_fields, variant_node_name_at, with_required_cardinality,
+    Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
+    ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern,
+    NewlineIndex, Node, OperationModifier, ParsedModuleItemKind, SpanLocation, StringPart, Token,
+    TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -9162,7 +9163,7 @@ pub fn parse_service_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
         tokens.clone(),
         ctx,
         std::option::Option::None,
-        crate::v1_std_core::local_transport_node(
+        crate::v1_std_core::undeclared_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             token_span(token_stream_first(tokens.clone())),
         ),
@@ -9600,7 +9601,7 @@ pub fn parse_transport_binding(
 ) -> Rc<TransportResult> {
     {
         let span = token_span(token_stream_first(tokens.clone()));
-        let dummy = crate::v1_std_core::local_transport_node(
+        let dummy = crate::v1_std_core::undeclared_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             span,
         );
@@ -9836,7 +9837,7 @@ pub fn parse_rest_fields(
             let mut headers = __tco_loop_headers;
             tokens = skip_newlines(tokens.clone());
             let span = token_span(token_stream_first(tokens.clone()));
-            let dummy = crate::v1_std_core::local_transport_node(
+            let dummy = crate::v1_std_core::undeclared_transport_node(
                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 span.clone(),
             );
@@ -10172,7 +10173,7 @@ pub fn parse_shell_fields(
             let mut stdin = __tco_loop_stdin;
             tokens = skip_newlines(tokens.clone());
             let span = token_span(token_stream_first(tokens.clone()));
-            let dummy = crate::v1_std_core::local_transport_node(
+            let dummy = crate::v1_std_core::undeclared_transport_node(
                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 span.clone(),
             );
@@ -10341,7 +10342,7 @@ pub fn parse_file_fields(
             let mut verb = __tco_loop_verb;
             tokens = skip_newlines(tokens.clone());
             let span = token_span(token_stream_first(tokens.clone()));
-            let dummy = crate::v1_std_core::local_transport_node(
+            let dummy = crate::v1_std_core::undeclared_transport_node(
                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 span.clone(),
             );
@@ -14851,7 +14852,6 @@ pub fn parse_expr_loop(
     op: binop.clone(),
     algebra_field: std::option::Option::None,
     operand: std::option::Option::None,
-    derived: std::option::Option::None,
 }), Rc::new(vec![lhs.clone(), r.expr.clone()]), std::option::Option::None, loop_span.clone());
                                                             {
                                                                 let __tco_0 = r.tokens.clone();
@@ -17155,7 +17155,6 @@ pub fn parse_expr_loop_no_brace(
     op: binop.clone(),
     algebra_field: std::option::Option::None,
     operand: std::option::Option::None,
-    derived: std::option::Option::None,
 }), Rc::new(vec![lhs.clone(), r.expr.clone()]), std::option::Option::None, loop_span.clone());
                                                             {
                                                                 let __tco_0 = r.tokens.clone();

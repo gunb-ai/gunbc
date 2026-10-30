@@ -9,7 +9,7 @@ import v2.std.cross_tree.resolution { SourceRootIndex, source_root_index_empty, 
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_named_edge, dag_surface_edge }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, empty_map, map_insert, zip_eq }
 import v2.std.namespace_alias { CapturedImportTarget }
-import v2.std.diagnostic { Accepted, ByteRange, None, Outcome, Rejected, bind_outcome, outcome_accepted, Textual, diagnostics_eq, non_empty_diagnostics_eq, locus_eq }
+import v2.std.diagnostic { Accepted, ByteRange, DeclarationLocus, None, Outcome, Rejected, bind_outcome, outcome_accepted, Textual, diagnostics_eq, non_empty_diagnostics_eq, locus_eq }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme, fold_list_node, NotADeclaration }
 import v2.std.resolution_policy { ImportScoped }
@@ -21,9 +21,9 @@ test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       match d.head.at {
-        Textual { file: module_file, extent: _ } =>
+        DeclarationLocus { declaration: _ } =>
           (d.head.reason == ^resolve_module_not_found)
-            && (symbol_lexeme(sym: module_file) == qualified_name_to_dotted_string(qn: missing))
+            && locus_eq(a: d.head.at, b: DeclarationLocus { declaration: missing })
         _ => false
       }
   }
@@ -766,7 +766,8 @@ test fn admission_reads_the_validated_map_not_the_root_list() -> Bool {
       outcome_accepted(value: ValidatedModuleRoots {
         roots: Cons { head: first, tail: Cons { head: second, tail: Empty } },
         by_name: map_insert(m: empty_map(), key: fc_qn(seg: ^fc_found_seg), value: first),
-        test_code: test_code_index_empty()
+        test_code: test_code_index_empty(),
+        blocked_members: Empty
       })
     })
   }), f: fn(validated) {

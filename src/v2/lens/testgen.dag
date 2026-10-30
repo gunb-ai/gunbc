@@ -1177,6 +1177,14 @@ fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
         }),
         occurrence_id: OccurrenceSynthetic
       }
+    RequestedModuleMissing { requested: r } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: list_map(xs: r, f: fn(s) {
+          Edge { label: Authored { name: ^witness_validity_no_correction_tag_module_root_missing }, target: witness_validity_symbol_atom_node(s: s) }
+        }),
+        occurrence_id: OccurrenceSynthetic
+      }
   }
 }
 

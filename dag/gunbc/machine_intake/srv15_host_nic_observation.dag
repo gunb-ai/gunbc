@@ -1,0 +1,10 @@
+module gunbc.machine_intake.srv15_host_nic_observation
+
+import std.types { NonEmptyStr }
+
+// THE NIC srv15's FIRMWARE NETBOOTS FROM, read from the host: this firmware serves no
+// Systems/system/EthernetInterfaces, so the address came from a rescue Ubuntu booted on the host
+// (/sys/class/net), captured in artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt. Of the
+// three host ports only enP2p4s0, the I210 at 0002:04:00.0, carries a link (carrier=1) and it took the rescue's
+// DHCP lease; the two X550 ports read carrier=0, so neither is a netboot candidate. This is its address as printed.
+data srv15_host_nic_mac: NonEmptyStr = "9c:6b:00:e7:ca:63"

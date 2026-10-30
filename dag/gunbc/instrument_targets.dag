@@ -951,6 +951,26 @@ fn roster_import_sweep_controls_binding() -> TargetBinding {
   TargetBinding { target: roster_import_sweep_controls_label() producer: CliWireProgramProducer { entry: roster_import_sweep_controls_entry() function: roster_import_sweep_controls_function() } }
 }
 
+// THE WAVE-1 BINDING-DIFF OCCURRENCE-JOIN GATE, ON ITS OWN LABEL (gunbc.instruments.namespace_wave_occurrence_join):
+// the join's 11 controls run at `gunbc test //gunbc/instruments:namespace-wave-occurrence-join-controls`, so a broken
+// join is caught at the join's own target and not only inside the binding-diff instrument's census. `unobserved` answers
+// 2 (grammar unprepared, or the fixture's own standing broken), never a widened green -- see the wire's comment.
+fn namespace_wave_occurrence_join_controls_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "namespace-wave-occurrence-join-controls" } }
+}
+
+fn namespace_wave_occurrence_join_controls_entry() -> String {
+  "dag/gunbc/instruments/namespace_wave_occurrence_join.dag"
+}
+
+fn namespace_wave_occurrence_join_controls_function() -> String {
+  "namespace_wave_occurrence_join_controls_wire"
+}
+
+fn namespace_wave_occurrence_join_controls_binding() -> TargetBinding {
+  TargetBinding { target: namespace_wave_occurrence_join_controls_label() producer: CliWireProgramProducer { entry: namespace_wave_occurrence_join_controls_entry() function: namespace_wave_occurrence_join_controls_function() } }
+}
+
 fn append_chain_ladder_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "append-chain-ladder" } }
 }
@@ -1489,7 +1509,7 @@ fn instrument_targets() -> List<Label> {
     cardinality_realization_label(),
     regen_round_cost_label(),
     credential_acquisition_systemd_rows_label(),
-    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), last_use_move_label(), member_home_cost_label(), cons_tail_recursion_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), last_use_move_label(), member_home_cost_label(), cons_tail_recursion_label(), roster_import_sweep_controls_label(), namespace_wave_occurrence_join_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
@@ -1512,7 +1532,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     cardinality_realization_binding(),
     regen_round_cost_binding(),
     credential_acquisition_systemd_rows_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), derived_equality_routes_binding(), last_use_move_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), derived_equality_routes_binding(), last_use_move_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), namespace_wave_occurrence_join_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

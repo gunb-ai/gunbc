@@ -31,8 +31,8 @@ import v1.std.core { Unmarked,
   expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at,
   make_arg_node, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node,
   find_property, expr_literal_int_optional, type_param_kind_property_name,
-  make_transport_node, local_transport_node,
-  is_local_transport, transport_request_body,
+  make_transport_node, undeclared_transport_node,
+  is_undeclared_transport, transport_request_body,
   is_kernel_type, is_container_type,
   with_optional_cardinality, with_required_cardinality, join_optional_cardinality, preserve_outer_optional_cardinality,
   Connective, Conj, Disj, Arrow, NoConnective,
@@ -998,7 +998,7 @@ fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> Fi
 }
 
 fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String) -> TransportResolveResult {
-  if is_local_transport(t: transport, source_indices: env.source_indices) {
+  if is_undeclared_transport(t: transport, source_indices: env.source_indices) {
     TransportResolveResult { transport: transport, diagnostics: [] }
   } else {
     let prop_results = map(transport.properties, p =>
@@ -1471,7 +1471,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   let anno_diags = anno_resolved.diagnostics
 
   let transport_resolved = if item.transport == none {
-    TransportResolveResult { transport: local_transport_node(occurrence_identity: OccurrenceSynthetic, span: no_span()), diagnostics: [] }
+    TransportResolveResult { transport: undeclared_transport_node(occurrence_identity: OccurrenceSynthetic, span: no_span()), diagnostics: [] }
   } else {
     resolve_transport_binding(transport: item.transport.value, env: env, module_name: module_name)
   }

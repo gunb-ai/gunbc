@@ -31,7 +31,7 @@ on:
       mode:
         description: "Closed choice of fleet-converge modes. Contracts: gunbc.fleet.fleet_converge_workflow."
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, workspace_commissioning_plan, workspace_allocation_plan, workspace_image_build, revision_job_image_build, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, microvm_network_observe, microvm_network_apply, guest_image_observe, guest_image_converge, microvm_boot_probe, dashboard_deploy, approval_broker_dark_install, microvm_controller_install, microvm_slot_reserve, microvm_slot_start, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, host_memory_observe, runner_host_file_converge, host_primary_network_observe, host_primary_network_converge, runner_host_withdraw, runner_host_restore, site_pxe_edge_observe, site_pxe_edge_converge, runner_password_session_tool_converge, runner_browser_toolchain_converge, runner_user_session_converge, runner_gpu_container_toolchain_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, mtcollins1_boot, mtcollins1_fan_observe, mtcollins1_kvm_observer_observe, mtcollins1_census_image_publish, mtcollins1_runner_image_publish, mtcollins1_census_member_readback, mtcollins1_census_qemu_host_observe, mtcollins1_census_qemu_toolchain_converge, host_credential_custody_converge, app_key_version_verify, r2_bucket_ensure, r2_bucket_admin_mint, r2_workspace_object_read_mint, r2_workspace_object_write_mint, r2_cache_object_read_mint, r2_cache_object_write_mint, r2_conditional_put_race_probe, workspace_source_pack, workspace_checkpoint_measure, workspace_checkpoint_restore, workspace_transcript_rate_observe, fabric_writer_identity_observe, microvm_runner_group_ensure, service_runner_lost_boot_sweep, service_runner_lost_boot_sweep_dry_run, gcp_iam_converge, namecheap_observe, review_sheet_converge, printer, arrival_converge, hetzner_cloud_server_read, export_host_reader_converge, boot_medium_reader_key_mint, flex_pass, flex_template_ensure, branch_run_grant, qualification_floor, qualification_attempt]
+        options: [plan, launch_environment_plan, allocation_store_plan, workspace_commissioning_plan, workspace_allocation_plan, workspace_image_build, revision_job_image_build, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, microvm_network_observe, microvm_network_apply, guest_image_observe, guest_image_converge, microvm_boot_probe, dashboard_deploy, approval_broker_dark_install, microvm_controller_install, microvm_slot_reserve, microvm_slot_start, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, host_memory_observe, runner_host_file_converge, host_primary_network_observe, host_primary_network_converge, runner_host_withdraw, runner_host_restore, site_pxe_edge_observe, site_pxe_edge_converge, runner_password_session_tool_converge, runner_browser_toolchain_converge, runner_user_session_converge, runner_gpu_container_toolchain_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, mtcollins1_boot, mtcollins1_fan_observe, mtcollins1_kvm_observer_observe, mtcollins1_census_image_publish, mtcollins1_runner_image_publish, mtcollins1_census_member_readback, mtcollins1_census_qemu_host_observe, mtcollins1_census_qemu_toolchain_converge, host_credential_custody_converge, app_key_version_verify, r2_bucket_ensure, r2_bucket_admin_mint, r2_workspace_object_read_mint, r2_workspace_object_write_mint, r2_cache_object_read_mint, r2_cache_object_write_mint, r2_conditional_put_race_probe, workspace_source_pack, workspace_checkpoint_measure, workspace_checkpoint_restore, workspace_transcript_rate_observe, fabric_writer_identity_observe, microvm_runner_group_ensure, service_runner_lost_boot_sweep, service_runner_lost_boot_sweep_dry_run, gcp_iam_converge, namecheap_observe, review_sheet_converge, printer, arrival_converge, hetzner_cloud_server_read, export_host_reader_converge, boot_medium_reader_probe, fleet_keypair_mint, flex_pass, flex_template_ensure, branch_run_grant, qualification_floor, qualification_attempt]
         type: choice
       reset_observer:
         description: "host_reset_return only: the PEER that observes the reset. The subject is NOT an input -- it is derived from this observer through the modeled pairing, so a job cannot be pointed at the host it is resetting"
@@ -215,7 +215,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64]
     needs: [plan-revision]
     timeout-minutes: 95
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode != 'mtcollins1_boot' && github.event.inputs.mode != 'boot_medium_reader_key_mint' && github.event.inputs.mode != 'review_sheet_converge' && github.event.inputs.mode != 'qualification_floor'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode != 'mtcollins1_boot' && github.event.inputs.mode != 'fleet_keypair_mint' && github.event.inputs.mode != 'review_sheet_converge' && github.event.inputs.mode != 'qualification_floor'
     permissions:
       contents: read
       actions: read
@@ -816,10 +816,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         timeout-minutes: 50
-  boot-medium-reader-key-mint:
+  fleet_keypair_mint:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 70
-    if: github.event.inputs.mode == 'boot_medium_reader_key_mint'
+    timeout-minutes: 85
+    if: github.event.inputs.mode == 'fleet_keypair_mint'
     permissions:
       contents: read
       id-token: write
@@ -867,7 +867,7 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
-      - name: Build the gunbc binary the reader key mint runs
+      - name: Build the gunbc binary the fleet keypair mint runs
         run: |
           GUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')
           '[' -n "$GUNBC_SEED_CHECKOUT" ']' || ('echo' '::error title=seedBuildRemap CheckoutRootUnread::the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build'; exit 1)
@@ -893,38 +893,57 @@ jobs:
           service_account: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply') && github.ref != 'refs/heads/main' && (github.event.inputs.mode == 'plan' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'apply' && 'fleet-apply-run@gunbai-secrets.iam.gserviceaccount.com' || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com') || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' }}
           token_format: access_token
           create_credentials_file: false
-        if: github.event.inputs.mode == 'boot_medium_reader_key_mint'
+        if: github.event.inputs.mode == 'fleet_keypair_mint'
         timeout-minutes: 5
-      - name: Boot medium reader key mint (ssh-keygen ed25519 in-run; private half to Secret Manager only)
-        id: boot_medium_reader_key_mint
+      - name: "Mint fleet keypair: boot medium reader key (ed25519 in-run, in the runner's tmpfs; private half to Secret Manager only)"
+        id: mint_boot_medium_reader_ssh_key
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/host/boot_medium_reader_key_mint.dag --function boot_medium_reader_key_mint_wet
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
-        if: github.event.inputs.mode == 'boot_medium_reader_key_mint'
+        if: github.event.inputs.mode == 'fleet_keypair_mint'
         timeout-minutes: 5
-      - name: Upload boot medium reader key mint receipt (public key, fingerprint, version; no private material)
-        id: boot_medium_reader_key_mint_receipt_upload
+      - name: "Upload mint receipt: boot medium reader key (public key, fingerprint, version; no private material)"
+        id: mint_boot_medium_reader_ssh_key_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: boot-medium-reader-key-mint-receipt
+          name: fleet-keypair-mint-receipt-boot_medium_reader_ssh_key
           path: target/boot-medium-reader-key-mint.txt
           if-no-files-found: warn
           retention-days: 30
-        if: always() && github.event.inputs.mode == 'boot_medium_reader_key_mint'
+        if: always() && github.event.inputs.mode == 'fleet_keypair_mint'
+        timeout-minutes: 10
+      - name: "Mint fleet keypair: mtcollins1 ssh host key (ed25519 in-run, in the runner's tmpfs; private half to Secret Manager only)"
+        id: mint_mtcollins1_ssh_host_key
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/host/mtcollins1_ssh_host_key_mint.dag --function mtcollins1_host_key_mint_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'fleet_keypair_mint'
+        timeout-minutes: 5
+      - name: "Upload mint receipt: mtcollins1 ssh host key (public key, fingerprint, version; no private material)"
+        id: mint_mtcollins1_ssh_host_key_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: fleet-keypair-mint-receipt-mtcollins1_ssh_host_key
+          path: target/mtcollins1-ssh-host-key-mint.txt
+          if-no-files-found: warn
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'fleet_keypair_mint'
         timeout-minutes: 10
   fleet-converge:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build, branch-run-grant-await]
-    timeout-minutes: 264
-    if: "!cancelled() && needs.build.result == 'success' && (needs['branch-run-grant-await'].result == 'success' || needs['branch-run-grant-await'].result == 'skipped' && !(github.event.inputs.mode == 'plan' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'apply' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'mtcollins1_boot' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'hetzner_cloud_server_read')) && (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'workspace_allocation_plan' || github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'revision_job_image_build' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'org_actions_observe' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'microvm_slot_reserve' || github.event.inputs.mode == 'microvm_slot_start' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'host_memory_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'host_primary_network_observe' || github.event.inputs.mode == 'host_primary_network_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'runner_user_session_converge' || github.event.inputs.mode == 'runner_gpu_container_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'org_runner_roster_observe' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'mtcollins1_fan_observe' || github.event.inputs.mode == 'mtcollins1_kvm_observer_observe' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_runner_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'mtcollins1_census_qemu_host_observe' || github.event.inputs.mode == 'mtcollins1_census_qemu_toolchain_converge' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'app_key_version_verify' || github.event.inputs.mode == 'r2_bucket_ensure' || github.event.inputs.mode == 'r2_bucket_admin_mint' || github.event.inputs.mode == 'r2_workspace_object_read_mint' || github.event.inputs.mode == 'r2_workspace_object_write_mint' || github.event.inputs.mode == 'r2_cache_object_read_mint' || github.event.inputs.mode == 'r2_cache_object_write_mint' || github.event.inputs.mode == 'r2_conditional_put_race_probe' || github.event.inputs.mode == 'workspace_source_pack' || github.event.inputs.mode == 'workspace_checkpoint_measure' || github.event.inputs.mode == 'workspace_checkpoint_restore' || github.event.inputs.mode == 'workspace_transcript_rate_observe' || github.event.inputs.mode == 'fabric_writer_identity_observe' || github.event.inputs.mode == 'microvm_runner_group_ensure' || github.event.inputs.mode == 'service_runner_lost_boot_sweep' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' || github.event.inputs.mode == 'hetzner_cloud_server_read' || github.event.inputs.mode == 'export_host_reader_converge' || github.event.inputs.mode == 'flex_pass' || github.event.inputs.mode == 'flex_template_ensure' || github.event.inputs.mode == 'qualification_attempt')"
+    timeout-minutes: 324
+    if: "!cancelled() && needs.build.result == 'success' && (needs['branch-run-grant-await'].result == 'success' || needs['branch-run-grant-await'].result == 'skipped' && !(github.event.inputs.mode == 'plan' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'apply' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'mtcollins1_boot' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'hetzner_cloud_server_read')) && (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'workspace_allocation_plan' || github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'revision_job_image_build' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'org_actions_observe' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'microvm_slot_reserve' || github.event.inputs.mode == 'microvm_slot_start' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'host_memory_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'host_primary_network_observe' || github.event.inputs.mode == 'host_primary_network_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'runner_user_session_converge' || github.event.inputs.mode == 'runner_gpu_container_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'org_runner_roster_observe' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'mtcollins1_fan_observe' || github.event.inputs.mode == 'mtcollins1_kvm_observer_observe' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_runner_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'mtcollins1_census_qemu_host_observe' || github.event.inputs.mode == 'mtcollins1_census_qemu_toolchain_converge' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'app_key_version_verify' || github.event.inputs.mode == 'r2_bucket_ensure' || github.event.inputs.mode == 'r2_bucket_admin_mint' || github.event.inputs.mode == 'r2_workspace_object_read_mint' || github.event.inputs.mode == 'r2_workspace_object_write_mint' || github.event.inputs.mode == 'r2_cache_object_read_mint' || github.event.inputs.mode == 'r2_cache_object_write_mint' || github.event.inputs.mode == 'r2_conditional_put_race_probe' || github.event.inputs.mode == 'workspace_source_pack' || github.event.inputs.mode == 'workspace_checkpoint_measure' || github.event.inputs.mode == 'workspace_checkpoint_restore' || github.event.inputs.mode == 'workspace_transcript_rate_observe' || github.event.inputs.mode == 'fabric_writer_identity_observe' || github.event.inputs.mode == 'microvm_runner_group_ensure' || github.event.inputs.mode == 'service_runner_lost_boot_sweep' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' || github.event.inputs.mode == 'hetzner_cloud_server_read' || github.event.inputs.mode == 'export_host_reader_converge' || github.event.inputs.mode == 'boot_medium_reader_probe' || github.event.inputs.mode == 'flex_pass' || github.event.inputs.mode == 'flex_template_ensure' || github.event.inputs.mode == 'qualification_attempt')"
     permissions:
       contents: read
       actions: read
       id-token: write
     concurrency:
-      group: ${{ github.event.inputs.mode == 'workspace_image_build' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'revision_job_image_build' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'host_memory_observe' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'r2_conditional_put_race_probe' && 'r2-conditional-put-race-probe' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'review_sheet_converge' && 'review-sheet-converge' || github.event.inputs.mode == 'export_host_reader_converge' && 'gunbc-host-mutation-srv2' || github.event.inputs.mode == 'flex_pass' && 'gunbc-flex-vast-account' || github.event.inputs.mode == 'flex_template_ensure' && 'gunbc-flex-vast-account' || github.event.inputs.mode == 'qualification_floor' && format('gunbc-own-run-{0}', github.run_id) || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
+      group: ${{ github.event.inputs.mode == 'workspace_image_build' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'revision_job_image_build' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'host_memory_observe' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'r2_conditional_put_race_probe' && 'r2-conditional-put-race-probe' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'review_sheet_converge' && 'review-sheet-converge' || github.event.inputs.mode == 'export_host_reader_converge' && 'gunbc-host-mutation-srv2' || github.event.inputs.mode == 'boot_medium_reader_probe' && 'gunbc-host-mutation-srv2' || github.event.inputs.mode == 'flex_pass' && 'gunbc-flex-vast-account' || github.event.inputs.mode == 'flex_template_ensure' && 'gunbc-flex-vast-account' || github.event.inputs.mode == 'qualification_floor' && format('gunbc-own-run-{0}', github.run_id) || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
       cancel-in-progress: false
     steps:
       - name: Checkout
@@ -1817,6 +1836,23 @@ jobs:
           retention-days: 30
         if: always() && github.event.inputs.mode == 'export_host_reader_converge'
         timeout-minutes: 10
+      - name: "Boot medium reader probe (srv2): reader login, forced-command RED, /srv/bmc read, locked-account and UsePAM facts"
+        id: boot_medium_reader_probe
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/host/boot_medium_reader_probe.dag --function boot_medium_reader_probe_wet
+        if: github.event.inputs.mode == 'boot_medium_reader_probe'
+        timeout-minutes: 5
+      - name: Upload boot medium reader probe receipt
+        id: boot_medium_reader_probe_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: boot-medium-reader-probe-receipt
+          path: target/boot-medium-reader-probe.txt
+          if-no-files-found: warn
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'boot_medium_reader_probe'
+        timeout-minutes: 10
       - name: "Flex pass: Vast instances, charges and offers read; one planned write under the policy's actuation"
         id: flex_pass
         run: |-
@@ -2499,7 +2535,7 @@ jobs:
           RUNNER_HOST_CAP_STEP_BUDGET_SECONDS: "6255"
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'runner_host_file_converge'
-        timeout-minutes: 120
+        timeout-minutes: 150
       - name: "Runner host cap bracket: re-admit this host's slots and read them back (always)"
         id: runner_host_cap_release
         run: |-
@@ -2510,7 +2546,7 @@ jobs:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           FLEET_CONVERGE_SUBJECT_HOST: ${{ github.event.inputs.subject_host }}
         if: always() && (github.event.inputs.mode == 'runner_host_file_converge')
-        timeout-minutes: 19
+        timeout-minutes: 49
       - name: Upload runner host cap release receipt
         id: runner_host_cap_release_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -2564,7 +2600,7 @@ jobs:
           FLEET_CONVERGE_SUBJECT_HOST: ${{ github.event.inputs.subject_host }}
           RUNNER_HOST_CAP_STEP_BUDGET_SECONDS: "6255"
         if: github.event.inputs.mode == 'runner_host_withdraw'
-        timeout-minutes: 120
+        timeout-minutes: 150
       - name: Upload runner host withdraw receipt
         id: runner_host_withdraw_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -3631,12 +3667,48 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ inputs.revision_job_image_run_id }}
         timeout-minutes: 10
+      - name: Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)
+        run: |-
+          # 🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite
+          set -euo pipefail
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/fleet-automation-key"
+          HDR_FILE="$RUNNER_TEMP/fleet-automation-auth-header"
+          AGENT_STARTED=0
+          cleanup() { rm -f "$KEY_FILE" "$HDR_FILE"; if [ "$AGENT_STARTED" = 1 ] && [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }
+          trap cleanup EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          curl -sSf -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]))' > "$KEY_FILE"
+          rm -f "$HDR_FILE"
+          chmod 600 "$KEY_FILE"
+          EXPECTED_FP="SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ"
+          OBSERVED_FP="$(ssh-keygen -y -f "$KEY_FILE" | ssh-keygen -lf - | awk '{print $2}')"
+          if [ "$OBSERVED_FP" != "$EXPECTED_FP" ]; then echo "ProbeCredentialIdentityMismatch: fetched secret versions/1 fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host" >&2; exit 1; fi
+          eval "$(ssh-agent -s)" >/dev/null
+          AGENT_STARTED=1
+          ssh-add "$KEY_FILE" 2>/dev/null
+          rm -f "$KEY_FILE"
+          trap - EXIT
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        timeout-minutes: 5
       - name: Install the microVM slot controller release locus, VMM + jailer and template unit on srv1 (additive; starts no instance)
         id: microvm_controller_install
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function microvm_controller_install_wet
         timeout-minutes: 30
+      - name: End the fleet ssh masters, then kill the in-run ssh-agent (key never outlives the job)
+        run: |
+          MUX_DIR="$RUNNER_TEMP"'/fleet-ssh-mux'
+          if '[' '-d' "$MUX_DIR" ']'; then 'find' "$MUX_DIR" '-mindepth' '1' '-maxdepth' '1' '-type' 's' '-exec' 'ssh' '-F' 'none' '-S' '{}' '-O' 'exit' 'fleet-ssh-mux-teardown' ';'; 'rm' '-rf' '--' "$MUX_DIR"; fi
+
+          if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
+        if: always()
+        timeout-minutes: 5
   rlm-launch-deployment-receipt:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]

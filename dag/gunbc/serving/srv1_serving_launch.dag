@@ -3,12 +3,13 @@ module gunbc.serving.srv1_serving_launch
 import std.types { String, NonEmptyStr, Port, List }
 import std.optional { Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.algebra { FreeSemigroup }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution, bound_dissolution }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
-import extdeps.external_authority { CitedFigureStanding }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { UriScheme, Https }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import extdeps.huggingface.hub { HubCheckpointManifest }
@@ -47,8 +48,8 @@ import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading, s
 // contrast, IS modeled (srv1_serving_launch below), and this script's own value is decidable: its body
 // hashes to the wrapper_sha256_hex the startup receipt read off the host.
 data srv1_serving_wrapper: RetainedShellScript = RetainedShellScript {
-  body: "#!/bin/bash\n# srv1: serve Qwen3.8-Flash-Next (NVFP4 weights, FP8 K/V) with the lil vLLM image, as the Vast \"flash-next lil v2\" template does:\n# lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie, LMCache ram-disk session cache, HTTPS with a\n# self-signed key kept across restarts, an API key, restart on crash. Differences from Vast: the linux/arm64 (DGX Spark)\n# build of the image (no arm64 build of the Vast digest exists), GPU through CDI, and the container in srv1-inference.slice\n# (cores 96-127, hard cap 80 GiB, no swap; LMCache RAM tier 24 GiB, which lives in /dev/shm, so 32 GiB shm; no host IPC) so it cannot squeeze the sessions;\n# no automatic restart, so a reboot does not bring it back unattended. /cache/jit (the b12x / FlashInfer kernel\n# tuning, hours for a new batch-shape set) is on the host so a container restart keeps it.\nset -eu\n# EXTRA: more lil / vLLM options after \"--\" (e.g. \"--max-num-seqs 64 --mode off\"); they override the profile.\nEXTRA=\x24\{EXTRA:-}\nIMG=ghcr.io/local-inference-lab/vllm:karmic-kraken-beta-spark-20261007-d071fb3dde0ba979\nB=\x24HOME/lil; mkdir -p \x24B/hf \x24B/kv \x24B/serve \x24B/jit; umask 077\n[ -s \x24B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d '/+=' > \x24B/pool_key\numask 022\ndocker rm -f lil-flash-next >/dev/null 2>&1 || true\n# Removal is asynchronous; a run issued before the name frees fails with \"Conflict\".\nfor i in \x24(seq 1 60); do docker container inspect lil-flash-next >/dev/null 2>&1 || break; sleep 2; done\ndocker run -d --name lil-flash-next --restart no --device nvidia.com/gpu=all --cgroup-parent=srv1-inference.slice --memory=80g --memory-swap=80g \\\n  --shm-size 32g -p 18000:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v \x24B/hf:/root/.cache/huggingface -v \x24B/kv:/cache/kv -v \x24B/jit:/cache/jit -v \x24B/serve:/root/serve -v \x24B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash \x24IMG -lc '\nD=/root/serve; ev(){ echo \"\x24(date -u +%FT%TZ) \x24*\" >> \x24D/events.log; }\n[ -s \x24D/tls.key ] && [ -s \x24D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj \"/CN=pool-card\" -keyout \x24D/tls.key -out \x24D/tls.crt >> \x24D/events.log 2>&1\nev \"START srv1 (driver \x24(nvidia-smi --query-gpu=driver_version --format=csv,noheader), cache ram-disk, L1 24G, L2 200G, TLS)\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=24 --env LMCACHE_L2_GB=200 --env LMCACHE_L2_ROOT=/cache/kv \\\n  -- --port 18000 '\"\x24EXTRA\"' --ssl-keyfile \x24D/tls.key --ssl-certfile \x24D/tls.crt --api-key \"\x24(cat /root/.pool_key)\" >> \x24D/serve.log 2>&1'\necho started; docker ps --filter name=lil-flash-next --format \"{{.Status}}\"",
-  reason: "srv1's serving container entrypoint, retained verbatim from /home/briansrls/strata-test/srv1_lil_serve.sh (read off the host 2026-10-25 while the container ran from it; sha256 90f5c43d826e0d98f229360f7ebc46e00a96a245829a18003919e49b94967959, pinned in gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading). THE CLAIM OF THIS ROW, narrowed to match its single dissolves_to (DESIGN 4b: the trigger names the capability this row loses): the container launch itself — image by digest, restart no, srv1-inference.slice cgroup, 80g/80g memory-and-swap, 32g shm, device/env/mount flags, published port — retires into extdeps.docker.cli DockerCreateSpec rendered by docker_run_foreground_argv, the dissolves_to ref, together with the launch tail srv1_serving_launch already models. The OTHER effects the script still performs (the TLS self-mint at CN=pool-card, the events.log START record, the key generation, the key read at exec time) are NOT claimed by this row's trigger; each carries its own keyed trigger row in srv1_serving_unmodeled_frontier_rows below. No secret value appears in this text." as NonEmptyStr,
+  body: "#!/bin/bash\n# srv1: serve Qwen3.8-Flash-Next (NVFP4 weights, FP8 K/V) with the lil vLLM image, as the Vast \"flash-next lil v2\" template does:\n# lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie, LMCache ram-disk session cache, HTTPS with a\n# self-signed key kept across restarts, an API key, restart on crash. Differences from Vast: the linux/arm64 (DGX Spark)\n# build of the image (no arm64 build of the Vast digest exists), GPU through CDI, and the container in srv1-inference.slice\n# (cores 96-127, hard cap 130 GiB, no swap; LMCache RAM tier 100 GiB, which lives in /dev/shm, so 110 GiB shm; no host IPC) so it cannot squeeze the sessions;\n# no automatic restart, so a reboot does not bring it back unattended. /cache/jit (the b12x / FlashInfer kernel\n# tuning, hours for a new batch-shape set) is on the host so a container restart keeps it.\nset -eu\n# EXTRA: more lil / vLLM options after \"--\" (e.g. \"--max-num-seqs 64 --mode off\"); they override the profile.\nEXTRA=\x24\{EXTRA:-}\nIMG=sha256:58d49cac0f22daa3af29177b68bc76d7aa7389858a59192bfc3625911e7778b0  # 74b35f46 + LMCache complete-checkpoint generation retention with background reconciliation (gunbc-private#266 5360cb4); 74b35f46 = 236aa2f2 + page-loss attribution (#264); 236aa2f2 = da08aaf9 + lost-retry repair (#263); da08aaf9 = base af14f1a9 + delete-accounting repair (#255)\nB=\x24HOME/lil; mkdir -p \x24B/hf \x24B/kv \x24B/serve \x24B/jit; umask 077\n[ -s \x24B/pool_key ] || head -c 24 /dev/urandom | base64 | tr -d '/+=' > \x24B/pool_key\numask 022\ndocker rm -f lil-flash-next >/dev/null 2>&1 || true\n# Removal is asynchronous; a run issued before the name frees fails with \"Conflict\".\nfor i in \x24(seq 1 60); do docker container inspect lil-flash-next >/dev/null 2>&1 || break; sleep 2; done\ndocker run -d --name lil-flash-next --restart no --device nvidia.com/gpu=all --cgroup-parent=srv1-inference.slice --memory=130g --memory-swap=130g \\\n  --shm-size 110g -p 18000:18000 -e PORT=18000 -e HF_HOME=/root/.cache/huggingface \\\n  -v \x24B/hf:/root/.cache/huggingface -v \x24B/kv:/cache/kv -v \x24B/jit:/cache/jit -v \x24B/serve:/root/serve -v \x24B/pool_key:/root/.pool_key:ro \\\n  --entrypoint bash \x24IMG -lc '\nD=/root/serve; ev(){ echo \"\x24(date -u +%FT%TZ) \x24*\" >> \x24D/events.log; }\n[ -s \x24D/tls.key ] && [ -s \x24D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj \"/CN=pool-card\" -keyout \x24D/tls.key -out \x24D/tls.crt >> \x24D/events.log 2>&1\nev \"START srv1 (driver \x24(nvidia-smi --query-gpu=driver_version --format=csv,noheader), cache ram-disk, L1 100G, L2 160G, L2 16 workers O_DIRECT, checkpoint retention share 0.5 window 1800s, TLS)\"\nexec /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\n  --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=100 --env LMCACHE_L2_GB=160 --env LMCACHE_L2_ROOT=/cache/kv --env LMCACHE_L2_WORKERS=16 --env LMCACHE_L2_ODIRECT=1 --env LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5 --env LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800 \\\n  -- --port 18000 '\"\x24EXTRA\"' --ssl-keyfile \x24D/tls.key --ssl-certfile \x24D/tls.crt --api-key \"\x24(cat /root/.pool_key)\" >> \x24D/serve.log 2>&1'\necho started; docker ps --filter name=lil-flash-next --format \"{{.Status}}\"",
+  reason: "srv1's serving container entrypoint, retained verbatim from /home/briansrls/strata-test/srv1_lil_serve.sh (re-read off the host 2026-10-29 20:08 after the generation-retention relaunch, while the container ran from it; sha256 a5fc51f2ce4ac0e1f7c3c440443dc4c2cb3f3fd69287c9bb5f3d1b185947e2ce, pinned in gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading). THE CLAIM OF THIS ROW, narrowed to match its single dissolves_to (DESIGN 4b: the trigger names the capability this row loses): the container launch itself — image by digest, restart no, srv1-inference.slice cgroup, 130g/130g memory-and-swap, 110g shm, device/env/mount flags, published port — retires into extdeps.docker.cli DockerCreateSpec rendered by docker_run_foreground_argv, the dissolves_to ref, together with the launch tail srv1_serving_launch already models. The OTHER effects the script still performs (the TLS self-mint at CN=pool-card, the events.log START record, the key generation, the key read at exec time) are NOT claimed by this row's trigger; each carries its own keyed trigger row in srv1_serving_unmodeled_frontier_rows below. No secret value appears in this text." as NonEmptyStr,
   dissolves_to: decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_foreground_argv"),
 }
 
@@ -72,9 +73,13 @@ data srv1_serving_launch: LilServeLaunch = LilServeLaunch {
   hardware: lil_serve_hardware_rtx_pro_6000_pcie,
   environment: [
     lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr),
-    lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "24" as NonEmptyStr),
-    lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "200" as NonEmptyStr),
+    lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "100" as NonEmptyStr),
+    lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "160" as NonEmptyStr),
     lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
+    lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),
+    lil_serve_environment_entry(key: "LMCACHE_L2_ODIRECT" as NonEmptyStr, value: "1" as NonEmptyStr),
+    lil_serve_environment_entry(key: "LMCACHE_CHECKPOINT_PROTECTED_SHARE" as NonEmptyStr, value: "0.5" as NonEmptyStr),
+    lil_serve_environment_entry(key: "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS" as NonEmptyStr, value: "1800" as NonEmptyStr),
   ],
   engine: LilServeEngineFlags {
     served_model_name: Absent,
@@ -129,10 +134,175 @@ fn srv1_serving_launch_argv(api_key_wire: NonEmptyStr) -> List<String> {
   lil_serve_launch_argv(launch: srv1_serving_launch, api_key_wire: api_key_wire)
 }
 
-// The image and the pinned checkpoint the launch runs, exported so the provision derivation and the
-// router row read THEM rather than restating a digest (one authority; DESIGN 3).
-fn srv1_serving_image() -> VllmServingImage {
-  local_inference_lab_vllm_image
+// THE IMAGE srv1 RUNS IS NOT THE UPSTREAM BUILD: it is the upstream image with ONE file replaced, the
+// LMCache native L2 adapter's delete accounting (a delete caller timing out must not discard the native
+// operation's eventual completion). Built on srv1 2026-10-28 by eager-lynx-183; the Dockerfile, the
+// patch and the drain/switch receipt are retained in gunbc-private#255. This is OUR artifact, not a fact
+// of the upstream (DESIGN 3, external upstream decomposition), so it lives here and not in
+// extdeps.vllm.local_inference_lab_build, whose row stays the base. The relation is carried as the
+// observed facts below; the build itself is not a modeled realization yet (its home is the derived-key
+// pattern of gunbc.spark.vllm_image_identity, glm53_kvplan_key: base key + patch digest), and the
+// standing says so (DESIGN 4d).
+//
+// WHY NOT A VllmServingImage: that type is extdeps.vllm.local_inference_lab_build's sole_constructor
+// release identity, and minting one here would present our build as the upstream's release (the
+// nickname DESIGN 3 forbids). The derivation therefore carries its OWN identity fields and holds the
+// upstream row only as its base.
+//
+// ONE IMAGE AUTHORITY FOR THE DEPLOYMENT: gunbc.serving.serving_provision_derivation's srv1 arm takes its
+// image from srv1_serving_image below, not from the recipe build's pin, so the base is reachable from a
+// provision only as the release it derives from (`build`), never as the image it installs.
+type Srv1ServingImageDerivation {
+  repository: NonEmptyStr
+  tag: NonEmptyStr
+  digest_sha256: NonEmptyStr
+  standing: CitedFigureStanding
+  base: VllmServingImage
+  // Every file the derivation changes relative to its base: a REPLACED file carries the base's digest
+  // (the build's `sha256sum -c` guard) and the replacement's (read inside the running container); an
+  // ADDED file carries its digest and the guard that it was absent from the base (`test ! -e`). Nonempty
+  // by construction: a derivation that changes nothing is the base, and has no row here.
+  changes: FreeSemigroup<Srv1ImageFileChange>
+}
+
+type Srv1ImageFileChange
+  = Srv1ImageFileReplaced { path: NonEmptyStr, base_file_sha256_hex: NonEmptyStr, replaced_file_sha256_hex: NonEmptyStr }
+  | Srv1ImageFileAdded { path: NonEmptyStr, added_file_sha256_hex: NonEmptyStr }
+
+fn srv1_image_file_replaced(path: NonEmptyStr, base: NonEmptyStr, replaced: NonEmptyStr) -> Srv1ImageFileChange {
+  Srv1ImageFileReplaced { path: path, base_file_sha256_hex: base, replaced_file_sha256_hex: replaced }
+}
+
+fn srv1_image_file_added(path: NonEmptyStr, added: NonEmptyStr) -> Srv1ImageFileChange {
+  Srv1ImageFileAdded { path: path, added_file_sha256_hex: added }
+}
+
+data srv1_serving_image_derivation: Srv1ServingImageDerivation = Srv1ServingImageDerivation {
+  repository: "local/eager-checkpoint-generation-retention" as NonEmptyStr,
+  tag: "5360cb4" as NonEmptyStr,
+  // `docker inspect --format {{.Image}} lil-flash-next` on srv1, 2026-10-29 20:08, after the relaunch onto the
+  // complete-checkpoint generation retention build with background catalog reconciliation (gunbc-private#266 at
+  // 5360cb4), built FROM 74b35f46 (#264), FROM 236aa2f2 (#263), FROM da08aaf9 (#255), FROM the upstream base. The
+  // changes below are COMPUTED, not transcribed: every regular file under lmcache and /opt/lil/runtime in the base
+  // image and in this image was sha256'd on srv1 and the two trees diffed (21 files differ; none removed).
+  digest_sha256: "58d49cac0f22daa3af29177b68bc76d7aa7389858a59192bfc3625911e7778b0" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "A local build with no registry manifest: this repository read the running container's image ID and diffed the full lmcache and lil-runtime file trees of this image against the upstream base on srv1 (2026-10-29 20:3x). The build recipes (each FROM its predecessor by digest, a sha256 -c or test ! -e guard on every base file it changes, then a guarded copy and, for #266, a regenerated lil image-contract) are read from gunbc-private#255, #263, #264 and #266's Dockerfiles, not from a modeled realization; retiring this needs the build as a keyed realization under gunbc.spark.vllm_image_identity's derived-key pattern." as NonEmptyStr,
+  },
+  base: local_inference_lab_vllm_image,
+  changes: FreeSemigroup {
+    head: srv1_image_file_replaced(
+      path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/l2_adapters/native_connector_l2_adapter.py" as NonEmptyStr,
+      base: "b6e87817a179a58b239e5dfecf8df4280ea048b01d1ee5b1c2027a57580a4f93" as NonEmptyStr,
+      replaced: "8d340162ced1b89415765dd08d86559501a2def6569db5b915b8ef3855de38a3" as NonEmptyStr,
+    ),
+    tail: [
+      srv1_image_file_replaced(
+        path: "/opt/lil/runtime/cache.py" as NonEmptyStr,
+        base: "2936c460cc9e86ff01b5afb12300e23329cfee528258514cffaab7b94d6c6dba" as NonEmptyStr,
+        replaced: "c7cca8b4c8449be4e7515ad18966576e53a6f966e5f338f7a5c9311f939a875a" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/lil/runtime/image-contract.json" as NonEmptyStr,
+        base: "49513e40f2da5b9e88856ef1bf6b705c60e0bf726b48a00f4449ccda864027ce" as NonEmptyStr,
+        replaced: "2b19450dc2fc30166c5825a951397a3866ff2c7101206b6962a56c674f54d869" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/lil/runtime/options.yaml" as NonEmptyStr,
+        base: "1ca23ef1768b2184d2b00338f1141d2a62c468b060c6fb1b33ab56bea6a6c62a" as NonEmptyStr,
+        replaced: "22351668741f12df30ac0466f3c6e333d6b208fad9b86f6431effd8b783f18c7" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/integration/vllm/checkpoint_scheduler.py" as NonEmptyStr,
+        base: "30b75927c0b1f432be1ed2238e48e778b77bffd0a8dfed48af0d4ca93fcd944f" as NonEmptyStr,
+        replaced: "2a42ed1803401f80c3fa4fe61e1d4b42ebf9b908a255aa3e29cd2db413aa286c" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/integration/vllm/recurrent_checkpoint_connector.py" as NonEmptyStr,
+        base: "5fc0db6c8ab6a33455ee7db357e6f545610a208adc041ff333295681a9071bc8" as NonEmptyStr,
+        replaced: "efdf7a6fcc483a5a12cf30422ab3931680aaa9b7e9c2ee7efe821880cf87848c" as NonEmptyStr,
+      ),
+      srv1_image_file_added(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/checkpoint_loss.py" as NonEmptyStr,
+        added: "ce95b5cd6986b62d39860e79978b2553efcfa7dc179c87c9edfbcb51796737c1" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/checkpoint_retention.py" as NonEmptyStr,
+        base: "bef7ab06f0f4d09b9646a89f6b8f7cd28d5f51bcb0cc9103c8f605781e12294e" as NonEmptyStr,
+        replaced: "0805bb3b1ee003673590279980022328a7a01a12e2ba3ffff94501362e04b23b" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/config.py" as NonEmptyStr,
+        base: "e791315a1e3bb004970b55583ce9dd1ee95c8104619526da2c6823d6a7c013fc" as NonEmptyStr,
+        replaced: "37de65df0a9ff492e869c092ddd6c69cb62b166dee17130c97cb722a89eebff1" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/l2_adapters/base.py" as NonEmptyStr,
+        base: "736f962f1cfbd272972f684c040a9fb7c570926f1cda96a115199b50f03d4526" as NonEmptyStr,
+        replaced: "c9a40eda206e026cc47435bcb89d43d8e6e2e1e30bd354d6736f23a5f3d84871" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/l2_adapters/fs_native_l2_adapter.py" as NonEmptyStr,
+        base: "344585d7dc9fa6dadf4be73e8b163538e3746b93d6212cf40542776525fcf41c" as NonEmptyStr,
+        replaced: "7f2544c1c835cfdac53599184845d3d6387ecdad0219e8831577fbd4845bedc6" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/storage_controllers/eviction_controller.py" as NonEmptyStr,
+        base: "f4f921edb872faa9db7b8c120154adfef88415af7912217d4f0f3f39de1d2f80" as NonEmptyStr,
+        replaced: "a6ccf78fa1854928aabda8a0e25e3aa7515733fae2bdcfcba3a2fcd333d787ad" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/storage_controllers/store_controller.py" as NonEmptyStr,
+        base: "f77b7a148fcfd1b20ac53fcc12412b74048fd0c802a40cc9021e3864476c3f2f" as NonEmptyStr,
+        replaced: "cbc612b142a5f87716d36b966794ab4664f938bb664de9f4c22e0b14fe92d364" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/distributed/storage_manager.py" as NonEmptyStr,
+        base: "5cd022eefc259c64a069e470d1621dcd6f7d4d84490b1951e59359aad7a7d22b" as NonEmptyStr,
+        replaced: "1ad60d9119895172b2d38893708092c20a5d4e18973b7c9d014eba7734bc3631" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/multiprocess/checkpoint_index.py" as NonEmptyStr,
+        base: "6f59b9aa7149f9b50ed8752c99ac1fb8ef11d28229d27574d50a19705df78ae3" as NonEmptyStr,
+        replaced: "8b994711b16043ac9493a0a03215f1d3fecb53ee54e2fc4c62f518e83128f0d6" as NonEmptyStr,
+      ),
+      srv1_image_file_added(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/multiprocess/checkpoint_policy.py" as NonEmptyStr,
+        added: "a8cb888be41ad34ad65539d41a23bfabeee8745d8f488b14ae4ef3eb031b5407" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/multiprocess/checkpoint_storage.py" as NonEmptyStr,
+        base: "cb11b2a5384677b8c96a5e85347c63036218c6bb1b50ed7e06742d5d75227187" as NonEmptyStr,
+        replaced: "793c059469a7b4ee4090b19a15129cbf952f4d1df2c369550378a4553c6eb118" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/multiprocess/modules/checkpoint.py" as NonEmptyStr,
+        base: "4e7d3a26d9bf97b82e2deda375deb696926bb8327bf60c4f35b081d5456e74eb" as NonEmptyStr,
+        replaced: "5e3b18aad6b9752ec71893c2216345962cc0d968ddf672b329503024e4f39745" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/multiprocess/protocols/base.py" as NonEmptyStr,
+        base: "3883a672edd7af3413e338e7068130fbae44a6b3531bfa1c705644ee573d6bc4" as NonEmptyStr,
+        replaced: "724c4ea0f7e32fff4ec9c26e7523a29b8413d7786a8c373cb1486e3260ba89a7" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/multiprocess/protocols/checkpoint.py" as NonEmptyStr,
+        base: "2906641f2bf5e377b84b2343f6c2e15888d5fc2f1f467cb641769c53cc68092a" as NonEmptyStr,
+        replaced: "66d334e92c81cd9118005004ebd178b2506487660e2340caad715006b537dd3a" as NonEmptyStr,
+      ),
+      srv1_image_file_replaced(
+        path: "/opt/venv/lib/python3.12/site-packages/lmcache/v1/multiprocess/server.py" as NonEmptyStr,
+        base: "c45e6aa52dda870bf2802ed1250c78d29d4ef0b8a54ef9a415e3167edf4262d6" as NonEmptyStr,
+        replaced: "993b55434a85704c63527da495b14de494ca03c987a73ee74f8384942fb34a2b" as NonEmptyStr,
+      ),
+    ],
+  },
+}
+
+// The image and the pinned checkpoint the launch runs, exported so the router row and the witness read
+// THEM rather than restating a digest (one authority; DESIGN 3).
+fn srv1_serving_image() -> Srv1ServingImageDerivation {
+  srv1_serving_image_derivation
 }
 
 fn srv1_serving_pinned_checkpoint() -> HubCheckpointManifest {

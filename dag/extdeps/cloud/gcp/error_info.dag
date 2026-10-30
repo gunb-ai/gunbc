@@ -1,0 +1,224 @@
+module extdeps.cloud.gcp.error_info
+
+// ── THE QUOTA FACT A 429 BODY PUBLISHES, AND THE WAIT IT DERIVES ─────────────────────────────
+//
+// When an IAM v2 (or Cloud Resource Manager) call is rate limited, Google answers 429 with a body
+// whose `error.details` carries a `google.rpc.ErrorInfo` (google.aip.dev/193): a `reason` and a
+// `domain` identifying the error, and a `metadata` map whose values are all strings on the wire. For
+// a quota refusal that map carries the window the limit was counted over -- here `quota_limit_value`,
+// `quota_unit`, and `window_start_time`. Those are FACTS Google recorded about its own refusal, and
+// the only honest basis for a retry wait: the next window opens at `window_start_time` plus the quota
+// window, so the wait is that opening minus now.
+//
+// THE BODY EITHER CARRIES AN ErrorInfo OR IT DOES NOT. There is no third reading. A 429 body that
+// names no google.rpc.ErrorInfo REFUSES with a typed cause -- `decode_429_error_info` never invents a
+// reason, a domain, or a window_start_time to fill a gap, because a fabricated ErrorInfo would turn
+// "Google told us nothing about this refusal" into "Google told us something." That is the failure the
+// operator ruled out: "those retries/waits need to be emergent from facts recorded on google APIs, not
+// random waits in our own code." Likewise a decoded ErrorInfo whose `window_start_time` is absent
+// refuses rather than guessing a wait -- with no published instant to count a window from, there is no
+// bound to name.
+//
+// NO PUBLISHED FALLBACK. The quota WINDOW is read from the live `quota_unit` only. The published pages
+// (cloud.google.com/iam/quotas, cloud.google.com/resource-manager/limits) list limits that DIFFER from
+// the live ones (IAM v2 reads run 10/min, CRM 2400/min), so a number transcribed from a page is not a
+// fact recorded about this refusal; an absent or unrecognized unit refuses naming the missing fact.
+
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { minutes_per_hour, second, second_count, seconds_per_day, seconds_per_minute, Second }
+import std.optional { Present, Absent }
+import std.types { Bool, EpochSecs, Int, List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.emit { JsonArray, JsonValue }
+import extdeps.languages.json.parse {
+  json_document_gap_text, json_object_unique_member, json_string_value_or_empty, parse_json_document,
+  JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberFound,
+  JsonMemberNotAnObject,
+}
+
+// AIP-193 is the error model this decoder follows (google.rpc.Status and google.rpc.ErrorInfo with its
+// reason / domain / metadata).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "google.aip.dev/193" }
+}
+
+// The metadata keys read off a quota ErrorInfo, spelled once so a consumer does not re-type a wire key
+// at each call site.
+data quota_limit_value_key: String = "quota_limit_value"
+data quota_unit_key: String = "quota_unit"
+data window_start_time_key: String = "window_start_time"
+
+// THE TYPED 429 QUOTA FACT. `reason` and `domain` are required by AIP-193 (a detail carrying neither is
+// not an ErrorInfo and is refused at decode). The three quota fields are the metadata Google publishes
+// for a rate-limit refusal; they are optional because a partial ErrorInfo -- a reason with no quota
+// metadata -- is a real Google answer that still must not be guessed into a wait. `window_start_time`
+// is the raw metadata string; reducing an instant to epoch seconds is the caller's fact (the clock), not
+// this decoder's.
+type GcpQuotaErrorInfo {
+  reason: NonEmptyStr
+  domain: NonEmptyStr
+  quota_limit_value: String?
+  quota_unit: String?
+  window_start_time: String?
+}
+
+// A 429 body either yields the quota ErrorInfo or refuses with a named cause. The absent arm is a TYPED
+// refusal, not an empty value: it names the missing fact so a caller refuses in its own words rather
+// than defaulting a wait.
+type GcpQuotaErrorInfoReading
+  = QuotaErrorInfoObserved { info: GcpQuotaErrorInfo }
+  | QuotaErrorInfoRefused { missing: NonEmptyStr }
+
+// The derived retry wait, expressed in whole seconds so the ceremony can sleep exactly it. `Now` means
+// the window has already rolled and the call may be retried without sleeping; `Refused` names a missing
+// fact rather than guessing.
+type GcpQuotaRetryWait
+  = QuotaWaitBefore { wait: Second }
+  | QuotaWaitNow
+  | QuotaWaitRefused { missing: NonEmptyStr }
+
+fn error_info_member(v: JsonValue, key: String) -> JsonValue? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } => Present { value: found }
+    _ => none
+  }
+}
+
+// A string member read: present-and-nonempty yields the text, anything else (absent, not-an-object,
+// duplicated, null, empty) reads as an absence. The caller decides whether an absence is a refusal
+// (reason, domain) or an optional metadata field.
+fn error_info_string_member(v: JsonValue, key: String) -> String? {
+  match error_info_member(v: v, key: key) {
+    Absent => none
+    Present { value: found } => {
+      let text = json_string_value_or_empty(v: found)
+      if text == "" { none } else { Present { value: text } }
+    }
+  }
+}
+
+// The discriminator Google puts in each `details` element's `@type` for an ErrorInfo. AIP-193 fixes the
+// proto type name; the wire prefixes it with type.googleapis.com/, so the suffix is the stable test.
+fn detail_is_error_info(detail: JsonValue) -> Bool {
+  match error_info_member(v: detail, key: "@type") {
+    Present { value: found } => json_string_value_or_empty(v: found).ends_with("google.rpc.ErrorInfo")
+    Absent => false
+  }
+}
+
+fn find_error_info_detail(elements: List<JsonValue>) -> JsonValue? {
+  fold(elements, init: none, f: (acc, e) => match acc {
+    Present { value: _ } => acc
+    Absent => if detail_is_error_info(detail: e) { Present { value: e } } else { none }
+  })
+}
+
+// Decode a 429 body's google.rpc.ErrorInfo into a typed quota fact (google.aip.dev/193). A body that is
+// not JSON, that carries no error object, whose error carries no details array, or whose details name no
+// google.rpc.ErrorInfo REFUSES with a named cause and guesses nothing. `reason` and `domain` are
+// required; once present, the quota metadata (quota_limit_value, quota_unit, window_start_time) is read
+// as whatever facts are available and its absence is left for the wait derivation to refuse on.
+fn decode_429_error_info(body: String) -> GcpQuotaErrorInfoReading {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: gap } => QuotaErrorInfoRefused {
+      missing: concat("the 429 body is not a JSON object: ", json_document_gap_text(gap: gap)) as NonEmptyStr
+    }
+    JsonDocumentParsed { value: doc } => match error_info_member(v: doc, key: "error") {
+      Absent => QuotaErrorInfoRefused { missing: "the 429 body carries no error object" }
+      Present { value: error_value } => match error_info_member(v: error_value, key: "details") {
+        Absent => QuotaErrorInfoRefused { missing: "the 429 error carries no details array to hold a google.rpc.ErrorInfo" }
+        Present { value: JsonArray { elements: details } } => match find_error_info_detail(elements: details) {
+          Absent => QuotaErrorInfoRefused { missing: "the 429 details carry no google.rpc.ErrorInfo (google.aip.dev/193)" }
+          Present { value: info } => decode_error_info_fields(detail: info)
+        }
+        Present { value: _ } => QuotaErrorInfoRefused { missing: "the 429 error details are not an array" }
+      }
+    }
+  }
+}
+
+fn decode_error_info_fields(detail: JsonValue) -> GcpQuotaErrorInfoReading {
+  match error_info_string_member(v: detail, key: "reason") {
+    Absent => QuotaErrorInfoRefused { missing: "the google.rpc.ErrorInfo carries no reason" }
+    Present { value: reason } => match error_info_string_member(v: detail, key: "domain") {
+      Absent => QuotaErrorInfoRefused { missing: "the google.rpc.ErrorInfo carries no domain" }
+      Present { value: domain } => QuotaErrorInfoObserved {
+        info: GcpQuotaErrorInfo {
+          reason: reason as NonEmptyStr,
+          domain: domain as NonEmptyStr,
+          quota_limit_value: quota_metadata_field(detail: detail, key: quota_limit_value_key),
+          quota_unit: quota_metadata_field(detail: detail, key: quota_unit_key),
+          window_start_time: quota_metadata_field(detail: detail, key: window_start_time_key),
+        }
+      }
+    }
+  }
+}
+
+fn quota_metadata_field(detail: JsonValue, key: String) -> String? {
+  match error_info_member(v: detail, key: "metadata") {
+    Absent => none
+    Present { value: metadata } => error_info_string_member(v: metadata, key: key)
+  }
+}
+
+// THE QUOTA WINDOW, read from the live quota_unit and nowhere else. A quota_unit is a slash-delimited
+// token "<n>/<period>/<resource>" and the period is its SECOND SEGMENT, matched exactly (so a resource
+// segment such as "admin" can never read as a period). The period comes from std.measure's calendar
+// facts. An absent unit or an unrecognized period is an absence: the wait REFUSES naming it, because a
+// window Google did not record about this refusal is not ours to supply.
+fn quota_window_from_unit(quota_unit: String) -> Second? {
+  match split(s: quota_unit, delimiter: "/").skip(n: 1).first() {
+    Absent => none
+    Present { value: period } =>
+      if period == "s" { Present { value: second(count: 1) } }
+      else if period == "min" { Present { value: second(count: seconds_per_minute()) } }
+      else if period == "h" || period == "hour" { Present { value: second(count: minutes_per_hour() * seconds_per_minute()) } }
+      else if period == "d" || period == "day" { Present { value: second(count: seconds_per_day()) } }
+      else { none }
+  }
+}
+
+fn quota_window_for(info: GcpQuotaErrorInfo) -> Second? {
+  match info.quota_unit {
+    Absent => none
+    Present { value: unit } => quota_window_from_unit(quota_unit: unit)
+  }
+}
+
+// DERIVE THE WAIT FROM THE PUBLISHED FACTS. The next window opens at `window_start_time + window`; the
+// wait is that opening minus now, floored at zero (a window that has already rolled is retried now, not
+// slept on). `to_epoch_secs` is the caller's fact (the clock's RFC3339-to-epoch reduction), injected so
+// this stays a pure arithmetic over facts and a claim can supply it deterministically. A missing
+// window_start_time, or one the clock cannot reduce, REFUSES naming the missing fact -- no bound is
+// invented for a quota Google never described. `window` comes from `quota_window_for`, which reads the live quota_unit
+// only; an absent or unrecognized unit refuses.
+fn quota_retry_wait_for(
+  info: GcpQuotaErrorInfo,
+  now_secs: EpochSecs,
+  to_epoch_secs: fn(String) -> EpochSecs?
+) -> GcpQuotaRetryWait {
+  match info.window_start_time {
+    Absent => QuotaWaitRefused { missing: "google.rpc.ErrorInfo.metadata.window_start_time is absent; the quota window cannot be anchored" }
+    Present { value: start_text } => match to_epoch_secs(start_text) {
+      Absent => QuotaWaitRefused { missing: "google.rpc.ErrorInfo.metadata.window_start_time is not a reducible instant" }
+      Present { value: start_secs } => {
+        match quota_window_for(info: info) {
+          Absent => QuotaWaitRefused { missing: "google.rpc.ErrorInfo.metadata.quota_unit is absent or names no recognized period; the quota window is not recorded" }
+          Present { value: window } => {
+            let opens_at = (start_secs as Int) + (second_count(s: window) as Int)
+            if opens_at <= (now_secs as Int) {
+              QuotaWaitNow
+            } else {
+              match checked_int_to_nat(n: opens_at - (now_secs as Int)) {
+                Present { value: secs } => QuotaWaitBefore { wait: second(count: secs) }
+                Absent => QuotaWaitRefused { missing: "the derived quota wait does not fit a whole-second sleep" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -54,7 +54,9 @@ import gunbc.runner.runner_host_deploy {
   GithubAppRunnerConfig,
   github_app_runner_org,
   runner_job_user_env_name,
+  runner_group_id_env_name,
 }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_id, deploy_slot_runner_group_ensure_receipt }
 import gunbc.runner.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
@@ -548,14 +550,29 @@ fn runner_host_gpu_docker_labels_dropin_text(host: HostIdentity, witnesses: List
 }
 
 // THE DEPLOY SLOT'S ROLE REACHES ITS UNIT AS AN INSTANCE DROP-IN, never a change to the template
-// one. systemd applies actions-runner@.service.d first and actions-runner@<instance>.service.d after
-// it, and a later Environment= of the same name wins, so this file replaces exactly three values for
-// exactly one instance: the job user, the label set, and DOCKER_HOST -- cleared, because the template
-// value is the CI job user's rootless socket and inheriting it would hand the deploy account a path
-// into the CI account's daemon (gunbc.runner.runner_slot_job_role runner_slot_job_role_runs_containers).
+// one. It replaces values for exactly one instance -- the job user, the label set, the runner group, and
+// DOCKER_HOST, cleared, because the template value is the CI job user's rootless socket and inheriting it
+// would hand the deploy account a path into the CI account's daemon
+// (gunbc.runner.runner_slot_job_role runner_slot_job_role_runs_containers) -- and a later Environment= of
+// the same name wins. LATER IS BY FILE NAME, NOT BY DIRECTORY: systemd merges the template's and the
+// instance's drop-ins in one name order (extdeps.systemd.unit_file systemd_drop_in_applies_after), so this
+// file must sort after every template drop-in that sets one of its keys -- depriv.conf sets the job user
+// and DOCKER_HOST, and the label drop-ins set LABELS_JSON. Named 20-slot-role.conf it sorted before
+// depriv.conf, so on srv1 (L2 run 40950610061) depriv's CTRL_RUNNER_JOB_USER=ghrunner won and the slot
+// ran its ghdeploy-owned tree as ghrunner. The order is a claim over the managed population
+// (test.claim.runner.runner_host_file_converge_witness), and the converge refuses a loaded later-sorting
+// drop-in that would override any managed key (gunbc.runner.runner_host_file_converge read_dropin_override_over).
 // A CI slot has no such file: Absent is its answer, so the CI population renders byte-for-byte what it
 // did before.
-data runner_unit_slot_role_dropin_file_name: NonEmptyStr = "20-slot-role.conf" as NonEmptyStr
+data runner_unit_slot_role_dropin_file_name: NonEmptyStr = "slot-role.conf" as NonEmptyStr
+
+// The name the role drop-in had before it was renamed to sort after the template drop-ins: a managed
+// file this converge placed and now retires, so no host keeps a second, losing copy of the role.
+data runner_unit_slot_role_superseded_dropin_file_name: NonEmptyStr = "20-slot-role.conf" as NonEmptyStr
+
+fn runner_unit_slot_role_superseded_dropin_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  runner_slot_unit_dropin_path(slot: slot, file_name: runner_unit_slot_role_superseded_dropin_file_name)
+}
 
 fn runner_unit_slot_role_dropin_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
   runner_slot_unit_dropin_path(slot: slot, file_name: runner_unit_slot_role_dropin_file_name)
@@ -566,27 +583,33 @@ fn runner_unit_slot_role_dropin_text(deploy: RunnerHostDeploy, slot: RunnerSlotI
   match role {
     CiJobSlot => Absent
     DeployJobSlot =>
-      Present { value: match runner_slot_registration_labels(slot: slot) {
-        RegistrationLabelsRefused { host: _, cause: c } =>
-          RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
-        RegistrationLabelsResolved { labels: labels } =>
-          match runner_unit_labels_json(spec: SelfHosted { labels: labels }) {
-            RunnerUnitLabels { json_text: labels_json } =>
-              RunnerUnitText {
-                text: serialize_systemd_drop_in(drop_in: SystemdDropIn {
-                  sections: [DropInServiceSection { directives: concat(
-                    [
-                      runner_unit_environment(name: runner_job_user_env_name, value: runner_slot_job_user(role: role, ci_job_user: deploy.job_user) as String),
-                      runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json),
-                    ],
-                    if runner_slot_job_role_runs_containers(role: role) { [] } else { [runner_unit_environment(name: docker_host_env_var, value: "")] },
-                  ) }],
-                }),
+      Present { value: match deploy_slot_runner_group_id(receipt: deploy_slot_runner_group_ensure_receipt) {
+        Absent =>
+          RunnerUnitTextRefused { reason: "runner_unit_file: the deploy slot's runner group receipt is for another group or workflow, so the slot is not registered into a group nobody re-read" as NonEmptyStr }
+        Present { value: group } =>
+          match runner_slot_registration_labels(slot: slot) {
+            RegistrationLabelsRefused { host: _, cause: c } =>
+              RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
+            RegistrationLabelsResolved { labels: labels } =>
+              match runner_unit_labels_json(spec: SelfHosted { labels: labels }) {
+                RunnerUnitLabels { json_text: labels_json } =>
+                  RunnerUnitText {
+                    text: serialize_systemd_drop_in(drop_in: SystemdDropIn {
+                      sections: [DropInServiceSection { directives: concat(
+                        [
+                          runner_unit_environment(name: runner_job_user_env_name, value: runner_slot_job_user(role: role, ci_job_user: deploy.job_user) as String),
+                          runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json),
+                          runner_unit_environment(name: runner_group_id_env_name, value: to_string(group.value)),
+                        ],
+                        if runner_slot_job_role_runs_containers(role: role) { [] } else { [runner_unit_environment(name: docker_host_env_var, value: "")] },
+                      ) }],
+                    }),
+                  }
+                RunnerUnitLabelsHostedRunner =>
+                  RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as a hosted runner" as NonEmptyStr }
+                RunnerUnitLabelsUnresolvedExpression { expression: _ } =>
+                  RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as an unresolved expression" as NonEmptyStr }
               }
-            RunnerUnitLabelsHostedRunner =>
-              RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as a hosted runner" as NonEmptyStr }
-            RunnerUnitLabelsUnresolvedExpression { expression: _ } =>
-              RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as an unresolved expression" as NonEmptyStr }
           }
       } }
   }
