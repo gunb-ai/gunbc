@@ -103,7 +103,16 @@ type RosterHeadRow {
 // arguments -- reordering an argument list reorders its evaluation.
 type RosterHeadRewrite
   = KeepHead
-  | RenameHead { to: String, positional: List<String> }
+  | RenameHead { to: String, positional: List<String>, appended: List<RosterAppendedArg> }
+
+// A CONSTANT NAMED ARGUMENT A RenameHead ROW APPENDS after the call's last argument (tidy-ant-251's sort_by ruling): the
+// renamed callee declares one more parameter than the ambient spelling took, and its value is the same at every site of the
+// row (list_sort_by_key's `order`, the one canonical order bare sort_by already applies). `text` is the argument's source
+// spelling; the callee it names is imported by its own KeepHead row. Exact arity of the positionals is unchanged.
+type RosterAppendedArg {
+  label: String
+  text: String
+}
 
 // THE ARGUMENT LABELS A ROW'S HOME RENAMES at its call sites: a field of the row, so the call and the home a rename belongs
 // to are the row's own facts, stated once (review 82024).
@@ -381,7 +390,7 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       import_name: "map_lookup",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
-      head: RenameHead { to: "map_lookup", positional: ["m", "key"] }
+      head: RenameHead { to: "map_lookup", positional: ["m", "key"], appended: [] }
     }
   ]
 }
@@ -1375,7 +1384,7 @@ fn roster_rows_label_plan(sides: List<RosterHomeSide>,
       LabelsSelected { edits: es } =>
         match row.head {
           KeepHead => roster_row_label_edits(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, edits: es)
-          RenameHead { to: to, positional: positional } =>
+          RenameHead { to: to, positional: positional, appended: _ } =>
             match roster_row_label_edits(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, edits: es) {
               LabelsSelected { edits: es3 } =>
                 match roster_rename_plan(sides: sides, text: text, parse_root: parse_root, pipe_index: pipe_index, spans: spans, normalized_root: normalized_root, imported: imported, row: row, to: to, positional: positional) {
@@ -1522,7 +1531,15 @@ fn roster_rename_call_edits(text: Optional<String>, selected: RosterSelectedHead
         Absent =>
           match text {
             Absent => LabelsSelected { edits: [] }
-            Present { value: t } => roster_rename_pipe_edit(text: t, head: head, spans: spans, row: row, to: to, positional: positional, left: lr, call: cr)
+            Present { value: t } =>
+              roster_with_appended(
+                plan: roster_rename_pipe_edit(text: t, head: head, spans: spans, row: row, to: to, positional: positional, left: lr, call: cr),
+                row: row,
+                end: match roster_last_slot_end(slots: dag_call_direct_arg_slots(node: head), spans: spans) {
+                  Present { value: e } => Present { value: e }
+                  Absent => Present { value: lr.end }
+                }
+              )
           }
       }
   }
@@ -1801,20 +1818,65 @@ fn roster_rename_direct_call_edits(head: Node, spans: SpanIndex, row: RosterHead
           if length(xs: slots) != length(xs: positional) {
             LabelsRenameRefused { reason: RefusalRenameCallArity { call: row.call } }
           } else {
-            fold_list(
-              xs: roster_zip_slots(slots: slots, labels: positional),
-              empty: LabelsSelected { edits: [RosterLabelEdit { start: r.start, end: r.end, from: row.call, to: to, relocation: Absent }] },
-              cons: fn(acc, pair) {
-                match acc {
-                  LabelsSelected { edits: es } => roster_positional_label_edit(edits: es, pair: pair, spans: spans, call: row.call)
-                  LabelsAmbiguous => LabelsAmbiguous
-                  other => other
+            roster_with_appended(
+              plan: fold_list(
+                xs: roster_zip_slots(slots: slots, labels: positional),
+                empty: LabelsSelected { edits: [RosterLabelEdit { start: r.start, end: r.end, from: row.call, to: to, relocation: Absent }] },
+                cons: fn(acc, pair) {
+                  match acc {
+                    LabelsSelected { edits: es } => roster_positional_label_edit(edits: es, pair: pair, spans: spans, call: row.call)
+                    LabelsAmbiguous => LabelsAmbiguous
+                    other => other
+                  }
                 }
-              }
+              ),
+              row: row,
+              end: roster_last_slot_end(slots: slots, spans: spans)
             )
           }
       }
   }
+}
+
+// THE APPENDED ARGUMENTS OF A RenameHead ROW, as one insertion after the call's last argument: `, label: text` per entry,
+// in the row's declared order. Zero-width, so no authored byte moves. A row with none appends nothing (the plan is returned
+// untouched); a row that appends but whose insertion point cannot be placed is ambiguous, never guessed.
+fn roster_with_appended(plan: RosterLabelPlan, row: RosterHeadRow, end: Optional<Int>) -> RosterLabelPlan {
+  let appended = match row.head {
+    KeepHead => []
+    RenameHead { to: _, positional: _, appended: a } => a
+  }
+  match appended {
+    Empty => plan
+    Cons { head: _, tail: _ } =>
+      match plan {
+        LabelsSelected { edits: es } =>
+          match end {
+            Absent => LabelsAmbiguous
+            Present { value: e } =>
+              LabelsSelected { edits: list_snoc_item(xs: es, item: RosterLabelEdit { start: e, end: e, from: "", to: roster_appended_text(appended: appended), relocation: Absent }) }
+          }
+        other => other
+      }
+  }
+}
+
+fn roster_appended_text(appended: List<RosterAppendedArg>) -> String {
+  fold_list(xs: appended, empty: "", cons: fn(acc, a) { acc + ", " + a.label + ": " + a.text })
+}
+
+// The end byte of the last argument that reads; Absent for a call with none, or whose last argument cannot be placed.
+fn roster_last_slot_end(slots: List<Optional<Node>>, spans: SpanIndex) -> Optional<Int> {
+  fold_list(xs: slots, empty: Absent, cons: fn(acc, slot) {
+    match slot {
+      Absent => Absent
+      Present { value: arg } =>
+        match roster_node_byte_range(node: arg, spans: spans) {
+          Absent => Absent
+          Present { value: r } => Present { value: r.end }
+        }
+    }
+  })
 }
 
 type RosterSlotLabel {
@@ -2340,7 +2402,7 @@ fn roster_rename_production_row() -> List<RosterHeadRow> {
   fold_list(xs: roster_head_rows(), empty: [], cons: fn(acc, r) {
     match r.head {
       KeepHead => acc
-      RenameHead { to: _, positional: _ } => list_snoc_item(xs: acc, item: r)
+      RenameHead { to: _, positional: _, appended: _ } => list_snoc_item(xs: acc, item: r)
     }
   })
 }
@@ -2531,7 +2593,7 @@ fn roster_rename_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRul
 
 // AN UNDERIVABLE COMPANION REFUSES THE FILE IT WOULD GOVERN: a rename row whose callee the home does not declare.
 fn roster_companion_underivable_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  let ghost = [RosterHeadRow { call: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup", positional: ["m", "key"] } }]
+  let ghost = [RosterHeadRow { call: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup", positional: ["m", "key"], appended: [] } }]
   let companions = roster_rename_companions(rows: ghost, prepared: prepared, lex: lex)
   let text = "module c.rename\n\nimport std.algebra { Cons, no_such_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  match no_such_lookup(m: m, key: k) {\n    Present { value: _ } => true\n    Absent => false\n  }\n}\n"
   match roster_sweep_text_rows(sides: roster_home_sides(rows: ghost), companions: companions, path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: ghost, closures: roster_control_closures()) {
@@ -3720,7 +3782,7 @@ fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar
   fold_list(xs: rows, empty: [], cons: fn(acc, r) {
     match r.head {
       KeepHead => acc
-      RenameHead { to: t, positional: _ } => list_snoc_item(xs: acc, item: roster_companion_of(row: r, to: t, prepared: prepared, lex: lex))
+      RenameHead { to: t, positional: _, appended: _ } => list_snoc_item(xs: acc, item: roster_companion_of(row: r, to: t, prepared: prepared, lex: lex))
     }
   })
 }
