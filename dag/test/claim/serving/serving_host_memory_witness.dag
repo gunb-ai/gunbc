@@ -123,7 +123,7 @@ test fn witness_cache_allowance_trades_engines_for_warm_sessions() -> Bool {
   let shared = host_6ce85c_serving_memory_observed.shared_resident
   let six = serving_engine_cache_allowance(usable_ram: ram, overhead: shm_gib(n: 4), shared_resident: shared, engines: 6, base: shm_gib(n: 8))
   let four = serving_engine_cache_allowance(usable_ram: ram, overhead: shm_gib(n: 4), shared_resident: shared, engines: 4, base: shm_gib(n: 8))
-  let none = serving_engine_cache_allowance(usable_ram: ram, overhead: shm_gib(n: 4), shared_resident: shared, engines: 6, base: shm_gib(n: 10))
+  let no_cache = serving_engine_cache_allowance(usable_ram: ram, overhead: shm_gib(n: 4), shared_resident: shared, engines: 6, base: shm_gib(n: 10))
   match six {
     Absent => false
     Present { value: s } =>
@@ -131,7 +131,7 @@ test fn witness_cache_allowance_trades_engines_for_warm_sessions() -> Bool {
         Absent => false
         Present { value: f } =>
           byte_size_count(b: s) < byte_size_count(b: shm_gib(n: 2)) && byte_size_count(b: f) > byte_size_count(b: shm_gib(n: 6))
-            && (match none { Absent => true  Present { value: _ } => false })
+            && (match no_cache { Absent => true  Present { value: _ } => false })
       }
   }
 }
