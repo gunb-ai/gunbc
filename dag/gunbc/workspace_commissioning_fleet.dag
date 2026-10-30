@@ -21,8 +21,7 @@ import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvena
 import gunbc.workspace_commissioning_runtime { workspace_commissioning_runtime_refusal }
 import gunbc.workspace_commissioning_admission_observe { workspace_commissioning_no_hold_refusal }
 import gunbc.workspace_commissioning_history { workspace_initial_controller_history_refusal }
-import gunbc.workspace_commissioning_observe { workspace_observe_commissioning_obligations }
-import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root }
+import gunbc.workspace_commissioning_observe { workspace_observe_allocation_obligations }
 import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
 import gunbc.workspace_commissioning { workspace_commissioning_admit, WorkspaceCommissioningAuthorizedPlan, WorkspacePriorPurposeWithdrawn, WorkspaceCommissioningReady, WorkspaceCommissioningRefused }
 import gunbc.fleet.fleet_host_budget { HostAllocationConserves }
@@ -199,7 +198,7 @@ fn workspace_commissioning_basis_observe(provenance: WorkspaceCommissioningProve
                       authority: WorkspaceCommissioningAuthorizedPlan { slot: slot, plan_hash: provenance.plan_hash },
                       budget: HostAllocationConserves, cpu_budget: provenance.cpu_budget, attempt_envelope: provenance.attempt_envelope,
                       prior_purpose: WorkspacePriorPurposeWithdrawn,
-                      obligations: workspace_observe_commissioning_obligations(root: fabric_control_plane_store_root(), slot: slot), sanitation: observation.observations) {
+                      obligations: workspace_observe_allocation_obligations(slot: slot), sanitation: observation.observations) {
                       WorkspaceCommissioningReady { commissioned: _ } => none
                       WorkspaceCommissioningRefused { reason } => Present { value: reason }
                     } }

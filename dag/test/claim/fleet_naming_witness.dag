@@ -37,6 +37,7 @@ import gunbc.hostname_allocation {
 }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import gunbc.fleet.fleet_host_identity {
+  operator_hosts,
   operator_host_mtjade1,
   operator_host_srv1,
   operator_host_srv10,
@@ -226,16 +227,26 @@ test fn witness_all_five_p2_rows_carry_a_draw() -> Bool {
   })
 }
 
-// THE ROSTER GREW BY EXACTLY FIVE. A roster that gained rows nobody claimed would let a name enter the
-// fleet outside the plan; a roster that lost one would silently retire a member. The two predicates on
+// THE FIVE CLAIMED ROWS ARE IN THE ROSTER, AND EVERY ROW IS A NAMED HOST ONCE. A row for a slot the fleet
+// never named would let a name enter the fleet outside the plan. The two predicates on
 // the RIGHT are the roster's own, asked of the roster: the allocation reader answers for the five slots
 // the plan claims and for none of the members the plan did not touch, and the selector surface reads its
 // forms from the policy row rather than authoring them -- a selector list nobody can type, or one that a
 // row the fleet never allocated also has, is caught here.
-test fn witness_roster_grew_by_exactly_the_five_claimed_rows() -> Bool {
+test fn witness_roster_holds_the_five_claimed_rows_and_each_named_host_once() -> Bool {
   p2_drawn_slots.all(slot => count_matching(rows: gunbc_fleet_hostname_allocations, slot: slot) == 1)
-    && gunbc_fleet_hostname_allocations.count() == 16
-    // EVERY CLAIMED SLOT IS ALLOCATED, and asked of the roster itself rather than of the count above.
+    // EVERY ROW IS ONE NAMED HOST, ONCE. An identity join against gunbc.fleet.fleet_host_identity
+    // operator_hosts, the roster's independent membership, rather than a row count copied from the tree:
+    // a row for a slot the fleet never named, or a second row for one slot, reds here, and a new
+    // allocation for a named host needs no edit to this claim.
+    && gunbc_fleet_hostname_allocations.all(row =>
+      operator_hosts.any(host => host == row.fleet_slot)
+        && count_matching(rows: gunbc_fleet_hostname_allocations, slot: row.fleet_slot) == 1)
+    // AND THE REVERSE LEG: every operator host holds exactly one allocation, so a host that
+    // silently loses its row is red too -- the join is a bijection, not an inclusion.
+    && operator_hosts.all(host =>
+      count_matching(rows: gunbc_fleet_hostname_allocations, slot: host) == 1)
+    // EVERY CLAIMED SLOT IS ALLOCATED, and asked of the roster itself rather than of a count.
     && p2_drawn_slots.all(slot => fleet_slot_is_allocated(slot: slot, roster: gunbc_fleet_hostname_allocations))
     // THE NEGATIVE ANSWER IS SAYABLE. A census that reports unmanaged members has to be able to ask "is
     // this slot allocated?" of a roster and hear no, rather than matching on a refusal -- so the same

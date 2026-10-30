@@ -52,7 +52,7 @@ import extdeps.filesystem.filesystem_io {
 
 // THE ENTRY MODE IS THE PLACEMENT'S FACT, NOT THIS REALIZATION'S. Who reads the store's files is
 // decided by who the placement declares as its writers and readers
-// (gunbc.fabric.fabric_storage_placement fabric_storage_placed_file_root); a root built with no declared
+// (gunbc.fabric.fabric_storage_placement fabric_storage_placed_store); a root built with no declared
 // mode publishes at the writing process's umask, which is what a single-principal fixture wants and
 // what a store with two principals must not rely on.
 type FabricStorageFileRoot {

@@ -1066,6 +1066,17 @@ type SystemdDropIn {
   sections: List<SystemdDropInSection>
 }
 
+// WHICH DROP-IN WINS. systemd.unit(5) (v255), "Description": the drop-in files of a unit -- its own
+// `.d/` directories AND, for a template instance foo@bar.service, the template's foo@.service.d/ -- are
+// sorted by FILE NAME and parsed in that order, regardless of which directory they reside in; a file
+// with the same name in a higher-priority directory replaces the other. A setting assigned twice takes
+// the later assignment (for Environment=, the later value of the same variable). So an instance drop-in
+// does NOT apply after the template's drop-ins by virtue of its directory: it applies after exactly the
+// files whose names sort before its own. The order is the byte order of the names.
+fn systemd_drop_in_applies_after(later_file_name: String, earlier_file_name: String) -> Bool {
+  later_file_name > earlier_file_name
+}
+
 fn systemd_drop_in_section_block(section: SystemdDropInSection) -> List<String> {
   match section {
     DropInUnitSection { directives: ds } =>

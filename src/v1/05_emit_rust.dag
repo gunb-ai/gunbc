@@ -271,13 +271,13 @@ import v1.compiler.emit {
   service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
   emit_typed_let_shared,
   child_from_key,
-  BoundOperation, RestBound, ShellBound, LocalBound, FileBound, BindingRefused,
+  BoundOperation, RestBound, ShellBound, UnboundOperation, FileBound, BindingRefused,
   ShellResultField, ShellResultChannel, ShellChanStdout, ShellChanStderr,
   ShellChanExitSuccess, ShellChanExitCode, ShellChanStdoutLines,
   ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes,
   ShellChannelNotRealizedByTarget, ShellCapturePolicyInputAbsent, shell_emission_refusal_fact, shell_result_channel_key,
   shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy,
-  bind_operation_transport, transport_binding_refusal_fact,
+  bind_operation_transport, transport_binding_refusal_fact, emit_unbound_operation_refusal,
   NativeEffectRealizationAdmission, NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator, NativeEffectRealizationUnavailable,
   NativeServiceEffect, NativeResourceEffect, NativeTransportHandler, NativeCapabilityToken, NativeEffectDeclSite, native_effect_resolution,
   admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal,
@@ -1669,13 +1669,11 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
 // emit_keyed_container_type. These two arms asked nothing and spelled base<args> unconditionally,
 // so a retyped std.algebra fn's declared return type emitted Rc<FinitelySupportedFunction<K, V>>
 // beside the Rc<HashMap<K, V>> its callers pass to v1_rt::map_get / rc_map_insert /
-// sorted_map_keys (the 26 E0308/E0282 in v1-stage0-std-core). Same predicate, same lowering,
-// same fallback_base shape as the sibling -- no new mechanism
-// (carrier: gunbc.recurring_failure_mode
-// one_name_two_representations_kernel_map_and_finitely_supported_function -- this render path was
-// the standing case of one name emitting as two host shapes: the keyed arm asked here is the same
-// one node_is_keyed_collection answers, so the spelling Map<K, V> and its declaration's host table
-// lower as one type at every position, declared return types included).
+// sorted_map_keys (the E0308/E0282 class once std.algebra spells the keyed carrier as its own
+// FinitelySupportedFunction<K, V>; that retype is gunb-ai/gunbc#14876, this arm's consumer). Same
+// predicate, same lowering, same fallback_base shape as the sibling -- no new mechanism. On a corpus
+// that never spells the keyed algebra as an applied declared type the arm answers false and the
+// output is unchanged.
 fn render_rust_applied_nonpeeling_type(n: Node, base_name: String, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let base = match rust_seed_host_container_base(name: base_name) {
     Present { value: host } => host
@@ -18266,7 +18264,7 @@ fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<Str
     ShellBound { transport: t, result_fields: rsf } => emit_shell_call(op_name: op_name, transport: t, registry: registry, depth: depth, result_fields: rsf, op_node: op_node, source_indices: source_indices, env: env, shared_types: shared_types, emit_info: emit_info)
     FileBound { verb: v, path_template: pt, result_fields: fs } =>
       emit_file_call(verb: v, path_template: pt, result_fields: fs, source_indices: source_indices)
-    LocalBound => emit_local_call(op_name: op_name)
+    UnboundOperation => emit_unbound_operation_refusal(op_name: op_name, target: Rust)
     BindingRefused { cause: cz } =>
       emit_error_expr(
         message: concat("transport binding refused for operation '", op_name, "': ", transport_binding_refusal_fact(cause: cz)),
@@ -19382,11 +19380,6 @@ fn emit_file_return(result_fields: List<FileResultField>) -> String {
   if n == 0 { "Ok(())" }
   else if n == 1 { concat("Ok(", field_exprs |> join(separator: ", "), ")") }
   else { concat("Ok((", field_exprs |> join(separator: ", "), "))") }
-}
-
-fn emit_local_call(op_name: String) -> String {
-  concat("// Local binding -- direct function call\n",
-    "Ok(", emit_ident(name: op_name, target: Rust), "())")
 }
 
 // A RESOURCE WITH CAPABILITIES RENDERS AS AN #[async_trait] TRAIT, so the crate that carries one

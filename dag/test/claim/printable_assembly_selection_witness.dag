@@ -5,10 +5,12 @@ import extdeps.languages.json.emit { serialize_json }
 import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased, Metal }
 import product.printed_chassis.cassette { rear_socket_bolt_clearances }
 import product.printed_chassis.printable_assembly {
-  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct, PrintableAssembly,
-  PrintableAssemblyReady, PrintableAssemblyRefused, printable_manifest, printed_assembly_root_wire, printed_assembly_root_from_wire, printed_assembly_roots,
+  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct, A16BlowerFlatOnEndDuct, PrintableAssembly,
+  PrintableAssemblyReady, PrintableAssemblyRefused, PrintableAssemblySelection, printable_manifest, printed_assembly_root_wire, printed_assembly_root_from_wire, printed_assembly_roots,
 }
-import product.printed_chassis.printable_assembly_selection { select_printable_assembly }
+import product.printed_chassis.printable_assembly_selection { select_printable_assembly, duct_selection, blower_selection, plane_on_end_selection }
+import product.printed_chassis.duct_card_catalog { DuctCard, a16_duct_card, t4_duct_card, a2_duct_card, t10_duct_card, duct_card_unread_reason }
+import product.printed_chassis.gpu_duct { PlugAndFlange, FullDuct }
 import product.printed_chassis.preparation_identity { manifest_identity }
 
 fn selected(root: PrintedAssemblyRoot) -> PrintableAssembly? {
@@ -55,6 +57,7 @@ test fn w_a16_duct_selects_exactly_its_parts_and_power_keepout() -> Bool {
     && a16_selects(root: A16PlugFitRing, printed: "FIT-RING", with_fan: false)
     && a16_selects(root: A16SleeveFitRing, printed: "FIT-RING", with_fan: false)
     && a16_selects(root: A16BlowerDuct, printed: "DUCT", with_fan: true)
+    && a16_selects(root: A16BlowerFlatOnEndDuct, printed: "DUCT", with_fan: true)
 }
 
 // RED: the duct and the residential cassette share no part id. This is a claim about that pair only;
@@ -111,4 +114,47 @@ test fn w_the_prepared_root_is_bound_by_the_manifest_digest() -> Bool {
 // A manifest without a root refuses rather than defaulting to the cassette.
 test fn w_a_manifest_without_a_root_refuses() -> Bool {
   match manifest_identity(content: "{\"parts\": []}") { Present { value: _ } => false Absent => true }
+}
+
+fn refuses_naming(s: PrintableAssemblySelection, card: DuctCard) -> Bool {
+  match s {
+    PrintableAssemblyReady { assembly: _ } => false
+    PrintableAssemblyRefused { reason: r } => r == duct_card_unread_reason(card: card) && string_contains(s: r, pattern: "end face")
+  }
+}
+
+// A card whose end face nobody has read has no dimensions to print from: every geometry shape refuses
+// and the refusal names the reading it needs, rather than falling back to the A16's.
+test fn w_an_unread_card_refuses_every_shape_by_naming_its_reading() -> Bool {
+  all([t4_duct_card, a2_duct_card, t10_duct_card], c =>
+    refuses_naming(s: duct_selection(root: A16PlugDuct, card: c, mount: PlugAndFlange, extent: FullDuct), card: c)
+      && refuses_naming(s: blower_selection(root: A16BlowerDuct, card: c), card: c)
+      && refuses_naming(s: plane_on_end_selection(root: A16BlowerFlatOnEndDuct, card: c), card: c))
+}
+
+// CONTROL: the read card selects through the same function.
+test fn w_the_read_card_selects_through_the_same_function() -> Bool {
+  match duct_selection(root: A16PlugDuct, card: a16_duct_card, mount: PlugAndFlange, extent: FullDuct) {
+    PrintableAssemblyReady { assembly: _ } => true
+    PrintableAssemblyRefused { reason: _ } => false
+  }
+}
+
+// A CHANGE DETECTOR for the printed A16 fit ring, honestly labelled. The a16-plug-fit-ring root was printed
+// out of band and the operator reported "part fits the A16" on 2026-10-26 (artifacts/printing/
+// a16-plug-fit-ring/manual-start-2026-10-26.json; product.printed_chassis.fit_observations plug_fit_ring_fit).
+// That record carries only the 3mf project_sha256, no manifest digest or part geometry, so this literal
+// CANNOT be re-derived from the print: it was recorded at 0633c1d from the tree, whose fit-ring geometry is
+// unchanged since before the print (git history), and it covers the WHOLE manifest including note and part
+// names (the CARD name changed at that commit). A red here means a printed dimension moved OR text changed;
+// a reviewer must tell which before re-recording. It becomes a grounded control when a print record carries the
+// FIT-RING part geometry to digest instead.
+test fn w_the_a16_plug_fit_ring_is_the_geometry_that_was_printed_and_fitted() -> Bool {
+  match selected(root: A16PlugFitRing) {
+    Present { value: a } => match manifest_identity(content: serialize_json(v: printable_manifest(a: a))) {
+      Present { value: m } => m.root_wire == "a16-plug-fit-ring" && m.digest.hex == "c12992f1156658e0c81955f452c61e2bd9a02fa674691e2d671ed39180e66ac2"
+      Absent => false
+    }
+    Absent => false
+  }
 }

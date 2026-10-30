@@ -91,7 +91,14 @@ import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   megarac_boot_run_record, MegaRacRunRecord, BootParam5Reading, BootParam5NotTaken,
   BootParam5Read, BootParam5Unread, BmcUnreachable,
   megarac_boot_override_consumption, megarac_power_after_from_observation,
+  BootOverrideClears, boot_override_clears_none_found,
+  megarac_override_release, megarac_stale_override_clearance, boot_param5_owes_clear,
+  boot_param5_clear_not_required_reason, BootParam5Clear, BootParam5ClearIssued, BootParam5ClearNotIssued,
+  BootOverrideClear, OverrideCleared, OverrideClearLeftPending, OverrideClearNotRequired, OverrideClearUnread,
+  StaleOverrideClearance, StaleOverrideNoneFound, StaleOverrideCleared, StaleOverrideWouldNotClear, StaleOverrideUnread,
+  StaleOverrideClearedUnread, boot_override_standing_after_clear,
 }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootparam5_no_override }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootCdrom, uefi_once_boot_selection,
   ipmi_boot_expected_flag_rendering, ipmi_boot_expected_device_rendering,
@@ -107,7 +114,7 @@ import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacHandoff, MegaRacHandoffNotReached, MegaRacHandoffWithheldAtRecheck, MegaRacHandoffAttempted,
   MegaRacHandoffCallResult, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed,
   MegaRacEndMedia, MegaRacEndMediaNotTaken, MegaRacEndMediaObserved,
-  megarac_power_reading_not_taken, megarac_override_standing,
+  megarac_power_reading_not_taken, megarac_override_standing, boot_override_pending,
   HarnessFinding, MegaRacEveryReadFailed, MegaRacMediaAttachNotReady, MegaRacMediaAttachSessionHeld,
   MegaRacHandoffWithheld, MegaRacHandoffUnconfirmed, MegaRacPresentationAfterHandoff,
   MegaRacCredentialMayRemain,
@@ -536,6 +543,17 @@ fn p5_pending_text() -> String {
   ], "\n")
 }
 
+// THE BYTE-GRAIN RENDERINGS, the committed captures rather than assembled words. The clear's question is
+// asked of THESE (extdeps.bmc.ipmitool_observed_output; the flag-valid bit sits in 'Boot parameter data:'),
+// because a row that judged a clear from word-only text would pass on the unreadable-bytes rule and prove
+// nothing about the bytes. 'a014000000' is this lane's cdrom/EFI/next-boot set; '0000000000' is the cleared
+// state; 'a004000000' is a valid flag naming PXE -- foreign to this attempt, still a flag.
+fn p5_bytes_pending() -> String = ipmitool_bootparam5_cdrom_efi_next_boot
+
+fn p5_bytes_cleared() -> String = ipmitool_bootparam5_no_override
+
+data p5_bytes_foreign_pending: String = "Boot parameter version: 1\nBoot parameter 5 is valid/unlocked\nBoot parameter data: a004000000\n Boot Flags :\n   - Boot Flag Valid\n   - Options apply to only next boot\n   - BIOS EFI boot \n   - Boot Device Selector : Force Boot from PXE\n"
+
 data p5_consumed_text: String = "Boot parameter version: 1\nBoot Flag Invalid\nBoot Device Selector : No override"
 
 fn p5_unread(which: String) -> BootParam5Reading {
@@ -600,11 +618,11 @@ test fn the_two_reads_become_the_core_input_standings() -> Bool {
 test fn the_census_end_marker_is_what_establishes_consumption() -> Bool {
   let sel = uefi_once_boot_selection(device: IpmiBootCdrom)
   let before = BootParam5NotTaken { reason: "not taken yet" }
-  (megarac_boot_override_consumption(before: p5(p5_consumed_text), after: p5(p5_consumed_text), selection: sel,
+  (megarac_boot_override_consumption(before: p5(p5_consumed_text), after: p5(p5_consumed_text), clears: no_clears(), selection: sel,
       booted_through_override_device: true) == OverrideConsumedByAttempt)
-    && (megarac_boot_override_consumption(before: p5(p5_consumed_text), after: p5(p5_consumed_text), selection: sel,
+    && (megarac_boot_override_consumption(before: p5(p5_consumed_text), after: p5(p5_consumed_text), clears: no_clears(), selection: sel,
       booted_through_override_device: false) == OverrideNoLongerPendingAfterAttempt)
-    && (match megarac_boot_override_consumption(before: before, after: p5(p5_consumed_text), selection: sel,
+    && (match megarac_boot_override_consumption(before: before, after: p5(p5_consumed_text), clears: no_clears(), selection: sel,
       booted_through_override_device: true) {
         OverrideConsumptionUnread { reason: _ } => true
         _ => false
@@ -714,6 +732,12 @@ fn no_smpro() -> SmproReading = SmproNotTaken { reason: "fixture: smpro was not 
 
 fn no_param5() -> BootParam5Reading = BootParam5NotTaken { reason: "fixture: param5 was not read" }
 
+// THE NEUTRAL CLEARS, for a raw record whose run never owed one. None-found is the neutral element of the
+// consumption fold, so these fixtures keep asserting what they always asserted -- and the two rows that DO
+// exercise the clears bring their own, below.
+fn no_clears() -> BootOverrideClears =
+  boot_override_clears_none_found(reason: "fixture: no clear ran in this raw record" as NonEmptyStr)
+
 // A raw record that reached every section: media attached, handoff called, end look taken, override
 // consumed by the census boot, power back on. The classification must agree, section by section.
 fn a_full_run() -> MegaRacRunRecord {
@@ -732,6 +756,7 @@ fn a_full_run() -> MegaRacRunRecord {
     smpro_census: no_smpro(),
     override_before: no_param5(),
     override_after: no_param5(),
+    override_clears: no_clears(),
     override: OverrideConsumedByAttempt,
     power_after: HostPowerRead { state: PowerOn },
     timing: boot_phase_timing_not_taken(reason: "fixture: no timing"),
@@ -751,6 +776,7 @@ fn a_stopped_run() -> MegaRacRunRecord {
     smpro_census: no_smpro(),
     override_before: no_param5(),
     override_after: no_param5(),
+    override_clears: no_clears(),
     override: OverrideNotHandedOff { reason: "nothing was handed off" as NonEmptyStr },
     power_after: HostPowerNotTaken { reason: "the actuation refused" as NonEmptyStr },
     timing: boot_phase_timing_not_taken(reason: "fixture: no timing"),
@@ -1123,7 +1149,7 @@ test fn a_boot_that_never_reached_anything_derives_only_the_power_finding() -> B
   let off_without_end = MegaRacRunRecord {
     census_ended: false, end_media: stopped.end_media, handoff_media: stopped.handoff_media, media: stopped.media,
     smpro_power_on: stopped.smpro_power_on, smpro_census: stopped.smpro_census,
-    override_before: stopped.override_before, override_after: stopped.override_after,
+    override_before: stopped.override_before, override_after: stopped.override_after, override_clears: stopped.override_clears,
     override: stopped.override, power_after: HostPowerRead { state: PowerOff }, timing: stopped.timing, fan_gate: stopped.fan_gate,
   }
   let findings = derived_of(off_without_end)
@@ -1136,6 +1162,9 @@ test fn a_boot_that_never_reached_anything_derives_only_the_power_finding() -> B
          HandoffUnconfirmed { handoff: _ } => false
          PresentationAfterHandoff { presentation: _ } => false
          OverrideNotConsumed { consumption: _ } => false
+         OverrideStaleNotCleared { clearance: _ } => false
+         OverrideStaleClearedUnread { reason: _ } => false
+         OverrideLeftPendingAtRelease { clear: _ } => false
        })
 }
 
@@ -1151,7 +1180,7 @@ test fn a_refused_medium_derives_not_ready() -> Bool {
       result: refused_result(),
     },
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
-    override_before: raw.override_before, override_after: raw.override_after,
+    override_before: raw.override_before, override_after: raw.override_after, override_clears: raw.override_clears,
     override: raw.override, power_after: raw.power_after, timing: raw.timing, fan_gate: raw.fan_gate,
   }
   let findings = derived_of(refused)
@@ -1174,7 +1203,7 @@ test fn a_session_held_medium_derives_its_own_finding_not_not_ready() -> Bool {
       result: held_result(),
     },
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
-    override_before: raw.override_before, override_after: raw.override_after,
+    override_before: raw.override_before, override_after: raw.override_after, override_clears: raw.override_clears,
     override: raw.override, power_after: raw.power_after, timing: raw.timing, fan_gate: raw.fan_gate,
   }
   let findings = derived_of(held)
@@ -1212,7 +1241,7 @@ test fn a_still_served_medium_after_the_handoff_derives_the_finding_once() -> Bo
       before: presented_result(), handoff: MegaRacHandoffConfirmed, after: a_not_served_look()
     },
     media: raw.media, smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
-    override_before: raw.override_before, override_after: raw.override_after,
+    override_before: raw.override_before, override_after: raw.override_after, override_clears: raw.override_clears,
     override: raw.override, power_after: raw.power_after, timing: raw.timing, fan_gate: raw.fan_gate,
   }
   let findings = derived_of(bad)
@@ -1231,19 +1260,19 @@ test fn the_override_and_power_findings_derive_from_their_fields() -> Bool {
   let pending = MegaRacRunRecord {
     census_ended: true, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
-    override_before: raw.override_before, override_after: raw.override_after,
+    override_before: raw.override_before, override_after: raw.override_after, override_clears: raw.override_clears,
     override: OverrideStillPendingAfterAttempt, power_after: raw.power_after, timing: raw.timing, fan_gate: raw.fan_gate,
   }
   let off_no_terminal = MegaRacRunRecord {
     census_ended: false, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
-    override_before: raw.override_before, override_after: raw.override_after,
+    override_before: raw.override_before, override_after: raw.override_after, override_clears: raw.override_clears,
     override: raw.override, power_after: HostPowerRead { state: PowerOff }, timing: raw.timing, fan_gate: raw.fan_gate,
   }
   let off_with_terminal = MegaRacRunRecord {
     census_ended: true, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
-    override_before: raw.override_before, override_after: raw.override_after,
+    override_before: raw.override_before, override_after: raw.override_after, override_clears: raw.override_clears,
     override: raw.override, power_after: HostPowerRead { state: PowerOff }, timing: raw.timing, fan_gate: raw.fan_gate,
   }
   count(derived_of(pending)) == 1
@@ -1275,4 +1304,282 @@ test fn what_the_caller_supplies_never_enters_the_derived_list() -> Bool {
   let both = run_record_findings(record: r)
   count(both.standing) == 2 && count(both.derived) == 0
     && count(both.standing) == count(r.standing)
+}
+
+// ─── THE CLEARS AROUND THE SET: WHAT EACH READ MEANT, AND WHAT THE ROW MUST SAY ──────────────────
+// The pre-power clear is what makes the pair of parameter-5 reads mean anything. Boot 5 read
+// 'Boot parameter data: a014000000' -- this attempt's own cdrom/efi/once bytes -- before its set and the
+// SAME bytes after it, and the classification returned OverridePendingBeforeAttempt without ever looking at
+// the second read (run 40258937016; clever-bat-328's finding). Two claims follow, and both are about the
+// readings being IDENTICAL: only the clear's own readback separates an override this attempt consumed from
+// one it inherited.
+
+// A RUN RECORD WITH ITS CLEARS SWAPPED: every other field is the fixture's, so the only thing a row below
+// varies is what the two clears said.
+fn with_clears(r: MegaRacRunRecord, clears: BootOverrideClears) -> MegaRacRunRecord {
+  MegaRacRunRecord {
+    census_ended: r.census_ended,
+    end_media: r.end_media,
+    handoff_media: r.handoff_media,
+    media: r.media,
+    smpro_power_on: r.smpro_power_on,
+    smpro_census: r.smpro_census,
+    override_before: r.override_before,
+    override_after: r.override_after,
+    override_clears: clears,
+    override: r.override,
+    power_after: r.power_after,
+    timing: r.timing,
+    fan_gate: r.fan_gate,
+  }
+}
+
+fn clears_with(stale: StaleOverrideClearance, released: BootOverrideClear) -> BootOverrideClears {
+  BootOverrideClears {
+    stale: stale,
+    stale_read: no_param5(),
+    released: released,
+    release_read: no_param5(),
+  }
+}
+
+fn pending_selection() -> IpmiBootSelection = uefi_once_boot_selection(device: IpmiBootCdrom)
+
+// THE SAME TWO READS, TWO VERDICTS, SEPARATED ONLY BY THE CLEAR'S READBACK. Before: pending. After:
+// cleared. With a clear that LANDED, that pair is this attempt consuming its own override; with no clear
+// (nothing found, or a clear that would not take), the same pair is an override that predates the attempt
+// and cannot be attributed to it. A fold that ignored clears would answer identically for both rows --
+// which is precisely the boot-5 defect, asserted here as the thing that must differ.
+test fn a_cleared_stale_override_is_what_makes_the_after_read_informative() -> Bool {
+  let sel = pending_selection()
+  (megarac_boot_override_consumption(before: p5(p5_pending_text()), after: p5(p5_consumed_text),
+      clears: clears_with(stale: StaleOverrideCleared, released: OverrideCleared), selection: sel,
+      booted_through_override_device: true) == OverrideConsumedByAttempt)
+    && (megarac_boot_override_consumption(before: p5(p5_pending_text()), after: p5(p5_consumed_text),
+      clears: no_clears(), selection: sel, booted_through_override_device: true) == OverridePendingBeforeAttempt)
+    && (megarac_boot_override_consumption(before: p5(p5_pending_text()), after: p5(p5_consumed_text),
+      clears: clears_with(stale: StaleOverrideWouldNotClear, released: OverrideClearNotRequired { reason: "withheld" }),
+      selection: sel, booted_through_override_device: true) == OverridePendingBeforeAttempt)
+}
+
+// THE CLEAR'S READBACK DECIDES ITS OWN VERDICT, in both directions, and an unread one is never read as a
+// success. Three reductions of the same primitive, each against the committed renderings: a readback that
+// still names the override is 'left pending'; one that says no override is 'cleared'; a read that never
+// answered is 'unread', never the optimistic arm. This is the same refusal the Check arm of a reconcile
+// step makes (dag/std/realization_reconcile.dag): no convergence is claimed without the check's evidence.
+test fn the_releases_verdict_comes_from_its_readback_alone() -> Bool {
+  (megarac_override_release(clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_pending()) })
+    == OverrideClearLeftPending)
+    && (megarac_override_release(clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) })
+      == OverrideCleared)
+    && (match megarac_override_release(clear: BootParam5ClearIssued { write_answered: true, readback: p5_unread("transport") }) {
+         OverrideClearUnread { reason: _ } => true
+         _ => false
+       })
+    && (match megarac_override_release(clear: BootParam5ClearNotIssued { reason: "nothing was set" }) {
+         OverrideClearNotRequired { reason: _ } => true
+         _ => false
+       })
+}
+
+// A STALE OVERRIDE THAT WILL NOT CLEAR IS ITS OWN ENDING. Pending before, cleared, and the readback still
+// names it: that is StaleOverrideWouldNotClear, the state the pre-power step refuses on. The same readback
+// saying 'no override' is StaleOverrideCleared -- the route's go-ahead -- and a before-read that showed
+// nothing owes no write at all.
+test fn a_stale_override_that_would_not_clear_is_its_own_ending() -> Bool {
+  (megarac_stale_override_clearance(before: p5(p5_bytes_pending()),
+    clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_pending()) })
+    == StaleOverrideWouldNotClear)
+    && (megarac_stale_override_clearance(before: p5(p5_bytes_pending()),
+      clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) })
+      == StaleOverrideCleared)
+    && (megarac_stale_override_clearance(before: p5(p5_bytes_cleared()),
+      clear: BootParam5ClearNotIssued { reason: "nothing was pending" }) == StaleOverrideNoneFound)
+    && (match megarac_stale_override_clearance(before: p5_unread("transport"),
+      clear: BootParam5ClearNotIssued { reason: "not issued on an unread standing" }) {
+        StaleOverrideUnread { reason: _ } => true
+        _ => false
+      })
+}
+
+// THE TWO CLEAR FAILURES ARE TWO FINDINGS, NOT ONE. A release that left the flag pending is what the NEXT
+// attempt inherits (boot 6, run 40264233543); a stale override that would not clear is what this attempt
+// refused on (boot 5, run 40258937016). A record carries the readings either way, and each raises exactly
+// one finding of its own -- an unread release raises the release finding too, because 'we never learned
+// whether it cleared' exposes the next attempt exactly as 'it is still pending' does.
+test fn each_clear_failure_raises_a_finding_of_its_own() -> Bool {
+  let left = derived_of(with_clears(r: a_full_run(), clears: clears_with(stale: StaleOverrideCleared, released: OverrideClearLeftPending)))
+  let unread = derived_of(with_clears(r: a_full_run(), clears: clears_with(stale: StaleOverrideCleared, released: OverrideClearUnread { reason: "the read never answered" })))
+  let stale = derived_of(with_clears(r: a_full_run(), clears: clears_with(stale: StaleOverrideWouldNotClear, released: OverrideClearNotRequired { reason: "nothing was set" })))
+  let clean = derived_of(with_clears(r: a_full_run(), clears: clears_with(stale: StaleOverrideCleared, released: OverrideCleared)))
+  (count(left) == 1 && any(left, f => match f { OverrideLeftPendingAtRelease { clear: _ } => true _ => false }))
+    && (count(unread) == 1 && any(unread, f => match f { OverrideLeftPendingAtRelease { clear: _ } => true _ => false }))
+    && (count(stale) == 1 && any(stale, f => match f { OverrideStaleNotCleared { clearance: _ } => true _ => false }))
+    && count(clean) == 0
+}
+
+// THE RELEASE IS OWED BY AN ATTEMPT THAT DROVE THE CONTROLLER, and by no one else. This is the predicate
+// the route asks before it clears on the way out, so it is pinned arm by arm: an attempted set -- even one
+// the readback could not confirm -- owes the release, because the write may have landed; a set withheld at
+// the recheck, or never reached, owns no override and must not be clearing a parameter it never touched.
+// (The dry model is cooperative, so no matrix world reaches the exit tail without a set; what the matrix
+// cannot pin, this pins.)
+test fn only_an_attempted_set_owes_the_release() -> Bool {
+  !megarac_handoff_issued_set(h: MegaRacHandoffNotReached { reason: "attach refused" })
+    && !megarac_handoff_issued_set(h: MegaRacHandoffWithheldAtRecheck { before: presented_result() })
+    && megarac_handoff_issued_set(h: MegaRacHandoffAttempted {
+      before: presented_result(), handoff: MegaRacHandoffConfirmed, after: a_still_served_look() })
+    && megarac_handoff_issued_set(h: MegaRacHandoffAttempted {
+      before: presented_result(), handoff: MegaRacHandoffAttemptedUnconfirmed { reason: "no answer" },
+      after: a_still_served_look() })
+}
+
+// ─── THE CLEAR'S QUESTION IS NOT THE CONSUMPTION QUESTION (review 87528) ───────────────────────────
+// A valid flag naming ANOTHER device is not pending for this attempt -- and that is exactly why the clear
+// cannot borrow the consumption predicate. This is the concrete case the boot-5/6 lockout exposed: a PXE
+// override an earlier run or an operator left, with this attempt selecting cdrom/EFI/next-boot. Asked the
+// consumption question it is 'not pending'; asked the clear's question it is a flag whose bytes the set is
+// about to overwrite, and the route owes a clear for it.
+test fn an_override_for_another_device_still_owes_the_clear() -> Bool {
+  (boot_param5_owes_clear(read: p5(p5_bytes_foreign_pending))
+    && !boot_override_pending(readback: p5_bytes_foreign_pending, selection: pending_selection()))
+    && (boot_param5_owes_clear(read: p5(p5_bytes_pending()))
+      && boot_override_pending(readback: p5_bytes_pending(), selection: pending_selection()))
+    && (!boot_param5_owes_clear(read: p5(p5_bytes_cleared()))
+      && !boot_override_pending(readback: p5_bytes_cleared(), selection: pending_selection()))
+}
+
+// A FOREIGN FLAG IS NEVER 'NONE FOUND'. The two states are different exposures and the receipt cannot
+// collapse them: 'none found' is what the controller itself said, and a clear that did not take over bytes
+// that still hold a valid flag -- this attempt's or anybody else's -- is WouldNotClear, which the pre-power
+// step refuses on (DESIGN §5: no plausible output is fabricated about what stood).
+test fn a_foreign_override_is_reported_as_left_pending_never_as_none_found() -> Bool {
+  (match megarac_stale_override_clearance(before: p5(p5_bytes_foreign_pending),
+    clear: BootParam5ClearNotIssued { reason: "no account was modeled to clear with" }) {
+      StaleOverrideUnread { reason: _ } => true
+      _ => false
+    })
+    && (megarac_stale_override_clearance(before: p5(p5_bytes_foreign_pending),
+      clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_foreign_pending) })
+      == StaleOverrideWouldNotClear)
+    && (megarac_stale_override_clearance(before: p5(p5_bytes_foreign_pending),
+      clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) })
+      == StaleOverrideCleared)
+    && (megarac_stale_override_clearance(before: p5(p5_bytes_cleared()),
+      clear: BootParam5ClearNotIssued { reason: "the controller said nothing was in force" })
+      == StaleOverrideNoneFound)
+}
+
+// THE RELEASE HANDS THE NEXT ATTEMPT A CONTROLLER WITH NOTHING IN FORCE, so it asks the same anything-pending
+// question: a readback still naming any valid flag -- including one this attempt never set -- is 'left
+// pending', which is the finding the next attempt would otherwise inherit blind.
+test fn the_release_reports_a_foreign_flag_as_left_pending_too() -> Bool {
+  (megarac_override_release(clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_foreign_pending) })
+    == OverrideClearLeftPending)
+    && (megarac_override_release(clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) })
+      == OverrideCleared)
+}
+
+// BYTES NOBODY CAN READ ARE ANSWERED AS PENDING, never as cleared: an absent or unparseable 'Boot parameter
+// data:' line is not evidence that nothing is in force, so the route issues the clear and, if it still
+// cannot read the result, cannot claim it cleared (the same fail-closed direction as a Check arm refusing
+// rather than claiming convergence -- dag/std/realization_reconcile.dag).
+test fn unparseable_parameter_five_bytes_are_answered_as_pending() -> Bool {
+  boot_param5_owes_clear(read: p5("Boot parameter version: 1\nBoot parameter data: not-hex\n"))
+    && boot_param5_owes_clear(read: p5("Boot parameter version: 1\nBoot Flag Valid\n"))
+    && (megarac_override_release(clear: BootParam5ClearIssued { write_answered: true, readback: p5("Boot Flag Valid") })
+      == OverrideClearLeftPending)
+}
+
+// WHY NO CLEAR WAS ISSUED IS READ OFF THE READING THAT ANSWERED IT, so the receipt cannot say nothing was
+// pending about bytes nobody read: a read says what the controller said, an unread says nobody read it.
+test fn the_not_required_reason_names_the_reading_that_answered_it() -> Bool {
+  (string_contains(s: boot_param5_clear_not_required_reason(read: p5(p5_bytes_cleared())), pattern: "controller's own reading"))
+    && (string_contains(s: boot_param5_clear_not_required_reason(read: p5_unread("transport")), pattern: "could not be read"))
+    && (string_contains(s: boot_param5_clear_not_required_reason(read: no_param5()), pattern: "not taken"))
+}
+
+// ─── THE STANDING MUST BE ESTABLISHED BEFORE THE SET (side-chat REQUEST_CHANGES at 3a890b02, §5) ────────
+// 'Clear what is pending' was still fail-OPEN: a before-read nobody could read owed no clear, so the set went
+// in over an UNKNOWN controller -- the same exposure the pending-override check exists to close, one layer
+// down. The route's invariant is now 'the state the set goes in over is POSITIVELY READ AS CLEARED': by the
+// before-read, or by the clear's own readback. These rows pin the reduction; the executed route's refusal
+// (no set at all) is pinned in mtcollins1_boot_acceptance_matrix.
+test fn a_standing_nobody_read_owes_the_clear_too() -> Bool {
+  boot_param5_owes_clear(read: p5_unread("transport"))
+    && boot_param5_owes_clear(read: no_param5())
+    && boot_param5_owes_clear(read: p5(p5_bytes_pending()))
+    && !boot_param5_owes_clear(read: p5(p5_bytes_cleared()))
+}
+
+// AN UNREAD STANDING CLEARED BLIND IS ITS OWN ENDING: not 'none found' (the controller never said nothing
+// was in force) and not 'cleared' (the route never learned what it removed). The reason travels with it --
+// which of the two ways of not-looking this was -- because the receipt has to say so.
+test fn a_blind_clear_that_landed_reads_as_cleared_unread() -> Bool {
+  (match megarac_stale_override_clearance(before: p5_unread("transport"),
+    clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) }) {
+      StaleOverrideClearedUnread { reason: r } => string_contains(s: r as String, pattern: "could not be read")
+      _ => false
+    })
+    && (match megarac_stale_override_clearance(before: no_param5(),
+      clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) }) {
+        StaleOverrideClearedUnread { reason: r } => string_contains(s: r as String, pattern: "not taken")
+        _ => false
+      })
+    && (megarac_stale_override_clearance(before: p5(p5_bytes_pending()),
+      clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) })
+      == StaleOverrideCleared)
+    && (megarac_stale_override_clearance(before: p5(p5_bytes_cleared()),
+      clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_cleared()) })
+      == StaleOverrideNoneFound)
+}
+
+// THE BLIND CLEAR SURVIVES ONLY IF ITS OWN READBACK LANDS. Same unreadable before-read, three clear
+// outcomes: cleared (the set may go in), still in force (refuse), unread (refuse). 'We failed to look' is
+// never evidence that we looked and found nothing -- and a skipped clear over an unread standing says so in
+// its own words rather than reporting 'none found'.
+test fn a_blind_clear_that_never_answered_is_not_a_clearance() -> Bool {
+  (megarac_stale_override_clearance(before: p5_unread("transport"),
+    clear: BootParam5ClearIssued { write_answered: true, readback: p5(p5_bytes_pending()) })
+    == StaleOverrideWouldNotClear)
+    && (match megarac_stale_override_clearance(before: p5_unread("transport"),
+      clear: BootParam5ClearIssued { write_answered: true, readback: p5_unread("transport") }) {
+        StaleOverrideUnread { reason: _ } => true
+        _ => false
+      })
+    && (match megarac_stale_override_clearance(before: p5_unread("transport"),
+      clear: BootParam5ClearNotIssued { reason: "the route skipped it" }) {
+        StaleOverrideUnread { reason: r } =>
+          string_contains(s: r as String, pattern: "no clear was issued")
+            && !string_contains(s: r as String, pattern: "none found")
+        _ => false
+      })
+}
+
+// THE EFFECTIVE BEFORE-STANDING FOR THE CONSUMPTION JUDGMENT is what the post-clear read said, even when the
+// before-read never answered: the set went in over a controller positively read as cleared, which is what
+// makes the after-read informative rather than a description of bytes nobody saw.
+test fn a_blind_clear_still_replaces_the_pending_it_could_not_see() -> Bool {
+  (boot_override_standing_after_clear(before: OverrideFlagPending,
+    clearance: StaleOverrideClearedUnread { reason: "the before-read could not be read" })
+    == OverrideFlagNotPending)
+    && (match boot_override_standing_after_clear(before: OverrideFlagPending,
+      clearance: StaleOverrideUnread { reason: "the clear never answered" }) {
+        // An unanswered clear does not leave the route entitled to say the flag is still there either: the
+        // standing is unanswered, which is why the pre-power step refuses the set on it.
+        OverrideReadUnanswered { reason: _ } => true
+        _ => false
+      })
+}
+
+// AND IT RAISES ITS OWN FINDING. 'We cleared something we never saw' is an exposure the receipt owes the
+// reader -- distinct from OverrideStaleNotCleared (the attempt refused) and from the silent no-ops, so a
+// clean-looking run that cleared blind is still visible in its findings.
+test fn a_blind_clear_raises_a_finding_of_its_own() -> Bool {
+  let blind = derived_of(with_clears(r: a_full_run(),
+    clears: clears_with(stale: StaleOverrideClearedUnread { reason: "the before-read could not be read (transport)" },
+      released: OverrideCleared)))
+  (count(blind) == 1 && any(blind, f => match f { OverrideStaleClearedUnread { reason: _ } => true _ => false }))
+    && (count(derived_of(with_clears(r: a_full_run(),
+      clears: clears_with(stale: StaleOverrideCleared, released: OverrideCleared)))) == 0)
 }

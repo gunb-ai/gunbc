@@ -29,8 +29,9 @@ module test.claim.runner.runner_gpu_container_toolchain_witness
 // against the exact range pair srv3 shipped with (two accounts both at 100000+65536).
 
 import std.logic { Bool }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List, Int, String }
 import std.algebra { trim, string_contains }
+import std.measure { second_count }
 
 import product.host_identity { HostIdentity }
 
@@ -38,7 +39,13 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
 
+import gunbc.runner.runner_capability_labels { DropinPresent, host_capability_dropin_presence, host_capability_witness_of_reads }
 import gunbc.runner.runner_gpu_container_toolchain {
+  gpu_container_provision_start_leg,
+  gpu_container_provision_start_actions,
+  gpu_container_provision_start_admitted,
+  GpuContainerProvisionRun,
+  GpuContainerProvisioned, GpuContainerProvisionRefused,
   GpuContainerArm,
   GpuContainerArmOk, GpuContainerArmMissing, GpuContainerArmUnobserved,
   GpuContainerToolchainReadback,
@@ -53,10 +60,39 @@ import gunbc.runner.runner_gpu_container_toolchain {
   gpu_container_provision_plan_check_count,
   gpu_container_provision_step_names_include,
   GpuContainerProvisionCheck,
+  GpuContainerProvisionAction,
+  ProvisionOwnedDirectory,
+  ProvisionRootOwnedFile,
+  ProvisionSubordinateRangesFile,
+  ProvisionLegs,
+  ProvisionVerify,
+  ProvisionRefusal,
+  gpu_container_provision_subordinate_write,
+  GpuContainerProvisionMapScan,
+  GpuContainerProvisionMapClear,
+  GpuContainerProvisionMapMappedFromRange,
+  GpuContainerProvisionMapUnreadableRow,
+  GpuContainerProvisionMapNamespaceUnreadable,
+  GpuContainerProvisionNamespaceScope,
+  GpuContainerProvisionNamespaceInitial,
+  GpuContainerProvisionNamespaceChild,
+  GpuContainerProvisionNamespaceUnreadable,
+  GpuContainerProvisionNamespaceLinkRead,
+  GpuContainerProvisionNamespaceLinkUnreadable,
+  GpuContainerProvisionNamespaceBatch,
+  GpuContainerProvisionNamespaceBatchAligned,
+  GpuContainerProvisionNamespaceBatchUnreadable,
+  gpu_container_provision_namespace_scope,
+  gpu_container_provision_namespace_scan_pid_limit,
+  gpu_container_provision_namespace_batch_reading,
+  gpu_container_provision_map_scan,  gpu_container_provision_subordinate_write_bound,
+  gpu_container_provision_subordinate_lock_wait,
+  gpu_container_provision_subordinate_lock_conflict_exit_code,
   VerifyKeyringFingerprint,
   gpu_container_provision_check_verdict,
   GpuContainerProvisionStep,
   GpuContainerProvisioned, GpuContainerProvisionRefused, GpuContainerProvisionSkipped,
+  gpu_container_acceptance_image, gpu_container_acceptance_probe_argv,
   gpu_container_subordinate_integrity_holds,
   gpu_container_provision_subuid_verify_step,
   gpu_container_provision_subgid_verify_step,
@@ -77,11 +113,33 @@ import gunbc.runner.runner_registration_labels {
 
 import extdeps.shadow.subordinate_ids {
   SubordinateRange,
-  SubordinateFileRead, SubordinateFileUnreadable,
-  SubordinatePlanSteps, SubordinatePlanRefused,
+  SubordinateFileUnreadable, SubordinateFileRead, SubordinateFileReading,
+  SubordinatePlan, SubordinatePlanSteps, SubordinatePlanRefused,
   subordinate_collisions,
+  parse_subordinate_file,
+  parse_subordinate_file_exact,
   plan_subordinate_file,
+  render_subordinate_file,
+  subordinate_rows_after_plan,
+  subordinate_file_bytes,
+  subordinate_file_ranges,
+  subordinate_range_text,
 }
+
+import gunbc.typed_remote_file_write { typed_remote_file_step_failure_reason }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.sudo.elevation { sudo_program }
+import extdeps.tools.env { env_path_resolved_program }
+import extdeps.docker.cli {
+  docker_info_command, docker_program, docker_gpu_cdi_probe_run_command,
+}
+import extdeps.container.docker_ce { docker_ce_packages, docker_ce_rootless_prerequisite_packages }
+import gunbc.runner.runner_host_deploy { runner_host_gpu_container_toolchain_for, RunnerHostGpuToolchainFound, RunnerHostGpuToolchainAbsent, GpuContainerToolchainDesired, GpuContainerToolchainNotWanted, GpuContainerToolchainUnmeasured }
+import extdeps.container.nvidia_container_toolkit {
+  nvidia_ctk_cdi_generate_command, nvidia_ctk_cdi_list_command, nvidia_ctk_program,
+  nvidia_cdi_all_gpu_device,
+}
+import gunbc.runner.runner_gpu_container_toolchain { job_user_command }
 
 // ── THE READBACK GATE ────────────────────────────────────────────────────────────────────────
 
@@ -235,19 +293,31 @@ test fn disjoint_ranges_do_not_collide() -> Bool {
   length(subordinate_collisions(rs: [a, b])) == 0
 }
 
+
+// A READING AS THE HOST ROUTE WOULD PRODUCE IT. The BYTES ARE LITERAL, typed the way shadow writes them --
+// every line terminated, INCLUDING the last (MEASURED on srv3: 65 bytes for the three rows whose texts
+// total 62, i.e. one newline per row) -- and the ROWS come out of the production parser run over those
+// bytes, so neither side of the round-trip is minted from the renderer under test.
+//
+// A helper that rendered the bytes from rows (`bytes: render_subordinate_file(rs: rs)`) made every
+// byte-identity assertion in this file true by construction: `render(rows) == bytes` where bytes is
+// defined as render(rows) cannot fail, and it failed to fail exactly once -- the renderer once joined the
+// rows with "\n" and stopped, and every witness still passed while the real file ended in a newline, so
+// each converge would have rewritten an UNCHANGED /etc/subuid by one byte. Supplying bytes literally and
+// rows through the parser is what DESIGN §5 asks of an independent oracle and what §3 forbids pairing.
+fn subordinate_read_of_file(path: String, stdout: String) -> SubordinateFileReading {
+  parse_subordinate_file(path: path, exit_code: 0, stdout: stdout, stderr: "")
+}
+
 // THE PLAN REFUSES TO MOVE THE JOB USER ONTO A RANGE HELD BY AN ACCOUNT THE MODEL DID NOT NAME AS
 // DISPLACEABLE. The job user is asked for 100000+65536, which the undeclared admin account "gunbc-fleet"
 // already holds; the model only permits moving "briansrls". The plan must refuse rather than evict an
 // account whose container store nobody has checked — moving it is the exact silent downgrade the manager's
 // constraint forbids.
 test fn a_plan_refuses_to_displace_an_undeclared_account() -> Bool {
-  let reading = SubordinateFileRead {
+  let reading = subordinate_read_of_file(
     path: "/etc/subuid",
-    ranges: [
-      SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 },
-      SubordinateRange { account: "gunbc-fleet" as NonEmptyStr, first: 100000, count: 65536 },
-    ],
-  }
+    stdout: "ghrunner:100000:65536\ngunbc-fleet:100000:65536\n")
   match plan_subordinate_file(
     path: "/etc/subuid",
     reading: reading,
@@ -259,7 +329,7 @@ test fn a_plan_refuses_to_displace_an_undeclared_account() -> Bool {
     displacee_regrant_first: 400000,
   ) {
     SubordinatePlanRefused { reason: _ } => true
-    SubordinatePlanSteps { steps: _ } => false
+    SubordinatePlanSteps { steps: _, rows: _ } => false
   }
 }
 
@@ -267,14 +337,9 @@ test fn a_plan_refuses_to_displace_an_undeclared_account() -> Bool {
 // that overlaps a surviving account must refuse, not create a fresh collision behind the job user's
 // back. Here briansrls would be re-granted onto 165536, which gunbc-worker already holds.
 test fn a_plan_refuses_when_the_regrant_would_collide() -> Bool {
-  let reading = SubordinateFileRead {
+  let reading = subordinate_read_of_file(
     path: "/etc/subuid",
-    ranges: [
-      SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 },
-      SubordinateRange { account: "briansrls" as NonEmptyStr, first: 100000, count: 65536 },
-      SubordinateRange { account: "gunbc-worker" as NonEmptyStr, first: 165536, count: 65536 },
-    ],
-  }
+    stdout: "ghrunner:100000:65536\nbriansrls:100000:65536\ngunbc-worker:165536:65536\n")
   match plan_subordinate_file(
     path: "/etc/subuid",
     reading: reading,
@@ -286,7 +351,7 @@ test fn a_plan_refuses_when_the_regrant_would_collide() -> Bool {
     displacee_regrant_first: 165536,
   ) {
     SubordinatePlanRefused { reason: _ } => true
-    SubordinatePlanSteps { steps: _ } => false
+    SubordinatePlanSteps { steps: _, rows: _ } => false
   }
 }
 
@@ -304,7 +369,7 @@ test fn an_unreadable_subordinate_file_refuses_the_plan() -> Bool {
     displacee_regrant_first: 231072,
   ) {
     SubordinatePlanRefused { reason: _ } => true
-    SubordinatePlanSteps { steps: _ } => false
+    SubordinatePlanSteps { steps: _, rows: _ } => false
   }
 }
 
@@ -315,14 +380,9 @@ test fn an_unreadable_subordinate_file_refuses_the_plan() -> Bool {
 test fn the_srv3_collision_resolves_to_steps_when_the_named_account_moves() -> Bool {
   match plan_subordinate_file(
     path: "/etc/subuid",
-    reading: SubordinateFileRead {
+    reading: subordinate_read_of_file(
       path: "/etc/subuid",
-      ranges: [
-        SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 },
-        SubordinateRange { account: "ubuntu" as NonEmptyStr, first: 100000, count: 65536 },
-        SubordinateRange { account: "briansrls" as NonEmptyStr, first: 165536, count: 65536 },
-      ],
-    },
+      stdout: "ghrunner:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536\n"),
     account: "ghrunner" as NonEmptyStr,
     want_first: 100000,
     want_count: 65536,
@@ -330,7 +390,7 @@ test fn the_srv3_collision_resolves_to_steps_when_the_named_account_moves() -> B
     displaceable_store_free: true,
     displacee_regrant_first: 231072,
   ) {
-    SubordinatePlanSteps { steps: _ } => true
+    SubordinatePlanSteps { steps: _, rows: _ } => true
     SubordinatePlanRefused { reason: _ } => false
   }
 }
@@ -342,13 +402,9 @@ test fn the_srv3_collision_resolves_to_steps_when_the_named_account_moves() -> B
 test fn the_plan_refuses_when_the_displaceable_account_has_a_store() -> Bool {
   match plan_subordinate_file(
     path: "/etc/subuid",
-    reading: SubordinateFileRead {
+    reading: subordinate_read_of_file(
       path: "/etc/subuid",
-      ranges: [
-        SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 },
-        SubordinateRange { account: "ubuntu" as NonEmptyStr, first: 100000, count: 65536 },
-      ],
-    },
+      stdout: "ghrunner:100000:65536\nubuntu:100000:65536\n"),
     account: "ghrunner" as NonEmptyStr,
     want_first: 100000,
     want_count: 65536,
@@ -357,7 +413,7 @@ test fn the_plan_refuses_when_the_displaceable_account_has_a_store() -> Bool {
     displacee_regrant_first: 231072,
   ) {
     SubordinatePlanRefused { reason: _ } => true
-    SubordinatePlanSteps { steps: _ } => false
+    SubordinatePlanSteps { steps: _, rows: _ } => false
   }
 }
 
@@ -838,4 +894,673 @@ test fn the_gpu_label_set_always_carries_the_gpu_capability() -> Bool {
     && gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: []).any(l => l == gunbc_gpu_docker_label)
     && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [browser_held()]).any(l => l == gunbc_gpu_docker_label)
     && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: []).any(l => l == gunbc_gpu_docker_label)
+}
+
+// ── THE EMITTED ARGV IS THE CONTRACT, NOT THE INTENT ─────────────────────────────────────────
+//
+// Two defects the whole witness suite missed and a live host caught on its first run (srv3,
+// 2026-10-26), because every claim so far asks a QUESTION OF A MODEL VALUE and none inspects the word
+// list that leaves for the host. Both were silent, both were fatal to the arm they belonged to, and both
+// were invisible until something actually exec'd:
+//   - nvidia-ctk's argv rows began with "nvidia-ctk" while argv_command also carries it as the program,
+//     and argv_words PREPENDS the program, so the host received `nvidia-ctk nvidia-ctk cdi generate …`
+//     and exited 3 with "unknown command nvidia-ctk". The CDI arm was red for a spelling.
+//   - job_user_command put the DOCKER_HOST assignment in FRONT of sudo, and /etc/sudoers is
+//     `Defaults env_reset`, so the value was erased before docker ran; docker fell back to the rootful
+//     socket and both job-user arms certified a daemon that was never contacted.
+// These claims pin the two shapes at the only level that would have caught them: the words.
+
+fn word_at(words: List<String>, n: Int) -> String {
+  match words.get(index: n) {
+    Present { value: w } => w
+    Absent => ""
+  }
+}
+
+// THE PROGRAM APPEARS EXACTLY ONCE. A row list that spells the binary it is arguments TO is the bug, and
+// "exactly once" is the assertion that distinguishes it: the second occurrence is what the binary reads as
+// its first subcommand. Asserted on BOTH legs, and on the list form too, because the defect was in the rows
+// and either consumer of them would have shipped it.
+test fn the_nvidia_ctk_argv_never_repeats_its_program() -> Bool {
+  let generate_words = argv_words(command: nvidia_ctk_cdi_generate_command())
+  let list_words = argv_words(command: nvidia_ctk_cdi_list_command())
+  let ctk = nvidia_ctk_program().invocation as String
+  word_at(words: generate_words, n: 0) == ctk
+    && word_at(words: generate_words, n: 1) == "cdi"
+    && word_at(words: generate_words, n: 2) == "generate"
+    && !generate_words.skip(n: 1).any(w => w == ctk)
+    && word_at(words: list_words, n: 0) == ctk
+    && word_at(words: list_words, n: 1) == "cdi"
+    && word_at(words: list_words, n: 2) == "list"
+    && !list_words.skip(n: 1).any(w => w == ctk)
+}
+
+// THE DOCKER INFO ARM REACHES THE JOB USER, AS THE JOB USER, WITH ITS OWN SOCKET. Order is the entire
+// meaning here: `env` must sit AFTER sudo's -n -u <user>, because sudo's env_reset erases anything set in
+// front of it. The wrong order puts words 4 and 5 at "env" and "DOCKER_HOST=…" and the right order puts
+// them at the user name and "env" — so this claim is red on the shape that shipped, not merely green on
+// the shape that works.
+test fn the_job_user_docker_host_survives_the_elevation() -> Bool {
+  let words = argv_words(command: job_user_command(
+    user: "ghrunner" as NonEmptyStr,
+    socket: "unix:///run/user/999/docker.sock",
+    inner: docker_info_command()
+  ))
+  word_at(words: words, n: 0) == sudo_program().invocation as String
+    && word_at(words: words, n: 1) == "-n"
+    && word_at(words: words, n: 2) == "-u"
+    && word_at(words: words, n: 3) == "ghrunner"
+    && word_at(words: words, n: 4) == env_path_resolved_program().invocation as String
+    && word_at(words: words, n: 5) == "DOCKER_HOST=unix:///run/user/999/docker.sock"
+    && word_at(words: words, n: 6) == docker_program().invocation as String
+    && word_at(words: words, n: 7) == "info"
+}
+
+// THE SAME SHAPE FOR THE CONTAINER ARM, since it is a second, independently-composed call and a fix that
+// covered only docker info would leave the GPU readback asking the rootful daemon. The device word is
+// checked too: the probe must go through the CDI device the label certifies, not through --gpus.
+test fn the_gpu_container_probe_is_elevated_inside_its_environment() -> Bool {
+  let words = argv_words(command: job_user_command(
+    user: "ghrunner" as NonEmptyStr,
+    socket: "unix:///run/user/999/docker.sock",
+    inner: docker_gpu_cdi_probe_run_command(
+      image: gpu_container_acceptance_image,
+      device: nvidia_cdi_all_gpu_device,
+      probe_argv: gpu_container_acceptance_probe_argv,
+    )
+  ))
+  word_at(words: words, n: 4) == env_path_resolved_program().invocation as String
+    && word_at(words: words, n: 5) == "DOCKER_HOST=unix:///run/user/999/docker.sock"
+    && words.any(w => w == nvidia_cdi_all_gpu_device as String)
+    && !words.any(w => w == "--gpus")
+}
+
+// ── DEFECT 3: THE SUBORDINATE FILES ARE WRITTEN WHOLE ──────────────────────────────────────────────
+// usermod CANNOT DO THIS AT ALL. It exits 8 with "user X is currently used by process N" for any account
+// that has a running process, and both accounts this converge ever touches are logged in -- the displaced
+// account holds a systemd --user, the job account holds lingering sessions. So the route is a typed
+// whole-file write, and everything shadow's own writer was providing has to become an explicit refusal
+// here. Each witness below is one of those refusals, or the one shape the render is allowed to have.
+// A witness that only counted steps would pass with any of them missing.
+
+// THE srv3 FILE, AS THE FIRST CONVERGE FOUND IT (measured, 65 bytes, 0644 root:root): the job account and
+// the displaced account BOTH claim 100000-165535, and a third row sits above them. This collision is the
+// defect the converge exists to fix, so it is the input every witness below starts from.
+fn srv3_subuid_bytes() -> String {
+  "ghrunner:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536\n"
+}
+
+fn srv3_read() -> SubordinateFileReading {
+  subordinate_read_of_file(path: "/etc/subuid", stdout: srv3_subuid_bytes())
+}
+
+fn srv3_plan() -> SubordinatePlan {
+  plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: srv3_read(),
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  )
+}
+
+// THE RENDER IS THE WHOLE FILE, IN THE ORDER IT WAS READ, with the displaced row re-granted in place at
+// the new first and the third row untouched. This is the byte-level contract: an untouched row that is
+// reordered, reformatted, or dropped is a corrupted file, and the writer's re-read compare would only
+// notice that something ELSE had touched it.
+test fn the_rendered_file_moves_the_displacee_and_keeps_every_other_row_byte_identical() -> Bool {
+  match srv3_plan() {
+    SubordinatePlanSteps { steps: _, rows: rows } =>
+      render_subordinate_file(reading: srv3_read(), rs: rows)
+        == "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536\n"
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// THE srv1 ANSWER: a file that already holds the declared rows produces NO WRITE AT ALL, and the render
+// round-trips exactly. ghrunner there holds a running rootless store; a converge that rewrote the file "to
+// be sure" would take the fleet lock and dirty the mtime of a file it was only asked to inspect, and a
+// converge that moved that row would orphan 149 MB of images.
+test fn a_file_that_already_holds_the_declared_rows_produces_no_write_and_renders_itself_back() -> Bool {
+  let reading = subordinate_read_of_file(
+    path: "/etc/subuid",
+    stdout: "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536\n")
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: reading,
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: false,
+    displacee_regrant_first: 296608,
+  ) {
+    SubordinatePlanSteps { steps: steps, rows: rows } =>
+      length(steps) == 0
+        && length(gpu_container_provision_subordinate_write(
+             step: "subuid", path: "/etc/subuid", steps: steps, rows: rows, reading: reading)) == 0
+        && render_subordinate_file(reading: reading, rs: rows) == subordinate_file_bytes(reading: reading)
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// A ROW THAT DOES NOT RENDER BACK BYTE-IDENTICALLY IS A REFUSAL, NOT A REWRITE. Here the live file carries
+// a trailing space on one row: the parse recovered the row, so a plan that rendered from the ROWS ALONE
+// would silently drop the space and publish a file that is not the one it read. "I parsed 2 of your 2
+// rows" is not the invariant -- the invariant is that the text and the rows agree.
+test fn a_row_that_does_not_render_back_byte_identically_refuses_the_write() -> Bool {
+  // The trailing space on the second line survives `cat` and does not survive the row parse, which
+  // trims -- so the ROW guard is the one that must catch it, and this fixture asserts on that guard's
+  // own words rather than on the phrase the two byte-identity guards share. The bytes stay literal and
+  // the rows come from the production parser: a hand-minted `ranges:` here would have let the test
+  // disagree with the file it claims to be reading.
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: subordinate_read_of_file(
+      path: "/etc/subuid",
+      stdout: "ghrunner:100000:65536\nubuntu:100000:65536 "),
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  ) {
+    SubordinatePlanSteps { steps: _, rows: _ } => false
+    SubordinatePlanRefused { reason: r } => string_contains(s: r, pattern: "holds a row whose text")
+  }
+}
+
+// THE RENDERED RANGES MUST BE PAIRWISE DISJOINT, OR NOTHING IS WRITTEN. shadow itself permits two rows for
+// one account, and a plan that re-grants BOTH of them to the same new first would render a file where the
+// displaced account holds the same range twice -- which is not a collision shadow would refuse to read, it
+// is a collision that reads as one wider range than anyone granted.
+test fn rows_that_would_render_over_each_other_refuse_the_write() -> Bool {
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: subordinate_read_of_file(
+      path: "/etc/subuid",
+      stdout: "ubuntu:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536\n"),
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  ) {
+    SubordinatePlanSteps { steps: _, rows: _ } => false
+    SubordinatePlanRefused { reason: r } => string_contains(s: r, pattern: "pairwise disjoint")
+  }
+}
+
+// THE WRITE CARRIES TWO KINDS OF BYTES, AND THEY ARE NOT THE SAME FACT: what this converge rendered, and
+// what the file held when the rows were read. Collapsing them (writing `expected` as the content, or
+// comparing against a re-read) is how a stale lock holder overwrites a file it never parsed.
+fn subordinate_write_fields_match(
+  action: GpuContainerProvisionAction,
+  step: String,
+  path: String,
+  content: String,
+  expected: String,
+) -> Bool {
+  match action {
+    ProvisionOwnedDirectory { step: _, argv: _ } => false
+    ProvisionRootOwnedFile { step: _, path: _, content: _, scope: _ } => false
+    ProvisionSubordinateRangesFile { step: s, path: p, content: c, expected: e } =>
+      s == step && p == path && c == content && e == expected && c != e
+    ProvisionLegs { legs: _ } => false
+    ProvisionVerify { step: _, check: _ } => false
+    ProvisionRefusal { step: _, cause: _ } => false
+  }
+}
+
+test fn the_subordinate_write_carries_the_render_and_the_bytes_it_was_made_against() -> Bool {
+  let reading = srv3_read()
+  match srv3_plan() {
+    SubordinatePlanSteps { steps: steps, rows: rows } =>
+      fold(
+        gpu_container_provision_subordinate_write(
+          step: "subuid", path: "/etc/subuid", steps: steps, rows: rows, reading: reading),
+        init: false,
+        f: (found, a) =>
+          found || subordinate_write_fields_match(
+            action: a,
+            step: "subuid",
+            path: "/etc/subuid",
+            content: render_subordinate_file(reading: reading, rs: rows),
+            expected: subordinate_file_bytes(reading: reading)))
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// ── THE NAMESPACE PRECHECK: WHAT usermod WAS NEVER ABLE TO ASK ──────────────────────────────────────
+// usermod refuses every account with a process, which is why it could not be used here AND why it never
+// answered the question that matters: not "does this account run" but "does any process of it hold a user
+// namespace mapped out of the range being moved". These rows are /proc/<pid>/uid_map as the kernel writes
+// them -- right-aligned columns, which is why the reader tokenizes instead of splitting on one space.
+
+// LITERAL NAMESPACE LINKS, as readlink(1) prints them. The host's own namespace is the reference every
+// other link is compared against; the child is a different inode.
+fn host_user_namespace() -> String { "user:[4026531837]" }
+
+fn child_user_namespace() -> String { "user:[4026532871]" }
+
+fn child_scope() -> GpuContainerProvisionNamespaceScope {
+  gpu_container_provision_namespace_scope(
+    link: GpuContainerProvisionNamespaceLinkRead { target: child_user_namespace() },
+    init_namespace: host_user_namespace())
+}
+
+fn initial_scope() -> GpuContainerProvisionNamespaceScope {
+  gpu_container_provision_namespace_scope(
+    link: GpuContainerProvisionNamespaceLinkRead { target: host_user_namespace() },
+    init_namespace: host_user_namespace())
+}
+
+fn map_scan_verdict(scope: GpuContainerProvisionNamespaceScope, text: String) -> String {
+  match gpu_container_provision_map_scan(scope: scope, text: text, first: 100000, count: 65536) {
+    GpuContainerProvisionMapClear => "clear"
+    GpuContainerProvisionMapMappedFromRange { row: _ } => "mapped"
+    GpuContainerProvisionMapUnreadableRow { row: _ } => "unreadable-row"
+    GpuContainerProvisionMapNamespaceUnreadable { cause: _ } => "unreadable-namespace"
+  }
+}
+
+test fn a_namespace_mapped_from_the_range_being_moved_is_caught() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0     100000      65536") == "mapped"
+}
+
+// ADJACENCY IS NOT OVERLAP: a namespace on the range ABOVE (165536+) shares no id with the range being
+// moved (100000..165535). A check that refused this would refuse every real host, because /etc/subuid on
+// these machines stacks its rows contiguously.
+test fn an_adjacent_namespace_range_is_clear() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0     165536      65536") == "clear"
+}
+
+// EVERY ROW IS READ, not the first. The overlapping mapping is the third line here: a scan that stopped at
+// the first clear row -- or read only line 1, where the root's own mapping always sits -- would certify a
+// container that is live on the range being moved.
+test fn every_row_of_a_map_is_read_and_not_just_the_first() -> Bool {
+  map_scan_verdict(
+    scope: child_scope(),
+    text: "         0          0          1\n         1     165536      65536\n         0     100000      65536") == "mapped"
+}
+
+// A ROW THIS MODEL CANNOT READ IS A REFUSAL, NOT A SKIP. /proc/<pid>/uid_map is written by the kernel; a
+// row whose columns are not integers is a kernel this model does not describe, and "I could not read it"
+// must never be reported as "nothing is mapped from that range".
+test fn an_unreadable_map_row_is_refused_rather_than_skipped() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0     100000    notanumber") == "unreadable-row"
+}
+
+// THE srv3 CASE, VERBATIM (fleet-converge run 40843061056): ubuntu pid 4116, a systemd --user in the host's
+// own user namespace, whose uid_map is the initial namespace's identity row. Its ns/user link equals
+// /proc/1/ns/user, so it maps nothing from any subordinate range.
+test fn a_process_in_the_initial_user_namespace_is_clear_whatever_its_identity_row_overlaps() -> Bool {
+  map_scan_verdict(scope: initial_scope(), text: "         0          0 4294967295") == "clear"
+}
+
+// THE SAME ROW IN A CHILD NAMESPACE IS NOT CLEAR: the discriminator is namespace identity, not the shape of
+// the row. A child namespace whose outside column covers the whole parent id space reaches the range.
+test fn the_identity_row_in_a_child_namespace_still_overlaps() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0          0 4294967295") == "mapped"
+}
+
+// A CHILD NAMESPACE WHOSE OUTSIDE RANGE IS DISJOINT FROM THE RANGE BEING MOVED is clear.
+test fn a_child_namespace_with_a_disjoint_outside_range_is_clear() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0       1000          1") == "clear"
+}
+
+// AN UNREADABLE NAMESPACE LINK REFUSES: not knowing which namespace a process is in is not evidence that it
+// maps nothing -- even when its rows would have been clear.
+test fn an_unreadable_namespace_link_is_refused_rather_than_read_as_the_host() -> Bool {
+  map_scan_verdict(
+    scope: gpu_container_provision_namespace_scope(
+      link: GpuContainerProvisionNamespaceLinkUnreadable { path: "/proc/4116/ns/user", cause: "exit 1 Permission denied" },
+      init_namespace: host_user_namespace()),
+    text: "         0          0 4294967295") == "unreadable-namespace"
+}
+
+// THE PID BOUND IS DERIVED, NOT TRANSCRIBED: half of execve(2)'s per-argument ceiling (32 pages of 4096 =
+// 131072 bytes) over the 22-byte word of the largest admissible pid (`/proc/4194304/ns/user` plus a space),
+// which is 65536 / 22 = 2978. It must admit the live session host that refused at 556 processes (run
+// 40837033922) and must not exceed what one argument can carry.
+test fn the_pid_bound_is_half_the_argument_ceiling_over_the_longest_word_and_admits_the_srv1_host() -> Bool {
+  gpu_container_provision_namespace_scan_pid_limit == 2978 && gpu_container_provision_namespace_scan_pid_limit >= 556
+}
+
+// THE BATCH READING, against literal readlink -v output. Gone pids are named on stderr and left out; the
+// stdout lines pair in order with the pids that remain.
+fn batch_namespaces_of(pids: List<Int>, exit_code: Int, stdout: String, stderr: String) -> String {
+  match gpu_container_provision_namespace_batch_reading(
+    reference: host_user_namespace(), pids: pids, exit_code: exit_code, stdout: stdout, stderr: stderr) {
+    GpuContainerProvisionNamespaceBatchAligned { reference: _, namespaces: ns, gone: g } =>
+      join(["aligned gone=", to_string(g), " ", join(map(ns, n => join([to_string(n.pid), "=", n.target], "")), ",")], "")
+    GpuContainerProvisionNamespaceBatchUnreadable { cause: _ } => "unreadable"
+  }
+}
+
+test fn a_complete_batch_report_pairs_every_pid_with_its_namespace() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 0,
+    stdout: "user:[4026531837]\nuser:[4026532871]\n", stderr: "")
+    == "aligned gone=0 10=user:[4026531837],20=user:[4026532871]"
+}
+
+// A VANISHED PID is named on stderr, left out, and the lines pair with the pids that REMAIN -- even when a
+// child namespace is among them, so the child is attributed to its own pid and not guessed.
+test fn a_vanished_pid_is_named_and_the_rest_stay_attributed() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20, 30], exit_code: 1,
+    stdout: "user:[4026531837]\nuser:[4026532871]\n",
+    stderr: "readlink: /proc/20/ns/user: No such file or directory\n")
+    == "aligned gone=1 10=user:[4026531837],30=user:[4026532871]"
+}
+
+// A LIVE PID WHOSE LINK COULD NOT BE READ IS NOT A VANISHED PID: a permission denial names the pid but not
+// as No-such-file, so the scan refuses rather than reading the pid as host-namespace.
+test fn a_live_pid_whose_link_is_denied_is_refused_not_counted_as_gone() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 1,
+    stdout: "user:[4026531837]\n",
+    stderr: "readlink: /proc/20/ns/user: Permission denied\n") == "unreadable"
+}
+
+// A MISSING LINE WITH NOTHING NAMED ON STDERR cannot be attributed to anything: refused.
+test fn a_missing_line_that_stderr_does_not_name_is_refused() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 1, stdout: "user:[4026531837]\n", stderr: "") == "unreadable"
+}
+
+// A pid number that is a PREFIX of another's must not be mistaken for it: pid 2 vanished, pid 20 did not.
+test fn a_vanished_pid_is_matched_by_its_whole_path() -> Bool {
+  batch_namespaces_of(
+    pids: [2, 20], exit_code: 1,
+    stdout: "user:[4026532871]\n",
+    stderr: "readlink: /proc/2/ns/user: No such file or directory\n")
+    == "aligned gone=1 20=user:[4026532871]"
+}
+
+// NOTHING BACK for pids still present is a refusal, not a clear.
+test fn an_empty_batch_report_is_refused() -> Bool {
+  batch_namespaces_of(pids: [10], exit_code: 0, stdout: "", stderr: "") == "unreadable"
+}
+
+// THE ROW BUILDER'S CONTRACT, DIRECTLY, without the plan's guards in the way: survivors keep the order
+// they were READ in, the displaced row is re-granted IN PLACE at the new first rather than moved to the
+// end, and the declared row is appended only when the account does not already hold exactly it. Read order
+// matters because shadow appends to these files; re-granting at the end would reorder a file the next
+// shadow write also appends to, and a witness that only checked the SET of rows would not notice.
+test fn the_rows_keep_read_order_regrant_in_place_and_append_only_what_is_missing() -> Bool {
+  let displacee_row = SubordinateRange { account: "ubuntu", first: 100000, count: 65536 }
+  let rows = subordinate_rows_after_plan(
+    rs: [
+      displacee_row,
+      SubordinateRange { account: "briansrls", first: 165536, count: 65536 },
+      SubordinateRange { account: "carol", first: 296608, count: 65536 },
+    ],
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    stale: [],
+    movable: [displacee_row],
+    displacee_regrant_first: 231072,
+    holds_exactly: false,
+  )
+  join(map(rows, r => subordinate_range_text(r: r)), "\n")
+    == "ubuntu:231072:65536\nbriansrls:165536:65536\ncarol:296608:65536\nghrunner:100000:65536"
+}
+
+// THE BOUND, PINNED TO THE WORDS THAT WERE SET FOR IT. The sentence is a commitment about what the write
+// IS serialized against and what it is NOT, and a paraphrase is a different promise. It must name fleet
+// actuations and must concede the final compare-to-rename interval -- and it must NOT claim a lock against
+// shadow, which serializes on fcntl/lockf and ignores flock(2) outright (measured: usermod 4.13 blocks on
+// /etc/.pwd.lock, and /etc/subuid.lock does not exist). A receipt that said "locked against shadow-utils"
+// would be the one sentence here that no host could ever have honored, and it would be read by the next
+// operator who decides a hand-run usermod is safe.
+test fn the_subordinate_write_bound_claims_fleet_serialization_and_never_a_shadow_lock() -> Bool {
+  string_contains(s: gpu_container_provision_subordinate_write_bound, pattern: "serialized against fleet actuations")
+    && string_contains(
+      s: gpu_container_provision_subordinate_write_bound,
+      pattern: "detected by the re-read compare, except within the final compare-to-rename interval")
+    && !string_contains(s: gpu_container_provision_subordinate_write_bound, pattern: "shadow")
+}
+
+// --------------------------------------------------------------------------------
+// THE NEWLINE CONVENTION IS THE FILE'S, NOT THE RENDERER'S.
+//
+// shadow terminates every line of /etc/subuid and /etc/subgid; MEASURED on srv3 the file is 65 bytes for
+// three rows whose texts total 62. A renderer that joined with "\n" and stopped therefore differed from
+// what it read by one byte at the end of the file, on EVERY converge -- including the one that changes
+// nothing, where the converge would take the fleet lock and rewrite an unchanged file to bytes no host
+// tool ever wrote. It survived because the fixture built its bytes FROM that renderer, so every equality
+// was true by construction. These witnesses supply bytes literally and go through the production parser,
+// which is the only way the pair can disagree.
+// --------------------------------------------------------------------------------
+
+fn gpu_subordinate_collision_bytes(terminated: Bool) -> String {
+  if terminated {
+    "ghrunner:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536\n"
+  } else {
+    "ghrunner:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536"
+  }
+}
+
+fn gpu_subordinate_plan_on(bytes: String) -> SubordinatePlan {
+  plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: subordinate_read_of_file(path: "/etc/subuid", stdout: bytes),
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  )
+}
+
+fn gpu_subordinate_move_keeps_convention(terminated: Bool) -> Bool {
+  match gpu_subordinate_plan_on(bytes: gpu_subordinate_collision_bytes(terminated: terminated)) {
+    SubordinatePlanSteps { steps: steps, rows: rows } =>
+      length(steps) > 0
+        && render_subordinate_file(
+             reading: subordinate_read_of_file(
+               path: "/etc/subuid", stdout: gpu_subordinate_collision_bytes(terminated: terminated)),
+             rs: rows)
+           == if terminated {
+                "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536\n"
+              } else {
+                "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536"
+              }
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// A MOVE KEEPS THE TERMINATOR THE FILE HAD -- and does not invent one, and does not drop one. A host whose
+// file ends mid-line is written back ending mid-line: refusing over a trailing byte would strand it, and
+// "normalising" it would be the converge editing bytes it was never asked to touch.
+test fn the_render_keeps_the_newline_convention_of_the_file_it_read() -> Bool {
+  gpu_subordinate_move_keeps_convention(terminated: true)
+    && gpu_subordinate_move_keeps_convention(terminated: false)
+}
+
+// THE RED THE REVIEWER ASKED FOR: an UNTOUCHED file that ends with a newline plans NO write. Before the
+// fix this was the everyday srv1/srv3 case -- the file needed no change, so the plan was empty and the
+// write leg was the only thing standing between it and a rewrite -- and the byte-identity claim that
+// should have caught the one-byte drift was checked against bytes minted from the drifting renderer.
+test fn an_untouched_file_that_ends_with_a_newline_plans_no_write() -> Bool {
+  let bytes = "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536\n"
+  let reading = subordinate_read_of_file(path: "/etc/subuid", stdout: bytes)
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: reading,
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: false,
+    displacee_regrant_first: 296608,
+  ) {
+    SubordinatePlanSteps { steps: steps, rows: rows } =>
+      length(steps) == 0
+        && length(gpu_container_provision_subordinate_write(
+             step: "subuid", path: "/etc/subuid", steps: steps, rows: rows, reading: reading)) == 0
+        && render_subordinate_file(reading: reading, rs: subordinate_file_ranges(reading: reading)) == bytes
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// A FILE THE MODEL CANNOT REPRODUCE IS A REFUSAL, NOT A REFORMAT. The rows here all parse and every row
+// text round-trips; the file holds a blank line between them, which the row parse throws away and the
+// render therefore cannot put back. Before the whole-file gate this converge would have "successfully"
+// published two rows and quietly deleted an operator's blank line -- and the post-rename read-back would
+// have compared the destination against the render, which is to say against itself.
+test fn a_file_the_model_cannot_reproduce_byte_for_byte_refuses_the_write() -> Bool {
+  match gpu_subordinate_plan_on(bytes: "ghrunner:100000:65536\n\nubuntu:100000:65536\n") {
+    SubordinatePlanSteps { steps: _, rows: _ } => false
+    SubordinatePlanRefused { reason: r } =>
+      string_contains(s: r, pattern: "does not render back byte-identically from its parsed rows")
+  }
+}
+
+// THE BYTES THAT GET WRITTEN, NOT THE BYTES THE RENDERER WOULD HAVE PRODUCED. The action's `content` is
+// the only thing the writer ever sees, so the convention claim has to be pinned there rather than on a
+// render the executor might not be the one that runs.
+test fn the_written_content_carries_the_terminated_file_and_the_moved_row() -> Bool {
+  let reading = subordinate_read_of_file(
+    path: "/etc/subuid", stdout: gpu_subordinate_collision_bytes(terminated: true))
+  match gpu_subordinate_plan_on(bytes: gpu_subordinate_collision_bytes(terminated: true)) {
+    SubordinatePlanSteps { steps: steps, rows: rows } =>
+      fold(
+        gpu_container_provision_subordinate_write(
+          step: "subuid", path: "/etc/subuid", steps: steps, rows: rows, reading: reading),
+        init: false,
+        f: (found, a) =>
+          found || subordinate_write_fields_match(
+            action: a,
+            step: "subuid",
+            path: "/etc/subuid",
+            content: "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536\n",
+            expected: "ghrunner:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536\n"))
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// THE LOCK POLICY IS THIS WRITE'S OWN, AND IT IS NOT THE FLEET APPLY'S.
+//
+// The apply runs plain `flock -x <path> bash -c ...` -- no -w, no --conflict-exit-code -- so it waits
+// UNBOUNDED on the same lock file and cannot tell a conflict from its own command failing. Nothing in the
+// fleet therefore supplies these two numbers, and a shared row the apply does not consume would be a
+// dangling declaration making a meaning claim the apply does not honour. What this write does is bound its
+// own wait and give a conflict an exit code a caller can recognise: 75 is EX_TEMPFAIL from sysexits.h, the
+// "temporary condition, retrying is the remedy" convention the corpus also cites in
+// codex_harness_turn_busy_exit and native_serve_stuck_exit_code -- cited, not imported, because an exit
+// contract belongs to the subsystem that reports it and a GPU runner converge's exit status has no
+// business depending on the codex harness. A contention here also means the host-mutation concurrency
+// group failed to keep the two actuators off one host, which is a reason to stop, not to wait longer.
+test fn the_subordinate_write_bounds_its_own_wait_and_reports_conflict_as_tempfail() -> Bool {
+  second_count(s: gpu_container_provision_subordinate_lock_wait) == 120
+    && gpu_container_provision_subordinate_lock_conflict_exit_code == 75
+}
+
+// THE TRANSPORT TRIMS CAPTURED STDOUT, SO THE READING MUST NOT BE `cat`. This is the srv3 refusal (run
+// 40960539993): bytes read through the trim lacked the file's final newline and `cmp -s - /etc/subuid`
+// exited 1 on every converge. The oracle here is a hand-written od dump of the 22-byte line
+// "ghrunner:100000:65536\n" (0x0a last), supplied as the transport hands it back -- trailing newline of the
+// dump already trimmed -- and the expected bytes are a literal, never rendered from the parse.
+test fn an_od_reading_carries_the_files_final_newline_the_transport_would_trim() -> Bool {
+  let reading = parse_subordinate_file_exact(
+    path: "/etc/subuid", exit_code: 0, stderr: "",
+    od_stdout: " 67 68 72 75 6e 6e 65 72 3a 31 30 30 30 30 30 3a 36 35 35 33 36 0a")
+  subordinate_file_bytes(reading: reading) == "ghrunner:100000:65536\n"
+    && length(subordinate_file_ranges(reading: reading)) == 1
+}
+
+// A dump that is not whole bytes, or holds a non-ASCII byte, is Unreadable: a reading that cannot carry
+// exact bytes must not stand as one.
+test fn an_od_reading_that_is_not_exact_ascii_bytes_is_unreadable() -> Bool {
+  let odd = parse_subordinate_file_exact(path: "/etc/subuid", exit_code: 0, stderr: "", od_stdout: " 67 6")
+  let high = parse_subordinate_file_exact(path: "/etc/subuid", exit_code: 0, stderr: "", od_stdout: " 67 ff")
+  reading_is_unreadable(reading: odd) && reading_is_unreadable(reading: high)
+}
+
+fn reading_is_unreadable(reading: SubordinateFileReading) -> Bool {
+  match reading {
+    SubordinateFileUnreadable { path: _, cause: _ } => true
+    SubordinateFileRead { path: _, bytes: _, ranges: _ } => false
+  }
+}
+
+// A REFUSAL NEVER HAS AN EMPTY REASON: cmp -s is silent, so its exit code is the whole evidence.
+test fn the_re_read_compare_names_its_exit_code_and_no_step_refuses_with_an_empty_reason() -> Bool {
+  typed_remote_file_step_failure_reason(step: "re-read-compare", exit_code: 1, stderr: "") == "destination differs from the bytes read (cmp exit 1)"
+    && typed_remote_file_step_failure_reason(step: "re-read-compare", exit_code: 2, stderr: "") == "destination unreadable (cmp exit 2)"
+    && typed_remote_file_step_failure_reason(step: "rename", exit_code: 1, stderr: "") != "remote step failed: "
+    && typed_remote_file_step_failure_reason(step: "rename", exit_code: 1, stderr: "denied\n") == "remote step failed: denied"
+}
+
+// A FAILED UNIT START IS NEVER OPAQUE: the start leg carries the status and the journal tail of the unit,
+// both addressed to the same uid-keyed manager the start addressed, and the journal read is keyed by the
+// trusted _UID field. Discriminates against the pre-repair leg (start argv, no evidence) and against a
+// journal read of the wrong account.
+test fn the_unit_start_leg_captures_status_and_the_users_journal_on_refusal() -> Bool {
+  let leg = gpu_container_provision_start_leg(uid: 999, job_user: "ghrunner" as NonEmptyStr)
+  length(leg.on_refusal) == 10
+    && leg.on_refusal.any(a => a == ["systemctl", "--user", "--machine=999@", "status", "--no-pager", "--full", "docker.service"])
+    && leg.on_refusal.any(a => a == ["journalctl", "--user-unit=docker.service", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
+    && leg.on_refusal.any(a => a == ["journalctl", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
+    && leg.on_refusal.any(a => a == ["ls", "-ldn", "--", "/usr/bin/newuidmap"])
+    && leg.on_refusal.any(a => a == ["ls", "-ldn", "--", "/usr/bin/newgidmap"])
+    && leg.on_refusal.any(a => a == ["sysctl", "-n", "kernel.apparmor_restrict_unprivileged_userns"])
+    && leg.on_refusal.any(a => a == ["setpriv", "--reuid=999", "--regid=999", "--clear-groups", "unshare", "--user", "--map-root-user", "true"])
+    && leg.on_refusal.any(a => a == ["grep", "-H", "-F", "-e", "ghrunner", "--", "/etc/subuid", "/etc/subgid"])
+    && leg.argv == ["systemctl", "--user", "--machine=999@", "start", "docker.service"]
+}
+
+// THE START PHASE FOLLOWS THE ENSURE: it is admitted only when the first phase held AND every package
+// holds, and it is its own two actions (start, active readback), absent from the first plan. A start that
+// ran regardless of the ensure (srv3 run 41004665254) makes the ensure-failed arm true and this RED.
+test fn the_unit_start_runs_only_after_the_package_ensure_holds() -> Bool {
+  let held = GpuContainerProvisionRun { steps: [GpuContainerProvisioned { step: "unit enable" }], planned: 1 }
+  let refused = GpuContainerProvisionRun { steps: [GpuContainerProvisionRefused { step: "linger", cause: "x" }], planned: 1 }
+  gpu_container_provision_start_admitted(prior: held, ensure_ok: true)
+    && !gpu_container_provision_start_admitted(prior: held, ensure_ok: false)
+    && !gpu_container_provision_start_admitted(prior: refused, ensure_ok: true)
+    && gpu_container_provision_plan_step_names(actions: gpu_container_provision_start_actions(uid: 999, job_user: "ghrunner" as NonEmptyStr)) == ["unit start", "unit active verified"]
+}
+
+// A MISSING DROP-IN IS ABSENT, A DROP-IN THAT CANNOT BE LOOKED AT IS NOT (srv3 run 41006939256 refused the whole
+// label render over ENOENT). The probe exits 0 with empty stdout for a missing entry: that renders without the
+// label; a nonzero probe (permission denied, sudo refused) still refuses; a present file keeps its label.
+test fn a_missing_label_dropin_is_absent_and_an_unreadable_one_still_refuses() -> Bool {
+  let absent = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: host_capability_dropin_presence(exit_code: 0, stdout: "", unreadable_cause: "x"), read_exit_code: 0, read_stdout: "", read_cause: "r")
+  let denied = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: host_capability_dropin_presence(exit_code: 1, stdout: "", unreadable_cause: "permission denied"), read_exit_code: 0, read_stdout: "", read_cause: "r")
+  let held = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: host_capability_dropin_presence(exit_code: 0, stdout: "/etc/x.conf\n", unreadable_cause: "x"), read_exit_code: 0, read_stdout: gunbc_browser_ready_label, read_cause: "r")
+  let read_failed = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: DropinPresent, read_exit_code: 1, read_stdout: "", read_cause: "read failed")
+  let srv3 = gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [absent])
+  length(srv3) > 0
+    && !srv3.any(l => l == gunbc_browser_ready_label)
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [denied])) == 0
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [read_failed])) == 0
+    && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [held]).any(l => l == gunbc_browser_ready_label)
+}
+
+// THE ROOTLESS PREREQUISITES ARE INHABITED, NOT VALIDATED: every declared prerequisite is a member of
+// docker_ce_packages and of the package set srv3's row resolves to (the set the apt ensure installs). Dropping
+// uidmap from either makes this false; srv3 run 40997904513 lived in that state. The end-to-end proof that
+// newuidmap works is the rerun's job_user_daemon reading ok.
+test fn every_rootless_prerequisite_is_in_the_docker_package_set_and_srv3s_resolved_ensure_set() -> Bool {
+  let srv3_packages = match runner_host_gpu_container_toolchain_for(host: operator_host_srv3) {
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainDesired { repo: _, docker_repo: _, packages: ps } } => ps
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainNotWanted { reason: _ } } => []
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainUnmeasured { } } => []
+    RunnerHostGpuToolchainAbsent { host: _ } => []
+  }
+  length(docker_ce_rootless_prerequisite_packages) > 0
+    && docker_ce_rootless_prerequisite_packages.all(p => docker_ce_packages.any(q => q == p))
+    && docker_ce_rootless_prerequisite_packages.all(p => srv3_packages.any(q => q == p))
 }
