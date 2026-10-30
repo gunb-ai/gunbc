@@ -1,9 +1,6 @@
 module gunbc.runner.runner_revision_request_worker
 
 import std.types { String, NonEmptyStr, Bool }
-import gunbc.auth.revision_request_authorization { revision_request_select_launch }
-import gunbc.auth.authorization_pattern_selection { AuthorizationPatternSelection, WorkloadIdentityStanding }
-import gunbc.auth.standing_operator_grant { StandingRevisionRequestStart }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import std.durable_compare_and_set { CasGeneration, ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasObservedReadable, CasReadablePresent }
 import std.content_hash { content_hash_atom }
@@ -19,15 +16,12 @@ import gunbc.runner.runner_revision_job_spec { RevisionJobSpec, decode_revision_
 import gunbc.runner.runner_revision_job_main { revision_job_slot }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 
-// A worker invocation PLAN, never launch authority. Its authority input now
-// comes from the shared selection fold and the committed standing ruling.
-// Provider identity remains abstract until the installed launch provider reads
-// its own binding. A plan cannot run systemctl or execute revision_job_run.
+// A worker invocation plan, with no start privilege. An operator-installed
+// systemd path unit activates the declared slot when pending/ is nonempty.
 type RevisionRequestWorkerPlan {
   request: HostAcceptedRequest
   spec: RevisionJobSpec
   slot: RunnerSlotIdentity
-  launch_authority: AuthorizationPatternSelection
   executor: DeclarationRef
 }
 
@@ -35,8 +29,7 @@ type RevisionRequestWorkerPlan {
 // The worker consumes that existing durable acceptance and its exact payload;
 // it cannot substitute a new body when selecting the revision-job executor.
 fn revision_request_worker_plan(context: RevisionRequestContext,
-  request: HostAcceptedRequest, slot_instance: String,
-  workload_identity: WorkloadIdentityStanding) -> Result<RevisionRequestWorkerPlan, String> {
+  request: HostAcceptedRequest, slot_instance: String) -> Result<RevisionRequestWorkerPlan, String> {
   if (request.root != context.request_root) {
     return Err { value: "accepted request belongs to another request store" }
   }
@@ -48,16 +41,16 @@ fn revision_request_worker_plan(context: RevisionRequestContext,
     RevisionJobSpecRefused { refusal: _ } => Err { value: "accepted revision-job payload is no longer admissible" }
     RevisionJobSpecDecoded { spec: spec } => Ok { value: RevisionRequestWorkerPlan {
       request: request, spec: spec, slot: slot,
-      launch_authority: revision_request_select_launch(host: slot.host, effect: StandingRevisionRequestStart,
-        declared_slot: true, workload_identity: workload_identity),
       executor: decl_ref(module_path: "gunbc.runner.runner_revision_job_main", decl_name: "revision_job_run") } }
   }
 }
 
-// Execution frontier: the store owner must first CAS/read back the worker claim,
-// then the selected privileged-effect owner validates launch_authority against
-// this request, payload and slot. The runner's own receipt/stop/sanitation result
-// feeds settlement; this plan and a published result cannot free the user slot.
+// Execution frontier: an operator-approved install must converge the systemd
+// path unit watching pending/, activating the declared slot. The HTTP service
+// has no sudo/start operation. Controls must reject adding such an operation.
+// The drain binds the full observed invocation in its first request claim and
+// reconciles unfinished bindings before fresh work. Receipt plus owned stop and
+// cleanup readback is required before settlement can free the user slot.
 
 // The execution claim is create-once for the accepted identity, in the same
 // request store. It does not release or replace the per-user responsibility.

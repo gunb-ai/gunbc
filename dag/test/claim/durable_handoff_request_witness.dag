@@ -163,7 +163,7 @@ test fn a_published_result_alone_does_not_release_the_user_slot() -> Bool {
     HostRequestAccepted { request: request } => {
       let result = host_request_publish_reply(request: request, result: json_string(s: "completed but cleanup pending"))
       let busy = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/second", body: "two", admit_payload: payload)
-      result == HostRequestReplyPublished && busy.status == 409
+      (match result { HostRequestReplyPublished => true _ => false }) && busy.status == 409
     }
     _ => false
   }
@@ -296,7 +296,7 @@ test fn staging_is_not_acceptance_and_only_one_link_can_win() -> Bool {
     Err { value: _ } => { return false } Ok { value: value } => value
   }
   let pending = Filesystem.List(path: host_request_pending_dir(root: root))
-  let not_accepted = host_request_observe(root: root, identity: first_id) == HostRequestNotObserved
+  let not_accepted = (match host_request_observe(root: root, identity: first_id) { HostRequestNotObserved => true _ => false })
   let first = match host_request_publish_staged(stage: a) {
     HostRequestAccepted { request: request } => request.identity == first_id && request.payload == "first"
     _ => false
@@ -320,7 +320,7 @@ test fn acceptance_before_history_is_recovered_from_pending() -> Bool {
   }
   let linked = Filesystem.LinkCreateNew(source: staged.path as String,
     path: host_request_pending_path(root: root, principal: id.principal))
-  let history_absent = host_request_history_observe(root: root, identity: id) == HostRequestNotObserved
+  let history_absent = (match host_request_history_observe(root: root, identity: id) { HostRequestNotObserved => true _ => false })
   let observed = match host_request_observe(root: root, identity: id) {
     HostRequestPresent { request: request } => request.payload == "retained" _ => false
   }

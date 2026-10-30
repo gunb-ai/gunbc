@@ -117,9 +117,9 @@ fn revision_request_settle_transition(current: RevisionRequestResponsibility, ge
   }
 }
 
-// Frontier: production acceptance continues retaining the slot forever until
-// the store owner wires this model to its CAS/readback and the worker reaches
-// revision_job_run with owned launch authority. The standing ruling is selected
-// through revision_request_select_launch; the installed provider binding and
-// terminal stop/cleanup readback remain unfinished. No API-key or pure
-// transition value authorizes a launch.
+// Frontier: production acceptance retains pending/ until the store owner wires
+// receipt and owned stop/cleanup readback to the no-replace settlement move.
+// Activation belongs to a systemd path unit installed through the operator-
+// approved install route, watching pending/ and starting the declared slot.
+// The HTTP service has no sudo/start operation; the follow-up must test that
+// boundary. No API key or pure transition value authorizes a launch.

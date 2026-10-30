@@ -7,7 +7,7 @@ import std.optional { Present }
 import std.list { list_member }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, Unclaimed }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire }
 import gunbc.auth.authorization_pattern_selection {
   StandingDestructiveAuthorization, StandingRulingInterlock,
@@ -52,7 +52,6 @@ type StandingGrantEffect
   | StandingJadeArrivalArchive
   | StandingJadeFirmwareQualification
   | StandingBmcSecureAccountWrite
-  | StandingRevisionRequestStart
 
 fn standing_grant_effect_wire(e: StandingGrantEffect) -> NonEmptyStr {
   match e {
@@ -62,7 +61,6 @@ fn standing_grant_effect_wire(e: StandingGrantEffect) -> NonEmptyStr {
     StandingJadeArrivalArchive => "jade-arrival-archive" as NonEmptyStr
     StandingJadeFirmwareQualification => "jade-firmware-qualification" as NonEmptyStr
     StandingBmcSecureAccountWrite => "bmc-secure-account-write" as NonEmptyStr
-    StandingRevisionRequestStart => "revision-request-start" as NonEmptyStr
   }
 }
 
@@ -135,7 +133,6 @@ data mtjade1_live_standing_grant: StandingOperatorGrant = StandingOperatorGrant 
 
 fn standing_grant_arm_interlock(g: StandingOperatorGrant, e: StandingGrantEffect) -> StandingRulingInterlock {
   match e {
-    StandingRevisionRequestStart => g.ruling.interlock
     StandingD0ReleaseToFleet => g.ruling.interlock
     StandingArmLaunch => g.ruling.interlock
     StandingHostEffectRecover => g.ruling.interlock
@@ -205,26 +202,4 @@ fn standing_grant_authorization<Subject>(g: StandingOperatorGrant, request: Auth
     },
     claim: Unclaimed,
   }
-}
-
-// Operator answer "A please", 2026-10-30, given to quick-newt-573 and
-// relayed as msg_65a2a428-0cc6-4b1d-b7af-5f0d784606f0. This witnesses
-// one start effect, not root access generally and not the submitted payload.
-// DECLARED CONSUMER FRONTIER: the request-driven executor follow-up to #15310
-// consumes this row through revision_request_select_launch before any launch.
-// Trigger: completed HTTP acceptance qualification and the first session revision.
-// It must first implement unprivileged staging and immutable request-to-invocation
-// binding in runner_revision_job_spec / _unit / _launch. #15310 has no start route;
-// this declaration grants the request service no write access to the spec directory.
-data srv1_revision_request_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
-  identity: "srv1-revision-request-start-2026-10-30" as NonEmptyStr,
-  principal: "operator" as NonEmptyStr,
-  ruled_at: "2026-10-30T00:00:00Z",
-  ruling: StandingDestructiveAuthorization {
-    ruling_text: "Operator ruling 2026-10-30, answer 'A please' to quick-newt-573: standing authorization, without per-effect approval, for starting gunbc-revision-job-runner@<declared slot> on srv1 for a durably accepted submission request. The consumer must take its claim, fresh readings and readback; API-key principal, one-outstanding-per-user cap and fabric grant still apply. Other effects or hosts require per-effect approval. API keys authorize submission and own-result reads only." as NonEmptyStr,
-    effect_subject: "start the declared revision-job runner instance on srv1 for one durably accepted request" as NonEmptyStr,
-    interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.runner.runner_revision_request_worker", decl_name: "revision_request_claim") },
-  },
-  scope: StandingGrantHost { host: operator_host_srv1 },
-  effects: [StandingRevisionRequestStart],
 }
