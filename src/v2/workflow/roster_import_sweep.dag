@@ -405,6 +405,17 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     RosterHeadRow { call: "empty_map", key: "empty_map", import_name: "empty_map", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
     RosterHeadRow { call: "string_contains", key: "string_contains", import_name: "string_contains", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
     RosterHeadRow { call: "map_contains_key", key: "map_contains_key", import_name: "map_contains_key", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    // contains: the ambient spelling is a STRING test (a section 3 meaning fork against std.algebra contains(xs, item, eq) over
+    // lists); the string operation is already declared as std.algebra string_contains(s, pattern). Selected per site by key
+    // (OnlyOccurrences) so a list receiver is never renamed; the list contains needs no row.
+    RosterHeadRow {
+      call: "contains",
+      key: "contains",
+      import_name: "string_contains",
+      home: qualified_name_from_dotted_string(dotted: "std.algebra"),
+      labels: [],
+      head: RenameHead { to: "string_contains", positional: ["s", "pattern"] }
+    },
     // map_get's operation is ALREADY declared (tidy-ant-251's ruling A): std.algebra map_lookup(m, key), the same keyed
     // read with the same Optional<V> answer, so the call moves to that declaration instead of minting a second name for it.
     RosterHeadRow {
