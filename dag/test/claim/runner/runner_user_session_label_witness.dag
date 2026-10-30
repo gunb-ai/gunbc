@@ -65,6 +65,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner.runner_registration_labels {
+  runner_slot_optional_user_session_readback_frontier_rows,
   RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused,
   RunnerUserSessionGrant, RunnerUserSessionGranted, RunnerUserSessionRosteredUnconverged,
   RunnerUserSessionReceiptedUnrostered, RunnerUserSessionUnadmitted,
@@ -527,7 +528,12 @@ test fn the_wiring_frontier_is_dissolved_and_its_red_remains() -> Bool {
     ),
   ])
     && optional_is_absent(opt: first_where(xs: census_closure_frontier_rows(), keep: enrolled => match enrolled.subject {
-      DeclSubject { ref: r } => r.module_path == "gunbc.runner.runner_registration_labels"
+      DeclSubject { ref: r } => r.module_path == "gunbc.runner.runner_registration_labels" && r.decl_name != "runner_slot_optional_registration_labels"
+      PathSubject { path: _ } => false
+    }))
+    && frontier_rows_well_formed(rows: runner_slot_optional_user_session_readback_frontier_rows)
+    && !optional_is_absent(opt: first_where(xs: census_closure_frontier_rows(), keep: enrolled => match enrolled.subject {
+      DeclSubject { ref: r } => r.module_path == "gunbc.runner.runner_registration_labels" && r.decl_name == "runner_slot_optional_registration_labels"
       PathSubject { path: _ } => false
     }))
 }

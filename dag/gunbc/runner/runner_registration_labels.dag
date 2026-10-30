@@ -3,6 +3,9 @@ module gunbc.runner.runner_registration_labels
 import std.types { String, NonEmptyStr, List, Bool }
 import std.optional { Optional, Present, Absent }
 import product.host_identity { HostIdentity }
+import std.decl_ref { decl_ref }
+import std.dissolution { bound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.github.actions { SelfHosted, HostedRunner, RunsOnExpression }
 import gunbc.ci.ci_fleet { fleet_compute_offer_for }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
@@ -132,8 +135,9 @@ fn runner_deploy_slot_registration_labels(slot: RunnerSlotIdentity) -> RunnerReg
 // qualifying fleet-converge run's receipt ARTIFACT, downloaded and parsed with the read_at its own clock
 // stamps) and hands it here; no qualifying run is ReceiptAbsent and answers label-off. The grant ages the
 // receipt's own probed_at against the read instant and refuses one older than
-// gunbc.runner.runner_user_session_receipt runner_user_session_converge_receipt_max_age, so no state in the
-// tree can keep advertising the label after the host loses its manager. No consumer's runs-on selects the label
+// gunbc.runner.runner_user_session_receipt runner_user_session_converge_receipt_max_age, so every NEW
+// registration is judged on a fresh receipt. An already-registered slot is not re-judged by the readback
+// (runner_slot_optional_user_session_readback_frontier_rows declares that gap). No consumer's runs-on selects the label
 // yet; that change lifts the declared-labels guard (test.claim.runner.runner_user_session_label_witness
 // no_emitted_runs_on_names_the_user_session_label) and reads the receipt at an effect edge.
 data gunbc_user_session_label: String = "gunbc-user-session"
@@ -353,7 +357,11 @@ fn runner_slot_carries_browser_ready(slot: RunnerSlotIdentity) -> Bool {
 
 // THE OPTIONAL LABELS A SLOT'S REGISTRATION MAY CARRY BEYOND ITS DECLARED SET, each licensed by one observation
 // the readback does not re-judge: browser-ready (a converge wrote its drop-in) and user-session (a fresh converge
-// receipt, read by the leg that registered the slot). A readback compares what GitHub holds against the
+// receipt, read by the leg that registered the slot). The user-session half is a DECLARED GAP, not a judgment:
+// the readback tolerates the label on roster membership alone, so a label granted while the receipt was fresh
+// stays conformant after the receipt ages. runner_slot_optional_user_session_readback_frontier_rows carries it
+// on a carrier, and the gap cannot be exploited meanwhile because no runs-on may name the label
+// (runner_browser_toolchain_pool_for_spec refuses it, with a RED in runner_browser_toolchain_witness). A readback compares what GitHub holds against the
 // declared labels plus these, so a registration that carries a granted label is conformant and one that carries
 // a label no observation could have granted (the deploy slot's, an unrostered host's) diverges.
 fn runner_slot_optional_registration_labels(slot: RunnerSlotIdentity) -> List<String> {
@@ -394,3 +402,18 @@ fn registration_labels_refused_not_self_hosted(host: HostIdentity) -> RunnerRegi
     cause: "the host's compute offer did not project to a self-hosted runner spec, so it has no self-hosted registration label set" as NonEmptyStr,
   }
 }
+
+// THE READBACK'S USER-SESSION TOLERANCE IS A DECLARED FRONTIER (review 88931). Judging the label in the readback
+// needs the host's receipt at every readback caller (the connectivity verdict, the capacity plan's replace action
+// and the replace postcondition), which are pure folds over an organization roster; threading a per-host receipt
+// through them is the change that also lifts the runs-on guard, because only a consumer that selects on the label
+// makes a stale advertisement matter. The row's dissolution names the receipt-judging readback whose appearance
+// ends the gap. Enrolled in gunbc.census_closure_frontier, so the census reaches it; the guard RED is the
+// control that the gap is not reachable before then.
+data runner_slot_optional_user_session_readback_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.runner.runner_registration_labels", decl_name: "runner_slot_optional_registration_labels"),
+    reason: "the readback tolerates the user-session label on roster membership alone and never reads a receipt, so a label granted under a fresh receipt stays conformant after the receipt ages; no runs-on may name the label until this is judged, so nothing routes on the stale advertisement",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.runner.runner_registration_labels", decl_name: "runner_slot_labels_conform_with_receipt")),
+  ),
+]
