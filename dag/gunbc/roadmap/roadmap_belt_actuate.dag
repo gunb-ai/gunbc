@@ -319,8 +319,9 @@ import gunbc.compute.compute_seat_ensure {
 import gunbc.compute.work_provider_local {
   compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
   provide_result_host_record, host_record_was_written, host_record_wire,
-  compute_leases_root, ObserveUnitLifecycle,
+  ObserveUnitLifecycle,
 }
+import gunbc.compute.compute_producer_lease { compute_producer_leases, ComputeProducerLeasesReady, ComputeProducerLeasesUnready }
 import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
   SharedComputationCitation, ComputationAttached, ComputationComputed,
   VerificationEvidence, VerificationEvidenceForSubject,
@@ -1676,14 +1677,19 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
 // attempt's exit record, and the release is gunbc.compute.work_provider_local compute_recover_attempt_in,
 // which re-proves unit termination itself (gunbc.compute.compute_seat_ensure compute_seat_discharge_all).
 fn belt_compute_seat_discharge_pass(instance: HostDashboardInstance) -> SeatDischargePass {
-  match compute_capacity_subject(instance: instance, request: kibibyte(count: 0)) {
+  match compute_capacity_subject(instance: instance) {
     ComputeSubjectHostUnresolved { host: h } => SeatDischargeRefused { reason: join(["no capacity subject resolves for host ", h as String], "") }
-    ComputeSubjectResolved { subject: subj } =>
-      compute_seat_discharge_all(
-        instance: instance,
-        leases_dir: compute_leases_root(instance: instance),
-        subject: subj,
-        source: ObserveUnitLifecycle)
+    ComputeSubjectResolved { subject: subj, appropriation: appropriation } =>
+      match compute_producer_leases(instance: instance) {
+        ComputeProducerLeasesUnready { detail: d } => SeatDischargeRefused { reason: join(["the producer leases are not admissible: ", d], "") }
+        ComputeProducerLeasesReady { leases: leases } =>
+          compute_seat_discharge_all(
+            instance: instance,
+            leases: leases,
+            subject: subj,
+            appropriation: appropriation,
+            source: ObserveUnitLifecycle)
+      }
   }
 }
 
