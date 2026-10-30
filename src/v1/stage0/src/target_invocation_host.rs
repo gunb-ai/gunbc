@@ -572,18 +572,6 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
                 function: "roster_import_sweep_controls_wire",
             },
         ),
-        // The wave-1 occurrence-join gate on its own label. Same hand-maintained-table contract as the
-        // `known-red-derivation` note above: the `.dag` registry row is
-        // `gunbc.instrument_targets` `namespace_wave_occurrence_join_controls_binding` and this row is its
-        // second home, tracked by the `instrument_registry` row of
-        // `gunbc.target_invocation_seed_growth` `target_invocation_seed_growth_justification`.
-        (
-            instrument_label("namespace-wave-occurrence-join-controls"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/namespace_wave_occurrence_join.dag",
-                function: "namespace_wave_occurrence_join_controls_wire",
-            },
-        ),
         (
             instrument_label("credential-acquisition-systemd-rows"),
             TargetProducer::CliWireProgram {
@@ -3092,24 +3080,6 @@ fn observe_binary_inputs() -> BinaryInputObservation {
 /// (`gunbc.target_invocation` `assess_binary_freshness`), then route. Kept beside `test_verb`
 /// rather than inside it so the routing tests stay a function of the operand alone.
 pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
-    // THE MEASURED-SPAWN TRAMPOLINE, BEFORE ANY WORK, so this process's address space is still small
-    // (`cli_run::measured_spawn_trampoline`). Entered only through its reserved operand, which only
-    // the native process memory producer emits; the receipt variable beside any other operand refuses.
-    match cli_run::measured_spawn_route(
-        operand,
-        std::env::var_os(cli_run::MEASURED_SPAWN_RECEIPT_ENV),
-    ) {
-        cli_run::MeasuredSpawnRoute::NotRequested => {}
-        cli_run::MeasuredSpawnRoute::Enter(receipt) => {
-            std::process::exit(cli_run::measured_spawn_trampoline(receipt))
-        }
-        cli_run::MeasuredSpawnRoute::Refuse(message) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message,
-            }
-        }
-    }
     cli_run::user_work_scope::reexec_into_user_work_slice_if_owed();
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --
