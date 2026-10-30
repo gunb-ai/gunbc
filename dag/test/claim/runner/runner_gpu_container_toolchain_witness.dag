@@ -107,10 +107,11 @@ import gunbc.runner.runner_registration_labels {
 
 import extdeps.shadow.subordinate_ids {
   SubordinateRange,
-  SubordinateFileUnreadable, SubordinateFileReading,
+  SubordinateFileUnreadable, SubordinateFileRead, SubordinateFileReading,
   SubordinatePlan, SubordinatePlanSteps, SubordinatePlanRefused,
   subordinate_collisions,
   parse_subordinate_file,
+  parse_subordinate_file_exact,
   plan_subordinate_file,
   render_subordinate_file,
   subordinate_rows_after_plan,
@@ -119,6 +120,7 @@ import extdeps.shadow.subordinate_ids {
   subordinate_range_text,
 }
 
+import gunbc.typed_remote_file_write { typed_remote_file_step_failure_reason }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.sudo.elevation { sudo_program }
 import extdeps.tools.env { env_path_resolved_program }
@@ -1455,4 +1457,40 @@ test fn the_written_content_carries_the_terminated_file_and_the_moved_row() -> B
 test fn the_subordinate_write_bounds_its_own_wait_and_reports_conflict_as_tempfail() -> Bool {
   second_count(s: gpu_container_provision_subordinate_lock_wait) == 120
     && gpu_container_provision_subordinate_lock_conflict_exit_code == 75
+}
+
+// THE TRANSPORT TRIMS CAPTURED STDOUT, SO THE READING MUST NOT BE `cat`. This is the srv3 refusal (run
+// 40960539993): bytes read through the trim lacked the file's final newline and `cmp -s - /etc/subuid`
+// exited 1 on every converge. The oracle here is a hand-written od dump of the 22-byte line
+// "ghrunner:100000:65536\n" (0x0a last), supplied as the transport hands it back -- trailing newline of the
+// dump already trimmed -- and the expected bytes are a literal, never rendered from the parse.
+test fn an_od_reading_carries_the_files_final_newline_the_transport_would_trim() -> Bool {
+  let reading = parse_subordinate_file_exact(
+    path: "/etc/subuid", exit_code: 0, stderr: "",
+    od_stdout: " 67 68 72 75 6e 6e 65 72 3a 31 30 30 30 30 30 3a 36 35 35 33 36 0a")
+  subordinate_file_bytes(reading: reading) == "ghrunner:100000:65536\n"
+    && length(subordinate_file_ranges(reading: reading)) == 1
+}
+
+// A dump that is not whole bytes, or holds a non-ASCII byte, is Unreadable: a reading that cannot carry
+// exact bytes must not stand as one.
+test fn an_od_reading_that_is_not_exact_ascii_bytes_is_unreadable() -> Bool {
+  let odd = parse_subordinate_file_exact(path: "/etc/subuid", exit_code: 0, stderr: "", od_stdout: " 67 6")
+  let high = parse_subordinate_file_exact(path: "/etc/subuid", exit_code: 0, stderr: "", od_stdout: " 67 ff")
+  reading_is_unreadable(reading: odd) && reading_is_unreadable(reading: high)
+}
+
+fn reading_is_unreadable(reading: SubordinateFileReading) -> Bool {
+  match reading {
+    SubordinateFileUnreadable { path: _, cause: _ } => true
+    SubordinateFileRead { path: _, bytes: _, ranges: _ } => false
+  }
+}
+
+// A REFUSAL NEVER HAS AN EMPTY REASON: cmp -s is silent, so its exit code is the whole evidence.
+test fn the_re_read_compare_names_its_exit_code_and_no_step_refuses_with_an_empty_reason() -> Bool {
+  typed_remote_file_step_failure_reason(step: "re-read-compare", exit_code: 1, stderr: "") == "destination differs from the bytes read (cmp exit 1)"
+    && typed_remote_file_step_failure_reason(step: "re-read-compare", exit_code: 2, stderr: "") == "destination unreadable (cmp exit 2)"
+    && typed_remote_file_step_failure_reason(step: "rename", exit_code: 1, stderr: "") != "remote step failed: "
+    && typed_remote_file_step_failure_reason(step: "rename", exit_code: 1, stderr: "denied\n") == "remote step failed: denied"
 }

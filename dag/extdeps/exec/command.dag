@@ -223,6 +223,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_long_directory_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_long_directory_numeric_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "od_hex_span_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "od_hex_file_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_one_file_system_command"),

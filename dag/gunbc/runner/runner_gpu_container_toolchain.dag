@@ -113,6 +113,7 @@ import extdeps.shadow.subordinate_ids {
   SubordinatePlanRefused,
   subordinate_id_file_path,
   parse_subordinate_file,
+  parse_subordinate_file_exact,
   subordinate_ranges_for,
   subordinate_file_ranges,
   plan_subordinate_file,
@@ -126,6 +127,7 @@ import extdeps.tools.gnu_coreutils {
   coreutils_install_directory_argv,
   ls_one_per_line_command,
   cat_command,
+  od_hex_file_command,
   coreutils_install_binary_name,
   coreutils_install_directory_flag,
   coreutils_install_mode_flag,
@@ -1723,6 +1725,13 @@ fn gpu_container_provision_step_text(steps: List<GpuContainerProvisionStep>) -> 
 // under a 149 MB image store. ELEVATED, exit status is sound: root can read every path on the host, so
 // zero means present and non-zero means absent, with no third case for the code to confuse it with. That
 // is why every read below is a root read, and it is a correctness requirement rather than belt-and-braces.
+// THIS `cat` READ IS TRIM-TOLERANT AND THE EXACT-BYTES READ IS NOT: the transport removes a capture's
+// trailing whitespace (bounded_shell_host_drain retained_utf8_lossy_trimmed), which is harmless for the
+// /proc uid_map/gid_map reads and VerifySubordinateRanges -- both parse line-wise and consume ranges, never
+// the bytes -- and wrong for the subordinate-file reading whose bytes feed the re-read compare, which uses
+// od_hex_file_command (gpu_container_provision_file_reading). Repairing the transport itself is the next-rung
+// trigger of gunbc.recurring_failure_mode a_termination_contract_is_met_by_a_trimming_transport: a
+// captured-text carrier that declares what its transport normalized, reaching every payload-identity reader.
 fn gpu_container_provision_read_argv(path: String) -> List<String> {
   argv_words(command: cat_command(path: path))
 }
@@ -2504,12 +2513,12 @@ fn gpu_container_provision_subordinate_reconcile(
 // no entries means, and a half-written file is not a file with no entries.
 fn gpu_container_provision_file_reading(path: String, transport: HostEffectTransport) -> SubordinateFileReading {
   match run_argv_over_host_effect_transport(
-    command: sudo_elevate_command(command: gpu_container_provision_read_argv(path: path)),
+    command: sudo_elevate_command(command: argv_words(command: od_hex_file_command(path: path))),
     transport: transport) {
     RunArgvTransportRefused { reason: r } =>
       SubordinateFileUnreadable { path: path, cause: r as String }
     RunArgvTransportObserved { observed: o } =>
-      parse_subordinate_file(path: path, exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
+      parse_subordinate_file_exact(path: path, exit_code: o.exit_code, od_stdout: o.stdout, stderr: o.stderr)
   }
 }
 
