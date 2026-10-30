@@ -11,8 +11,7 @@ import gunbc.workspace_acquisition_invocation {
   workspace_acquisition_actor_admits, workspace_cancel_unelected_actor, workspace_establish_actor_protocol,
   workspace_recorded_actor, RecordedActorAbsent, RecordedActorInvocation, RecordedActorCancelled, RecordedActorUnreadable,
   WorkspaceSlotInvocationReading, workspace_slot_invocation_reading, workspace_prior_actor_standing,
-  workspace_rearm_actor, workspace_cancel_elected_actor, workspace_current_acquisition_invocation,
-}
+  workspace_rearm_actor, workspace_cancel_elected_actor, workspace_current_acquisition_invocation, workspace_acquisition_store }
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan }
 import gunbc.workspace_allocation { WorkspaceReservation }
 import gunbc.workspace_allocation_plan {
@@ -25,8 +24,7 @@ import gunbc.workspace_allocation_store {
   WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceReleased, WorkspaceWanted,
   WorkspaceRetired, WorkspaceTerminationRequested, WorkspaceAcquiring, WorkspaceRecorded,
   workspace_read_owner, workspace_write_allocation, workspace_commit_owner_transition,
-  workspace_record_reservation, workspace_settle_unstarted_retirement, workspace_retired_at,
-}
+  workspace_record_reservation, workspace_settle_unstarted_retirement, workspace_retired_at, workspace_allocation_store }
 
 // The plan apply authority admits this caller only. Every acquisition therefore follows a read
 // of the committed plan, and retirement switches to read-only recovery of a possibly acquired
@@ -37,13 +35,13 @@ fn workspace_apply_recorded_plan(store: FabricStorageBinding, cells: FabricAlloc
     Present { value: actual_now } => match workspace_begin_acquisition(store: store, owner: owner, idempotency_key: idempotency_key, now: actual_now) {
     WorkspaceStoreWritten { allocation: ready } => if (ready.phase == WorkspaceReleased) { WorkspaceStoreWritten { allocation: ready } }
     else if (ready.desired == WorkspaceRetired && ready.phase == WorkspaceTerminationRequested && (match ready.reservation { Absent => true Present { value: _ } => false })) {
-      workspace_settle_unstarted_retirement(store: store, owner: owner, idempotency_key: idempotency_key, observed_at: actual_now)
+      workspace_settle_unstarted_retirement(store: workspace_allocation_store(binding: store), owner: owner, idempotency_key: idempotency_key, observed_at: actual_now)
     } else { match ready.plan {
       Absent => WorkspaceStoreWriteRefused { reason: "allocation has no durably recorded reservation plan" }
       Present { value: prepared } => {
         let applied = match ready.desired {
           WorkspaceRetired => workspace_reservation_recover(cells: cells, plan: prepared)
-          WorkspaceWanted => if workspace_acquisition_actor_admits(store: store, plan: prepared) {
+          WorkspaceWanted => if workspace_acquisition_actor_admits(store: workspace_acquisition_store(binding: store), plan: prepared) {
             workspace_reservation_apply(cells: cells, plan: prepared)
           } else { match workspace_take_over_actor(store: store, cells: cells, plan: prepared, intent: ActorIntentAcquire, slot: workspace_slot_invocation_reading(plan: prepared)) {
             TakeoverRecovered { reservation: held } => WorkspaceReservationObserved { reservation: held }
@@ -53,7 +51,7 @@ fn workspace_apply_recorded_plan(store: FabricStorageBinding, cells: FabricAlloc
           } }
         }
         match applied {
-          WorkspaceReservationObserved { reservation: held } => workspace_record_reservation(store: store, reservation: held, observed_at: actual_now)
+          WorkspaceReservationObserved { reservation: held } => workspace_record_reservation(store: workspace_allocation_store(binding: store), reservation: held, observed_at: actual_now)
           WorkspaceReservationApplyRefused { reason: detail } => if (ready.desired == WorkspaceRetired && ready.phase == WorkspaceAcquiring) {
             workspace_settle_unelected_retirement(store: store, cells: cells, owner: owner, idempotency_key: idempotency_key, observed_at: actual_now, slot: workspace_slot_invocation_reading(plan: prepared))
           } else { WorkspaceStoreWriteRefused { reason: detail as String } }
@@ -70,7 +68,7 @@ fn workspace_apply_recorded_plan(store: FabricStorageBinding, cells: FabricAlloc
 fn workspace_begin_acquisition(store: FabricStorageBinding, owner: PrincipalRef, idempotency_key: NonEmptyStr, now: Timestamp) -> WorkspaceStoreWrite
   admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_apply_recorded_plan")]
 {
-  match workspace_read_owner(store: store, owner: owner) {
+  match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: owner) {
     WorkspaceStoreUnreadable { reason: detail } => WorkspaceStoreWriteRefused { reason: detail }
     WorkspaceStoreReadOk { snapshot: observed } => match filter(observed.allocations, a => a.request.idempotency_key == idempotency_key).first() {
       Absent => WorkspaceStoreWriteRefused { reason: "allocation request is absent" }
@@ -78,7 +76,7 @@ fn workspace_begin_acquisition(store: FabricStorageBinding, owner: PrincipalRef,
       else if !utc_instant_is_canonical(t: now) || !utc_instant_is_canonical(t: allocation.request.expires_at) {
         WorkspaceStoreWriteRefused { reason: "reservation acquisition requires canonical clock and absolute expiry" }
       } else if (allocation.desired == WorkspaceWanted && !utc_instant_before(a: now, b: allocation.request.expires_at)) {
-        workspace_write_allocation(store: store, snapshot: observed, allocation: workspace_retired_at(allocation: allocation, reason: "Lease expired before acquisition; cleanup obligation retained", observed_at: now))
+        workspace_write_allocation(store: workspace_allocation_store(binding: store), snapshot: observed, allocation: workspace_retired_at(allocation: allocation, reason: "Lease expired before acquisition; cleanup obligation retained", observed_at: now))
       } else if (allocation.desired == WorkspaceRetired && allocation.phase != WorkspaceAcquiring) {
         match allocation.reservation {
           Present { value: _ } => WorkspaceStoreWritten { allocation: allocation }
@@ -91,9 +89,9 @@ fn workspace_begin_acquisition(store: FabricStorageBinding, owner: PrincipalRef,
           Present { value: _ } => WorkspaceStoreWritten { allocation: allocation }
           Absent => if (allocation.desired != WorkspaceWanted || allocation.phase != WorkspaceRecorded) {
             WorkspaceStoreWriteRefused { reason: "allocation cannot begin acquisition from its current state" }
-          } else if !workspace_establish_actor_protocol(store: store, plan: acquisition_plan) {
+          } else if !workspace_establish_actor_protocol(store: workspace_acquisition_store(binding: store), plan: acquisition_plan) {
             WorkspaceStoreWriteRefused { reason: "acquisition protocol publication refused before owner transition" }
-          } else { workspace_write_allocation(store: store, snapshot: observed, allocation: WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
+          } else { workspace_write_allocation(store: workspace_allocation_store(binding: store), snapshot: observed, allocation: WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
             desired: allocation.desired, request: allocation.request, plan: allocation.plan, reservation: none,
             phase: WorkspaceAcquiring, connection: "", observed_at: allocation.observed_at, reason: "Reservation acquisition in progress",
           }) }
@@ -107,7 +105,7 @@ fn workspace_begin_acquisition(store: FabricStorageBinding, owner: PrincipalRef,
 // This is the only alternate owner transition: cancellation wins the immutable actor slot first.
 // Owner CAS still consumes the exact retired row; failure leaves the tombstone for retry.
 fn workspace_settle_unelected_retirement(store: FabricStorageBinding, cells: FabricAllocationStore, owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp, slot: WorkspaceSlotInvocationReading) -> WorkspaceStoreWrite {
-  match workspace_read_owner(store: store, owner: owner) {
+  match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: owner) {
     WorkspaceStoreUnreadable { reason: detail } => WorkspaceStoreWriteRefused { reason: detail }
     WorkspaceStoreReadOk { snapshot: observed } => match filter(observed.allocations, a => a.request.idempotency_key == idempotency_key).first() {
       Absent => WorkspaceStoreWriteRefused { reason: "allocation request is absent" }
@@ -117,9 +115,9 @@ fn workspace_settle_unelected_retirement(store: FabricStorageBinding, cells: Fab
         Present { value: _ } => WorkspaceStoreWriteRefused { reason: "reservation requires actual sanitation" }
         Absent => match allocation.plan {
           Absent => WorkspaceStoreWriteRefused { reason: "acquisition plan is unreadable" }
-          Present { value: prepared } => if !(workspace_cancel_unelected_actor(store: store, plan: prepared) || workspace_retirement_took_over_actor(store: store, cells: cells, plan: prepared, slot: slot)) {
+          Present { value: prepared } => if !(workspace_cancel_unelected_actor(store: workspace_acquisition_store(binding: store), plan: prepared) || workspace_retirement_took_over_actor(store: store, cells: cells, plan: prepared, slot: slot)) {
             WorkspaceStoreWriteRefused { reason: "acquisition actor is live, unreadable or holds the slot; queued hold effects remain an obligation" }
-          } else { workspace_commit_owner_transition(store: store, snapshot: observed, allocation: WorkspaceAllocation {
+          } else { workspace_commit_owner_transition(store: workspace_allocation_store(binding: store), snapshot: observed, allocation: WorkspaceAllocation {
             recorded_at: allocation.recorded_at, retired_at: allocation.retired_at,
             desired: WorkspaceRetired, request: allocation.request, plan: allocation.plan, reservation: none,
             phase: WorkspaceReleased, connection: "", observed_at: observed_at,
@@ -142,7 +140,7 @@ type WorkspaceActorTakeoverOutcome
 
 fn workspace_take_over_actor(store: FabricStorageBinding, cells: FabricAllocationStore, plan: WorkspaceReservationPlan, intent: WorkspaceActorIntent, slot: WorkspaceSlotInvocationReading) -> WorkspaceActorTakeoverOutcome {
   if cells.root != plan.root { TakeoverRefused { reason: "prepared plan names another allocation store" } }
-  else { match workspace_recorded_actor(store: store, plan: plan) {
+  else { match workspace_recorded_actor(store: workspace_acquisition_store(binding: store), plan: plan) {
     RecordedActorAbsent => TakeoverRefused { reason: "no acquisition actor was elected for this plan" }
     RecordedActorCancelled { generation: _ } => match intent {
       ActorIntentRetire => TakeoverCancelled
@@ -155,12 +153,12 @@ fn workspace_take_over_actor(store: FabricStorageBinding, cells: FabricAllocatio
       match workspace_actor_takeover_decision(plan: plan, hold: hold, prior: prior, intent: intent) {
         TakeoverRecoverHeld { reservation } => TakeoverRecovered { reservation: reservation }
         TakeoverRetain { reason } => TakeoverRefused { reason: reason }
-        TakeoverCancelActor => if workspace_cancel_elected_actor(store: store, plan: plan, generation: generation, prior: invocation) { TakeoverCancelled }
+        TakeoverCancelActor => if workspace_cancel_elected_actor(store: workspace_acquisition_store(binding: store), plan: plan, generation: generation, prior: invocation) { TakeoverCancelled }
           else { TakeoverRefused { reason: "another reader replaced the terminal actor first" } }
         TakeoverRearmActor => match workspace_current_acquisition_invocation(plan: plan) {
           Absent => TakeoverRefused { reason: "this controller cannot attest its own invocation" }
           Present { value: current } => if current == "" { TakeoverRefused { reason: "this controller cannot attest its own invocation" } }
-            else if workspace_rearm_actor(store: store, plan: plan, generation: generation, invocation: current as NonEmptyStr) { TakeoverRearmed }
+            else if workspace_rearm_actor(store: workspace_acquisition_store(binding: store), plan: plan, generation: generation, invocation: current as NonEmptyStr) { TakeoverRearmed }
             else { TakeoverRefused { reason: "another reader replaced the terminal actor first" } }
         }
       }

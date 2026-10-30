@@ -5,7 +5,7 @@ import extdeps.shell
 import extdeps.languages.json.emit { serialize_json, json_array }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
-import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceWanted, WorkspaceRetired, WorkspaceReserved, WorkspaceReleased, WorkspaceStoreReadOk, WorkspaceStoreWriteRefused, workspace_owner_key, workspace_allocation_json, workspace_read_owner, workspace_record_request }
+import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceWanted, WorkspaceRetired, WorkspaceReserved, WorkspaceReleased, WorkspaceStoreReadOk, WorkspaceStoreWriteRefused, workspace_owner_key, workspace_allocation_json, workspace_read_owner, workspace_record_request, workspace_allocation_store }
 import gunbc.runner.runner_microvm_slot_controller { workspace_slot_from_ledger, SlotControllerRefused }
 import test.claim.workspace_acquisition_storage_wet_witness { acquisition_fixture_write }
 import test.claim.workspace_launch_directive_witness { launch_fixture_allocation }
@@ -29,11 +29,11 @@ test fn expired_reserved_controller_retires_even_when_cleanup_is_uncertain() -> 
           if !acquisition_fixture_write(store: store, key: workspace_owner_key(owner: reserved.request.owner),
             value: serialize_json(v: json_array(elements: [workspace_allocation_json(allocation: reserved)])) as NonEmptyStr) { false }
           else { let refused = match workspace_slot_from_ledger(allocation: reserved, store: store, release_dir: "/fixture/not-installed", invocation_id: "0123456789abcdef0123456789abcdef") { SlotControllerRefused { refusal: _ } => true _ => false }
-            if !refused { false } else { match workspace_read_owner(store: store, owner: reserved.request.owner) {
+            if !refused { false } else { match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: reserved.request.owner) {
               WorkspaceStoreReadOk { snapshot } => match snapshot.allocations.first() {
                 Absent => false
                 Present { value: observed } => observed.desired == WorkspaceRetired && observed.phase != WorkspaceReleased
-                  && match workspace_record_request(store: store, request: allocation_test_request(key: "must-remain-blocked")) { WorkspaceStoreWriteRefused { reason: _ } => true _ => false }
+                  && match workspace_record_request(store: workspace_allocation_store(binding: store), request: allocation_test_request(key: "must-remain-blocked")) { WorkspaceStoreWriteRefused { reason: _ } => true _ => false }
               }
               _ => false
             } }
