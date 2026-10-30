@@ -53,18 +53,22 @@ fn dashboard_target_write_create_new(
   content: String,
 ) -> DashboardCreateNewOutcome {
   let argv = dashboard_create_new_argv(path: path as String)
-  match first(argv) {
-    Absent => CreateNewNotDispatched { reason: "the create-new command projected to no argv" }
-    Present { value: program } =>
-      match dashboard_target_run(
-        instance: instance,
-        program: program as FilePath,
-        args: argv |> skip(n: 1),
-        mode: TargetExecWithStdin { payload: content },
-      ) {
-        TargetRan { exit_code, success: _, stdout: _, stderr } =>
-          dashboard_create_new_outcome(exit_code: exit_code, stderr: stderr)
-        TargetNotRun { reason } => CreateNewNotDispatched { reason: reason }
-      }
+  if !starts_with(s: path as String, prefix: "/") {
+    CreateNewNotDispatched { reason: "the create-new path is not absolute; the stdin leg has no instance workdir" }
+  } else {
+    match first(argv) {
+      Absent => CreateNewNotDispatched { reason: "the create-new command projected to no argv" }
+      Present { value: program } =>
+        match dashboard_target_run(
+          instance: instance,
+          program: program as FilePath,
+          args: argv |> skip(n: 1),
+          mode: TargetExecWithStdin { payload: content },
+        ) {
+          TargetRan { exit_code, success: _, stdout: _, stderr } =>
+            dashboard_create_new_outcome(exit_code: exit_code, stderr: stderr)
+          TargetNotRun { reason } => CreateNewNotDispatched { reason: reason }
+        }
+    }
   }
 }

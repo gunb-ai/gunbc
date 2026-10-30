@@ -93,7 +93,13 @@ test fn ssh_arm_routes_through_typed_argv_stdin_and_the_wall_refuses_unsafe_path
   let instance = srv1_live_dashboard_instance()
   let routed = dashboard_target_write_create_new(instance: instance, path: "/tmp/x/entry" as FilePath, content: first_body)
   let walled = dashboard_target_write_create_new(instance: instance, path: "/tmp/x; rm -rf y" as FilePath, content: first_body)
+  let relative = dashboard_target_write_create_new(instance: instance, path: "x/entry" as FilePath, content: first_body)
   is_written(outcome: routed)
+    && match relative {
+      CreateNewNotDispatched { reason: _ } => true
+      CreateNewWritten => false
+      CreateNewRefused { exit_code: _, stderr: _ } => false
+    }
     && match walled {
       CreateNewNotDispatched { reason: _ } => true
       CreateNewWritten => false
