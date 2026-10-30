@@ -207,19 +207,6 @@ fn empty_observation() -> CasSlotObservation<NonEmptyStr> {
 // It is deleted; the commit is the `Absent` arm beside each Filesystem.WriteCreateNew* in `cas_commit_at`
 // (test.claim.outcome_laundering_seal_witness holds the route gone), and a real commit is exercised by
 // test.claim.durable_cas_file_store_wet_witness. What remains hermetic is the refusal classification.
-fn refusal_of(
-  attempt: CasAttempt<NonEmptyStr>,
-  created: FilesystemCreateNew,
-  post: CasSlotObservation<NonEmptyStr>,
-) -> CasOutcome<NonEmptyStr> {
-  match cas_create_refusal(attempt: attempt, created: created, post: post) {
-    Present { value: o } => o
-    Absent => CasCommitted {
-      committed: CasSlotVersion { generation: 1, content: attempt.proposed_content, value: attempt.proposed }
-    }
-  }
-}
-
 test fn a_successful_create_is_no_refusal() -> Bool {
   match cas_create_refusal(
     attempt: honest_absent(payload: "state-A"),
@@ -233,47 +220,50 @@ test fn a_successful_create_is_no_refusal() -> Bool {
 
 test fn occupied_create_with_a_readable_winner_is_precondition_failed() -> Bool {
   let attempt = honest_absent(payload: "state-A")
-  outcome_is_precondition_failed_with_present(
-    o: refusal_of(
-      attempt: attempt,
-      created: FilesystemCreateTargetOccupied { path: "/cas/slot-a.1" },
-      post: winner_observation(payload: "state-B"),
-    ),
-    payload: "state-B",
-  )
+  match cas_create_refusal(
+    attempt: attempt,
+    created: FilesystemCreateTargetOccupied { path: "/cas/slot-a.1" },
+    post: winner_observation(payload: "state-B"),
+  ) {
+    Present { value: o } => outcome_is_precondition_failed_with_present(o: o, payload: "state-B")
+    Absent => false
+  }
 }
 
 test fn occupied_create_with_no_readable_winner_is_store_refused_not_contention() -> Bool {
   let attempt = honest_absent(payload: "state-A")
-  outcome_is_store_refused(
-    o: refusal_of(
-      attempt: attempt,
-      created: FilesystemCreateTargetOccupied { path: "/cas/slot-a.1" },
-      post: empty_observation(),
-    ),
-  )
+  match cas_create_refusal(
+    attempt: attempt,
+    created: FilesystemCreateTargetOccupied { path: "/cas/slot-a.1" },
+    post: empty_observation(),
+  ) {
+    Present { value: o } => outcome_is_store_refused(o: o)
+    Absent => false
+  }
 }
 
 test fn a_permission_refused_create_is_store_refused_not_contention() -> Bool {
   let attempt = honest_absent(payload: "state-A")
-  outcome_is_store_refused(
-    o: refusal_of(
-      attempt: attempt,
-      created: FilesystemCreateRefused { path: "/cas/slot-a.1", kind: FilesystemPermissionDenied, error: "ignored text" },
-      post: empty_observation(),
-    ),
-  )
+  match cas_create_refusal(
+    attempt: attempt,
+    created: FilesystemCreateRefused { path: "/cas/slot-a.1", kind: FilesystemPermissionDenied, error: "ignored text" },
+    post: empty_observation(),
+  ) {
+    Present { value: o } => outcome_is_store_refused(o: o)
+    Absent => false
+  }
 }
 
 test fn an_unrecognized_create_kind_is_store_refused_not_contention() -> Bool {
   let attempt = honest_absent(payload: "state-A")
-  outcome_is_store_refused(
-    o: refusal_of(
-      attempt: attempt,
-      created: FilesystemCreateKindUnrecognized { path: "/cas/slot-a.1", observed: "weird", error: "ignored text" },
-      post: empty_observation(),
-    ),
-  )
+  match cas_create_refusal(
+    attempt: attempt,
+    created: FilesystemCreateKindUnrecognized { path: "/cas/slot-a.1", observed: "weird", error: "ignored text" },
+    post: empty_observation(),
+  ) {
+    Present { value: o } => outcome_is_store_refused(o: o)
+    Absent => false
+  }
 }
 
 test fn an_unrecognized_read_kind_is_refused_as_unrecognized_not_as_other() -> Bool {
