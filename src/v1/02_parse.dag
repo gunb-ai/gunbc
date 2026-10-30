@@ -1,5 +1,6 @@
 module v1.compiler.parse
 
+import v1.std.core { field_init_node_name_at, make_file_span }
 import std.target_representation { VariantParentBeforeInference }
 import v1.std.core { Unmarked, TestMarked,
   module_node, import_node,

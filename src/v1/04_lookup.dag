@@ -1,5 +1,6 @@
 module v1.compiler.infer_lookup
 
+import v1.compiler.infer_env { declared_module_owner }
 import std.induction { SubValueRelation }
 import v1.compiler.infer_items { ItemKind, FnItem, TypeItem, ServiceItem, ResourceItem, DataItem, OtherItem, item_kind }
 import std.types { is_kernel_type }
