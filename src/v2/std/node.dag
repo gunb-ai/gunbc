@@ -3,7 +3,7 @@ module v2.std.node
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
-import std.algebra { Cons, Empty, FreeMonoid, zip_eq, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.algebra { Cons, Empty, FreeMonoid, Ordering, TotalOrder, string_compare_canonical, zip_eq, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
@@ -1585,6 +1585,16 @@ data symbol_lexeme_host_disposition: Disposition = Scaffold {
 
 fn symbol_lexeme(sym: Symbol) -> String {
   symbol_lexeme(sym: sym)
+}
+
+fn symbol_compare_lexeme(a: Symbol, b: Symbol) -> Ordering {
+  string_compare_canonical(a: symbol_lexeme(sym: a), b: symbol_lexeme(sym: b))
+}
+
+// The canonical content order on Symbol keys: the String order over the symbol's lexeme, which is the order the host
+// sort_by applies to a Symbol key (a Symbol is host text; it is never ordered by intern id).
+fn symbol_total_order() -> TotalOrder<Symbol> {
+  TotalOrder { compare: symbol_compare_lexeme }
 }
 
 // A DECLARATION REFERENCE IS MARKED, NOT RECOGNISED BY SHAPE. v2.compiler.resolve mints a reference
