@@ -1,0 +1,42 @@
+module test.claim.auth.revision_request_authorization_witness
+
+import std.types { Bool }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_mtjade1 }
+import gunbc.auth.standing_operator_grant { StandingRevisionRequestStart, StandingHostEffectRecover }
+import gunbc.auth.authorization_pattern_selection {
+  WorkloadIdentityBindable, WorkloadIdentityUnbindable,
+  PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
+}
+import gunbc.auth.revision_request_authorization { revision_request_select_launch }
+
+// A provider binding is planted only in this pure selector control. Production
+// must observe its own binding; the API key cannot supply this standing.
+test fn the_scoped_standing_start_uses_the_shared_unattended_pattern() -> Bool {
+  match revision_request_select_launch(host: operator_host_srv1, effect: StandingRevisionRequestStart,
+    declared_slot: true, workload_identity: WorkloadIdentityBindable { member: "fixture-bound-worker" }) {
+    PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
+    _ => false
+  }
+}
+
+test fn another_host_effect_or_undeclared_slot_requires_per_effect_approval() -> Bool {
+  let identity = WorkloadIdentityBindable { member: "fixture-bound-worker" }
+  let other_host = revision_request_select_launch(host: operator_host_mtjade1, effect: StandingRevisionRequestStart,
+    declared_slot: true, workload_identity: identity)
+  let other_effect = revision_request_select_launch(host: operator_host_srv1, effect: StandingHostEffectRecover,
+    declared_slot: true, workload_identity: identity)
+  let undeclared_slot = revision_request_select_launch(host: operator_host_srv1, effect: StandingRevisionRequestStart,
+    declared_slot: false, workload_identity: identity)
+  all([other_host, other_effect, undeclared_slot], selection => match selection {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+    _ => false
+  })
+}
+
+test fn a_standing_ruling_does_not_fabricate_a_provider_binding() -> Bool {
+  match revision_request_select_launch(host: operator_host_srv1, effect: StandingRevisionRequestStart,
+    declared_slot: true, workload_identity: WorkloadIdentityUnbindable { cause: "provider not installed" }) {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+    _ => false
+  }
+}

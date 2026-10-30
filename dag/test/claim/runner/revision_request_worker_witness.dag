@@ -1,0 +1,41 @@
+module test.claim.runner.revision_request_worker_witness
+
+import extdeps.shell
+import std.types { Bool, NonEmptyStr }
+import std.error_primitives { Result, Ok, Err }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import product.fabric.identity { FabricIdentity, DemandKey }
+import gunbc.host_state_root { isolated_host_state_tree }
+import gunbc.runner.runner_revision_request_context { revision_request_context }
+import gunbc.runner.runner_revision_request_worker { revision_request_claim }
+import gunbc.durable_handoff_host { host_request_submit, HostRequestAccepted }
+import test.claim.durable_handoff_request_witness { request_api_key_fixture_prepare_in }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit }
+
+test fn one_durable_acceptance_allows_only_one_worker_claim() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-worker-claim.XXXXXX").path
+  if dir == "" { return false }
+  let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
+  if !request_api_key_fixture_prepare_in(tree: tree) { return false }
+  let context = match revision_request_context(tree: tree) {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let request = match host_request_submit(root: context.request_root,
+    identity: FabricIdentity { principal: "alice", key: "claim-a" as NonEmptyStr as DemandKey }, payload: "accepted-payload") {
+    HostRequestAccepted { request: value } => value _ => { return false }
+  }
+  let worker = "worker-a" as NonEmptyStr as DurableHoldOwnerRef
+  let first = revision_request_claim(context: context, request: request, worker: worker)
+  let same = revision_request_claim(context: context, request: request, worker: worker)
+  let other = revision_request_claim(context: context, request: request, worker: "worker-b" as NonEmptyStr as DurableHoldOwnerRef)
+  (match first { Ok { value: held } => held.request == request Err { value: _ } => false })
+    && (match same { Err { value: _ } => true Ok { value: _ } => false })
+    && (match other { Err { value: _ } => true Ok { value: _ } => false })
+}
+
+test fn a_foreign_literal_cannot_mint_a_worker_claim() -> ProcessExit {
+  let source = "module probe_revision_request_claim\nimport gunbc.runner.runner_revision_request_worker { RevisionRequestClaim }\nfn f(a: RevisionRequestClaim) -> RevisionRequestClaim { RevisionRequestClaim { request: a.request, worker: a.worker, key: a.key, generation: a.generation } }\n"
+  census_exit(census_verdict(census: blocking_subject_census(source: source,
+    wanted_class: "SoleConstructorViolation", wanted_subject: "RevisionRequestClaim"), holds: fn(n) { n == 1 }))
+}

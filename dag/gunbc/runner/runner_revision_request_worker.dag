@@ -1,6 +1,15 @@
 module gunbc.runner.runner_revision_request_worker
 
-import std.types { String }
+import std.types { String, NonEmptyStr }
+import gunbc.auth.revision_request_authorization { revision_request_select_launch }
+import gunbc.auth.authorization_pattern_selection { AuthorizationPatternSelection, WorkloadIdentityStanding }
+import gunbc.auth.standing_operator_grant { StandingRevisionRequestStart }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import std.durable_compare_and_set { CasGeneration, ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasObservedReadable, CasReadablePresent }
+import std.content_hash { content_hash_atom }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
+import gunbc.durable_cas_file_store { observe_cas_slot_state, file_compare_and_set, OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
+import gunbc.durable_handoff_host { host_request_user_read, host_request_user_key, host_request_identity_wire, host_request_wire, HostRequestPresent }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -10,25 +19,24 @@ import gunbc.runner.runner_revision_job_spec { RevisionJobSpec, decode_revision_
 import gunbc.runner.runner_revision_job_main { revision_job_slot }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 
-// A worker invocation PLAN, never launch authority. The planner preserves the
-// abstract authority supplied to it; it cannot select an authorization pattern,
-// issue a grant, run systemctl, or execute revision_job_run. The eventual owner
-// must require a sealed launch carrier produced by select_authorization_pattern.
-// No approval regime is chosen here while the operator decision is pending.
-type RevisionRequestWorkerPlan<LaunchAuthority> {
+// A worker invocation PLAN, never launch authority. Its authority input now
+// comes from the shared selection fold and the committed standing ruling.
+// Provider identity remains abstract until the installed launch provider reads
+// its own binding. A plan cannot run systemctl or execute revision_job_run.
+type RevisionRequestWorkerPlan {
   request: HostAcceptedRequest
   spec: RevisionJobSpec
   slot: RunnerSlotIdentity
-  launch_authority: LaunchAuthority
+  launch_authority: AuthorizationPatternSelection
   executor: DeclarationRef
 }
 
 // The API key selects the accepted request's principal, not a root operation.
 // The worker consumes that existing durable acceptance and its exact payload;
 // it cannot substitute a new body when selecting the revision-job executor.
-fn revision_request_worker_plan<LaunchAuthority>(context: RevisionRequestContext,
+fn revision_request_worker_plan(context: RevisionRequestContext,
   request: HostAcceptedRequest, slot_instance: String,
-  launch_authority: LaunchAuthority) -> Result<RevisionRequestWorkerPlan<LaunchAuthority>, String> {
+  workload_identity: WorkloadIdentityStanding) -> Result<RevisionRequestWorkerPlan, String> {
   if (request.root != context.request_root) {
     return Err { value: "accepted request belongs to another request store" }
   }
@@ -39,7 +47,9 @@ fn revision_request_worker_plan<LaunchAuthority>(context: RevisionRequestContext
   match decode_revision_job_spec(text: request.payload as String) {
     RevisionJobSpecRefused { refusal: _ } => Err { value: "accepted revision-job payload is no longer admissible" }
     RevisionJobSpecDecoded { spec: spec } => Ok { value: RevisionRequestWorkerPlan {
-      request: request, spec: spec, slot: slot, launch_authority: launch_authority,
+      request: request, spec: spec, slot: slot,
+      launch_authority: revision_request_select_launch(host: slot.host, effect: StandingRevisionRequestStart,
+        declared_slot: true, workload_identity: workload_identity),
       executor: decl_ref(module_path: "gunbc.runner.runner_revision_job_main", decl_name: "revision_job_run") } }
   }
 }
@@ -48,3 +58,48 @@ fn revision_request_worker_plan<LaunchAuthority>(context: RevisionRequestContext
 // then the selected privileged-effect owner validates launch_authority against
 // this request, payload and slot. The runner's own receipt/stop/sanitation result
 // feeds settlement; this plan and a published result cannot free the user slot.
+
+// The execution claim is create-once for the accepted identity, in the same
+// request store. It does not release or replace the per-user responsibility.
+// Restart never reclaims it by worker-name equality; recovery must reconcile.
+type RevisionRequestClaim sole_constructor {
+  request: HostAcceptedRequest
+  worker: DurableHoldOwnerRef
+  key: NonEmptyStr
+  generation: CasGeneration
+}
+
+fn revision_request_claim(context: RevisionRequestContext, request: HostAcceptedRequest,
+  worker: DurableHoldOwnerRef) -> Result<RevisionRequestClaim, String> {
+  if (context.request_root != request.root) { return Err { value: "request claim belongs to another store" } }
+  let outstanding = host_request_user_read(root: request.root, principal: request.identity.principal,
+    observed: observe_cas_slot_state(root: request.root, key: host_request_user_key(principal: request.identity.principal)))
+  match outstanding {
+    HostRequestPresent { request: current } => {
+      if (current.identity != request.identity || current.payload != request.payload) {
+        return Err { value: "request is not the user's outstanding responsibility" }
+      }
+    }
+    _ => { return Err { value: "outstanding request could not be confirmed" } }
+  }
+  let key = concat("worker-", content_hash_atom(value: host_request_identity_wire(identity: request.identity) as NonEmptyStr).digest as String) as NonEmptyStr
+  let bytes = serialize_json(v: json_object(members: [
+    json_kv(key: "request", value: json_string(s: host_request_wire(identity: request.identity, payload: request.payload))),
+    json_kv(key: "worker", value: json_string(s: worker as String)),
+  ])) as NonEmptyStr
+  let verified = match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: bytes) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => { return Err { value: "worker claim key refused" } }
+    DerivedPayloadAdmitted { verified: value } => value
+  }
+  match file_compare_and_set(root: request.root, publication: OwnerOnlyCreateOnly, verified: verified) {
+    CasPreconditionFailed { expected: _, observed: _ } => Err { value: "request execution already claimed; recovery is required" }
+    CasStoreRefused { cause: _ } => Err { value: "request execution claim unconfirmed" }
+    CasCommitted { committed: committed } => match observe_cas_slot_state(root: request.root, key: key) {
+      CasObservedReadable { readable: CasReadablePresent { version: readback } } =>
+        if (readback.generation == committed.generation && readback.value == bytes) {
+          Ok { value: RevisionRequestClaim { request: request, worker: worker, key: key, generation: committed.generation } }
+        } else { Err { value: "request execution claim readback mismatch" } }
+      _ => Err { value: "request execution claim readback unavailable" }
+    }
+  }
+}

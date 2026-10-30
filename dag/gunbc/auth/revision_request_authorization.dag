@@ -1,0 +1,45 @@
+module gunbc.auth.revision_request_authorization
+
+import std.types { Bool, String, NonEmptyStr }
+import std.human_intervention { EveryOperatorRequest }
+import product.host_identity { HostIdentity }
+import gunbc.auth.standing_operator_grant {
+  StandingGrantEffect, StandingGrantHost, StandingRevisionRequestStart,
+  srv1_revision_request_standing_grant, standing_grant_covers, standing_ruling_with_arm_interlock,
+}
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, AuthorizationPatternSelection, WorkloadIdentityStanding,
+  IrreversibleEffect, ApiSurface, MintsNoCredential, NoBillingConsequence,
+  NoWitnessDischarge, StandingRulingUnderInterlock, select_authorization_pattern,
+}
+
+// Scope classification is shared by the worker and its discriminating controls.
+// The provider's identity standing is an observation supplied by its owner,
+// never inferred from the API key or merely from a service-account declaration.
+// This pure selection returns no execution capability.
+fn revision_request_launch_effect(host: HostIdentity, effect: StandingGrantEffect,
+  declared_slot: Bool, workload_identity: WorkloadIdentityStanding) -> PrivilegedEffect {
+  let covered = declared_slot && standing_grant_covers(g: srv1_revision_request_standing_grant,
+    scope: StandingGrantHost { host: host }, effect: effect)
+  PrivilegedEffect {
+    subject: "start a declared revision-job runner instance for an accepted request" as NonEmptyStr,
+    frequency: EveryOperatorRequest,
+    reversibility: IrreversibleEffect { what_is_lost: "a started build consumes execution and may have run before a stop; repeating start is not undo" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: workload_identity,
+    // This exact start does not mint general root reach or any bearer credential.
+    // Arbitrary root operations are a different effect, outside the standing row.
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: if covered {
+      StandingRulingUnderInterlock { ruling: standing_ruling_with_arm_interlock(
+        g: srv1_revision_request_standing_grant, e: StandingRevisionRequestStart) }
+    } else { NoWitnessDischarge },
+  }
+}
+
+fn revision_request_select_launch(host: HostIdentity, effect: StandingGrantEffect,
+  declared_slot: Bool, workload_identity: WorkloadIdentityStanding) -> AuthorizationPatternSelection {
+  select_authorization_pattern(e: revision_request_launch_effect(host: host, effect: effect,
+    declared_slot: declared_slot, workload_identity: workload_identity))
+}
