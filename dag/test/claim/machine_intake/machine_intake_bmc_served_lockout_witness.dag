@@ -59,7 +59,8 @@ import gunbc.machine_intake.bmc_secure {
   BmcFailedLoginBudgetBlock, CostExceedsTheServedHeadroom, FailingLoginsWithNoServedThreshold,
   BmcFailedLoginHeadroom, BmcLockoutThreshold, AccountLockedOutAfter, AccountNeverLockedOutByThisController, LockoutThresholdUnread,
   RedfishAccountServiceLogin, IpmiLanPlusLogin,
-  BmcDeclaredLoginRetry, SurfaceOfThePlannedWriteUndetermined, DeclaredRetryLogin,
+  BmcDeclaredLoginRetry, SurfaceOfThePlannedWriteUndetermined, IpmiLanPlusLoginChannelUndetermined, DeclaredRetryLogin,
+  bmc_break_glass_probe_is_the_managed_authentication,
   bmc_plan_failing_logins, bmc_failed_login_budget_verdict, bmc_known_failed_logins_of,
   BmcKnownFailedLogin,
   bmc_spend_count, bmc_lockout_threshold, bmc_lockout_reading_not_read,
@@ -229,12 +230,13 @@ fn sealed_forced_change() -> PublishedCredentialChangeForced? {
 // (AccountService.v1_19_0), so a plan may make only what the account can still
 // survive: threshold - 1 (the last attempt is held back for a human, who may get
 // it wrong) - the failures the reading already shows as counted. The reading's
-// own rejected managed probe is one of those while it sits inside the served
-// window, so at threshold 3 the plan's two logins land on the third and the gate
-// refuses; the same plan is admitted once the served window is shorter than the
-// time since that probe, and at that same expired window a threshold of 2 — where
-// the plan's two logins are exactly the two the controller allows — refuses
-// again; and the plan plus one declared retry refuses at threshold 3. Four
+// own rejected managed and break-glass probes are two of those while they sit
+// inside the served window (two authentications, two failures — the break-glass
+// probe presents root's credential in its own login), so at threshold 4 the plan's
+// three logins land past the one left and the gate refuses; the same plan is
+// admitted once the served window is shorter than the time since those probes, and
+// at that same expired window a threshold of 3 — two of headroom for three logins —
+// refuses again; and the plan plus one declared retry refuses at threshold 4. Four
 // shapes, four different bugs: forgetting the -1, forgetting the subtraction,
 // forgetting the window, or reading no threshold at all. The positive control is
 // the admitted pair on the same reading, so a gate that refused everything fails
@@ -245,32 +247,33 @@ test fn threshold_three_refuses_three_failing_logins_and_admits_two() -> Bool {
   let plan_at = observer_clock_modeled(millis: t_plan, realization: lockout_schedule)
   // The probe is inside the served window: the controller has already counted one
   // failure against root, which is why the gate is not "cost < threshold".
-  let inside = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 3, reset_after_secs: 300))
-  // The served window is shorter than the time since that probe: nothing counted.
-  let expired = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 3, reset_after_secs: 1))
-  let tight = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 2, reset_after_secs: 1))
-  // Two logins: the managed probe and the published credential's own
-  // authentication, both root's, both on Redfish. A declared retry is the third.
+  let inside = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 4, reset_after_secs: 300))
+  // The served window is shorter than the time since those probes: nothing counted.
+  let expired = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 4, reset_after_secs: 1))
+  let tight = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 3, reset_after_secs: 1))
+  // Three logins: the managed probe, the break-glass probe and the published
+  // credential's own authentication, all root's, all on Redfish. A declared retry is
+  // the fourth.
   let two_inside = plan_lock(reading: inside, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
   let two_expired = plan_lock(reading: expired, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
   let two_tight = plan_lock(reading: tight, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
   let three_expired = plan_lock(reading: expired, forced_change: none, declared_retries: [retry(account: "root" as NonEmptyStr, surface: RedfishAccountServiceLogin, times: 1)], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
-  let says_two_over_one = match list_head(budget_blocks(two_inside)) {
+  let says_three_over_one = match list_head(budget_blocks(two_inside)) {
     Absent => false
     Present { value: b } => match b {
-      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: k } => c == 2 && m == 1 && (th as Int) == 3 && k == 1
+      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: k } => c == 3 && m == 1 && (th as Int) == 4 && k == 2
       FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
     }
   }
-  let says_three_over_two = match list_head(budget_blocks(three_expired)) {
+  let says_four_over_three = match list_head(budget_blocks(three_expired)) {
     Absent => false
     Present { value: b } => match b {
-      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: k } => c == 3 && m == 2 && (th as Int) == 3 && k == 0
+      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: k } => c == 4 && m == 3 && (th as Int) == 4 && k == 0
       FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
     }
   }
   planned(two_expired) && refused_by_budget(two_inside) && refused_by_budget(two_tight)
-    && refused_by_budget(three_expired) && says_two_over_one && says_three_over_two
+    && refused_by_budget(three_expired) && says_three_over_one && says_four_over_three
 }
 
 // RUNG: an unread threshold refuses, and does NOT default. The same plan that was
@@ -298,8 +301,8 @@ test fn an_unread_threshold_refuses_the_failing_logins_a_served_one_admits() -> 
 }
 
 // RUNG: a declared retry is a login. Each extra presentation the plan declares
-// moves the count, so a plan that declares two retries of an account that has one
-// login of its own is charged three and refused at threshold three. The control is
+// moves the count, so a plan that declares two retries of an account that has three
+// logins of its own is charged five and refused at threshold four. The control is
 // the same plan with no retry declared. A gate that counted only the plan's probes
 // would admit both halves.
 test fn declared_retries_are_charged_as_logins() -> Bool {
@@ -311,10 +314,10 @@ test fn declared_retries_are_charged_as_logins() -> Bool {
   let read = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 4, reset_after_secs: 1))
   let none_declared = plan_lock(reading: read, forced_change: none, declared_retries: [], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
   let two_declared = plan_lock(reading: read, forced_change: none, declared_retries: [retry(account: "root" as NonEmptyStr, surface: RedfishAccountServiceLogin, times: 2)], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
-  let says_four_over_three = match list_head(budget_blocks(two_declared)) {
+  let says_five_over_three = match list_head(budget_blocks(two_declared)) {
     Absent => false
     Present { value: b } => match b {
-      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: _ } => c == 4 && m == 3 && (th as Int) == 4
+      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: _ } => c == 5 && m == 3 && (th as Int) == 4
       FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
     }
   }
@@ -325,7 +328,7 @@ test fn declared_retries_are_charged_as_logins() -> Bool {
   // identical plan with the identical threshold is admitted there.
   let no_window = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_only(read_at: t_read, redfish_threshold: 4))
   let dark_one_declared = plan_lock(reading: no_window, forced_change: none, declared_retries: [retry(account: "root" as NonEmptyStr, surface: RedfishAccountServiceLogin, times: 1)], store_at: store_at, fetch_at: fetch_at, plan_at: plan_at)
-  planned(none_declared) && refused_by_budget(two_declared) && says_four_over_three
+  planned(none_declared) && refused_by_budget(two_declared) && says_five_over_three
     && refused_by_budget(dark_one_declared)
 }
 
@@ -348,7 +351,7 @@ test fn the_surface_the_plan_will_authenticate_on_is_the_one_that_judges_it() ->
     Absent => false
     Present { value: b } => match b {
       CostExceedsTheServedHeadroom { cost: _, may_fail: _, threshold: _, known_failures_in_window: _ } => false
-      FailingLoginsWithNoServedThreshold { cost: c, cause: _ } => c == 2
+      FailingLoginsWithNoServedThreshold { cost: c, cause: _ } => c == 3
     }
   }
   planned(on_served) && refused_by_budget(on_dark) && says_no_served_threshold
@@ -400,12 +403,13 @@ test fn derived_retirement_costs_nothing_and_the_probed_path_one_per_member() ->
 // RUNG: the forced-change path is an AUTHENTICATED answer, not a failed login, and
 // the exemption reaches only the surface the sealed record is grounded for. Three
 // halves, because a single pair cannot tell an exemption from a hole:
-//   - threshold 2, the sealed forced-change state: ADMITTED. The plan makes one
-//     login that can fail (the managed probe) and the published credential's own
-//     authentication, which the sealed 403 Base.1.16.0.PasswordChangeRequired says
-//     is answered as AUTHENTICATED — it rejects the operation, not the credential,
-//     so it moves no counter. One login of headroom is enough.
-//   - the same threshold 2 WITHOUT the sealed state: REFUSED. Two logins now count,
+//   - threshold 3, the sealed forced-change state: ADMITTED. The plan makes two
+//     logins that can fail (the managed and break-glass probes) and the published
+//     credential's own authentication, which the sealed 403
+//     Base.1.16.0.PasswordChangeRequired says is answered as AUTHENTICATED — it
+//     rejects the operation, not the credential, so it moves no counter. Two logins
+//     of headroom are enough.
+//   - the same threshold 3 WITHOUT the sealed state: REFUSED. Three logins now count,
 //     so the exemption above is doing the work; it is not that the plan was cheap.
 //     This is also the parent's RED: a plan with no forced state cannot exempt a
 //     login. The exemption is not a flag a caller sets — the parameter is the sealed
@@ -420,7 +424,7 @@ test fn the_forced_change_path_costs_no_failed_login_on_the_surface_it_is_ground
   let store_at = observer_clock_modeled(millis: t_store, realization: lockout_schedule)
   let fetch_at = observer_clock_modeled(millis: t_fetch, realization: lockout_schedule)
   let plan_at = observer_clock_modeled(millis: t_plan, realization: lockout_schedule)
-  let tight = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 2, reset_after_secs: 1))
+  let tight = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 3, reset_after_secs: 1))
   let unread = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_unread(read_at: t_read, detail: "nothing authenticated is readable before the forced change" as NonEmptyStr))
   let sealed = match sealed_forced_change() {
     Present { value: f } => Present { value: f }
@@ -521,8 +525,8 @@ test fn each_surface_serves_its_own_counter_window() -> Bool {
 // number on hand is not a worst case over a transport nobody looked at, and
 // treating it as one is the fabrication this gate exists to prevent.
 // The fourth shape keeps the strictness in its lane: the identical three logins,
-// NAMED to the Redfish surface, admit on the skewed reading — an unnamed surface
-// being judged by the tightest policy does not leak onto named ones.
+// NAMED to the Redfish surface, admit on the skewed reading — an unnamed login
+// being charged to every counter it can reach does not leak onto named ones.
 test fn a_login_the_plan_cannot_name_a_surface_for_is_bounded_by_what_was_actually_read() -> Bool {
   let skewed = lockout_served_channels(read_at: t_read, redfish_threshold: 20, ipmi_channels: [1], ipmi_threshold: 2)
   let both_generous = lockout_served_channels(read_at: t_read, redfish_threshold: 20, ipmi_channels: [1], ipmi_threshold: 20)
@@ -656,5 +660,129 @@ fn blocks_of(verdict: BmcFailedLoginBudgetVerdict) -> List<BmcFailedLoginBudgetB
   match verdict {
     FailedLoginBudgetAdmitted { spends: _, exempt: _ } => []
     FailedLoginBudgetRefused { blocked: b, spends: _, exempt: _ } => b
+  }
+}
+
+// RUNG: a login whose IPMI channel the transport picks is charged to EVERY channel
+// counter it can reach, BESIDE the logins named to that channel — at function level
+// on bmc_failed_login_budget_verdict. One read LAN channel, threshold 3 (two of
+// headroom). THE RED: two channel-undetermined logins and one named to channel 1 —
+// all three can reach channel 1, so the counter is charged 3 and refuses; judging
+// the undetermined logins as their own counter against the tightest threshold
+// checked 2 <= 2 and 1 <= 2 and admitted. THE POSITIVE CONTROL: one of each, 2 <= 2,
+// admitted on the same reading.
+test fn an_undetermined_channel_login_is_charged_beside_the_logins_named_to_that_channel() -> Bool {
+  let one_channel = lockout_served_channels(read_at: t_read, redfish_threshold: 20, ipmi_channels: [1], ipmi_threshold: 3)
+  let mixed_three = BmcPlanFailedLoginRoster {
+    spends: [
+      BmcPlanFailedLoginSpend { key: BmcFailedLoginBudgetKey { account: root_account(), surface: IpmiLanPlusLoginChannelUndetermined }, logins: ipmi_logins(surface: IpmiLanPlusLoginChannelUndetermined, count: 2) },
+      BmcPlanFailedLoginSpend { key: BmcFailedLoginBudgetKey { account: root_account(), surface: IpmiLanPlusLogin { channel: 1 } }, logins: ipmi_logins(surface: IpmiLanPlusLogin { channel: 1 }, count: 1) },
+    ],
+    exempt: [],
+  }
+  let mixed_two = BmcPlanFailedLoginRoster {
+    spends: [
+      BmcPlanFailedLoginSpend { key: BmcFailedLoginBudgetKey { account: root_account(), surface: IpmiLanPlusLoginChannelUndetermined }, logins: ipmi_logins(surface: IpmiLanPlusLoginChannelUndetermined, count: 1) },
+      BmcPlanFailedLoginSpend { key: BmcFailedLoginBudgetKey { account: root_account(), surface: IpmiLanPlusLogin { channel: 1 } }, logins: ipmi_logins(surface: IpmiLanPlusLogin { channel: 1 }, count: 1) },
+    ],
+    exempt: [],
+  }
+  let three_on_channel_one = match list_head(blocks_of(bmc_failed_login_budget_verdict(roster: mixed_three, reading: one_channel, known: [], now: t_plan))) {
+    Absent => false
+    Present { value: b } => match b.block {
+      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: _, known_failures_in_window: _ } =>
+        c == 3 && m == 2 && is_channel_one(surface: b.key.surface)
+      FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
+    }
+  }
+  three_on_channel_one && admitted_verdict(bmc_failed_login_budget_verdict(roster: mixed_two, reading: one_channel, known: [], now: t_plan))
+}
+
+// RUNG: a failure already counted on a concrete channel reduces the headroom of a
+// login whose channel is undetermined. Threshold 3 on channel 1, one undetermined
+// login. THE RED: two recent failures recorded on channel 1 — the counter holds 2,
+// nothing is left, the login refuses (the undetermined pseudo-counter used to filter
+// history by exact key and found none). THE POSITIVE CONTROL: the same two failures
+// recorded on the Redfish AccountService, which cannot have moved a LAN channel's
+// counter, admit the same login.
+test fn a_failure_on_a_concrete_channel_counts_against_an_undetermined_channel_login() -> Bool {
+  let one_channel = lockout_served_channels(read_at: t_read, redfish_threshold: 20, ipmi_channels: [1], ipmi_threshold: 3)
+  let one_undetermined = BmcPlanFailedLoginRoster {
+    spends: [BmcPlanFailedLoginSpend { key: BmcFailedLoginBudgetKey { account: root_account(), surface: IpmiLanPlusLoginChannelUndetermined }, logins: ipmi_logins(surface: IpmiLanPlusLoginChannelUndetermined, count: 1) }],
+    exempt: [],
+  }
+  let on_channel_one = [
+    BmcKnownFailedLogin { key: BmcFailedLoginBudgetKey { account: root_account(), surface: IpmiLanPlusLogin { channel: 1 } }, at: t_plan - 2000 },
+    BmcKnownFailedLogin { key: BmcFailedLoginBudgetKey { account: root_account(), surface: IpmiLanPlusLogin { channel: 1 } }, at: t_plan - 1000 },
+  ]
+  let on_redfish = [
+    BmcKnownFailedLogin { key: root_redfish_key(), at: t_plan - 2000 },
+    BmcKnownFailedLogin { key: root_redfish_key(), at: t_plan - 1000 },
+  ]
+  let history_refuses = match list_head(blocks_of(bmc_failed_login_budget_verdict(roster: one_undetermined, reading: one_channel, known: on_channel_one, now: t_plan))) {
+    Absent => false
+    Present { value: b } => match b.block {
+      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: _, known_failures_in_window: used } => c == 1 && m == 0 && used == 2
+      FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
+    }
+  }
+  history_refuses && admitted_verdict(bmc_failed_login_budget_verdict(roster: one_undetermined, reading: one_channel, known: on_redfish, now: t_plan))
+}
+
+// RUNG: the served window resets the COUNTER after a quiet interval; it does not age
+// failures out one by one. AccountLockoutCounterResetAfter runs from the LAST failed
+// login (AccountService.v1_19_0). Threshold 3, window 300 s, one more login. THE RED:
+// failures at now-310 s and now-20 s — 290 s apart, and 20 s since the last, so no
+// 300 s of quiet has passed and the counter holds 2: nothing is left and the login
+// refuses (expiring the first failure on its own age counted 1 and admitted the login
+// that locks root). THE POSITIVE CONTROL: failures at now-620 s and now-310 s — the
+// 310 s since the last is a quiet interval longer than the window, the counter is
+// back at 0, and the same login admits.
+test fn the_counter_resets_after_a_quiet_interval_and_not_failure_by_failure() -> Bool {
+  let served_window = lockout_redfish_window(read_at: t_read, redfish_threshold: 3, reset_after_secs: 300)
+  let one_more = named_redfish_roster(count: 1)
+  let still_active = [
+    BmcKnownFailedLogin { key: root_redfish_key(), at: t_plan - 310000 },
+    BmcKnownFailedLogin { key: root_redfish_key(), at: t_plan - 20000 },
+  ]
+  let gone_quiet = [
+    BmcKnownFailedLogin { key: root_redfish_key(), at: t_plan - 620000 },
+    BmcKnownFailedLogin { key: root_redfish_key(), at: t_plan - 310000 },
+  ]
+  let active_refuses = match list_head(blocks_of(bmc_failed_login_budget_verdict(roster: one_more, reading: served_window, known: still_active, now: t_plan))) {
+    Absent => false
+    Present { value: b } => match b.block {
+      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: _, known_failures_in_window: used } => c == 1 && m == 0 && used == 2
+      FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
+    }
+  }
+  active_refuses && admitted_verdict(bmc_failed_login_budget_verdict(roster: one_more, reading: served_window, known: gone_quiet, now: t_plan))
+}
+
+// RUNG: two probes of one shared account are two authentications; only the managed
+// probe's own reading, read twice, is one. The dry reader takes the managed and the
+// break-glass probes as two logins with two pieces of evidence, so the identity rule
+// answers false for them (THE RED for the old account-sharing rule, which folded
+// them into one) and true for the managed probe presented as both (THE POSITIVE
+// CONTROL: one authentication reused by two consumers). The count it drives is the
+// k == 2 that threshold_three_refuses_three_failing_logins_and_admits_two asserts.
+test fn two_probes_of_one_shared_account_are_two_authentications() -> Bool {
+  let read = read_lock(password: published_password, shared: true, at: t_read, lockout: lockout_redfish_window(read_at: t_read, redfish_threshold: 4, reset_after_secs: 300))
+  !bmc_break_glass_probe_is_the_managed_authentication(managed: read.managed_probe, break_glass: read.break_glass_probe)
+    && bmc_break_glass_probe_is_the_managed_authentication(managed: read.managed_probe, break_glass: read.managed_probe)
+}
+
+fn ipmi_logins(surface: BmcFailedLoginSurface, count: Int) -> List<BmcCountedFailedLogin> {
+  if count <= 0 { [] } else { concat([DeclaredRetryLogin {
+    account: root_account(),
+    surface: surface,
+    of: "a login over IPMI LAN",
+  }], ipmi_logins(surface: surface, count: count - 1)) }
+}
+
+fn is_channel_one(surface: BmcFailedLoginSurface) -> Bool {
+  match surface {
+    IpmiLanPlusLogin { channel: ch } => (ch as Int) == 1
+    _ => false
   }
 }
