@@ -205,6 +205,20 @@ test fn inferred_collection_key_census_control_reports_nothing() -> Bool {
     && eq_class_count(source: collection_key_inferred_control_source, wanted: "CollectionKeyReachesEqualityRoute") == 0
 }
 
+// THE FALLBACK'S LIMIT, KEPT HONEST (the 2026-10-29 admission). The inferred arm of this census reads a
+// container's name off the node when the author never wrote one -- the same leaf-SPELLING rung as
+// gunbc.recurring_failure_mode.emitter_keyed_container_lowering_is_keyed_by_leaf_spelling, whose next rung
+// is declaration-keyed. A fallback that named every unnamed node would census anything at all, so this RED
+// pins what the walk must NOT do: an inferred container whose kernel name is not one of the keyed profiles
+// (a List, whose equality is element-wise and never a key) reports nothing, even though its element type
+// reaches a routed declaration. Green means "0 rows here", not "the census is complete".
+data collection_key_inferred_unkeyed_source: String = "module eq_probe_key_inferred_list\nimport v2.std.node { Node }\nfn has_node(n: Node) -> Bool {\n  let l = [n]\n  list_length(items: l) > 0\n}\n"
+
+test fn inferred_unkeyed_container_reports_no_route_row() -> Bool {
+  eq_admitted(source: collection_key_inferred_unkeyed_source)
+    && eq_class_count(source: collection_key_inferred_unkeyed_source, wanted: "CollectionKeyReachesEqualityRoute") == 0
+}
+
 // ONE CALLING CONVENTION (sleek-owl-397's RED). A planned `==` emits as one call of the declared derived
 // equality, and the emitter carries no hand-spelled conversion of a routed leaf's arguments: the routed call
 // is inside that declaration's ordinary body. The forbidden text is what the retired plan reader emitted.

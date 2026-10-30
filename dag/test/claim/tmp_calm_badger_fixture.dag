@@ -1,0 +1,8 @@
+module eq_probe_collection_key_inferred
+import std.types { Map, Int }
+import std.algebra { empty_map, map_insert, map_contains_key }
+import v2.std.node { Node }
+fn key_first(n: Node) -> Bool {
+  let m = map_insert(key: n, value: 1, m: empty_map())
+  map_contains_key(m: m, key: n)
+}
