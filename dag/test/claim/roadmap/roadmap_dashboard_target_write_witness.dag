@@ -59,11 +59,11 @@ test fn create_new_lands_then_refuses_over_existing_and_keeps_bytes_by_real_exec
     && after_first.content == first_body
     && is_refused(outcome: second)
     && after_second.content == first_body
-    && cleaned.exit_code == 0
+    && cleaned.success
 }
 
 // REALIZATION-BROKEN CONTROL: the same two writes through the truncating dd (what the builder would
-// be without oflag=excl) DO overwrite, so the refusal above is the flag's doing and not the fixture's.
+// be without conv=excl) DO overwrite, so the refusal above is the flag's doing and not the fixture's.
 test fn overwrite_dd_control_clobbers_the_existing_bytes_by_real_execution() -> Bool {
   let root = fx_root()
   let path = concat(root, "/entry")
@@ -76,13 +76,13 @@ test fn overwrite_dd_control_clobbers_the_existing_bytes_by_real_execution() -> 
   )
   let after = Filesystem.Read(path: path)
   let cleaned = shell.Remove.RecursiveForce(path: root)
-  seeded.success && ran.exit_code == 0 && after.content == second_body && cleaned.exit_code == 0
+  seeded.success && ran.exit_code == 0 && after.content == second_body && cleaned.success
 }
 
 // ARGV SHAPE: payload is never an argv word; the flag that makes it create-only is present.
 test fn create_new_argv_is_one_dd_with_excl_and_no_payload() -> Bool {
   let argv = dashboard_create_new_argv(path: "/tmp/x/entry")
-  argv == ["dd", "of=/tmp/x/entry", "oflag=excl", "status=none"]
+  argv == ["dd", "of=/tmp/x/entry", "conv=excl", "status=none"]
     && !any(argv, w => contains(s: w, sub: first_body))
 }
 
