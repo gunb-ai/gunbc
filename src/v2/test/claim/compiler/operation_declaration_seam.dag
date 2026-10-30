@@ -54,8 +54,10 @@ import v2.std.operation_declaration {
   DeclaredShape,
   NativeHostActuation,
   NativeHostObservation,
+  NoResourceAccess,
   OperationDispositionUnclassified,
   ObservesHost,
+  Pure,
   effect_demand_operation_classifications,
   operation_declaration_for,
   operation_declaration_for_path,
@@ -426,4 +428,24 @@ test fn a_real_corpus_module_is_refused_by_name_in_the_native_test_context_holds
         Rejected { diagnostics: d } => d.head.reason == ^resolve_module_not_found
       }
   }
+}
+
+// A pure kernel seam touches no resource: its shape is the declared absence, never a Read shape
+// borrowed from EffectShape (which has no arm for "no effect"), and no host-observing row claims it.
+test fn a_pure_seam_declares_no_resource_access_and_no_host_row_does_holds() -> Bool {
+  fold_list(
+    xs: operation_declaration_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && match row.semantics {
+        Pure => row.shape == NoResourceAccess && row.requirement == RequiresNone
+        ObservesHost { operation_identity: _ } =>
+          match row.shape {
+            NoResourceAccess => false
+            _ => true
+          }
+        _ => true
+      }
+    }
+  )
 }

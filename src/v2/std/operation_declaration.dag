@@ -87,7 +87,10 @@ type EffectOperationDisposition
 // The shape AUTHORITY is std.effects.EffectShape and this only ever NAMES a shape from it -- a
 // declaration states which EffectShape arm the operation's body has; it never mints a shape (DESIGN
 // 3, no fork of the shape vocabulary; std.effect_grant keeps coarsening verbs from std.effects
-// alone). AccessShapeNotYetDeclared is NOT a default: like ExecutionSemanticsUnknown it BLOCKS, and
+// alone). NoResourceAccess is the declaration of an operation that touches NO resource (a Pure
+// kernel seam, requirement RequiresNone): EffectShape has no arm for "no effect", and filling one
+// with ReadEffect would grant a Read verb to a pure operator, so the absence is stated here, on the
+// declaration, and is not an EffectShape. AccessShapeNotYetDeclared is NOT a default: like ExecutionSemanticsUnknown it BLOCKS, and
 // its reason says which obligation owes the arm. Two are named in the plan and neither is minted
 // here: the manifest/metadata read has no EffectShape arm (D16 part (3)'s ManifestPathRead /
 // DeclaredManifestRoots obligation -- the five corpus-scan fact operations sit in this arm for
@@ -95,6 +98,7 @@ type EffectOperationDisposition
 // Empty, so an actuation's containment is part (3)'s obligation too).
 type DeclaredAccessShape
   = DeclaredShape { shape: EffectShape<KeySource> }
+  | NoResourceAccess
   | AccessShapeNotYetDeclared { reason: Symbol }
 
 // THE DECLARATION ROW: one per host-boundary operation, keyed by its std.decl_ref DeclarationRef --
@@ -211,7 +215,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "seam_sentinel_construction") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.host_text",
@@ -219,7 +223,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "text_decomposition") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.bytes",
@@ -227,7 +231,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "bytes_decomposition") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.bytes",
@@ -235,7 +239,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "octets_assembly") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.bytes",
@@ -243,7 +247,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "utf8_encoding") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.machine_word",
@@ -251,7 +255,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "machine_word_algebra") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.algebra",
@@ -259,7 +263,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "list_assembly") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.algebra",
@@ -267,7 +271,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "string_predication") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.content_hash",
@@ -275,7 +279,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "text_digest") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.operation_argv",
@@ -283,7 +287,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "argv_materialization") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "gunbc.compile_diagnostic_census",
@@ -291,7 +295,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "source_diagnostic_census") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.algebra",
@@ -299,7 +303,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "map_construction") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.algebra",
@@ -307,7 +311,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "map_extension") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.algebra",
@@ -315,7 +319,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "map_selection") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "std.algebra",
@@ -323,7 +327,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "indexed_selection") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "v2.std.decl_index",
@@ -379,7 +383,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "symbol_decomposition") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
   operation_declaration_row(
     module_path: "v2.std.node",
@@ -387,7 +391,7 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     requirement: RequiresNone,
     semantics: Pure,
     disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "symbol_construction") },
-    shape: DeclaredShape { shape: ReadEffect }
+    shape: NoResourceAccess
   ),
     ]
 
