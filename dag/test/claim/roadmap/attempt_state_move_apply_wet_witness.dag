@@ -1,0 +1,124 @@
+module test.claim.roadmap.attempt_state_move_apply_wet_witness
+
+// THE MOVE OP ITSELF (DashboardMoveAttemptStateEntries) APPLIED OVER A FIXTURE INSTANCE, then the store it
+// unblocks. Apply moves every flat entry into the member and the readback holds; a second run is a Noop; a
+// collision is Refused and nothing moves; and the identity store mints Ready only after the Apply. The mint is
+// Unready before it, named by its detail, never projected to an empty value.
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
+  dashboard_instance_dispatch_attempt_state_root, DashboardMoveAttemptStateEntries,
+}
+import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op }
+import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
+import gunbc.roadmap.roadmap_attempt_identity_store_root {
+  attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready, attempt_identity_claim,
+  AttemptIdentityClaimed, AttemptIdentityClaimRefused, attempt_identity_slots_path,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fresh_instance(tag: String) -> HostDashboardInstance {
+  let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_attempt_state_move_wet_", tag, ".XXXXXX"], "")).path
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["attempt-state-move-wet-", tag], "") as NonEmptyStr),
+    instance_id: join(["attempt-state-move-wet-", tag], "") as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18106,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn parent_of(i: HostDashboardInstance) -> String {
+  dashboard_instance_dispatch_attempt_state_root(instance: i) as String
+}
+
+fn member_of(i: HostDashboardInstance) -> String {
+  attempt_identity_slots_path(instance: i) as String
+}
+
+fn flat(i: HostDashboardInstance, name: String) -> String {
+  join([parent_of(i: i), "/", attempt_identity_slots.move.legacy_flat_prefix as String, name], "")
+}
+
+// The instance with the member directory, one other attempt store file that must stay put, and three flat
+// identity entries -- node a ordinals 1 and 2, node b ordinal 7 -- written by the old layout.
+fn planted(tag: String) -> HostDashboardInstance {
+  let i = fresh_instance(tag: tag)
+  let ok = shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success
+    && Filesystem.Write(path: flat(i: i, name: "a-n1"), content: "minted_at: old\n").success
+    && Filesystem.Write(path: flat(i: i, name: "a-n2"), content: "minted_at: old\n").success
+    && Filesystem.Write(path: flat(i: i, name: "b-n7"), content: "minted_at: old\n").success
+    && Filesystem.Write(path: join([parent_of(i: i), "/belt-last-tick.json"], ""), content: "{}").success
+  if ok { i } else { fresh_instance(tag: "plant-failed-see-claim") }
+}
+
+fn run_move(i: HostDashboardInstance) -> Bool {
+  dashboard_apply_provision_op(
+    instance: i,
+    op: DashboardMoveAttemptStateEntries { row: attempt_identity_slots.move },
+    temp_bundle: "/unused-bundle" as FilePath,
+    temp_verify_repo: "/unused-verify" as FilePath,
+  ).success
+}
+
+test fn apply_moves_every_flat_entry_into_the_member_and_the_mint_is_ready_only_after() -> Bool {
+  let i = planted(tag: "apply")
+  let before_unready = match attempt_identity_store(instance: i) {
+    AttemptIdentityStoreReady { store: _ } => false
+    AttemptIdentityStoreUnready { detail } => string_contains(s: detail, pattern: "legacy flat attempt-identity entries")
+  }
+  let applied = run_move(i: i)
+  let members = Filesystem.List(path: member_of(i: i)).entries
+  let parent = Filesystem.List(path: parent_of(i: i)).entries
+  before_unready && applied
+    && string_contains(s: members, pattern: "a-n1.1") && string_contains(s: members, pattern: "a-n2.1")
+    && string_contains(s: members, pattern: "b-n7.1")
+    && !string_contains(s: parent, pattern: "attempt-identity-")
+    && string_contains(s: parent, pattern: "belt-last-tick.json")
+    && string_contains(s: Filesystem.Read(path: join([member_of(i: i), "/b-n7.1"], "")).content, pattern: "held|")
+    && match attempt_identity_store(instance: i) {
+      AttemptIdentityStoreUnready { detail: _ } => false
+      AttemptIdentityStoreReady { store } =>
+        // The moved ordinals are occupied: node a continues at 3, node b at 1 (its ordinal 7 is the slot b-n7,
+        // not an ordinal the sequence reaches), and nothing claims a moved ordinal again.
+        match attempt_identity_claim(store: store, node_id: "a", minted_at: "t", ordinal: 1) {
+          AttemptIdentityClaimRefused { detail: _ } => false
+          AttemptIdentityClaimed { ordinal: next } => next == 3
+        }
+    }
+}
+
+test fn a_second_run_is_a_noop_that_changes_nothing() -> Bool {
+  let i = planted(tag: "noop")
+  let first = run_move(i: i)
+  let members_after_first = Filesystem.List(path: member_of(i: i)).entries
+  let second = run_move(i: i)
+  first && second && Filesystem.List(path: member_of(i: i)).entries == members_after_first
+}
+
+test fn a_collision_is_refused_and_nothing_moves() -> Bool {
+  let i = planted(tag: "collide")
+  let seeded = Filesystem.Write(path: join([member_of(i: i), "/a-n1.1"], ""), content: "held|other").success
+  let refused = dashboard_apply_provision_op(
+    instance: i,
+    op: DashboardMoveAttemptStateEntries { row: attempt_identity_slots.move },
+    temp_bundle: "/unused-bundle" as FilePath,
+    temp_verify_repo: "/unused-verify" as FilePath,
+  )
+  seeded && !refused.success
+    && string_contains(s: refused.stderr, pattern: "already holds entries")
+    && string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-a-n1")
+    && Filesystem.Read(path: join([member_of(i: i), "/a-n1.1"], "")).content == "held|other"
+}

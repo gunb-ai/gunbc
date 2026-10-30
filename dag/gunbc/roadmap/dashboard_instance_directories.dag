@@ -1,6 +1,7 @@
 module gunbc.roadmap.dashboard_instance_directories
 
 import std.types { List }
+import gunbc.roadmap.roadmap_attempt_identity_store_root { attempt_identity_directory }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_own_directory_demands, ProdRoleRealization }
 import gunbc.owned_directory { OwnedDirectoryTarget }
 import gunbc.auth.session_store_root { session_store_directory }
@@ -48,6 +49,7 @@ fn dashboard_instance_directory_demands(realization: ProdRoleRealization, instan
     credential_acquisition_slots_directory(instance: instance),
     cursor_attempt_runtime_directory(instance: instance),
     worktree_claim_slots_directory(instance: instance),
+    attempt_identity_directory(instance: instance),
     session_attempt_slots_directory(instance: instance),
   ], fabric_storage_directory_demands(realization: realization, instance: instance)))
 }

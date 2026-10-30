@@ -75,6 +75,7 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { move_plan, MoveNoop, MoveApply, MoveRefused, move_hold_payload, move_hold_slot_name, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_instance {
   prod_role_realization,
   dashboard_instance_health_identity_prefix,
@@ -128,6 +129,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardActuating,
   DashboardEnsureGitSharedRepositoryPosture,
   DashboardMigrateGitWorkerSubtree,
+  DashboardMoveAttemptStateEntries,
   dashboard_ensure_git_shared_repository_posture, dashboard_instance_worker_git_subtree_migration,
   dashboard_git_worker_subtree_path, dashboard_git_worker_directory_children,
   dashboard_git_worker_subtree_confined_children, dashboard_git_subtree_readback_is_granted,
@@ -912,6 +914,62 @@ fn dashboard_apply_provision_op(
           dashboard_exec_refused(detail: subtree_detail)
         }
       }
+      }
+    }
+    // THE MOVE OF A STORE'S FLAT ENTRIES INTO ITS MEMBER, the same arm for every row. The plan is the pure
+    // move_plan over the two listings the target reports; Apply writes each entry as the hold slot the store
+    // would have written (argv, because the target may be remote) and removes the flat entry only after its
+    // slot exists; the readback lists both directories again and refuses unless nothing legacy remains and
+    // every moved entry is present.
+    DashboardMoveAttemptStateEntries { row: row } => {
+      let parent = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
+      let member = join([parent, "/", row.member as String], "")
+      let before = dashboard_target_exec(instance: instance, program: "/bin/ls" as FilePath, args: ["-1A", parent])
+      let member_before = dashboard_target_exec(instance: instance, program: "/bin/ls" as FilePath, args: ["-1A", member])
+      if !before.success {
+        before
+      } else if !member_before.success {
+        member_before
+      } else {
+        match move_plan(row: row, parent_listing: before.stdout, member_listing: member_before.stdout) {
+          MoveNoop => dashboard_exec_ok(stdout: join(["no flat ", row.legacy_flat_prefix as String, "* entries remain in ", parent], ""))
+          MoveRefused { collision: c } =>
+            dashboard_exec_refused(detail: join(["the member ", member, " already holds entries for ", c, "; nothing was moved"], ""))
+          MoveApply { legacy_names: names } => {
+            let moved = dashboard_run_target_argvs(
+              instance: instance,
+              commands: map(names, n => DashboardArgv {
+                program: "/bin/sh" as FilePath,
+                args: [
+                  "-c",
+                  "set -C; printf %s \"$1\" > \"$2\" && rm -- \"$3\"",
+                  "move",
+                  move_hold_payload(),
+                  join([member, "/", move_hold_slot_name(row: row, legacy_name: n)], ""),
+                  join([parent, "/", n], ""),
+                ],
+              }),
+            )
+            if !moved.success {
+              moved
+            } else {
+              let after = dashboard_target_exec(instance: instance, program: "/bin/ls" as FilePath, args: ["-1A", parent])
+              let member_after = dashboard_target_exec(instance: instance, program: "/bin/ls" as FilePath, args: ["-1A", member])
+              if !after.success {
+                after
+              } else if !member_after.success {
+                member_after
+              } else {
+                let detail = move_readback_refusal(row: row, before_parent: before.stdout, after_parent: after.stdout, after_member: member_after.stdout)
+                if detail == "" {
+                  dashboard_exec_ok(stdout: join(["moved ", to_string(value: length(xs: names)), " entries into ", member, ", read back"], ""))
+                } else {
+                  dashboard_exec_refused(detail: detail)
+                }
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -2232,6 +2290,7 @@ fn dashboard_bootstrap_only_ops(
       // match is exhaustive -- a new op cannot slip into the bootstrap by accident.
       DashboardEnsureGitSharedRepositoryPosture { repo: _ } => false
       DashboardMigrateGitWorkerSubtree { repo: _ } => false
+      DashboardMoveAttemptStateEntries { row: _ } => false
     })
 }
 

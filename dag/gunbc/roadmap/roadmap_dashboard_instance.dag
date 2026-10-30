@@ -24,6 +24,8 @@ import extdeps.git {
 }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow }
+import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_rows }
 import std.algebra { trim }
 import extdeps.access.posix {
   FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text,
@@ -3218,6 +3220,15 @@ type DashboardInstanceProvisionOp
       // only route that executes (DESIGN 3 pairing).
       group: NonEmptyStr,
     }
+  // THE ONE-TIME MOVE OF A STORE'S FLAT ENTRIES OUT OF THE SHARED DISPATCH ATTEMPT-STATE ROOT INTO THE
+  // MEMBER THE STORE NOW OWNS (gunbc.roadmap.roadmap_attempt_state_layout_move). The same op for every
+  // store: the row carries the member and the legacy pattern, and nothing here names a store. It is the deploy
+  // leg of the cutover: the store's mint refuses permanently while a legacy entry remains, so this op runs
+  // before the new code starts or the store stays unready. Planned and read back like the git subtree
+  // re-group above; a second run finds nothing to move (Noop) and a collision refuses.
+  | DashboardMoveAttemptStateEntries {
+      row: MoveRow,
+    }
 
 // live_deploy systemd-launches the dashboard process only for deployment_spec_srv1 (srv1_live);
 // deployment_spec_for has no production caller. This plan does not start the process and does not
@@ -3298,10 +3309,11 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       },
     ]
   }
-  concat(controller_source_ops, concat(common, concat(source_ops, concat(
+  let attempt_state_moves = map(attempt_state_move_rows, row => DashboardMoveAttemptStateEntries { row: row })
+  concat(attempt_state_moves, concat(controller_source_ops, concat(common, concat(source_ops, concat(
     shared_git_posture,
     dashboard_instance_provider_verification_ops(instance: instance),
-  ))))
+  )))))
 }
 
 fn dashboard_instance_provider_verification_ops(
@@ -3418,6 +3430,12 @@ fn dashboard_instance_provision_op_row(
         kind: "migrate-git-worker-subtree" as NonEmptyStr,
         target: repo as String,
         detail: "bounded re-group of objects/, refs/ and logs/ to the attempt group with g+w and setgid (objects/ also +t); confined children pruned; read back path by path before the receipt",
+      }
+    DashboardMoveAttemptStateEntries { row: row } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "move-attempt-state-entries" as NonEmptyStr,
+        target: row.member as String,
+        detail: join(["move the flat ", row.legacy_flat_prefix as String, "* entries of the dispatch attempt-state root into the member ", row.member as String, "; Noop when none remain, refused on a collision, read back before the receipt"], ""),
       }
   }
 }
