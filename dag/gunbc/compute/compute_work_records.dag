@@ -1,6 +1,7 @@
 module gunbc.compute.compute_work_records
 
 import std.types { String, Bool, NonEmptyStr }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.compute.host_capacity { compute_root }
 
