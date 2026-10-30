@@ -1,5 +1,7 @@
 module test.claim.live_deploy.capacity_recovery_approval_witness
 
+import gunbc.auth.privileged_effect_census { capacity_recovery_approval_root, capacity_recovery_root_helper_site, site_verdict }
+import gunbc.auth.authorization_pattern_selection { PatternSelected, ApprovedConvergenceGrant }
 import std.types { Bool, String, NonEmptyStr }
 import std.error_primitives { Result, Ok, Err }
 import std.content_hash { content_hash_of_value }
@@ -176,5 +178,17 @@ test fn changed_record_bytes_at_the_same_generation_refuse() -> Bool {
     execute: admitted => Ok { value: "effect reached" }) {
     Err { value: why } => why == "recovery journal, choice, helper or scopes changed after approval"
     Ok { value: _ } => false
+  }
+}
+
+
+test fn recovery_selects_the_existing_convergence_pattern_from_its_actual_scopes() -> Bool {
+  match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "recovery-1") {
+    Err { value: _ } => false
+    Ok { value: recovery } => capacity_recovery_approval_root(recovery: recovery).approved_scopes == recovery.request.scopes
+      && (match site_verdict(row: capacity_recovery_root_helper_site(recovery: recovery)).selection {
+        PatternSelected { pattern: ApprovedConvergenceGrant, receipt: _ } => true
+        _ => false
+      })
   }
 }

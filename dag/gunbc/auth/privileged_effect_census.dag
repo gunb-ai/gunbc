@@ -12,7 +12,7 @@ import gunbc.auth.mtjade1_arrival_federation {
 }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_privileged_effect }
 import std.types { Bool, List, NonEmptyStr, String }
-import gunbc.fleet.srv1_root_mutation_approval_run { Srv1CutoverRequest, srv1_root_write_scope, srv1_root_apt_get_scope, srv1_root_mutation_approved_scopes, microvm_controller_install_root_scopes }
+import gunbc.fleet.srv1_root_mutation_approval_run { Srv1CutoverRequest, Srv1RecoveryRequest, srv1_root_write_scope, srv1_root_apt_get_scope, srv1_root_mutation_approved_scopes, microvm_controller_install_root_scopes }
 import std.scoped_authorization { AuthorizationScope }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
 import std.dissolution {
@@ -1051,14 +1051,30 @@ data capacity_cutover_root_helper_row: PrivilegedEffectSite = PrivilegedEffectSi
 // Instance-bound census: scopes come from the SAME typed request the broker
 // receives. Without that request the static planned row remains refused; there
 // is no global permission added for other srv1 jobs.
-fn capacity_cutover_approval_root(cutover: Srv1CutoverRequest) -> ConvergenceRoot {
+fn capacity_helper_approval_root(scopes: List<AuthorizationScope>) -> ConvergenceRoot {
   ConvergenceRoot { site: srv1_root_mutation_approval_row.site, effect: srv1_root_mutation_approval_row.effect,
-    approved_scopes: cutover.request.scopes }
+    approved_scopes: scopes }
+}
+
+fn capacity_cutover_approval_root(cutover: Srv1CutoverRequest) -> ConvergenceRoot {
+  capacity_helper_approval_root(scopes: cutover.request.scopes)
+}
+
+fn capacity_recovery_approval_root(recovery: Srv1RecoveryRequest) -> ConvergenceRoot {
+  capacity_helper_approval_root(scopes: recovery.request.scopes)
 }
 
 fn capacity_cutover_root_helper_site(cutover: Srv1CutoverRequest) -> PrivilegedEffectSite {
+  capacity_helper_bound_site(root: capacity_cutover_approval_root(cutover: cutover))
+}
+
+fn capacity_recovery_root_helper_site(recovery: Srv1RecoveryRequest) -> PrivilegedEffectSite {
+  capacity_helper_bound_site(root: capacity_recovery_approval_root(recovery: recovery))
+}
+
+fn capacity_helper_bound_site(root: ConvergenceRoot) -> PrivilegedEffectSite {
   PrivilegedEffectSite { site: capacity_cutover_root_helper_row.site,
-    effect: capacity_root_helper_effect(root: capacity_cutover_approval_root(cutover: cutover)),
+    effect: capacity_root_helper_effect(root: root),
     realized: RealizedUnauthorized, divergence_reason: Present { value: DivergenceReason {
       statement: "the typed broker request supplies the selected convergence scopes; the narrow root helper realization is still outstanding" as NonEmptyStr,
       dissolution: unbound_dissolution(description: "the digest-bound helper consumes the broker-approved request under FleetHostLock" as NonEmptyStr)
