@@ -39,6 +39,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
 
+import gunbc.runner.runner_capability_labels { DropinPresent, host_capability_dropin_presence, host_capability_witness_of_reads }
 import gunbc.runner.runner_gpu_container_toolchain {
   gpu_container_provision_start_leg,
   gpu_container_provision_start_actions,
@@ -1530,6 +1531,22 @@ test fn the_unit_start_runs_only_after_the_package_ensure_holds() -> Bool {
     && !gpu_container_provision_start_admitted(prior: held, ensure_ok: false)
     && !gpu_container_provision_start_admitted(prior: refused, ensure_ok: true)
     && gpu_container_provision_plan_step_names(actions: gpu_container_provision_start_actions(uid: 999, job_user: "ghrunner" as NonEmptyStr)) == ["unit start", "unit active verified"]
+}
+
+// A MISSING DROP-IN IS ABSENT, A DROP-IN THAT CANNOT BE LOOKED AT IS NOT (srv3 run 41006939256 refused the whole
+// label render over ENOENT). The probe exits 0 with empty stdout for a missing entry: that renders without the
+// label; a nonzero probe (permission denied, sudo refused) still refuses; a present file keeps its label.
+test fn a_missing_label_dropin_is_absent_and_an_unreadable_one_still_refuses() -> Bool {
+  let absent = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: host_capability_dropin_presence(exit_code: 0, stdout: "", unreadable_cause: "x"), read_exit_code: 0, read_stdout: "", read_cause: "r")
+  let denied = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: host_capability_dropin_presence(exit_code: 1, stdout: "", unreadable_cause: "permission denied"), read_exit_code: 0, read_stdout: "", read_cause: "r")
+  let held = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: host_capability_dropin_presence(exit_code: 0, stdout: "/etc/x.conf\n", unreadable_cause: "x"), read_exit_code: 0, read_stdout: gunbc_browser_ready_label, read_cause: "r")
+  let read_failed = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: DropinPresent, read_exit_code: 1, read_stdout: "", read_cause: "read failed")
+  let srv3 = gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [absent])
+  length(srv3) > 0
+    && !srv3.any(l => l == gunbc_browser_ready_label)
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [denied])) == 0
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [read_failed])) == 0
+    && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [held]).any(l => l == gunbc_browser_ready_label)
 }
 
 // THE ROOTLESS PREREQUISITES ARE INHABITED, NOT VALIDATED: every declared prerequisite is a member of

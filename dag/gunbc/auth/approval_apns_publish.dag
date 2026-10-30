@@ -34,8 +34,8 @@ import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_vers
 import gunbc.jws_signer_realize { jws_sign }
 import gunbc.host.host_cli_dependency { first_absent_host_cli_dependency }
 import gunbc.durable_cas_file_store {
-  OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
-  file_compare_and_set_windowed, observe_cas_slot_state_windowed, cas_generation_window, CasGenerationWindow,
+  admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+  cas_generation_window, CasGenerationWindow,
   CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
 }
 import std.durable_compare_and_set {
@@ -43,6 +43,7 @@ import std.durable_compare_and_set {
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasReadableSlot, CasSlotObservation,
   CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
 }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.auth.approval_app_attest_config { approval_app_bundle_id }
 import gunbc.auth.approval_decision_store { approval_google_approver_emails }
 import gunbc.auth.approval_google_enrolment { GoogleEnrolmentActive, GoogleEnrolmentAbsent, GoogleEnrolmentRevoked, GoogleEnrolmentUnreadable, email_on_roster }
@@ -50,7 +51,8 @@ import gunbc.auth.approval_device_wire {
   PushRegistration, ApnsRegistration, FcmRegistration, ApprovalPushHint, approval_push_alert_title, approval_push_custom_keys,
 }
 import gunbc.auth.approval_device_redemption {
-  approval_device_store_root, list_google_enrolments, GoogleEnrolmentsListed, GoogleEnrolmentListingRefused,
+  ApprovalDeviceStore, approval_device_store, ApprovalDeviceStoreReady, ApprovalDeviceStoreUnready,
+  observe_device_windowed_slot, commit_device_windowed_slot, list_google_enrolments, GoogleEnrolmentsListed, GoogleEnrolmentListingRefused,
   observe_push_registration, PushRegistrationAbsent, PushRegistrationStored, PushRegistrationUnreadable,
   PushProviderOutcome, PushProviderAccepted, PushProviderRefused, PushRegistrationInvalid, PushProviderUnreached, PushProviderUndecodable,
   push_outcome_of_apns,
@@ -204,8 +206,8 @@ fn provider_token_window() -> CasGenerationWindow? {
   }
 }
 
-fn observe_apns_provider_token(root: NonEmptyStr, window: CasGenerationWindow) -> CasSlotObservation<NonEmptyStr> {
-  observe_cas_slot_state_windowed(root: root, key: approval_apns_provider_token_key, window: window)
+fn observe_apns_provider_token(devices: ApprovalDeviceStore, window: CasGenerationWindow) -> CasSlotObservation<NonEmptyStr> {
+  observe_device_windowed_slot(devices: devices, key: approval_apns_provider_token_key, window: window)
 }
 
 type ProviderTokenPublish
@@ -213,11 +215,11 @@ type ProviderTokenPublish
   | ProviderTokenRaced { observed: CasReadableSlot<NonEmptyStr> }
   | ProviderTokenPublishRefused { detail: String }
 
-fn publish_apns_provider_token(root: NonEmptyStr, window: CasGenerationWindow, expected: CasExpectation, t: CachedProviderToken) -> ProviderTokenPublish {
+fn publish_apns_provider_token(devices: ApprovalDeviceStore, window: CasGenerationWindow, expected: CasExpectation, t: CachedProviderToken) -> ProviderTokenPublish {
   match admit_cas_attempt_for_derived_payload(key: approval_apns_provider_token_key, expected: expected, proposed: cached_provider_token_text(t: t)) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => ProviderTokenPublishRefused { detail: "the provider token key is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set_windowed(root: root, publication: OwnerOnlyCreateOnly, verified: v, window: window).outcome {
+      match commit_device_windowed_slot(devices: devices, verified: v, window: window) {
         CasCommitted { committed: _ } => ProviderTokenPublished
         CasPreconditionFailed { expected: _, observed: o } => ProviderTokenRaced { observed: o }
         CasStoreRefused { cause: _ } => ProviderTokenPublishRefused { detail: "the device store refused the provider token" }
@@ -236,11 +238,11 @@ fn cached_token_in(slot: CasReadableSlot<NonEmptyStr>) -> CachedProviderToken? {
 // carries the winner, and the winner's token is used when it is reusable. A minted token whose
 // publish was refused is NOT sent -- an unrecorded token is exactly the second mint the window exists
 // to prevent.
-fn apns_provider_token_at(root: NonEmptyStr, provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: EpochSecs) -> ApnsProviderToken {
+fn apns_provider_token_at(devices: ApprovalDeviceStore, provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: EpochSecs) -> ApnsProviderToken {
   match provider_token_window() {
     Absent => ApnsProviderTokenUnavailable { detail: "the provider token window is narrower than the store admits" }
     Present { value: w } =>
-      match observe_apns_provider_token(root: root, window: w) {
+      match observe_apns_provider_token(devices: devices, window: w) {
         CasObservedUnreadable { cause: c } => ApnsProviderTokenUnavailable { detail: concat("provider token slot unreadable: ", cas_unreadable_slot_detail(cause: c)) }
         CasObservedReadable { readable: r } => {
           let expected = match r {
@@ -250,19 +252,19 @@ fn apns_provider_token_at(root: NonEmptyStr, provider: ApnsProviderIdentity, key
           match cached_token_in(slot: r) {
             Present { value: t } =>
               if provider_token_reusable(t: t, provider: provider, now: now) { ApnsProviderTokenReady { token: t.jwt } }
-              else { mint_and_publish_provider_token(root: root, window: w, expected: expected, provider: provider, key: key, now: now) }
-            Absent => mint_and_publish_provider_token(root: root, window: w, expected: expected, provider: provider, key: key, now: now)
+              else { mint_and_publish_provider_token(devices: devices, window: w, expected: expected, provider: provider, key: key, now: now) }
+            Absent => mint_and_publish_provider_token(devices: devices, window: w, expected: expected, provider: provider, key: key, now: now)
           }
         }
       }
   }
 }
 
-fn mint_and_publish_provider_token(root: NonEmptyStr, window: CasGenerationWindow, expected: CasExpectation, provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: EpochSecs) -> ApnsProviderToken {
+fn mint_and_publish_provider_token(devices: ApprovalDeviceStore, window: CasGenerationWindow, expected: CasExpectation, provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: EpochSecs) -> ApnsProviderToken {
   match mint_apns_provider_token(provider: provider, key: key, now: now) {
     ApnsProviderTokenUnavailable { detail: d } => ApnsProviderTokenUnavailable { detail: d }
     ApnsProviderTokenReady { token: jwt } =>
-      match publish_apns_provider_token(root: root, window: window, expected: expected, t: CachedProviderToken { issued_at: now, provider: provider, jwt: jwt }) {
+      match publish_apns_provider_token(devices: devices, window: window, expected: expected, t: CachedProviderToken { issued_at: now, provider: provider, jwt: jwt }) {
         ProviderTokenPublished => ApnsProviderTokenReady { token: jwt }
         ProviderTokenPublishRefused { detail: d } => ApnsProviderTokenUnavailable { detail: d }
         ProviderTokenRaced { observed: o } =>
@@ -296,9 +298,13 @@ fn read_apns_sender() -> ApnsSender admit_callers: [
       match clock_unix_millis_read() {
         ClockUnixMillisRefused { detail: d } => ApnsSenderUnavailable { detail: concat("the host clock refused, so no provider token can be dated: ", d) }
         ClockUnixMillisObserved { millis: ms } =>
-          match apns_provider_token_at(root: approval_device_store_root, provider: approval_apns_provider, key: approval_apns_auth_key, now: epoch_secs_of_millis(millis: ms)) {
-            ApnsProviderTokenReady { token: t } => ApnsSenderReady { token: t }
-            ApnsProviderTokenUnavailable { detail: d } => ApnsSenderUnavailable { detail: d }
+          match approval_device_store(tree: host_state_tree()) {
+            ApprovalDeviceStoreUnready { detail: d } => ApnsSenderUnavailable { detail: concat("the provider token's store is unready: ", d) }
+            ApprovalDeviceStoreReady { store: devices } =>
+              match apns_provider_token_at(devices: devices, provider: approval_apns_provider, key: approval_apns_auth_key, now: epoch_secs_of_millis(millis: ms)) {
+                ApnsProviderTokenReady { token: t } => ApnsSenderReady { token: t }
+                ApnsProviderTokenUnavailable { detail: d } => ApnsSenderUnavailable { detail: d }
+              }
           }
       }
   }
@@ -324,15 +330,15 @@ type DevicePushTargetRead
   | DevicePushTargetUnreadable { detail: NonEmptyStr }
   | DevicePushNotATarget
 
-fn device_push_targets_at(root: NonEmptyStr, approvers: List<NonEmptyStr>) -> DevicePushTargets {
-  match list_google_enrolments(root: root) {
+fn device_push_targets_at(devices: ApprovalDeviceStore, approvers: List<NonEmptyStr>) -> DevicePushTargets {
+  match list_google_enrolments(devices: devices) {
     GoogleEnrolmentListingRefused { detail: d } => DevicePushTargetsRefused { detail: d as String }
     GoogleEnrolmentsListed { slots: slots } => {
       let reads = map(slots, slot => match slot {
         GoogleEnrolmentActive { enrollment: e } =>
           if !email_on_roster(email: e.google_email, roster: approvers) { DevicePushNotATarget }
           else {
-            match observe_push_registration(root: root, enrollment_id: e.enrollment_id) {
+            match observe_push_registration(devices: devices, enrollment_id: e.enrollment_id) {
               PushRegistrationAbsent => DevicePushTargetUnregistered { enrollment_id: e.enrollment_id }
               PushRegistrationUnreadable { detail: d } => DevicePushTargetUnreadable { detail: d }
               PushRegistrationStored { registration: reg, generation: _ } => DevicePushTargetFound { target: DevicePushTarget { enrollment_id: e.enrollment_id, registration: reg } }
@@ -355,7 +361,10 @@ fn read_device_push_targets() -> DevicePushTargets admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_broker_serve", decl_name: "approval_submit_admitted_response"),
   decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "publish_new_device_notice"),
 ] {
-  device_push_targets_at(root: approval_device_store_root, approvers: approval_google_approver_emails)
+  match approval_device_store(tree: host_state_tree()) {
+    ApprovalDeviceStoreUnready { detail: d } => DevicePushTargetsRefused { detail: d }
+    ApprovalDeviceStoreReady { store: devices } => device_push_targets_at(devices: devices, approvers: approval_google_approver_emails)
+  }
 }
 
 // ── The notice ───────────────────────────────────────────────────────────────────────────────
