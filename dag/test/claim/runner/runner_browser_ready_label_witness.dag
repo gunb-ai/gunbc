@@ -156,7 +156,7 @@ fn srv3_slot(index: Nat) -> RunnerSlotIdentity {
 }
 
 fn conforms(slot: RunnerSlotIdentity, observed: List<String>) -> Bool {
-  match runner_slot_labels_conform(slot: slot, observed: observed) {
+  match runner_slot_labels_conform(receipt: ReceiptAbsent, slot: slot, observed: observed) {
     RegistrationLabelsConform => true
     RegistrationLabelsDiverge => false
     RegistrationLabelsUnjudged { host: _, cause: _ } => false

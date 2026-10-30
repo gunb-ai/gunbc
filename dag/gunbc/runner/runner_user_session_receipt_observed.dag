@@ -1,6 +1,6 @@
 module gunbc.runner.runner_user_session_receipt_observed
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { String, NonEmptyStr, Bool, Int, List, Secret }
 import std.optional { Present, Absent }
 import std.resources { Network }
 import extdeps.github.workflow_runs

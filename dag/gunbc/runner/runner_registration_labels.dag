@@ -351,20 +351,31 @@ fn runner_slot_carries_browser_ready(slot: RunnerSlotIdentity) -> Bool {
   }
 }
 
-// THE OPTIONAL LABELS A SLOT'S REGISTRATION MAY CARRY BEYOND ITS DECLARED SET, each licensed by one observation
-// the readback does not re-judge: browser-ready (a converge wrote its drop-in) and user-session (a fresh converge
-// receipt, read by the leg that registered the slot). A readback compares what GitHub holds against the
-// declared labels plus these, so a registration that carries a granted label is conformant and one that carries
-// a label no observation could have granted (the deploy slot's, an unrostered host's) diverges.
+// THE ONE OPTIONAL LABEL A SLOT'S REGISTRATION MAY CARRY BEYOND ITS EXPECTED SET: browser-ready (a converge wrote its
+// drop-in), licensed by an observation the readback does not re-judge. The user-session label is NOT optional: it is
+// part of the expected set exactly when the receipt the readback was handed grants it.
 fn runner_slot_optional_registration_labels(slot: RunnerSlotIdentity) -> List<String> {
-  concat(
-    if runner_slot_carries_browser_ready(slot: slot) { [gunbc_browser_ready_label] } else { [] },
-    if runner_slot_carries_browser_ready(slot: slot) && runner_host_on_user_session_roster(host: slot.host, roster: runner_job_user_session_hosts) { [gunbc_user_session_label] } else { [] },
-  )
+  if runner_slot_carries_browser_ready(slot: slot) { [gunbc_browser_ready_label] } else { [] }
 }
 
-fn runner_host_on_user_session_roster(host: HostIdentity, roster: List<HostIdentity>) -> Bool {
-  fold(roster, init: false, f: (found, h) => found || h == host)
+// THE EXPECTED SET OF ONE SLOT: a CI slot's evidence-gated labels (the user-session label iff `receipt` grants it for
+// the slot's host; an UNREADABLE receipt leaves the grant undecided, so the readback is Unjudged rather than a
+// divergence that would replace every slot on a transient read failure), the deploy slot's own declared set. The receipt is the one the leg read at its effect edge, the
+// same value registration resolved its labels from, so desired and readback never disagree about the grant.
+fn runner_expected_slot_registration_labels(slot: RunnerSlotIdentity, receipt: RunnerUserSessionReceiptInput) -> RunnerRegistrationLabelsResolution {
+  match runner_slot_job_role(slot: slot) {
+    CiJobSlot =>
+      match receipt {
+        ReceiptUnreadable { why: _ } =>
+          RegistrationLabelsRefused {
+            host: slot.host,
+            cause: "the converge receipt read failed, so whether this host's registration should carry the user-session label is undecided and the readback judges nothing" as NonEmptyStr,
+          }
+        ReceiptSupplied { value: _, read_at: _ } => runner_evidence_gated_registration_labels(host: slot.host, receipt: receipt)
+        ReceiptAbsent => runner_evidence_gated_registration_labels(host: slot.host, receipt: receipt)
+      }
+    DeployJobSlot => runner_deploy_slot_registration_labels(slot: slot)
+  }
 }
 
 // THE DECLARED SET OF ONE SLOT: the host's declared labels with the class its role gives it, and no label an
@@ -376,11 +387,11 @@ fn runner_declared_slot_registration_labels(slot: RunnerSlotIdentity) -> RunnerR
   }
 }
 
-fn runner_slot_labels_conform(slot: RunnerSlotIdentity, observed: List<String>) -> RegistrationLabelsConformance {
-  match runner_declared_slot_registration_labels(slot: slot) {
+fn runner_slot_labels_conform(slot: RunnerSlotIdentity, observed: List<String>, receipt: RunnerUserSessionReceiptInput) -> RegistrationLabelsConformance {
+  match runner_expected_slot_registration_labels(slot: slot, receipt: receipt) {
     RegistrationLabelsRefused { host: h, cause: c } => RegistrationLabelsUnjudged { host: h, cause: c }
-    RegistrationLabelsResolved { labels: declared } =>
-      if runner_label_sets_equal(a: filter(observed, l => !fold(runner_slot_optional_registration_labels(slot: slot), init: false, f: (found, o) => found || o == l)), b: declared) {
+    RegistrationLabelsResolved { labels: expected } =>
+      if runner_label_sets_equal(a: filter(observed, l => !fold(runner_slot_optional_registration_labels(slot: slot), init: false, f: (found, o) => found || o == l)), b: expected) {
         RegistrationLabelsConform
       } else {
         RegistrationLabelsDiverge

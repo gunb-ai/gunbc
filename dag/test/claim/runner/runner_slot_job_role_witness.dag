@@ -1,5 +1,7 @@
 module test.claim.runner.runner_slot_job_role_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
+
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -99,10 +101,10 @@ test fn witness_deploy_slot_labels_exclude_the_ci_class_and_the_ci_slot_is_uncha
     && has(c, "gunbc-heavy")
     && !has(c, deploy_slot_runner_group_name as String)
     && has(d, "srv1") == has(c, "srv1")
-    && runner_slot_labels_conform(slot: srv1_deploy_slot(), observed: d) == RegistrationLabelsConform
-    && runner_slot_labels_conform(slot: srv1_deploy_slot(), observed: c) == RegistrationLabelsDiverge
-    && runner_slot_labels_conform(slot: srv1_deploy_slot(), observed: concat(d, [gunbc_browser_ready_label])) == RegistrationLabelsDiverge
-    && runner_slot_labels_conform(slot: ci_slot(), observed: concat(c, [gunbc_browser_ready_label])) == RegistrationLabelsConform
+    && runner_slot_labels_conform(receipt: ReceiptAbsent, slot: srv1_deploy_slot(), observed: d) == RegistrationLabelsConform
+    && runner_slot_labels_conform(receipt: ReceiptAbsent, slot: srv1_deploy_slot(), observed: c) == RegistrationLabelsDiverge
+    && runner_slot_labels_conform(receipt: ReceiptAbsent, slot: srv1_deploy_slot(), observed: concat(d, [gunbc_browser_ready_label])) == RegistrationLabelsDiverge
+    && runner_slot_labels_conform(receipt: ReceiptAbsent, slot: ci_slot(), observed: concat(c, [gunbc_browser_ready_label])) == RegistrationLabelsConform
 }
 
 fn dropin_text(slot: RunnerSlotIdentity) -> String? {

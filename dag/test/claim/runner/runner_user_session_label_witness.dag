@@ -70,14 +70,14 @@ import gunbc.runner.runner_registration_labels {
   RunnerUserSessionReceiptedUnrostered, RunnerUserSessionUnadmitted,
   runner_user_session_grant_of_roster,
   gunbc_user_session_label, runner_evidence_gated_registration_labels, runner_registration_labels_of_class,
-  runner_declared_registration_labels, runner_slot_optional_registration_labels, runner_slot_labels_conform,
-  RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
+  runner_declared_registration_labels, runner_slot_labels_conform,
+  RegistrationLabelsConformance, RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
   runner_user_session_labels_of_roster,
   runner_user_session_label_stripped,
 }
 import gunbc.runner.runner_host_deploy { runner_job_user_session_hosts }
 import gunbc.runner.runner_user_session_receipt {
-  RunnerUserSessionReceiptInput, ReceiptAbsent,
+  RunnerUserSessionReceiptInput, ReceiptAbsent, ReceiptUnreadable,
   UserSessionLingerEnableOk, UserSessionLingerEnableFailed,
   UserSessionAnswered, UserSessionNotAnswered,
   LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread,
@@ -165,6 +165,11 @@ fn srv4_holding_bytes() -> String {
 
 fn srv4_holding_input() -> RunnerUserSessionReceiptInput {
   runner_user_session_receipt_input_of_text(text: srv4_holding_bytes(), read_at: receipt_probe_instant())
+}
+
+// THE SAME DOCUMENT READ A YEAR LATER: past the receipt's max age, so the grant refuses.
+fn srv4_stale_input() -> RunnerUserSessionReceiptInput {
+  runner_user_session_receipt_input_of_text(text: srv4_holding_bytes(), read_at: "2027-10-28T00:00:00Z")
 }
 
 fn grant_srv4_with_own_receipt() -> RunnerUserSessionGrant {
@@ -616,37 +621,58 @@ test fn the_platform_half_cannot_carry_the_label_but_keeps_its_own_labels() -> B
     && any(stripped, l => l == "arm64")
 }
 
-// THE SLOT GRAIN: THE LABEL IS AN OPTIONAL LABEL OF A ROSTERED CI SLOT AND OF NO DEPLOY SLOT. The readback
-// compares what GitHub holds against the declared labels plus the optional ones an observation can license,
-// so a CI slot on srv4 that registered with the label conforms, the same slot without it conforms, and the
-// deploy slot on srv1 carrying it diverges -- the deploy principal never inherits the host's capability.
-// RED controls: license the label on every slot and the deploy arm goes red; license it on none and the CI arm
-// goes red.
-test fn a_ci_slot_may_carry_the_label_and_the_deploy_slot_may_not() -> Bool {
+// THE READBACK EXPECTS THE LABEL EXACTLY WHEN THE RECEIPT THE LEG READ GRANTS IT. The expected set of a CI slot is
+// runner_evidence_gated_registration_labels of the slot's host under the SAME receipt registration used, so:
+//   - a fresh holding receipt + the label present conforms (the control);
+//   - the label present with no fresh receipt (absent, or a receipt that has aged out) diverges (the RED:
+//     a registration whose grant lapsed is not healthy on roster membership alone);
+//   - a fresh holding receipt + the label missing diverges (the grant is owed and not carried);
+//   - no receipt + no label conforms (the label is off for the typed reason the grant states);
+//   - an UNREADABLE receipt leaves the grant undecided: Unjudged, never a divergence that would replace slots on
+//     a transient read failure;
+//   - the deploy slot on srv1 carrying the label diverges under any receipt (the deploy principal never
+//     inherits the host's capability).
+// RED controls: tolerate the label on roster alone and the absent-receipt and stale arms go red; compare against
+// the declared set only and the control arm goes red; treat Unreadable as Diverge and the Unjudged arm goes red.
+test fn the_slot_readback_expects_the_label_exactly_when_the_receipt_grants_it() -> Bool {
   match runner_evidence_gated_registration_labels(host: operator_host_srv4, receipt: srv4_holding_input()) {
     RegistrationLabelsResolved { labels: with_label } =>
       match runner_declared_registration_labels(host: operator_host_srv4) {
         RegistrationLabelsResolved { labels: without_label } =>
-          any(runner_slot_optional_registration_labels(slot: srv4_ci_slot()), l => l == gunbc_user_session_label)
-            && !any(runner_slot_optional_registration_labels(slot: srv1_deploy_slot()), l => l == gunbc_user_session_label)
-            && match runner_slot_labels_conform(slot: srv4_ci_slot(), observed: with_label) {
-              RegistrationLabelsConform => true
-              RegistrationLabelsDiverge => false
-              RegistrationLabelsUnjudged { host: _, cause: _ } => false
-            }
-            && match runner_slot_labels_conform(slot: srv4_ci_slot(), observed: without_label) {
-              RegistrationLabelsConform => true
-              RegistrationLabelsDiverge => false
-              RegistrationLabelsUnjudged { host: _, cause: _ } => false
-            }
-            && match runner_slot_labels_conform(slot: srv1_deploy_slot(), observed: concat(without_label, [gunbc_user_session_label])) {
-              RegistrationLabelsConform => false
-              RegistrationLabelsDiverge => true
-              RegistrationLabelsUnjudged { host: _, cause: _ } => false
-            }
+          conforms(verdict: runner_slot_labels_conform(slot: srv4_ci_slot(), observed: with_label, receipt: srv4_holding_input()))
+            && diverges(verdict: runner_slot_labels_conform(slot: srv4_ci_slot(), observed: with_label, receipt: ReceiptAbsent))
+            && diverges(verdict: runner_slot_labels_conform(slot: srv4_ci_slot(), observed: with_label, receipt: srv4_stale_input()))
+            && diverges(verdict: runner_slot_labels_conform(slot: srv4_ci_slot(), observed: without_label, receipt: srv4_holding_input()))
+            && conforms(verdict: runner_slot_labels_conform(slot: srv4_ci_slot(), observed: without_label, receipt: ReceiptAbsent))
+            && unjudged(verdict: runner_slot_labels_conform(slot: srv4_ci_slot(), observed: with_label, receipt: ReceiptUnreadable { why: "no token" }))
+            && diverges(verdict: runner_slot_labels_conform(slot: srv1_deploy_slot(), observed: concat(without_label, [gunbc_user_session_label]), receipt: srv4_holding_input()))
         RegistrationLabelsRefused { host: _, cause: _ } => false
       }
     RegistrationLabelsRefused { host: _, cause: _ } => false
+  }
+}
+
+fn conforms(verdict: RegistrationLabelsConformance) -> Bool {
+  match verdict {
+    RegistrationLabelsConform => true
+    RegistrationLabelsDiverge => false
+    RegistrationLabelsUnjudged { host: _, cause: _ } => false
+  }
+}
+
+fn diverges(verdict: RegistrationLabelsConformance) -> Bool {
+  match verdict {
+    RegistrationLabelsConform => false
+    RegistrationLabelsDiverge => true
+    RegistrationLabelsUnjudged { host: _, cause: _ } => false
+  }
+}
+
+fn unjudged(verdict: RegistrationLabelsConformance) -> Bool {
+  match verdict {
+    RegistrationLabelsConform => false
+    RegistrationLabelsDiverge => false
+    RegistrationLabelsUnjudged { host: _, cause: _ } => true
   }
 }
 
@@ -870,7 +896,7 @@ fn witness_control_name(step: WitnessControl) -> String {
     EvidenceEntryExactlyOnceStep => "the_evidence_entry_grants_the_label_exactly_once_and_only_to_a_rostered_host"
     StripComposesWithGrantStep => "the_grant_adds_the_label_exactly_once_and_the_strip_composes_with_it"
     PlatformHalfStep => "the_platform_half_cannot_carry_the_label_but_keeps_its_own_labels"
-    SlotGrainStep => "a_ci_slot_may_carry_the_label_and_the_deploy_slot_may_not"
+    SlotGrainStep => "the_slot_readback_expects_the_label_exactly_when_the_receipt_grants_it"
     ConsumerSelectorStep => "the_consumer_selector_is_satisfied_by_the_evidence_and_by_nothing_else"
   }
 }
@@ -888,7 +914,7 @@ fn witness_control_holds(step: WitnessControl) -> Bool {
     EvidenceEntryExactlyOnceStep => the_evidence_entry_grants_the_label_exactly_once_and_only_to_a_rostered_host()
     StripComposesWithGrantStep => the_grant_adds_the_label_exactly_once_and_the_strip_composes_with_it()
     PlatformHalfStep => the_platform_half_cannot_carry_the_label_but_keeps_its_own_labels()
-    SlotGrainStep => a_ci_slot_may_carry_the_label_and_the_deploy_slot_may_not()
+    SlotGrainStep => the_slot_readback_expects_the_label_exactly_when_the_receipt_grants_it()
     ConsumerSelectorStep => the_consumer_selector_is_satisfied_by_the_evidence_and_by_nothing_else()
   }
 }

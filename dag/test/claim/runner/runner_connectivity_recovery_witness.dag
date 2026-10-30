@@ -1,5 +1,7 @@
 module test.claim.runner.runner_connectivity_recovery_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
+
 import std.types { String, Bool, List, Timestamp }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
@@ -427,7 +429,7 @@ test fn postcondition_verifies_new_incarnation_and_remote_online() -> Bool {
     observed_at: act,
     control_plane_error_burst: false,
   }
-  match verify_incarnation_replace_postcondition(
+  match verify_incarnation_replace_postcondition(receipt: ReceiptAbsent, 
     slot: slot,
     prior: prior,
     after_local: after_local,
@@ -452,7 +454,7 @@ test fn postcondition_fails_when_prior_process_survives() -> Bool {
     observed_at: act,
     control_plane_error_burst: false,
   }
-  match verify_incarnation_replace_postcondition(
+  match verify_incarnation_replace_postcondition(receipt: ReceiptAbsent, 
     slot: slot,
     prior: prior,
     after_local: after_local,
@@ -661,7 +663,7 @@ fn replace_postcondition_with_labels(host: HostIdentity, labels: List<String>) -
     observed_at: act,
     control_plane_error_burst: false,
   }
-  match verify_incarnation_replace_postcondition(
+  match verify_incarnation_replace_postcondition(receipt: ReceiptAbsent, 
     slot: slot,
     prior: prior,
     after_local: after_local,
