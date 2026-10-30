@@ -41,7 +41,10 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 // rostered branch, and the job's `environment` equal to the boot environment's NAME. That name reaches
 // the job from the code-declared federation names in gunbc.auth.managed_host_boot_federation, never
 // from the file a branch edits. A branch that rewrites fleet-converge.yml, renames its `environment:`,
-// or invents a branch name mints no claim this admits.
+// or invents a branch name mints no claim this admits. What a branch CAN do -- and gunbc.design_ruling
+// mtcollins1_branch_boot_is_approval_free says so out loud -- is push a rostered ref carrying the boot's
+// own environment name: the roster decides who drives this BMC, and no workflow text a branch writes can
+// widen past it or sneak under it.
 //
 // WHY A POOL, PROVIDER AND ACCOUNT OF ITS OWN, AND NOT A WIDENING OF WHAT EXISTS. Three facts about
 // this corpus make the obvious routes impossible rather than merely unwise:
@@ -123,8 +126,14 @@ fn mtcollins1_boot_trusted_ref_pin() -> OidcClaimPin? {
 }
 
 // THE GITHUB ENVIRONMENT THE BOOT JOB DECLARES, read from the admitted boot federation's own names
-// rather than restated: it is the same string the job's `environment:` key renders from, so pinning it
-// here pins the job -- a job that renames its own environment is not the boot job and is refused.
+// rather than restated: it is the same string the job's `environment:` key renders from. What this
+// conjunct buys, stated without overselling it: it refuses a dispatch that asks for the boot mode while
+// standing in some OTHER job's environment, which is the shape behind gunbc.fleet.fleet_converge_workflow's
+// 18c3e1d0 revert -- "a fail-open: it lets ANY job on ANY repo trigger the boot". It does NOT refuse a
+// rostered branch that copies the boot's environment name into its own job: the workflow file belongs to
+// the branch, so that string is the branch's to write. This conjunct narrows WHICH job may reach the BMC,
+// never WHO -- who is decided by the ref roster above, which is exactly what gunbc.design_ruling
+// mtcollins1_branch_boot_is_approval_free concedes and what a unit maintenance hold still overrides.
 // No branch route can exist without a provisioned boot identity to name that environment.
 fn mtcollins1_boot_trusted_environment() -> String? {
   match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
