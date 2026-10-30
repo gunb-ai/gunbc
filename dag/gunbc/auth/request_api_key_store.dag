@@ -1,0 +1,82 @@
+module gunbc.auth.request_api_key_store
+
+import std.types { String, NonEmptyStr, FilePath }
+import std.error_primitives { Result, Ok, Err }
+import std.durable_compare_and_set { CasSlotObservation, CasExpectation, CasCommitted, CasObservedReadable, CasReadablePresent }
+import std.effect_grant { Read, Write, Execute }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path }
+import gunbc.durable_cas_file_store {
+  SlotStore, file_slot_store, listed_slot_store, SlotStoreListed, SlotStoreRefused,
+  slot_observe, slot_commit, CasGenerationPublication, DeclaredModeCreateOnly,
+  admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted,
+}
+import gunbc.managed_directory {
+  ManagedDirectory, DirectoryDependent, EntriesUnmanaged, srv1_dashboard_service_principal,
+  managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused,
+}
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_root_user }
+import gunbc.ownership { Ensured }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
+
+// C-auth host-singleton pattern: one member declaration, HostStateTree placement,
+// shared listing admission, and a non-generic sealed record containing SlotStore.
+// No raw-root reader and no caller roster. The isolated host tree is the cohort's
+// existing fixture mint; ambient filesystem authority remains its declared residual.
+data request_api_key_store_member: NonEmptyStr = "revision-request-api-keys"
+
+fn request_api_key_store_path(tree: HostStateTree) -> NonEmptyStr {
+  join([host_state_tree_path(tree: tree) as String, "/", request_api_key_store_member as String], "") as NonEmptyStr
+}
+
+fn request_api_key_store_directory(tree: HostStateTree) -> ManagedDirectory {
+  let service = srv1_dashboard_service_principal()
+  ManagedDirectory {
+    member: request_api_key_store_member, path: request_api_key_store_path(tree: tree) as String as FilePath,
+    owner: fleet_posix_root_user, group_principal: service,
+    dependents: [DirectoryDependent { who: fleet_posix_root_user, needs: [Read, Write, Execute] },
+      DirectoryDependent { who: service, needs: [Read, Execute] }],
+    ownership: Ensured, entries: EntriesUnmanaged,
+  }
+}
+
+type RequestApiKeyStore sole_constructor {
+  slots: SlotStore
+  publication: CasGenerationPublication
+}
+
+fn request_api_key_store(tree: HostStateTree) -> Result<RequestApiKeyStore, String> {
+  let publication = match managed_directory_entry_mode(d: request_api_key_store_directory(tree: tree)) {
+    ManagedEntryModeDerived { mode: mode } => DeclaredModeCreateOnly { mode: mode }
+    ManagedEntryModeRefused { member: _, path: _, reason: why } => { return Err { value: why as String } }
+  }
+  match listed_slot_store(member: request_api_key_store_member as String, root: request_api_key_store_path(tree: tree)) {
+    SlotStoreRefused { detail: why } => Err { value: why }
+    SlotStoreListed { root: root } => Ok { value: RequestApiKeyStore { slots: file_slot_store(root: root), publication: publication } }
+  }
+}
+
+fn request_api_key_store_read(store: RequestApiKeyStore, digest: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
+  slot_observe(store: store.slots, key: digest)
+}
+
+// Operator provisioning only; the native request door never calls this. Directory
+// ownership denies its service principal writes. Revocation is a new CAS generation,
+// not replacement of an old record. All effects run here, never supplied outcomes.
+fn request_api_key_store_commit(store: RequestApiKeyStore, digest: NonEmptyStr,
+  expected: CasExpectation, user: NonEmptyStr, state: NonEmptyStr) -> Result<NonEmptyStr, String> {
+  if state != "active" && state != "revoked" { return Err { value: "invalid API key standing" } }
+  let value = serialize_json(v: json_object(members: [json_kv(key: "user", value: json_string(s: user as String)),
+    json_kv(key: "state", value: json_string(s: state as String))])) as NonEmptyStr
+  match admit_cas_attempt_for_derived_payload(key: digest, expected: expected, proposed: value) {
+    DerivedPayloadAdmitted { verified: verified } => match slot_commit(store: store.slots, publication: store.publication, verified: verified) {
+      CasCommitted { committed: committed } => match slot_observe(store: store.slots, key: digest) {
+        CasObservedReadable { readable: CasReadablePresent { version: observed } } =>
+          if (observed.generation == committed.generation && observed.value == value) { Ok { value: digest } }
+          else { Err { value: "API key commit readback differs" } }
+        _ => Err { value: "API key commit readback unavailable" }
+      }
+      _ => Err { value: "API key generation was not committed" }
+    }
+    _ => Err { value: "API key digest is not a slot key" }
+  }
+}

@@ -1,0 +1,45 @@
+module gunbc.runner.runner_revision_request_context
+
+import std.types { String, NonEmptyStr, FilePath }
+import std.error_primitives { Result, Ok, Err }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path }
+import gunbc.durable_cas_file_store { listed_slot_store, SlotStoreListed, SlotStoreRefused }
+import gunbc.auth.request_api_key_store { RequestApiKeyStore, request_api_key_store }
+
+import std.effect_grant { Read, Write, Execute }
+import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged, srv1_dashboard_service_principal }
+import gunbc.ownership { Ensured }
+
+// Both authorities derive from the same host placement. A fixture key store
+// cannot be paired with the production request directory by a caller.
+data revision_request_store_member: NonEmptyStr = "revision-job/requests"
+
+fn revision_request_store_path(tree: HostStateTree) -> NonEmptyStr {
+  join([host_state_tree_path(tree: tree) as String, "/", revision_request_store_member as String], "") as NonEmptyStr
+}
+
+type RevisionRequestContext sole_constructor {
+  keys: RequestApiKeyStore
+  request_root: NonEmptyStr
+}
+
+fn revision_request_context(tree: HostStateTree) -> Result<RevisionRequestContext, String> {
+  let keys = match request_api_key_store(tree: tree) {
+    Err { value: why } => { return Err { value: why } }
+    Ok { value: keys } => keys
+  }
+  match listed_slot_store(member: revision_request_store_member as String, root: revision_request_store_path(tree: tree)) {
+    SlotStoreRefused { detail: why } => Err { value: why }
+    SlotStoreListed { root: root } => Ok { value: RevisionRequestContext { keys: keys, request_root: root } }
+  }
+}
+
+fn revision_request_store_directory(tree: HostStateTree) -> ManagedDirectory {
+  let service = srv1_dashboard_service_principal()
+  ManagedDirectory {
+    member: revision_request_store_member, path: revision_request_store_path(tree: tree) as String as FilePath,
+    owner: service, group_principal: service,
+    dependents: [DirectoryDependent { who: service, needs: [Read, Write, Execute] }],
+    ownership: Ensured, entries: EntriesUnmanaged,
+  }
+}

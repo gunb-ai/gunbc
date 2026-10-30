@@ -5,18 +5,17 @@ import std.types { String, NonEmptyStr }
 import std.error_primitives { Result, Ok, Err }
 import std.content_hash { sha256_hex_of_text }
 import std.optional { Present, Absent }
-import std.decl_ref { decl_ref }
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead }
+import gunbc.auth.request_api_key_store { RequestApiKeyStore, request_api_key_store_read }
+import std.durable_compare_and_set { CasObservedReadable, CasReadablePresent }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, FieldRead }
 
 // Operator-owned key records contain only a digest-addressed stable user and
 // active/revoked state. The key is never a user identifier, URL component or
 // diagnostic. Every request re-reads standing, so revocation survives restart
 // and is not hidden by an in-process credential cache.
-data request_api_key_root: NonEmptyStr = "/etc/gunbc/revision-requests/api-keys"
-
 type RequestApiKeyUser sole_constructor {
   user: NonEmptyStr
+  store: RequestApiKeyStore
 }
 
 fn request_api_key_digest(authorization: String) -> Result<NonEmptyStr, String> {
@@ -30,20 +29,12 @@ fn request_api_key_digest(authorization: String) -> Result<NonEmptyStr, String> 
   Ok { value: sha256_hex_of_text(text: token) as NonEmptyStr }
 }
 
-fn request_api_key_read_at(root: NonEmptyStr, authorization: String) -> Result<RequestApiKeyUser, String>
-  admit_callers: [
-    decl_ref(module_path: "gunbc.auth.request_api_key", decl_name: "request_api_key_read"),
-    decl_ref(module_path: "gunbc.instruments.revision_request_fixture", decl_name: "native_serve_handle"),
-    decl_ref(module_path: "test.claim.durable_handoff_request_witness", decl_name: "request_api_key_fixture_read"),
-  ]
-{
+fn request_api_key_read(store: RequestApiKeyStore, authorization: String) -> Result<RequestApiKeyUser, String> {
   let digest = match request_api_key_digest(authorization: authorization) {
     Err { value: why } => { return Err { value: why } } Ok { value: value } => value
   }
-  let path = join([root as String, "/", digest as String, ".json"], "")
-  let reading = Filesystem.Read(path: path)
-  let raw = match filesystem_exact_read(path: path, content: reading.content, success: reading.success, error: reading.error, error_kind: reading.error_kind) {
-    FilesystemExactPathRead { path: _, content: value } => value
+  let raw = match request_api_key_store_read(store: store, digest: digest) {
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => version.value as String
     _ => { return Err { value: "API key not admitted" } }
   }
   let record = match parse_json_document(s: raw) {
@@ -53,9 +44,5 @@ fn request_api_key_read_at(root: NonEmptyStr, authorization: String) -> Result<R
   let user = match json_field_string(obj: record, key: "user") { FieldRead { value: value } => value _ => "" }
   let state = match json_field_string(obj: record, key: "state") { FieldRead { value: value } => value _ => "" }
   if user == "" || state != "active" { Err { value: "API key not admitted" } }
-  else { Ok { value: RequestApiKeyUser { user: user as NonEmptyStr } } }
-}
-
-fn request_api_key_read(authorization: String) -> Result<RequestApiKeyUser, String> {
-  request_api_key_read_at(root: request_api_key_root, authorization: authorization)
+  else { Ok { value: RequestApiKeyUser { user: user as NonEmptyStr, store: store } } }
 }

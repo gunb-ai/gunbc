@@ -60,8 +60,6 @@ fn revision_job_installed_toolchain(release_dir: String) -> String { concat(revi
 data revision_job_state_root: String = "/var/lib/gunbc/revision-job"
 data revision_job_spec_dir: String = "/var/lib/gunbc/revision-job/spec"
 data revision_job_receipt_store: String = "/var/lib/gunbc/revision-job/receipts"
-// Shared request acceptance/readback, separate from immutable execution receipts.
-data revision_job_request_root: NonEmptyStr = "/var/lib/gunbc/revision-job/requests" as NonEmptyStr
 
 fn revision_job_instance_dir(instance: String) -> String { join([revision_job_state_root, "/", instance], "") }
 fn revision_job_cache_dir(instance: String) -> String { concat(revision_job_instance_dir(instance: instance), "/cache") }
