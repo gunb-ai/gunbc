@@ -49,11 +49,13 @@ import gunbc.runner.runner_user_session_receipt {
 
 data runner_user_session_receipt_token_env: String = "GITHUB_TOKEN"
 
-// A DOWNLOAD DIRECTORY PER RUN: a file left by an earlier read can never be mistaken for this run's.
+// A DOWNLOAD DIRECTORY PER READ (run id plus the read instant): a file left by an earlier read can never be
+// mistaken for this read's, and a second leg reading the same run in one checkout cannot collide with the
+// first (gh run download refuses to write into files that already exist -- review 88966).
 data runner_user_session_receipt_download_root: String = "target/runner-user-session-receipt-read"
 
-fn runner_user_session_receipt_download_dir(run: GitHubWorkflowRunId) -> String {
-  join([runner_user_session_receipt_download_root, github_workflow_run_id_wire_text(id: run)], "/")
+fn runner_user_session_receipt_download_dir(run: GitHubWorkflowRunId, read_at: Timestamp) -> String {
+  join([runner_user_session_receipt_download_root, github_workflow_run_id_wire_text(id: run), read_at], "/")
 }
 
 fn runner_user_session_receipt_unreadable(step: String, cause: String) -> RunnerUserSessionReceiptInput {
@@ -95,7 +97,7 @@ fn runner_user_session_receipt_of_run_pages(host: HostIdentity, token: Secret, p
   ) {
     RestRefused { refusal } => runner_user_session_receipt_unreadable(step: "run listing", cause: census_read_refusal_cause(operation: join(["github.WorkflowRuns.ListWorkflowRuns page ", to_string(page)], ""), refusal: refusal) as String)
     RestAnswered { answer } => match runner_user_session_run_page_step(runs: answer.result.workflow_runs, host: host as String, read_at: read_at, page: page, max_pages: runner_user_session_run_search_max_pages, page_size: max_per_page) {
-      RunPageSelected { run: run, created_at: _ } => runner_user_session_receipt_of_run(run: run)
+      RunPageSelected { run: run, created_at: _ } => runner_user_session_receipt_of_run(run: run, read_at: read_at)
       RunPageEndsSearch { cause: _ } => ReceiptAbsent
       RunPageContinues => runner_user_session_receipt_of_run_pages(host: host, token: token, page: page + 1, read_at: read_at)
       RunPageCapReached { cause: c } => runner_user_session_receipt_unreadable(step: "run listing", cause: c)
@@ -103,8 +105,8 @@ fn runner_user_session_receipt_of_run_pages(host: HostIdentity, token: Secret, p
   }
 }
 
-fn runner_user_session_receipt_of_run(run: GitHubWorkflowRunId) -> RunnerUserSessionReceiptInput {
-  let dir = runner_user_session_receipt_download_dir(run: run)
+fn runner_user_session_receipt_of_run(run: GitHubWorkflowRunId, read_at: Timestamp) -> RunnerUserSessionReceiptInput {
+  let dir = runner_user_session_receipt_download_dir(run: run, read_at: read_at)
   match run_shell_command_capture(command: runner_user_session_converge_receipt_read_command(run: run, into: dir), transport: LocalExec) {
     ProcessRefused { exit_code, stderr } => runner_user_session_receipt_unreadable(step: "artifact download", cause: join(["gh run download exited ", to_string(exit_code), ": ", stderr], ""))
     ProcessOutputPresent { text: _ } => runner_user_session_receipt_of_downloaded(run: run, dir: dir)
