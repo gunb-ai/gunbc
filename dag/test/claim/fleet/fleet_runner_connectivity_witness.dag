@@ -1,6 +1,6 @@
 module test.claim.fleet.fleet_runner_connectivity_witness
 
-import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput, ReceiptAbsent }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput, ReceiptAbsent, ReceiptUnreadable }
 import test.claim.runner.runner_user_session_label_witness { srv4_holding_input }
 
 import std.logic { Bool }
@@ -319,6 +319,12 @@ test fn the_user_session_label_is_healthy_only_under_a_receipt_that_grants_it() 
     )
     && connectivity_verdict_labels_diverge(
       v: online_01_under(host: operator_host_srv3, name: "srv3-01", labels: ["srv3" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr, "gunbc-user-session" as NonEmptyStr], receipt: srv4_holding_input()),
+    )
+    && connectivity_verdict_is_unknown(
+      v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr, "gunbc-user-session" as NonEmptyStr], receipt: ReceiptUnreadable { why: "converge receipt read, run listing: absence not established" }),
+    )
+    && connectivity_verdict_is_unknown(
+      v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr], receipt: ReceiptUnreadable { why: "converge receipt read, run listing: absence not established" }),
     )
 }
 

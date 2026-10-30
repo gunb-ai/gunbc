@@ -1,6 +1,6 @@
 module gunbc.runner.runner_user_session_receipt
 
-import std.types { String, Bool, Int, List, Timestamp }
+import std.types { String, Bool, Int, List, Timestamp, list_length }
 import std.algebra { trim }
 import std.list { first_where }
 import std.measure { Second, second, second_count }
@@ -148,6 +148,48 @@ fn runner_user_session_producer_run_select(runs: List<WorkflowRun>, host: String
   match newest {
     Absent => ProducerRunNone { cause: join(["no completed, successful fleet-converge run of mode ", runner_user_session_converge_mode_wire, " for host ", host, " is in the listing, so there is no producer artifact to read"], "") }
     Present { value: r } => ProducerRunSelected { run: github_workflow_run_id_of_wire(n: r.id), created_at: r.created_at }
+  }
+}
+
+// ABSENCE IS ESTABLISHED, NEVER ASSUMED FROM ONE PAGE (DESIGN 5: an incomplete observation must not authorize a
+// destructive action -- the readback turns ReceiptAbsent into a diverging label set and a diverging set into a
+// runner replacement). The listing is newest first, so a page with no qualifying run proves absence only when
+// the search cannot find one on a later page: the page is UNDERFULL (the listing is exhausted), or it holds a
+// run created longer ago than the receipt freshness bound (every run beyond it is older still, and a receipt
+// older than runner_user_session_converge_receipt_max_age cannot grant anyway). A full page inside the horizon
+// continues to the next page; a continuation past the page cap is a typed refusal, which the read maps to
+// ReceiptUnreadable (the readback judges nothing, no replace action).
+data runner_user_session_run_search_max_pages: Int = 10
+
+type RunnerUserSessionRunPageStep
+  = RunPageSelected { run: GitHubWorkflowRunId, created_at: Timestamp }
+  | RunPageEndsSearch { cause: String }
+  | RunPageContinues
+  | RunPageCapReached { cause: String }
+
+fn runner_user_session_run_is_beyond_horizon(run: WorkflowRun, read_at: Timestamp) -> Bool {
+  if utc_instant_is_canonical(t: run.created_at) && utc_instant_is_canonical(t: read_at) {
+    utc_instant_seconds_after(later: read_at, earlier: run.created_at) > second_count(s: runner_user_session_converge_receipt_max_age)
+  } else {
+    false
+  }
+}
+
+fn runner_user_session_run_page_step(runs: List<WorkflowRun>, host: String, read_at: Timestamp, page: Int, max_pages: Int, page_size: Int) -> RunnerUserSessionRunPageStep {
+  match runner_user_session_producer_run_select(runs: runs, host: host) {
+    ProducerRunSelected { run: r, created_at: c } => RunPageSelected { run: r, created_at: c }
+    ProducerRunNone { cause: c } =>
+      if list_length(items: runs) < page_size {
+        RunPageEndsSearch { cause: c }
+      } else if any(runs, r => runner_user_session_run_is_beyond_horizon(run: r, read_at: read_at)) {
+        RunPageEndsSearch { cause: c }
+      } else if page >= max_pages {
+        RunPageCapReached {
+          cause: join(["the run listing had no qualifying run in ", to_string(page), " full pages inside the receipt freshness horizon, so absence is not established (bounded search of ", to_string(max_pages), " pages)"], "")
+        }
+      } else {
+        RunPageContinues
+      }
   }
 }
 
