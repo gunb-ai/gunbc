@@ -8,7 +8,7 @@ import std.human_intervention { FleetOnce }
 import gunbc.auth.fleet_workload_identity { convergence_principal }
 import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster }
 import gunbc.auth.authorization_pattern_selection {
-  PrivilegedEffect, ApiSurface, WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
+  PrivilegedEffect, ApiSurface, WorkloadIdentityStanding,
   MintsNoCredential, ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
   PatternSelected, FederatedScopedGrant, select_authorization_pattern, pattern_identity,
 }
@@ -32,7 +32,7 @@ import gunbc.auth.authorization_pattern_selection {
 // grant the only admissible pattern that is not dominated.
 //
 // THE IDENTITY IS A PARAMETER, NOT RESTATED. The effect constructors take the fleet principal's standing
-// as an argument; it is resolved once, in convergence_principal below, which the census imports for its rows.
+// as an argument; it is resolved once, in gunbc.auth.fleet_workload_identity convergence_principal, which the census also reads.
 //
 // NOTHING HERE ACTUATES. No token is read, no record is written and no binding is created; the
 // bind itself is a later change and the FQDN it binds stays the zone standing's pending decision.
