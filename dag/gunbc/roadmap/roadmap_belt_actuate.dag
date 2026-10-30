@@ -8,6 +8,9 @@ import gunbc.roadmap.roadmap_attempt_request_binding {
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 
 import std.algebra { trim, skip }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.durable_compare_and_set { cas_generation_count }
 import std.filesystem { path_parent_directory }
 import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
@@ -1821,22 +1824,24 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
 // delete). The branch is the durable record (§3b), so this RESTORES state rather than guessing; a gone branch
 // fails closed (BranchAbsent) rather than spawning on an unknown tree. With D1/D2 no longer releasing a pending
 // claim, this step only ever sees the legacy reaped state -- it is recovery, not a second release path.
-// BOUNDED POPULATION AND DISSOLUTION (review 88393). The population is CLOSED and NAMED at merge: the attempts on
-// lab instance srv1-lab-codex-feedback-v0 whose worktree claim reads terminal:recovered while their recovery
-// stream is request-pending. These were written by the pre-D1/D2 release, which no longer exists, so no member can
-// be added. The member list is read from the instance's existing worktree-claim and attempt records and recorded
-// on the PR at merge (expected: e5a42384c6a5e13d alone). DISSOLUTION: delete this step and this type in the first
-// lab-dev change after every listed attempt's own recovery stream has left request-pending (answered, ended or
-// spawned fresh), as read from that attempt's existing record. No census, no new instrument. An attempt whose
-// reading is unknown does not hold the deletion open: once the step is deleted, the ordinary route refuses such an
-// attempt with a typed refusal rather than restoring it. Operator approval of this temporary step is requested
-// outside the diff (DESIGN section 5). Reason: the old trigger was a census over every host's ledger, and the
-// #15415 operator ruling retires census prerequisites.
+// TEMPORARY, BOUNDED, OPERATOR-APPROVED: the admitted debt is the two rows below this type
+// (attempt_worktree_restore_scaffold, attempt_worktree_restore_dissolve_trigger), not this comment.
 type AttemptWorktreeRestore
   = AttemptWorktreeRestored { worktree_path: String, branch: String }
   | AttemptWorktreeNotNeeded
   | AttemptWorktreeBranchAbsent { branch: String, detail: String }
   | AttemptWorktreeRestoreRefused { detail: String }
+
+data attempt_worktree_restore_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap.roadmap_belt_actuate",
+    decl_name: "AttemptWorktreeRestore",
+    field: WholeDeclaration
+  }
+}
+
+data attempt_worktree_restore_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "Population: exactly attempt e5a42384c6a5e13d on lab instance srv1-lab-codex-feedback-v0, whose worktree claim reads terminal:recovered while its recovery stream is request-pending (written by the pre-D1/D2 release, which no longer exists, so no member can be added); operator approval is decision msg_e623cf1e (DESIGN section 5), granting no broader population and no census. DISSOLVES WHEN that attempt's own recovery stream has left request-pending (answered, ended or spawned fresh), read from its existing record: delete AttemptWorktreeRestore and belt_attempt_worktree_restore_for_instance in the first lab-dev change after. An attempt whose reading is unknown does not hold the deletion open; the ordinary route then refuses it with a typed refusal.")
 
 // THE CLAIM SUB-STEP'S OWN OUTCOME. It only ever ensures that an OPEN claim names the worktree path, so it does not
 // borrow AttemptWorktreeRestore's 'nothing to do' / 'branch absent' variants -- reusing that type for two roles would
