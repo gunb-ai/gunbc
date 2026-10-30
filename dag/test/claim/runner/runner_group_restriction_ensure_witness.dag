@@ -10,8 +10,9 @@ import gunbc.runner.runner_group_restriction_ensure {
   CreatedGroupRestricted, CreatedGroupNotRestricted,
   plan_runner_group_ensure, readback_after_create, microvm_runner_group_create_subject,
   runner_group_create_subject_text, private_heal_publisher_runner_group_subject,
-  private_heal_publisher_runner_group_name, restricted_runner_groups,
+  private_heal_publisher_runner_group_name, restricted_runner_groups, qualification_runner_group_subject,
 }
+import gunbc.runner.runner_qualification_ref_pin { qualification_runner_group_name }
 import gunbc.runner.runner_group_restriction_observation { observe_runner_group_restriction }
 import gunbc.ci.deploy_slot_tenancy {
   deploy_slot_runner_group_name, deploy_slot_job_user, deploy_slot_selected_workflow,
@@ -180,4 +181,69 @@ test fn witness_deploy_slot_admits_the_route_switch_only_when_group_and_uid_both
     && !admit(deploy_reading(groups: [default_group(), group_wire(id: 31, name: deploy_slot_runner_group_name as String, restricted: false, selected: [])], user: deploy_slot_job_user))
     && !admit(deploy_reading(groups: [default_group(), deploy_group(id: 31, selected: ["gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"])], user: deploy_slot_job_user))
     && count(filter(restricted_runner_groups(), g => g.name == deploy_slot_runner_group_name)) == 1
+}
+
+// ── the qualification group: created at the bare prefix, admitted as one branch under it ─────────
+// (operator decision A, 2026-10-30). The workflow strings are spelled here, independently of the model.
+
+data qualification_seed: String = "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/qualification/"
+
+fn qualification_group(id: Int, restricted: Bool, selected: List<String>) -> OrgRunnerGroupWire {
+  group_wire(id: id, name: qualification_runner_group_name as String, restricted: restricted, selected: selected)
+}
+
+fn qualification_planned(groups: List<OrgRunnerGroupWire>) -> RunnerGroupEnsurePlan {
+  plan_runner_group_ensure(subject: qualification_runner_group_subject(), listed: listed(groups: groups))
+}
+
+fn refused_outside_prefix(plan: RunnerGroupEnsurePlan) -> Bool {
+  match plan {
+    GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupSelectsOutsidePrefix")
+    _ => false
+  }
+}
+
+// THE GROUP IS ROSTERED ONCE AND CREATED ADMITTING NOTHING: the create body names the qualification workflow at
+// the bare prefix (no branch can match it), behind the same three walls as every restricted group.
+test fn witness_qualification_group_is_created_at_the_bare_prefix() -> Bool {
+  let s = qualification_runner_group_subject()
+  (s.name as String) == "runner-qualification"
+    && (s.selected_workflow as String) == qualification_seed
+    && s.restricted_to_workflows && !s.allows_public_repositories
+    && count(filter(restricted_runner_groups(), g => g.name == qualification_runner_group_name)) == 1
+    && (match qualification_planned(groups: [default_group()]) {
+      GroupCreateRequired { subject: c } => (c.selected_workflow as String) == qualification_seed
+      _ => false
+    })
+    && (match readback_after_create(subject: s, listed: listed(groups: [default_group(), qualification_group(id: 41, restricted: true, selected: [qualification_seed])])) {
+      CreatedGroupRestricted { restriction: r } => r.group.value == 41 && (r.selected_workflow as String) == qualification_seed
+      CreatedGroupNotRestricted { cause: _ } => false
+    })
+}
+
+// AN ATTEMPT'S PIN IS STILL THE GROUP: after an attempt re-pins it to its own branch, the ensure leaves it alone
+// and the sealed record carries the branch actually observed, not the class.
+test fn witness_qualification_group_pinned_to_one_attempt_branch_is_already_restricted() -> Bool {
+  let pinned = concat(qualification_seed, "1234-1")
+  match qualification_planned(groups: [default_group(), qualification_group(id: 41, restricted: true, selected: [pinned])]) {
+    GroupAlreadyRestricted { restriction: r } => r.group.value == 41 && (r.selected_workflow as String) == pinned
+    _ => false
+  }
+}
+
+// RED: A PIN OUTSIDE THE PREFIX REFUSES. The default branch, another workflow file at a qualification branch, a
+// nested branch, a component git would refuse, and a second entry each name a workflow no attempt pinned; an
+// unrestricted group refuses by its own cause.
+test fn witness_qualification_group_pinned_outside_the_prefix_refuses() -> Bool {
+  let g = sel => qualification_planned(groups: [default_group(), qualification_group(id: 41, restricted: true, selected: sel)])
+  refused_outside_prefix(plan: g(["gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main"]))
+    && refused_outside_prefix(plan: g(["gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/qualification/1234-1"]))
+    && refused_outside_prefix(plan: g([concat(qualification_seed, "a/b")]))
+    && refused_outside_prefix(plan: g([concat(qualification_seed, "x.lock")]))
+    && refused_outside_prefix(plan: g([qualification_seed, concat(qualification_seed, "1234-1")]))
+    && refused_outside_prefix(plan: g([]))
+    && (match qualification_planned(groups: [qualification_group(id: 41, restricted: false, selected: [])]) {
+      GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupNotRestrictedToWorkflows")
+      _ => false
+    })
 }
