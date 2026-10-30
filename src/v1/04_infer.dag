@@ -1,5 +1,6 @@
 module v1.compiler.infer
 
+import v1.compiler.infer_types { node_declaration_identity, node_declaration_file }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, container_template_alias_algebra, is_container_type, kernel_type_set, is_kernel_type }
 import std.content_hash {
