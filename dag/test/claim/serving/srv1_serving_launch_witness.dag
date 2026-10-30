@@ -5,7 +5,7 @@ import std.optional { Absent, Present }
 import extdeps.uri { UriScheme, Https }
 import extdeps.network.ipv4 { render_ipv4_address }
 import std.list { first_where }
-import std.algebra { length, string_contains }
+import std.algebra { length, string_contains, list_append }
 import std.dissolution { dissolution_is_bound, dissolution_description }
 import std.roster_frontier { DeclSubject }
 import gunbc.serving.serving_enrollment { ServingRouteResolved, CeilingByDeclaredPolicy }
@@ -13,6 +13,9 @@ import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, L
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, qwen3_8_flash_next_pinned_revision }
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
+import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
+import gunbc.serving.strata_ada_pair_cell { srv3_strata_flags }
+import std.measure { token_count_value }
 import gunbc.serving.srv1_serving_launch {
   srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
   srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, Srv1ImageFileReplaced, Srv1ImageFileAdded, srv1_router_upstream_launch_facts, srv1_serving_route,
@@ -49,16 +52,30 @@ data observed_cmd_tail: List<String> = [
 // shell syntax out of string literals into an argv; the substitution lives in the retained wrapper).
 data bash_realization_key_read: NonEmptyStr = "\x24(cat /root/.pool_key)"
 
-// THE RENDER EQUALS WHAT THE RUNNING CONTAINER SHOWED, element for element — including the key's file
-// read spelled as a shell substitution and no secret value anywhere. This is the check that makes the
-// argv a DERIVATION verified against an OBSERVATION, not a restatement of it.
-test fn the_rendered_argv_equals_the_container_cmd_tail() -> Bool {
-  srv1_serving_launch_argv(api_key_wire: bash_realization_key_read) == observed_cmd_tail
+// THE RENDER IS WHAT THE RUNNING CONTAINER SHOWED PLUS THE POOL CONTEXT CAP, element for element —
+// including the key's file read spelled as a shell substitution and no secret value anywhere. This is
+// the check that makes the argv a DERIVATION verified against an OBSERVATION, not a restatement of it.
+// The cap (gunbc.design_ruling one_serving_context_cap, 2026-10-30) is the ONE declared change since
+// that reading; the observation is not rewritten to include it, because no launch at the cap has been
+// read. When srv1 is relaunched and re-read, observed_cmd_tail is re-taken and the suffix goes.
+data context_cap_suffix: List<String> = ["--max-model-len", "229376"]
+
+test fn the_rendered_argv_is_the_container_cmd_tail_plus_only_the_context_cap() -> Bool {
+  srv1_serving_launch_argv(api_key_wire: bash_realization_key_read) == list_append(left: observed_cmd_tail, right: context_cap_suffix)
 }
 
-// NO INVENTED FLAGS: every nvfp4/context/tier value the engine reports comes from lil-serve's own
-// profile, not from argv, so the launch row carries none of them — a flag added here without a wrapper
-// change would break this render check, which is the point.
+// ONE CAP, TWO ENGINES: srv1's vLLM launch and srv3's Strata flags both carry the pool cap from its one
+// row, so moving the cap moves every engine and neither can drift alone. Each engine's own spelling of
+// it is pinned by its render check (above for vLLM; extdeps.strata.serve_flags for Strata).
+test fn both_pool_engines_carry_the_one_context_cap() -> Bool {
+  (match srv1_serving_launch.engine.max_model_len { Present { value: n } => n == serving_fleet_context_cap _ => false })
+    && srv3_strata_flags.max_context == serving_fleet_context_cap
+    && token_count_value(t: serving_fleet_context_cap) == 229376
+}
+
+// NO INVENTED FLAGS: every nvfp4/tier value the engine reports comes from lil-serve's own profile, not
+// from argv, so the launch row carries none of them — a flag added here without a wrapper change would
+// break this render check, which is the point. The context cap is the one flag, and it is the pool's.
 test fn the_launch_carries_no_engine_flag_the_wrapper_does_not_pass() -> Bool {
   match srv1_serving_launch.engine {
     LilServeEngineFlags {
@@ -68,7 +85,7 @@ test fn the_launch_carries_no_engine_flag_the_wrapper_does_not_pass() -> Bool {
       (match mn { Absent => true, _ => false })
         && (match kv { Absent => true, _ => false })
         && (match m { Absent => true, _ => false })
-        && (match ml { Absent => true, _ => false })
+        && (match ml { Present { value: n } => n == serving_fleet_context_cap && token_count_value(t: n) == 229376 _ => false })
         && (match ms { Absent => true, _ => false })
         && (match mb { Absent => true, _ => false })
         && (match cp { Absent => true, _ => false })
@@ -107,6 +124,7 @@ test fn the_retained_wrapper_is_the_serving_entrypoint_the_receipt_read() -> Boo
     && string_contains(s: b, pattern: "pool-card")
     && string_contains(s: b, pattern: ".pool_key")
     && string_contains(s: b, pattern: "lil-serve")
+    && string_contains(s: b, pattern: "--max-model-len 229376 >>")
     && (srv1_serving_wrapper.dissolves_to.module_path as String) == "extdeps.docker.cli"
     && (srv1_serving_wrapper.dissolves_to.decl_name as String) == "docker_run_foreground_argv"
 }
@@ -183,6 +201,7 @@ test fn a_port_override_changes_only_the_port() -> Bool {
       "--ssl-keyfile", "/root/serve/tls.key",
       "--ssl-certfile", "/root/serve/tls.crt",
       "--api-key", "$(cat /root/.pool_key)",
+      "--max-model-len", "229376",
     ])
     && (length(xs: at.environment) == length(xs: srv1_serving_launch.environment))
 }
