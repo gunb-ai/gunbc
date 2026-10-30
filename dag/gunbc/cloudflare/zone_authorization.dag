@@ -9,8 +9,6 @@ import gunbc.spark.bootstrap_provision {
   fleet_cloud_principal_standing,
   CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
 }
-import gunbc.secret_provision { fleet_secret_ref }
-import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ApiSurface, WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -36,9 +34,8 @@ import gunbc.auth.authorization_pattern_selection {
 // fleet cloud principal can hold a per-secret accessor cell on the token, which makes the federated
 // grant the only admissible pattern that is not dominated.
 //
-// THE IDENTITY IS A PARAMETER, NOT RESTATED. The fleet principal's standing is resolved once in
-// gunbc.auth.privileged_effect_census convergence_principal; that module imports this one for its
-// rows, so the standing is passed in rather than re-derived here.
+// THE IDENTITY IS A PARAMETER, NOT RESTATED. The effect constructors take the fleet principal's standing
+// as an argument; it is resolved once, in convergence_principal below, which the census imports for its rows.
 //
 // NOTHING HERE ACTUATES. No token is read, no record is written and no binding is created; the
 // bind itself is a later change and the FQDN it binds stays the zone standing's pending decision.
@@ -88,10 +85,6 @@ fn convergence_principal() -> WorkloadIdentityStanding {
 // over the real roster: landing the zone-token row in gunbc.auth.fleet_secret_accessor_roster flips it, and
 // the census row for these effects reads the same fold.
 data cloudflare_zone_token_secret_id: NonEmptyStr = "cloudflare-zone-token"
-
-fn cloudflare_zone_token_secret_ref() -> SecretRef {
-  fleet_secret_ref(secret_id: cloudflare_zone_token_secret_id)
-}
 
 fn zone_token_accessor_cell_landed() -> Bool {
   fleet_accessor_grant_roster.any(row => row.target.secret == cloudflare_zone_token_secret_id)

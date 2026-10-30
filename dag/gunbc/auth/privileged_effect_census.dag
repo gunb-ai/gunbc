@@ -894,20 +894,17 @@ data fabric_store_write_unverified: DivergenceReason = DivergenceReason {
 // list. dissolution_status over it therefore answers Pending for every bound reason while its
 // subject exists, and the witness asserts none is Fired -- the fold that replaces the sentence.
 fn present_trigger_declarations() -> List<DeclarationRef> {
+  let zone_subject = decl_ref(module_path: "gunbc.cloudflare.zone_authorization", decl_name: "zone_token_accessor_unlanded")
   // The zone-token reason's subject is present exactly while the roster fold says its cell is unlanded
   // (zone_token_accessor_cell_landed), so landing the FleetAccessorGrantRow fires the retirement with no companion edit.
-  if zone_token_accessor_cell_landed() {
+  filter(
     [
       decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "approval_submission_mac_key_secret_ref"),
       decl_ref(module_path: "gunbc.auth.access_token_source", decl_name: "ensure_access_token_eager_bootstrap_fork_dissolve_on"),
-    ]
-  } else {
-    [
-      decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "approval_submission_mac_key_secret_ref"),
-      decl_ref(module_path: "gunbc.auth.access_token_source", decl_name: "ensure_access_token_eager_bootstrap_fork_dissolve_on"),
-      decl_ref(module_path: "gunbc.cloudflare.zone_authorization", decl_name: "zone_token_accessor_unlanded"),
-    ]
-  }
+      zone_subject,
+    ],
+    r => !zone_token_accessor_cell_landed() || !declaration_ref_eq(a: r, b: zone_subject)
+  )
 }
 
 // ── The roster ───────────────────────────────────────────────────────────────────────────────
