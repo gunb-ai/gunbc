@@ -195,6 +195,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "map_insert" => Some(EvalBuiltinArm::FreeCallMapInsert),
         "lookup" => Some(EvalBuiltinArm::FreeCallLookup),
         "map_keys" => Some(EvalBuiltinArm::FreeCallMapKeys),
+        "map_keys_primitive_delegate" => Some(EvalBuiltinArm::FreeCallMapKeys),
         "sorted_map_keys" => Some(EvalBuiltinArm::FreeCallSortedMapKeys),
         "map_values" => Some(EvalBuiltinArm::FreeCallMapValues),
         "map_contains_key" => Some(EvalBuiltinArm::FreeCallMapContainsKey),
