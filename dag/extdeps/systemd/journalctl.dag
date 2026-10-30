@@ -108,3 +108,10 @@ fn journalctl_unit_current_boot_argv(unit: NonEmptyStr) -> List<String> {
 fn journalctl_user_unit_tail_argv(unit: NonEmptyStr, uid: Int, lines: Int) -> List<String> {
   ["journalctl", concat("--user-unit=", unit as String), concat("_UID=", to_string(uid)), "-n", to_string(lines), "--no-pager", "-o", "short-unix"]
 }
+
+// EVERYTHING THE JOURNAL HOLDS FOR ONE UID, NO UNIT MATCH. When a unit-keyed read is empty this separates
+// "the unit logged nothing" from "the journal holds nothing for this account": _UID is a trusted field,
+// and a user manager that stores no per-user journal leaves no entry under it at all.
+fn journalctl_uid_tail_argv(uid: Int, lines: Int) -> List<String> {
+  ["journalctl", concat("_UID=", to_string(uid)), "-n", to_string(lines), "--no-pager", "-o", "short-unix"]
+}

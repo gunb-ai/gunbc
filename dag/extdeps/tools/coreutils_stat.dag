@@ -3,7 +3,7 @@ module extdeps.tools.coreutils_stat
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.access.posix { FileOwnership, FileMode, file_mode_of_octal_text }
-import std.types { Bool, Int, List, NonEmptyStr, Unit }
+import std.types { Bool, Int, List, NonEmptyStr, String, Unit }
 import std.algebra { trim }
 
 // OBSERVING WHO OWNS A PATH, as a modeled operation. extdeps.access.posix owns the CONCEPT --
@@ -220,4 +220,12 @@ fn coreutils_stat_path_mode(path: NonEmptyStr) -> PathModeObservation {
       Present { value: mode } => PathModeObserved { path: path, mode: mode }
     }
   }
+}
+
+// MODE, OWNER NAME AND PATH, one line per operand. stat(1) `-c FORMAT`: %a is the access rights in octal
+// (so a setuid bit reads as a leading 4), %U the owner's user name, %n the file name. `--` ends options so
+// a path cannot be read as one. A path stat cannot read makes stat exit nonzero for the whole call, which
+// the caller sees as a nonzero exit and never as a line with a blank mode.
+fn stat_mode_owner_name_argv(paths: List<NonEmptyStr>) -> List<String> {
+  concat(["stat", "-c", "%a %U %n", "--"], map(paths, p => p as String))
 }
