@@ -1,0 +1,197 @@
+module gunbc.roadmap.roadmap_belt_receipt_store_root
+
+import std.types { String, NonEmptyStr, FilePath }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  FilesystemWritten, FilesystemWriteRefused,
+  filesystem_listing_observation, filesystem_write_outcome,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
+import gunbc.host.host_layout { instance_receipts_dir }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
+
+// THE BELT'S INSTANCE-SCOPED RECEIPT STORES (the belt tick receipt, the per-attempt obligation receipts and
+// the per-project publication receipts), kept in a leaf module for the reason the worktree claim root is
+// (gunbc.roadmap.roadmap_attempt_worktree_claim_root): the instance directory list imports the projects
+// directory row, and the belt sits above that list. Sealed in place with NO format change (ruling stern-ram-763
+// 2026-10-24, plain-file stores): every file is the bytes the belt wrote before the seal, one JSON document per
+// file, written with the same Filesystem.Write. Moving the format onto SlotStore is each store's
+// FormatConsolidation follow-up.
+//
+// THE DECLARATIONS. The tick and obligation receipts live in the instance's receipts directory
+// (gunbc.host.host_layout instance_receipts_dir), a directory the apply legs already create and enroll, so
+// they declare only the entry name they own in it: a stem and a suffix. The publication receipts live under
+// the shared dispatch attempt-state root, which holds several stores, so that store declares its own member
+// under the parent (as worktree-claims does) and the mode its directory is created with.
+type BeltReceiptFileDeclaration { stem: NonEmptyStr, suffix: NonEmptyStr }
+
+data belt_tick_receipt_slots: BeltReceiptFileDeclaration = BeltReceiptFileDeclaration {
+  stem: "belt-last-tick" as NonEmptyStr,
+  suffix: ".json" as NonEmptyStr,
+}
+
+data belt_obligation_receipt_slots: BeltReceiptFileDeclaration = BeltReceiptFileDeclaration {
+  stem: "obligations" as NonEmptyStr,
+  suffix: ".json" as NonEmptyStr,
+}
+
+type BeltProjectsSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode, publication_suffix: NonEmptyStr }
+
+data belt_projects_slots: BeltProjectsSlotsDeclaration = BeltProjectsSlotsDeclaration {
+  member: "projects" as NonEmptyStr,
+  mode: DirectoryOwnerOnly,
+  publication_suffix: ".publication-receipt.json" as NonEmptyStr,
+}
+
+// NOT the dispatch attempt-state root for the tick and obligation receipts, though service-user-owned and
+// closer-looking: the srv1 pair is DispatchStateHostShared, so blue and green resolve that root to ONE path
+// and a receipt there would answer for two instances. The receipts directory derives from the instance root,
+// which keeps it per-instance by construction.
+fn belt_projects_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", belt_projects_slots.member as String], "") as NonEmptyStr
+}
+
+type BeltReceiptRootReading
+  = BeltReceiptRootListed
+  | BeltReceiptRootUnlistable { detail: String }
+
+type BeltReceiptWrite
+  = BeltReceiptWritten
+  | BeltReceiptWriteRefused { error: String }
+
+// The directory listing every mint folds, over the root the mint itself derived. It is not a route a caller
+// reaches: it is not exported to a caller that holds a path, and each mint passes the root it derived.
+fn belt_receipt_root_reading(root: String, what: String) -> BeltReceiptRootReading {
+  let listed = Filesystem.List(path: root)
+  match filesystem_listing_observation(directory: root, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+      BeltReceiptRootUnlistable { detail: join([what, "'s directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } =>
+      BeltReceiptRootUnlistable { detail: join([what, "'s directory could not be listed: ", root, " (", e, ")"], "") }
+    FilesystemDirectoryListed(_) => BeltReceiptRootListed
+  }
+}
+
+fn belt_receipt_write(path: String, content: String) -> BeltReceiptWrite {
+  let write = Filesystem.Write(path: path, content: content)
+  match filesystem_write_outcome(path: path, success: write.success, error: write.error) {
+    FilesystemWritten { path: _ } => BeltReceiptWritten
+    FilesystemWriteRefused { path: _, error: e } => BeltReceiptWriteRefused { error: e }
+  }
+}
+
+// THE THREE STORES, SEALED VALUES MINTED FROM THEIR DECLARATIONS. Each holds data only: the instance it was
+// minted for and the root derived from the declaration. Their operations are the functions below, each
+// taking the record; they are the only code that names the stores' files. sole_constructor, non-generic and
+// never a variant arm, because the seal does not reach variant construction
+// (test.claim.sole_constructor_completeness_audit_probe f13). Field reads are not sealed, so a holder can read
+// the root (gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module); what is
+// sealed is construction: no forged store and no store over another root. NOT established: a store minted for
+// instance A refused where B is required.
+type BeltTickReceiptStore sole_constructor {
+  instance: NonEmptyStr
+  root: NonEmptyStr
+}
+
+type BeltObligationReceiptStore sole_constructor {
+  instance: NonEmptyStr
+  root: NonEmptyStr
+}
+
+type BeltPublicationReceiptStore sole_constructor {
+  instance: NonEmptyStr
+  root: NonEmptyStr
+}
+
+type BeltTickReceiptStoreReading
+  = BeltTickReceiptStoreReady { store: BeltTickReceiptStore }
+  | BeltTickReceiptStoreUnready { detail: String }
+
+type BeltObligationReceiptStoreReading
+  = BeltObligationReceiptStoreReady { store: BeltObligationReceiptStore }
+  | BeltObligationReceiptStoreUnready { detail: String }
+
+type BeltPublicationReceiptStoreReading
+  = BeltPublicationReceiptStoreReady { store: BeltPublicationReceiptStore }
+  | BeltPublicationReceiptStoreUnready { detail: String }
+
+// THE MINTS. Each takes the instance and nothing else: the root is derived here and the directory is listed,
+// and only a listed directory yields a store.
+fn belt_tick_receipt_store(instance: HostDashboardInstance) -> BeltTickReceiptStoreReading {
+  let root = instance_receipts_dir(instance_root: instance.instance_root as String)
+  match belt_receipt_root_reading(root: root, what: "the belt tick receipt store") {
+    BeltReceiptRootUnlistable { detail } => BeltTickReceiptStoreUnready { detail: detail }
+    BeltReceiptRootListed => BeltTickReceiptStoreReady { store: BeltTickReceiptStore { instance: instance.instance_id, root: root as NonEmptyStr } }
+  }
+}
+
+fn belt_obligation_receipt_store(instance: HostDashboardInstance) -> BeltObligationReceiptStoreReading {
+  let root = instance_receipts_dir(instance_root: instance.instance_root as String)
+  match belt_receipt_root_reading(root: root, what: "the belt obligation receipt store") {
+    BeltReceiptRootUnlistable { detail } => BeltObligationReceiptStoreUnready { detail: detail }
+    BeltReceiptRootListed => BeltObligationReceiptStoreReady { store: BeltObligationReceiptStore { instance: instance.instance_id, root: root as NonEmptyStr } }
+  }
+}
+
+fn belt_publication_receipt_store(instance: HostDashboardInstance) -> BeltPublicationReceiptStoreReading {
+  let root = belt_projects_slots_path(instance: instance) as String
+  match belt_receipt_root_reading(root: root, what: "the belt publication receipt store") {
+    BeltReceiptRootUnlistable { detail } => BeltPublicationReceiptStoreUnready { detail: detail }
+    BeltReceiptRootListed => BeltPublicationReceiptStoreReady { store: BeltPublicationReceiptStore { instance: instance.instance_id, root: root as NonEmptyStr } }
+  }
+}
+
+// THE OPERATIONS. A read is the observation of one entry (absence established from a successful listing of the
+// store's own directory, never from a failed read); the belt decodes the content it returns.
+fn belt_tick_receipt_entry(store: BeltTickReceiptStore) -> String {
+  join([store.root as String, "/", belt_tick_receipt_slots.stem as String, belt_tick_receipt_slots.suffix as String], "")
+}
+
+fn belt_tick_receipt_observe(store: BeltTickReceiptStore) -> FilesystemFileObservation {
+  filesystem_file_observation_of_path(path: belt_tick_receipt_entry(store: store))
+}
+
+fn belt_tick_receipt_put(store: BeltTickReceiptStore, content: String) -> BeltReceiptWrite {
+  belt_receipt_write(path: belt_tick_receipt_entry(store: store), content: content)
+}
+
+fn belt_obligation_receipt_entry(store: BeltObligationReceiptStore, node_id: String, attempt_key: String) -> String {
+  join([
+    store.root as String, "/", belt_obligation_receipt_slots.stem as String, "-", node_id, "-", attempt_key,
+    belt_obligation_receipt_slots.suffix as String,
+  ], "")
+}
+
+fn belt_obligation_receipt_observe(store: BeltObligationReceiptStore, node_id: String, attempt_key: String) -> FilesystemFileObservation {
+  filesystem_file_observation_of_path(path: belt_obligation_receipt_entry(store: store, node_id: node_id, attempt_key: attempt_key))
+}
+
+fn belt_obligation_receipt_put(store: BeltObligationReceiptStore, node_id: String, attempt_key: String, content: String) -> BeltReceiptWrite {
+  belt_receipt_write(path: belt_obligation_receipt_entry(store: store, node_id: node_id, attempt_key: attempt_key), content: content)
+}
+
+fn belt_publication_receipt_put(store: BeltPublicationReceiptStore, project_key: String, content: String) -> BeltReceiptWrite {
+  belt_receipt_write(
+    path: join([store.root as String, "/", project_key, belt_projects_slots.publication_suffix as String], ""),
+    content: content,
+  )
+}
+
+// THE PROJECTS DIRECTORY THIS STORE DEMANDS, derived from the same declaration as the mint and enrolled in the
+// one instance directory list (gunbc.roadmap.dashboard_instance_directories). The directory also holds the
+// SCM envelope files (gunbc.roadmap.roadmap_belt_actuate belt_scm_projects_dir derives from this declaration
+// too), whose store is another cohort's. Owner-only, as the belt's own install -d already creates it, and the
+// owner is the instance's, as the worktree claim root's is: ownership is never adopted.
+fn belt_projects_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: belt_projects_slots.member,
+    path: belt_projects_slots_path(instance: instance) as String as FilePath,
+    owner: instance.directory_owner,
+    mode: belt_projects_slots.mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}

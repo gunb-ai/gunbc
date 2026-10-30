@@ -20,6 +20,8 @@ import extdeps.github.actions { workflow_dispatch_max_inputs }
 import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke, gunbc_ci_revision_job_image_build_invoke }
 import gunbc.revision_job_image_delivery { revision_job_image_artifact_name, revision_job_image_artifact_paths }
 import gunbc.runner.runner_revision_job_unit { revision_job_image_staging_root }
+import gunbc.runner.runner_user_session { runner_user_session_converge_receipt_path }
+import gunbc.runner.runner_user_session_receipt { runner_user_session_converge_receipt_artifact_name }
 import gunbc.workspace_image_delivery { workspace_image_artifact_name, workspace_image_staging_root, workspace_image_artifact_paths }
 
 import gunbc.fleet.fleet_printer_access {printer_access_code_loci}
@@ -2462,8 +2464,8 @@ fn fleet_converge_runner_user_session_receipt_upload_step() -> Step {
     id: Present { value: "runner_user_session_receipt_upload" },
     uses: upload_artifact_action,
     with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-user-session-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/runner-user-session-converge-receipt.txt")),
+      kv(key: "name", value: yaml_string(s: runner_user_session_converge_receipt_artifact_name)),
+      kv(key: "path", value: yaml_string(s: runner_user_session_converge_receipt_path)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
