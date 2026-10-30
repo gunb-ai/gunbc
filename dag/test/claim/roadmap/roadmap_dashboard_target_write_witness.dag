@@ -124,36 +124,14 @@ test fn create_new_into_a_missing_parent_refuses_and_publishes_nothing_by_real_e
   is_refused(outcome: outcome) && !probe.success && listed.entries == "" && cleaned.success
 }
 
-fn doubled(s: String) -> String {
-  concat(s, s)
-}
-
-// 17 bytes doubled 14 times: ~272 KiB, past any file-size limit the claim is run under.
-data oversized_body: String = doubled(s: doubled(s: doubled(s: doubled(s: doubled(s: doubled(s: doubled(s: doubled(s: doubled(s: doubled(s: doubled(s: doubled(s: doubled(s: doubled(s: "0123456789abcdef\n"))))))))))))))
-
-// WET, MID-WRITE FAILURE. Run under a file-size limit smaller than oversized_body (RLIMIT_FSIZE, e.g.
-// `prlimit --fsize=65536 claim_batch --wet ...`): dd's write into the STAGING file fails with EFBIG partway
-// through, so the outcome is the typed refusal, no target name ever exists (the link is never reached), and
-// the staging file is removed. Without the limit the write simply lands and this claim is RED, so a harness
-// that drops the limit cannot pass it.
-test fn create_new_failing_mid_write_publishes_no_target_and_leaves_no_stage_by_real_execution() -> Bool {
-  let root = fx_root()
-  let path = concat(root, "/entry")
-  let outcome = dashboard_target_write_create_new(instance: local_instance_with_workdir(root: root), path: path as FilePath, content: oversized_body)
-  let probe = Filesystem.Read(path: path)
-  let listed = Filesystem.List(path: root)
-  let cleaned = shell.Remove.RecursiveForce(path: root)
-  is_refused(outcome: outcome) && !probe.success && listed.entries == "" && cleaned.success
-}
-
 // SSH ARM, MOCK ROUTE ONLY (local-exec rung, not wet): srv1's instance routes through
 // typed_argv_exec_over_ssh_with_stdin, answered by ssh.Session.ExecPortableWordsWithStdin mock_response, whose
 // stdout is empty, so the first step (mktemp) is dispatched, reports no staging path, and nothing else runs.
-// A path the argv wall refuses never reaches ssh, and a relative path never dispatches.
+// A relative path never dispatches. (A hostile word in the path is not exercised here: the mktemp template
+// carries only the parent directory, so the argv wall is not reached on this mock route.)
 test fn ssh_arm_routes_through_typed_argv_and_stops_without_a_staging_path() -> Bool {
   let instance = srv1_live_dashboard_instance()
   let routed = dashboard_target_write_create_new(instance: instance, path: "/tmp/x/entry" as FilePath, content: first_body)
-  let walled = dashboard_target_write_create_new(instance: instance, path: "/tmp/x; rm -rf y" as FilePath, content: first_body)
   let relative = dashboard_target_write_create_new(instance: instance, path: "x/entry" as FilePath, content: first_body)
-  is_not_dispatched(outcome: routed) && is_not_dispatched(outcome: walled) && is_not_dispatched(outcome: relative)
+  is_not_dispatched(outcome: routed) && is_not_dispatched(outcome: relative)
 }

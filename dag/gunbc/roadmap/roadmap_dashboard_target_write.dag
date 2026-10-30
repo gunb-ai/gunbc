@@ -44,6 +44,11 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 // is #15413 B1, DashboardMoveAttemptStateEntries, which replaces its inline `sh -c 'set -C; printf ...'`
 // with this function. That inline is on #15413's branch, not main.
 //
+// MID-WRITE FAILURE has no enrolled claim: exercising it needs RLIMIT_FSIZE applied around the run, and no
+// instrument row or claim runner can carry a resource limit. It was shown once by hand (write of ~272 KiB under
+// `ulimit -f 64`: typed refusal, no target, no stage; with dd aimed at the target the same run left a visible
+// target) and is recorded on PR #15416, not here. The missing harness is a claim run with a modelled rlimit.
+//
 // The transport dispatch is gunbc.roadmap.roadmap_dashboard_instance_observe dashboard_target_run, the one
 // dispatch shared with dashboard_target_exec and dashboard_target_probe. The outcome is decided INLINE in
 // dashboard_target_write_create_new, beside the runs it reads: there is no exported fold from an exit code
