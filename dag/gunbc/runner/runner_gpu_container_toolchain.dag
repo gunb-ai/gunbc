@@ -150,7 +150,10 @@ import extdeps.tools.gnu_coreutils {
 import gunbc.runner.runner_capability_labels {
   gpu_docker_labels_dropin_path,
   host_capability_rows_to_observe, host_capability_row_label, host_capability_row_dropin_path,
+  HostCapabilityDropinPresence, DropinPresent, DropinAbsent, DropinUnreadable,
+  host_capability_dropin_presence, host_capability_witness_of_reads, runner_unit_dropin_search_root,
 }
+import extdeps.tools.findutils { find_entry_at_path_command }
 import gunbc.runner.runner_registration_labels {
   HostCapabilityWitness, HostCapabilityRow, CapabilityHeld, CapabilityAbsent, CapabilityUnobservable,
   gunbc_gpu_docker_label,
@@ -1668,24 +1671,45 @@ fn host_capability_row_observe(
 ) -> HostCapabilityWitness {
   let label = host_capability_row_label(row: row)
   let transport = gpu_container_toolchain_admin_transport(target: admin, context: context)
-  let read = run_argv_over_host_effect_transport(
-    command: host_capability_row_read_command(row: row),
-    transport: transport,
-  )
-  match read {
+  // PRESENCE FIRST, three-valued: a missing drop-in is a decided ABSENT (srv3 never earned the browser
+  // label, so it has no 85- file), and only a probe that could not look is unreadable.
+  let probe = run_argv_over_host_effect_transport(command: host_capability_row_presence_command(row: row), transport: transport)
+  match probe {
     RunArgvTransportRefused { reason: r } => CapabilityUnobservable { label: label, cause: r as String }
-    RunArgvTransportObserved { observed: o } =>
-      if o.exit_code != 0 {
-        CapabilityUnobservable {
-          label: label,
-          cause: gpu_docker_labels_transport_failure_text(step: join(["read ", label, " drop-in"], ""), outcome: read),
+    RunArgvTransportObserved { observed: po } =>
+      match host_capability_dropin_presence(
+        exit_code: po.exit_code,
+        stdout: po.stdout,
+        unreadable_cause: gpu_docker_labels_transport_failure_text(step: join(["probe ", label, " drop-in"], ""), outcome: probe),
+      ) {
+        DropinPresent => {
+          let read = run_argv_over_host_effect_transport(command: host_capability_row_read_command(row: row), transport: transport)
+          match read {
+            RunArgvTransportRefused { reason: r } => CapabilityUnobservable { label: label, cause: r as String }
+            RunArgvTransportObserved { observed: o } =>
+              host_capability_witness_of_reads(
+                label: label,
+                presence: DropinPresent,
+                read_exit_code: o.exit_code,
+                read_stdout: o.stdout,
+                read_cause: gpu_docker_labels_transport_failure_text(step: join(["read ", label, " drop-in"], ""), outcome: read),
+              )
+          }
         }
-      } else if string_contains(s: o.stdout, pattern: label) {
-        CapabilityHeld { label: label }
-      } else {
-        CapabilityAbsent { label: label }
+        DropinAbsent => CapabilityAbsent { label: label }
+        DropinUnreadable { cause: c } => CapabilityUnobservable { label: label, cause: c }
       }
   }
+}
+
+// THE PRESENCE PROBE: `sudo env LC_ALL=C find /etc/systemd/system -maxdepth 2 -path <drop-in> -print`.
+fn host_capability_row_presence_command(row: HostCapabilityRow) -> ArgvCommand {
+  sudo_elevate_command(
+    command: argv_words(command: env_prefixed_command(
+      bindings: [EnvSet { name: "LC_ALL", value: "C" }],
+      command: find_entry_at_path_command(root: runner_unit_dropin_search_root, path: host_capability_row_dropin_path(row: row) as String, max_depth: 2),
+    )),
+  )
 }
 
 // OBSERVE EVERY ROW THE CONVERGE IS NOT THE OWNER OF. This is what the fold needs and it is data-driven:
