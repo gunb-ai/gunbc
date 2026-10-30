@@ -153,6 +153,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_tree_metadata_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_tree_regular_files_sha256_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_children_named_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_entry_at_path_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_untrusted_entries_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_other_children_exec_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_targets_command"),
