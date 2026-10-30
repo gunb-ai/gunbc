@@ -1,0 +1,66 @@
+module gunbc.live_deploy.capacity_recovery_subject
+
+import std.types { String, NonEmptyStr, List }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryChoice, CapacityResume, CapacityRollback, capacity_recovery_plan }
+import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode }
+import std.scoped_authorization { AttemptIdentity, AuthorizationScope }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
+import std.content_hash { Sha256Digest, sha256_hex_of_text, sha256_hex_digest }
+import extdeps.languages.json.emit { json_array, json_string, json_int, serialize_json }
+
+// The journal address is an identity, never a store capability. Production
+// derives it from the admitted SlotStore; this value cannot open a store.
+type CapacityRecoverySubject sole_constructor {
+  journal_root: NonEmptyStr
+  journal_key: NonEmptyStr
+  generation: CasGeneration
+  record_digest: Sha256Digest
+  apply_reference: AttemptIdentity
+  choice: CapacityRecoveryChoice
+  helper_digest: Sha256Digest
+  scopes: List<AuthorizationScope>
+}
+
+fn capacity_recovery_choice_text(choice: CapacityRecoveryChoice) -> String {
+  match choice { CapacityResume => "resume" CapacityRollback => "rollback" }
+}
+
+// Excludes approval identity, choice and digest deliberately: a second operator
+// decision cannot spend the same journal generation a second time.
+fn capacity_recovery_claim_key(subject: CapacityRecoverySubject) -> NonEmptyStr {
+  concat("capacity-recovery-", sha256_hex_of_text(text: serialize_json(v: json_array(elements: [
+    json_string(s: subject.journal_root as String), json_string(s: subject.journal_key as String),
+    json_int(n: cas_generation_count(g: subject.generation))
+  ])))) as NonEmptyStr
+}
+
+// The supplied observation boundary is paired with capacity_recovery_read below:
+// the production reader binds the identity to the very SlotStore it reads.
+// The digest covers the observed payload, not a reconstructed or cached record.
+fn capacity_recovery_observed(journal_root: NonEmptyStr, journal_key: NonEmptyStr,
+  observed: CasSlotObservation<NonEmptyStr>, choice: CapacityRecoveryChoice,
+  helper_digest: Sha256Digest, scopes: List<AuthorizationScope>) -> Result<CapacityRecoverySubject, String> {
+  match observed {
+    CasObservedUnreadable { cause: _ } => Err { value: "recovery journal unreadable" }
+    CasObservedReadable { readable: CasReadableAbsent } => Err { value: "recovery journal absent" }
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => {
+      let record = match capacity_cutover_record_decode(text: version.value as String) {
+        Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+      }
+      // Includes the cleanup-only Rollback refusal, before a request can be filed.
+      match capacity_recovery_plan(record: record, choice: choice) {
+        Err { value: why } => Err { value: why }
+        Ok { value: _ } => match sha256_hex_digest(hex: sha256_hex_of_text(text: version.value as String)) {
+          Absent => Err { value: "recovery record SHA-256 unreadable" }
+          Present { value: digest } => Ok { value: CapacityRecoverySubject {
+            journal_root: journal_root, journal_key: journal_key, generation: version.generation,
+            record_digest: digest, apply_reference: record.attempt, choice: choice,
+            helper_digest: helper_digest, scopes: scopes } }
+        }
+      }
+    }
+  }
+}
+

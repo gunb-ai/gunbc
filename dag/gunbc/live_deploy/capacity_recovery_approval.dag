@@ -1,0 +1,97 @@
+module gunbc.live_deploy.capacity_recovery_approval
+
+import std.types { String, NonEmptyStr, List, Timestamp }
+import std.error_primitives { Result, Ok, Err }
+import std.content_hash { Sha256Digest }
+import std.scoped_authorization {
+  AttemptIdentity, AuthorizationScope, ScopedAuthorization, OperatorGrant, AuthorizationClaimState,
+  AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided,
+  authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason
+}
+import gunbc.durable_cas_file_store { SlotStore, slot_observe }
+import gunbc.authorization_claim_slot { claim_authorization_slot }
+import gunbc.live_deploy.capacity_recovery_subject { CapacityRecoverySubject, capacity_recovery_observed, capacity_recovery_claim_key }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryChoice, CapacityRecoveryLeg, CapacityRecoveryRequireApproval, capacity_recovery_plan }
+import gunbc.fleet.srv1_root_mutation_approval_run {
+  Srv1RecoveryRequest, Srv1RootMutationApproval, CapacityCutoverRecovery, CapacityCutoverRecoveryRequest,
+  srv1_root_mutation_request_for_kind
+}
+
+fn capacity_recovery_read(journal: SlotStore, key: NonEmptyStr, choice: CapacityRecoveryChoice,
+  helper_digest: Sha256Digest, scopes: List<AuthorizationScope>) -> Result<CapacityRecoverySubject, String> {
+  capacity_recovery_observed(journal_root: journal.root, journal_key: key,
+    observed: slot_observe(store: journal, key: key), choice: choice, helper_digest: helper_digest, scopes: scopes)
+}
+
+// Consume the approval leg emitted by the existing recovery plan. The leg is
+// checked against the live reading; an apply identity supplies no authority.
+fn capacity_recovery_request(leg: CapacityRecoveryLeg, observed: Result<CapacityRecoverySubject, String>,
+  escalation_id: NonEmptyStr, execution_revision: NonEmptyStr) -> Result<Srv1RecoveryRequest, String> {
+  let subject = match observed { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  match leg {
+    CapacityRecoveryRequireApproval { attempt: attempt, choice: choice } => {
+      if attempt != subject.apply_reference || choice != subject.choice {
+        return Err { value: "recovery approval leg differs from the observed journal and choice" }
+      }
+      match srv1_root_mutation_request_for_kind(kind: CapacityCutoverRecovery { subject: subject },
+        escalation_id: escalation_id, execution_revision: execution_revision, selects: []) {
+        Err { value: why } => Err { value: why }
+        Ok { value: CapacityCutoverRecoveryRequest { recovery: recovery } } => Ok { value: recovery }
+        _ => Err { value: "recovery did not use the existing broker recovery request kind" }
+      }
+    }
+    _ => Err { value: "recovery request requires the explicit approval leg" }
+  }
+}
+
+type CapacityRecoveryAuthorization sole_constructor {
+  recovery: Srv1RecoveryRequest
+  grant: OperatorGrant<Srv1RootMutationApproval>
+  claim: AuthorizationClaimState
+}
+
+// This is admission, not a recovery actuator. The executor must hold the existing
+// FleetHostLock across this fresh read/claim and its journal transitions. No
+// automatic boot recovery or lease-expiry takeover is introduced here.
+fn capacity_recovery_claim(request: Srv1RecoveryRequest,
+  reread: fn() -> Result<CapacityRecoverySubject, String>,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
+  claim: fn(NonEmptyStr, AttemptIdentity, Timestamp) -> AuthorizationClaimOutcome) -> Result<CapacityRecoveryAuthorization, String> {
+  let observed = match reread() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  if observed != request.subject { return Err { value: "recovery journal, choice, helper or scopes changed after approval" } }
+  match authorize(authorization: authorization, request: request.request, observed_at: at) {
+    AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
+    AuthorizationPermitted { grant: grant } => match claim(capacity_recovery_claim_key(subject: observed), request.request.attempt, at) {
+      ClaimLost { holder: _ } => Err { value: "recovery journal generation already consumed" }
+      ClaimUndecided { reason: why } => Err { value: why as String }
+      ClaimHeld { state: state, generation: _ } => Ok { value: CapacityRecoveryAuthorization {
+        recovery: request, grant: grant, claim: state } }
+    }
+  }
+}
+
+// Existing durable authorization CAS, keyed by journal/generation rather than
+// the newly filed approval id. No independent recovery claim store.
+fn capacity_recovery_claim_live(request: Srv1RecoveryRequest, journal: SlotStore, key: NonEmptyStr,
+  choice: CapacityRecoveryChoice, helper_digest: Sha256Digest, scopes: List<AuthorizationScope>,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp) -> Result<CapacityRecoveryAuthorization, String> {
+  capacity_recovery_claim(request: request,
+    reread: fn() { capacity_recovery_read(journal: journal, key: key, choice: choice, helper_digest: helper_digest, scopes: scopes) },
+    authorization: authorization, at: at,
+    claim: (id, attempt, instant) => claim_authorization_slot(escalation_id: id, attempt: attempt, at: instant))
+}
+
+// The controller's supplied effect boundary. A refusal never invokes its body.
+// The production binding of this port is the locked fleet recovery executor;
+// that remains a declared frontier until journal transitions and actuators are
+// wired under FleetHostLock. This function alone is not a deployed executor.
+fn capacity_recovery_execute<T>(request: Srv1RecoveryRequest,
+  reread: fn() -> Result<CapacityRecoverySubject, String>,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
+  claim: fn(NonEmptyStr, AttemptIdentity, Timestamp) -> AuthorizationClaimOutcome,
+  execute: fn(CapacityRecoveryAuthorization) -> Result<T, String>) -> Result<T, String> {
+  match capacity_recovery_claim(request: request, reread: reread, authorization: authorization, at: at, claim: claim) {
+    Err { value: why } => Err { value: why }
+    Ok { value: admitted } => execute(admitted)
+  }
+}
