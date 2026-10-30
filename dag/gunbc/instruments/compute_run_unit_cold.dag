@@ -16,6 +16,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance, IsolatedJobToolchainHomes,
   dashboard_path_is_under, prod_role_realization, ProdRoleRealizedBy, ProdRoleRealizationRefused,
 }
+import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_path }
 import extdeps.shell
 import extdeps.rust.cargo { cargo_environment_variable_name, CargoHomeEnv }
 import extdeps.cache.sccache {
@@ -33,6 +34,7 @@ import extdeps.systemd.systemctl { systemctl_user_manager_probe_command }
 import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import extdeps.rust.rustup { rustup_home_env_name }
+import gunbc.compute.compute_work_records { ComputeWorkRecords, compute_work_log_path, compute_work_consumption_path }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
@@ -217,13 +219,13 @@ fn cold_commit_and_attach(instance: HostDashboardInstance, layout: ComputeLayout
               let op = work_default_build()
               let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
               // The hermetic frame root holds no store yet (a durable host volume is provisioned ahead of the first request).
-              let staged = mkdir_ok(instance: instance, path: materialization_store_root_path(root: store.root)) && mkdir_ok(instance: instance, path: layout.staging_dir) && mkdir_ok(instance: instance, path: layout.leases_dir)
-              let log = Filesystem.Write(path: layout.log_path, content: exec_log)
+              let staged = mkdir_ok(instance: instance, path: materialization_store_root_path(root: store.root)) && mkdir_ok(instance: instance, path: layout.staging_dir) && mkdir_ok(instance: instance, path: compute_producer_leases_reading_path(reading: layout.leases, identity: ""))
+              let log = Filesystem.Write(path: compute_work_log_path(records: layout.records), content: exec_log)
               if !(staged && log.success) { "staging or the run log could not be written" } else {
                 match compute_return_outputs(instance: instance, layout: layout, declared: work_declared_outputs(op: op)) {
                   OutputsMismatch { detail } => join(["capture mismatched: ", detail], "")
                   OutputsReturned { outputs } => {
-                    let outcome = WorkSucceeded { identity: identity, outputs: outputs, log_path: layout.log_path }
+                    let outcome = WorkSucceeded { identity: identity, outputs: outputs, log_path: compute_work_log_path(records: layout.records) }
                     match compute_store_commit(
                       materialization: ComputeMaterialization { store: store, request: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain }, plan: ComputeMemoized },
                       layout: layout, op: op, outcome: outcome,
@@ -438,12 +440,11 @@ fn layout_with_checkout(layout: ComputeLayout, checkout: String) -> ComputeLayou
     work_dir: layout.work_dir,
     checkout: checkout,
     out_dir: layout.out_dir,
-    leases_dir: layout.leases_dir,
-    lease_path: layout.lease_path,
+    leases: layout.leases,
+    identity_hex: layout.identity_hex,
     staging_dir: layout.staging_dir,
     target_dir: layout.target_dir,
-    log_path: layout.log_path,
-    consumption_path: layout.consumption_path,
+    records: layout.records,
   }
 }
 
@@ -455,12 +456,11 @@ fn layout_with_target(layout: ComputeLayout, target: String) -> ComputeLayout {
     work_dir: layout.work_dir,
     checkout: layout.checkout,
     out_dir: layout.out_dir,
-    leases_dir: layout.leases_dir,
-    lease_path: layout.lease_path,
+    leases: layout.leases,
+    identity_hex: layout.identity_hex,
     staging_dir: layout.staging_dir,
     target_dir: target,
-    log_path: layout.log_path,
-    consumption_path: layout.consumption_path,
+    records: layout.records,
   }
 }
 

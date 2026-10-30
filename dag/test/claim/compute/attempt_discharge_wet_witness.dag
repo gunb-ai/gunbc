@@ -16,7 +16,8 @@ import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.durable_compare_and_set { cas_generation_first }
 import product.capacity.event_chain { PartitionId }
 import gunbc.compute.host_capacity {
-  ComputeCapacitySubject, compute_reserve_against, ComputeReservation, ComputeReserved,
+  compute_root,
+  ComputeCapacitySubject, host_capacity_subject_in, ComputeBuildPool, compute_reserve_against, ComputeReservation, ComputeReserved,
   ComputeRelease, ComputeReleased, compute_release,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
 }
@@ -34,6 +35,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
   attempt_exit_spool_stage_dir,
 }
+import gunbc.compute.compute_producer_lease { ComputeProducerLeases, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused, ComputeProducerLeaseHeldBy, ComputeProducerLeaseNotHeld, ComputeProducerLeaseUnreadable, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_lease_slots, compute_producer_leases, compute_producer_lease_acquire, compute_producer_lease_standing }
 import gunbc.compute.compute_seat_ensure {
   SeatEnsureOutcome, SeatEnsureNoop, SeatEnsureReleased, SeatEnsureRefused, SeatEnsureRed, SeatEnsureLeaseDropped,
   SeatOwnerStanding, SeatOwnerEnded, SeatOwnerLive,
@@ -64,13 +66,19 @@ fn fresh_root() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_seat_discharge.XXXXXX").path
 }
 
+// THE SUBJECT IS MINTED, NEVER BUILT: the ledger roots under the isolated instance's own compute root through the
+// second mint (the witness residual isolated_dashboard_instance names; no rung is claimed for it). What the pool
+// appropriates and what a request takes are arithmetic inputs, supplied here beside the subject.
 fn subject_at(root: String) -> ComputeCapacitySubject {
-  ComputeCapacitySubject {
-    root: join([trim(s: root), "/capacity"], "") as NonEmptyStr,
-    partition: "compute-seat-discharge-wet-witness" as PartitionId,
-    appropriation: kibibyte(count: granted_kib * 4),
-    request: kibibyte(count: granted_kib),
-  }
+  host_capacity_subject_in(requesting: instance_at(root: root), host_instance: instance_at(root: root), pool: ComputeBuildPool).subject
+}
+
+fn witness_appropriation() -> Kibibyte {
+  kibibyte(count: granted_kib * 4)
+}
+
+fn witness_request() -> Kibibyte {
+  kibibyte(count: granted_kib)
 }
 
 // THE SEAT LOCATION FOLLOWS THE OWNER: the dispatch attempt's slot store is its own directory. The stores are
@@ -153,14 +161,14 @@ fn dispatch_owner() -> AttemptOwner {
 }
 
 fn reserved(subject: ComputeCapacitySubject, reference: String) -> Bool {
-  match compute_reserve_against(subject: subject, reference: reference as NonEmptyStr, term_seconds: 60, total: supplied_host, available: supplied_host) {
+  match compute_reserve_against(subject: subject, appropriation: witness_appropriation(), request: witness_request(), reference: reference as NonEmptyStr, term_seconds: 60, total: supplied_host, available: supplied_host) {
     ComputeReserved { grant: _, partition: _, amount: _, store: _ } => true
     _ => false
   }
 }
 
 fn committed(subject: ComputeCapacitySubject) -> Int {
-  match compute_capacity_standing_on(subject: subject) {
+  match compute_capacity_standing_on(subject: subject, appropriation: witness_appropriation()) {
     ComputeCapacityStandingRead { committed: c, ceiling: _, headroom: _, observed_available: _, observed_total: _ } => kibibyte_count(k: c)
     ComputeCapacityStandingUnread { detail: _ } => 0 - 1
   }
@@ -204,31 +212,71 @@ fn stoppable() -> UnitLifecycleSource {
   SuppliedStoppableUnit { before: UnitStillRunning { detail: "supplied: the unit is running" }, after_stop: UnitTerminatedSuccess { detail: "supplied: the unit ended after the stop" } }
 }
 
-fn leases_at(root: String) -> String {
-  join([trim(s: root), "/leases"], "")
+fn leases_reading_at(root: String) -> ComputeProducerLeasesReading {
+  compute_producer_leases(instance: instance_at(root: root))
 }
 
-// THE PRODUCER LEASE of the fixture record (identity feedfacefeedface), written as the provider writes it.
+// A MINT THAT REFUSES FAILS THE CLAIM: an Unready fixture answers false, never an empty value a control could read as green.
+fn with_leases(root: String, body: fn(ComputeProducerLeases) -> Bool) -> Bool {
+  match leases_reading_at(root: root) {
+    ComputeProducerLeasesReady { leases: l } => body(l)
+    ComputeProducerLeasesUnready { detail: _ } => false
+  }
+}
+
+// THE DIRECTORY AND THE LEGACY FILE ARE NAMED FROM THE DECLARATION, not from a mint, because a refusing mint hands back no path.
+fn lease_dir_at(root: String) -> String {
+  join([compute_root(instance: instance_at(root: root)) as String, "/", compute_lease_slots.member as String], "")
+}
+
+fn lease_file_at(root: String) -> String {
+  join([lease_dir_at(root: root), "/feedfacefeedface"], "")
+}
+
+// THE PRODUCER LEASE of the fixture record (identity feedfacefeedface), taken as the provider takes it: a hold on the
+// hold library whose owner is the seat holder line, then the commit and the clock.
 fn lease_held(root: String) -> Bool {
-  lease_written(root: root, content: join([compute_seat_holder_line(instance: instance_at(root: root), seat: ComputeDispatchSeat { attempt_key: "key-a" }), "abc 1\n"], ""))
+  lease_acquired(root: root, owner: join([compute_seat_holder_line(instance: instance_at(root: root), seat: ComputeDispatchSeat { attempt_key: "key-a" }), "abc 1\n"], ""))
 }
 
-fn lease_written(root: String, content: String) -> Bool {
-  made(path: leases_at(root: root)) && Filesystem.Write(path: join([leases_at(root: root), "/feedfacefeedface"], ""), content: content).success
+fn lease_acquired(root: String, owner: String) -> Bool {
+  made(path: lease_dir_at(root: root)) && with_leases(root: root, body: fn(l) {
+    match compute_producer_lease_acquire(leases: l, identity: "feedfacefeedface", owner: owner) {
+      ComputeProducerLeaseAcquired => true
+      ComputeProducerLeaseOccupied { holder: _ } => false
+      ComputeProducerLeaseRefused { detail: _ } => false
+    }
+  })
 }
 
+// A LEASE THE OLD CODE LEFT: a plain file at leases/<identity>, which is not a hold.
+fn legacy_lease_written(root: String, content: String) -> Bool {
+  made(path: lease_dir_at(root: root)) && Filesystem.Write(path: lease_file_at(root: root), content: content).success
+}
+
+// PRESENT = HELD, OR A FILE THAT IS NOT A HOLD. A released hold is a free slot, which is not present.
 fn lease_listed(root: String) -> Bool {
-  string_contains(s: Filesystem.List(path: leases_at(root: root)).entries, pattern: "feedfacefeedface")
+  with_leases(root: root, body: fn(l) {
+    match compute_producer_lease_standing(leases: l, identity: "feedfacefeedface") {
+      ComputeProducerLeaseHeldBy { owner: _ } => true
+      ComputeProducerLeaseNotHeld => false
+      ComputeProducerLeaseUnreadable { detail: _ } => true
+    }
+  })
 }
 
 // A FIXTURE THAT COULD NOT BE BUILT IS NO OUTCOME, never a refusal: the seat store unminted or the leases
 // directory not created answers none, and ensured reads none as false, so a control expecting the production
 // refusal cannot be satisfied by the fixture's own failure.
 fn ensure_owner(root: String, reference: String, source: UnitLifecycleSource, owner: SeatOwnerStanding) -> SeatEnsureOutcome? {
-  if made(path: leases_at(root: root)) {
+  if made(path: lease_dir_at(root: root)) {
+    match leases_reading_at(root: root) {
+      ComputeProducerLeasesUnready { detail: _ } => none
+      ComputeProducerLeasesReady { leases: leases } =>
     match seat_at(root: root, key: "key-a") {
       Absent => none
-      Present { value: seat } => Present { value: compute_seat_ensure_in(instance: instance_at(root: root), store: seat, leases_dir: leases_at(root: root), subject: subject_at(root: root), reference: reference as NonEmptyStr, source: source, owner: owner) }
+      Present { value: seat } => Present { value: compute_seat_ensure_in(instance: instance_at(root: root), store: seat, leases: leases, subject: subject_at(root: root), appropriation: witness_appropriation(), reference: reference as NonEmptyStr, source: source, owner: owner) }
+    }
     }
   } else {
     none
@@ -434,11 +482,13 @@ fn a_reference_no_record_names_is_refused_and_nothing_is_released_cell(root: Str
 // THE DRIVER'S PASS KEEPS ITS REFUSAL: only a pass that RAN is judged; a skipped or refused pass (a seat store
 // the mint refuses among them) answers false, never an empty outcome list a negative control would read as green.
 fn driver_ran(root: String, source: UnitLifecycleSource, check: fn(List<SeatEnsureOutcome>) -> Bool) -> Bool {
-  match compute_seat_discharge_all(instance: instance_at(root: root), leases_dir: leases_at(root: root), subject: subject_at(root: root), source: source) {
-    SeatDischargeRan { outcomes: os } => check(os)
-    SeatDischargeSkipped { why: _ } => false
-    SeatDischargeRefused { reason: _ } => false
-  }
+  with_leases(root: root, body: fn(l) {
+    match compute_seat_discharge_all(instance: instance_at(root: root), leases: l, subject: subject_at(root: root), appropriation: witness_appropriation(), source: source) {
+      SeatDischargeRan { outcomes: os } => check(os)
+      SeatDischargeSkipped { why: _ } => false
+      SeatDischargeRefused { reason: _ } => false
+    }
+  })
 }
 
 // THE DRIVER KEEPS THE CHARGE WHEN NO EXIT RECORD PROVES THE ATTEMPT ENDED.
@@ -748,28 +798,72 @@ fn another_attempts_lease_survives_this_attempts_discharge_cell(root: String) ->
     && reserved(subject: subject, reference: "r-oa")
     && launching(root: root, reference: "r-oa")
     && ensured(o: ensure(root: root, reference: "r-oa", source: ended()), check: is_released)
-    && lease_written(root: root, content: join([compute_seat_holder_line(instance: instance_at(root: root), seat: ComputeDispatchSeat { attempt_key: "key-b" }), "abc 1\n"], ""))
+    && lease_acquired(root: root, owner: join([compute_seat_holder_line(instance: instance_at(root: root), seat: ComputeDispatchSeat { attempt_key: "key-b" }), "abc 1\n"], ""))
     && ensured(o: ensure(root: root, reference: "r-oa", source: ended()), check: is_noop)
     && lease_listed(root: root)
 }
 
-// A LEGACY LEASE (commit + clock, no holder) IS REFUSED AND KEPT, never guessed at.
-test fn a_legacy_lease_naming_no_holder_is_refused_and_kept() -> Bool {
+// A LEGACY PLAIN-FILE LEASE REFUSES THE MINT, AND NOTHING PROCEEDS OVER IT. The refusal is the subject: the mint
+// must answer Unready and name the legacy lease and the by-hand remedy; the plain file is byte-identical afterwards.
+test fn a_legacy_lease_refuses_the_lease_mint_and_is_kept() -> Bool {
   let root = fresh_root()
-  let ok = a_legacy_lease_naming_no_holder_is_refused_and_kept_cell(root: root)
+  let ok = a_legacy_lease_refuses_the_lease_mint_and_is_kept_cell(root: root)
   let removed = shell.Remove.RecursiveForce(path: root)
   ok && removed.success
 }
 
-fn a_legacy_lease_naming_no_holder_is_refused_and_kept_cell(root: String) -> Bool {
-  let subject = subject_at(root: root)
-  opened(root: root, reference: "r-lg", owner: dispatch_owner())
-    && reserved(subject: subject, reference: "r-lg")
-    && launching(root: root, reference: "r-lg")
-    && lease_written(root: root, content: "deadbeef 1800\n")
-    && ensured(o: ensure(root: root, reference: "r-lg", source: ended()), check: is_refused)
+fn a_legacy_lease_refuses_the_lease_mint_and_is_kept_cell(root: String) -> Bool {
+  legacy_lease_written(root: root, content: "deadbeef 1800\n")
+    && match leases_reading_at(root: root) {
+      ComputeProducerLeasesUnready { detail: d } => string_contains(s: d, pattern: "legacy plain-file lease") && string_contains(s: d, pattern: "remove each by hand") && string_contains(s: d, pattern: "feedfacefeedface")
+      ComputeProducerLeasesReady { leases: _ } => false
+    }
+    && Filesystem.Read(path: lease_file_at(root: root)).content == "deadbeef 1800\n"
+}
+
+// THE POSITIVE CONTROL: the same fixture after the operator removes the file mints Ready and the producer acquires.
+test fn the_lease_mint_is_ready_once_the_operator_removes_the_legacy_lease() -> Bool {
+  let root = fresh_root()
+  let ok = the_lease_mint_is_ready_once_the_operator_removes_the_legacy_lease_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn the_lease_mint_is_ready_once_the_operator_removes_the_legacy_lease_cell(root: String) -> Bool {
+  legacy_lease_written(root: root, content: "deadbeef 1800\n")
+    && shell.Remove.RecursiveForce(path: lease_file_at(root: root)).success
+    && lease_acquired(root: root, owner: "holder x\nabc 1\n")
     && lease_listed(root: root)
-    && committed(subject: subject) == 0
+}
+
+// A HOLD-SHAPED DIRECTORY IS NOT LEGACY: a lease taken and released leaves <identity>.<generation> files, and the
+// mint stays Ready over them.
+test fn a_released_hold_does_not_refuse_the_lease_mint() -> Bool {
+  let root = fresh_root()
+  let ok = lease_acquired(root: root, owner: "holder x\nabc 1\n")
+    && match leases_reading_at(root: root) {
+      ComputeProducerLeasesReady { leases: _ } => true
+      ComputeProducerLeasesUnready { detail: _ } => false
+    }
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+// A HELD LEASE REFUSES A SECOND PRODUCER AND NAMES THE HOLDER, owner text (with its newlines) round-tripping the hold codec.
+test fn a_held_lease_refuses_a_second_producer_and_names_the_holder() -> Bool {
+  let root = fresh_root()
+  let ok = a_held_lease_refuses_a_second_producer_and_names_the_holder_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_held_lease_refuses_a_second_producer_and_names_the_holder_cell(root: String) -> Bool {
+  lease_acquired(root: root, owner: "holder first\nabc 1\n")
+    && with_leases(root: root, body: fn(l) { match compute_producer_lease_acquire(leases: l, identity: "feedfacefeedface", owner: "holder second\nabc 2\n") {
+      ComputeProducerLeaseOccupied { holder: h } => h == "holder first\nabc 1\n"
+      ComputeProducerLeaseAcquired => false
+      ComputeProducerLeaseRefused { detail: _ } => false
+    } })
 }
 
 // A LISTING THAT CANNOT BE READ IS NOT "NO LIVE SEATS": the pass refuses.
@@ -781,11 +875,13 @@ test fn a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed()
 }
 
 fn a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed_cell(root: String) -> Bool {
-  match compute_seat_discharge_all(instance: instance_at(root: absent_of(root: root)), leases_dir: leases_at(root: root), subject: subject_at(root: root), source: ended()) {
-    SeatDischargeRefused { reason: _ } => true
-    SeatDischargeRan { outcomes: _ } => false
-    SeatDischargeSkipped { why: _ } => false
-  }
+  made(path: lease_dir_at(root: root)) && with_leases(root: root, body: fn(l) {
+    match compute_seat_discharge_all(instance: instance_at(root: absent_of(root: root)), leases: l, subject: subject_at(root: root), appropriation: witness_appropriation(), source: ended()) {
+      SeatDischargeRefused { reason: _ } => true
+      SeatDischargeRan { outcomes: _ } => false
+      SeatDischargeSkipped { why: _ } => false
+    }
+  })
 }
 
 // A WHOLE-PASS REFUSAL IS NOT A REFUSAL OF ONE UNNAMED SEAT: it keeps its own standing and its cause.
@@ -832,7 +928,7 @@ fn minted_reference(root: String, key: String) -> String {
 }
 
 fn reserved_and_released(subject: ComputeCapacitySubject, reference: String) -> Bool {
-  let r = compute_reserve_against(subject: subject, reference: reference as NonEmptyStr, term_seconds: 60, total: supplied_host, available: supplied_host)
+  let r = compute_reserve_against(subject: subject, appropriation: witness_appropriation(), request: witness_request(), reference: reference as NonEmptyStr, term_seconds: 60, total: supplied_host, available: supplied_host)
   match r {
     ComputeReserved { grant: _, partition: _, amount: _, store: _ } => match compute_release(reservation: r, reason: "control release" as NonEmptyStr) {
       ComputeReleased { partition: _, reference: _, reason: _ } => true

@@ -939,7 +939,7 @@ fn local_store_reclaim_unreferenced(held: LocalStoreFamilyHeld, roots: List<Arti
     IdentityComponentsRefused { components: _, scope: _ } => []
   })
   if count(names) != count(roots) { Present { value: LocalStoreRetentionRootsRefused { roots: roots } } } else {
-    match local_store_read_index(root_path: local_store_binding_path(b: held.binding), family: held.family) {
+    match local_store_read_index(binding: held.binding, family: held.family) {
       LocalStoreIndexUnavailable { refusal: r } => Present { value: LocalStoreRetentionIndexRefused { refusal: r } }
       LocalStoreIndexAt { index: index, expected: expected } => {
         let keep = local_store_name_set(names: names)
@@ -962,7 +962,7 @@ fn local_store_reclaim_unreferenced(held: LocalStoreFamilyHeld, roots: List<Arti
 fn local_store_reclaim_doomed(held: LocalStoreFamilyHeld) -> LocalStoreRetentionRefusal?
   admit_callers: [decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reclaim_unreferenced")]
 {
-  match local_store_read_index(root_path: local_store_binding_path(b: held.binding), family: held.family) {
+  match local_store_read_index(binding: held.binding, family: held.family) {
     LocalStoreIndexUnavailable { refusal: r } => Present { value: LocalStoreRetentionIndexRefused { refusal: r } }
     LocalStoreIndexAt { index: index, expected: expected } => {
       let authority = LocalStoreFamilyAuthority { held: held }
@@ -1009,12 +1009,9 @@ fn local_store_stale_generations(gs: List<CasGeneration>, k: Int) -> List<CasGen
   gs |> filter(g => cas_generation_count(g: g) <= head - k)
 }
 
-fn local_store_settle_slot(root_path: String, key: NonEmptyStr) -> LocalStoreSlotSettlement
-  admit_callers: [
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index_current"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_acquire_family_hold"),
-  ]
+fn local_store_settle_slot(binding: LocalStoreBinding, key: NonEmptyStr) -> LocalStoreSlotSettlement
 {
+  let root_path = local_store_binding_path(b: binding)
   match cas_generation_window(k: local_store_index_window_k) {
     CasGenerationWindowTooNarrow { k: k } => LocalStoreSlotWindowTooNarrow { k: k }
     CasGenerationWindowAdmitted { window: w } =>
@@ -1089,18 +1086,9 @@ type LocalStoreIndexRead
   = LocalStoreIndexAt { index: LocalStoreIndex, expected: CasExpectation }
   | LocalStoreIndexUnavailable { refusal: LocalStoreIndexRefusal }
 
-fn local_store_read_index(root_path: String, family: ArtifactKindId) -> LocalStoreIndexRead
-  admit_callers: [
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reclaim_unreferenced"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reclaim_doomed"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reserve"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_indexed_names"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency_current"),
-    decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "only_canonical_object_names_are_indexed_or_swept_by_real_execution"),
-    decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "index_row_count"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_doom_copy"),
-  ]
+fn local_store_read_index(binding: LocalStoreBinding, family: ArtifactKindId) -> LocalStoreIndexRead
 {
+  let root_path = local_store_binding_path(b: binding)
   match local_store_index_window() {
     Absent => LocalStoreIndexUnavailable { refusal: LocalStoreIndexWindowTooNarrow { k: local_store_index_window_k } }
     Present { value: window } =>
@@ -1143,7 +1131,7 @@ fn local_store_write_index_current(held: LocalStoreFamilyHeld, expected: CasExpe
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index"),
   ]
 {
-  match local_store_settle_slot(root_path: local_store_binding_path(b: held.binding), key: local_store_index_key(family: held.family)) {
+  match local_store_settle_slot(binding: held.binding, key: local_store_index_key(family: held.family)) {
     LocalStoreSlotSettled => local_store_write_index_settled(held: held, expected: expected, index: index)
     LocalStoreSlotGenerationsOutstanding { key: k, stale: st } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexUnsettled { settlement: LocalStoreSlotGenerationsOutstanding { key: k, stale: st } } }
     LocalStoreSlotUnlisted { key: k, cause: c } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexUnsettled { settlement: LocalStoreSlotUnlisted { key: k, cause: c } } }
@@ -1287,7 +1275,7 @@ fn local_store_acquire_family_hold(binding: LocalStoreBinding, family: ArtifactK
         SelfIdentified { process: me, pid_namespace: ns } => {
           let owner = concat(local_store_hold_owner_prefix, process_hold_text(p: me, pid_namespace: ns)) as DurableHoldOwnerRef
           let key = local_store_hold_key(family: family)
-          match local_store_settle_slot(root_path: root_path, key: key) {
+          match local_store_settle_slot(binding: binding, key: key) {
             LocalStoreSlotSettled => local_store_acquire_settled(binding: binding, family: family, key: key, owner: owner, window: window, recovered: recovered)
             LocalStoreSlotGenerationsOutstanding { key: k, stale: st } => LocalStoreHoldRefused { refusal: LocalStoreHoldUnsettled { settlement: LocalStoreSlotGenerationsOutstanding { key: k, stale: st } } }
             LocalStoreSlotUnlisted { key: k, cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHoldUnsettled { settlement: LocalStoreSlotUnlisted { key: k, cause: c } } }
@@ -1620,7 +1608,7 @@ fn local_store_reserve(held: LocalStoreFamilyHeld, name: String, bytes: ByteSize
           StoreRefusedRetention { provider_id: pid, declared: dcl, cause: why } =>
             LocalStoreReservationProviderRefused { construction: StoreRefusedRetention { provider_id: pid, declared: dcl, cause: why } }
           StoreReady { store: ready } =>
-            match local_store_read_index(root_path: root_path, family: family) {
+            match local_store_read_index(binding: held.binding, family: family) {
               LocalStoreIndexUnavailable { refusal: r } => LocalStoreReservationIndexRefused { refusal: r }
               LocalStoreIndexAt { index: index, expected: expected } => {
                 let doomed_copies = index.doomed |> filter(d => local_store_is_copy_name(name: d.name)) |> map(d => d.name)
@@ -1806,7 +1794,7 @@ fn local_store_indexed_names(binding: LocalStoreBinding) -> LocalStoreIndexedNam
   let root_path = local_store_binding_path(b: binding)
   fold(budgets, init: LocalStoreIndexedNamesRead { names: [] }, f: (acc, b) => match acc {
     LocalStoreIndexedNamesRefused { family: f, refusal: r } => LocalStoreIndexedNamesRefused { family: f, refusal: r }
-    LocalStoreIndexedNamesRead { names: names } => match local_store_read_index(root_path: root_path, family: b.family) {
+    LocalStoreIndexedNamesRead { names: names } => match local_store_read_index(binding: binding, family: b.family) {
       LocalStoreIndexUnavailable { refusal: r } => LocalStoreIndexedNamesRefused { family: b.family, refusal: r }
       LocalStoreIndexAt { index: i, expected: _ } => LocalStoreIndexedNamesRead { names: concat(concat(names, i.rows |> map(r => r.name)), i.doomed |> map(d => d.name)) }
     }
@@ -1965,7 +1953,7 @@ fn local_store_record_recency_current(held: LocalStoreFamilyHeld, served: List<S
 {
   let family = held.family
   let root_path = local_store_binding_path(b: held.binding)
-  match local_store_read_index(root_path: root_path, family: family) {
+  match local_store_read_index(binding: held.binding, family: family) {
     LocalStoreIndexUnavailable { refusal: r } => LocalStoreRecencyLost { family: family, refusal: r }
     LocalStoreIndexAt { index: index, expected: expected } => {
       let names = index.rows |> map(r => r.name)
@@ -2384,7 +2372,7 @@ fn local_store_doom_copy(held: LocalStoreFamilyHeld, name: String, bytes: ByteSi
   ]
 {
   if attempt > local_store_reservation_attempt_bound { Present { value: "the occupancy index kept moving past the attempt bound" } } else {
-    match local_store_read_index(root_path: local_store_binding_path(b: held.binding), family: held.family) {
+    match local_store_read_index(binding: held.binding, family: held.family) {
       LocalStoreIndexUnavailable { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
       LocalStoreIndexAt { index: index, expected: expected } =>
         if index.doomed |> any(d => d.name == name) { none } else {

@@ -1,7 +1,7 @@
 module test.claim.materialization_store_local_seal_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit}
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit, census_delta_verdict, total_blocking_census, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
 
@@ -73,14 +73,32 @@ test fn a_direct_verified_settle_is_an_admission_refusal() -> ProcessExit {
 // unindexed file, or apply this store's window to a slot that keeps every generation.
 data direct_create_new_source: String = "module probe_store_direct_create_new\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { FilesystemCreateNew }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nfn direct(p: String, c: String) -> FilesystemCreateNew {\n  local_store_create_new(path: p, content: c)\n}\n"
 
-data direct_settle_slot_source: String = "module probe_store_direct_settle_slot\nimport std.types { String, NonEmptyStr }\nimport extdeps.realization.materialization_store_local { LocalStoreSlotSettlement, local_store_settle_slot }\nfn direct(r: String, k: NonEmptyStr) -> LocalStoreSlotSettlement {\n  local_store_settle_slot(root_path: r, key: k)\n}\n"
+data path_settle_slot_source: String = "module probe_store_path_settle_slot\nimport std.types { String, NonEmptyStr }\nimport extdeps.realization.materialization_store_local { LocalStoreSlotSettlement, local_store_settle_slot }\nfn direct(r: String, k: NonEmptyStr) -> LocalStoreSlotSettlement {\n  local_store_settle_slot(root_path: r, key: k)\n}\n"
+
+data binding_settle_slot_source: String = "module probe_store_binding_settle_slot\nimport std.types { String, NonEmptyStr }\nimport extdeps.realization.materialization_store_local { LocalStoreBinding, LocalStoreSlotSettlement, local_store_settle_slot }\nfn direct(b: LocalStoreBinding, k: NonEmptyStr) -> LocalStoreSlotSettlement {\n  local_store_settle_slot(binding: b, key: k)\n}\n"
+
+data path_read_index_source: String = "module probe_store_path_read_index\nimport std.cache_identity { ArtifactKindId }\nimport extdeps.realization.materialization_store_local { LocalStoreIndexRead, local_store_read_index }\nfn direct(r: String, f: ArtifactKindId) -> LocalStoreIndexRead {\n  local_store_read_index(root_path: r, family: f)\n}\n"
+
+data binding_read_index_source: String = "module probe_store_binding_read_index\nimport std.cache_identity { ArtifactKindId }\nimport extdeps.realization.materialization_store_local { LocalStoreBinding, LocalStoreIndexRead, local_store_read_index }\nfn direct(b: LocalStoreBinding, f: ArtifactKindId) -> LocalStoreIndexRead {\n  local_store_read_index(binding: b, family: f)\n}\n"
 
 test fn a_direct_store_file_create_is_an_admission_refusal() -> ProcessExit {
   census_exit(census_verdict(census: admission_refusals(source: direct_create_new_source, callee: "local_store_create_new"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_direct_slot_settle_is_an_admission_refusal() -> ProcessExit {
-  census_exit(census_verdict(census: admission_refusals(source: direct_settle_slot_source, callee: "local_store_settle_slot"), holds: fn(n) { n == 1 }))
+// THE INDEX AND ITS SLOT SETTLEMENT TAKE THE SEALED BINDING, NEVER A PATH. They once took root_path: String behind
+// an admit_callers roster; the roster is deleted and the parameter is the binding, which only the open mints
+// (a_forged_store_binding_is_refused_at_compile). So a path handed to either adds a blocking diagnostic beyond the
+// same call handed a binding. Claimed: a consumer cannot be handed a forged binding or one over a root it chose.
+fn blocking_delta(hostile: String, safe: String) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: fn(n) { n >= 1 })
+}
+
+test fn no_slot_settle_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: path_settle_slot_source, safe: binding_settle_slot_source))
+}
+
+test fn no_index_read_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: path_read_index_source, safe: binding_read_index_source))
 }
 
 // THE OPENED STORE IS UNFORGEABLE. A capability is a verified binding plus its clean-sweep proof, minted

@@ -14,6 +14,7 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.roadmap.roadmap_dashboard_instance { fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance, IsolatedJobToolchainHomes }
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_request { work_default_build, work_declared_outputs, WorkOutput }
+import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_path }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
@@ -255,14 +256,14 @@ fn wrong_capture_report(instance: HostDashboardInstance, layout_a: ComputeLayout
   let own_bytes = !any(declared, d => !wrong_capture_has(path: compute_staged_path(layout: layout_a, declared: d.path), marker: arm.marker_a))
   let b_own = !any(declared, d => !wrong_capture_has(path: compute_staged_path(layout: layout_b, declared: d.path), marker: arm.marker_b))
   // Premise controls: disjoint leases and disjoint staged paths. shared target_dir is a printed reading only, never a gate.
-  let premise = (layout_a.lease_path != layout_b.lease_path) && !any(declared, d => compute_staged_path(layout: layout_a, declared: d.path) == compute_staged_path(layout: layout_b, declared: d.path))
+  let premise = (layout_a.identity_hex != layout_b.identity_hex) && !any(declared, d => compute_staged_path(layout: layout_a, declared: d.path) == compute_staged_path(layout: layout_b, declared: d.path))
   let bytes = join([
     arm.name, " compute_root=", root, "\n",
     join(arm.preamble, ""),
     "shared_target_dir_same_for_both=", if layout_a.target_dir == layout_b.target_dir { "true" } else { "false" }, "\n",
     "target_dir=", layout_a.target_dir, "\n",
-    "lease_path_a=", layout_a.lease_path, "\nlease_path_b=", layout_b.lease_path, "\n",
-    "leases_disjoint=", if layout_a.lease_path != layout_b.lease_path { "true" } else { "false" }, "\n",
+    "lease_path_a=", compute_producer_leases_reading_path(reading: layout_a.leases, identity: layout_a.identity_hex), "\nlease_path_b=", compute_producer_leases_reading_path(reading: layout_b.leases, identity: layout_b.identity_hex), "\n",
+    "leases_disjoint=", if layout_a.identity_hex != layout_b.identity_hex { "true" } else { "false" }, "\n",
     join(rows, ""),
     if direction != "" { join(["VERDICT: wrong capture reproduced (", direction, "): ",
         if any_wrong_a { "the capture of request A holds B's marker and not A's" } else { "" },

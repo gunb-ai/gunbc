@@ -3,6 +3,7 @@ module test.claim.compute.work_request_witness
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import std.materialization_store_grant { DurableHostVolume }
+import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_path }
 import gunbc.compute.work_provider_local {
   NoPathVirtualization, UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitPopulated, UnitTerminationUnavailable,
   UnitPropertyReading, UnitObservations, unit_termination_decide,
@@ -561,7 +562,7 @@ test fn an_undropped_lease_is_recorded_and_never_becomes_the_works_verdict() -> 
   host_record_was_written(h: clean)
     && !host_record_was_written(h: stuck)
     && string_contains(s: host_record_wire(h: stuck), pattern: "STALE PRODUCER LEASE")
-    && string_contains(s: host_record_wire(h: stuck), pattern: layout.lease_path)
+    && string_contains(s: host_record_wire(h: stuck), pattern: compute_producer_leases_reading_path(reading: layout.leases, identity: layout.identity_hex))
     && string_contains(s: host_record_wire(h: stuck), pattern: "EBUSY")
 
     && provide_result_ending(r: carried) == "succeeded"

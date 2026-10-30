@@ -1,0 +1,70 @@
+module test.claim.compute.compute_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE PRODUCER LEASES AND THE WORK RECORDS ARE MINTED FROM THEIR DECLARATIONS AND CANNOT BE SPELLED OR HANDED A PATH.
+// gunbc.compute.compute_producer_lease ComputeProducerLeases and gunbc.compute.compute_work_records ComputeWorkRecords
+// are sole_constructor. A forged literal and a forged cast are EXACTLY ONE SoleConstructorViolation on the exact name;
+// a mint handed a path adds a blocking diagnostic beyond a baseline importing the same closure; the lawful mint adds none.
+// Claimed rung: a consumer cannot be handed a forged store or one over the wrong root. NOT claimed: that business code
+// cannot read store.root (the declared residual gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module).
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+data lease_baseline_source: String = "module probe_lease_baseline\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.compute_producer_lease { ComputeProducerLeases, ComputeProducerLeasesReading, compute_producer_leases }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+data lease_literal_source: String = "module probe_lease_literal\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.compute_producer_lease { ComputeProducerLeases, ComputeProducerLeasesReading, compute_producer_leases }\nfn f(r: NonEmptyStr) -> ComputeProducerLeases {\n  ComputeProducerLeases { root: r }\n}\n"
+data lease_cast_source: String = "module probe_lease_cast\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.compute_producer_lease { ComputeProducerLeases, ComputeProducerLeasesReading, compute_producer_leases }\nfn f(r: NonEmptyStr) -> ComputeProducerLeases {\n  r as ComputeProducerLeases\n}\n"
+data lease_path_minter_source: String = "module probe_lease_path_minter\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.compute_producer_lease { ComputeProducerLeases, ComputeProducerLeasesReading, compute_producer_leases }\nfn f(i: HostDashboardInstance) -> ComputeProducerLeasesReading {\n  compute_producer_leases(instance: i, root: \"/tmp/forged\")\n}\n"
+data lease_lawful_source: String = "module probe_lease_lawful\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.compute_producer_lease { ComputeProducerLeases, ComputeProducerLeasesReading, compute_producer_leases }\nfn f(i: HostDashboardInstance) -> ComputeProducerLeasesReading {\n  compute_producer_leases(instance: i)\n}\n"
+data work_baseline_source: String = "module probe_work_baseline\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.compute_work_records { ComputeWorkRecords, compute_work_records }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+data work_literal_source: String = "module probe_work_literal\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.compute_work_records { ComputeWorkRecords, compute_work_records }\nfn f(r: NonEmptyStr) -> ComputeWorkRecords {\n  ComputeWorkRecords { dir: r }\n}\n"
+data work_cast_source: String = "module probe_work_cast\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.compute_work_records { ComputeWorkRecords, compute_work_records }\nfn f(r: NonEmptyStr) -> ComputeWorkRecords {\n  r as ComputeWorkRecords\n}\n"
+data work_path_minter_source: String = "module probe_work_path_minter\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.compute_work_records { ComputeWorkRecords, compute_work_records }\nfn f(i: HostDashboardInstance) -> ComputeWorkRecords {\n  compute_work_records(instance: i, identity: \"x\", root: \"/tmp/forged\")\n}\n"
+data work_lawful_source: String = "module probe_work_lawful\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.compute_work_records { ComputeWorkRecords, compute_work_records }\nfn f(i: HostDashboardInstance) -> ComputeWorkRecords {\n  compute_work_records(instance: i, identity: \"x\")\n}\n"
+
+test fn a_forged_lease_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: lease_literal_source, subject: "ComputeProducerLeases"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_lease_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: lease_cast_source, subject: "ComputeProducerLeases"), holds: fn(n) { n == 1 }))
+}
+
+test fn no_lease_mint_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: lease_path_minter_source, safe: lease_baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn the_lawful_lease_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: lease_lawful_source, safe: lease_baseline_source, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: lease_lawful_source, subject: "ComputeProducerLeases"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn a_forged_work_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: work_literal_source, subject: "ComputeWorkRecords"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_work_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: work_cast_source, subject: "ComputeWorkRecords"), holds: fn(n) { n == 1 }))
+}
+
+test fn no_work_mint_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: work_path_minter_source, safe: work_baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn the_lawful_work_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: work_lawful_source, safe: work_baseline_source, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: work_lawful_source, subject: "ComputeWorkRecords"), holds: fn(n) { n == 0 }),
+  ])
+}
