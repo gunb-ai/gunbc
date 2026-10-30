@@ -1950,13 +1950,15 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
     }
 }
 
-pub fn global_bare_declarer_in_scope(env_module_path: String, declarer: String) -> bool {
+pub fn global_bare_declarer_in_scope(env: Rc<TypeEnv>, name: String, declarer: String) -> bool {
     if v1_rt::name_resolution_policy_is_namespace_only() {
         let declarer_segs = module_path_segments(declarer.clone());
         segment_lcp_len(
             declarer_segs.clone(),
-            module_path_segments(env_module_path.clone()),
+            module_path_segments(env.module_path.clone()),
         ) == (declarer_segs.clone().len() as i64)
+            || (import_visible_name(env.clone(), name.clone())
+                && env.parents.iter().cloned().any(|p| p.module_path == declarer))
     } else {
         true
     }
@@ -1972,7 +1974,7 @@ pub fn global_bare_lookup_candidates(env: Rc<TypeEnv>, name: String) -> Option<R
             binding,
             ..
         }) => {
-            if global_bare_declarer_in_scope(env.module_path.clone(), declarer.clone()) {
+            if global_bare_declarer_in_scope(env.clone(), name.clone(), declarer.clone()) {
                 Some(binding.clone())
             } else {
                 std::option::Option::None

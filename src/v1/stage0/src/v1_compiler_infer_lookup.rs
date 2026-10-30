@@ -561,7 +561,8 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedC
                     ..
                 }) => {
                     if crate::v1_compiler_infer_env::global_bare_declarer_in_scope(
-                        type_env.module_path.clone(),
+                        type_env.clone(),
+                        name.clone(),
                         mp.clone(),
                     ) {
                         Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {

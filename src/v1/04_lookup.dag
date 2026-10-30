@@ -571,7 +571,7 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLo
     } else {
       match map_get(type_env.symbol_index.global_bare, name) {
         Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-          if global_bare_declarer_in_scope(env_module_path: type_env.module_path, declarer: mp) {
+          if global_bare_declarer_in_scope(env: type_env, name: name, declarer: mp) {
             BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
           } else { BorrowedCensusDeclNotFound }
         Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
