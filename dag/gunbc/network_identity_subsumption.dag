@@ -11,10 +11,10 @@ import extdeps.dhcp.v4 {
   Active,
   Inactive,
   Expired,
-  MacAddress,
   dhcp_lease_remaining_from_cited_minutes,
 }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.network.mac { mac_address }
 import extdeps.dns.domain_name {
   HostName,
   DomainName,
@@ -85,7 +85,7 @@ fn lease_table_has_os_up_subsumption(
 }
 
 data srv3_bmc_static_lease_row: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
-  mac_address: "48:21:0B:81:C5:14" as MacAddress,
+  mac_address: mac_address(octet1: 72, octet2: 33, octet3: 11, octet4: 129, octet5: 197, octet6: 20),
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 192),
   lease: StaticDhcpReservation {
     reservation_label: "bmc-altrad8ud-1l2t-3" as NonEmptyStr,
@@ -94,7 +94,7 @@ data srv3_bmc_static_lease_row: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
 }
 
 data srv3_os_up_dynamic_lease_row: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
-  mac_address: "00:00:00:00:00:00" as MacAddress,
+  mac_address: mac_address(octet1: 0, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: 0),
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 193),
   lease: DynamicDhcpLease {
     client_hostname: Present { value: srv3_fleet_slot_host_name },

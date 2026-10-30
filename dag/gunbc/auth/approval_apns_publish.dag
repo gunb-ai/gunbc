@@ -59,11 +59,11 @@ import gunbc.auth.approval_device_redemption {
 }
 
 // THE BROKER'S APNs PUBLISH: a filed request wakes every enrolled approver's phone through Apple's
-// push service (gunbc.auth.approval_device_redemption approval_device_routes_frontier, its APNs-publish
-// clause). extdeps.apple.apns owns the interface -- hosts, headers, payload, provider token, status
-// table -- and this module owns what extdeps may not: which key, which team, where the key lives,
-// which devices, and the TRANSPORT. It is the APNs peer of gunbc.auth.approval_ntfy_publish, and like
-// it, it is apart from the filing fold so the fold receives what was read rather than reading it.
+// push service, the one notification route (ruling gunbc.design_ruling
+// one_approval_route_for_every_privileged_action). extdeps.apple.apns owns the interface -- hosts,
+// headers, payload, provider token, status table -- and this module owns what extdeps may not:
+// which key, which team, where the key lives, which devices, and the TRANSPORT. It is apart from the
+// filing fold so the fold receives what was read rather than reading it.
 //
 // THE PUSH WAKES; IT DOES NOT CARRY THE DECISION (gunbc.auth.approval_device_wire ApprovalPushHint).
 // The alert is generic and the one custom key is the escalation id -- a locator, never a capability.
@@ -290,6 +290,7 @@ type ApnsSender
 
 fn read_apns_sender() -> ApnsSender admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_broker_serve", decl_name: "approval_submit_admitted_response"),
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "publish_new_device_notice"),
 ] {
   match first_absent_host_cli_dependency(tools: apns_sender_host_cli_requirements) {
     Present { value: absence } => ApnsSenderUnavailable { detail: join(["APNs transport tool ", absence.tool as String, " is absent: ", absence.hint], "") }
@@ -358,6 +359,7 @@ fn device_push_targets_at(devices: ApprovalDeviceStore, approvers: List<NonEmpty
 
 fn read_device_push_targets() -> DevicePushTargets admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_broker_serve", decl_name: "approval_submit_admitted_response"),
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "publish_new_device_notice"),
 ] {
   match approval_device_store(tree: host_state_tree()) {
     ApprovalDeviceStoreUnready { detail: d } => DevicePushTargetsRefused { detail: d }
@@ -365,11 +367,35 @@ fn read_device_push_targets() -> DevicePushTargets admit_callers: [
   }
 }
 
+// ── The notice ───────────────────────────────────────────────────────────────────────────────
+// WHAT A PUSH SAYS, and both notices are generic: Apple sees every alert, so nothing in one names a
+// request, a requester or an account. The locator is the push's one custom key
+// (gunbc.auth.approval_device_wire ApprovalPushHint) AND its collapse id, so a re-sent notice replaces
+// its own alert rather than stacking a second.
+type DevicePushNotice {
+  locator: NonEmptyStr
+  title: NonEmptyStr
+  body: NonEmptyStr
+}
+
+data approval_push_alert_body: NonEmptyStr = "A request is waiting for your decision in Approve."
+
+fn approval_request_push_notice(escalation_id: NonEmptyStr) -> DevicePushNotice {
+  DevicePushNotice { locator: escalation_id, title: approval_push_alert_title, body: approval_push_alert_body }
+}
+
+// THE NEW-DEVICE NOTICE (gunbc.auth.approval_device_routes publish_new_device_notice): the enrolled
+// devices learn that another one joined, keyed by the new enrolment so a resent enrolment collapses.
+data new_device_push_alert_title: NonEmptyStr = "New approval device enrolled"
+data new_device_push_alert_body: NonEmptyStr = "Another device was enrolled to approve requests. Revoke it from the devices list if this was not you."
+
+fn new_device_push_notice(enrollment_id: NonEmptyStr) -> DevicePushNotice {
+  DevicePushNotice { locator: enrollment_id, title: new_device_push_alert_title, body: new_device_push_alert_body }
+}
+
 // ── The request ──────────────────────────────────────────────────────────────────────────────
 // Alert, immediately, active (not time-sensitive: that level needs an entitlement this app does not
-// declare, and Apple downgrades it silently without one), collapsed per escalation so a re-notified
-// filing replaces its own alert rather than stacking a second.
-data approval_push_alert_body: NonEmptyStr = "A request is waiting for your decision in Approve."
+// declare, and Apple downgrades it silently without one).
 
 type ApprovalPushRequest
   = ApprovalPushRequestReady { request: ApnsRequest }
@@ -383,12 +409,12 @@ fn utf8_octet_count(s: String) -> Int {
 // names another topic is not an address this broker sends approval wakeups to. The environment is the
 // registration's, because it is a fact of how the installed build was signed (extdeps.apple.apns
 // ApnsEnvironment), never a server preference.
-fn approval_push_request(registration: PushRegistration, escalation_id: NonEmptyStr) -> ApprovalPushRequest {
+fn approval_push_request(registration: PushRegistration, notice: DevicePushNotice) -> ApprovalPushRequest {
   match registration {
     FcmRegistration { project: _, token: _ } => ApprovalPushRequestRefused { detail: "an FCM registration has no publish here (gunbc.auth.approval_device_redemption android_realization_frontier)" }
     ApnsRegistration { environment: env, topic: topic, token: token } =>
       if (topic as String) != (approval_app_bundle_id as String) { ApprovalPushRequestRefused { detail: join(["the registration's topic ", topic as String, " is not this app's bundle ", approval_app_bundle_id as String], "") as NonEmptyStr } }
-      else if utf8_octet_count(s: escalation_id as String) > byte_size_count(apns_collapse_id_max_size) { ApprovalPushRequestRefused { detail: "the escalation id is longer than APNs admits for a collapse id" } }
+      else if utf8_octet_count(s: notice.locator as String) > byte_size_count(apns_collapse_id_max_size) { ApprovalPushRequestRefused { detail: "the notice's locator is longer than APNs admits for a collapse id" } }
       else {
         let request = ApnsRequest {
           environment: env,
@@ -396,14 +422,14 @@ fn approval_push_request(registration: PushRegistration, escalation_id: NonEmpty
           topic: topic,
           push_type: PushTypeAlert,
           priority: PriorityImmediate,
-          collapse_id: escalation_id as ApnsCollapseId,
+          collapse_id: notice.locator as ApnsCollapseId,
           aps: ApnsAps {
-            alert: ApnsAlert { title: approval_push_alert_title, subtitle: none, body: approval_push_alert_body },
+            alert: ApnsAlert { title: notice.title, subtitle: none, body: notice.body },
             mutable_content: false,
             interruption_level: InterruptionActive,
             category: none,
           },
-          custom: approval_push_custom_keys(h: ApprovalPushHint { notification_id: escalation_id }),
+          custom: approval_push_custom_keys(h: ApprovalPushHint { notification_id: notice.locator }),
         }
         if utf8_octet_count(s: apns_payload_json(r: request)) > byte_size_count(apns_payload_max_size) { ApprovalPushRequestRefused { detail: "the payload is larger than APNs admits" } }
         else { ApprovalPushRequestReady { request: request } }
@@ -518,22 +544,26 @@ type DevicePushOutcome
   = DevicePushSent { enrollment_id: NonEmptyStr, outcome: PushProviderOutcome }
   | DevicePushNotSent { enrollment_id: NonEmptyStr, detail: NonEmptyStr }
 
+// NO RECIPIENT IS ITS OWN ARM, apart from a failure to attempt: the first device to enrol has no
+// other device to tell, which the new-device notice must be able to say without refusing the
+// enrolment, while an approval filing reads the same arm as "nobody was woken".
 type DeviceNotification
   = DeviceNotificationAttempted { outcomes: List<DevicePushOutcome>, unregistered: List<NonEmptyStr>, unreadable: List<NonEmptyStr> }
+  | DeviceNotificationNoRecipient { unregistered: List<NonEmptyStr>, unreadable: List<NonEmptyStr> }
   | DeviceNotificationNotAttempted { detail: String }
 
-fn notify_devices(targets: DevicePushTargets, sender: ApnsSender, escalation_id: NonEmptyStr) -> DeviceNotification {
+fn notify_devices(targets: DevicePushTargets, sender: ApnsSender, notice: DevicePushNotice) -> DeviceNotification {
   match targets {
     DevicePushTargetsRefused { detail: d } => DeviceNotificationNotAttempted { detail: concat("the enrolled devices could not be listed: ", d) }
     DevicePushTargetsListed { targets: ts, unregistered: un, unreadable: ur } =>
       if length(ts) == 0 {
-        DeviceNotificationNotAttempted { detail: join(["no enrolled approver device has a push registration (", to_string(length(un)), " unregistered, ", to_string(length(ur)), " unreadable)"], "") }
+        DeviceNotificationNoRecipient { unregistered: un, unreadable: ur }
       } else {
         match sender {
           ApnsSenderUnavailable { detail: d } => DeviceNotificationNotAttempted { detail: concat("the APNs sender is unavailable: ", d) }
           ApnsSenderReady { token: token } =>
             DeviceNotificationAttempted {
-              outcomes: map(ts, t => match approval_push_request(registration: t.registration, escalation_id: escalation_id) {
+              outcomes: map(ts, t => match approval_push_request(registration: t.registration, notice: notice) {
                 ApprovalPushRequestRefused { detail: d } => DevicePushNotSent { enrollment_id: t.enrollment_id, detail: d }
                 ApprovalPushRequestReady { request: r } => DevicePushSent { enrollment_id: t.enrollment_id, outcome: push_outcome_of_apns(o: send_apns(r: r, token: token)) }
               }),
@@ -576,6 +606,8 @@ fn device_push_outcome_sentence(o: DevicePushOutcome) -> String {
 fn device_notification_sentence(n: DeviceNotification) -> String {
   match n {
     DeviceNotificationNotAttempted { detail: d } => concat("device push not attempted: ", d)
+    DeviceNotificationNoRecipient { unregistered: un, unreadable: ur } =>
+      join(["no enrolled approver device has a push registration (", to_string(length(un)), " unregistered, ", to_string(length(ur)), " unreadable)"], "")
     DeviceNotificationAttempted { outcomes: os, unregistered: un, unreadable: ur } =>
       join([
         "device push ", to_string(length(filter(os, o => device_push_outcome_accepted(o: o)))), "/", to_string(length(os)), " accepted: ",
@@ -583,5 +615,13 @@ fn device_notification_sentence(n: DeviceNotification) -> String {
         if length(un) == 0 { "" } else { join([" (", to_string(length(un)), " enrolled device(s) without a registration)"], "") },
         if length(ur) == 0 { "" } else { join([" (", to_string(length(ur)), " enrolment(s) unreadable: ", join(map(ur, d => d as String), "; "), ")"], "") },
       ], "")
+  }
+}
+
+fn device_notification_reached_anyone(n: DeviceNotification) -> Bool {
+  match n {
+    DeviceNotificationNotAttempted { detail: _ } => false
+    DeviceNotificationNoRecipient { unregistered: _, unreadable: _ } => false
+    DeviceNotificationAttempted { outcomes: os, unregistered: _, unreadable: _ } => any(os, o => device_push_outcome_accepted(o: o))
   }
 }

@@ -41,7 +41,7 @@ module gunbc.runner.runner_gpu_container_toolchain
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.algebra { string_contains, trim }
+import std.algebra { string_contains, trim, zip_map }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.env_binding { EnvSet }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -55,9 +55,17 @@ import extdeps.systemd.systemctl {
   systemctl_restart_verb,
   systemctl_is_active_verb,
   systemctl_is_enabled_verb,
+  systemctl_user_status_for_uid_argv,
 }
-import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, rm_force_command }
+import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, readlink_command, rm_force_command }
 import extdeps.posix.getent { getent_passwd_command }
+import extdeps.linux.user_namespaces {
+  user_namespace_map_row_column_count,
+  user_namespace_map_outside_column,
+  user_namespace_map_length_column,
+  user_namespace_link_path,
+  init_user_namespace_link_path,
+}
 import extdeps.docker.cli {
   docker_gpu_cdi_probe_run_command,
   docker_info_command,
@@ -106,6 +114,7 @@ import extdeps.shadow.subordinate_ids {
   SubordinatePlanRefused,
   subordinate_id_file_path,
   parse_subordinate_file,
+  parse_subordinate_file_exact,
   subordinate_ranges_for,
   subordinate_file_ranges,
   plan_subordinate_file,
@@ -114,11 +123,13 @@ import extdeps.shadow.subordinate_ids {
   subordinate_plan_text,
 }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
+import extdeps.systemd.journalctl { journalctl_user_unit_tail_argv }
 import extdeps.systemd.loginctl { loginctl_binary_name, loginctl_enable_linger_argv }
 import extdeps.tools.gnu_coreutils {
   coreutils_install_directory_argv,
   ls_one_per_line_command,
   cat_command,
+  od_hex_file_command,
   coreutils_install_binary_name,
   coreutils_install_directory_flag,
   coreutils_install_mode_flag,
@@ -194,7 +205,8 @@ import gunbc.typed_remote_file_write {
   DestinationUnchangedUntilRename,
   FleetHostLock,
 }
-import std.measure { Second, second }
+import std.measure { Second, second, byte_size_count }
+import extdeps.exec.exec_arg_limit { host_exec_arg_max_strlen }
 import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
 import extdeps.procps.pgrep {
   pgrep_user_argv,
@@ -1366,10 +1378,38 @@ type GpuContainerProvisionStep
 type GpuContainerProvisionLeg {
   step: String
   argv: List<String>
+  // READ ONLY COMMANDS RUN AFTER THIS LEG REFUSES, their output joined into the refusal cause. A unit start
+  // that fails with "control process exited with error code" names nothing; the reason is in the unit's
+  // journal, which the next converge cannot reconstruct once the unit has restarted. Empty for a leg whose
+  // own stderr is the whole story.
+  on_refusal: List<List<String>>
 }
 
 fn gpu_container_provision_leg(step: String, words: List<String>) -> GpuContainerProvisionLeg {
-  GpuContainerProvisionLeg { step: step, argv: words }
+  GpuContainerProvisionLeg { step: step, argv: words, on_refusal: [] }
+}
+
+// THE START LEG CARRIES ITS OWN EVIDENCE: status (exit status of ExecStart, rootlesskit's last lines) and
+// the unit's journal tail. Both address the job user's manager, the one the failed start addressed.
+data gpu_container_provision_unit_journal_lines: Int = 100
+
+fn gpu_container_provision_start_leg(uid: Int) -> GpuContainerProvisionLeg {
+  GpuContainerProvisionLeg {
+    step: "unit start",
+    argv: gpu_container_provision_start_argv(uid: uid),
+    on_refusal: [
+      systemctl_user_status_for_uid_argv(unit: gpu_container_provision_rootless_unit_name, uid: uid),
+      journalctl_user_unit_tail_argv(unit: gpu_container_provision_rootless_unit_name, uid: uid, lines: gpu_container_provision_unit_journal_lines),
+    ],
+  }
+}
+
+fn gpu_container_provision_diagnostic_text(argv: List<String>, transport: HostEffectTransport) -> String {
+  match run_argv_over_host_effect_transport(command: sudo_elevate_command(command: argv), transport: transport) {
+    RunArgvTransportRefused { reason: r } => join(["[", join(argv, " "), ": transport refused: ", r as String, "]"], "")
+    RunArgvTransportObserved { observed: o } =>
+      join(["\n--- ", join(argv, " "), " (exit=", to_string(o.exit_code), ")\n", trim(s: o.stdout), trim(s: o.stderr)], "")
+  }
 }
 
 fn gpu_container_provision_run_leg(leg: GpuContainerProvisionLeg, transport: HostEffectTransport) -> GpuContainerProvisionStep {
@@ -1379,7 +1419,16 @@ fn gpu_container_provision_run_leg(leg: GpuContainerProvisionLeg, transport: Hos
       if o.exit_code == 0 {
         GpuContainerProvisioned { step: leg.step }
       } else {
-        GpuContainerProvisionRefused { step: leg.step, cause: join(["exit=", to_string(o.exit_code), " ", trim(s: o.stderr)], "") }
+        GpuContainerProvisionRefused {
+          step: leg.step,
+          cause: join(
+            append(
+              ["exit=", to_string(o.exit_code), " ", trim(s: o.stderr)],
+              items: map(leg.on_refusal, a => gpu_container_provision_diagnostic_text(argv: a, transport: transport)),
+            ),
+            "",
+          ),
+        }
       }
   }
 }
@@ -1715,6 +1764,13 @@ fn gpu_container_provision_step_text(steps: List<GpuContainerProvisionStep>) -> 
 // under a 149 MB image store. ELEVATED, exit status is sound: root can read every path on the host, so
 // zero means present and non-zero means absent, with no third case for the code to confuse it with. That
 // is why every read below is a root read, and it is a correctness requirement rather than belt-and-braces.
+// THIS `cat` READ IS TRIM-TOLERANT AND THE EXACT-BYTES READ IS NOT: the transport removes a capture's
+// trailing whitespace (bounded_shell_host_drain retained_utf8_lossy_trimmed), which is harmless for the
+// /proc uid_map/gid_map reads and VerifySubordinateRanges -- both parse line-wise and consume ranges, never
+// the bytes -- and wrong for the subordinate-file reading whose bytes feed the re-read compare, which uses
+// od_hex_file_command (gpu_container_provision_file_reading). Repairing the transport itself is the next-rung
+// trigger of gunbc.recurring_failure_mode a_termination_contract_is_met_by_a_trimming_transport: a
+// captured-text carrier that declares what its transport normalized, reaching every payload-identity reader.
 fn gpu_container_provision_read_argv(path: String) -> List<String> {
   argv_words(command: cat_command(path: path))
 }
@@ -1858,21 +1914,55 @@ data gpu_container_provision_subordinate_lock_wait: Second = second(count: 120)
 
 data gpu_container_provision_subordinate_lock_conflict_exit_code: Int = 75
 
-// HOW MANY PROCESSES AN ACCOUNT MAY HAVE BEFORE THIS CONVERGE CERTIFIES THEM. The precheck below reads
-// one /proc/<pid>/map per process of the displaced account, so the cost is execs over one SSH session --
-// and an unbounded scan is a converge whose runtime is chosen by whatever the displaced account happens to
-// be running. A login session on these hosts holds a few dozen processes; past this bound the honest
-// answer is that this converge cannot certify the move, and it says so instead of stopping early and
-// calling what it did not read clear.
-data gpu_container_provision_namespace_scan_pid_limit: Int = 256
-
-// ONE ROW OF /proc/<pid>/uid_map OR gid_map, READ AS "inner outer length".
+// HOW MANY PROCESSES AN ACCOUNT MAY HAVE BEFORE THIS CONVERGE CERTIFIES THEM, AND WHAT THAT NUMBER BOUNDS.
 //
-// The OUTER column is the one this converge asks about: a namespace whose outer id falls inside the range
-// being moved from the displaced account is a namespace that is reading subordinate ids out of that range
-// RIGHT NOW, and moving the range under it reassigns what its uids mean. The inner column is not read
-// because the question is not which inner id maps where -- any row drawing from the range is enough to
-// refuse.
+// THE REASON 256 EXISTED IS GONE. The cap was set because the precheck used to ask every process of the
+// displaced account for its map -- one elevated exec per pid per map file, so the count chose the runtime.
+// The fold below asks the KERNEL instead: one readlink -v invocation carrying one path word per pid answers
+// which namespace every pid is in, and a process's map is read only if that answer puts it in a CHILD user
+// namespace. A host where none of the account's processes is in a user namespace pays three legs however many
+// processes there are: pgrep, the reference link of /proc/1, and the batch. A pid that vanishes mid-batch is
+// named on stderr and left out, so churn costs no further leg either.
+//
+// WHAT STILL GROWS WITH THE COUNT is the batch's word list. It travels as ONE remote command string over the
+// fleet SSH route (gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh), and a single string is capped by
+// the execve per-argument ceiling, not by the total argv budget: extdeps.exec.exec_arg_limit
+// host_exec_arg_max_strlen. So the bound is DERIVED from that authority: half of the ceiling is given to the
+// words, the other half is left for the sudo and readlink prefix, quoting and transport framing, and a word
+// is the longest path this model builds -- the link of the largest pid Linux admits (proc(5) pid_max is
+// capped at 2^22) plus its separating space. The number moves with that ceiling and with the word, and
+// cannot be raised past what the ceiling holds, because it is not a literal.
+//
+// The other cost that grows is the map leg of each process in a CHILD namespace, one per range set; a host
+// with none pays nothing, and this bound is the ceiling on it.
+data gpu_container_provision_namespace_scan_largest_pid: Int = 4194304
+
+data gpu_container_provision_namespace_scan_word_bytes: Int =
+  string_length(s: user_namespace_link_path(pid: gpu_container_provision_namespace_scan_largest_pid)) + 1
+
+// THE RUN THAT KILLED 256. Fleet-converge run 40837033922 refused on srv1 with "briansrls has 556 processes;
+// this converge certifies at most 256". srv1 is a session host: the console account running several hundred
+// processes is its normal state, and restarting the host does not lower it, because the sessions come back. A
+// per-user process count is not a safety bound -- the hazard is a process in a non-init user namespace mapped
+// from the range being moved, and that question is now decided in three legs -- so the number moved to one
+// that admits a live session host: 556 sits at under a fifth of this bound.
+data gpu_container_provision_namespace_scan_pid_limit: Int =
+  (byte_size_count(b: host_exec_arg_max_strlen) as Int / 2) / gpu_container_provision_namespace_scan_word_bytes
+
+// ONE ROW OF /proc/<pid>/uid_map OR gid_map, READ AS "inner outer length" -- the three columns in the order
+// extdeps.linux.user_namespaces spells them (user_namespace_map_row_column_count,
+// user_namespace_map_outside_column, user_namespace_map_length_column).
+//
+// The OUTER column is the one this converge asks about, and it is a range in the READER'S user namespace
+// when the reader is in a different namespace from the process, which is the case here: every read is a
+// sudo read from the initial namespace (extdeps.linux.user_namespaces, the reader-relative outside
+// column) -- a row whose outer range reaches into the subordinate
+// range being moved is a namespace reading subordinate ids out of that range RIGHT NOW, and moving the range
+// under it reassigns what its uids mean. Whether a given process's rows mean anything at all is decided
+// BEFORE this row is read, by the namespace identity fold below: a process in the initial user namespace has
+// no parent to be relative to, and reading its identity row as an overlap is what refused a real move on
+// srv3. The inner column is not read because the question is not which inner id maps where -- any row
+// drawing from the range is enough to refuse.
 type GpuContainerProvisionMapRow
   = GpuContainerProvisionMapRowClear
   | GpuContainerProvisionMapRowMapped
@@ -1889,13 +1979,13 @@ fn gpu_container_provision_map_row(row: String, first: Int, count: Int) -> GpuCo
       fold(split(s: piece, delimiter: "\t"), init: acc, f: (acc2, word) =>
         if trim(s: word) == "" { acc2 } else { append(acc2, trim(s: word)) })
   )
-  if length(words) != 3 {
+  if length(words) != user_namespace_map_row_column_count {
     GpuContainerProvisionMapRowUnreadable { raw: row }
   } else {
-    match words.skip(n: 1).first() {
+    match words.skip(n: user_namespace_map_outside_column).first() {
       Absent => GpuContainerProvisionMapRowUnreadable { raw: row }
       Present { value: outer_s } =>
-        match words.skip(n: 2).first() {
+        match words.skip(n: user_namespace_map_length_column).first() {
           Absent => GpuContainerProvisionMapRowUnreadable { raw: row }
           Present { value: length_s } =>
             match parse_int(s: outer_s) {
@@ -1918,69 +2008,298 @@ fn gpu_container_provision_map_row(row: String, first: Int, count: Int) -> GpuCo
   }
 }
 
+// WHICH USER NAMESPACE A PROCESS IS IN, RELATIVE TO THE HOST'S OWN -- and what that makes its map rows mean.
+// This is decided by NAMESPACE IDENTITY, never by the shape of a row: /proc/<pid>/ns/user and
+// /proc/1/ns/user name the namespaces they belong to, and equal targets are the same namespace
+// (extdeps.linux.user_namespaces: the namespace-identity link rule, namespaces(7)). A process
+// whose target equals the reference is in the INITIAL user namespace -- the one with no parent, whose outside
+// column is its own identity across the whole id space, and which therefore maps NOTHING from any account's
+// subordinate range.
+//
+// THE RUN THIS DECIDER EXISTS FOR. Fleet-converge run 40843061056 on srv3 refused the subordinate move
+// because ubuntu pid 4116 (its systemd --user, running in the host's own namespace) had uid_map row `0 0
+// 4294967295`, which the scan read as "a namespace mapped from the range being moved" against 100000:65536.
+// That row is the initial namespace's identity, which EVERY process outside a user namespace shows, so the
+// guard could never pass on a live host: any displacee with any process at all was refused. Pattern-matching
+// the row would have fixed that run and left the meaning wrong -- a child namespace legitimately mapping the
+// whole id space, or an initial-namespace row that happens not to be the full-width one, would both be
+// misread. Namespace identity answers the question instead, and fails closed when the identity cannot be read.
+type GpuContainerProvisionNamespaceScope
+  = GpuContainerProvisionNamespaceInitial { namespace: String }
+  | GpuContainerProvisionNamespaceChild { process_namespace: String, init_namespace: String }
+  | GpuContainerProvisionNamespaceUnreadable { cause: String }
+
+// ONE OF THOSE LINKS, AS THE MACHINE ANSWERED IT. Read with readlink(1), not `stat -L -c %i`: the `%` is
+// outside gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed, so a `-c` format word is
+// refused by the transport that reaches these hosts and never executes there -- the same wall
+// extdeps.tools.stat stat_dereferenced_inode_command records it for. The corpus already reads a namespace
+// link this way, for the pid namespace (gunbc.process_hold_identity own_pid_namespace).
+//
+// A link this model cannot read has a CAUSE and a refusal, not a default: not knowing which namespace a
+// process is in is not evidence that it maps nothing.
+type GpuContainerProvisionNamespaceLink
+  = GpuContainerProvisionNamespaceLinkRead { target: String }
+  | GpuContainerProvisionNamespaceLinkUnreadable { path: String, cause: String }
+
+// WHAT SCOPE A LINK SAYS AGAINST THE REFERENCE. Fail closed on the link: "cannot compare" is not "not
+// mapped", and it is reported rather than resolved in either direction.
+fn gpu_container_provision_namespace_scope(
+  link: GpuContainerProvisionNamespaceLink,
+  init_namespace: String,
+) -> GpuContainerProvisionNamespaceScope {
+  match link {
+    GpuContainerProvisionNamespaceLinkUnreadable { path: path, cause: why } =>
+      GpuContainerProvisionNamespaceUnreadable { cause: join([path, ": ", why], "") }
+    GpuContainerProvisionNamespaceLinkRead { target: target } =>
+      if target == init_namespace {
+        GpuContainerProvisionNamespaceInitial { namespace: target }
+      } else {
+        GpuContainerProvisionNamespaceChild {
+          process_namespace: target,
+          init_namespace: init_namespace,
+        }
+      }
+  }
+}
+
+// ONE PID AND THE NAMESPACE THE BATCH SAID IT WAS IN.
+type GpuContainerProvisionProcessNamespace {
+  pid: Int
+  target: String
+}
+
+// WHAT ONE readlink -v (1) OVER EVERY PID ANSWERED. readlink takes one path per operand and prints one line
+// per operand it could read, IN OPERAND ORDER. With -v it ALSO names each operand it could not read on
+// stderr as `readlink: <path>: <strerror>`, and the exit status is 1 (measured on coreutils 9.7; without -v
+// a failed operand is silent and its line is simply missing, which would make a missing line impossible to
+// attribute). So every pid is accounted for exactly one way:
+//
+//   Aligned     the pids named on stderr as `No such file or directory` are GONE -- a vanished process's
+//               namespaces went with it -- and the stdout lines pair, in order, with the remaining pids.
+//               The line count must equal the remaining pid count, and the exit status must be 0 exactly
+//               when nothing was named on stderr. `gone` is how many pids vanished, for the record.
+//   Unreadable  anything else: a stderr line that is not a No-such-file for a pid asked (a permission
+//               denial, an LSM or hidepid refusal, a form this model does not describe), a count that does
+//               not match, or a contradictory exit status. A pid whose link could not be read for a reason
+//               other than its disappearance is NOT evidence that it maps nothing, so the scan refuses.
+type GpuContainerProvisionNamespaceBatch
+  = GpuContainerProvisionNamespaceBatchAligned {
+      reference: String
+      namespaces: List<GpuContainerProvisionProcessNamespace>
+      gone: Int
+    }
+  | GpuContainerProvisionNamespaceBatchUnreadable { cause: String }
+
+// THE PAIRING, index by index, of pids to the lines readlink printed for them. Only reached when the exit
+// status is 0 and the counts match exactly, which is what makes the pairing a reading of operand order
+// rather than a guess about it. One linear zip: no accumulator is copied per step.
+fn gpu_container_provision_pair_pid_namespaces(
+  pids: List<Int>,
+  targets: List<String>,
+) -> List<GpuContainerProvisionProcessNamespace> {
+  zip_map(a: pids, b: targets, f: fn(pid, target) { GpuContainerProvisionProcessNamespace { pid: pid, target: target } })
+}
+
+// A PID WITH WHETHER STDERR NAMED IT GONE, asked once per pid so the partition below does not repeat the scan.
+type GpuContainerProvisionPidVanished {
+  pid: Int
+  gone: Bool
+}
+
+// WHETHER STDERR NAMED THIS PID'S LINK AS GONE.
+fn gpu_container_provision_pid_named_gone(pid: Int, stderr_lines: List<String>) -> Bool {
+  stderr_lines.any(line => trim(s: line) == join(["readlink: ", user_namespace_link_path(pid: pid), ": No such file or directory"], ""))
+}
+
+// THE REPORT, AS A READING OF THE TOOL'S OUTPUT -- which pids were asked, what came back on stdout and stderr,
+// and what exit status came with it. Split out from the leg so the shape of the answer is testable against
+// literal reports, including the ones where a pid vanished mid-scan and the ones where a live pid's link
+// could not be read.
+fn gpu_container_provision_namespace_batch_reading(
+  reference: String,
+  pids: List<Int>,
+  exit_code: Int,
+  stdout: String,
+  stderr: String,
+) -> GpuContainerProvisionNamespaceBatch {
+  let lines = filter(split(s: stdout, delimiter: "\n"), line => trim(s: line) != "")
+  let stderr_lines = filter(split(s: stderr, delimiter: "\n"), line => trim(s: line) != "")
+  let asked = map(pids, pid => GpuContainerProvisionPidVanished { pid: pid, gone: gpu_container_provision_pid_named_gone(pid: pid, stderr_lines: stderr_lines) })
+  let gone = map(filter(asked, a => a.gone), a => a.pid)
+  let remaining = map(filter(asked, a => !a.gone), a => a.pid)
+  let expected_exit = if length(stderr_lines) == 0 { 0 } else { 1 }
+  if length(stderr_lines) != length(gone) {
+    GpuContainerProvisionNamespaceBatchUnreadable {
+      cause: join(["readlink reported ", to_string(length(stderr_lines) - length(gone)), " failure(s) that are not a vanished pid: ", trim(s: stderr)], "")
+    }
+  } else if exit_code != expected_exit {
+    GpuContainerProvisionNamespaceBatchUnreadable {
+      cause: join(["readlink exited ", to_string(exit_code), " with ", to_string(length(stderr_lines)), " failure line(s) on stderr"], "")
+    }
+  } else if length(lines) != length(remaining) {
+    GpuContainerProvisionNamespaceBatchUnreadable {
+      cause: join(["readlink answered ", to_string(length(lines)), " namespace lines for ", to_string(length(remaining)), " pids still present; its contract is one line per operand read"], "")
+    }
+  } else {
+    GpuContainerProvisionNamespaceBatchAligned {
+      reference: reference,
+      namespaces: gpu_container_provision_pair_pid_namespaces(pids: remaining, targets: map(lines, line => trim(s: line))),
+      gone: length(gone),
+    }
+  }
+}
+
+// ONE NAMESPACE LINK, asked on its own -- used for the reference alone, where any failure ends the scan.
+fn gpu_container_provision_namespace_link_read(
+  path: String,
+  transport: HostEffectTransport,
+) -> GpuContainerProvisionNamespaceLink {
+  match run_argv_over_host_effect_transport(
+    command: sudo_elevate_command(command: gpu_container_provision_link_read_argv(path: path)),
+    transport: transport) {
+    RunArgvTransportRefused { reason: r } =>
+      GpuContainerProvisionNamespaceLinkUnreadable { path: path, cause: r as String }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code != 0 {
+        GpuContainerProvisionNamespaceLinkUnreadable {
+          path: path,
+          cause: join(["exit ", to_string(o.exit_code), " ", trim(s: o.stderr)], ""),
+        }
+      } else if trim(s: o.stdout) == "" {
+        GpuContainerProvisionNamespaceLinkUnreadable {
+          path: path,
+          cause: "readlink answered an empty target for a path it exited 0 on",
+        }
+      } else {
+        GpuContainerProvisionNamespaceLinkRead { target: trim(s: o.stdout) }
+      }
+  }
+}
+
+fn gpu_container_provision_link_read_argv(path: String) -> List<String> {
+  argv_words(command: readlink_command(path: path))
+}
+
+fn gpu_container_provision_namespace_batch_argv(paths: List<String>) -> List<String> {
+  argv_words(command: readlink_links_command(paths: paths))
+}
+
+// THE BATCH, OVER THE WIRE: every pid's link in ONE elevated invocation. The reference is NOT an operand --
+// it was read on its own, because if it were the first line of this very report then a failure to read it
+// would silently promote some pid's namespace to being the reference, and "everything equals the reference"
+// would then certify a host whose whole account sits inside one child namespace.
+fn gpu_container_provision_namespace_batch(
+  reference: String,
+  pids: List<Int>,
+  transport: HostEffectTransport,
+) -> GpuContainerProvisionNamespaceBatch {
+  let paths = map(pids, pid => user_namespace_link_path(pid: pid))
+  match run_argv_over_host_effect_transport(
+    command: sudo_elevate_command(command: gpu_container_provision_namespace_batch_argv(paths: paths)),
+    transport: transport) {
+    RunArgvTransportRefused { reason: r } =>
+      GpuContainerProvisionNamespaceBatchUnreadable { cause: r as String }
+    RunArgvTransportObserved { observed: o } =>
+      gpu_container_provision_namespace_batch_reading(
+        reference: reference, pids: pids, exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
+  }
+}
+
+// WHAT THE MAP SAYS ABOUT ONE RANGE SET, for one process. The rows are compared ONLY for a process the
+// namespace evidence puts in a CHILD user namespace, because read from the initial namespace its outside column
+// is host-relative and only there can it reach an id of the range being moved (extdeps.linux.user_namespaces,
+// the reader-relative outside column). A process in the host's own namespace is certified clear
+// WITHOUT its rows being consulted -- not because its rows look harmless, but because a namespace with no
+// parent maps nothing FROM anywhere.
+//
+// The fold stops at the first refusal, so a refusal carries the first row that refutes the claim, and an
+// unreadable row is neither skipped nor reinterpreted -- it names the raw line.
 type GpuContainerProvisionMapScan
   = GpuContainerProvisionMapClear
   | GpuContainerProvisionMapMappedFromRange { row: String }
   | GpuContainerProvisionMapUnreadableRow { row: String }
+  | GpuContainerProvisionMapNamespaceUnreadable { cause: String }
 
-fn gpu_container_provision_map_scan(text: String, first: Int, count: Int) -> GpuContainerProvisionMapScan {
-  fold(
-    filter(split(s: text, delimiter: "\n"), l => trim(s: l) != ""),
-    init: GpuContainerProvisionMapClear,
-    f: (acc, line) =>
-      match acc {
-        GpuContainerProvisionMapClear =>
-          match gpu_container_provision_map_row(row: trim(s: line), first: first, count: count) {
-            GpuContainerProvisionMapRowClear => GpuContainerProvisionMapClear
-            GpuContainerProvisionMapRowMapped => GpuContainerProvisionMapMappedFromRange { row: trim(s: line) }
-            GpuContainerProvisionMapRowUnreadable { raw: r } => GpuContainerProvisionMapUnreadableRow { row: r }
+fn gpu_container_provision_map_scan(
+  scope: GpuContainerProvisionNamespaceScope,
+  text: String,
+  first: Int,
+  count: Int,
+) -> GpuContainerProvisionMapScan {
+  match scope {
+    GpuContainerProvisionNamespaceInitial { namespace: _ } => GpuContainerProvisionMapClear
+    GpuContainerProvisionNamespaceUnreadable { cause: why } =>
+      GpuContainerProvisionMapNamespaceUnreadable { cause: why }
+    GpuContainerProvisionNamespaceChild { process_namespace: _, init_namespace: _ } =>
+      fold(
+        filter(split(s: text, delimiter: "\n"), line => trim(s: line) != ""),
+        init: GpuContainerProvisionMapClear,
+        f: (acc, line) =>
+          match acc {
+            GpuContainerProvisionMapClear =>
+              match gpu_container_provision_map_row(row: trim(s: line), first: first, count: count) {
+                GpuContainerProvisionMapRowClear => GpuContainerProvisionMapClear
+                GpuContainerProvisionMapRowMapped => GpuContainerProvisionMapMappedFromRange { row: trim(s: line) }
+                GpuContainerProvisionMapRowUnreadable { raw: r } => GpuContainerProvisionMapUnreadableRow { row: r }
+              }
+            GpuContainerProvisionMapMappedFromRange { row: _ } => acc
+            GpuContainerProvisionMapUnreadableRow { row: _ } => acc
+            GpuContainerProvisionMapNamespaceUnreadable { cause: _ } => acc
           }
-        GpuContainerProvisionMapMappedFromRange { row: _ } => acc
-        GpuContainerProvisionMapUnreadableRow { row: _ } => acc
-      }
-  )
+      )
+  }
 }
 
-// THE NAMESPACE PRECHECK, for one map of one process against the ranges being moved from one account.
-// Returns the refusal, or none when the process is certified clear.
+// ONE PROCESS'S MAP, READ ONLY IF ITS NAMESPACE MAKES THE ROWS WORTH READING, and asked against the ranges
+// being moved from the account. Returns the refusal, or none when the process is certified clear.
 //
-// A process that disappears between the scan and this read is not a failure: its namespaces went with it,
-// and there is no mapping left to move. That is why "No such file or directory" is the ONLY non-zero exit
-// read as clear -- an unreadable map for any other reason refuses.
-fn gpu_container_provision_one_process_map(
+// The map is read for a child namespace alone (see gpu_container_provision_map_scan), so a host whose account
+// has never created a user namespace pays no map leg for any of its processes.
+fn gpu_container_provision_pid_map(
   account: NonEmptyStr,
   pid: Int,
   map_name: String,
   ranges: List<SubordinateRange>,
+  scope: GpuContainerProvisionNamespaceScope,
   transport: HostEffectTransport,
 ) -> String? {
-  let path = join(["/proc/", to_string(pid), "/", map_name], "")
-  match run_argv_over_host_effect_transport(
-    command: sudo_elevate_command(command: gpu_container_provision_read_argv(path: path)),
-    transport: transport) {
-    RunArgvTransportRefused { reason: r } =>
-      Present { value: join([account as String, " pid ", to_string(pid), ": ", r as String], "") }
-    RunArgvTransportObserved { observed: o } =>
-      if o.exit_code != 0 && string_contains(s: o.stderr, pattern: "No such file") {
-        none
-      } else if o.exit_code != 0 {
-        Present { value: join([account as String, " pid ", to_string(pid), ": cannot read ", path, " (exit ", to_string(o.exit_code), " ", trim(s: o.stderr), ")"], "") }
-      } else {
-        fold(ranges, init: none, f: (acc, r) =>
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              match gpu_container_provision_map_scan(text: o.stdout, first: r.first, count: r.count) {
-                GpuContainerProvisionMapClear => none
-                GpuContainerProvisionMapMappedFromRange { row: row } =>
-                  Present { value: join(
-                    [account as String, " pid ", to_string(pid), " has a namespace mapped from the range being moved (",
-                     map_name, " row ", row, " of ", path, " overlaps ", to_string(r.first), ":", to_string(r.count), ")"],
-                    "") }
-                GpuContainerProvisionMapUnreadableRow { row: row } =>
-                  Present { value: join([account as String, " pid ", to_string(pid), ": unreadable ", map_name, " row ", row, " in ", path], "") }
-              }
-          })
+  match scope {
+    GpuContainerProvisionNamespaceInitial { namespace: _ } => none
+    GpuContainerProvisionNamespaceUnreadable { cause: why } =>
+      Present { value: join([account as String, " pid ", to_string(pid), ": cannot tell which user namespace it is in (", why, ")"], "") }
+    GpuContainerProvisionNamespaceChild { process_namespace: pns, init_namespace: _ } =>
+      match run_argv_over_host_effect_transport(
+        command: sudo_elevate_command(command: gpu_container_provision_read_argv(
+          path: join(["/proc/", to_string(pid), "/", map_name], ""))),
+        transport: transport) {
+        RunArgvTransportRefused { reason: r } =>
+          Present { value: join([account as String, " pid ", to_string(pid), ": ", r as String], "") }
+        RunArgvTransportObserved { observed: o } =>
+          if o.exit_code != 0 && string_contains(s: o.stderr, pattern: "No such file") {
+            none
+          } else if o.exit_code != 0 {
+            Present { value: join([account as String, " pid ", to_string(pid), ": cannot read ", map_name, " (exit ", to_string(o.exit_code), " ", trim(s: o.stderr), ")"], "") }
+          } else {
+            fold(ranges, init: none, f: (acc, r) =>
+              match acc {
+                Present { value: _ } => acc
+                Absent =>
+                  match gpu_container_provision_map_scan(
+                    scope: scope, text: o.stdout, first: r.first, count: r.count) {
+                    GpuContainerProvisionMapClear => none
+                    GpuContainerProvisionMapMappedFromRange { row: row } =>
+                      Present { value: join(
+                        [account as String, " pid ", to_string(pid), " has a namespace mapped from the range being moved (",
+                         map_name, " row ", row, " of user namespace ", pns, " overlaps ",
+                         to_string(r.first), ":", to_string(r.count), ")"],
+                        "") }
+                    GpuContainerProvisionMapUnreadableRow { row: row } =>
+                      Present { value: join([account as String, " pid ", to_string(pid), ": unreadable ", map_name, " row ", row], "") }
+                    GpuContainerProvisionMapNamespaceUnreadable { cause: why } =>
+                      Present { value: join([account as String, " pid ", to_string(pid), ": cannot tell which user namespace it is in (", why, ")"], "") }
+                  }
+              })
+          }
       }
   }
 }
@@ -2026,12 +2345,35 @@ fn gpu_container_provision_displaced_maps(
                      to_string(gpu_container_provision_namespace_scan_pid_limit), " and refuses to certify fewer"],
                     "") }
                 } else {
-                  fold(pids, init: none, f: (acc, pid) =>
-                    match acc {
-                      Present { value: _ } => acc
-                      Absent => gpu_container_provision_one_process_map(
-                        account: account, pid: pid, map_name: map_name, ranges: ranges, transport: transport)
-                    })
+                  // THE REFERENCE BEFORE ANYTHING ELSE. Without the host's own namespace link no other
+                  // namespace can be told apart from it, and "cannot compare" is not "not mapped" -- so a
+                  // reference this model cannot read ends the scan, it does not degrade it.
+                  match gpu_container_provision_namespace_link_read(
+                    path: init_user_namespace_link_path, transport: transport) {
+                    GpuContainerProvisionNamespaceLinkUnreadable { path: p, cause: why } =>
+                      Present { value: join(
+                        ["cannot read the initial user namespace (", p, ": ", why, "); no process's namespace can be told apart from it"],
+                        "") }
+                    GpuContainerProvisionNamespaceLinkRead { target: reference } =>
+                      match gpu_container_provision_namespace_batch(
+                        reference: reference, pids: pids, transport: transport) {
+                        GpuContainerProvisionNamespaceBatchUnreadable { cause: why } =>
+                          Present { value: join(["cannot scan the user namespaces of ", account as String, ": ", why], "") }
+                        // Every pid is accounted for: vanished pids are named on stderr and left out, and the
+                        // rest pair with their namespace. Only a pid in a CHILD namespace pays a map leg.
+                        GpuContainerProvisionNamespaceBatchAligned { reference: _, namespaces: namespaces, gone: _ } =>
+                          fold(namespaces, init: none, f: (acc, at) =>
+                            match acc {
+                              Present { value: _ } => acc
+                              Absent => gpu_container_provision_pid_map(
+                                account: account, pid: at.pid, map_name: map_name, ranges: ranges,
+                                scope: gpu_container_provision_namespace_scope(
+                                  link: GpuContainerProvisionNamespaceLinkRead { target: at.target },
+                                  init_namespace: reference),
+                                transport: transport)
+                            })
+                      }
+                  }
                 }
             }
         }
@@ -2210,12 +2552,12 @@ fn gpu_container_provision_subordinate_reconcile(
 // no entries means, and a half-written file is not a file with no entries.
 fn gpu_container_provision_file_reading(path: String, transport: HostEffectTransport) -> SubordinateFileReading {
   match run_argv_over_host_effect_transport(
-    command: sudo_elevate_command(command: gpu_container_provision_read_argv(path: path)),
+    command: sudo_elevate_command(command: argv_words(command: od_hex_file_command(path: path))),
     transport: transport) {
     RunArgvTransportRefused { reason: r } =>
       SubordinateFileUnreadable { path: path, cause: r as String }
     RunArgvTransportObserved { observed: o } =>
-      parse_subordinate_file(path: path, exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
+      parse_subordinate_file_exact(path: path, exit_code: o.exit_code, od_stdout: o.stdout, stderr: o.stderr)
   }
 }
 
@@ -2616,7 +2958,7 @@ fn gpu_container_provision_plan(
           ProvisionLegs { legs: [gpu_container_provision_leg(step: "user daemon-reload", words: gpu_container_provision_reload_argv(uid: uid_value))] },
           ProvisionLegs { legs: [gpu_container_provision_leg(step: "unit enable", words: gpu_container_provision_enable_argv(uid: uid_value))] },
           ProvisionVerify { step: "unit enabled verified", check: VerifyUnitEnabled { uid: uid_value } },
-          ProvisionLegs { legs: [gpu_container_provision_leg(step: "unit start", words: gpu_container_provision_start_argv(uid: uid_value))] },
+          ProvisionLegs { legs: [gpu_container_provision_start_leg(uid: uid_value)] },
           ProvisionVerify { step: "unit active verified", check: VerifyUnitActive { uid: uid_value } },
         ],
       ),

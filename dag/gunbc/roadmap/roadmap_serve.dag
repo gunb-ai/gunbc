@@ -99,7 +99,7 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
-  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
+  ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
 }
 import gunbc.auth.approval_broker_cutover { roadmap_still_mounts_approval_routes }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess }
@@ -812,8 +812,6 @@ fn serve_publish_handler_response_for_instance(
 fn roadmap_mounts_during_cutover(h: ApprovalBrokerHandler) -> Bool {
   match h {
     ApprovalSiteFaviconHandler => false
-    ApprovalConfirmPageHandler => true
-    ApprovalDecideHandler => true
     ApprovalSubmitHandler => true
     ApprovalStatusHandler => true
     ApprovalStoreReceiptHandler => false

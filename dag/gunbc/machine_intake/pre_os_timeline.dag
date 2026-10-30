@@ -3,6 +3,7 @@ module gunbc.machine_intake.pre_os_timeline
 import gunbc.host.mtcollins_memory_change { mtcollins_dram_cycle_start }
 
 import gunbc.machine_intake.pre_os_refusal { PreOsSourceChanged, PreOsOccurrenceNotAdjacent, PreOsMachineDisagrees, PreOsOccurrenceConflict, PreOsRefusal, PreOsContinuityRefusal, PreOsPositionRefusal, pre_os_text_refusal, pre_os_refusal_at, pre_os_assessment_refusal }
+import extdeps.network.mac { Eui48Address }
 import std.types { Bool, List, Map, NonEmptyStr, String }
 
 import gunbc.guarantee_rung { GuaranteeRung }
@@ -96,7 +97,7 @@ fn pre_os_composable_payload(observation: PreOsReplayObservation) -> Observation
   }
 }
 
-fn pre_os_console_span(previous: PreOsConsoleSpan?, current: PreOsReplayObservation, host_mac: NonEmptyStr) -> PreOsConsoleSpan {
+fn pre_os_console_span(previous: PreOsConsoleSpan?, current: PreOsReplayObservation, host_mac: Eui48Address) -> PreOsConsoleSpan {
   let text = match current.payload { ObservationEstablished { observed: payload } => payload ObservationRefused { cause: _ } => "" }
   let composition: ObservationAttempt<String, PreOsRefusal> = match pre_os_composable_payload(observation: current) {
     ObservationRefused { cause } => ObservationRefused { cause: pre_os_refusal_at(cause: cause, location: "current chunk") }
@@ -135,7 +136,7 @@ fn pre_os_console_span(previous: PreOsConsoleSpan?, current: PreOsReplayObservat
 }
 
 // A span that starts (or restarts) at this chunk scans from the chunk's own first byte.
-fn pre_os_fresh_span(current: PreOsReplayObservation, text: String, composition: ObservationAttempt<String, PreOsRefusal>, host_mac: NonEmptyStr) -> PreOsConsoleSpan {
+fn pre_os_fresh_span(current: PreOsReplayObservation, text: String, composition: ObservationAttempt<String, PreOsRefusal>, host_mac: Eui48Address) -> PreOsConsoleSpan {
   let empty = PreOsCycleScan { closed: [], tail: "", tail_offset: current.envelope.chunk.range.first, open_anchor: none }
   PreOsConsoleSpan { chunks: [current], payload: text, composition: composition,
     scan: pre_os_scan_extend(scan: empty, chunks: [current], text: text, host_mac: host_mac) }
@@ -165,7 +166,7 @@ fn pre_os_cycle_anchor(chunks: List<PreOsReplayObservation>, at: StreamPosition)
   }
 }
 
-fn pre_os_cycle_reading(anchor: ObservationAttempt<PreOsCapturedCycleAnchor, PreOsRefusal>, text: String, host_mac: NonEmptyStr) -> PreOsCapturedCycleReading {
+fn pre_os_cycle_reading(anchor: ObservationAttempt<PreOsCapturedCycleAnchor, PreOsRefusal>, text: String, host_mac: Eui48Address) -> PreOsCapturedCycleReading {
   PreOsCapturedCycleReading {
     firmware_attempt: ObservationRefused { cause: "no evidence joins this captured cycle to a firmware boot identity" },
     kernel_boot: ObservationRefused { cause: "host milestone does not supply a kernel boot UUID" },
@@ -179,7 +180,7 @@ fn pre_os_cycle_reading(anchor: ObservationAttempt<PreOsCapturedCycleAnchor, Pre
 // and the scan's next tail begins after that text.
 type PreOsScanStep { closed: List<PreOsCapturedCycleReading>, offset: StreamPosition, open_anchor: ObservationAttempt<PreOsCapturedCycleAnchor, PreOsRefusal>?, open_text: String, open_offset: StreamPosition }
 
-fn pre_os_scan_extend(scan: PreOsCycleScan, chunks: List<PreOsReplayObservation>, text: String, host_mac: NonEmptyStr) -> PreOsCycleScan {
+fn pre_os_scan_extend(scan: PreOsCycleScan, chunks: List<PreOsReplayObservation>, text: String, host_mac: Eui48Address) -> PreOsCycleScan {
   let marker = mtcollins_dram_cycle_start as String
   let combined = concat(scan.tail, text)
   let parts = split(s: combined, delimiter: marker)
@@ -208,7 +209,7 @@ fn pre_os_scan_extend(scan: PreOsCycleScan, chunks: List<PreOsReplayObservation>
 }
 
 // The cycles a span holds: every closed cycle in order, then the open one read over its text so far.
-fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr) -> List<PreOsCapturedCycleReading> {
+fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: Eui48Address) -> List<PreOsCapturedCycleReading> {
   let closed = reverse(span.scan.closed)
   match span.scan.open_anchor {
     Absent => closed
@@ -237,7 +238,7 @@ type PreOsTimelineFold { seen: Map<PreOsEnvelopeKey, Bool>, rows: List<PreOsTime
 // No clock is read. A SEL observation remains unassociated with console cycles,
 // even if its receive timestamp is very close. Input order is replay order, not
 // a claimed total chronology across source clock domains.
-fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayObservation>, host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
+fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayObservation>, host_mac: Eui48Address, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
   let envelopes = map(observations, o => o.envelope)
   let occurrences = pre_os_occurrence_index(envelopes: envelopes)
   let result = fold(observations, init: PreOsTimelineFold { seen: empty_map(), rows: [], cursors: empty_map(), console_spans: empty_map() }, f: (acc, o) => {
@@ -374,7 +375,7 @@ fn pre_os_timeline_view(rows: List<PreOsTimelineRow>) -> String {
 // artifacts, assesses them, and returns the derived view without actuation.
 type PreOsReplayRequest { envelope: ObservationEnvelope, format: PreOsSourceFormat }
 
-fn replay_pre_os_machine(machine: NonEmptyStr, requests: List<PreOsReplayRequest>, host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
+fn replay_pre_os_machine(machine: NonEmptyStr, requests: List<PreOsReplayRequest>, host_mac: Eui48Address, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
   let observations = map(requests, request => pre_os_read_observation(envelope: request.envelope, format: request.format))
   pre_os_machine_timeline(machine: machine, observations: observations, host_mac: host_mac, inventory_question: inventory_question)
 }
