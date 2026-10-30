@@ -1,0 +1,59 @@
+module gunbc.live_deploy.capacity_runner_roster
+
+import std.types { String, List, NonEmptyStr, Bool }
+import std.error_primitives { Result, Ok, Err }
+import product.host_identity { HostIdentity }
+import extdeps.systemd.manager { SystemManager }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.runner.runner_slot_allocation {
+  CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
+  committed_slot_identities, identity_is_fabric_execution_member, runner_width_unresolved_cause_text,
+}
+import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.runner.runner_slot_population_census { ObservedRunnerUnit, unit_is_owned_by_host, census_unit_name_is_slot }
+
+// Stated divergence: nested builtin resolution fails on the production module
+// at 56b78750d30. See nested_builtin_loses_callee_identity; this preserves the
+// roster law while the isolated import probes locate the resolver defect.
+fn capacity_runner_name_present(units: List<NonEmptyStr>, name: String) -> Bool {
+  fold(units, init: false, f: (found, unit) => found || (unit as String) == name)
+}
+
+fn capacity_runner_managed_units(units: List<NonEmptyStr>) -> List<CapacityManagedUnit> {
+  map(units, unit => CapacityManagedUnit { manager: SystemManager, unit: unit })
+}
+
+// Desired membership alone misses an old-generation listener left above today's
+// committed width. Join the source roster to the observed host-owned population;
+// an unreadable census is never an empty host. Fabric slots are not CI listeners.
+fn capacity_runner_units_from_roster(host: HostIdentity, committed: CommittedSlotPopulation, observed: Result<List<ObservedRunnerUnit>, String>) -> Result<List<CapacityManagedUnit>, String> {
+  match committed {
+    CommittedPopulationWidthUnresolved { host: _, cause: cause } => Err { value: runner_width_unresolved_cause_text(cause: cause) }
+    CommittedPopulationDerived { members: members } => match observed {
+      Err { value: why } => Err { value: why }
+      Ok { value: rows } => {
+        if fold(members, init: false, f: (foreign, member) => foreign || member.host != host) {
+          return Err { value: "runner roster belongs to a different host" }
+        }
+        let desired = map(filter(members, member => !identity_is_fabric_execution_member(identity: member)), member => runner_slot_unit_name(slot: member))
+        let names = fold(rows, init: Ok { value: desired }, f: (prior, row) => match prior {
+          Err { value: why } => Err { value: why }
+          Ok { value: units } => {
+            if !census_unit_name_is_slot(name: row.unit) || !unit_is_owned_by_host(host: host, unit: row.unit) {
+              Err { value: concat("runner drain census contains a foreign or malformed unit: ", row.unit) }
+            } else if capacity_runner_name_present(units: units, name: row.unit) { Ok { value: units } }
+            else { Ok { value: units + [row.unit as NonEmptyStr] } }
+          }
+        })
+        match names {
+          Err { value: why } => Err { value: why }
+          Ok { value: units } => Ok { value: capacity_runner_managed_units(units: units) }
+        }
+      }
+    }
+  }
+}
+
+fn capacity_runner_units(host: HostIdentity, observed: Result<List<ObservedRunnerUnit>, String>) -> Result<List<CapacityManagedUnit>, String> {
+  capacity_runner_units_from_roster(host: host, committed: committed_slot_identities(host: host), observed: observed)
+}

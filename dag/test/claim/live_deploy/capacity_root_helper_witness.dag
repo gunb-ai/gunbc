@@ -1,0 +1,178 @@
+module test.claim.live_deploy.capacity_root_helper_witness
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.optional { Present, Absent }
+import std.algebra { skip }
+import std.measure { second }
+import extdeps.shell
+import gunbc.live_deploy.capacity_helper_invocation { capacity_helper_invocation }
+import gunbc.live_deploy.capacity_helper_snapshot { capacity_helper_function }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
+import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
+import gunbc.typed_remote_file_write { FleetHostLock, RemoteFileAsSessionPrincipal, typed_remote_file_locked_step_argv }
+import std.decl_ref { declaration_ref_eq }
+import gunbc.auth.authorization_pattern_selection { PatternSelectionRefused, PatternSelected, ApprovedConvergenceGrant }
+import gunbc.auth.privileged_effect_census {
+  capacity_cutover_root_helper_row, srv1_root_mutation_approval_root, privileged_effect_census, site_verdict,
+  capacity_cutover_approval_root, capacity_cutover_root_helper_site,
+}
+import gunbc.live_deploy.capacity_root_helper { capacity_root_helper_selection }
+import std.content_hash { Sha256Digest, serialize_content_hash }
+import std.error_primitives { Result, Ok, Err }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_request_client { PollApproved }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
+import gunbc.fleet.srv1_root_mutation_approval_run {
+  Srv1CutoverRequest, Srv1RootMutationSelect, CapacityCutoverJob, CapacityCutoverRequest, ExistingRootMutationJob,
+  ExistingRootMutationRequest, srv1_root_mutation_request_for_kind, srv1_root_mutation_request,
+  srv1_root_mutation_approved_scopes, srv1_cutover_digest_admission,
+}
+
+// The canonical root is consumed, not a copy whose scopes could drift. This red
+// must change only when the broker's actual granted scope population changes.
+test fn the_existing_srv1_root_grant_does_not_authorize_the_new_helper() -> Bool {
+  match capacity_root_helper_selection(root: srv1_root_mutation_approval_root) {
+    PatternSelectionRefused { defects: defects } => count(defects) > 0
+    _ => false
+  }
+}
+
+test fn the_census_executes_the_same_selection_for_the_planned_site() -> Bool {
+  count(filter(privileged_effect_census, row => declaration_ref_eq(a: row.site, b: capacity_cutover_root_helper_row.site))) == 1
+    && (match site_verdict(row: capacity_cutover_root_helper_row).selection {
+      PatternSelectionRefused { defects: defects } => count(defects) > 0
+      _ => false
+    })
+}
+
+data helper_fixture_digest_a: Sha256Digest = Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+data helper_fixture_digest_b: Sha256Digest = Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+
+fn helper_fixture_request(plan: Sha256Digest, helper: Sha256Digest) -> Result<Srv1CutoverRequest, String> {
+  match srv1_root_mutation_request_for_kind(kind: CapacityCutoverJob { plan_digest: plan,
+    helper_digest: helper, internal_scopes: srv1_root_mutation_approved_scopes },
+    escalation_id: "cutover-fixture", execution_revision: "fixture-revision", selects: []) {
+    Ok { value: CapacityCutoverRequest { cutover: cutover } } => Ok { value: cutover }
+    _ => Err { value: "cutover fixture refused" }
+  }
+}
+
+test fn legacy_jobs_keep_the_exact_existing_request_and_scope_list() -> Bool {
+  let prior = srv1_root_mutation_request(job: "microvm_controller_install", escalation_id: "legacy-fixture",
+    execution_revision: "fixture-revision", selects: [])
+  match srv1_root_mutation_request_for_kind(kind: ExistingRootMutationJob { job: "microvm_controller_install" },
+    escalation_id: "legacy-fixture", execution_revision: "fixture-revision", selects: []) {
+    Ok { value: ExistingRootMutationRequest { request: request } } => request == prior
+      && request.scopes == srv1_root_mutation_approved_scopes
+    _ => false
+  }
+}
+
+test fn bound_census_selects_the_existing_convergence_pattern() -> Bool {
+  match helper_fixture_request(plan: helper_fixture_digest_a, helper: helper_fixture_digest_b) {
+    Err { value: _ } => false
+    Ok { value: cutover } => capacity_cutover_approval_root(cutover: cutover).approved_scopes == cutover.request.scopes
+      && (match site_verdict(row: capacity_cutover_root_helper_site(cutover: cutover)).selection {
+        PatternSelected { pattern: ApprovedConvergenceGrant, receipt: _ } => true
+        _ => false
+      })
+  }
+}
+
+test fn observed_plan_and_helper_must_match_the_bound_request() -> Bool {
+  match helper_fixture_request(plan: helper_fixture_digest_a, helper: helper_fixture_digest_b) {
+    Err { value: _ } => false
+    Ok { value: cutover } => srv1_cutover_digest_admission(cutover: cutover,
+      plan_digest: helper_fixture_digest_a, helper_digest: helper_fixture_digest_b) == Ok { value: cutover }
+      && (match srv1_cutover_digest_admission(cutover: cutover,
+        plan_digest: helper_fixture_digest_b, helper_digest: helper_fixture_digest_b) { Err { value: _ } => true _ => false })
+      && (match srv1_cutover_digest_admission(cutover: cutover,
+        plan_digest: helper_fixture_digest_a, helper_digest: helper_fixture_digest_a) { Err { value: _ } => true _ => false })
+  }
+}
+
+fn helper_fixture_substitution_refused(other_plan: Sha256Digest, other_helper: Sha256Digest) -> Bool {
+  match helper_fixture_request(plan: helper_fixture_digest_a, helper: helper_fixture_digest_b) {
+    Err { value: _ } => false
+    Ok { value: approved } => match helper_fixture_request(plan: other_plan, helper: other_helper) {
+      Err { value: _ } => false
+      Ok { value: other } => {
+        let poll = PollApproved { revision: request_revision_of(request: approved.request), decided_by: "fixture-operator",
+          decided_at: "2026-10-26T12:00:00Z", execute_by: "2026-10-26T12:30:00Z" }
+        approved.request.subject != other.request.subject && approved.request.purpose != other.request.purpose
+          && serialize_content_hash(hash: approved.request.intent_hash) != serialize_content_hash(hash: other.request.intent_hash)
+          && (match approval_gate_from_poll(poll: poll, request: approved.request, observed_at: "2026-10-26T12:01:00Z") {
+            GateAdmitted { authorization: _ } => true _ => false
+          })
+          && (match approval_gate_from_poll(poll: poll, request: other.request, observed_at: "2026-10-26T12:01:00Z") {
+            GateRefused { cause: _ } => true _ => false
+          })
+      }
+    }
+  }
+}
+
+test fn an_approval_for_another_plan_is_refused_by_the_real_gate() -> Bool {
+  helper_fixture_substitution_refused(other_plan: helper_fixture_digest_b, other_helper: helper_fixture_digest_b)
+}
+
+test fn an_approval_for_another_helper_is_refused_by_the_real_gate() -> Bool {
+  helper_fixture_substitution_refused(other_plan: helper_fixture_digest_a, other_helper: helper_fixture_digest_a)
+}
+
+test fn a_legacy_job_cannot_add_helper_authority_through_selection_text() -> Bool {
+  match srv1_root_mutation_request_for_kind(kind: ExistingRootMutationJob { job: "microvm_controller_install" },
+    escalation_id: "legacy-fixture", execution_revision: "fixture-revision",
+    selects: [Srv1RootMutationSelect { input: "cutover-helper-scope", value: "execute-bound-plan" }]) {
+    Ok { value: ExistingRootMutationRequest { request: request } } => request.scopes == srv1_root_mutation_approved_scopes
+    _ => false
+  }
+}
+
+test fn caller_selections_cannot_override_a_cutover_digest_binding() -> Bool {
+  match srv1_root_mutation_request_for_kind(kind: CapacityCutoverJob {
+    plan_digest: helper_fixture_digest_a, helper_digest: helper_fixture_digest_b,
+    internal_scopes: srv1_root_mutation_approved_scopes }, escalation_id: "cutover-fixture",
+    execution_revision: "fixture-revision", selects: [Srv1RootMutationSelect {
+      input: "cutover-plan-sha256", value: helper_fixture_digest_b.hex as String }]) {
+    Err { value: _ } => true
+    _ => false
+  }
+}
+
+// The production construction puts the whole fixed helper after one flock. No
+// journal read or leg command is an argv sibling outside that process lifetime.
+test fn the_fleet_lock_wraps_the_whole_fixed_helper_invocation() -> Bool {
+  let digest = Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+  match capacity_helper_invocation(revision: RevisionBoundAtEmission { revision: "1111111111111111111111111111111111111111" },
+    approved_helper: digest, observed_helper: Ok { value: digest }, request_path: "/fixture/request.json",
+    plan_path: "/fixture/plan.json") {
+    Err { value: _ } => false
+    Ok { value: invocation } => take(invocation.words, n: 9) == ["/usr/bin/sudo", "-n", "/usr/bin/flock", "--exclusive", "--wait", "120", "--conflict-exit-code", "75", fleet_generation_lock]
+      && count(filter(invocation.words, word => word == "/usr/bin/flock")) == 1
+      && count(filter(invocation.words, word => word == capacity_helper_function)) == 1
+  }
+}
+
+fn capacity_lock_control_exit(words: List<String>) -> Int {
+  match first(words) {
+    Absent => -1
+    Present { value: program } => shell.Exec.RunArgv(program: program as NonEmptyStr, arguments: skip(words, n: 1)).exit_code
+  }
+}
+
+// A real second flock actor runs INSIDE the first actor's command lifetime.
+// It must conflict there and succeed after the first actor exits. The private
+// fixture path isolates the control from the host's production generation lock.
+test fn a_second_actor_cannot_enter_during_the_locked_program() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  if (!dir.success) { return false }
+  let path = concat(dir.path, "/fleet.lock") as NonEmptyStr
+  let lock = FleetHostLock { lock_path: path, wait: second(count: 0), conflict_exit_code: 75 }
+  let second = typed_remote_file_locked_step_argv(lock: lock, privilege: RemoteFileAsSessionPrincipal, argv: ["/usr/bin/true"])
+  let first = typed_remote_file_locked_step_argv(lock: lock, privilege: RemoteFileAsSessionPrincipal, argv: second)
+  let mid_program = capacity_lock_control_exit(words: first)
+  let after_program = capacity_lock_control_exit(words: second)
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  mid_program == 75 && after_program == 0 && cleanup.success
+}

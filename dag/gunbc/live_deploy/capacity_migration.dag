@@ -1,7 +1,6 @@
 module gunbc.live_deploy.capacity_migration
 
 import std.types { String, List }
-import std.measure { Second }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.optional { Present, Absent }
 import std.error_primitives { Result, Ok, Err }
@@ -10,11 +9,7 @@ import gunbc.compute.capacity_migration {
   CapacityManagedUnit, CapacityMigrationPopulation, CapacityTransientFamily, CapacityMigrationChild,
   CapacityMigrationParentRequirement, CapacityWriterReading, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified,
 }
-import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
-import gunbc.live_deploy.unit_install_roster { deployment_desired_unit_installs }
-import gunbc.live_deploy.spec { DeploymentSpec }
-import gunbc.live_deploy.member_identity { ReleaseTarget }
-import gunbc.host.host_axis_caps { CapConvergeDecision }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument, CapturedUnitDocument }
 
 // Classification belongs to the source owner. Confirmed non-writers are excluded;
 // confirmed writers AND unclassified services are drained. The reading remains visible
@@ -32,6 +27,8 @@ fn deployment_capacity_writer_parent(writer: DeploymentCapacityWriter) -> Capaci
     source: writer.reading.source,
     standing: writer.reading.standing,
     parents: match writer.install.file {
+      CapturedUnitDocument { capture: _ } => Err { value: "captured unit document has no parsed writer placement" }
+      ModeledUnitDocument { file: file } => match file {
       ServiceUnitFile { unit: _, service: service, install: _ } => {
         let slices = flat_map(service, setting => match setting {
           ServiceSlice { name: name } => [name]
@@ -41,12 +38,16 @@ fn deployment_capacity_writer_parent(writer: DeploymentCapacityWriter) -> Capaci
         else { Ok { value: map(slices, name => CapacityManagedUnit { manager: writer.install.manager, unit: name }) } }
       }
       _ => Err { value: "ledger writer classification names a non-service unit" }
+      }
     },
   }
 }
 
 fn deployment_capacity_writer_binding(row: DeploymentUnitInstall, classify: fn(DeploymentUnitInstall) -> CapacityWriterReading) -> DeploymentCapacityWriter? {
   match row.file {
+    CapturedUnitDocument { capture: _ } => Present { value: DeploymentCapacityWriter {
+      reading: CapacityWriterReading { source: classify(row).source, standing: CapacityUnclassified { detail: "captured unit document has no covered negative writer reading" } }, install: row } }
+    ModeledUnitDocument { file: file } => match file {
     ServiceUnitFile { unit: _, service: _, install: _ } => {
       let reading = classify(row)
       match reading.standing {
@@ -56,6 +57,7 @@ fn deployment_capacity_writer_binding(row: DeploymentUnitInstall, classify: fn(D
       }
     }
     _ => none
+    }
   }
 }
 
@@ -80,17 +82,4 @@ fn deployment_capacity_population_from_installs(
         transients: transients, children: children,
       } }
     }
-}
-
-fn deployment_capacity_migration_population(
-  spec: DeploymentSpec, target: ReleaseTarget, authorization: CapConvergeDecision,
-  source_root: String, oidc_now: Second?,
-  transients: List<CapacityTransientFamily>, children: List<CapacityMigrationChild>,
-  classify: fn(DeploymentUnitInstall) -> CapacityWriterReading,
-) -> Result<CapacityMigrationPopulation, String> {
-  match deployment_desired_unit_installs(spec: spec, target: target, authorization: authorization,
-    source_root: source_root, oidc_now: oidc_now) {
-    Err { value: reason } => Err { value: reason }
-    Ok { value: installed } => deployment_capacity_population_from_installs(installed: installed, transients: transients, children: children, classify: classify)
-  }
 }

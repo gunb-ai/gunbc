@@ -45,6 +45,8 @@ import gunbc.runner.runner_unit {
 }
 import std.measure { hardware_thread_count }
 import gunbc.runner.runner_unit_file {
+  runner_unit_depriv_dropin_file_name,
+  runner_unit_slot_role_superseded_dropin_file_name,
   runner_unit_teardown_dropin,
   runner_unit_teardown_dropin_path,
   gunbc_runner_unit_teardown_dropin_text,
@@ -68,8 +70,12 @@ import gunbc.runner.runner_slot_cap_converge { SlotCapUnitStanding, SlotCapsAtDe
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
-import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent }
+import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent, path_basename }
+import extdeps.access.posix { file_mode_octal }
+import extdeps.tools.ls { ls_long_entry_of_line, LsLongEntry, LsLongEntryRead, LsLongEntryRefused }
+import gunbc.ci.deploy_slot_tenancy { DeploySlotPathReading, DeploySlotPathRead, DeploySlotPathAbsent, DeploySlotPathUnread }
 import gunbc.runner.runner_host_file_converge {
+  deploy_slot_listing_readings, deploy_slot_entry_readings, slot_environment_value, slot_load_state_can_run,
   HostHasNoDeploySlot,
   CapPhaseObserved,
   runner_host_cap_phase_not_owed,
@@ -145,12 +151,15 @@ import gunbc.runner.runner_host_file_converge {
   runner_host_file_mode_find_argv,
   fleet_host_file_readback_refusal,
   LegRetireeCgroupEvents,
+  FleetHostRemoteLeg,
   classify_runner_slot_population_with_fabric,
   runner_host_fabric_member_units,
   SlotFabricMemberNotARunner,
   SlotFabricMemberRunsARunner,
   classify_root_only_paths,
   FleetHostFileObservation,
+  AncestorPresence, AncestorTail, AncestorTailNone, AncestorTailAbsent, AncestorTailUndetermined,
+  classify_fleet_host_ancestor_presence, fleet_host_ancestor_directory_argv,
   HostFileLeaveInPlace,
   HostFileWrite,
   HostFileActionRefused,
@@ -207,7 +216,22 @@ import gunbc.runner.runner_host_file_converge {
   ManagerReloadOwedNotAttempted,
   runner_host_file_run_succeeded,
   fleet_host_file_write_admission,
+  runner_slot_expectation_with_roles,
+  runner_host_role_environments,
+  dropins_that_could_override,
+  SupersededDropinResult,
+  SupersededDropinAbsent,
+  SupersededDropinRemoved,
+  SupersededDropinPresentObserved,
+  SupersededDropinRefused,
+  superseded_dropin_settled,
+  superseded_dropin_observed,
+  superseded_dropin_removed,
+  runner_host_superseded_dropin_paths,
 }
+import extdeps.systemd.unit_file { systemd_drop_in_applies_after }
+import gunbc.runner.runner_capability_labels { browser_ready_labels_dropin_path, gpu_docker_labels_dropin_path }
+import gunbc.host.host_axis_caps { derived_runner_slot_cap_members }
 
 // Every claim here is a function of declared rows except the route test, whose every remote leg is
 // answered by the hermetic ssh mock; nothing reads the live tree.
@@ -245,7 +269,7 @@ fn not_role_withheld(w: List<RunnerHostFileWithheld>) -> List<RunnerHostFileWith
 fn expected_role_dropin_paths(host: HostIdentity) -> List<String> {
   map(
     filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
-    s => concat(concat("/etc/systemd/system/actions-runner@", runner_slot_instance_name(slot: s)), ".service.d/20-slot-role.conf"),
+    s => concat(concat("/etc/systemd/system/actions-runner@", runner_slot_instance_name(slot: s)), ".service.d/slot-role.conf"),
   )
 }
 
@@ -290,7 +314,7 @@ fn role_withheld_entry() -> RunnerHostFileWithheld {
 
 // the oracle itself: srv1 deploys exactly one slot, srv1-02 (runner_slot_job_role srv1_deploy_slot_index), written as a literal
 test fn the_role_oracle_for_srv1_is_its_one_declared_deploy_slot() -> Bool {
-  expected_role_dropin_paths(host: operator_host_srv1) == ["/etc/systemd/system/actions-runner@srv1-02.service.d/20-slot-role.conf"]
+  expected_role_dropin_paths(host: operator_host_srv1) == ["/etc/systemd/system/actions-runner@srv1-02.service.d/slot-role.conf"]
 }
 
 // the RED controls, over a two-slot supplied oracle so that dropping one row is distinguishable from an empty host:
@@ -691,12 +715,89 @@ test fn a_path_find_did_not_print_is_not_root_only() -> Bool {
 }
 
 fn action_of(content: FleetHostFileStanding, file_metadata: FleetHostPathMetadata, ancestors: FleetHostPathMetadata) -> FleetHostFileAction {
-  fleet_host_file_action(observation: FleetHostFileObservation { content: content, file_metadata: file_metadata, ancestors: ancestors })
+  fleet_host_file_action(observation: FleetHostFileObservation { content: content, file_metadata: file_metadata, ancestors: ancestors, absent_ancestors: [] })
 }
 
 fn is_leave(a: FleetHostFileAction) -> Bool { match a { HostFileLeaveInPlace => true HostFileWrite => false HostFileActionRefused { reason: _ } => false } }
 fn is_write(a: FleetHostFileAction) -> Bool { match a { HostFileWrite => true HostFileLeaveInPlace => false HostFileActionRefused { reason: _ } => false } }
 fn is_refused(a: FleetHostFileAction) -> Bool { match a { HostFileActionRefused { reason: _ } => true HostFileWrite => false HostFileLeaveInPlace => false } }
+
+// A DROP-IN DIRECTORY THAT WAS NEVER CREATED IS AN OBSERVED ABSENCE WITH A DECLARED REPAIR (L2 run
+// 40859129849: srv1-02's role drop-in refused "ancestors=UNOBSERVABLE" because its .service.d did not
+// exist and find exited 1). Presence is read per ancestor by listing its parent; only an absent TAIL
+// is admitted, and an undetermined answer or an absent ancestor above a present one refuses.
+fn presence_at(path: String, p: EntryPresence) -> AncestorPresence { AncestorPresence { path: path, presence: p } }
+
+fn tail_absent_of(t: AncestorTail) -> List<String> {
+  match t {
+    AncestorTailAbsent { present: _, absent: ab } => ab
+    AncestorTailNone => []
+    AncestorTailUndetermined { cause: _ } => []
+  }
+}
+
+fn tail_undetermined(t: AncestorTail) -> Bool {
+  match t {
+    AncestorTailUndetermined { cause: _ } => true
+    AncestorTailAbsent { present: _, absent: _ } => false
+    AncestorTailNone => false
+  }
+}
+
+test fn only_an_absent_tail_of_the_ancestor_chain_is_an_observed_absence() -> Bool {
+  let chain = ["/etc/systemd", "/etc/systemd/system", "/etc/systemd/system/actions-runner@srv1-02.service.d"]
+  let tail = classify_fleet_host_ancestor_presence(chain: chain, presence: [
+    presence_at(path: "/etc/systemd", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system/actions-runner@srv1-02.service.d", p: EntryAbsent),
+  ])
+  let all_present = classify_fleet_host_ancestor_presence(chain: chain, presence: [
+    presence_at(path: "/etc/systemd", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system/actions-runner@srv1-02.service.d", p: EntryPresent),
+  ])
+  let hole = classify_fleet_host_ancestor_presence(chain: chain, presence: [
+    presence_at(path: "/etc/systemd", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system", p: EntryAbsent),
+    presence_at(path: "/etc/systemd/system/actions-runner@srv1-02.service.d", p: EntryPresent),
+  ])
+  let unknown = classify_fleet_host_ancestor_presence(chain: chain, presence: [
+    presence_at(path: "/etc/systemd", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system", p: EntryPresenceIndeterminate { cause: "ls exit=2" }),
+    presence_at(path: "/etc/systemd/system/actions-runner@srv1-02.service.d", p: EntryAbsent),
+  ])
+  tail_absent_of(t: tail) == ["/etc/systemd/system/actions-runner@srv1-02.service.d"]
+    && (match all_present { AncestorTailNone => true AncestorTailAbsent { present: _, absent: _ } => false AncestorTailUndetermined { cause: _ } => false })
+    && tail_undetermined(t: hole)
+    && tail_undetermined(t: unknown)
+}
+
+// AN ABSENT TAIL PLANS A WRITE ONLY FOR AN ABSENT FILE BELOW ROOT-ONLY PARENTS. A file reading present
+// below an absent directory contradicts the walk, and a writable parent refuses as it always did.
+fn action_under_absent(content: FleetHostFileStanding, ancestors: FleetHostPathMetadata) -> FleetHostFileAction {
+  fleet_host_file_action(observation: FleetHostFileObservation {
+    content: content, file_metadata: PathsNotApplicable, ancestors: ancestors,
+    absent_ancestors: ["/etc/systemd/system/actions-runner@srv1-02.service.d"],
+  })
+}
+
+test fn an_absent_dropin_directory_plans_its_creation_and_the_write_only_beneath_root_only_parents() -> Bool {
+  is_write(a: action_under_absent(content: HostFileAbsent, ancestors: PathsRootOnly))
+    && is_refused(a: action_under_absent(content: HostFileIdentical, ancestors: PathsRootOnly))
+    && is_refused(a: action_under_absent(content: HostFileAbsent, ancestors: PathsNotRootOnly { paths: ["/etc/systemd/system"], detail: "writable" }))
+    && is_refused(a: action_under_absent(content: HostFileAbsent, ancestors: PathsUnobservable { reason: "find exit=1" }))
+}
+
+// THE CREATED DIRECTORY IS ROOT'S, AT A MODE WITH NO GROUP OR OTHER WRITE, so the root-only readback that
+// follows admits it; and the leg crosses the fleet SSH edge's portability admission.
+test fn an_absent_ancestor_is_created_root_owned_and_its_leg_crosses_the_edge() -> Bool {
+  let argv = fleet_host_ancestor_directory_argv(path: "/etc/systemd/system/actions-runner@srv1-02.service.d")
+  let line = join(argv, " ")
+  string_contains(s: line, pattern: "-o root -g root")
+    && string_contains(s: line, pattern: "-m 00755")
+    && string_contains(s: line, pattern: "/etc/systemd/system/actions-runner@srv1-02.service.d")
+    && (match portable_remote_words(raws: argv) { Present { value: _ } => true Absent => false })
+}
 
 data unsafe_file_metadata: FleetHostPathMetadata = PathsNotRootOnly { paths: ["/etc/needrestart/conf.d/50-gunbc-actions-runner.conf"], detail: "owned by ghrunner" }
 
@@ -879,7 +980,7 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
             results: [FleetHostFileResult {
               planned: FleetHostFilePlanned {
                 file: f,
-                observation: FleetHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly },
+                observation: FleetHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly, absent_ancestors: [] },
                 action: HostFileLeaveInPlace,
               },
               outcome: match mode { FleetHostFilesObserveOnly => HostFileNotAppliedObserveOnly FleetHostFilesApply => HostFileLeftInPlace },
@@ -902,6 +1003,8 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
             },
             deploy_account: HostHasNoDeploySlot,
             deploy_trees: [],
+            superseded: [],
+            deploy_readings: [],
           })
       }
   }
@@ -1506,6 +1609,8 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
         deploy_trees: [],
+        superseded: [],
+        deploy_readings: [],
       })
   }
 }
@@ -1530,9 +1635,31 @@ fn crosses_the_edge(argv: List<String>) -> Bool {
 // legs that host's run issues -- privilege probe, list-units, slot show, the job-user getent, every
 // file's metadata / root-only / ancestor reads, the residue reads and every elevated retire and reload
 // leg -- plus the retiree events read built by the real builder over a supplied show answer. Every
-// leg must cross the edge, and the legs must cover every arm of FleetHostRemoteLeg, so a new remote
-// call cannot skip this check. The typed_remote_file_write legs and the parent listing, which run
+// leg must cross the edge, and the legs of the three hosts together must cover every arm of
+// FleetHostRemoteLeg, so a new remote call cannot skip this check. Coverage is judged over the union
+// because some legs are issued only on a host that declares the slot they read (the job-user identity
+// read runs only where a deploy slot is declared, srv1 today). The typed_remote_file_write legs and the parent listing, which run
 // through their own modules' builders, are checked over the same files.
+fn host_run_legs(subj: RunnerHostFileSubject, fs: List<FleetHostFileDesired>) -> List<FleetHostRemoteLeg> {
+  concat(
+    runner_host_run_legs(subject: subj, files: fs, residue: ctrl_jobserver_retired_residue),
+    [LegRetireeCgroupEvents { argv: argv_or_empty(o: events_read_of(retired: three_retirees(), show: blocks_for(units: three_retirees(), active: "active", live_cgroup: true))) }],
+  )
+}
+
+// The leg kinds one host's run issues; a host whose subject or desired population refuses issues none,
+// which host_legs_cross already reds.
+fn host_leg_kinds(host: String) -> List<String> {
+  match runner_host_file_subject(host: host as HostIdentity) {
+    RunnerHostFileSubjectRefused { cause: _ } => []
+    RunnerHostFileSubjectAdmitted { subject: subj } =>
+      match runner_host_file_desired_population_from_uid_reading(host: host as HostIdentity, reading: fixture_cited_job_user_uid()) {
+        RunnerHostFilesDesiredRefused { cause: _ } => []
+        RunnerHostFilesDesired { files: fs, withheld: _ } => map(host_run_legs(subj: subj, fs: fs), l => runner_host_leg_kind(leg: l))
+      }
+  }
+}
+
 fn host_legs_cross(host: String) -> Bool {
   match runner_host_file_subject(host: host as HostIdentity) {
     RunnerHostFileSubjectRefused { cause: _ } => false
@@ -1540,13 +1667,8 @@ fn host_legs_cross(host: String) -> Bool {
       match runner_host_file_desired_population_from_uid_reading(host: host as HostIdentity, reading: fixture_cited_job_user_uid()) {
         RunnerHostFilesDesiredRefused { cause: _ } => false
         RunnerHostFilesDesired { files: fs, withheld: _ } => {
-          let legs = concat(
-            runner_host_run_legs(subject: subj, files: fs, residue: ctrl_jobserver_retired_residue),
-            [LegRetireeCgroupEvents { argv: argv_or_empty(o: events_read_of(retired: three_retirees(), show: blocks_for(units: three_retirees(), active: "active", live_cgroup: true))) }],
-          )
-          let kinds = map(legs, l => runner_host_leg_kind(leg: l))
-          all(runner_host_leg_kinds, k => any(kinds, x => x == k))
-            && all(legs, l => crosses_the_edge(argv: fleet_host_leg_argv(leg: l)))
+          let legs = host_run_legs(subj: subj, fs: fs)
+          all(legs, l => crosses_the_edge(argv: fleet_host_leg_argv(leg: l)))
             && all(fs, f => crosses_the_edge(argv: parent_listing_argv(parent: path_parent(path: f.path as String)))
               && (match fleet_host_file_write_admission(file: f) {
                 TypedRemoteFileWriteAdmitted { write: w } =>
@@ -1563,7 +1685,10 @@ fn host_legs_cross(host: String) -> Bool {
 }
 
 test fn every_observe_leg_argv_crosses_the_ssh_edge() -> Bool {
+  let kinds = concat(host_leg_kinds(host: "srv1"), concat(host_leg_kinds(host: "srv3"), host_leg_kinds(host: "srv4")))
   host_legs_cross(host: "srv1") && host_legs_cross(host: "srv3") && host_legs_cross(host: "srv4")
+    && all(runner_host_leg_kinds, k => any(kinds, x => x == k))
+    && any(host_leg_kinds(host: "srv1"), x => x == "job-user-identity")
 }
 
 // RED: the probe this replaced is refused by the same transport check.
@@ -1628,7 +1753,7 @@ fn fixture_result(outcome: FleetHostFileOutcome) -> List<FleetHostFileResult> {
   match teardown_desired() {
     Absent => []
     Present { value: f } => [FleetHostFileResult {
-      planned: FleetHostFilePlanned { file: f, observation: FleetHostFileObservation { content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly }, action: HostFileWrite },
+      planned: FleetHostFilePlanned { file: f, observation: FleetHostFileObservation { content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly, absent_ancestors: [] }, action: HostFileWrite },
       outcome: outcome,
     }]
   }
@@ -1666,6 +1791,8 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
         deploy_trees: [],
+        superseded: [],
+        deploy_readings: [],
       })
       && runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
@@ -1682,6 +1809,8 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
         deploy_trees: [],
+        superseded: [],
+        deploy_readings: [],
       })
   }
 }
@@ -1829,4 +1958,127 @@ test fn a_failed_post_write_metadata_read_refuses_at_the_metadata_readback() -> 
   readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 1, stdout: "/p\n", stderr: "boom"))
     && readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 1, stdout: "", stderr: "boom"))
     && !readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 0, stdout: "/p\n", stderr: ""))
+}
+
+// ── The role drop-in loads its own keys (L2 run 40950610061) ─────────────────────────────────────
+
+// THE ORDER, OVER THE MANAGED POPULATION ITSELF: srv1's role drop-in, as the converge's own population renders
+// it, sorts after every template drop-in this repository manages -- the converge's template files, the slot
+// cap drop-ins and the capability-label drop-ins -- under systemd's one name order across the template and
+// instance directories (extdeps.systemd.unit_file systemd_drop_in_applies_after). Nothing here is a roster:
+// a new managed template drop-in that sorts after the role joins these sources and turns this red.
+test fn the_role_dropin_sorts_after_every_managed_template_dropin() -> Bool {
+  match srv1_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => false
+    RunnerHostFilesDesired { files: fs, withheld: _ } => {
+      let roles = filter(fs, f => (f.subject as String) == "runner-slot-role-dropin")
+      let templates = concat(
+        map(filter(fs, f => string_contains(s: f.path as String, pattern: "@.service.d/")), f => f.path as String),
+        concat(map(derived_runner_slot_cap_members(), m => m.dropin_path as String), [browser_ready_labels_dropin_path as String, gpu_docker_labels_dropin_path as String]),
+      )
+      length(roles) == 1
+        && any(templates, t => path_basename(path: t) == (runner_unit_depriv_dropin_file_name as String))
+        && all(roles, r => all(templates, t => systemd_drop_in_applies_after(later_file_name: path_basename(path: r.path as String), earlier_file_name: path_basename(path: t))))
+    }
+  }
+}
+
+// RED, THE DEFECT ITSELF: the superseded name sorted before depriv.conf, which sets the job user and
+// DOCKER_HOST the role replaces, so depriv's values loaded.
+test fn the_superseded_role_name_sorts_before_depriv_and_loses() -> Bool {
+  !systemd_drop_in_applies_after(later_file_name: runner_unit_slot_role_superseded_dropin_file_name as String, earlier_file_name: runner_unit_depriv_dropin_file_name as String)
+    && systemd_drop_in_applies_after(later_file_name: "depriv.conf", earlier_file_name: "20-slot-role.conf")
+}
+
+// THE GUARD'S CANDIDATES: a template drop-in exempts the converge's own instance drop-in (its declared
+// override), and only that one; an unexempted later file, or an equal name in another directory, is a candidate.
+test fn a_template_dropin_exempts_only_the_managed_instance_override() -> Bool {
+  let depriv = "/etc/systemd/system/actions-runner@.service.d/depriv.conf" as NonEmptyStr
+  let role = "/etc/systemd/system/actions-runner@srv1-02.service.d/slot-role.conf"
+  let hand = "/etc/systemd/system/actions-runner@srv1-01.service.d/zz-hand.conf"
+  let loaded = ["/etc/systemd/system/actions-runner@.service.d/10-resource-caps.conf", role, hand, "/etc/systemd/system/actions-runner@srv1-01.service.d/depriv.conf"]
+  map(dropins_that_could_override(written: [depriv], loaded: loaded, exempt: [role as NonEmptyStr]), c => c as String) == [hand, "/etc/systemd/system/actions-runner@srv1-01.service.d/depriv.conf"]
+    && map(dropins_that_could_override(written: [depriv], loaded: loaded, exempt: []), c => c as String) == [role, hand, "/etc/systemd/system/actions-runner@srv1-01.service.d/depriv.conf"]
+}
+
+// THE READ-BACK JUDGES THE LOADED ENVIRONMENT AGAINST THE ROLE. srv1-02 as L2 run 40950610061 left it (depriv's
+// job user and socket loaded) is not effective, by name; the role's own values are; a ghdeploy slot still
+// carrying a socket is not; and a CI slot, which carries no role row, is judged as before.
+fn role_reading(unit: String, env: String) -> RunnerSlotUnitReading {
+  RunnerSlotUnitReading { unit: unit as NonEmptyStr, load_state: "loaded", need_daemon_reload: "no", kill_mode: "control-group", exit_type: "main", cpu_quota_per_sec: "7s", environment: env }
+}
+fn role_wire(unit: String, env: String) -> String {
+  standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: role_reading(unit: unit, env: env), expect: runner_slot_expectation_with_roles(expect: fixture_expect(), host: operator_host_srv1)))
+}
+test fn a_role_slot_is_effective_only_with_its_roles_loaded_environment() -> Bool {
+  let deploy = "actions-runner@srv1-02.service"
+  length(runner_host_role_environments(host: operator_host_srv1)) == 1
+    && string_contains(s: role_wire(unit: deploy, env: "RUNNER_DIR=/opt/x CTRL_RUNNER_JOB_USER=ghrunner DOCKER_HOST=unix:///run/user/999/docker.sock"), pattern: "CTRL_RUNNER_JOB_USER=ghdeploy")
+    && role_wire(unit: deploy, env: "RUNNER_DIR=/opt/x CTRL_RUNNER_JOB_USER=ghdeploy DOCKER_HOST=") == "effective"
+    && role_wire(unit: deploy, env: "RUNNER_DIR=/opt/x CTRL_RUNNER_JOB_USER=ghdeploy") == "effective"
+    && string_contains(s: role_wire(unit: deploy, env: "RUNNER_DIR=/opt/x CTRL_RUNNER_JOB_USER=ghdeploy DOCKER_HOST=unix:///run/user/999/docker.sock"), pattern: "DOCKER_HOST")
+    && role_wire(unit: "actions-runner@srv1-01.service", env: "RUNNER_DIR=/opt/x CTRL_RUNNER_JOB_USER=ghrunner DOCKER_HOST=unix:///run/user/999/docker.sock") == "effective"
+}
+
+// THE SUPERSEDED FILE: srv1's deploy slot has exactly the old name to retire; only absent or removed settles,
+// a present one seen in observe mode is observed but not settled, and only a removal owes the reload.
+test fn the_superseded_role_dropin_retires_and_only_absence_settles() -> Bool {
+  runner_host_superseded_dropin_paths(host: operator_host_srv1) == ["/etc/systemd/system/actions-runner@srv1-02.service.d/20-slot-role.conf"]
+    && superseded_dropin_settled(r: SupersededDropinAbsent { path: "p" }) && superseded_dropin_settled(r: SupersededDropinRemoved { path: "p" })
+    && !superseded_dropin_settled(r: SupersededDropinPresentObserved { path: "p" }) && superseded_dropin_observed(r: SupersededDropinPresentObserved { path: "p" })
+    && !superseded_dropin_settled(r: SupersededDropinRefused { path: "p", reason: "x" }) && !superseded_dropin_observed(r: SupersededDropinRefused { path: "p", reason: "x" })
+    && superseded_dropin_removed(r: SupersededDropinRemoved { path: "p" }) && !superseded_dropin_removed(r: SupersededDropinAbsent { path: "p" })
+}
+
+// ── The deploy slot's host reading ───────────────────────────────────────────────────────────────
+// THE LONG LISTING, AS POSIX LAYS IT OUT: srv1-02's tree as read on 2026-10-30 parses to its numeric owner
+// and group and its mode bits; special bits ride the execute position; an entry carrying an alternate
+// access method (an ACL's `+`) refuses, because the ACL can grant what the bits do not show.
+fn entry_wire(line: String) -> String {
+  match ls_long_entry_of_line(line: line) {
+    LsLongEntryRead { name: n, directory: d, ownership: o, mode: m } =>
+      join([n, if d { " dir " } else { " file " }, to_string(o.uid), ":", to_string(o.gid), " ", file_mode_octal(mode: m)], "")
+    LsLongEntryRefused { name: n, reason: _ } => concat("refused ", n)
+  }
+}
+test fn the_long_listing_reads_owner_group_and_mode_and_refuses_an_acl() -> Bool {
+  entry_wire(line: "drwxr-xr-x 6 990 982 4096 Oct 30 13:20 /opt/actions-runner/srv1-02") == "/opt/actions-runner/srv1-02 dir 990:982 0755"
+    && entry_wire(line: "-rw-r--r--  1 990  982  1631 Oct 30 13:52 .credentials_rsaparams") == ".credentials_rsaparams file 990:982 0644"
+    && entry_wire(line: "drwx------ 2 990 982 4096 Oct 30 13:20 _work") == "_work dir 990:982 0700"
+    && entry_wire(line: "drwxrwsr-T 2 0 50 4096 Oct 30 13:20 shared") == "shared dir 0:50 3774"
+    && entry_wire(line: "-rw-r--r--. 1 990 982 1 Oct 30 13:52 .runner") == ".runner file 990:982 0644"
+    && entry_wire(line: "-rw-r--r--+ 1 990 982 1 Oct 30 13:52 .credentials") == "refused .credentials"
+    && entry_wire(line: "total 84") == "refused 84"
+}
+
+fn reading_wire(r: DeploySlotPathReading) -> String {
+  match r {
+    DeploySlotPathRead { path: p, directory: _, ownership: _, mode: m } => join([p as String, " read ", file_mode_octal(mode: m)], "")
+    DeploySlotPathAbsent { path: p } => concat(p as String, " absent")
+    DeploySlotPathUnread { path: p, reason: _ } => concat(p as String, " unread")
+  }
+}
+
+// A STATE PATH IS ABSENT ONLY FROM A LISTING THAT SUCCEEDED: a name the listing does not carry is absent,
+// one it carries is read, one whose line refused (an ACL) is unread -- never absent, which would read
+// private -- and a failed listing reads nothing. The chain read names each path by its own line.
+test fn the_tree_listing_separates_absent_read_and_unread_state_paths() -> Bool {
+  let dir = "/opt/actions-runner/srv1-02"
+  let states = [concat(dir, "/.runner"), concat(dir, "/.credentials"), concat(dir, "/.credentials_rsaparams")]
+  let listing = "total 84\ndrwx------ 6 990 982 4096 Oct 30 13:20 .\ndrwxr-xr-x 12 1000 1000 4096 Oct 29 10:59 ..\n-rw------- 1 990 982 399 Oct 30 13:52 .runner\n-rw-------+ 1 990 982 1631 Oct 30 13:52 .credentials_rsaparams\n"
+  map(deploy_slot_listing_readings(directory: dir, paths: states, exit_code: 0, stdout: listing), r => reading_wire(r: r))
+      == [concat(dir, "/.runner read 0600"), concat(dir, "/.credentials absent"), concat(dir, "/.credentials_rsaparams unread")]
+    && all(deploy_slot_listing_readings(directory: dir, paths: states, exit_code: 2, stdout: listing), r => string_contains(s: reading_wire(r: r), pattern: " unread"))
+    && map(deploy_slot_entry_readings(paths: ["/opt", "/opt/actions-runner", dir], exit_code: 0, stdout: "drwxr-xr-x 9 0 0 4096 Oct 1 00:00 /opt\ndrwx------ 6 990 982 4096 Oct 30 13:20 /opt/actions-runner/srv1-02\n"), r => reading_wire(r: r))
+      == ["/opt read 0755", "/opt/actions-runner unread", concat(dir, " read 0700")]
+}
+
+// THE JOB USER A SLOT RUNS AS IS ITS LOADED ENVIRONMENT'S WORD, and a slot is a tenant unless masked or
+// not found.
+test fn the_job_user_is_read_from_the_loaded_environment_and_masked_slots_are_not_tenants() -> Bool {
+  slot_environment_value(environment: "RUNNER_DIR=/opt/x CTRL_RUNNER_JOB_USER=ghdeploy DOCKER_HOST=", name: "CTRL_RUNNER_JOB_USER") == Present { value: "ghdeploy" }
+    && slot_environment_value(environment: "CTRL_RUNNER_JOB_USER=ghrunner", name: "CTRL_RUNNER_JOB_USER") == Present { value: "ghrunner" }
+    && slot_environment_value(environment: "X_CTRL_RUNNER_JOB_USER=ghrunner", name: "CTRL_RUNNER_JOB_USER") == none
+    && slot_environment_value(environment: "DOCKER_HOST=", name: "CTRL_RUNNER_JOB_USER") == none
+    && slot_load_state_can_run(load_state: "loaded") && !slot_load_state_can_run(load_state: "masked\n") && !slot_load_state_can_run(load_state: "not-found")
 }

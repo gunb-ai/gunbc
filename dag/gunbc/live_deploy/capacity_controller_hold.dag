@@ -1,0 +1,67 @@
+module gunbc.live_deploy.capacity_controller_hold
+
+import std.types { String, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.error_primitives { Result, Ok, Err }
+import std.scoped_authorization { AttemptIdentity }
+import std.content_hash { sha256_hex_of_text }
+import std.durable_exclusive_hold { DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef, DurableHoldObservation,
+  durable_hold_ref_equal, durable_hold_owner_equal, durable_hold_continuity_assess, HoldContinuityIntact, HoldContinuityBroken }
+import extdeps.languages.json.emit { serialize_json, json_array, json_string }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.capacity_cutover_intent { capacity_reload_manager_text }
+import gunbc.durable_exclusive_hold_file_store { file_hold_ref, observe_file_hold }
+
+data capacity_controller_hold_root: NonEmptyStr = "/var/lib/gunbc/cutover-controller-holds"
+
+fn capacity_controller_hold_key(slot: CapacityManagedUnit) -> NonEmptyStr {
+  sha256_hex_of_text(text: serialize_json(v: json_array(elements: [
+    json_string(s: capacity_reload_manager_text(manager: slot.manager)), json_string(s: slot.unit as String)]))) as NonEmptyStr
+}
+
+fn capacity_controller_hold_owner(journal_root: NonEmptyStr, journal_key: NonEmptyStr, attempt: AttemptIdentity) -> DurableHoldOwnerRef {
+  serialize_json(v: json_array(elements: [json_string(s: journal_root as String), json_string(s: journal_key as String),
+    json_string(s: attempt as String)])) as NonEmptyStr as DurableHoldOwnerRef
+}
+
+type CapacityRecoveryControllerSlotUnproven {
+  slot: CapacityManagedUnit
+  retained: DurableHoldSubject?
+  cause: String
+}
+
+// The root/key and owner derive from the retained slot and original journal,
+// never a caller-selected path. The port is observe_file_hold in production;
+// it performs no acquire or release, and cannot renew a superseded generation.
+fn capacity_controller_hold_admit(slot: CapacityManagedUnit, retained: DurableHoldSubject?,
+  journal_root: NonEmptyStr, journal_key: NonEmptyStr, attempt: AttemptIdentity,
+  read: fn(NonEmptyStr, NonEmptyStr) -> DurableHoldObservation) -> Result<DurableHoldSubject, CapacityRecoveryControllerSlotUnproven> {
+  let hold = match retained {
+    Absent => { return Err { value: CapacityRecoveryControllerSlotUnproven { slot: slot, retained: retained, cause: "controller hold was not retained" } } }
+    Present { value: value } => value
+  }
+  let key = capacity_controller_hold_key(slot: slot)
+  if !durable_hold_ref_equal(left: hold.hold, right: file_hold_ref(root: capacity_controller_hold_root, slot_key: key))
+    || !durable_hold_owner_equal(left: hold.holder, right: capacity_controller_hold_owner(journal_root: journal_root, journal_key: journal_key, attempt: attempt)) {
+    return Err { value: CapacityRecoveryControllerSlotUnproven { slot: slot, retained: retained,
+      cause: "controller hold reference or owner differs from the retained slot and original journal" } }
+  }
+  match durable_hold_continuity_assess(observed: read(capacity_controller_hold_root, key), owner: hold.holder, acquired_generation: hold.generation) {
+    HoldContinuityIntact { generation: _ } => Ok { value: hold }
+    HoldContinuityBroken { refusal: _ } => Err { value: CapacityRecoveryControllerSlotUnproven { slot: slot, retained: retained,
+      cause: "controller hold is absent, released, superseded, foreign or unreadable" } }
+  }
+}
+
+fn capacity_controller_hold_read(slot: CapacityManagedUnit, retained: DurableHoldSubject?,
+  journal_root: NonEmptyStr, journal_key: NonEmptyStr, attempt: AttemptIdentity) -> Result<DurableHoldSubject, CapacityRecoveryControllerSlotUnproven> {
+  capacity_controller_hold_admit(slot: slot, retained: retained, journal_root: journal_root, journal_key: journal_key, attempt: attempt,
+    read: (root, key) => observe_file_hold(root: root, key: key))
+}
+
+// DECLARED FRONTIER: apply must acquire this slot through the existing file-hold
+// acquisition provider (durable_hold_acquire_assess), retain the resulting
+// DurableHoldSubject in the approval-bound envelope, and discharge it after the
+// closed controller. No current producer acquires that hold. Until the slot-owner
+// lifecycle hook is connected, apply with an exempt slot refuses; recovery of
+// earlier records refuses above. Neither recovery nor decoding acquires a hold.

@@ -1,0 +1,96 @@
+module gunbc.live_deploy.capacity_recovery_program
+
+import std.types { String, NonEmptyStr, List, Int, Timestamp }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.algebra { list_at_optional }
+import std.content_hash { Sha256Digest, sha256_hex_of_text }
+import std.durable_compare_and_set { CasSlotObservation, CasObservedReadable, CasReadablePresent }
+import std.scoped_authorization { AuthorizationGranted, authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason }
+import gunbc.durable_cas_file_store { SlotStore, slot_observe }
+import gunbc.live_deploy.capacity_recovery_approval { CapacityRecoveryAuthorization }
+import gunbc.live_deploy.capacity_recovery_subject { capacity_recovery_leg_scopes }
+import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityRecoveryLeg, CapacityRecoveryRequireApproval, capacity_recovery_plan }
+
+// A post-consumption reading, not a cached pre-approval plan. The consumed CAS
+// generation must still contain exactly the approved bytes before any effect.
+// FleetHostLock must surround binding and the entire execution/transition fold.
+type CapacityRecoveryProgram sole_constructor {
+  authorization: CapacityRecoveryAuthorization
+  record: CapacityCutoverRecord
+  legs: List<CapacityRecoveryLeg>
+}
+
+fn capacity_recovery_program_bind(authorization: CapacityRecoveryAuthorization,
+  journal_root: NonEmptyStr, journal_key: NonEmptyStr, helper_digest: Sha256Digest,
+  observed: CasSlotObservation<NonEmptyStr>) -> Result<CapacityRecoveryProgram, String> {
+  let subject = authorization.recovery.subject
+  if (journal_root != subject.journal_root || journal_key != subject.journal_key || helper_digest != subject.helper_digest) {
+    return Err { value: "recovery executor journal or helper differs from approval" }
+  }
+  match observed {
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => {
+      if version.generation != authorization.journal_generation
+        || sha256_hex_of_text(text: version.value as String) != (subject.record_digest.hex as String) {
+        return Err { value: "recovery journal moved after approval consumption" }
+      }
+      let record = match capacity_cutover_record_decode(text: version.value as String) {
+        Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+      }
+      if (record.attempt != subject.apply_reference) { return Err { value: "recovery original apply reference changed" } }
+      let legs = match capacity_recovery_plan(record: record, choice: subject.choice) {
+        Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+      }
+      if (capacity_recovery_leg_scopes(legs: legs, record_digest: subject.record_digest, choice: subject.choice) != subject.scopes) {
+        return Err { value: "recovery leg scopes differ from the approved retained plan" }
+      }
+      Ok { value: CapacityRecoveryProgram { authorization: authorization, record: record,
+        legs: filter(legs, leg => match leg { CapacityRecoveryRequireApproval { attempt: _, choice: _ } => false _ => true }) } }
+    }
+    _ => Err { value: "recovery requires its readable consumed journal generation" }
+  }
+}
+
+fn capacity_recovery_program_read(authorization: CapacityRecoveryAuthorization,
+  journal: SlotStore, key: NonEmptyStr, helper_digest: Sha256Digest) -> Result<CapacityRecoveryProgram, String> {
+  capacity_recovery_program_bind(authorization: authorization, journal_root: journal.root,
+    journal_key: key, helper_digest: helper_digest, observed: slot_observe(store: journal, key: key))
+}
+
+// An ordinal selects the retained leg; callers never substitute a path, unit,
+// drain population or recovery choice. Consent is rechecked at each dispatch.
+fn capacity_recovery_leg_admit(program: CapacityRecoveryProgram, ordinal: Int,
+  at: Timestamp) -> Result<CapacityRecoveryLeg, String> {
+  let leg = match list_at_optional(xs: program.legs, index: ordinal) {
+    Absent => { return Err { value: "recovery leg ordinal is outside the approved program" } }
+    Present { value: value } => value
+  }
+  let approval = program.authorization
+  match authorize(authorization: AuthorizationGranted { grant: approval.grant, claim: approval.claim },
+    request: approval.recovery.request, observed_at: at) {
+    AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
+    AuthorizationPermitted { grant: _ } => Ok { value: leg }
+  }
+}
+
+// This fold owns ordering and stops at the first uncertain/refused effect. Its
+// production port must perform the corresponding journal transition before it
+// returns. It is not a host actuator: the locked fleet/root binding remains the
+// consumer frontier until those ports are connected to the existing providers.
+fn capacity_recovery_program_run<T>(program: CapacityRecoveryProgram,
+  now: fn() -> Result<Timestamp, String>, perform: fn(CapacityRecoveryLeg) -> Result<T, String>) -> Result<List<T>, String> {
+  fold(program.legs, init: Ok { value: [] }, f: (prior, _) => match prior {
+    Err { value: why } => Err { value: why }
+    Ok { value: completed } => {
+      let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+      match capacity_recovery_leg_admit(program: program, ordinal: count(completed), at: at) {
+        Err { value: why } => Err { value: why }
+        Ok { value: leg } => match perform(leg) {
+          Err { value: why } => Err { value: why }
+          Ok { value: result } => Ok { value: completed + [result] }
+        }
+      }
+    }
+  })
+}

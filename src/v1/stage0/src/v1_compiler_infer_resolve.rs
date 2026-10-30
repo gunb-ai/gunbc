@@ -59,18 +59,18 @@ pub use crate::v1_std_core::{
     field_from_key_property_name, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, find_property, foreach_variable_at, generic_param_name_at, intern,
-    is_compiler_error, is_local_transport, join_optional_cardinality, kernel_span,
-    let_binding_name_at, local_transport_node, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_init_node, make_field_node,
-    make_interp_part_node, make_named_expr_node, make_param_node, make_resolved_param_node,
-    make_resource_use_node, make_text_part_node, make_transport_node, map_children, no_span,
-    node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
+    is_compiler_error, is_undeclared_transport, join_optional_cardinality, kernel_span,
+    let_binding_name_at, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
+    make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
+    make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
+    make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
+    param_node_default_value, param_node_name_at, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment,
     resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
-    string_type, transport_request_body, type_param_kind_property_name, unit_type,
-    with_optional_cardinality, with_required_cardinality, Cardinality, CompilerDiagnostic,
-    Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, InferredNode, MatchPattern,
-    NewlineIndex, Node, ParsedModuleItemKind, StringPart,
+    string_type, transport_request_body, type_param_kind_property_name, undeclared_transport_node,
+    unit_type, with_optional_cardinality, with_required_cardinality, Cardinality,
+    CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind,
+    InferredNode, MatchPattern, NewlineIndex, Node, ParsedModuleItemKind, StringPart,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2519,7 +2519,7 @@ pub fn resolve_transport_binding(
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<TransportResolveResult> {
-    if crate::v1_std_core::is_local_transport(transport.clone(), env.source_indices.clone()) {
+    if crate::v1_std_core::is_undeclared_transport(transport.clone(), env.source_indices.clone()) {
         Rc::new(TransportResolveResult {
             transport: transport.clone(),
             diagnostics: Rc::new(vec![]),
@@ -4279,7 +4279,7 @@ pub fn resolve_item_types(
         let anno_diags = anno_resolved.diagnostics.clone();
         let transport_resolved = if (item.transport.clone() == std::option::Option::None) {
             Rc::new(TransportResolveResult {
-                transport: crate::v1_std_core::local_transport_node(
+                transport: crate::v1_std_core::undeclared_transport_node(
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     crate::v1_std_core::no_span(),
                 ),

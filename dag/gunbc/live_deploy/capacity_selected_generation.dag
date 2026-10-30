@@ -1,0 +1,78 @@
+module gunbc.live_deploy.capacity_selected_generation
+
+import std.types { String, List, Bool }
+import std.measure { Second }
+import std.error_primitives { Result, Ok, Err }
+import std.decl_ref { declaration_ref_eq }
+import std.content_hash { sha256_hex_of_text }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityGenerationOperation }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument, CapturedUnitDocument }
+import gunbc.live_deploy.apply_legs { apply_modeled_unit_install_payload }
+import gunbc.live_deploy.unit_install_roster { deployment_desired_unit_installs }
+import gunbc.live_deploy.member_identity { ReleaseTarget }
+import gunbc.host.host_axis_caps { CapConvergeDecision }
+import gunbc.live_deploy.desired {
+  DesiredDeployment, desired_deployment_for_instance_id, DesiredDeploymentFound,
+  DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused,
+  bind_desired_selected_identity, DesiredSelectedIdentityBound, selected_deployment_spec
+}
+
+// Resolve only in the helper's pinned source snapshot. Neither a carried spec
+// nor a source path from the input substitutes for the existing desired roster.
+fn capacity_cutover_selected_deployment(intent: CapacityCutoverIntent) -> Result<DesiredDeployment, String> {
+  match desired_deployment_for_instance_id(instance_id: intent.instance_id as String) {
+    DesiredDeploymentUnknownInstanceId { instance_id: _ } => Err { value: "cutover names an unknown desired deployment instance" }
+    DesiredDeploymentRosterRefused { refusal: _ } => Err { value: "cutover desired deployment roster refused" }
+    DesiredDeploymentFound { row: row } => {
+      if !declaration_ref_eq(a: row.selected_identity, b: intent.selected_identity) {
+        return Err { value: "cutover selected declaration differs from the pinned desired row" }
+      }
+      if (row.target.host.identity as String) != (intent.host as String) {
+        return Err { value: "cutover desired row belongs to another host" }
+      }
+      match bind_desired_selected_identity(desired: row) {
+        DesiredSelectedIdentityBound { row: bound } => Ok { value: bound }
+        _ => Err { value: "cutover selected deployment no longer binds to the source roster" }
+      }
+    }
+  }
+}
+
+fn capacity_cutover_install_matches(operation: CapacityGenerationOperation, install: DeploymentUnitInstall) -> Bool {
+  operation.subject.manager == install.manager && operation.subject.unit == install.unit
+    && operation.destination == install.destination
+    && (match install.file {
+      CapturedUnitDocument { capture: _ } => false
+      ModeledUnitDocument { file: file } => sha256_hex_of_text(text: apply_modeled_unit_install_payload(file: file)) == (operation.digest.hex as String)
+    })
+}
+
+// The supplied projection is the witness seam. Count and unique membership checks
+// prevent a missing, duplicate or extra installed unit from disappearing in a zip.
+fn capacity_cutover_projection_admit(intent: CapacityCutoverIntent,
+  projection: Result<List<DeploymentUnitInstall>, String>) -> Result<List<DeploymentUnitInstall>, String> {
+  match projection {
+    Err { value: why } => Err { value: why }
+    Ok { value: installs } => {
+      if count(installs) == 0 || count(installs) != count(intent.generations) {
+        return Err { value: "cutover target projection is empty or differs in membership" }
+      }
+      if !all(intent.generations, op => count(filter(installs, install => capacity_cutover_install_matches(operation: op, install: install))) == 1)
+        || !all(installs, install => count(filter(intent.generations, op => capacity_cutover_install_matches(operation: op, install: install))) == 1) {
+        return Err { value: "cutover target projection differs from the approved unit digests" }
+      }
+      Ok { value: installs }
+    }
+  }
+}
+
+fn capacity_cutover_derive_installs(intent: CapacityCutoverIntent, target: ReleaseTarget,
+  authorization: CapConvergeDecision, source_root: String, oidc_now: Second?) -> Result<List<DeploymentUnitInstall>, String> {
+  if (target.revision != intent.revision) { return Err { value: "cutover target revision differs from the approved snapshot" } }
+  match capacity_cutover_selected_deployment(intent: intent) {
+    Err { value: why } => Err { value: why }
+    Ok { value: row } => capacity_cutover_projection_admit(intent: intent,
+      projection: deployment_desired_unit_installs(spec: selected_deployment_spec(row: row), target: target,
+        authorization: authorization, source_root: source_root, oidc_now: oidc_now))
+  }
+}

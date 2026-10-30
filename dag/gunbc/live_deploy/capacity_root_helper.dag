@@ -1,0 +1,37 @@
+module gunbc.live_deploy.capacity_root_helper
+
+import std.types { NonEmptyStr }
+import std.effect_grant { Execute, NamespacePosition, ServiceOpTree }
+import std.scoped_authorization { AuthorizationScope, AuthorizedAction }
+import std.human_intervention { EveryOperatorRequest }
+import gunbc.auth.authorization_pattern_selection { PrivilegedEffect, ConvergenceRoot, ApiSurface,
+  ReversibleByReapply, WorkloadIdentityUnbindable, MintsHostRootReach, NoBillingConsequence,
+  EntailedByApprovedConvergence, AuthorizationPatternSelection, select_authorization_pattern }
+
+// This is the root execution authority for ONE closed, plan-bound controller,
+// not permission to run a general gunbc entry or a shell as root. Per-file,
+// per-unit and per-boundary scopes remain checked inside that controller. The
+// inherited job intent must also bind the controller digest and plan digest.
+data capacity_root_helper_scope: AuthorizationScope = AuthorizationScope {
+  verb: Execute,
+  resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc.cutover.root-helper" }, path: ["srv1"] },
+  action: "execute-bound-plan" as NonEmptyStr as AuthorizedAction
+}
+
+fn capacity_root_helper_effect(root: ConvergenceRoot) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "execute the closed capacity-cutover controller as root under FleetHostLock, bound to one approved plan and helper digest" as NonEmptyStr,
+    frequency: EveryOperatorRequest, reversibility: ReversibleByReapply, surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "the fleet CI principal cannot read or write the root-only capture and journal stores" as NonEmptyStr },
+    minted_reach: MintsHostRootReach, billing: NoBillingConsequence,
+    witness_discharge: EntailedByApprovedConvergence { root: root, required_scopes: [capacity_root_helper_scope] }
+  }
+}
+
+// Run selection before building a privileged invocation. A named lineage alone
+// cannot authorize execution: the current srv1 root scope set does not include
+// this operation, so the existing scope-coverage rule must refuse it. No fallback
+// to an administrator credential, no widening of the shared root scope set.
+fn capacity_root_helper_selection(root: ConvergenceRoot) -> AuthorizationPatternSelection {
+  select_authorization_pattern(e: capacity_root_helper_effect(root: root))
+}

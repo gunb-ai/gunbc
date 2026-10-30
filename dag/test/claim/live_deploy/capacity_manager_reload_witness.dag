@@ -1,0 +1,84 @@
+module test.claim.live_deploy.capacity_manager_reload_witness
+
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_claim, approval_fixture_claim_input }
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.error_primitives { Result, Ok, Err }
+import std.scoped_authorization { AuthorizationGranted, OperatorGrant, Unclaimed, ClaimHeld, ClaimedBy, ClaimLost, AttemptIdentity }
+import std.durable_compare_and_set { cas_generation_first }
+import extdeps.systemd.manager { SystemManager, UserManager }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, capacity_cutover_claim, capacity_cutover_reload_admission, capacity_cutover_reload_plan_lines }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityManagerReload, CapacityAfterInhibition, CapacityAfterInstall, CapacityAfterRemoval }
+import gunbc.live_deploy.capacity_manager_reload { capacity_reload_record_admission, capacity_reload_claim_admission, capacity_reload_claim_key }
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent, approval_fixture_request, approval_fixture_grant }
+import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityInstalling }
+
+fn reload_fixture_intent(rows: List<CapacityManagerReload>) -> CapacityCutoverIntent {
+  let prior = approval_fixture_intent()
+  let record = recovery_fixture_record()
+  CapacityCutoverIntent { controller_hold: prior.controller_hold, drain: prior.drain, controller_slot: prior.controller_slot, instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host, revision: record.target_revision, attempt: record.attempt,
+    operations: prior.operations, file_operations: prior.file_operations, captures: prior.captures,
+    generations: prior.generations, reloads: rows }
+}
+
+fn reload_fixture_approval(rows: List<CapacityManagerReload>) -> Result<CapacityCutoverAuthorization, String> {
+  let intent = reload_fixture_intent(rows: rows)
+  let request = match approval_fixture_request(intent: intent, escalation_id: "reload-fixture") {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  approval_fixture_claim(intent: intent, request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z")
+}
+
+fn reload_fixture_record(complete: Bool) -> CapacityCutoverRecord {
+  let record = recovery_fixture_record()
+  CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
+    target: record.target, planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts,
+    phase: CapacityInstalling { completed: if complete { count(record.target) } else { 0 } } }
+}
+
+test fn completed_install_boundary_admits_its_touched_manager() -> Bool {
+  match reload_fixture_approval(rows: [CapacityManagerReload { manager: SystemManager, boundaries: [CapacityAfterInstall] }]) {
+    Err { value: _ } => false
+    Ok { value: approval } => capacity_reload_record_admission(approval: approval, record: reload_fixture_record(complete: true),
+      manager: SystemManager, boundary: CapacityAfterInstall, at: "2026-10-29T00:02:00Z") == Ok { value: CapacityAfterInstall }
+  }
+}
+
+test fn an_unfinished_install_cannot_spend_the_reload_boundary() -> Bool {
+  match reload_fixture_approval(rows: [CapacityManagerReload { manager: SystemManager, boundaries: [CapacityAfterInstall] }]) {
+    Err { value: _ } => false
+    Ok { value: approval } => capacity_reload_record_admission(approval: approval, record: reload_fixture_record(complete: false),
+      manager: SystemManager, boundary: CapacityAfterInstall, at: "2026-10-29T00:02:00Z")
+      == Err { value: "reload is outside its declared completed phase boundary" }
+  }
+}
+
+test fn an_untouched_user_manager_refuses_even_if_listed_for_reload() -> Bool {
+  match reload_fixture_approval(rows: [CapacityManagerReload { manager: UserManager { uid: 1000 }, boundaries: [CapacityAfterInstall] }]) {
+    Err { value: _ } => false
+    Ok { value: approval } => capacity_cutover_reload_admission(authorization: approval, manager: UserManager { uid: 1000 },
+      boundary: CapacityAfterInstall, at: "2026-10-29T00:02:00Z") == Err { value: "reload manager is not touched by the cutover plan" }
+  }
+}
+
+test fn an_undeclared_boundary_and_a_repeated_spend_refuse() -> Bool {
+  match reload_fixture_approval(rows: [CapacityManagerReload { manager: SystemManager, boundaries: [CapacityAfterInstall] }]) {
+    Err { value: _ } => false
+    Ok { value: approval } => capacity_cutover_reload_admission(authorization: approval, manager: SystemManager,
+      boundary: CapacityAfterRemoval, at: "2026-10-29T00:02:00Z") == Err { value: "reload boundary is absent or repeated in approved plan" }
+      && capacity_reload_claim_admission(outcome: ClaimLost { holder: "fixture" as NonEmptyStr as AttemptIdentity })
+        == Err { value: "reload boundary has already been spent in this apply" }
+      && capacity_reload_claim_key(approval: approval, manager: SystemManager, boundary: CapacityAfterInstall)
+        != capacity_reload_claim_key(approval: approval, manager: SystemManager, boundary: CapacityAfterInhibition)
+  }
+}
+
+test fn the_reload_plan_names_manager_boundaries_and_count() -> Bool {
+  capacity_cutover_reload_plan_lines(intent: reload_fixture_intent(rows: [CapacityManagerReload {
+    manager: SystemManager, boundaries: [CapacityAfterInhibition, CapacityAfterInstall]
+  }])) == [
+    "manager=system verb=daemon-reload boundary=after-inhibition declared-count=2 apply=fixture-cutover",
+    "manager=system verb=daemon-reload boundary=after-install declared-count=2 apply=fixture-cutover"
+  ]
+}

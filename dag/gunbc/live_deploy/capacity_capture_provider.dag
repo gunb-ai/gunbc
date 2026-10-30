@@ -1,0 +1,371 @@
+module gunbc.live_deploy.capacity_capture_provider
+
+import gunbc.live_deploy.capacity_journal_store { CapacityJournalStore, capacity_journal_base, capacity_journal_directory, capacity_journal_base_directory }
+import gunbc.host_state_root { host_state_tree }
+
+import gunbc.fleet.srv1_root_mutation_approval_run { Srv1CutoverRequest, Srv1RootMutationApproval }
+import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan, capacity_retained_plan_read, capacity_retained_plan_result }
+import gunbc.live_deploy.capacity_cutover_intent { capacity_cutover_intent_text, CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation, CapacityInhibitionCreate, CapacityInhibitionRemove }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import std.decl_ref { decl_ref }
+import std.types { String, NonEmptyStr, Timestamp, List, Bool }
+import gunbc.owned_directory { OwnedDirectoryTarget }
+import std.content_hash { Sha256Digest, sha256_hex_of_text }
+import std.scoped_authorization { AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided, ScopedAuthorization, ClaimedBy }
+import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import std.fabric_blob { read_staged_fabric_blob, FabricBlobRead, FabricBlobReadRefused, fabric_blob_fault_text, fabric_blob_reading_digest, fabric_blob_reading_path }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.cache_identity { cutover_capture_artifact_kind }
+import std.materialization_provider { CutoverCaptureRequest }
+import std.materialization_object { StoreCommit, StoreCommitSettled, StoreCommitRefused }
+import std.judgment_contract { output_fabric_blob }
+import extdeps.realization.materialization_store_local { LocalStoreCapability, LocalStoreBracket, LocalStoreFamilyHeld, LocalStoreStagedPart, LocalStoreRetentionRefusal, local_store_binding_path, local_store_held_session, local_store_bind_retention, local_store_commit_under_request }
+import gunbc.durable_cas_file_store { SlotStore, slot_observe, slot_commit, OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, VerifiedCasAttempt }
+import std.durable_compare_and_set { CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasGeneration, ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasOutcome }
+import extdeps.languages.json.emit { serialize_json, json_array, json_string }
+import gunbc.live_deploy.capacity_capture_store { CapacityCaptureStore, CapturedUnitBlob, capacity_capture_blob_lookup, capacity_capture_blob_path, capacity_capture_directory_targets, capacity_capture_directory_target }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityGenerationFile, CapacityCapturingGeneration, CapacityPreparingInhibition, capacity_generation_request, capacity_generation_install, capacity_generation_same_subjects }
+import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode, capacity_cutover_record_encode }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, capacity_cutover_claim, capacity_cutover_capture_admission, capacity_cutover_generation_admission }
+
+
+type CapacityCaptureFault
+  = CapacityCaptureBoundaryRefused { detail: String }
+  | CapacityCaptureRetentionRefused { refusal: LocalStoreRetentionRefusal }
+  | CapacityCaptureCommitRefused { commit: StoreCommit }
+
+// Root/key are fixed by the cutover owner, not a caller-selected CAS destination.
+// This sibling root is separate from the provider's swept namespace.
+data capacity_capture_journal_base: NonEmptyStr = capacity_journal_base(tree: host_state_tree())
+
+fn capacity_capture_journal_root(store: CapacityCaptureStore) -> NonEmptyStr {
+  join([capacity_capture_journal_base as String, "/", store.attempt as String], "") as NonEmptyStr
+}
+
+fn capacity_capture_approval_admission(store: CapacityCaptureStore, source: NonEmptyStr,
+  approval: CapacityCutoverAuthorization, now: fn() -> Result<Timestamp, String>) -> Result<Timestamp, String> {
+  if (approval.intent.attempt != store.attempt) { return Err { value: "capture approval belongs to another cutover" } }
+  let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  match capacity_cutover_capture_admission(authorization: approval,
+    operation: CapacityCaptureOperation { source: source, root: store.root }, at: at) {
+    Err { value: why } => Err { value: why }
+    Ok { value: _ } => Ok { value: at }
+  }
+}
+
+// A renewed grant for the same apply cannot obtain a second capture. The slot
+// key excludes the approval id and digest, and frames every identity component.
+fn capacity_capture_claim_key(store: CapacityCaptureStore, host: NonEmptyStr, source: NonEmptyStr) -> NonEmptyStr {
+  concat("capacity-capture-", sha256_hex_of_text(text: serialize_json(v: json_array(elements: [
+    json_string(s: store.attempt as String), json_string(s: host as String), json_string(s: source as String)
+  ])))) as NonEmptyStr
+}
+
+fn capacity_capture_claim_admission(outcome: AuthorizationClaimOutcome) -> Result<CasGeneration, String> {
+  match outcome {
+    ClaimHeld { state: _, generation: generation } => Ok { value: generation }
+    ClaimLost { holder: _ } => Err { value: "this source has already been claimed for capture in this apply" }
+    ClaimUndecided { reason: why } => Err { value: why as String }
+  }
+}
+
+type CapacityCaptureJournalReading {
+  record: CapacityCutoverRecord
+  generation: CasGeneration
+}
+
+fn capacity_cutover_journal_read(store: CapacityCaptureStore, journal: SlotStore, key: NonEmptyStr) -> Result<CapacityCaptureJournalReading, String> {
+  if journal.root != capacity_capture_journal_root(store: store) || key != "record" {
+    return Err { value: "capture journal is outside this apply's declared journal root/key" }
+  }
+  match slot_observe(store: journal, key: key) {
+    CasObservedUnreadable { cause: _ } => Err { value: "capture journal unreadable" }
+    CasObservedReadable { readable: CasReadableAbsent } => Err { value: "capture journal absent" }
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => match capacity_cutover_record_decode(text: version.value as String) {
+      Err { value: why } => Err { value: why }
+      Ok { value: record } => if (record.attempt != store.attempt) {
+        Err { value: "cutover journal belongs to another apply" }
+      } else { Ok { value: CapacityCaptureJournalReading { record: record, generation: version.generation } } }
+    }
+  }
+}
+
+fn capacity_capture_journal_open(store: CapacityCaptureStore, journal: SlotStore, key: NonEmptyStr) -> Result<CapacityCaptureJournalReading, String> {
+  match capacity_cutover_journal_read(store: store, journal: journal, key: key) {
+    Err { value: why } => Err { value: why }
+    Ok { value: reading } => if reading.record.phase != CapacityCapturingGeneration || count(reading.record.created_paths) != 0 {
+      Err { value: "capture journal is not in this apply's capture phase" }
+    } else { Ok { value: reading } }
+  }
+}
+
+fn capacity_capture_record_result(record: CapacityCutoverRecord, file: CapacityGenerationFile) -> Result<CapacityCutoverRecord, String> {
+  if (record.phase != CapacityCapturingGeneration) {
+    Err { value: "capture results cannot be appended after inhibition begins" }
+  } else if any(record.prior, existing => existing.host == file.host && existing.destination == file.destination) {
+    Err { value: "capture result already recorded for this source" }
+  } else { Ok { value: CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior + [file], target: record.target,
+    planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts, phase: record.phase
+  } } }
+}
+
+fn capacity_capture_record_commit(journal: SlotStore, key: NonEmptyStr, prior: CapacityCaptureJournalReading,
+  file: CapacityGenerationFile) -> Result<CapacityGenerationFile, String>
+  admit_callers: [decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_publish_held")]
+{
+  let record = match capacity_capture_record_result(record: prior.record, file: file) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  match capacity_capture_record_replace(journal: journal, key: key, prior: prior, record: record) {
+    Err { value: why } => Err { value: why }
+    Ok { value: _ } => Ok { value: file }
+  }
+}
+
+fn capacity_capture_record_replace(journal: SlotStore, key: NonEmptyStr, prior: CapacityCaptureJournalReading,
+  record: CapacityCutoverRecord) -> Result<CapacityCutoverRecord, String>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_record_commit"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_generation_publish", decl_name: "capacity_generation_publish_held"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_finish_held"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_cleanup", decl_name: "capacity_cleanup_held"),
+  ]
+{
+  match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotGeneration { generation: prior.generation },
+    proposed: capacity_cutover_record_encode(record: record)) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => Err { value: "capture journal key is not slot-addressable" }
+    DerivedPayloadAdmitted { verified: verified } => match slot_commit(store: journal, publication: OwnerOnlyCreateOnly, verified: verified) {
+      CasCommitted { committed: _ } => Ok { value: record }
+      CasPreconditionFailed { expected: _, observed: _ } => Err { value: "capture journal moved; retain the capture and refuse inhibition" }
+      CasStoreRefused { cause: _ } => Err { value: "capture journal result is unconfirmed; retain the capture and refuse inhibition" }
+    }
+  }
+}
+
+// Consent precedes hold-acquisition writes. Claim-before-read is durable, even
+// on an unknown outcome; a retry never re-reads the source. The provider's own
+// protocol is the only publisher. The result path is journaled before success.
+fn capacity_capture_publish(store: CapacityCaptureStore, provider: LocalStoreCapability,
+  journal: SlotStore, key: NonEmptyStr, subject: CapacityManagedUnit, source: NonEmptyStr,
+  approval: CapacityCutoverAuthorization, now: fn() -> Result<Timestamp, String>) -> Result<LocalStoreBracket<Result<CapturedUnitBlob, CapacityCaptureFault>>, CapacityCaptureFault> {
+  if local_store_binding_path(b: provider.binding) != (store.root as String) {
+    return Err { value: CapacityCaptureBoundaryRefused { detail: "capture provider and ownership roots differ" } }
+  }
+  match capacity_capture_approval_admission(store: store, source: source, approval: approval, now: now) {
+    Err { value: why } => Err { value: CapacityCaptureBoundaryRefused { detail: why } }
+    Ok { value: _ } => Ok { value: local_store_held_session(capability: provider, family: cutover_capture_artifact_kind, run: held =>
+      capacity_capture_publish_held(store: store, provider: provider, held: held, journal: journal,
+        key: key, subject: subject, source: source, approval: approval, now: now)) }
+  }
+}
+
+fn capacity_capture_publish_held(store: CapacityCaptureStore, provider: LocalStoreCapability,
+  held: LocalStoreFamilyHeld, journal: SlotStore, key: NonEmptyStr, subject: CapacityManagedUnit, source: NonEmptyStr,
+  approval: CapacityCutoverAuthorization, now: fn() -> Result<Timestamp, String>) -> Result<CapturedUnitBlob, CapacityCaptureFault>
+  admit_callers: [decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_publish")]
+{
+  let prior = match capacity_capture_journal_open(store: store, journal: journal, key: key) {
+    Err { value: why } => { return Err { value: CapacityCaptureBoundaryRefused { detail: why } } } Ok { value: value } => value
+  }
+  if (prior.record.target_revision != approval.intent.revision || prior.record.plan.approved_digest != approval.approved_plan_digest) {
+    return Err { value: CapacityCaptureBoundaryRefused { detail: "capture journal revision differs from the approved revision" } }
+  }
+  if any(prior.record.prior, file => file.host == approval.intent.host && file.destination == source) {
+    return Err { value: CapacityCaptureBoundaryRefused { detail: "capture result already recorded for this source" } }
+  }
+  let at = match capacity_capture_approval_admission(store: store, source: source, approval: approval, now: now) {
+    Err { value: why } => { return Err { value: CapacityCaptureBoundaryRefused { detail: why } } } Ok { value: value } => value
+  }
+  let claimed_at = match capacity_capture_claim_admission(outcome: claim_authorization_slot(
+    escalation_id: capacity_capture_claim_key(store: store, host: approval.intent.host, source: source), attempt: store.attempt, at: at)) {
+    Err { value: why } => { return Err { value: CapacityCaptureBoundaryRefused { detail: why } } } Ok { value: generation } => generation
+  }
+  let scope = serialize_json(v: json_array(elements: [json_string(s: journal.root as String), json_string(s: key as String)])) as NonEmptyStr
+  match local_store_bind_retention(held: held, scope: scope) {
+    Present { value: refusal } => { return Err { value: CapacityCaptureRetentionRefused { refusal: refusal } } } Absent => {}
+  }
+  let reading = match read_staged_fabric_blob(path: source) {
+    FabricBlobReadRefused { fault: fault } => { return Err { value: CapacityCaptureBoundaryRefused { detail: fabric_blob_fault_text(fault: fault) } } }
+    FabricBlobRead { reading: value } => value
+  }
+  let request = CutoverCaptureRequest { host: approval.intent.host, source_unit: source, digest: fabric_blob_reading_digest(reading: reading) }
+  let saved = local_store_commit_under_request(held: held, req: request, payloads: [],
+    parts: [LocalStoreStagedPart { id: output_fabric_blob, staged: source }])
+  match saved.commit {
+    StoreCommitRefused { key: _, refusal: _ } => Err { value: CapacityCaptureCommitRefused { commit: saved.commit } }
+    StoreCommitSettled { receipt: _ } => match capacity_capture_blob_lookup(store: store, request: request, provider: provider) {
+      Err { value: why } => Err { value: CapacityCaptureBoundaryRefused { detail: why } }
+      Ok { value: capture } => match capacity_capture_record_commit(journal: journal, key: key, prior: prior,
+        file: CapacityGenerationFile { host: approval.intent.host, manager: subject.manager, unit: subject.unit, destination: source,
+          digest: fabric_blob_reading_digest(reading: capture.reading), address: fabric_blob_reading_path(reading: capture.reading) }) {
+        Err { value: why } => Err { value: CapacityCaptureBoundaryRefused { detail: why } }
+        Ok { value: _ } => {
+          let completed_at = match now() {
+            Err { value: why } => { return Err { value: CapacityCaptureBoundaryRefused { detail: why } } }
+            Ok { value: value } => value
+          }
+          match settle_authorization_claim(label: "cutover capture", outcome: ExitSuccess,
+            escalation_id: capacity_capture_claim_key(store: store, host: approval.intent.host, source: source),
+            attempt: store.attempt, held_at: claimed_at, at: completed_at) {
+            ExitSuccess => Ok { value: capture }
+            ExitFailure { code: _, reason: why } => Err { value: CapacityCaptureBoundaryRefused { detail: why } }
+          }
+        }
+      }
+    }
+  }
+}
+
+// DECLARED FRONTIER: terminal reclamation must acquire this same family hold.
+// It is not wired here. No absent-journal GC or normal
+// capacity eviction is available; unknown outcomes retain bytes and inhibition.
+
+
+fn capacity_capture_provisioning_targets(store: CapacityCaptureStore) -> Result<List<OwnedDirectoryTarget>, String> {
+  match capacity_capture_directory_targets(attempt: store.attempt) {
+    Err { value: why } => Err { value: why }
+    Ok { value: targets } => match capacity_journal_directory(tree: host_state_tree(), attempt: store.attempt) {
+      Err { value: why } => Err { value: why }
+      Ok { value: directory } => Ok { value: targets + [capacity_journal_base_directory(tree: host_state_tree()), directory] }
+    }
+  }
+}
+
+// Plan/record completeness is not a byte verification. The wet finish below
+// additionally looks up every prior and target part before its phase CAS.
+fn capacity_capture_manifest_complete(store: CapacityCaptureStore, intent: CapacityCutoverIntent,
+  record: CapacityCutoverRecord) -> Result<CapacityCutoverRecord, String> {
+  if record.plan.envelope != capacity_cutover_intent_text(intent: intent) || record.attempt != store.attempt || record.attempt != intent.attempt || record.target_revision != intent.revision
+    || record.phase != CapacityCapturingGeneration || count(record.created_paths) != 0 {
+    return Err { value: "capture completion names another apply, revision or phase" }
+  }
+  if count(intent.captures) == 0 || count(record.prior) != count(intent.captures) || count(record.target) == 0 {
+    return Err { value: "capture generation is incomplete" }
+  }
+  if !all(intent.captures, op => op.root == store.root
+    && count(filter(record.prior, file => file.host == intent.host && file.destination == op.source)) == 1)
+    || !all(record.prior, file => count(filter(intent.captures, op => op.source == file.destination && op.root == store.root)) == 1) {
+    return Err { value: "capture sources do not match the approved set exactly" }
+  }
+  if count(intent.generations) != count(record.target)
+    || !all(intent.generations, op => count(filter(record.target, file => capacity_capture_target_matches(store: store, host: intent.host, operation: op, file: file))) == 1)
+    || !all(record.target, file => count(filter(intent.generations, op => capacity_capture_target_matches(store: store, host: intent.host, operation: op, file: file))) == 1) {
+    return Err { value: "target generation does not match the approved digests exactly" }
+  }
+  if !capacity_generation_same_subjects(left: record.prior, right: record.target) {
+    return Err { value: "capture target changes unit membership; rollback is not defined" }
+  }
+  if !all(record.prior + record.target, file => capacity_capture_recorded_address_matches(store: store, host: intent.host, file: file)) {
+    return Err { value: "capture result is outside its provider address or host" }
+  }
+  Ok { value: record }
+}
+
+fn capacity_capture_target_matches(store: CapacityCaptureStore, host: NonEmptyStr,
+  operation: CapacityGenerationOperation, file: CapacityGenerationFile) -> Bool {
+  operation.root == store.root && file.host == host && operation.subject.manager == file.manager
+    && operation.subject.unit == file.unit && operation.destination == file.destination && operation.digest == file.digest
+}
+
+fn capacity_capture_generation_consent(approval: CapacityCutoverAuthorization, at: Timestamp) -> Result<Bool, String> {
+  if count(approval.intent.generations) == 0 { return Err { value: "no target generation approved" } }
+  fold(approval.intent.generations, init: Ok { value: true }, f: (prior, op) => { match prior {
+    Err { value: why } => Err { value: why }
+    Ok { value: _ } => match capacity_cutover_generation_admission(authorization: approval, operation: op, at: at) {
+      Err { value: why } => Err { value: why } Ok { value: _ } => Ok { value: true }
+    }
+  } })
+}
+
+fn capacity_capture_recorded_address_matches(store: CapacityCaptureStore, host: NonEmptyStr, file: CapacityGenerationFile) -> Bool {
+  file.host == host && (match capacity_capture_blob_path(store: store, request: capacity_generation_request(file: file)) {
+    Err { value: _ } => false Ok { value: expected } => expected == file.address
+  })
+}
+
+fn capacity_capture_finish(store: CapacityCaptureStore, provider: LocalStoreCapability, journal: SlotStore, key: NonEmptyStr,
+  approval: CapacityCutoverAuthorization, now: fn() -> Result<Timestamp, String>) -> Result<LocalStoreBracket<Result<CapacityCutoverRecord, String>>, String> {
+  if local_store_binding_path(b: provider.binding) != (store.root as String) { return Err { value: "capture provider and ownership roots differ" } }
+  let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  if count(approval.intent.captures) == 0 { return Err { value: "no captures approved" } }
+  match capacity_capture_generation_consent(approval: approval, at: at) {
+    Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
+  }
+  let consent = fold(approval.intent.captures, init: Ok { value: true }, f: (prior, op) => { match prior {
+    Err { value: why } => Err { value: why }
+    Ok { value: _ } => match capacity_cutover_capture_admission(authorization: approval, operation: op, at: at) {
+      Err { value: why } => Err { value: why } Ok { value: _ } => Ok { value: true }
+    }
+  } })
+  match consent {
+    Err { value: why } => Err { value: why }
+    Ok { value: _ } => Ok { value: local_store_held_session(capability: provider, family: cutover_capture_artifact_kind,
+      run: held => capacity_capture_finish_held(store: store, provider: provider, held: held, journal: journal, key: key, approval: approval, now: now)) }
+  }
+}
+
+fn capacity_capture_finish_held(store: CapacityCaptureStore, provider: LocalStoreCapability, held: LocalStoreFamilyHeld,
+  journal: SlotStore, key: NonEmptyStr, approval: CapacityCutoverAuthorization, now: fn() -> Result<Timestamp, String>) -> Result<CapacityCutoverRecord, String>
+  admit_callers: [decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_finish")]
+{
+  let prior = match capacity_capture_journal_open(store: store, journal: journal, key: key) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  let record = match capacity_capture_manifest_complete(store: store, intent: approval.intent, record: prior.record) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  let verified = fold(record.prior + record.target, init: Ok { value: true }, f: (acc, file) => match acc {
+    Err { value: why } => Err { value: why }
+    Ok { value: _ } => match capacity_generation_install(file: file, read: request => capacity_capture_blob_lookup(store: store, request: request, provider: provider)) {
+      Err { value: why } => Err { value: why } Ok { value: _ } => Ok { value: true }
+    }
+  })
+  match verified { Err { value: why } => { return Err { value: why } } Ok { value: _ } => {} }
+  // Recheck expiration after verification and before the journal mutation.
+  let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  match capacity_capture_generation_consent(approval: approval, at: at) {
+    Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
+  }
+  let consent = fold(approval.intent.captures, init: Ok { value: true }, f: (acc, op) => match acc {
+    Err { value: why } => Err { value: why }
+    Ok { value: _ } => match capacity_cutover_capture_admission(authorization: approval, operation: op, at: at) {
+      Err { value: why } => Err { value: why } Ok { value: _ } => Ok { value: true }
+    }
+  })
+  match consent { Err { value: why } => { return Err { value: why } } Ok { value: _ } => {} }
+  let scope = serialize_json(v: json_array(elements: [json_string(s: journal.root as String), json_string(s: key as String)])) as NonEmptyStr
+  match local_store_bind_retention(held: held, scope: scope) {
+    Present { value: _ } => { return Err { value: "capture journal retention binding or hold is not current" } }
+    Absent => {}
+  }
+  capacity_capture_record_replace(journal: journal, key: key, prior: prior, record: CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior, target: record.target,
+    planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts, phase: CapacityPreparingInhibition
+  })
+}
+
+// The initial journal CAS IS the apply claim: the original grant cannot be
+// spent separately and then crash before retaining its plan. The existing claim
+// kernel validates the whole request before invoking this one commit boundary.
+fn capacity_cutover_claim_initial(intent: CapacityCutoverIntent, request: Srv1CutoverRequest,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, planned_paths: List<CapacityInhibitionPath>,
+  at: Timestamp, journal: CapacityJournalStore) -> Result<CapacityCutoverAuthorization, String> {
+  capacity_cutover_claim(intent: intent, request: request, authorization: authorization,
+    planned_paths: planned_paths, at: at, journal: journal)
+}
+
+// The locked root helper calls this before its first capture publication. An
+// existing record refuses regardless of whether its phase is closed; only a new
+// apply identity and fresh approval may use another journal.
+fn capacity_cutover_claim_over_journal(store: CapacityCaptureStore, journal: CapacityJournalStore,
+  intent: CapacityCutoverIntent, request: Srv1CutoverRequest,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, planned_paths: List<CapacityInhibitionPath>,
+  at: Timestamp) -> Result<CapacityCutoverAuthorization, String> {
+  if (journal.slots.root != capacity_capture_journal_root(store: store) || store.attempt != intent.attempt) {
+    return Err { value: "initial journal belongs to another apply" }
+  }
+  capacity_cutover_claim_initial(intent: intent, request: request, authorization: authorization,
+    planned_paths: planned_paths, at: at, journal: journal)
+}

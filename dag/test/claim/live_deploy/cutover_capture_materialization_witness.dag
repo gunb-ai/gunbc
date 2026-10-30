@@ -1,0 +1,77 @@
+module test.claim.live_deploy.cutover_capture_materialization_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.measure { byte_size }
+import std.cache_identity { cutover_capture_artifact_kind }
+import std.cache_interface { RefuseNewStore, ReplaceExisting, LeastRecentlyUsed }
+import std.judgment_contract { output_fabric_blob }
+import std.materialization_provider { ArtifactRequest, CutoverCaptureRequest, request_key, addressed_request, RequestAddressed, RequestAddressRefused }
+import std.materialization_object { ArtifactBlobPart, store_commit_prepare_addressed, StoreCommitPrepared, StoreCommitNotPrepared, store_commit_refusal_tag }
+import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget, store_marker_catalog_admissible }
+import std.materialization_store_grant { CutoverCaptureRoot, materialization_store_root_path }
+import gunbc.runner.runner_microvm_attempt_identity { attempt_segment, AttemptSegmentAccepted, AttemptSegmentRefused }
+
+fn capture_request(host: NonEmptyStr, source: NonEmptyStr, digest: Sha256Digest) -> ArtifactRequest {
+  CutoverCaptureRequest { host: host, source_unit: source, digest: digest }
+}
+
+test fn capture_key_covers_host_source_and_bytes() -> Bool {
+  match sha256_hex_digest(hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") {
+    Absent => false
+    Present { value: digest } => match sha256_hex_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
+      Absent => false
+      Present { value: changed } => {
+        let original = request_key(req: capture_request(host: "srv1", source: "/etc/systemd/system/a.service", digest: digest))
+        original == request_key(req: capture_request(host: "srv1", source: "/etc/systemd/system/a.service", digest: digest))
+          && original != request_key(req: capture_request(host: "srv2", source: "/etc/systemd/system/a.service", digest: digest))
+          && original != request_key(req: capture_request(host: "srv1", source: "/etc/systemd/system/b.service", digest: digest))
+          && original != request_key(req: capture_request(host: "srv1", source: "/etc/systemd/system/a.service", digest: changed))
+      }
+    }
+  }
+}
+
+fn capture_prepare_tag(wanted: Sha256Digest, supplied: Sha256Digest) -> String {
+  match addressed_request(req: capture_request(host: "srv1", source: "/etc/systemd/system/a.service", digest: wanted)) {
+    RequestAddressRefused { components: _, scope: _ } => "address-refused"
+    RequestAddressed { addressed: request } => match store_commit_prepare_addressed(addressed: request, payloads: [],
+      blobs: [ArtifactBlobPart { id: output_fabric_blob, digest: supplied, size: byte_size(count: 0) }]) {
+      StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: _, offered_result: _ } => "prepared"
+      StoreCommitNotPrepared { commit: refused } => store_commit_refusal_tag(c: refused)
+    }
+  }
+}
+
+test fn capture_with_other_bytes_refuses_in_the_existing_provider() -> Bool {
+  match sha256_hex_digest(hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") {
+    Absent => false
+    Present { value: digest } => match sha256_hex_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
+      Absent => false
+      Present { value: other } => capture_prepare_tag(wanted: digest, supplied: digest) == "prepared"
+        && capture_prepare_tag(wanted: digest, supplied: other) == "output_content_refused"
+    }
+  }
+}
+
+// RefuseNewStore retains existing captures when full. The provider will not open
+// this family with eviction enabled, even if a caller offers a larger catalog.
+// Explicit journal reclamation is separate and remains owed by the consumer.
+test fn ordinary_eviction_cannot_be_enabled_for_cutover_captures() -> Bool {
+  store_marker_catalog_admissible(budgets: [LocalStoreFamilyBudget {
+    family: cutover_capture_artifact_kind, budget: byte_size(count: 4096), at_capacity: RefuseNewStore }])
+  && !store_marker_catalog_admissible(budgets: [LocalStoreFamilyBudget {
+    family: cutover_capture_artifact_kind, budget: byte_size(count: 4096),
+    at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } }])
+}
+
+test fn capture_root_uses_the_existing_path_segment_admission() -> Bool {
+  (match attempt_segment(spelling: "capture-fixture") {
+    AttemptSegmentAccepted { segment: segment } => materialization_store_root_path(root: CutoverCaptureRoot { attempt: segment }) == "/var/lib/gunbc/cutover-capture/capture-fixture"
+    AttemptSegmentRefused { refusal: _ } => false
+  }) && (match attempt_segment(spelling: "../other") {
+    AttemptSegmentAccepted { segment: _ } => false
+    AttemptSegmentRefused { refusal: _ } => true
+  })
+}

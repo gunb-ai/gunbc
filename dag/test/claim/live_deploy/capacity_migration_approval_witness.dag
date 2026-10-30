@@ -1,0 +1,326 @@
+module test.claim.live_deploy.capacity_migration_approval_witness
+
+import extdeps.shell
+import std.types { List, FilePath }
+import gunbc.host_state_root { isolated_host_state_tree }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import gunbc.live_deploy.capacity_journal_store { CapacityJournalStore, capacity_journal_path, capacity_journal_store }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, capacity_cutover_claim_input }
+
+import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest, CapacityProbeBinding }
+import gunbc.live_deploy.capacity_quiescence { CapacityProbeProcess, CapacityPlantStart, CapacityContainStart, CapacityInhibitUnit }
+import gunbc.compute.capacity_migration { CapacityMigrationPopulation, CapacityTransientFamily, CapacityUnclassified, CapacityFamilyParents, CapacityMigrationChild, CapacityMigrationParentRequirement, CapacityManagedUnit }
+import gunbc.compute.host_capacity { ComputeCapacitySubject }
+import product.capacity.event_chain { PartitionId }
+import std.measure { kibibyte }
+import std.decl_ref { decl_ref }
+import std.types { Bool, NonEmptyStr, String, Timestamp, ShellResponse }
+import std.error_primitives { Result, Ok, Err }
+import std.content_hash { Sha256Digest }
+import std.optional { Present, Absent }
+import gunbc.fleet.srv1_root_mutation_approval_run { Srv1CutoverRequest, Srv1RootMutationApproval }
+import std.durable_compare_and_set { cas_generation_first }
+import std.scoped_authorization { AttemptIdentity, ScopedAuthorization, AuthorizationGranted, OperatorGrant, authorization_scope_wire, parse_authorization_scope_wire, Unclaimed, ClaimedBy, ClaimHeld, ClaimLost, ClaimUndecided }
+import extdeps.systemd.manager { SystemManager }
+import gunbc.runner.runner_slot_retirement { cutover_interruption_authorization, authorized_retirement_actuation, RetirementActuationAuthorized, RetirementActuationRefused }
+import gunbc.host.host_operation_exec { SystemctlMaskNow }
+import gunbc.live_deploy.capacity_migration_approval { capacity_cutover_request, capacity_cutover_claim, capacity_cutover_capture_admission, capacity_cutover_capture_plan_lines, capacity_cutover_file_admission, capacity_cutover_file_run_authorized, capacity_cutover_operation_admission, capacity_cutover_run_authorized }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityCaptureOperation, capacity_capture_scope, capacity_generation_scope, CapacityGenerationOperation, CapacityCutoverFileOperation, CapacityInhibitionCreate, CapacityInhibitionRemove, CapacityCaptureRemove }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_request_client { PollApproved }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
+
+
+fn approval_fixture_drain() -> CapacityMigrationApplyRequest {
+  let unit = CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }
+  let source = decl_ref(module_path: "test.claim.live_deploy.capacity_migration_approval_witness", decl_name: "approval_fixture_drain")
+  let standing = CapacityUnclassified { detail: "fixture drain includes all writers" }
+  let partition = "fixture" as NonEmptyStr as PartitionId
+  CapacityMigrationApplyRequest { target_revision: "1111111111111111111111111111111111111111",
+    population: CapacityMigrationPopulation { source: source, installed: [unit],
+      writer_parents: [CapacityMigrationParentRequirement { source: source, standing: standing, parents: Ok { value: [unit] } }],
+      transients: [CapacityTransientFamily { source: source, standing: standing, manager: SystemManager,
+        patterns: ["fixture-*.service"], exclude_patterns: [], activators: [unit], placement: CapacityFamilyParents { parents: Ok { value: [unit] } } }],
+      children: [CapacityMigrationChild { root: "/fixture/capacity", partition: partition }] },
+    bindings: [CapacityProbeBinding { subject: unit, requirement: CapacityProbeProcess { parent: none } }],
+    child_subjects: [ComputeCapacitySubject { root: "/fixture/capacity", partition: partition, appropriation: kibibyte(count: 100),
+      parent_partition: partition, parent_appropriation: kibibyte(count: 100), request: kibibyte(count: 0) }] }
+}
+
+fn approval_fixture_intent() -> CapacityCutoverIntent {
+  CapacityCutoverIntent { controller_hold: none, drain: approval_fixture_drain(), controller_slot: none,
+    instance_id: "fixture-deployment", selected_identity: decl_ref(module_path: "test.claim.live_deploy.capacity_migration_approval_witness", decl_name: "approval_fixture_intent"),
+    host: "srv1", revision: "1111111111111111111111111111111111111111",
+    attempt: "cutover-fixture" as NonEmptyStr as AttemptIdentity,
+    reloads: [], generations: [], captures: [CapacityCaptureOperation { source: "/etc/systemd/system/fixture.service", root: "/var/lib/gunbc/cutover-capture/cutover-fixture" }],
+    file_operations: [CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityInhibitionCreate },
+      CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityInhibitionRemove }],
+    operations: [CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" } },
+      CapacityInhibitUnit { subject: CapacityManagedUnit { manager: SystemManager, unit: "actions-runner@srv1-02.service" } }],
+  }
+}
+
+data approval_fixture_helper_digest: Sha256Digest = Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+
+fn approval_fixture_request(intent: CapacityCutoverIntent, escalation_id: NonEmptyStr) -> Result<Srv1CutoverRequest, String> {
+  capacity_cutover_request(intent: intent, escalation_id: escalation_id, helper_digest: approval_fixture_helper_digest)
+}
+
+fn approval_fixture_grant(request: Srv1CutoverRequest) -> ScopedAuthorization<Srv1RootMutationApproval> {
+  let original = request.request
+  AuthorizationGranted { grant: OperatorGrant {
+    escalation_id: original.escalation_id, scopes: original.scopes, subject: original.subject,
+    purpose: original.purpose, attempt: original.attempt, intent_hash: original.intent_hash,
+    granted_by: "fixture-operator", granted_at: "2026-10-29T00:00:00Z", expires_at: "2026-10-29T01:00:00Z",
+  }, claim: Unclaimed }
+}
+
+// Authorization tests consume execution through a real isolated journal, including readback.
+test fn a_claimed_plan_admits_only_its_exact_unit_and_verb() -> Bool {
+  let request = match approval_fixture_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match approval_fixture_claim(intent: approval_fixture_intent(), request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z") {
+    Err { value: _ } => false
+    Ok { value: authorization } => {
+      let allowed = capacity_cutover_operation_admission(authorization: authorization,
+        operation: CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" } }, at: "2026-10-29T00:02:00Z")
+      let other_unit = capacity_cutover_operation_admission(authorization: authorization,
+        operation: CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "other.service" } }, at: "2026-10-29T00:02:00Z")
+      let other_verb = capacity_cutover_operation_admission(authorization: authorization,
+        operation: CapacityContainStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" } }, at: "2026-10-29T00:02:00Z")
+      (match allowed { Ok { value: _ } => true Err { value: _ } => false })
+        && (match other_unit { Err { value: _ } => true Ok { value: _ } => false })
+        && (match other_verb { Err { value: _ } => true Ok { value: _ } => false })
+    }
+  }
+}
+
+test fn an_already_claimed_capability_cannot_start_a_second_execution() -> Bool {
+  let request = match approval_fixture_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match approval_fixture_claim_twice(intent: approval_fixture_intent(), request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z") {
+    Err { value: why } => why == "cutover approval already consumed: existing-cutover-journal"
+    Ok { value: _ } => false
+  }
+}
+
+test fn claimed_interruption_reaches_the_existing_retirement_actuator() -> Bool {
+  let request = match approval_fixture_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match approval_fixture_claim(intent: approval_fixture_intent(), request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z") {
+    Err { value: _ } => false
+    Ok { value: approval } => match cutover_interruption_authorization(approval: approval, units: ["actions-runner@srv1-02.service"], at: "2026-10-29T00:02:00Z") {
+      Err { value: _ } => false
+      Ok { value: auth } => match authorized_retirement_actuation(auth: auth, unit: "actions-runner@srv1-02.service") {
+        RetirementActuationAuthorized { unit: unit, operation: op } =>
+          unit == "actions-runner@srv1-02.service" && op == SystemctlMaskNow { unit: "actions-runner@srv1-02.service" }
+        RetirementActuationRefused { unit: _, cause: _ } => false
+      }
+    }
+  }
+}
+
+test fn another_runner_cannot_borrow_cutover_interruption_permission() -> Bool {
+  let request = match approval_fixture_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match approval_fixture_claim(intent: approval_fixture_intent(), request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z") {
+    Err { value: _ } => false
+    Ok { value: approval } => match cutover_interruption_authorization(approval: approval, units: ["actions-runner@srv1-03.service"], at: "2026-10-29T00:02:00Z") {
+      Err { value: _ } => true
+      Ok { value: _ } => false
+    }
+  }
+}
+
+fn approval_transport_fixture(at: Result<Timestamp, String>, unit: NonEmptyStr) -> Result<ShellResponse, String> {
+  let request = match approval_fixture_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval") {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  match approval_fixture_claim(intent: approval_fixture_intent(), request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z") {
+    Err { value: why } => Err { value: why }
+    Ok { value: approval } => capacity_cutover_run_authorized(authorization: approval,
+      operation: CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: unit } },
+      now: fn() { at }, run: op => Err { value: "transport reached" })
+  }
+}
+
+test fn an_admitted_operation_reaches_the_supplied_transport() -> Bool {
+  approval_transport_fixture(at: Ok { value: "2026-10-29T00:02:00Z" }, unit: "fixture.service") == Err { value: "transport reached" }
+}
+
+test fn expiry_during_the_drain_refuses_before_dispatch() -> Bool {
+  match approval_transport_fixture(at: Ok { value: "2026-10-29T02:00:00Z" }, unit: "fixture.service") {
+    Err { value: why } => why != "transport reached" Ok { value: _ } => false
+  }
+}
+
+test fn an_unreadable_clock_refuses_before_dispatch() -> Bool {
+  approval_transport_fixture(at: Err { value: "clock unreadable" }, unit: "fixture.service") == Err { value: "clock unreadable" }
+}
+
+test fn another_unit_cannot_reach_the_transport() -> Bool {
+  match approval_transport_fixture(at: Ok { value: "2026-10-29T00:02:00Z" }, unit: "other.service") {
+    Err { value: why } => why == "cutover operation names a manager, unit or verb outside the approved plan" Ok { value: _ } => false
+  }
+}
+
+test fn captured_file_consent_does_not_cover_another_path_or_removal() -> Bool {
+  let request = match approval_fixture_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match approval_fixture_claim(intent: approval_fixture_intent(), request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z") {
+    Err { value: _ } => false
+    Ok { value: approval } => {
+      let allowed = capacity_cutover_file_admission(authorization: approval,
+        operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityInhibitionCreate }, at: "2026-10-29T00:02:00Z")
+      let other = capacity_cutover_file_admission(authorization: approval,
+        operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/other/prior", verb: CapacityInhibitionCreate }, at: "2026-10-29T00:02:00Z")
+      let removal = capacity_cutover_file_admission(authorization: approval,
+        operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityCaptureRemove }, at: "2026-10-29T00:02:00Z")
+      (match allowed { Ok { value: _ } => true Err { value: _ } => false })
+        && (match other { Err { value: _ } => true Ok { value: _ } => false })
+        && (match removal { Err { value: _ } => true Ok { value: _ } => false })
+    }
+  }
+}
+
+test fn unreadable_clock_refuses_before_a_capture_effect() -> Bool {
+  let request = match approval_fixture_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match approval_fixture_claim(intent: approval_fixture_intent(), request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z") {
+    Err { value: _ } => false
+    Ok { value: approval } => match capacity_cutover_file_run_authorized(authorization: approval,
+      operation: CapacityCutoverFileOperation { path: "/var/lib/gunbc/cutover-capture/cutover-fixture/prior", verb: CapacityInhibitionCreate },
+      now: fn() { Err { value: "clock unavailable" } }, run: op => Err { value: "effect dispatched" }) {
+      Err { value: why } => why == "clock unavailable"
+      Ok { value: _ } => false
+    }
+  }
+}
+
+test fn capture_consent_names_the_source_and_apply_root_before_reading_bytes() -> Bool {
+  let intent = approval_fixture_intent()
+  let request = match approval_fixture_request(intent: intent, escalation_id: "fixture-approval") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match approval_fixture_claim(intent: approval_fixture_intent(), request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z") {
+    Err { value: _ } => false
+    Ok { value: approval } => {
+      let good = CapacityCaptureOperation { source: "/etc/systemd/system/fixture.service", root: "/var/lib/gunbc/cutover-capture/cutover-fixture" }
+      (match capacity_cutover_capture_admission(authorization: approval, operation: good, at: "2026-10-29T00:02:00Z") { Ok { value: _ } => true Err { value: _ } => false })
+        && (match capacity_cutover_capture_admission(authorization: approval, operation: CapacityCaptureOperation { source: "/etc/secret", root: good.root }, at: "2026-10-29T00:02:00Z") { Err { value: _ } => true Ok { value: _ } => false })
+        && (match capacity_cutover_capture_admission(authorization: approval, operation: CapacityCaptureOperation { source: good.source, root: "/other" }, at: "2026-10-29T00:02:00Z") { Err { value: _ } => true Ok { value: _ } => false })
+        && capacity_cutover_capture_plan_lines(intent: intent) == ["capture-create source=/etc/systemd/system/fixture.service root=/var/lib/gunbc/cutover-capture/cutover-fixture once-per-apply=cutover-fixture"]
+    }
+  }
+}
+
+test fn the_real_broker_gate_shape_inhabits_the_internal_operation_consumer() -> Bool {
+  let intent = approval_fixture_intent()
+  let request = match approval_fixture_request(intent: intent, escalation_id: "fixture-approval") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let poll = PollApproved { revision: request_revision_of(request: request.request), decided_by: "fixture-operator",
+    decided_at: "2026-10-29T00:00:00Z", execute_by: "2026-10-29T01:00:00Z" }
+  match approval_gate_from_poll(poll: poll, request: request.request, observed_at: "2026-10-29T00:01:00Z") {
+    GateRefused { cause: _ } => false
+    GateAdmitted { authorization: grant } => match approval_fixture_claim(intent: intent, request: request,
+      authorization: grant, at: "2026-10-29T00:01:00Z") {
+      Err { value: _ } => false
+      Ok { value: admitted } => admitted.request == request.request
+        && (match capacity_cutover_operation_admission(authorization: admitted,
+          operation: CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" } },
+          at: "2026-10-29T00:02:00Z") { Ok { value: _ } => true Err { value: _ } => false })
+    }
+  }
+}
+
+test fn an_independently_substituted_intent_refuses_before_the_claim() -> Bool {
+  let intent = approval_fixture_intent()
+  let request = match approval_fixture_request(intent: intent, escalation_id: "fixture-approval") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let other = CapacityCutoverIntent { controller_hold: intent.controller_hold, drain: intent.drain, controller_slot: intent.controller_slot, instance_id: intent.instance_id, selected_identity: intent.selected_identity, host: intent.host, revision: intent.revision, attempt: intent.attempt,
+    operations: [], file_operations: intent.file_operations, captures: intent.captures,
+    reloads: intent.reloads, generations: intent.generations }
+  match approval_fixture_claim(intent: other, request: request, authorization: approval_fixture_grant(request: request),
+    at: "2026-10-29T00:01:00Z") {
+    Err { value: why } => why == "cutover intent does not match the approved plan, revision and exact internal scopes"
+    Ok { value: _ } => false
+  }
+}
+
+// Exercise the actual broker wire boundary, not just in-memory grant equality.
+test fn absolute_path_operation_tuples_round_trip_through_the_broker_scope_wire() -> Bool {
+  let intent = approval_fixture_intent()
+  let capture = capacity_capture_scope(intent: intent, operation: CapacityCaptureOperation {
+    source: "/etc/systemd/system/a service.unit", root: "/var/lib/gunbc/cutover-capture/cutover-fixture" })
+  let generation = capacity_generation_scope(intent: intent, operation: CapacityGenerationOperation {
+    subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" },
+    destination: "/etc/systemd/system/a service.unit", root: "/var/lib/gunbc/cutover-capture/cutover-fixture",
+    digest: approval_fixture_helper_digest })
+  all([capture, generation], scope => match authorization_scope_wire(scope: scope) {
+    Absent => false
+    Present { value: wire } => parse_authorization_scope_wire(wire: wire as String) == Present { value: scope }
+  })
+}
+
+test fn capture_scope_preserves_the_boundary_between_source_and_root() -> Bool {
+  let intent = approval_fixture_intent()
+  capacity_capture_scope(intent: intent, operation: CapacityCaptureOperation { source: "/a/b", root: "/c" })
+    != capacity_capture_scope(intent: intent, operation: CapacityCaptureOperation { source: "/a", root: "/b/c" })
+}
+
+// Every helper creates its own actual store; no supplied outcome can mint authority.
+fn approval_fixture_journal(attempt: AttemptIdentity) -> Result<CapacityJournalStore, String> {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-capacity-claim.XXXXXX").path
+  if dir == "" { return Err { value: "fixture temporary directory unavailable" } }
+  let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
+  let path = match capacity_journal_path(tree: tree, attempt: attempt) {
+    Err { value: why } => { return Err { value: why } } Ok { value: path } => path
+  }
+  let made = shell.Mkdir.Parents(path: path as FilePath)
+  capacity_journal_store(tree: tree, attempt: attempt)
+}
+
+fn approval_fixture_paths(intent: CapacityCutoverIntent) -> List<CapacityInhibitionPath> {
+  map(filter(intent.file_operations, op => op.verb == CapacityInhibitionCreate), op =>
+    CapacityInhibitionPath { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }, path: op.path })
+}
+
+fn approval_fixture_claim(intent: CapacityCutoverIntent, request: Srv1CutoverRequest,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp) -> Result<CapacityCutoverAuthorization, String> {
+  match approval_fixture_journal(attempt: intent.attempt) {
+    Err { value: why } => Err { value: why }
+    Ok { value: journal } => capacity_cutover_claim(intent: intent, request: request,
+      authorization: authorization, at: at, journal: journal, planned_paths: approval_fixture_paths(intent: intent))
+  }
+}
+
+fn approval_fixture_claim_twice(intent: CapacityCutoverIntent, request: Srv1CutoverRequest,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp) -> Result<CapacityCutoverAuthorization, String> {
+  let journal = match approval_fixture_journal(attempt: intent.attempt) {
+    Err { value: why } => { return Err { value: why } } Ok { value: journal } => journal
+  }
+  match capacity_cutover_claim(intent: intent, request: request, authorization: authorization,
+    at: at, journal: journal, planned_paths: approval_fixture_paths(intent: intent)) {
+    Err { value: why } => Err { value: concat("first claim failed: ", why) }
+    Ok { value: _ } => capacity_cutover_claim(intent: intent, request: request, authorization: authorization,
+      at: at, journal: journal, planned_paths: approval_fixture_paths(intent: intent))
+  }
+}
+
+fn approval_fixture_claim_input(text: String, request: Srv1CutoverRequest,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp) -> Result<CapacityCutoverAuthorization, String> {
+  let intent = approval_fixture_intent()
+  match approval_fixture_journal(attempt: intent.attempt) {
+    Err { value: why } => Err { value: why }
+    Ok { value: journal } => capacity_cutover_claim_input(text: text, request: request,
+      authorization: authorization, at: at, journal: journal, planned_paths: approval_fixture_paths(intent: intent))
+  }
+}

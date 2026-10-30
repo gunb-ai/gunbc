@@ -1,5 +1,6 @@
 module std.fabric_blob
 
+import std.decl_ref { decl_ref }
 import std.types { String, NonEmptyStr, Bool, List }
 import std.optional { Present, Absent }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic, sha256_hex_digest }
@@ -57,8 +58,9 @@ fn fabric_blob_object_name(address: FabricBlobAddress) -> NonEmptyStr {
 }
 
 // A BLOB THIS HOST HOLDS ON DISK, WITH THE DIGEST AND BYTE SIZE OF THOSE BYTES. sole_constructor:
-// only read_staged_fabric_blob mints one, from the file it digested, so a path and a digest that
-// describe different bytes have no constructor (gunbc.recurring_failure_mode
+// only read_staged_fabric_blob_observed mints one, from supplied handler observations.
+// read_staged_fabric_blob binds both handlers to one path; the observation seam tests
+// that boundary without constructing the reading outside its owner (gunbc.recurring_failure_mode
 // subject_and_its_digest_as_independent_parameters). It is the blob plane's own reading and never
 // an OriginReading: a cache fetch proves the bytes came from the cache, not from the durable origin.
 type FabricBlobReading sole_constructor {
@@ -91,26 +93,48 @@ type FabricBlobReadingOutcome
   = FabricBlobRead { reading: FabricBlobReading }
   | FabricBlobReadRefused { fault: FabricBlobFault }
 
-// THE SOLE MINT. One operation digests the file, measures it and names it, so the three cannot
-// describe different bytes. The handlers are consumed: extdeps.crypto.hash owns SHA-256 and its
+// THE PRODUCTION READING ROUTE. One path binds the digest and size handlers before
+// their observations reach the sole mint below. The handlers are consumed: extdeps.crypto.hash owns SHA-256 and its
 // sha256sum transport (the handler gunbc.fabric.fabric_m0_origin_readback mints OriginReading through), and
 // extdeps.tools.coreutils_stat owns st_size. Every non-reading outcome refuses with a located cause.
 fn read_staged_fabric_blob(path: NonEmptyStr) -> FabricBlobReadingOutcome {
   let observed = crypto.Sha256Sum.File(path: path as String)
   if observed.success == false {
+    read_staged_fabric_blob_observed(path: path, digest_observed: false, digest_line: observed.line,
+      size_observed: false, size_text: "")
+  } else {
+    let st = coreutils.Stat.PathSize(path: path)
+    read_staged_fabric_blob_observed(path: path, digest_observed: observed.success, digest_line: observed.line,
+      size_observed: st.success, size_text: st.size_text)
+  }
+}
+
+// The only constructor consumes observations of the named path. The production
+// route above supplies the existing SHA-256/stat handlers; witnesses supply the
+// same boundary values. This is not a second reading constructor or a mock change.
+fn read_staged_fabric_blob_observed(path: NonEmptyStr, digest_observed: Bool, digest_line: String,
+  size_observed: Bool, size_text: String) -> FabricBlobReadingOutcome
+  admit_callers: [
+    decl_ref(module_path: "std.fabric_blob", decl_name: "read_staged_fabric_blob"),
+    decl_ref(module_path: "test.claim.live_deploy.capacity_capture_store_witness", decl_name: "capture_fixture_blob"),
+    decl_ref(module_path: "test.claim.std_fabric_blob", decl_name: "supplied_observations_cannot_mint_a_failed_or_negative_size_reading"),
+    decl_ref(module_path: "test.claim.std_fabric_blob", decl_name: "supplied_nonempty_observation_preserves_digest_path_and_size"),
+    decl_ref(module_path: "test.claim.live_deploy.capacity_generation_publish_witness", decl_name: "a_verified_published_target_binds_the_closed_controller"),
+  ]
+{
+  if digest_observed == false {
     FabricBlobReadRefused { fault: FabricBlobReadingUnavailable { cause: concat("sha256sum could not read ", path as String) as NonEmptyStr } }
   } else {
-    match sha256sum_line_digest(line: observed.line) {
+    match sha256sum_line_digest(line: digest_line) {
       Absent => FabricBlobReadRefused { fault: FabricBlobReadingUnavailable { cause: concat("sha256sum printed no digest field for ", path as String) as NonEmptyStr } }
       Present { value: d } =>
         match sha256_hex_digest(hex: d.hex as String) {
           Absent => FabricBlobReadRefused { fault: FabricBlobReadingUnavailable { cause: concat("sha256sum printed a field that is not a 64-digit lower-hex SHA-256 for ", path as String) as NonEmptyStr } }
           Present { value: digest } => {
-            let st = coreutils.Stat.PathSize(path: path)
-            if st.success == false {
+            if size_observed == false {
               FabricBlobReadRefused { fault: FabricBlobReadingUnavailable { cause: concat("stat could not read the size of ", path as String) as NonEmptyStr } }
             } else {
-              match parse_int(s: trim(s: st.size_text)) {
+              match parse_int(s: trim(s: size_text)) {
                 Absent => FabricBlobReadRefused { fault: FabricBlobReadingUnavailable { cause: concat("stat printed no byte count for ", path as String) as NonEmptyStr } }
                 Present { value: n } =>
                   if n < 0 {

@@ -11,7 +11,8 @@ import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, system
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
-import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
+import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag, sudo_elevate_command }
+import extdeps.systemd.manager { SystemdManager, SystemManager, UserManager }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -437,6 +438,14 @@ fn systemctl_user_start_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String
 
 fn systemctl_user_restart_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String> {
   ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), systemctl_restart_verb as String, unit as String]
+}
+
+// A USER UNIT'S STATUS THROUGH THE SAME CONNECTOR AS THE VERBS ABOVE, so a diagnostic reads the manager the
+// failed verb addressed and not root's. `--no-pager --full` keep the ExecStart exit status and the last log
+// lines untruncated; status exits nonzero for a failed unit, which a caller capturing it as evidence must
+// not read as the capture failing.
+fn systemctl_user_status_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String> {
+  ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), "status", "--no-pager", "--full", unit as String]
 }
 
 fn systemctl_user_is_active_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String> {
@@ -1114,4 +1123,32 @@ fn systemctl_stop_step(unit: NonEmptyStr) -> SystemctlStep {
 
 fn systemctl_daemon_reload_step() -> SystemctlStep {
   SystemctlStep { argv: systemctl_daemon_reload_argv(), effect: ManagerReloadedExplicitly }
+}
+
+// Manager identity is explicit: a root process using --user alone would address the
+// wrong manager. --machine=<uid>@.host is the existing named user-manager route.
+type SystemctlManagedUnitOperation
+  = ManagedUnitStart
+  | ManagedUnitMaskNow
+  | ManagedUnitStop
+  | ManagedUnitShow { properties: List<SystemdUnitProperty> }
+
+fn systemctl_managed_unit_command(manager: SystemdManager, unit: NonEmptyStr, operation: SystemctlManagedUnitOperation) -> ArgvCommand {
+  let scope = match manager {
+    SystemManager => []
+    UserManager { uid: uid } => ["--user", systemctl_user_machine_connector(uid: uid)]
+  }
+  let arguments = match operation {
+    ManagedUnitStart => [systemctl_start_verb as String, unit as String]
+    ManagedUnitMaskNow => [systemctl_mask_verb as String, systemctl_now_flag as String, unit as String]
+    ManagedUnitStop => ["stop", unit as String]
+    ManagedUnitShow { properties: properties } => ["show", concat("--property=", join(map(properties, p => systemd_unit_property_wire(property: p) as String), ",")), unit as String]
+  }
+  sudo_elevate_command(command: [systemctl_binary_path() as String] + scope + arguments)
+}
+
+fn systemctl_managed_list_units_command(manager: SystemdManager, patterns: List<NonEmptyStr>) -> ArgvCommand {
+  let scope = match manager { SystemManager => [] UserManager { uid: uid } => ["--user", systemctl_user_machine_connector(uid: uid)] }
+  sudo_elevate_command(command: [systemctl_binary_path() as String] + scope
+    + ["list-units", "--all", "--no-legend", "--plain"] + map(patterns, pattern => pattern as String))
 }

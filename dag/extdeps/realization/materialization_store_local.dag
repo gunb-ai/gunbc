@@ -66,7 +66,7 @@ import std.artifact_store {
   store_over_provider, store_refused, store_replacement_supported, store_put, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit, StorePutAtCapacity, StorePutPolicyRefused,
   store_get, StoreHit, StoreMiss, store_bytes_used,
 }
-import std.cache_identity { ArtifactKindId }
+import std.cache_identity { ArtifactKindId, cutover_capture_artifact_kind }
 import std.measure { ByteSize, byte_size, measure_count, measure_add }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.durable_compare_and_set {
@@ -230,6 +230,7 @@ fn store_marker_content(root: MaterializationStoreRoot, instance_label: NonEmpty
 // line; initialization refuses anything else before a marker is written.
 fn store_marker_catalog_admissible(budgets: List<LocalStoreFamilyBudget>) -> Bool {
   count(budgets) > 0 && count(local_store_name_set(names: budgets |> map(b => b.family as String))) == count(budgets)
+    && all(budgets, b => b.family != cutover_capture_artifact_kind || b.at_capacity == RefuseNewStore)
     && all(budgets, b => match store_replacement_supported(action: b.at_capacity) { Absent => true, Present { value: _ } => false })
 }
 
@@ -899,7 +900,14 @@ type LocalStoreRetentionRefusal
 // Retention's root authority is pinned before its first write. Reopening the same
 // byte store against a different metadata registry must not authorize deletion.
 fn local_store_bind_retention(held: LocalStoreFamilyHeld, scope: NonEmptyStr) -> LocalStoreRetentionRefusal?
-  admit_callers: [decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_with_store")]
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_with_store"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_publish_held"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_generation_publish", decl_name: "capacity_generation_publish_held"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_manager_reload", decl_name: "capacity_reload_journal_held"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_cleanup", decl_name: "capacity_cleanup_held"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_finish_held"),
+  ]
 {
   match local_store_hold_check(held: held) {
     LocalStoreHoldCurrent => match local_store_family_budget(budgets: held.binding.budgets, family: held.family) {
@@ -932,7 +940,8 @@ fn local_store_bind_retention(held: LocalStoreFamilyHeld, scope: NonEmptyStr) ->
 // same hold until their copy finishes. Mark doomed before unlinking, and keep
 // every unconfirmed deletion charged, exactly as capacity eviction does.
 fn local_store_reclaim_unreferenced(held: LocalStoreFamilyHeld, roots: List<ArtifactRequest>) -> LocalStoreRetentionRefusal?
-  admit_callers: [decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_collect_under")]
+  admit_callers: [decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_collect_under"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_cleanup", decl_name: "capacity_cleanup_held")]
 {
   let names = roots |> flat_map(q => match evaluation_store_address(req: q) {
     Admitted { address: address } => if request_kind(req: q) == held.family { [store_object_name(address: address)] } else { [] }
@@ -1448,6 +1457,11 @@ fn local_store_with_family_of<T>(binding: LocalStoreBinding, family: ArtifactKin
 fn local_store_held_session<T>(capability: LocalStoreCapability, family: ArtifactKindId, run: fn(LocalStoreFamilyHeld) -> T) -> LocalStoreBracket<T>
   admit_callers: [
     decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_with_store"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_publish"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_generation_publish", decl_name: "capacity_generation_publish"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_manager_reload", decl_name: "capacity_reload_from_journal"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_cleanup", decl_name: "capacity_cleanup_run"),
+    decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_capture_finish"),
     decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution"),
   ]
 {

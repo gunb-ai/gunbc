@@ -1,0 +1,250 @@
+module test.claim.live_deploy.capacity_cutover_recovery_witness
+
+import gunbc.live_deploy.capacity_recovery_inhibition { capacity_recovery_inhibition_plan, CapacityRecoveryPartialInhibitionRemoval }
+import std.durable_exclusive_hold { DurableHoldSubject, DurableHoldRef, DurableHoldObservation, HoldSlotHeld, HoldSlotFree, HoldSlotAbsent, DurableHoldReleaseRef }
+import gunbc.durable_exclusive_hold_file_store { file_hold_ref }
+import gunbc.live_deploy.capacity_controller_hold { capacity_controller_hold_admit, capacity_controller_hold_key, capacity_controller_hold_owner, capacity_controller_hold_root }
+import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest }
+import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, capacity_cutover_intent_text }
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent }
+import std.content_hash { Sha256Digest, sha256_hex_of_text, sha256_hex_digest }
+import std.types { List, Bool, NonEmptyStr, String }
+import std.error_primitives { Result, Ok, Err }
+import std.scoped_authorization { AttemptIdentity }
+import std.durable_compare_and_set { CasObservedReadable, CasReadableAbsent, cas_generation_first, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import extdeps.filesystem.posix { PosixFileIdentity, S_IFLNK }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact, CapacityMaskEntry }
+import std.optional { Present, Absent }
+import extdeps.systemd.manager { SystemManager }
+import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityMigrationPopulation }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryRecheckDrain, CapacityGenerationFile, CapacityCutoverRecord, CapacityInstalling, CapacityResume, CapacityRollback, capacity_recovery_plan, capacity_recovery_finding, CapacityRecoveryOrphanMasks, CapacityRecoveryInstall, CapacityRecoveryVerifyGeneration, capacity_generation_same_subjects }
+
+
+fn recovery_fixture_file(name: NonEmptyStr, digest: NonEmptyStr) -> CapacityGenerationFile? {
+  match sha256_hex_digest(hex: digest as String) {
+    Absent => none
+    Present { value: hash } => Present { value: CapacityGenerationFile { manager: SystemManager, unit: name,
+      destination: concat("/etc/systemd/system/", name as String) as NonEmptyStr,
+      host: "srv1", address: "/fixture/provider-part", digest: hash } }
+  }
+}
+
+fn recovery_fixture_intent() -> CapacityCutoverIntent {
+  let prior = approval_fixture_intent()
+  CapacityCutoverIntent { controller_hold: prior.controller_hold, drain: prior.drain, controller_slot: prior.controller_slot,
+    instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host,
+    revision: prior.revision, attempt: "fixture-cutover" as NonEmptyStr as AttemptIdentity,
+    operations: prior.operations, file_operations: prior.file_operations, captures: prior.captures,
+    reloads: prior.reloads, generations: prior.generations }
+}
+
+fn recovery_fixture_record() -> CapacityCutoverRecord {
+  let path = CapacityInhibitionPath { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }, path: "/etc/systemd/system.control/fixture.service" }
+  let envelope = capacity_cutover_intent_text(intent: recovery_fixture_intent())
+  let digest = Sha256Digest { hex: sha256_hex_of_text(text: envelope as String) as NonEmptyStr }
+  CapacityCutoverRecord { plan: CapacityRetainedPlan { envelope: envelope, digest: digest, approved_digest: digest }, attempt: "fixture-cutover" as NonEmptyStr as AttemptIdentity,
+    target_revision: "1111111111111111111111111111111111111111",
+    prior: match recovery_fixture_file(name: "fixture.service", digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") { Present { value: file } => [file] Absent => [] },
+    target: match recovery_fixture_file(name: "fixture.service", digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") { Present { value: file } => [file] Absent => [] },
+    planned_paths: [path], created_paths: [path], artifacts: [CapacityInhibitionArtifact { inhibition: path, staged_path: "/etc/gunbc/cutover/fixture/mask", identity: PosixFileIdentity { st_dev: 10, st_ino: 42 } }], phase: CapacityInstalling { completed: 0 } }
+}
+
+// Supplied journal boundary, not a claim to have simulated filesystem durability.
+// Replay includes even a possibly completed write; the checkpoint cannot skip it.
+test fn resume_reinstalls_and_verifies_the_recorded_target() -> Bool {
+  let record = recovery_fixture_record()
+  match capacity_recovery_plan(record: record, choice: CapacityResume) {
+    Err { value: _ } => false
+    Ok { value: legs } => count(filter(legs, leg => match leg { CapacityRecoveryInstall { file: file } => record.target == [file] _ => false })) == 1
+      && count(filter(legs, leg => match leg { CapacityRecoveryVerifyGeneration { files: files } => files == record.target _ => false })) == 1
+  }
+}
+
+test fn rollback_uses_the_recorded_prior_not_the_current_files() -> Bool {
+  let record = recovery_fixture_record()
+  match capacity_recovery_plan(record: record, choice: CapacityRollback) {
+    Err { value: _ } => false
+    Ok { value: legs } => count(filter(legs, leg => match leg { CapacityRecoveryInstall { file: file } => record.prior == [file] _ => false })) == 1
+      && count(filter(legs, leg => match leg { CapacityRecoveryVerifyGeneration { files: files } => files == record.prior _ => false })) == 1
+  }
+}
+
+test fn masks_without_a_record_are_reported_and_never_adopted() -> Bool {
+  let record = recovery_fixture_record()
+  match capacity_recovery_finding(record: CasObservedReadable { readable: CasReadableAbsent }, owned_masks: Ok { value: record.created_paths }) {
+    CapacityRecoveryOrphanMasks { paths: paths, remedy: _ } => paths == record.created_paths
+    _ => false
+  }
+}
+
+
+test fn recovery_generation_membership_includes_the_source_host() -> Bool {
+  match recovery_fixture_file(name: "fixture.service", digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => false
+    Present { value: file } => !capacity_generation_same_subjects(left: [file], right: [CapacityGenerationFile {
+      host: "other-host", manager: file.manager, unit: file.unit, destination: file.destination, address: file.address, digest: file.digest }])
+  }
+}
+
+test fn recovery_rechecks_the_retained_digest_before_emitting_a_drain() -> Bool {
+  let record = recovery_fixture_record()
+  let changed = CapacityCutoverRecord { plan: CapacityRetainedPlan { envelope: concat(record.plan.envelope as String, " ") as NonEmptyStr,
+    digest: record.plan.digest, approved_digest: record.plan.approved_digest },
+    attempt: record.attempt, target_revision: record.target_revision, prior: record.prior, target: record.target,
+    planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts, phase: record.phase }
+  match capacity_recovery_plan(record: changed, choice: CapacityResume) {
+    Err { value: why } => why == "retained plan digest differs from its envelope or original approval"
+    Ok { value: _ } => false
+  }
+}
+
+test fn retained_digest_also_has_to_match_the_original_request_reference() -> Bool {
+  let record = recovery_fixture_record()
+  let changed = CapacityCutoverRecord { plan: CapacityRetainedPlan { envelope: record.plan.envelope,
+    digest: record.plan.digest, approved_digest: Sha256Digest { hex: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" } },
+    attempt: record.attempt, target_revision: record.target_revision, prior: record.prior, target: record.target,
+    planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts, phase: record.phase }
+  match capacity_recovery_plan(record: changed, choice: CapacityResume) {
+    Err { value: why } => why == "retained plan digest differs from its envelope or original approval"
+    Ok { value: _ } => false
+  }
+}
+
+test fn recovery_drain_uses_the_retained_population_and_not_a_new_roster() -> Bool {
+  let record = recovery_fixture_record()
+  let original = approval_fixture_intent()
+  match capacity_recovery_plan(record: record, choice: CapacityResume) {
+    Err { value: _ } => false
+    Ok { value: legs } => count(filter(legs, leg => match leg {
+      CapacityRecoveryRecheckDrain { request: request, controller_slot: slot } => request == original.drain && slot == original.controller_slot
+      _ => false
+    })) == 1
+  }
+}
+
+test fn a_later_roster_value_does_not_change_the_retained_recovery_drain() -> Bool {
+  let record = recovery_fixture_record()
+  let before = recovery_fixture_intent()
+  // A changed plan-time input would produce a different envelope. Recovery must
+  // still return the population approved before that later value existed.
+  let after = CapacityCutoverIntent { controller_hold: none, instance_id: before.instance_id, selected_identity: before.selected_identity,
+    host: before.host, revision: before.revision, attempt: before.attempt,
+    operations: before.operations, file_operations: before.file_operations, captures: before.captures,
+    generations: before.generations, reloads: before.reloads, controller_slot: before.controller_slot,
+    drain: CapacityMigrationApplyRequest { population: CapacityMigrationPopulation {
+      source: before.drain.population.source,
+      installed: before.drain.population.installed + [CapacityManagedUnit { manager: SystemManager, unit: "later-runner.service" }],
+      writer_parents: before.drain.population.writer_parents, transients: before.drain.population.transients,
+      children: before.drain.population.children }, target_revision: before.drain.target_revision,
+      bindings: before.drain.bindings, child_subjects: before.drain.child_subjects } }
+  if (capacity_cutover_intent_text(intent: after) == record.plan.envelope) { return false }
+  match capacity_recovery_plan(record: record, choice: CapacityResume) {
+    Err { value: _ } => false
+    Ok { value: legs } => count(filter(legs, leg => match leg {
+      CapacityRecoveryRecheckDrain { request: request, controller_slot: _ } => request == before.drain && request != after.drain
+      _ => false
+    })) == 1
+  }
+}
+
+fn recovery_two_masks_record() -> CapacityCutoverRecord {
+  let prior = recovery_fixture_record()
+  let second = CapacityInhibitionPath { subject: CapacityManagedUnit { manager: SystemManager, unit: "second.service" },
+    path: "/etc/systemd/system.control/second.service" }
+  CapacityCutoverRecord { plan: prior.plan, attempt: prior.attempt, target_revision: prior.target_revision,
+    prior: prior.prior, target: prior.target, planned_paths: prior.planned_paths + [second], created_paths: prior.created_paths + [second],
+    artifacts: prior.artifacts + [CapacityInhibitionArtifact { inhibition: second, staged_path: "/etc/gunbc/cutover/fixture/second-mask",
+      identity: PosixFileIdentity { st_dev: 10, st_ino: 43 } }], phase: prior.phase }
+}
+
+fn recovery_mask_read(artifacts: List<CapacityInhibitionArtifact>, path: CapacityInhibitionPath) -> Result<CapacityMaskEntry?, String> {
+  match first(filter(artifacts, artifact => artifact.inhibition == path)) {
+    Absent => Ok { value: Absent }
+    Present { value: artifact } => Ok { value: Present { value: CapacityMaskEntry {
+      identity: artifact.identity, kind: S_IFLNK, target: "/dev/null" } } }
+  }
+}
+
+test fn recovery_partial_mask_removal_retains_exact_inode_sets() -> Bool {
+  let record = recovery_two_masks_record()
+  let present = filter(record.artifacts, artifact => artifact.identity.st_ino == 43)
+  let absent = filter(record.artifacts, artifact => artifact.identity.st_ino == 42)
+  match capacity_recovery_inhibition_plan(record: record, choice: CapacityResume,
+    read_entry: path => recovery_mask_read(artifacts: present, path: path)) {
+    Err { value: CapacityRecoveryPartialInhibitionRemoval { recorded: recorded, observed_present: found, observed_absent: missing } } =>
+      recorded == record.artifacts && found == present && missing == absent
+    _ => false
+  }
+}
+
+test fn recovery_all_masks_present_preserves_normal_legs() -> Bool {
+  let record = recovery_two_masks_record()
+  match capacity_recovery_inhibition_plan(record: record, choice: CapacityResume,
+    read_entry: path => recovery_mask_read(artifacts: record.artifacts, path: path)) {
+    Err { value: _ } => false
+    Ok { value: legs } => capacity_recovery_plan(record: record, choice: CapacityResume) == Ok { value: legs }
+  }
+}
+
+test fn recovery_all_masks_absent_is_not_cleanup_completion() -> Bool {
+  let record = recovery_two_masks_record()
+  match capacity_recovery_inhibition_plan(record: record, choice: CapacityRollback,
+    read_entry: path => recovery_mask_read(artifacts: [], path: path)) {
+    Err { value: CapacityRecoveryPartialInhibitionRemoval { recorded: recorded, observed_present: found, observed_absent: missing } } =>
+      recorded == record.artifacts && count(found) == 0 && missing == record.artifacts
+    _ => false
+  }
+}
+
+fn recovery_controller_slot() -> CapacityManagedUnit {
+  CapacityManagedUnit { manager: SystemManager, unit: "controller.service" }
+}
+
+fn recovery_controller_hold() -> DurableHoldSubject {
+  DurableHoldSubject { hold: file_hold_ref(root: capacity_controller_hold_root, slot_key: capacity_controller_hold_key(slot: recovery_controller_slot())),
+    holder: capacity_controller_hold_owner(journal_root: "/fixture/journal", journal_key: "record", attempt: recovery_fixture_record().attempt),
+    generation: cas_generation_first() }
+}
+
+fn recovery_controller_assess(retained: DurableHoldSubject?, observation: DurableHoldObservation) -> Bool {
+  match capacity_controller_hold_admit(slot: recovery_controller_slot(), retained: retained,
+    journal_root: "/fixture/journal", journal_key: "record", attempt: recovery_fixture_record().attempt,
+    read: (root, key) => if root == capacity_controller_hold_root && key == capacity_controller_hold_key(slot: recovery_controller_slot()) {
+      observation
+    } else { HoldSlotAbsent }) {
+    Ok { value: _ } => true Err { value: _ } => false
+  }
+}
+
+test fn an_intact_retained_controller_hold_proves_continuity() -> Bool {
+  let hold = recovery_controller_hold()
+  recovery_controller_assess(retained: Present { value: hold }, observation: HoldSlotHeld { generation: hold.generation, owner: hold.holder })
+}
+
+test fn a_reused_controller_slot_under_a_different_hold_ref_refuses() -> Bool {
+  let hold = recovery_controller_hold()
+  !recovery_controller_assess(retained: Present { value: DurableHoldSubject { hold: "/another/slot" as NonEmptyStr as DurableHoldRef,
+    holder: hold.holder, generation: hold.generation } }, observation: HoldSlotHeld { generation: hold.generation, owner: hold.holder })
+}
+
+test fn a_released_controller_hold_refuses() -> Bool {
+  let hold = recovery_controller_hold()
+  !recovery_controller_assess(retained: Present { value: hold }, observation: HoldSlotFree {
+    generation: hold.generation, released_by: "released" as NonEmptyStr as DurableHoldReleaseRef })
+}
+
+test fn a_prechange_controller_exception_has_no_continuity_proof() -> Bool {
+  let hold = recovery_controller_hold()
+  !recovery_controller_assess(retained: none, observation: HoldSlotHeld { generation: hold.generation, owner: hold.holder })
+}
+
+test fn the_same_controller_owner_at_a_new_generation_refuses() -> Bool {
+  let hold = recovery_controller_hold()
+  match cas_generation_successor(g: hold.generation) {
+    CasSuccessorExhausted { head: _ } => false
+    CasSuccessorGeneration { generation: next } => !recovery_controller_assess(retained: Present { value: hold },
+      observation: HoldSlotHeld { generation: next, owner: hold.holder })
+  }
+}

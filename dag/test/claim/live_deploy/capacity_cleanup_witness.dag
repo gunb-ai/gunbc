@@ -1,0 +1,51 @@
+module test.claim.live_deploy.capacity_cleanup_witness
+
+import std.content_hash { content_hash_of_value }
+import std.types { Bool, String }
+import std.error_primitives { Ok, Err }
+import std.durable_compare_and_set { CasObservedReadable, CasReadablePresent, CasSlotVersion, cas_generation_first }
+import gunbc.live_deploy.capacity_cleanup { capacity_cleanup_admission }
+import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_encode, capacity_cutover_record_decode }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityCutoverPhase, CapacityCleanupOnly, CapacityClosed,
+  CapacityRollback, CapacityResume, capacity_recovery_plan, capacity_recovery_finding, CapacityRecoveryCompleted,
+  CapacityRecoveryInstall, CapacityRecoveryCloseRecord }
+import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
+
+fn cleanup_fixture_record(phase: CapacityCutoverPhase) -> CapacityCutoverRecord {
+  let record = recovery_fixture_record()
+  CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
+    target: record.target, planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts, phase: phase }
+}
+
+test fn reclamation_refuses_before_cleanup_only() -> Bool {
+  capacity_cleanup_admission(record: recovery_fixture_record())
+    == Err { value: "provider reclamation requires a persisted cleanup-only phase" }
+}
+
+test fn cleanup_only_forbids_rollback_from_possibly_reclaimed_bytes() -> Bool {
+  let record = cleanup_fixture_record(phase: CapacityCleanupOnly)
+  capacity_recovery_plan(record: record, choice: CapacityRollback)
+    == Err { value: "rollback is forbidden after cleanup-only; captured bytes may be reclaimed" }
+    && (match capacity_recovery_plan(record: record, choice: CapacityResume) {
+      Err { value: _ } => false
+      Ok { value: legs } => count(filter(legs, leg => match leg { CapacityRecoveryInstall { file: _ } => true _ => false })) == 0
+        && count(filter(legs, leg => leg == CapacityRecoveryCloseRecord)) == 1
+    })
+}
+
+test fn closed_is_completed_and_cannot_reuse_the_apply_identity() -> Bool {
+  let record = cleanup_fixture_record(phase: CapacityClosed)
+  (match capacity_recovery_finding(record: CasObservedReadable { readable: CasReadablePresent {
+    version: CasSlotVersion { generation: cas_generation_first(), content: content_hash_of_value(value: capacity_cutover_record_encode(record: record)), value: record }
+  } }, owned_masks: Ok { value: [] }) {
+    CapacityRecoveryCompleted { record: value } => value == record _ => false
+  }) && capacity_recovery_plan(record: record, choice: CapacityResume)
+    == Err { value: "cutover is closed; its apply identity cannot be reused" }
+}
+
+test fn cleanup_and_closed_phases_survive_the_durable_codec() -> Bool {
+  let cleanup = cleanup_fixture_record(phase: CapacityCleanupOnly)
+  let closed = cleanup_fixture_record(phase: CapacityClosed)
+  capacity_cutover_record_decode(text: capacity_cutover_record_encode(record: cleanup) as String) == Ok { value: cleanup }
+    && capacity_cutover_record_decode(text: capacity_cutover_record_encode(record: closed) as String) == Ok { value: closed }
+}

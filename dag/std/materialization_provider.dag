@@ -44,7 +44,7 @@ import std.cache_identity {
   native_test_universe_artifact_kind,
   native_module_verdict_bundle_artifact_kind,
   compute_work_artifact_kind,
-  fabric_blob_artifact_kind
+  fabric_blob_artifact_kind, cutover_capture_artifact_kind
 }
 import std.computation_identity {
   ComputationIdentity, StructurallyIdentical, IdentityUnknown,
@@ -182,12 +182,13 @@ type ArtifactRequest
   | NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject)
   | ComputeWorkRequest { subject: WorkSubject, operation: WorkOperation, toolchain: WorkToolchainIdentity }
   | FabricBlobRequest { address: FabricBlobAddress }
+  | CutoverCaptureRequest { host: NonEmptyStr, source_unit: NonEmptyStr, digest: Sha256Digest }
 
 // THE NATIVE ROUTE'S THREE REQUEST FAMILIES (operator rulings 2026-09-11: the replacement native CI
 // job is a materialization). Each is a VARIANT for the reason the header gives: kind, declared
 // inputs and required outputs are derived, so none of them can be under-specified by a caller.
 //
-// Every field is an IDENTITY DIGEST, never a location. A path, mount, object name, bucket, rename
+// In these native-route families every field is an IDENTITY DIGEST, never a location. A path, mount, object name, bucket, rename
 // or permission appears in no request and no artifact -- those are facts of one realization (the
 // local persistent store names a file; a GCS realization names an object), and putting one here
 // would make the computation key depend on where the bytes live. Provider identity is likewise
@@ -430,6 +431,7 @@ fn request_evaluation_bucket(identity: EvaluationIdentity, req: ArtifactRequest)
     universe: (tt, rb) => evaluation_identity_index_bucket(evaluation: identity),
     module_verdict_bundle: s => evaluation_identity_index_bucket(evaluation: identity),
     compute_work: (sj, op, tc) => evaluation_identity_index_bucket(evaluation: identity),
+    cutover_capture: (host, source, digest) => evaluation_identity_index_bucket(evaluation: identity),
     fabric_blob: a => evaluation_identity_index_bucket(evaluation: identity)
   )
 }
@@ -524,6 +526,7 @@ fn request_git_object_rows(req: ArtifactRequest) -> List<EvaluationIdentityCompo
       EvaluationIdentityComponentRow { ref: evaluation_identity_subject_ref, component: compute_work_subject_component(subject: sj) },
       EvaluationIdentityComponentRow { ref: compute_work_provider_revision_ref, component: git_object_identity_component(oid: tc.provider_revision) }
     ],
+    cutover_capture: (host, source, digest) => [],
     fabric_blob: a => []
   )
 }
@@ -1101,6 +1104,31 @@ fn fabric_blob_judgment_contract(address: FabricBlobAddress) -> JudgmentContract
   }
 }
 
+// The source host/path is the semantic identity of an operator-edited unit,
+// not the store placement. Capture identity covers both plus the exact bytes.
+// Apply identity belongs to retention, never this key: equal captures dedupe.
+fn cutover_capture_judgment_contract(host: NonEmptyStr, source_unit: NonEmptyStr, digest: Sha256Digest) -> JudgmentContract {
+  JudgmentContract {
+    demand_identity: DemandIdentity {
+      kind: cutover_capture_artifact_kind,
+      subject: identity_digest_component(hash: as_content_hash_cryptographic(digest: digest)),
+      declared_inputs: [
+        DeclaredInput { ref: "cutover_capture.host", component: identity_text_component(content: host as String) },
+        DeclaredInput { ref: "cutover_capture.source_unit", component: identity_text_component(content: source_unit as String) }
+      ]
+    },
+    result: ResultContract {
+      carries_semantic_value: true, ordered_diagnostics: false,
+      carries_effect_requests_receipts: false, carries_refusal_arm: true,
+      required_persisted_outputs: [PersistedOutputObligation {
+        id: output_fabric_blob, occurrence_contract: SemanticOnly,
+        content: ExactByteContent { digest: digest }
+      }]
+    },
+    demand_nature: IdempotentEffect
+  }
+}
+
 fn request_judgment_contract(req: ArtifactRequest) -> JudgmentContract {
   request_fold(
     req: req,
@@ -1112,6 +1140,7 @@ fn request_judgment_contract(req: ArtifactRequest) -> JudgmentContract {
     universe: universe_judgment_contract,
     module_verdict_bundle: module_verdict_bundle_judgment_contract,
     compute_work: compute_work_judgment_contract,
+    cutover_capture: cutover_capture_judgment_contract,
     fabric_blob: fabric_blob_judgment_contract
   )
 }
@@ -1126,6 +1155,7 @@ fn request_fold<T>(
   universe: fn(ContentHash, DeclaredInput) -> T,
   module_verdict_bundle: fn(NativeModuleVerdictBundleSubject) -> T,
   compute_work: fn(WorkSubject, WorkOperation, WorkToolchainIdentity) -> T,
+  cutover_capture: fn(NonEmptyStr, NonEmptyStr, Sha256Digest) -> T,
   fabric_blob: fn(FabricBlobAddress) -> T
 ) -> T {
   match req {
@@ -1138,6 +1168,7 @@ fn request_fold<T>(
     UniverseArtifactRequest { tested_tree_identity: tt, route_binary: rb } => universe(tt, rb)
     NativeModuleVerdictBundleRequest(subject) => module_verdict_bundle(subject)
     ComputeWorkRequest { subject: sj, operation: op, toolchain: tc } => compute_work(sj, op, tc)
+    CutoverCaptureRequest { host: h, source_unit: p, digest: d } => cutover_capture(h, p, d)
     FabricBlobRequest { address: a } => fabric_blob(a)
   }
 }
@@ -1321,6 +1352,7 @@ type MaterializedArtifact
       gunbc_binary: ArtifactPart?,
       claim_batch_binary: ArtifactPart?
     }
+  | CutoverCaptureArtifact { request_key: ContentHash, blob: ArtifactPart }
   | FabricBlobArtifact { request_key: ContentHash, blob: ArtifactPart }
   | LegacyIncompleteArtifact {
       kind: ArtifactKindId,
@@ -1338,6 +1370,7 @@ fn artifact_fold<T>(
   universe: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   module_verdict_bundle: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   compute_work: fn(ContentHash, ArtifactPart, ArtifactPart, ArtifactPart, ArtifactPart?, ArtifactPart?) -> T,
+  cutover_capture: fn(ContentHash, ArtifactPart) -> T,
   fabric_blob: fn(ContentHash, ArtifactPart) -> T,
   legacy_incomplete: fn(ArtifactKindId, ContentHash, List<CarriedOutput>) -> T
 ) -> T {
@@ -1359,6 +1392,7 @@ fn artifact_fold<T>(
     ModuleVerdictBundleArtifact { request_key: k, test_verdicts: v, preparation_diagnostics: d } =>
       module_verdict_bundle(k, v, d)
     ComputeWorkArtifact { request_key: k, outcome: o, log: l, outputs: x, gunbc_binary: g, claim_batch_binary: c } => compute_work(k, o, l, x, g, c)
+    CutoverCaptureArtifact { request_key: k, blob: b } => cutover_capture(k, b)
     FabricBlobArtifact { request_key: k, blob: b } => fabric_blob(k, b)
     LegacyIncompleteArtifact { kind: kd, request_key: k, carried_outputs: cs } =>
       legacy_incomplete(kd, k, cs)
@@ -1376,6 +1410,7 @@ fn artifact_kind(artifact: MaterializedArtifact) -> ArtifactKindId {
     universe: (k, p, c) => native_test_universe_artifact_kind,
     module_verdict_bundle: (k, v, d) => native_module_verdict_bundle_artifact_kind,
     compute_work: (k, o, l, x, g, c) => compute_work_artifact_kind,
+    cutover_capture: (k, b) => cutover_capture_artifact_kind,
     fabric_blob: (k, b) => fabric_blob_artifact_kind,
     legacy_incomplete: (kd, k, cs) => kd
   )
@@ -1392,6 +1427,7 @@ fn artifact_request_key(artifact: MaterializedArtifact) -> ContentHash {
     universe: (k, p, c) => k,
     module_verdict_bundle: (k, v, d) => k,
     compute_work: (k, o, l, x, g, c) => k,
+    cutover_capture: (k, b) => k,
     fabric_blob: (k, b) => k,
     legacy_incomplete: (kd, k, cs) => k
   )
@@ -1435,6 +1471,7 @@ fn artifact_carried_outputs(artifact: MaterializedArtifact) -> List<CarriedOutpu
       positioned_part(id: output_compute_work_outputs, part: x)
     ], match g { Present { value: p } => [positioned_part(id: output_compute_work_gunbc_binary, part: p)]  Absent => [] }),
       match c { Present { value: p } => [positioned_part(id: output_compute_work_claim_batch_binary, part: p)]  Absent => [] }),
+    cutover_capture: (k, b) => [positioned_part(id: output_fabric_blob, part: b)],
     fabric_blob: (k, b) => [positioned_part(id: output_fabric_blob, part: b)],
     legacy_incomplete: (kd, k, cs) => cs
   )
@@ -1635,6 +1672,8 @@ fn artifact_from_manifest(m: ArtifactManifest) -> ManifestDecode {
       build: (a, b) => ModuleVerdictBundleArtifact { request_key: k, test_verdicts: a, preparation_diagnostics: b })
   } else if m.kind == compute_work_artifact_kind {
     manifest_compute_work(m: m)
+  } else if m.kind == cutover_capture_artifact_kind {
+    manifest_one_part(m: m, id: output_fabric_blob, build: b => CutoverCaptureArtifact { request_key: k, blob: b })
   } else if m.kind == fabric_blob_artifact_kind {
     manifest_one_part(m: m, id: output_fabric_blob, build: b => FabricBlobArtifact { request_key: k, blob: b })
   } else {

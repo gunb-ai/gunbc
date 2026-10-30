@@ -101,6 +101,7 @@ fn capacity_migration_enumerate_family(
             Err { value: "family selector reading came from a different manager" }
           } else {
             Ok { value: filter(included, unit => capacity_unit_is_not_excluded(excluded: excluded, unit: unit)) }
+
           }
         }
       }
@@ -130,10 +131,18 @@ type CapacityMigrationPopulation {
   children: List<CapacityMigrationChild>
 }
 
+// Derived from source unit kind/placement. Path and timer units have activation
+// edges but no process cgroup (systemd.resource-control(5)). An empty service
+// ControlGroup is not evidence; it needs an independently drained enclosing slice.
+type CapacityDescendantStanding
+  = CapacityRecordedDescendants { reading: RecordedCgroupPathStanding }
+  | CapacityParentDescendants { parent: CapacityManagedUnit }
+  | CapacityActivationDescendants { targets: List<CapacityManagedUnit> }
+
 type CapacityUnitDrain {
   subject: CapacityManagedUnit
   quiescence: ExternalQuiescence
-  descendants: RecordedCgroupPathStanding
+  descendants: CapacityDescendantStanding
 }
 
 // This is a pure admission, not a deployment receipt or a marker writer. Its production
@@ -146,6 +155,38 @@ type CapacityMigrationAdmission sole_constructor {
   target_revision: CommitSha
 }
 
+fn capacity_migration_recorded_parent_refusal(subject: CapacityManagedUnit, observed: List<CapacityUnitDrain>) -> String? {
+  let matches = filter(observed, item => item.subject == subject)
+  if count(matches) != 1 { return Present { value: concat("missing or ambiguous parent drain for ", subject.unit as String) } }
+  match first(matches) {
+    Absent => Present { value: "parent drain absent" }
+    Present { value: parent } => {
+      if parent.quiescence.unit != subject.unit { return Present { value: "parent quiescence names another unit" } }
+      match unit_quiescence_admission(q: parent.quiescence) {
+        QuiescenceRefused { cause: why } => Present { value: why }
+        QuiescenceInForce => match parent.descendants {
+          CapacityRecordedDescendants { reading: reading } => match recorded_cgroup_drain(path: reading) {
+            RecordedCgroupPreserve { detail: why } => Present { value: why }
+            RecordedCgroupMaySeal { detail: _ } => none
+          }
+          _ => Present { value: "enclosing parent needs direct recorded cgroup evidence" }
+        }
+      }
+    }
+  }
+}
+
+fn capacity_migration_process_descendants_refusal(reading: CapacityDescendantStanding, observed: List<CapacityUnitDrain>) -> String? {
+  match reading {
+    CapacityRecordedDescendants { reading: path } => match recorded_cgroup_drain(path: path) {
+      RecordedCgroupPreserve { detail: why } => Present { value: why }
+      RecordedCgroupMaySeal { detail: _ } => none
+    }
+    CapacityParentDescendants { parent: parent } => capacity_migration_recorded_parent_refusal(subject: parent, observed: observed)
+    CapacityActivationDescendants { targets: _ } => Present { value: "activation target lacks process-tree drain evidence" }
+  }
+}
+
 fn capacity_migration_unit_refusal(subject: CapacityManagedUnit, observed: List<CapacityUnitDrain>) -> String? {
   let matches = filter(observed, item => item.subject == subject)
   if count(matches) != 1 {
@@ -153,18 +194,35 @@ fn capacity_migration_unit_refusal(subject: CapacityManagedUnit, observed: List<
   } else {
     match first(matches) {
       Absent => Present { value: "unit drain observation was absent" }
-      Present { value: reading } =>
-        if reading.quiescence.unit != subject.unit {
-          Present { value: "quiescence names a different unit" }
-        } else {
-          match unit_quiescence_admission(q: reading.quiescence) {
-            QuiescenceRefused { cause: why } => Present { value: why }
-            QuiescenceInForce => match recorded_cgroup_drain(path: reading.descendants) {
-              RecordedCgroupPreserve { detail: why } => Present { value: why }
-              RecordedCgroupMaySeal { detail: _ } => none
+      Present { value: reading } => {
+        if reading.quiescence.unit != subject.unit { return Present { value: "quiescence names a different unit" } }
+        match unit_quiescence_admission(q: reading.quiescence) {
+          QuiescenceRefused { cause: why } => Present { value: why }
+          QuiescenceInForce => match reading.descendants {
+            CapacityActivationDescendants { targets: targets } => {
+              if count(targets) == 0 { return Present { value: "activation-only unit has no target edge" } }
+              fold(targets, init: none, f: (prior, target) => match prior {
+                Present { value: _ } => prior
+                Absent => {
+                  let found = filter(observed, item => item.subject == target)
+                  if count(found) != 1 { Present { value: concat("activation target undrained: ", target.unit as String) } }
+                  else { match first(found) {
+                    Absent => Present { value: "activation target absent" }
+                    Present { value: target_reading } => {
+                      if target_reading.quiescence.unit != target.unit { return Present { value: "activation target quiescence identity mismatch" } }
+                      match unit_quiescence_admission(q: target_reading.quiescence) {
+                        QuiescenceRefused { cause: why } => Present { value: why }
+                        QuiescenceInForce => capacity_migration_process_descendants_refusal(reading: target_reading.descendants, observed: observed)
+                      }
+                    }
+                  } }
+                }
+              })
             }
+            _ => capacity_migration_process_descendants_refusal(reading: reading.descendants, observed: observed)
           }
         }
+      }
     }
   }
 }

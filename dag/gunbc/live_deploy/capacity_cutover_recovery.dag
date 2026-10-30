@@ -1,0 +1,180 @@
+module gunbc.live_deploy.capacity_cutover_recovery
+
+import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan, capacity_retained_plan_read, capacity_retained_plan_result }
+import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest }
+import std.types { String, NonEmptyStr, List, Int, Bool, CommitSha }
+import std.error_primitives { Result, Ok, Err }
+import std.scoped_authorization { AttemptIdentity }
+import std.durable_compare_and_set { CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
+import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
+import std.fabric_blob { fabric_blob_reading_digest, fabric_blob_reading_path }
+import std.materialization_provider { ArtifactRequest, CutoverCaptureRequest }
+import extdeps.systemd.manager { SystemdManager }
+import gunbc.live_deploy.capacity_capture_store { CapturedUnitBlob }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, CapturedUnitDocument }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact }
+
+// This is the payload of the existing durable CAS slot, not another journal
+// protocol. A host-local file-store binding must remain available while services
+// are inhibited. The record is written before the first link; no boot consumer
+// runs it. Only an explicitly approved recovery can choose resume or rollback.
+type CapacityGenerationFile {
+  manager: SystemdManager
+  unit: NonEmptyStr
+  destination: NonEmptyStr
+  host: NonEmptyStr
+  address: NonEmptyStr
+  digest: Sha256Digest
+}
+
+type CapacityCutoverPhase
+  = CapacityCapturingGeneration
+  | CapacityPreparingInhibition
+  | CapacityInstalling { completed: Int }
+  | CapacityCleanupOnly
+  | CapacityClosed
+  | CapacityGenerationVerified
+  | CapacityRemovingInhibition { completed: Int }
+
+// planned_paths are obligations, not ownership receipts. created_paths contains
+// only links whose exclusive creation was recorded by this attempt. A crash
+// between creation and receipt is uncertain ownership, never permission to unlink.
+type CapacityCutoverRecord {
+  plan: CapacityRetainedPlan
+  attempt: AttemptIdentity
+  target_revision: CommitSha
+  prior: List<CapacityGenerationFile>
+  target: List<CapacityGenerationFile>
+  planned_paths: List<CapacityInhibitionPath>
+  created_paths: List<CapacityInhibitionPath>
+  artifacts: List<CapacityInhibitionArtifact>
+  phase: CapacityCutoverPhase
+}
+
+type CapacityRecoveryChoice = CapacityResume | CapacityRollback
+
+type CapacityRecoveryLeg
+  = CapacityRecoveryRequireApproval { attempt: AttemptIdentity, choice: CapacityRecoveryChoice }
+  | CapacityRecoveryReconcileOwnedInhibition { record: CapacityCutoverRecord }
+  | CapacityRecoveryRecheckDrain { request: CapacityMigrationApplyRequest, controller_slot: CapacityManagedUnit? }
+  | CapacityRecoveryInstall { file: CapacityGenerationFile }
+  | CapacityRecoveryVerifyGeneration { files: List<CapacityGenerationFile> }
+  | CapacityRecoveryVerifyInhibition { paths: List<CapacityInhibitionPath> }
+  | CapacityRecoveryRemoveRecordedLinks { artifacts: List<CapacityInhibitionArtifact> }
+  | CapacityRecoveryVerifyDischarge { artifacts: List<CapacityInhibitionArtifact> }
+  | CapacityRecoveryRemoveCaptures { files: List<CapacityGenerationFile> }
+  | CapacityRecoveryPersistCleanupOnly
+  | CapacityRecoveryCloseRecord
+  | CapacityRecoveryReload
+
+// Reinstall every file: a crash can follow a write but precede its checkpoint.
+// The cursor is diagnostic, never authority to skip a file or trust a hash.
+// Both branches re-prove drain and the entire selected generation before removal.
+fn capacity_recovery_plan(record: CapacityCutoverRecord, choice: CapacityRecoveryChoice) -> Result<List<CapacityRecoveryLeg>, String> {
+  let intent = match capacity_retained_plan_result(finding: capacity_retained_plan_read(envelope: record.plan.envelope, digest: record.plan.digest, approved_digest: record.plan.approved_digest)) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  if (intent.attempt != record.attempt || intent.revision != record.target_revision) {
+    return Err { value: "retained plan differs from original apply identity" }
+  }
+  if (record.phase == CapacityClosed) { return Err { value: "cutover is closed; its apply identity cannot be reused" } }
+  if (record.phase == CapacityCleanupOnly) {
+    return match choice {
+      CapacityRollback => Err { value: "rollback is forbidden after cleanup-only; captured bytes may be reclaimed" }
+      CapacityResume => Ok { value: [CapacityRecoveryRequireApproval { attempt: record.attempt, choice: choice },
+        CapacityRecoveryVerifyDischarge { artifacts: record.artifacts }, CapacityRecoveryRemoveCaptures { files: record.prior + record.target }, CapacityRecoveryCloseRecord] }
+    }
+  }
+  let selected = match choice { CapacityResume => record.target CapacityRollback => record.prior }
+  if count(selected) == 0 { return Err { value: "recovery has no captured generation" } }
+  if (record.created_paths != record.planned_paths) {
+    return Err { value: "inhibition ownership is incomplete; reconcile creation receipts before recovery" }
+  }
+  if !all(record.created_paths, path => capacity_recovery_has_artifact(artifacts: record.artifacts, path: path)) {
+    return Err { value: "recorded inhibition has no unique retained inode artifact" }
+  }
+  if !all(selected, file => capacity_recovery_has_inhibition(paths: record.created_paths, file: file)) {
+    return Err { value: "captured generation has a unit without its recorded inhibition" }
+  }
+  if !capacity_generation_same_subjects(left: record.prior, right: record.target) {
+    return Err { value: "generation membership changed; recovery needs modeled removal of added units" }
+  }
+  Ok { value: [CapacityRecoveryRequireApproval { attempt: record.attempt, choice: choice },
+    CapacityRecoveryReconcileOwnedInhibition { record: record }, CapacityRecoveryRecheckDrain { request: intent.drain, controller_slot: intent.controller_slot }]
+    + map(selected, file => CapacityRecoveryInstall { file: file })
+    + [CapacityRecoveryVerifyGeneration { files: selected },
+      CapacityRecoveryVerifyInhibition { paths: record.planned_paths },
+      CapacityRecoveryRemoveRecordedLinks { artifacts: record.artifacts },
+      CapacityRecoveryReload, CapacityRecoveryVerifyDischarge { artifacts: record.artifacts },
+      CapacityRecoveryPersistCleanupOnly, CapacityRecoveryRemoveCaptures { files: record.prior + record.target }, CapacityRecoveryCloseRecord] }
+}
+
+fn capacity_recovery_has_artifact(artifacts: List<CapacityInhibitionArtifact>, path: CapacityInhibitionPath) -> Bool {
+  count(filter(artifacts, artifact => artifact.inhibition == path)) == 1
+}
+
+fn capacity_recovery_has_inhibition(paths: List<CapacityInhibitionPath>, file: CapacityGenerationFile) -> Bool {
+  count(filter(paths, path => path.subject.manager == file.manager && path.subject.unit == file.unit)) == 1
+}
+
+// This first recovery domain replaces existing units only. It refuses additions
+// rather than silently leaving a new writer behind during rollback.
+fn capacity_generation_has_file(files: List<CapacityGenerationFile>, file: CapacityGenerationFile) -> Bool {
+  count(filter(files, candidate => candidate.host == file.host && candidate.manager == file.manager
+    && candidate.unit == file.unit && candidate.destination == file.destination)) == 1
+}
+
+fn capacity_generation_same_subjects(left: List<CapacityGenerationFile>, right: List<CapacityGenerationFile>) -> Bool {
+  count(left) == count(right)
+    && all(left, file => capacity_generation_has_file(files: right, file: file))
+    && all(right, file => capacity_generation_has_file(files: left, file: file))
+}
+
+type CapacityRecoveryFinding
+  = CapacityRecoveryClear
+  | CapacityRecoveryCompleted { record: CapacityCutoverRecord }
+  | CapacityRecoveryRecordPresent { record: CapacityCutoverRecord, remedy: String }
+  | CapacityRecoveryOrphanMasks { paths: List<CapacityInhibitionPath>, remedy: String }
+  | CapacityRecoveryUnreadable { cause: String }
+
+// A read-only finding, suitable for fleet drift readback. It never adopts an
+// orphan mask, deletes it, or infers progress from the filesystem. Present records
+// are reported even when a controller is active, so stale progress cannot vanish.
+fn capacity_recovery_finding(record: CasSlotObservation<CapacityCutoverRecord>, owned_masks: Result<List<CapacityInhibitionPath>, String>) -> CapacityRecoveryFinding {
+  match record {
+    CasObservedUnreadable { cause: _ } => CapacityRecoveryUnreadable { cause: "cutover record unreadable; retain inhibition and inspect the durable slot" }
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => if (version.value.phase == CapacityClosed) { match owned_masks {
+      Err { value: why } => CapacityRecoveryUnreadable { cause: why }
+      Ok { value: paths } => if count(paths) == 0 { CapacityRecoveryCompleted { record: version.value } }
+        else { CapacityRecoveryOrphanMasks { paths: paths, remedy: "closed cutover still has owned masks; preserve them and reconcile" } }
+    } } else { CapacityRecoveryRecordPresent {
+      record: version.value, remedy: "inspect the recorded apply; explicitly approve resume or rollback; never recover automatically at boot",
+    } }
+    CasObservedReadable { readable: CasReadableAbsent } => match owned_masks {
+      Err { value: why } => CapacityRecoveryUnreadable { cause: why }
+      Ok { value: paths } => if count(paths) == 0 { CapacityRecoveryClear }
+        else { CapacityRecoveryOrphanMasks { paths: paths, remedy: "owned masks have no recovery record; preserve them and require operator reconciliation" } }
+    }
+  }
+}
+
+// Recovery rehydrates bytes through the existing blob provider, then binds the
+// observed content to the durable manifest before constructing the typed install.
+// The record never stores a caller-asserted live path or serialized unit AST.
+fn capacity_generation_request(file: CapacityGenerationFile) -> ArtifactRequest {
+  CutoverCaptureRequest { host: file.host, source_unit: file.destination, digest: file.digest }
+}
+
+fn capacity_generation_install(file: CapacityGenerationFile,
+  read: fn(ArtifactRequest) -> Result<CapturedUnitBlob, String>) -> Result<DeploymentUnitInstall, String> {
+  let request = capacity_generation_request(file: file)
+  match read(request) {
+    Err { value: why } => Err { value: why }
+    Ok { value: capture } => if fabric_blob_reading_path(reading: capture.reading) != file.address || capture.request != request || !content_hash_eq_cryptographic(left: file.digest, right: fabric_blob_reading_digest(reading: capture.reading)) {
+      Err { value: "retained unit blob does not match the recorded capture identity" }
+    } else { Ok { value: DeploymentUnitInstall { manager: file.manager, unit: file.unit, destination: file.destination,
+      file: CapturedUnitDocument { capture: capture } } } }
+  }
+}

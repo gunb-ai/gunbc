@@ -52,12 +52,16 @@ fn board_is_add_in_card(b: GpuBoardAdmission) -> Bool {
   board_admitted(b: b) && (match gpu_board_admission_facts(admission: b).attachment {
     PcieAddInBoard { link: _ } => true
     SxmModule => false
+    MxmModule { variant: _, link: _ } => false
+    SolderedBga => false
   })
 }
 
 fn board_is_sxm(b: GpuBoardAdmission) -> Bool {
   board_admitted(b: b) && (match gpu_board_admission_facts(admission: b).attachment {
     SxmModule => true
+    MxmModule { variant: _, link: _ } => false
+    SolderedBga => false
     PcieAddInBoard { link: _ } => false
   })
 }
@@ -66,6 +70,8 @@ fn board_link(b: GpuBoardAdmission) -> PcieLink? {
   match gpu_board_admission_facts(admission: b).attachment {
     PcieAddInBoard { link: l } => l
     SxmModule => none
+    MxmModule { variant: _, link: l } => l
+    SolderedBga => none
   }
 }
 

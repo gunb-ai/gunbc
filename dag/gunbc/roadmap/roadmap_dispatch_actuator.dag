@@ -1922,8 +1922,12 @@ fn dispatch_attempt_supervisor_dir_for_instance(instance: HostDashboardInstance,
   join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", supervisor_directory_segment], "")
 }
 
+fn dispatch_supervisor_unit_name_text(node_id: String, attempt_key: String, turn: String) -> NonEmptyStr {
+  join(["gunbc-supervisor-", node_id, "-", attempt_key, "-t", turn, ".service"], "") as NonEmptyStr
+}
+
 fn dispatch_supervisor_unit_name(node_id: String, attempt_key: String, turn: Int) -> NonEmptyStr {
-  join(["gunbc-supervisor-", node_id, "-", attempt_key, "-t", to_string(value: turn), ".service"], "") as NonEmptyStr
+  dispatch_supervisor_unit_name_text(node_id: node_id, attempt_key: attempt_key, turn: to_string(value: turn))
 }
 
 fn dispatch_supervisor_attempt_identity(node_id: String, attempt_key: String, turn: Int) -> String {

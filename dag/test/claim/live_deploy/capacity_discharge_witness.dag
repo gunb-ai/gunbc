@@ -1,0 +1,64 @@
+module test.claim.live_deploy.capacity_discharge_witness
+
+import std.types { Bool, String, ShellResponse }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import extdeps.systemd.manager { SystemManager }
+import extdeps.filesystem.posix { PosixFileIdentity, S_IFLNK }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityManagerReload, CapacityAfterRemoval }
+import gunbc.live_deploy.capacity_manager_reload { CapacityReloadCompleted, capacity_reload_completed }
+import gunbc.live_deploy.capacity_discharge { CapacityDischargeReady, capacity_discharge_admit }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityRemovingInhibition }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityMaskEntry }
+import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
+import test.claim.live_deploy.capacity_manager_reload_witness { reload_fixture_approval }
+
+fn discharge_fixture_record() -> CapacityCutoverRecord {
+  let record = recovery_fixture_record()
+  CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
+    target: record.target, planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts,
+    phase: CapacityRemovingInhibition { completed: count(record.created_paths) } }
+}
+
+fn discharge_fixture_reload() -> Result<CapacityReloadCompleted, String> {
+  match reload_fixture_approval(rows: [CapacityManagerReload { manager: SystemManager, boundaries: [CapacityAfterRemoval] }]) {
+    Err { value: why } => Err { value: why }
+    Ok { value: approval } => capacity_reload_completed(approval: approval, record: discharge_fixture_record(), manager: SystemManager,
+      boundary: CapacityAfterRemoval, response: ShellResponse { exit_code: 0, stdout: "", stderr: "" }, at: "2026-10-29T00:02:00Z")
+  }
+}
+
+fn discharge_fixture(owned_remains: Bool, foreign: Bool, unreadable: Bool) -> Result<CapacityDischargeReady, String> {
+  match discharge_fixture_reload() {
+    Err { value: why } => Err { value: why }
+    Ok { value: reload } => capacity_discharge_admit(record: discharge_fixture_record(), reloads: Ok { value: [reload] },
+      read_entry: path => if owned_remains || foreign { Ok { value: Present { value: CapacityMaskEntry {
+        identity: PosixFileIdentity { st_dev: 10, st_ino: if owned_remains { 42 } else { 99 } }, kind: S_IFLNK, target: "/dev/null"
+      } } } } else { Ok { value: none } },
+      read_unit: subject => if unreadable { Err { value: "unit read unavailable" } }
+        else { Ok { value: ShellResponse { exit_code: 0, stdout: if foreign { "LoadState=masked\n" } else { "LoadState=loaded\n" }, stderr: "" } } })
+  }
+}
+
+test fn cleanup_requires_a_confirmed_final_reload() -> Bool {
+  capacity_discharge_admit(record: discharge_fixture_record(), reloads: Ok { value: [] },
+    read_entry: path => Err { value: "must not read before reload proof" }, read_unit: subject => Err { value: "must not read before reload proof" })
+    == Err { value: "journal removal requires a confirmed final reload for every touched manager" }
+}
+
+test fn confirmed_reload_and_absent_owned_links_admit_cleanup() -> Bool {
+  match discharge_fixture(owned_remains: false, foreign: false, unreadable: false) {
+    Err { value: _ } => false Ok { value: ready } => count(ready.foreign_entries) == 0 && count(ready.externally_masked) == 0
+  }
+}
+
+test fn a_foreign_mask_is_reported_without_becoming_an_unlink_permission() -> Bool {
+  match discharge_fixture(owned_remains: false, foreign: true, unreadable: false) {
+    Err { value: _ } => false Ok { value: ready } => count(ready.foreign_entries) == 1 && count(ready.externally_masked) == 1
+  }
+}
+
+test fn an_owned_inode_or_unknown_readback_retains_recovery_state() -> Bool {
+  (match discharge_fixture(owned_remains: true, foreign: false, unreadable: false) { Err { value: _ } => true Ok { value: _ } => false })
+    && (match discharge_fixture(owned_remains: false, foreign: false, unreadable: true) { Err { value: _ } => true Ok { value: _ } => false })
+}

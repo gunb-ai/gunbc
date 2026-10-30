@@ -1,0 +1,41 @@
+module gunbc.live_deploy.capacity_retained_plan
+
+import std.types { String, NonEmptyStr }
+import std.error_primitives { Result, Ok, Err }
+import std.content_hash { Sha256Digest, sha256_hex_of_text }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent }
+import gunbc.live_deploy.capacity_cutover_plan_input { capacity_cutover_plan_input }
+
+// The digest from the original apply request is a reference, not a reusable
+// grant. Recovery's fresh approval covers this entire retained journal payload.
+type CapacityRetainedPlan {
+  envelope: NonEmptyStr
+  digest: Sha256Digest
+  approved_digest: Sha256Digest
+}
+
+type CapacityRetainedPlanFinding
+  = CapacityPlanRetained { intent: CapacityCutoverIntent }
+  | CapacityPlanNotRetained
+  | CapacityPlanIncomplete { cause: String }
+  | CapacityPlanDigestMismatch
+
+fn capacity_retained_plan_read(envelope: NonEmptyStr, digest: Sha256Digest,
+  approved_digest: Sha256Digest) -> CapacityRetainedPlanFinding {
+  if digest != approved_digest || sha256_hex_of_text(text: envelope as String) != (digest.hex as String) {
+    return CapacityPlanDigestMismatch
+  }
+  match capacity_cutover_plan_input(text: envelope as String, approved: approved_digest) {
+    Err { value: why } => CapacityPlanIncomplete { cause: why }
+    Ok { value: intent } => CapacityPlanRetained { intent: intent }
+  }
+}
+
+fn capacity_retained_plan_result(finding: CapacityRetainedPlanFinding) -> Result<CapacityCutoverIntent, String> {
+  match finding {
+    CapacityPlanRetained { intent: intent } => Ok { value: intent }
+    CapacityPlanNotRetained => Err { value: "plan not retained" }
+    CapacityPlanIncomplete { cause: why } => Err { value: concat("plan incomplete: ", why) }
+    CapacityPlanDigestMismatch => Err { value: "retained plan digest differs from its envelope or original approval" }
+  }
+}

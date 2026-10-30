@@ -1,0 +1,128 @@
+module gunbc.live_deploy.capacity_migration_apply
+
+import gunbc.live_deploy.capacity_drain_input { CapacityProbeBinding, CapacityMigrationApplyRequest }
+import std.types { String, List, CommitSha, NonEmptyStr, ShellResponse, Timestamp }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import extdeps.systemd.manager { SystemdManager }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, capacity_cutover_run_authorized }
+import gunbc.live_deploy.capacity_migration_placement { capacity_cutover_placement }
+import gunbc.compute.capacity_migration {
+  CapacityManagedUnit, CapacityTransientFamily, CapacityFamilyParents, CapacityActivationFamily,
+  CapacityMigrationPopulation, CapacityMigrationChild, CapacityMigrationAdmission, CapacityUnitDrain,
+  capacity_migration_parent_requirements, capacity_migration_enumerate_family,
+  capacity_migration_unit_refusal, capacity_migration_admit,
+}
+import gunbc.compute.host_capacity { ComputeCapacityStanding, ComputeCapacitySubject }
+import gunbc.compute.recorded_cgroup_drain { RecordedCgroupPathStanding }
+import gunbc.live_deploy.capacity_quiescence {
+  CapacityProbeRequirement, CapacityProbeProcess, CapacityProbeActivation, CapacityProbeUnknown,
+  CapacityQuiescenceStep, capacity_quiescence_probe_inhibited,
+}
+
+type CapacityMigrationApplyPorts {
+  self_cgroup: fn() -> Result<String, String>
+  parent_cgroup: fn(CapacityManagedUnit) -> Result<String, String>
+  run: fn(CapacityQuiescenceStep) -> Result<ShellResponse, String>
+  descendants: fn(String) -> RecordedCgroupPathStanding
+  list_matches: fn(SystemdManager, List<NonEmptyStr>) -> Result<List<CapacityManagedUnit>, String>
+  child: fn(CapacityMigrationChild) -> ComputeCapacityStanding
+}
+
+fn capacity_probe_bindings_run(bindings: List<CapacityProbeBinding>, ports: CapacityMigrationApplyPorts, previous: List<CapacityUnitDrain>) -> Result<List<CapacityUnitDrain>, String> {
+  fold(bindings, init: Ok { value: previous }, f: (prior, binding) => match prior {
+    Err { value: why } => Err { value: why }
+    Ok { value: observed } => {
+      // Shared parents are observed once. Ambiguous bindings are rejected by the
+      // producer; this fold only reuses an already acquired observation identity.
+      if any(observed, reading => reading.subject == binding.subject) { Ok { value: observed } }
+      else { match capacity_quiescence_probe_inhibited(subject: binding.subject, requirement: binding.requirement, run: ports.run, descendants: ports.descendants) {
+        Err { value: why } => Err { value: join([binding.subject.unit as String, ": ", why], "") }
+        Ok { value: reading } => Ok { value: observed + [reading] }
+      } }
+    }
+  })
+}
+
+fn capacity_family_probe_binding(family: CapacityTransientFamily, unit: CapacityManagedUnit) -> CapacityProbeBinding {
+  CapacityProbeBinding { subject: unit, requirement: match family.placement {
+    CapacityActivationFamily { targets: targets } => CapacityProbeActivation { targets: targets }
+    CapacityFamilyParents { parents: result } => match result {
+      Err { value: why } => CapacityProbeUnknown { cause: why }
+      Ok { value: parents } => if count(parents) == 1 { CapacityProbeProcess { parent: first(parents) } }
+        else { CapacityProbeUnknown { cause: "transient has no unique enclosing parent binding" } }
+    }
+  } }
+}
+
+// Executes only after apply authorization and journaled inhibition publication/reload.
+// Its probe consumes existing masks; it never creates an unjournaled ordinary mask. Refusal happens before any installation.
+// Listing is after fixed activators/parents are proven inhibited, never a pre-drain
+// snapshot that can lose a concurrently launched transient. Final admission consumes
+// the observations from this run, not a persisted success marker.
+fn capacity_migration_apply(request: CapacityMigrationApplyRequest, ports: CapacityMigrationApplyPorts) -> Result<CapacityMigrationAdmission, String> {
+  let requirements = capacity_migration_parent_requirements(population: request.population)
+  let bad_placement = fold(requirements, init: none, f: (prior, row) => match prior {
+    Present { value: _ } => prior
+    Absent => match row.parents {
+      Err { value: why } => Present { value: why }
+      Ok { value: parents } => if count(parents) == 0 { Present { value: "empty parent obligation" } } else { none }
+    }
+  })
+  match bad_placement { Present { value: why } => { return Err { value: why } } Absent => {} }
+  let parents = flat_map(requirements, row => match row.parents { Ok { value: units } => units Err { value: _ } => [] })
+  match capacity_cutover_placement(content: ports.self_cgroup(), parents: parents, read_parent: ports.parent_cgroup) {
+    Err { value: why } => { return Err { value: why } }
+    Ok { value: _ } => {}
+  }
+  let required = request.population.installed + flat_map(request.population.transients, family => family.activators)
+    + flat_map(requirements, row => match row.parents { Ok { value: parents } => parents Err { value: _ } => [] })
+  if any(required, unit => !any(request.bindings, binding => binding.subject == unit)) {
+    return Err { value: "source drain population has no probe binding for an installed unit, activator or parent" }
+  }
+  if any(request.bindings, binding => any(request.bindings, other => other.subject == binding.subject && other.requirement != binding.requirement)) {
+    return Err { value: "source drain population has ambiguous requirements for one unit" }
+  }
+  match capacity_probe_bindings_run(bindings: request.bindings, ports: ports, previous: []) {
+    Err { value: why } => Err { value: why }
+    Ok { value: fixed } => {
+      let fixed_refusal = fold(request.bindings, init: none, f: (prior, binding) => match prior {
+        Present { value: _ } => prior
+        Absent => capacity_migration_unit_refusal(subject: binding.subject, observed: fixed)
+      })
+      match fixed_refusal { Present { value: why } => { return Err { value: why } } Absent => {} }
+      let enumerated = fold(request.population.transients, init: Ok { value: fixed }, f: (prior, family) => match prior {
+        Err { value: why } => Err { value: why }
+        Ok { value: observed } => match capacity_migration_enumerate_family(family: family, read_matches: ports.list_matches) {
+          Err { value: why } => Err { value: why }
+          Ok { value: units } => capacity_probe_bindings_run(bindings: map(units, unit => capacity_family_probe_binding(family: family, unit: unit)), ports: ports, previous: observed)
+        }
+      })
+      match enumerated {
+        Err { value: why } => Err { value: why }
+        Ok { value: observed } => capacity_migration_admit(population: request.population, target_revision: request.target_revision, observed: observed,
+          // Re-read after the probes. A newly visible unit has no observation and
+          // refuses; disappearance does not erase the fixed parent inhibition.
+          enumerate: family => capacity_migration_enumerate_family(family: family, read_matches: ports.list_matches), read_child: ports.child)
+      }
+    }
+  }
+}
+
+// The fleet consumer supplies a claimed one-off approval. All lifecycle effects
+// from the existing fold cross its exact-operation check at execution time.
+// The underlying run port still owns retirement realization; this wrapper never
+// invents an alternative mask actuator. A different revision cannot spend consent.
+fn capacity_migration_apply_authorized(
+  request: CapacityMigrationApplyRequest, ports: CapacityMigrationApplyPorts,
+  authorization: CapacityCutoverAuthorization, now: fn() -> Result<Timestamp, String>,
+) -> Result<CapacityMigrationAdmission, String> {
+  if (request.target_revision != authorization.intent.revision) {
+    return Err { value: "capacity migration revision differs from the approved cutover" }
+  }
+  capacity_migration_apply(request: request, ports: CapacityMigrationApplyPorts {
+    self_cgroup: ports.self_cgroup, parent_cgroup: ports.parent_cgroup,
+    run: step => capacity_cutover_run_authorized(authorization: authorization, operation: step, now: now, run: ports.run),
+    descendants: ports.descendants, list_matches: ports.list_matches, child: ports.child,
+  })
+}

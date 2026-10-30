@@ -1,0 +1,436 @@
+module test.claim.live_deploy.capacity_recovery_approval_witness
+
+import gunbc.live_deploy.capacity_recovery_inhibition { CapacityRecoveryPartialInhibitionRemoval, CapacityRecoveryBoundaryRefused }
+import gunbc.live_deploy.capacity_recovery_drain { capacity_recovery_drain_run, capacity_recovery_drain_admit }
+import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyPorts }
+import gunbc.compute.recorded_cgroup_drain { RecordedPathUnreadable }
+import gunbc.compute.host_capacity { ComputeCapacityStandingUnread }
+import gunbc.live_deploy.capacity_recovery_program { CapacityRecoveryProgram, capacity_recovery_program_bind, capacity_recovery_program_run, capacity_recovery_leg_admit }
+import gunbc.auth.privileged_effect_census { capacity_recovery_approval_root, capacity_recovery_root_helper_site, site_verdict }
+import gunbc.auth.authorization_pattern_selection { PatternSelected, ApprovedConvergenceGrant }
+import std.types { Bool, String, NonEmptyStr }
+import std.error_primitives { Result, Ok, Err }
+import std.content_hash { content_hash_of_value }
+import std.durable_compare_and_set { CasGeneration, CasSlotObservation, CasSlotVersion, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasGenerationPublicationRefused, cas_decide, CasObservedReadable, CasReadablePresent, cas_generation_first, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.scoped_authorization { ScopedAuthorization, AuthorizationGranted, OperatorGrant, Unclaimed, ClaimedBy, ClaimHeld, ClaimLost, ClaimUndecided }
+import gunbc.fleet.srv1_root_mutation_approval_run { Srv1RecoveryRequest, Srv1RootMutationApproval }
+import gunbc.live_deploy.capacity_root_helper { capacity_root_helper_scope }
+import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_encode }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryChoice, CapacityResume, CapacityRollback, CapacityRecoveryRequireApproval, CapacityCutoverRecord, CapacityCleanupOnly }
+import gunbc.live_deploy.capacity_recovery_subject { CapacityRecoverySubject, capacity_recovery_observed }
+import gunbc.live_deploy.capacity_recovery_approval { capacity_recovery_claim_checked, capacity_recovery_request, capacity_recovery_claim, capacity_recovery_execute, capacity_recovery_consume_journal }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
+import gunbc.auth.approval_request_client { PollApproved }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record, recovery_two_masks_record, recovery_mask_read }
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_helper_digest, approval_fixture_request, approval_fixture_intent, approval_fixture_grant }
+
+fn recovery_approval_slot(record: CapacityCutoverRecord, generation: CasGeneration) -> CasSlotObservation<NonEmptyStr> {
+  let bytes = capacity_cutover_record_encode(record: record)
+  CasObservedReadable { readable: CasReadablePresent { version: CasSlotVersion {
+    generation: generation, content: content_hash_of_value(value: bytes), value: bytes } } }
+}
+
+fn recovery_approval_observation(record: CapacityCutoverRecord, generation: CasGeneration,
+  choice: CapacityRecoveryChoice) -> Result<CapacityRecoverySubject, String> {
+  capacity_recovery_observed(journal_root: "/fixture/journal", journal_key: "record",
+    observed: recovery_approval_slot(record: record, generation: generation),
+    choice: choice, helper_digest: approval_fixture_helper_digest)
+}
+
+fn recovery_approval_request(choice: CapacityRecoveryChoice, generation: CasGeneration,
+  escalation_id: NonEmptyStr) -> Result<Srv1RecoveryRequest, String> {
+  let record = recovery_fixture_record()
+  capacity_recovery_request(leg: CapacityRecoveryRequireApproval { attempt: record.attempt, choice: choice },
+    observed: recovery_approval_observation(record: record, generation: generation, choice: choice),
+    escalation_id: escalation_id, execution_revision: record.target_revision as NonEmptyStr)
+}
+
+fn recovery_approval_grant(recovery: Srv1RecoveryRequest) -> ScopedAuthorization<Srv1RootMutationApproval> {
+  let request = recovery.request
+  AuthorizationGranted { grant: OperatorGrant { escalation_id: request.escalation_id,
+    scopes: request.scopes, subject: request.subject, purpose: request.purpose,
+    attempt: request.attempt, intent_hash: request.intent_hash, granted_by: "fixture-operator",
+    granted_at: "2026-10-30T00:00:00Z", expires_at: "2026-10-30T01:00:00Z" }, claim: Unclaimed }
+}
+
+test fn the_existing_broker_gate_admits_the_recovery_claim() -> Bool {
+  let request = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "recovery-1") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match approval_gate_from_poll(poll: PollApproved { revision: request_revision_of(request: request.request),
+    decided_by: "fixture-operator", decided_at: "2026-10-30T00:00:00Z", execute_by: "2026-10-30T01:00:00Z" },
+    request: request.request, observed_at: "2026-10-30T00:01:00Z") {
+    GateRefused { cause: _ } => false
+    GateAdmitted { authorization: grant } => match capacity_recovery_execute(request: request,
+      reread: fn() { recovery_approval_observation(record: recovery_fixture_record(), generation: cas_generation_first(), choice: CapacityResume) },
+      authorization: grant, at: "2026-10-30T00:01:00Z",
+      claim: (subject, attempt, at) => if (subject == request.subject) {
+        ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() }
+      } else { ClaimUndecided { reason: "wrong claim identity" } },
+      execute: admitted => Ok { value: admitted.recovery.request.subject.job == "capacity-cutover-recovery"
+        && admitted.recovery.subject.apply_reference == recovery_fixture_record().attempt }) {
+      Err { value: _ } => false
+      Ok { value: reached } => reached
+    }
+  }
+}
+
+test fn resume_approval_refuses_rollback_before_claiming() -> Bool {
+  let resume = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "recovery-1") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match capacity_recovery_claim(request: resume,
+    reread: fn() { recovery_approval_observation(record: recovery_fixture_record(), generation: cas_generation_first(), choice: CapacityRollback) },
+    authorization: recovery_approval_grant(recovery: resume), at: "2026-10-30T00:01:00Z",
+    claim: (subject, attempt, at) => ClaimUndecided { reason: "claim reached" }) {
+    Err { value: why } => why == "recovery journal, choice, helper or scopes changed after approval"
+    Ok { value: _ } => false
+  }
+}
+
+test fn generation_n_approval_refuses_generation_n_plus_one() -> Bool {
+  let request = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "recovery-1") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let next = match cas_generation_successor(g: cas_generation_first()) {
+    CasSuccessorExhausted { head: _ } => { return false } CasSuccessorGeneration { generation: value } => value
+  }
+  match capacity_recovery_claim(request: request,
+    reread: fn() { recovery_approval_observation(record: recovery_fixture_record(), generation: next, choice: CapacityResume) },
+    authorization: recovery_approval_grant(recovery: request), at: "2026-10-30T00:01:00Z",
+    claim: (subject, attempt, at) => ClaimUndecided { reason: "claim reached" }) {
+    Err { value: why } => why == "recovery journal, choice, helper or scopes changed after approval"
+    Ok { value: _ } => false
+  }
+}
+
+test fn apply_approval_is_not_recovery_authority_even_with_the_same_escalation() -> Bool {
+  let request = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "same-id") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let apply = match approval_fixture_request(intent: approval_fixture_intent(), escalation_id: "same-id") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let spent = match approval_fixture_grant(request: apply) {
+    AuthorizationGranted { grant: grant, claim: _ } => AuthorizationGranted {
+      grant: grant, claim: ClaimedBy { attempt: apply.request.attempt, claimed_at: "2026-10-29T00:00:30Z" } }
+    _ => { return false }
+  }
+  // Check before expiry so refusal discriminates intent, not an expired fixture.
+  match capacity_recovery_claim(request: request, reread: fn() { Ok { value: request.subject } },
+    authorization: spent, at: "2026-10-29T00:01:00Z",
+    claim: (subject, attempt, at) => ClaimUndecided { reason: "claim reached" }) {
+    Err { value: why } => why != "claim reached"
+    Ok { value: _ } => false
+  }
+}
+
+test fn a_second_approval_cannot_spend_the_same_journal_generation() -> Bool {
+  let first = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "recovery-1") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let second = match recovery_approval_request(choice: CapacityRollback, generation: cas_generation_first(), escalation_id: "recovery-2") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  first.subject.journal_root == second.subject.journal_root
+    && first.subject.journal_key == second.subject.journal_key
+    && first.subject.generation == second.subject.generation
+    && (match capacity_recovery_claim(request: second, reread: fn() { Ok { value: second.subject } },
+      authorization: recovery_approval_grant(recovery: second), at: "2026-10-30T00:01:00Z",
+      claim: (subject, attempt, at) => if (subject.journal_root == first.subject.journal_root && subject.journal_key == first.subject.journal_key && subject.generation == first.subject.generation) {
+        ClaimLost { holder: first.request.attempt }
+      } else { ClaimUndecided { reason: "wrong claim key" } }) {
+      Err { value: why } => why == "recovery journal generation already consumed"
+      Ok { value: _ } => false
+    })
+}
+
+test fn cleanup_only_rollback_refuses_before_request_construction() -> Bool {
+  let prior = recovery_fixture_record()
+  let record = CapacityCutoverRecord { plan: prior.plan, attempt: prior.attempt, target_revision: prior.target_revision,
+    prior: prior.prior, target: prior.target, planned_paths: prior.planned_paths, created_paths: prior.created_paths,
+    artifacts: prior.artifacts, phase: CapacityCleanupOnly }
+  match capacity_recovery_request(leg: CapacityRecoveryRequireApproval { attempt: record.attempt, choice: CapacityRollback },
+    observed: recovery_approval_observation(record: record, generation: cas_generation_first(), choice: CapacityRollback),
+    escalation_id: "recovery-1", execution_revision: record.target_revision as NonEmptyStr) {
+    Err { value: why } => why == "rollback is forbidden after cleanup-only; captured bytes may be reclaimed"
+    Ok { value: _ } => false
+  }
+}
+
+test fn resume_grant_cannot_authorize_a_correctly_reread_rollback_request() -> Bool {
+  let resume = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "same-id") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let rollback = match recovery_approval_request(choice: CapacityRollback, generation: cas_generation_first(), escalation_id: "same-id") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match capacity_recovery_execute(request: rollback, reread: fn() { Ok { value: rollback.subject } },
+    authorization: recovery_approval_grant(recovery: resume), at: "2026-10-30T00:01:00Z",
+    claim: (subject, attempt, at) => ClaimUndecided { reason: "claim reached" },
+    execute: admitted => Ok { value: "effect reached" }) {
+    Err { value: why } => why != "claim reached"
+    Ok { value: _ } => false
+  }
+}
+
+test fn changed_record_bytes_at_the_same_generation_refuse() -> Bool {
+  let request = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "recovery-1") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let prior = recovery_fixture_record()
+  let record = CapacityCutoverRecord { plan: prior.plan, attempt: prior.attempt, target_revision: prior.target_revision,
+    prior: prior.prior, target: prior.target, planned_paths: prior.planned_paths, created_paths: prior.created_paths,
+    artifacts: prior.artifacts, phase: CapacityCleanupOnly }
+  match capacity_recovery_execute(request: request,
+    reread: fn() { recovery_approval_observation(record: record, generation: cas_generation_first(), choice: CapacityResume) },
+    authorization: recovery_approval_grant(recovery: request), at: "2026-10-30T00:01:00Z",
+    claim: (subject, attempt, at) => ClaimUndecided { reason: "claim reached" },
+    execute: admitted => Ok { value: "effect reached" }) {
+    Err { value: why } => why == "recovery journal, choice, helper or scopes changed after approval"
+    Ok { value: _ } => false
+  }
+}
+
+
+test fn recovery_selects_the_existing_convergence_pattern_from_its_actual_scopes() -> Bool {
+  match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "recovery-1") {
+    Err { value: _ } => false
+    Ok { value: recovery } => capacity_recovery_approval_root(recovery: recovery).approved_scopes == recovery.request.scopes
+      && (match site_verdict(row: capacity_recovery_root_helper_site(recovery: recovery)).selection {
+        PatternSelected { pattern: ApprovedConvergenceGrant, receipt: _ } => true
+        _ => false
+      })
+  }
+}
+
+
+test fn journal_cas_consumes_approval_by_advancing_generation_without_changing_record() -> Bool {
+  let request = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "recovery-1") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let observed = recovery_approval_slot(record: recovery_fixture_record(), generation: cas_generation_first())
+  let bytes = capacity_cutover_record_encode(record: recovery_fixture_record())
+  match capacity_recovery_consume_journal(subject: request.subject, observed: observed,
+    attempt: request.request.attempt, at: "2026-10-30T00:01:00Z", commit: verified => {
+      if (verified.attempt.proposed != bytes || verified.attempt.key != request.subject.journal_key) {
+        CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "claim changed the record or slot" } }
+      } else { cas_decide(attempt: verified.attempt, observed: observed) }
+    }) {
+    ClaimHeld { state: _, generation: generation } => match cas_generation_successor(g: request.subject.generation) {
+      CasSuccessorGeneration { generation: next } => generation == next
+      CasSuccessorExhausted { head: _ } => false
+    }
+    _ => false
+  }
+}
+
+test fn a_competing_journal_cas_refuses_the_approved_generation() -> Bool {
+  let request = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "recovery-1") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let next = match cas_generation_successor(g: cas_generation_first()) {
+    CasSuccessorGeneration { generation: value } => value CasSuccessorExhausted { head: _ } => { return false }
+  }
+  let stale = recovery_approval_slot(record: recovery_fixture_record(), generation: cas_generation_first())
+  let current = recovery_approval_slot(record: recovery_fixture_record(), generation: next)
+  match capacity_recovery_consume_journal(subject: request.subject, observed: stale,
+    attempt: request.request.attempt, at: "2026-10-30T00:01:00Z",
+    commit: verified => cas_decide(attempt: verified.attempt, observed: current)) {
+    ClaimLost { holder: _ } => true
+    _ => false
+  }
+}
+
+test fn crash_after_consumption_requires_fresh_approval_of_the_successor() -> Bool {
+  let old = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "recovery-1") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let next = match cas_generation_successor(g: cas_generation_first()) {
+    CasSuccessorGeneration { generation: value } => value CasSuccessorExhausted { head: _ } => { return false }
+  }
+  // Same payload after the claim CAS: no actuator progress is fabricated.
+  let current = recovery_approval_slot(record: recovery_fixture_record(), generation: next)
+  let fresh = match recovery_approval_request(choice: CapacityResume, generation: next, escalation_id: "recovery-2") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  (match capacity_recovery_consume_journal(subject: old.subject, observed: current,
+    attempt: old.request.attempt, at: "2026-10-30T00:02:00Z",
+    commit: verified => cas_decide(attempt: verified.attempt, observed: current)) {
+    ClaimLost { holder: _ } => true _ => false
+  }) && (match capacity_recovery_execute(request: fresh,
+    reread: fn() { recovery_approval_observation(record: recovery_fixture_record(), generation: next, choice: CapacityResume) },
+    authorization: recovery_approval_grant(recovery: fresh), at: "2026-10-30T00:02:00Z",
+    claim: (subject, attempt, at) => capacity_recovery_consume_journal(subject: subject, observed: current,
+      attempt: attempt, at: at, commit: verified => cas_decide(attempt: verified.attempt, observed: current)),
+    execute: admitted => Ok { value: admitted.recovery.subject.apply_reference == old.subject.apply_reference
+      && admitted.recovery.request.attempt != old.request.attempt }) {
+    Ok { value: reached } => reached Err { value: _ } => false
+  })
+}
+
+fn recovery_program_fixture(record_after_claim: CapacityCutoverRecord, use_claimed_generation: Bool) -> Result<CapacityRecoveryProgram, String> {
+  let request = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "program-fixture") {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  let observed = recovery_approval_slot(record: recovery_fixture_record(), generation: cas_generation_first())
+  let authorization = match capacity_recovery_claim(request: request,
+    reread: fn() { recovery_approval_observation(record: recovery_fixture_record(), generation: cas_generation_first(), choice: CapacityResume) },
+    authorization: recovery_approval_grant(recovery: request), at: "2026-10-30T00:01:00Z",
+    claim: (subject, attempt, at) => capacity_recovery_consume_journal(subject: subject, observed: observed, attempt: attempt, at: at,
+      commit: verified => cas_decide(attempt: verified.attempt, observed: observed))) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  capacity_recovery_program_bind(authorization: authorization, journal_root: request.subject.journal_root,
+    journal_key: request.subject.journal_key, helper_digest: request.subject.helper_digest,
+    observed: recovery_approval_slot(record: record_after_claim,
+      generation: if use_claimed_generation { authorization.journal_generation } else { request.subject.generation }))
+}
+
+test fn the_consumed_successor_binds_the_exact_recovery_program() -> Bool {
+  match recovery_program_fixture(record_after_claim: recovery_fixture_record(), use_claimed_generation: true) {
+    Err { value: _ } => false
+    Ok { value: program } => match capacity_recovery_program_run(program: program,
+      now: fn() { Ok { value: "2026-10-30T00:02:00Z" } }, perform: leg => Ok { value: leg }) {
+      Err { value: _ } => false
+      Ok { value: executed } => executed == program.legs && count(executed) > 0
+    }
+  }
+}
+
+test fn a_pre_consumption_observation_cannot_bind_an_executor() -> Bool {
+  match recovery_program_fixture(record_after_claim: recovery_fixture_record(), use_claimed_generation: false) {
+    Err { value: why } => why == "recovery journal moved after approval consumption"
+    Ok { value: _ } => false
+  }
+}
+
+test fn record_changes_after_consumption_refuse_before_execution() -> Bool {
+  let before = recovery_fixture_record()
+  let after = CapacityCutoverRecord { plan: before.plan, attempt: before.attempt, target_revision: before.target_revision,
+    prior: before.prior, target: before.target, planned_paths: before.planned_paths, created_paths: before.created_paths,
+    artifacts: before.artifacts, phase: CapacityCleanupOnly }
+  match recovery_program_fixture(record_after_claim: after, use_claimed_generation: true) {
+    Err { value: why } => why == "recovery journal moved after approval consumption"
+    Ok { value: _ } => false
+  }
+}
+
+test fn expired_recovery_consent_never_reaches_a_leg_port() -> Bool {
+  match recovery_program_fixture(record_after_claim: recovery_fixture_record(), use_claimed_generation: true) {
+    Err { value: _ } => false
+    Ok { value: program } => match capacity_recovery_program_run(program: program,
+      now: fn() { Ok { value: "2026-10-30T02:00:00Z" } }, perform: leg => Ok { value: "effect reached" }) {
+      Err { value: why } => why != "effect reached"
+      Ok { value: _ } => false
+    }
+  }
+}
+
+test fn an_out_of_program_ordinal_cannot_select_an_effect() -> Bool {
+  match recovery_program_fixture(record_after_claim: recovery_fixture_record(), use_claimed_generation: true) {
+    Err { value: _ } => false
+    Ok { value: program } => match capacity_recovery_leg_admit(program: program, ordinal: count(program.legs), at: "2026-10-30T00:02:00Z") {
+      Err { value: why } => why == "recovery leg ordinal is outside the approved program"
+      Ok { value: _ } => false
+    }
+  }
+}
+
+test fn the_broker_adds_the_root_helper_scope_exactly_once() -> Bool {
+  match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "root-scope-fixture") {
+    Err { value: _ } => false
+    Ok { value: request } => count(filter(request.request.scopes, scope => scope == capacity_root_helper_scope)) == 1
+      && count(filter(request.subject.scopes, scope => scope == capacity_root_helper_scope)) == 0
+  }
+}
+
+// The commit port returns a distinct error if invoked. The typed observation
+// refusal must win before consumption, preserving even the journal generation.
+test fn partial_removal_refuses_before_the_recovery_claim_cas() -> Bool {
+  let record = recovery_two_masks_record()
+  let request = match capacity_recovery_request(leg: CapacityRecoveryRequireApproval { attempt: record.attempt, choice: CapacityResume },
+    observed: recovery_approval_observation(record: record, generation: cas_generation_first(), choice: CapacityResume),
+    escalation_id: "partial-removal", execution_revision: record.target_revision as NonEmptyStr) {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let present = filter(record.artifacts, artifact => artifact.identity.st_ino == 43)
+  match capacity_recovery_claim_checked(request: request, journal_root: "/fixture/journal", key: "record",
+    choice: CapacityResume, helper_digest: approval_fixture_helper_digest,
+    observed: recovery_approval_slot(record: record, generation: cas_generation_first()),
+    authorization: recovery_approval_grant(recovery: request), at: "2026-10-30T00:01:00Z",
+    read_entry: path => recovery_mask_read(artifacts: present, path: path),
+    commit: verified => CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "unexpected journal mutation" } }) {
+    Err { value: CapacityRecoveryPartialInhibitionRemoval { recorded: recorded, observed_present: found, observed_absent: missing } } =>
+      recorded == record.artifacts && found == present
+        && missing == filter(record.artifacts, artifact => artifact.identity.st_ino == 42)
+    _ => false
+  }
+}
+
+test fn intact_inhibition_allows_the_checked_journal_consumption() -> Bool {
+  let record = recovery_fixture_record()
+  let request = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "intact-masks") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let observed = recovery_approval_slot(record: record, generation: cas_generation_first())
+  match capacity_recovery_claim_checked(request: request, journal_root: "/fixture/journal", key: "record",
+    choice: CapacityResume, helper_digest: approval_fixture_helper_digest, observed: observed,
+    authorization: recovery_approval_grant(recovery: request), at: "2026-10-30T00:01:00Z",
+    read_entry: path => recovery_mask_read(artifacts: record.artifacts, path: path),
+    commit: verified => cas_decide(attempt: verified.attempt, observed: observed)) {
+    Err { value: _ } => false
+    Ok { value: admitted } => match cas_generation_successor(g: request.subject.generation) {
+      CasSuccessorGeneration { generation: next } => admitted.journal_generation == next
+      CasSuccessorExhausted { head: _ } => false
+    }
+  }
+}
+
+
+// These ports deliberately cannot produce a successful drain. They distinguish
+// reaching the retained lifecycle path from refusing before any lifecycle call.
+fn recovery_drain_control_ports() -> CapacityMigrationApplyPorts {
+  CapacityMigrationApplyPorts {
+    self_cgroup: fn() { Ok { value: "0::/fixture-controller\n" } },
+    parent_cgroup: unit => Ok { value: "/fixture-writers" },
+    run: step => Err { value: "fixture lifecycle port reached" },
+    descendants: path => RecordedPathUnreadable { detail: "unexpected descendants" },
+    list_matches: (manager, patterns) => Err { value: "unexpected enumeration" },
+    child: subject => ComputeCapacityStandingUnread { detail: "unexpected child reading" },
+  }
+}
+
+test fn recovery_drain_dispatches_the_retained_population_under_fresh_consent() -> Bool {
+  match recovery_program_fixture(record_after_claim: recovery_fixture_record(), use_claimed_generation: true) {
+    Err { value: _ } => false
+    Ok { value: program } => match capacity_recovery_drain_run(program: program, ordinal: 1,
+      ports: recovery_drain_control_ports(), now: fn() { Ok { value: "2026-10-30T00:01:00Z" } }) {
+      Err { value: CapacityRecoveryBoundaryRefused { cause: why } } => why == "fixture.service: fixture lifecycle port reached"
+      _ => false
+    }
+  }
+}
+
+test fn recovery_drain_refuses_expiry_before_lifecycle_dispatch() -> Bool {
+  match recovery_program_fixture(record_after_claim: recovery_fixture_record(), use_claimed_generation: true) {
+    Err { value: _ } => false
+    Ok { value: program } => match capacity_recovery_drain_run(program: program, ordinal: 1,
+      ports: recovery_drain_control_ports(), now: fn() { Ok { value: "2026-10-30T02:00:00Z" } }) {
+      Err { value: CapacityRecoveryBoundaryRefused { cause: why } } => why == "operator authorization expired at 2026-10-30T01:00:00Z, observed at 2026-10-30T02:00:00Z"
+      _ => false
+    }
+  }
+}
+
+test fn a_non_drain_ordinal_cannot_enter_the_recovery_drain_transport() -> Bool {
+  match recovery_program_fixture(record_after_claim: recovery_fixture_record(), use_claimed_generation: true) {
+    Err { value: _ } => false
+    Ok { value: program } => match capacity_recovery_drain_run(program: program, ordinal: 0,
+      ports: recovery_drain_control_ports(), now: fn() { Ok { value: "2026-10-30T00:01:00Z" } }) {
+      Err { value: CapacityRecoveryBoundaryRefused { cause: why } } => why == "recovery ordinal does not select its retained drain"
+      _ => false
+    }
+  }
+}

@@ -1,0 +1,93 @@
+module test.claim.live_deploy.capacity_selected_generation_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.content_hash { sha256_hex_digest, sha256_hex_of_text }
+import extdeps.systemd.unit_file { ServiceUnitFile, NotInstallable, Description }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument }
+import gunbc.live_deploy.apply_legs { apply_modeled_unit_install_payload }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityGenerationOperation }
+import gunbc.live_deploy.capacity_selected_generation { capacity_cutover_selected_deployment, capacity_cutover_projection_admit }
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent }
+import test.claim.live_deploy.capacity_controller_plan_witness { controller_fixture_install }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster }
+
+fn selected_generation_fixture() -> Result<CapacityCutoverIntent, String> {
+  let prior = approval_fixture_intent()
+  let install = controller_fixture_install()
+  let text = match install.file { ModeledUnitDocument { file: file } => apply_modeled_unit_install_payload(file: file) _ => "" }
+  match sha256_hex_digest(hex: sha256_hex_of_text(text: text)) {
+    Absent => Err { value: "fixture digest refused" }
+    Present { value: digest } => Ok { value: CapacityCutoverIntent { controller_hold: prior.controller_hold, drain: prior.drain, controller_slot: prior.controller_slot,
+      instance_id: prior.instance_id, selected_identity: prior.selected_identity,
+      host: prior.host, revision: prior.revision, attempt: prior.attempt,
+      operations: prior.operations, captures: prior.captures, file_operations: prior.file_operations, reloads: prior.reloads,
+      generations: [CapacityGenerationOperation { subject: CapacityManagedUnit { manager: install.manager, unit: install.unit },
+        destination: install.destination, root: "/var/lib/gunbc/cutover-capture/fixture", digest: digest }]
+    } }
+  }
+}
+
+test fn an_unknown_instance_refuses_in_the_existing_source_roster() -> Bool {
+  match capacity_cutover_selected_deployment(intent: approval_fixture_intent()) {
+    Err { value: why } => why == "cutover names an unknown desired deployment instance"
+    Ok { value: _ } => false
+  }
+}
+
+test fn the_approved_typed_projection_is_preserved() -> Bool {
+  match selected_generation_fixture() {
+    Err { value: _ } => false
+    Ok { value: intent } => capacity_cutover_projection_admit(intent: intent,
+      projection: Ok { value: [controller_fixture_install()] }) == Ok { value: [controller_fixture_install()] }
+  }
+}
+
+test fn the_same_envelope_refuses_a_changed_snapshot_projection() -> Bool {
+  match selected_generation_fixture() {
+    Err { value: _ } => false
+    Ok { value: intent } => {
+      let prior = controller_fixture_install()
+      let changed = DeploymentUnitInstall { manager: prior.manager, unit: prior.unit, destination: prior.destination,
+        file: ModeledUnitDocument { file: ServiceUnitFile { unit: [Description { text: "changed desired row" }], service: [], install: NotInstallable } } }
+      capacity_cutover_projection_admit(intent: intent, projection: Ok { value: [changed] })
+        == Err { value: "cutover target projection differs from the approved unit digests" }
+    }
+  }
+}
+
+test fn missing_duplicate_or_extra_units_cannot_disappear_in_projection() -> Bool {
+  match selected_generation_fixture() {
+    Err { value: _ } => false
+    Ok { value: intent } =>
+      (match capacity_cutover_projection_admit(intent: intent, projection: Ok { value: [] }) { Err { value: _ } => true _ => false })
+      && (match capacity_cutover_projection_admit(intent: intent, projection: Ok { value: [controller_fixture_install(), controller_fixture_install()] }) {
+        Err { value: _ } => true _ => false
+      })
+  }
+}
+
+fn selected_generation_row_intent(row: DesiredDeployment, identity: DeclarationRef) -> CapacityCutoverIntent {
+  let prior = approval_fixture_intent()
+  CapacityCutoverIntent { controller_hold: prior.controller_hold, drain: prior.drain, controller_slot: prior.controller_slot, instance_id: row.instance.instance_id, selected_identity: identity,
+    host: row.target.host.identity as NonEmptyStr, revision: prior.revision, attempt: prior.attempt,
+    operations: prior.operations, file_operations: prior.file_operations, captures: prior.captures,
+    generations: prior.generations, reloads: prior.reloads }
+}
+
+test fn the_real_source_roster_binds_only_its_selected_declaration() -> Bool {
+  match first(desired_deployment_roster()) {
+    Absent => false
+    Present { value: row } =>
+      (match capacity_cutover_selected_deployment(intent: selected_generation_row_intent(row: row, identity: row.selected_identity)) {
+        Ok { value: bound } => bound == row Err { value: _ } => false
+      }) && (match capacity_cutover_selected_deployment(intent: selected_generation_row_intent(row: row,
+        identity: decl_ref(module_path: "test.claim.live_deploy.capacity_selected_generation_witness", decl_name: "not_the_desired_row"))) {
+        Err { value: why } => why == "cutover selected declaration differs from the pinned desired row"
+        Ok { value: _ } => false
+      })
+  }
+}

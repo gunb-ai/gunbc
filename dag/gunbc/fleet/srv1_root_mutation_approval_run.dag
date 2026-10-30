@@ -1,12 +1,17 @@
 module gunbc.fleet.srv1_root_mutation_approval_run
 
+import std.error_primitives { Result, Ok, Err }
+import std.content_hash { Sha256Digest, ContentHash, content_hash_of_value }
+import std.durable_compare_and_set { cas_generation_count }
+import gunbc.live_deploy.capacity_recovery_subject { CapacityRecoverySubject, capacity_recovery_choice_text }
+import extdeps.languages.json.emit { json_array, json_string, serialize_json }
+import gunbc.live_deploy.capacity_root_helper { capacity_root_helper_scope }
 import std.optional { Absent, Present }
 import std.types { Bool, Int, NonEmptyStr, String, List, Timestamp }
 import std.algebra { list_map }
 import std.measure { Second, second, second_count, Minute, minute }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.integer { int_to_decimal_string }
-import std.content_hash { ContentHash, content_hash_of_value }
 import std.effect_grant { Write, Execute, filesystem_position }
 import std.filesystem_path_grant { absolute_path_position }
 import std.filesystem { path_parent_directory }
@@ -221,6 +226,122 @@ fn srv1_root_mutation_request(
   }
 }
 
+// The new job is a typed arm, never additional scopes on the legacy builder.
+// Existing jobs retain the exact old subject, purpose, hash and scope sequence.
+type Srv1RootMutationJobKind
+  = ExistingRootMutationJob { job: NonEmptyStr }
+  | CapacityCutoverRecovery { subject: CapacityRecoverySubject }
+  | CapacityCutoverJob { plan_digest: Sha256Digest, helper_digest: Sha256Digest, internal_scopes: List<AuthorizationScope> }
+
+type Srv1CutoverRequest sole_constructor {
+  request: AuthorizationRequest<Srv1RootMutationApproval>
+  plan_digest: Sha256Digest
+  helper_digest: Sha256Digest
+}
+
+type Srv1RecoveryRequest sole_constructor {
+  request: AuthorizationRequest<Srv1RootMutationApproval>
+  subject: CapacityRecoverySubject
+}
+
+type Srv1RootMutationJobRequest
+  = ExistingRootMutationRequest { request: AuthorizationRequest<Srv1RootMutationApproval> }
+  | CapacityCutoverRequest { cutover: Srv1CutoverRequest }
+  | CapacityCutoverRecoveryRequest { recovery: Srv1RecoveryRequest }
+
+fn srv1_root_mutation_request_for_kind(kind: Srv1RootMutationJobKind, escalation_id: NonEmptyStr,
+  execution_revision: NonEmptyStr, selects: List<Srv1RootMutationSelect>) -> Result<Srv1RootMutationJobRequest, String> {
+  match kind {
+    ExistingRootMutationJob { job: job } => Ok { value: ExistingRootMutationRequest { request: srv1_root_mutation_request(
+      job: job, escalation_id: escalation_id, execution_revision: execution_revision, selects: selects) } }
+    CapacityCutoverRecovery { subject: recovery } => {
+      if count(recovery.scopes) == 0 { return Err { value: "recovery must state exact scopes" } }
+      if any(selects, selection => starts_with(s: (selection.input as String), prefix: "cutover-")) {
+        return Err { value: "recovery binding selects cannot be overridden" }
+      }
+      let wires = fold([capacity_root_helper_scope] + recovery.scopes, init: Ok { value: [] }, f: (prior, scope) => { match prior {
+        Err { value: why } => Err { value: why }
+        Ok { value: rows } => match authorization_scope_wire(scope: scope) {
+          Absent => Err { value: "recovery contains an unrenderable scope" }
+          Present { value: wire } => Ok { value: rows + [json_string(s: wire as String)] }
+        }
+      } })
+      let scope_values = match wires { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+      let bound_selects = [
+        Srv1RootMutationSelect { input: "cutover-journal-root", value: recovery.journal_root as String },
+        Srv1RootMutationSelect { input: "cutover-journal-key", value: recovery.journal_key as String },
+        Srv1RootMutationSelect { input: "cutover-journal-generation", value: int_to_decimal_string(value: cas_generation_count(g: recovery.generation)) },
+        Srv1RootMutationSelect { input: "cutover-record-sha256", value: recovery.record_digest.hex as String },
+        Srv1RootMutationSelect { input: "cutover-apply-reference", value: recovery.apply_reference as String },
+        Srv1RootMutationSelect { input: "cutover-recovery-choice", value: capacity_recovery_choice_text(choice: recovery.choice) },
+        Srv1RootMutationSelect { input: "cutover-helper-sha256", value: recovery.helper_digest.hex as String },
+        Srv1RootMutationSelect { input: "cutover-recovery-scopes", value: serialize_json(v: json_array(elements: scope_values)) }
+      ] + selects
+      let subject = Srv1RootMutationApproval { job: "capacity-cutover-recovery", execution_revision: execution_revision, selects: bound_selects }
+      let canonical = serialize_json(v: json_array(elements: [json_string(s: "srv1.capacity-cutover-recovery.v1"),
+        json_string(s: execution_revision as String), json_array(elements: map(bound_selects, selection =>
+          json_array(elements: [json_string(s: selection.input as String), json_string(s: selection.value)])))
+      ])) as NonEmptyStr
+      Ok { value: CapacityCutoverRecoveryRequest { recovery: Srv1RecoveryRequest { subject: recovery,
+        request: AuthorizationRequest { escalation_id: escalation_id, subject: subject,
+          scopes: [capacity_root_helper_scope] + recovery.scopes, attempt: escalation_id as AttemptIdentity,
+          purpose: concat("Recover one journal generation with this explicit choice, helper and scopes; apply identity is reference only: ", canonical as String) as NonEmptyStr,
+          intent_hash: content_hash_of_value(value: canonical), destructive: true } } } }
+    }
+    CapacityCutoverJob { plan_digest: plan_digest, helper_digest: helper_digest, internal_scopes: internal_scopes } => {
+      if count(internal_scopes) == 0 { return Err { value: "cutover must state its exact internal scopes" } }
+      let wires = fold(internal_scopes, init: Ok { value: [] }, f: (prior, scope) => { match prior {
+        Err { value: why } => Err { value: why }
+        Ok { value: rows } => match authorization_scope_wire(scope: scope) {
+          Absent => Err { value: "cutover contains an unrenderable internal scope" }
+          Present { value: wire } => Ok { value: rows + [json_string(s: wire as String)] }
+        }
+      } })
+      let internal = match wires { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+      let helper_scope = match authorization_scope_wire(scope: capacity_root_helper_scope) {
+        Absent => { return Err { value: "cutover helper scope is unrenderable" } } Present { value: value } => value
+      }
+      if any(selects, selection => starts_with(s: (selection.input as String), prefix: "cutover-")) {
+        return Err { value: "cutover binding selects cannot be overridden" }
+      }
+      let bound_selects = [
+        Srv1RootMutationSelect { input: "cutover-helper-scope", value: helper_scope as String },
+        Srv1RootMutationSelect { input: "cutover-plan-sha256", value: plan_digest.hex as String },
+        Srv1RootMutationSelect { input: "cutover-helper-sha256", value: helper_digest.hex as String },
+        Srv1RootMutationSelect { input: "cutover-internal-scopes", value: serialize_json(v: json_array(elements: internal)) }
+      ] + selects
+      let subject = Srv1RootMutationApproval { job: "capacity-cutover", execution_revision: execution_revision, selects: bound_selects }
+      let canonical = serialize_json(v: json_array(elements: [
+        json_string(s: "srv1.capacity-cutover.v1"), json_string(s: execution_revision as String),
+        json_string(s: helper_scope as String), json_array(elements: map(bound_selects, selection =>
+          json_array(elements: [json_string(s: selection.input as String), json_string(s: selection.value)])))
+      ])) as NonEmptyStr
+      let request = AuthorizationRequest { escalation_id: escalation_id, subject: subject,
+        scopes: [capacity_root_helper_scope] + internal_scopes, attempt: escalation_id as AttemptIdentity,
+        purpose: concat("Execute one closed root cutover with exactly this helper, plan and scopes: ", canonical as String) as NonEmptyStr,
+        intent_hash: content_hash_of_value(value: canonical), destructive: true }
+      Ok { value: CapacityCutoverRequest { cutover: Srv1CutoverRequest { request: request, plan_digest: plan_digest, helper_digest: helper_digest } } }
+    }
+  }
+}
+
+fn srv1_cutover_digest_admission(cutover: Srv1CutoverRequest, plan_digest: Sha256Digest, helper_digest: Sha256Digest) -> Result<Srv1CutoverRequest, String> {
+  if cutover.plan_digest != plan_digest { Err { value: "approved cutover plan digest differs from the execution plan" } }
+  else if cutover.helper_digest != helper_digest { Err { value: "approved cutover helper digest differs from the executable" } }
+  else { Ok { value: cutover } }
+}
+
+// Same filing, polling, redemption and receipt route; no parallel broker gate.
+fn srv1_root_mutation_job_file_and_wait(job: Srv1RootMutationJobRequest, receipt_path: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  match job {
+    ExistingRootMutationRequest { request: request } => srv1_root_mutation_file_and_wait(request: request, receipt_path: receipt_path)
+    CapacityCutoverRequest { cutover: cutover } => srv1_root_mutation_file_and_wait(request: cutover.request, receipt_path: receipt_path)
+    CapacityCutoverRecoveryRequest { recovery: recovery } => srv1_root_mutation_file_and_wait(request: recovery.request, receipt_path: receipt_path)
+  }
+}
+
 // ── The gate ──────────────────────────────────────────────────────────────────────────────────
 // THE APPROVAL, ONLY WHEN ADMITTED, re-authorized at the instant the step ends: a grant whose window
 // closed since the poll returned does not release the job. The receipt names the escalation and the
@@ -402,24 +523,35 @@ fn srv1_root_mutation_inheritance(
   }
 }
 
+fn srv1_root_mutation_inherited_request(request: AuthorizationRequest<Srv1RootMutationApproval>, required: List<AuthorizationScope>) -> Srv1InheritedGrant
+  uses net: std.resources.Network
+{
+  match approval_instant_now() {
+    Absent => Srv1InheritedGrantRefused { reason: "clock unreadable; refusing to judge the approval against a fabricated instant" }
+    Present { value: now } => match approval_standing_read(escalation_id: request.escalation_id, expires_at: now) {
+      StandingClockUnreadable => Srv1InheritedGrantRefused { reason: "clock unreadable; refusing to judge the approval against a fabricated instant" }
+      StandingReadAt { standing: standing, observed_at: at } => srv1_root_mutation_inheritance(
+        gate: approval_gate_from_poll(poll: standing, request: request, observed_at: at), request: request,
+        required: required, observed_at: at)
+    }
+  }
+}
+
 fn srv1_root_mutation_inherited_grant(required: List<AuthorizationScope>) -> Srv1InheritedGrant
   uses net: std.resources.Network
 {
   match srv1_root_mutation_request_from_run() {
     Srv1RootMutationRequestRefused { reason: r } => Srv1InheritedGrantRefused { reason: r }
-    Srv1RootMutationRequestBuilt { request: request } => match approval_instant_now() {
-      Absent => Srv1InheritedGrantRefused { reason: "clock unreadable; refusing to judge the approval against a fabricated instant" }
-      Present { value: now } => match approval_standing_read(escalation_id: request.escalation_id, expires_at: now) {
-        StandingClockUnreadable => Srv1InheritedGrantRefused { reason: "clock unreadable; refusing to judge the approval against a fabricated instant" }
-        StandingReadAt { standing: standing, observed_at: at } =>
-          srv1_root_mutation_inheritance(
-            gate: approval_gate_from_poll(poll: standing, request: request, observed_at: at),
-            request: request,
-            required: required,
-            observed_at: at,
-          )
-      }
-    }
+    Srv1RootMutationRequestBuilt { request: request } => srv1_root_mutation_inherited_request(request: request, required: required)
+  }
+}
+
+fn srv1_cutover_inherited_grant(cutover: Srv1CutoverRequest, plan_digest: Sha256Digest, helper_digest: Sha256Digest) -> Srv1InheritedGrant
+  uses net: std.resources.Network
+{
+  match srv1_cutover_digest_admission(cutover: cutover, plan_digest: plan_digest, helper_digest: helper_digest) {
+    Err { value: why } => Srv1InheritedGrantRefused { reason: why }
+    Ok { value: admitted } => srv1_root_mutation_inherited_request(request: admitted.request, required: admitted.request.scopes)
   }
 }
 

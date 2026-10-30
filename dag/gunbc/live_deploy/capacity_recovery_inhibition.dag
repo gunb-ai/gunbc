@@ -1,0 +1,61 @@
+module gunbc.live_deploy.capacity_recovery_inhibition
+
+import gunbc.live_deploy.capacity_controller_hold { CapacityRecoveryControllerSlotUnproven }
+import std.types { String, List }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import extdeps.filesystem.posix { S_IFLNK }
+import extdeps.systemd.unit_load_path { systemd_mask_link_target }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact, CapacityMaskEntry }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityCleanupOnly, CapacityRecoveryChoice, CapacityRecoveryLeg, capacity_recovery_plan }
+
+type CapacityRecoveryBoundaryFault
+  = CapacityRecoveryPartialInhibitionRemoval {
+      recorded: List<CapacityInhibitionArtifact>
+      observed_present: List<CapacityInhibitionArtifact>
+      observed_absent: List<CapacityInhibitionArtifact>
+    }
+  | CapacityRecoveryControllerHoldRefused { refusal: CapacityRecoveryControllerSlotUnproven }
+  | CapacityRecoveryBoundaryRefused { cause: String }
+
+// An absent destination has no live inode. Its entry in observed_absent retains
+// the journal's original inode receipt; presence requires that exact inode and
+// mask target, not merely another mask at the same name. Unreadable or foreign
+// entries refuse without pretending to have observed absence.
+fn capacity_recovery_inhibition_plan(record: CapacityCutoverRecord, choice: CapacityRecoveryChoice,
+  read_entry: fn(CapacityInhibitionPath) -> Result<CapacityMaskEntry?, String>) -> Result<List<CapacityRecoveryLeg>, CapacityRecoveryBoundaryFault> {
+  let legs = match capacity_recovery_plan(record: record, choice: choice) {
+    Err { value: why } => { return Err { value: CapacityRecoveryBoundaryRefused { cause: why } } }
+    Ok { value: value } => value
+  }
+  // Only a durable cleanup-only phase licenses the discharge-only continuation.
+  // All-absent masks in any earlier phase are NOT a cleanup-completion receipt.
+  if record.phase == CapacityCleanupOnly { return Ok { value: legs } }
+  let present = fold(record.artifacts, init: Ok { value: [] as List<CapacityInhibitionArtifact> }, f: (prior, artifact) => match prior {
+    Err { value: why } => Err { value: why }
+    Ok { value: found } => match read_entry(artifact.inhibition) {
+      Err { value: why } => Err { value: CapacityRecoveryBoundaryRefused { cause: why } }
+      Ok { value: Absent } => Ok { value: found }
+      Ok { value: Present { value: entry } } => if entry.identity != artifact.identity
+        || entry.kind != S_IFLNK || entry.target != systemd_mask_link_target {
+        Err { value: CapacityRecoveryBoundaryRefused { cause: "recovery inhibition is foreign or is not the recorded mask; preserve it" } }
+      } else { Ok { value: found + [artifact] } }
+    }
+  })
+  match present {
+    Err { value: why } => Err { value: why }
+    Ok { value: found } => {
+      let missing = filter(record.artifacts, artifact => !any(found, item => item == artifact))
+      if count(missing) > 0 { Err { value: CapacityRecoveryPartialInhibitionRemoval {
+        recorded: record.artifacts, observed_present: found, observed_absent: missing } } }
+      else { Ok { value: legs } }
+    }
+  }
+}
+
+// DECLARED FRONTIER: re-inhibition after removal is a distinct recovery kind,
+// requiring fresh approval bound to new inode receipts and an observation of
+// unit state before drain or install. Resume/rollback never recreate masks.
+// Until that kind is modeled, partial/all removal before cleanup-only requires
+// explicit operator reconciliation; preserve captures and the journal unchanged.

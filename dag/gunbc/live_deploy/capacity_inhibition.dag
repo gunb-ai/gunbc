@@ -1,0 +1,66 @@
+module gunbc.live_deploy.capacity_inhibition
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.algebra { string_contains }
+import std.optional { Present, Absent }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.systemd.manager { SystemManager, UserManager }
+import extdeps.systemd.unit_load_path { systemd_persistent_system_control_directory, systemd_persistent_user_control_directory }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+
+// A proposed path, never a receipt of creation or proof of inhibition. The
+// durable cutover record must precede creation, and record each create-only
+// link before its removal can be authorized. Existing operator masks are not
+// acquired by this plan and must never be removed by discharge.
+type CapacityInhibitionPath {
+  subject: CapacityManagedUnit
+  path: NonEmptyStr
+}
+
+fn capacity_inhibition_path(subject: CapacityManagedUnit, user_config_home: Result<NonEmptyStr, String>) -> Result<CapacityInhibitionPath, String> {
+  let unit = subject.unit as String
+  if unit == "" || string_contains(s: unit, pattern: "/") || unit == "." || unit == ".." {
+    return Err { value: "inhibition requires a unit name, not a path" }
+  }
+  let base = match subject.manager {
+    SystemManager => systemd_persistent_system_control_directory
+    UserManager { uid: _ } => match user_config_home {
+      Err { value: why } => { return Err { value: why } }
+      Ok { value: config } => {
+        if !starts_with(s: (config as String), prefix: "/") { return Err { value: "user configuration root is not absolute" } }
+        systemd_persistent_user_control_directory(config_home: config)
+      }
+    }
+  }
+  Ok { value: CapacityInhibitionPath { subject: subject, path: join([base as String, "/", unit], "") as NonEmptyStr } }
+}
+
+// Do not infer precedence from path spelling. The effective load path is a
+// supplied manager reading; missing/ambiguous entries refuse. The later wet
+// consumer additionally requires masked LoadState and refused START after reload.
+fn capacity_inhibition_precedes_install(inhibition: CapacityInhibitionPath, install: DeploymentUnitInstall, effective_directories: Result<List<NonEmptyStr>, String>) -> Result<CapacityInhibitionPath, String> {
+  if (inhibition.subject.manager != install.manager || inhibition.subject.unit != install.unit) {
+    return Err { value: "inhibition and installation name different manager/unit subjects" }
+  }
+  if (inhibition.path == install.destination) { return Err { value: "unit installation would overwrite its inhibition" } }
+  match effective_directories {
+    Err { value: why } => Err { value: why }
+    Ok { value: directories } => {
+      let candidates = filter(directories, directory => capacity_inhibition_candidate(directory: directory, inhibition: inhibition, install: install))
+      let install_count = count(filter(directories, directory => join([directory as String, "/", install.unit as String], "") == (install.destination as String)))
+      let mask_count = count(filter(directories, directory => join([directory as String, "/", install.unit as String], "") == (inhibition.path as String)))
+      if install_count != 1 || mask_count != 1 { Err { value: "effective unit load path is missing or ambiguous" } }
+      else { match first(candidates) {
+        Present { value: directory } => if join([directory as String, "/", install.unit as String], "") == (inhibition.path as String) { Ok { value: inhibition } }
+          else { Err { value: "inhibition does not precede the installed unit" } }
+        Absent => Err { value: "effective unit load path has no candidate" }
+      } }
+    }
+  }
+}
+
+fn capacity_inhibition_candidate(directory: NonEmptyStr, inhibition: CapacityInhibitionPath, install: DeploymentUnitInstall) -> Bool {
+  let path = join([directory as String, "/", install.unit as String], "")
+  path == (inhibition.path as String) || path == (install.destination as String)
+}

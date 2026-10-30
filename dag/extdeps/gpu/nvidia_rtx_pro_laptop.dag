@@ -1,0 +1,565 @@
+module extdeps.gpu.nvidia_rtx_pro_laptop
+
+import std.types { List, NonEmptyStr }
+import std.optional { Present }
+import std.measure { hardware_thread_count, bandwidth, watt, gibibyte, gibibyte_to_byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, SolderedBga, SystemDependentTgp }
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.pci.identity { PciDeviceId }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.uri { Uri, Https }
+
+// NVIDIA RTX PRO LAPTOP GPUs. NVIDIA's professional laptop comparison page, "GPU Specifications" table,
+// read 2026-10-28: for each Blackwell and Ada Generation laptop GPU, the CUDA core count, GPU memory, peak
+// memory bandwidth, memory type and interface, and "TGP Max Power Consumption" as a RANGE (RTX PRO 5000
+// Blackwell "95-175W"). The page's footnote: "Maximum possible power consumption including the Dynamic
+// Boost algorithm. For system specific GPU TGP, please consult your OEM/solution provider." So each GPU's
+// power is a SystemDependentTgp: the laptop maker fixes the point, and a benchmark is of one laptop at one
+// TGP, never of the GPU name alone.
+//
+// These GPUs are soldered (SolderedBga): the purchase unit is the whole laptop, so the "board" here is the
+// marketed laptop GPU, and a whole-system row binds it to a particular laptop. The driver lists each under
+// "NVIDIA <name> Laptop GPU"; the RTX 500 Ada Generation Laptop GPU is listed under two device ids (28ba,
+// 28bb), so its board names no single one. Memory "GB" is read as GiB, the convention of every row in
+// extdeps.gpu.
+
+data rtx_pro_laptop_compare_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/en-us/products/workstations/professional-laptops/compare/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_laptop_board_catalogs", field: WholeDeclaration
+  } },
+  first_citation: rtx_pro_laptop_compare_authority,
+  further_citations: []
+}
+
+data nvidia_rtx_pro_5000_blackwell_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX PRO 5000 Blackwell Generation Laptop GPU",
+  microarchitecture: "Blackwell",
+  execution_lane_count: Present { value: hardware_thread_count(10496) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 24)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 896000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_5000_blackwell_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_5000_blackwell_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_5000_blackwell_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_pro_5000_blackwell_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX PRO 5000 Blackwell Generation Laptop GPU",
+  gpu: nvidia_rtx_pro_5000_blackwell_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 95), maximum: watt(count: 175) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "2c38" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA RTX PRO 5000 Blackwell Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_5000_blackwell_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_5000_blackwell_laptop_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_5000_blackwell_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_pro_5000_blackwell_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_pro_5000_blackwell_laptop_board_facts)
+
+data nvidia_rtx_pro_4000_blackwell_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX PRO 4000 Blackwell Generation Laptop GPU",
+  microarchitecture: "Blackwell",
+  execution_lane_count: Present { value: hardware_thread_count(7680) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 896000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_4000_blackwell_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_4000_blackwell_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_4000_blackwell_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_pro_4000_blackwell_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX PRO 4000 Blackwell Generation Laptop GPU",
+  gpu: nvidia_rtx_pro_4000_blackwell_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 80), maximum: watt(count: 175) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "2c39" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA RTX PRO 4000 Blackwell Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_4000_blackwell_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_4000_blackwell_laptop_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_4000_blackwell_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_pro_4000_blackwell_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_pro_4000_blackwell_laptop_board_facts)
+
+data nvidia_rtx_pro_3000_blackwell_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX PRO 3000 Blackwell Generation Laptop GPU",
+  microarchitecture: "Blackwell",
+  execution_lane_count: Present { value: hardware_thread_count(5888) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 12)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 672000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_3000_blackwell_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_3000_blackwell_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_3000_blackwell_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_pro_3000_blackwell_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX PRO 3000 Blackwell Generation Laptop GPU",
+  gpu: nvidia_rtx_pro_3000_blackwell_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 60), maximum: watt(count: 140) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "2f38" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA RTX PRO 3000 Blackwell Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_3000_blackwell_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_3000_blackwell_laptop_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_3000_blackwell_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_pro_3000_blackwell_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_pro_3000_blackwell_laptop_board_facts)
+
+data nvidia_rtx_pro_2000_blackwell_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX PRO 2000 Blackwell Generation Laptop GPU",
+  microarchitecture: "Blackwell",
+  execution_lane_count: Present { value: hardware_thread_count(3328) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 8)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 384000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_2000_blackwell_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_2000_blackwell_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_2000_blackwell_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_pro_2000_blackwell_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX PRO 2000 Blackwell Generation Laptop GPU",
+  gpu: nvidia_rtx_pro_2000_blackwell_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 45), maximum: watt(count: 115) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "2d39" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_2000_blackwell_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_2000_blackwell_laptop_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_2000_blackwell_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_pro_2000_blackwell_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_pro_2000_blackwell_laptop_board_facts)
+
+data nvidia_rtx_pro_1000_blackwell_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX PRO 1000 Blackwell Generation Laptop GPU",
+  microarchitecture: "Blackwell",
+  execution_lane_count: Present { value: hardware_thread_count(2560) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 8)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 384000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_1000_blackwell_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_1000_blackwell_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_1000_blackwell_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_pro_1000_blackwell_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX PRO 1000 Blackwell Generation Laptop GPU",
+  gpu: nvidia_rtx_pro_1000_blackwell_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 35), maximum: watt(count: 115) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "2db8" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA RTX PRO 1000 Blackwell Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_1000_blackwell_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_1000_blackwell_laptop_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_1000_blackwell_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_pro_1000_blackwell_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_pro_1000_blackwell_laptop_board_facts)
+
+data nvidia_rtx_pro_500_blackwell_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX PRO 500 Blackwell Generation Laptop GPU",
+  microarchitecture: "Blackwell",
+  execution_lane_count: Present { value: hardware_thread_count(1792) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 6)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 288000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_500_blackwell_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_500_blackwell_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_500_blackwell_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_pro_500_blackwell_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX PRO 500 Blackwell Generation Laptop GPU",
+  gpu: nvidia_rtx_pro_500_blackwell_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 35), maximum: watt(count: 75) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "2db9" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA RTX PRO 500 Blackwell Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_500_blackwell_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_500_blackwell_laptop_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_pro_500_blackwell_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_pro_500_blackwell_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_pro_500_blackwell_laptop_board_facts)
+
+data nvidia_rtx_5000_ada_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX 5000 Ada Generation Laptop GPU",
+  microarchitecture: "Ada Lovelace",
+  execution_lane_count: Present { value: hardware_thread_count(9728) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 576000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_5000_ada_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_5000_ada_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_5000_ada_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_5000_ada_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX 5000 Ada Generation Laptop GPU",
+  gpu: nvidia_rtx_5000_ada_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 80), maximum: watt(count: 175) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "2730" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA RTX 5000 Ada Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_5000_ada_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_5000_ada_laptop_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_5000_ada_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_5000_ada_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_5000_ada_laptop_board_facts)
+
+data nvidia_rtx_4000_ada_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX 4000 Ada Generation Laptop GPU",
+  microarchitecture: "Ada Lovelace",
+  execution_lane_count: Present { value: hardware_thread_count(7424) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 12)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 432000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_4000_ada_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_4000_ada_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_4000_ada_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_4000_ada_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX 4000 Ada Generation Laptop GPU",
+  gpu: nvidia_rtx_4000_ada_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 60), maximum: watt(count: 175) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "27ba" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA RTX 4000 Ada Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_4000_ada_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_4000_ada_laptop_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_4000_ada_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_4000_ada_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_4000_ada_laptop_board_facts)
+
+data nvidia_rtx_3500_ada_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX 3500 Ada Generation Laptop GPU",
+  microarchitecture: "Ada Lovelace",
+  execution_lane_count: Present { value: hardware_thread_count(5120) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 12)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 432000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_3500_ada_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_3500_ada_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_3500_ada_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_3500_ada_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX 3500 Ada Generation Laptop GPU",
+  gpu: nvidia_rtx_3500_ada_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 60), maximum: watt(count: 140) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "27bb" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA RTX 3500 Ada Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_3500_ada_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_3500_ada_laptop_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_3500_ada_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_3500_ada_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_3500_ada_laptop_board_facts)
+
+data nvidia_rtx_3000_ada_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX 3000 Ada Generation Laptop GPU",
+  microarchitecture: "Ada Lovelace",
+  execution_lane_count: Present { value: hardware_thread_count(4608) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 8)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 256000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_3000_ada_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_3000_ada_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_3000_ada_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_3000_ada_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX 3000 Ada Generation Laptop GPU",
+  gpu: nvidia_rtx_3000_ada_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 35), maximum: watt(count: 140) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "2838" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA RTX 3000 Ada Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_3000_ada_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_3000_ada_laptop_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_3000_ada_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_3000_ada_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_3000_ada_laptop_board_facts)
+
+data nvidia_rtx_2000_ada_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX 2000 Ada Generation Laptop GPU",
+  microarchitecture: "Ada Lovelace",
+  execution_lane_count: Present { value: hardware_thread_count(3072) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 8)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 256000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_2000_ada_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_2000_ada_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_2000_ada_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_2000_ada_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX 2000 Ada Generation Laptop GPU",
+  gpu: nvidia_rtx_2000_ada_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 35), maximum: watt(count: 140) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "28b8" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA RTX 2000 Ada Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_2000_ada_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_2000_ada_laptop_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_2000_ada_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_2000_ada_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_2000_ada_laptop_board_facts)
+
+data nvidia_rtx_1000_ada_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX 1000 Ada Generation Laptop GPU",
+  microarchitecture: "Ada Lovelace",
+  execution_lane_count: Present { value: hardware_thread_count(2560) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 6)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 192000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_1000_ada_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_1000_ada_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_1000_ada_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_1000_ada_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX 1000 Ada Generation Laptop GPU",
+  gpu: nvidia_rtx_1000_ada_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 35), maximum: watt(count: 140) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "28b9" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA RTX 1000 Ada Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_1000_ada_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_1000_ada_laptop_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_1000_ada_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_1000_ada_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_1000_ada_laptop_board_facts)
+
+data nvidia_rtx_500_ada_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "RTX 500 Ada Generation Laptop GPU",
+  microarchitecture: "Ada Lovelace",
+  execution_lane_count: Present { value: hardware_thread_count(2048) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 4)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 128000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_500_ada_laptop_catalog", field_name: "memory"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_500_ada_laptop_catalog", field_name: "memory_bandwidth"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_500_ada_laptop_catalog", field_name: "execution_lane_count"), authority: rtx_pro_laptop_compare_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_rtx_500_ada_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "RTX 500 Ada Generation Laptop GPU",
+  gpu: nvidia_rtx_500_ada_laptop_catalog,
+  gpu_count: 1,
+  attachment: SolderedBga,
+  board_power: Present { value: SystemDependentTgp { minimum: watt(count: 35), maximum: watt(count: 60) } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: none,
+  driver_listed_name: Present { value: "NVIDIA RTX 500 Ada Generation Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_500_ada_laptop_board_facts", field_name: "board_power"), authority: rtx_pro_laptop_compare_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_rtx_pro_laptop", decl_name: "nvidia_rtx_500_ada_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_rtx_500_ada_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_500_ada_laptop_board_facts)
+
+// Every board this module declares, in declaration order: the roster test.claim.gpu_board_catalog_witness
+// requires to be admitted, and this module's model-scope subject.
+data nvidia_rtx_pro_laptop_board_catalogs: List<GpuBoardAdmission> = [nvidia_rtx_pro_5000_blackwell_laptop_board_catalog, nvidia_rtx_pro_4000_blackwell_laptop_board_catalog, nvidia_rtx_pro_3000_blackwell_laptop_board_catalog, nvidia_rtx_pro_2000_blackwell_laptop_board_catalog, nvidia_rtx_pro_1000_blackwell_laptop_board_catalog, nvidia_rtx_pro_500_blackwell_laptop_board_catalog, nvidia_rtx_5000_ada_laptop_board_catalog, nvidia_rtx_4000_ada_laptop_board_catalog, nvidia_rtx_3500_ada_laptop_board_catalog, nvidia_rtx_3000_ada_laptop_board_catalog, nvidia_rtx_2000_ada_laptop_board_catalog, nvidia_rtx_1000_ada_laptop_board_catalog, nvidia_rtx_500_ada_laptop_board_catalog]

@@ -1,0 +1,242 @@
+module gunbc.live_deploy.capacity_generation_publish
+
+import gunbc.live_deploy.capacity_journal_store { capacity_journal_directory }
+import gunbc.host_state_root { host_state_tree }
+
+import std.decl_ref { decl_ref }
+import std.scoped_authorization { AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided }
+import std.durable_compare_and_set { CasGeneration }
+import std.process { ExitSuccess, ExitFailure }
+import std.cache_identity { cutover_capture_artifact_kind }
+import std.judgment_contract { output_fabric_blob }
+import std.materialization_object { StoreCommitRefused, StoreCommitSettled }
+import std.fabric_blob {
+  read_staged_fabric_blob, FabricBlobRead, FabricBlobReadRefused, fabric_blob_fault_text,
+  fabric_blob_reading_digest, fabric_blob_reading_path,
+}
+import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim }
+import gunbc.durable_cas_file_store { SlotStore }
+import gunbc.owned_directory { owned_directory_outcome_converged, owned_directory_outcome_detail }
+import gunbc.host.host_effect_realize { DeployApplyPorts, deploy_apply_unit_install_failure }
+import extdeps.realization.materialization_store_local {
+  LocalStoreCapability, LocalStoreBracket, LocalStoreFamilyHeld, LocalStoreStagedPart, local_store_binding_path,
+  local_store_held_session, local_store_bind_retention, local_store_commit_under_request,
+}
+import std.types { String, NonEmptyStr, Timestamp, List, CommitSha }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.content_hash { sha256_hex_of_text, sha256_hex_digest }
+import std.materialization_provider { CutoverCaptureRequest }
+import extdeps.languages.json.emit { serialize_json, json_array, json_string }
+import extdeps.systemd.manager { SystemManager, UserManager }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument, CapturedUnitDocument }
+import gunbc.live_deploy.apply_legs { apply_modeled_unit_install_payload }
+import gunbc.live_deploy.capacity_capture_store {
+  CapacityCaptureStore, CapturedUnitBlob, capacity_capture_blob_path, capacity_capture_blob_lookup,
+  capacity_capture_directory_target,
+}
+import gunbc.live_deploy.capacity_capture_provider { capacity_capture_journal_root, capacity_capture_journal_open, capacity_capture_record_replace }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, capacity_cutover_generation_admission }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityGenerationOperation }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityGenerationFile, CapacityCapturingGeneration }
+
+// This mint accepts only the modeled document arm. It cannot render an old or
+// captured file, and carries no arbitrary argv. The digest is fixed before consent.
+type CapacityPlannedGeneration sole_constructor {
+  store: CapacityCaptureStore
+  install: DeploymentUnitInstall
+  staging: DeploymentUnitInstall
+  operation: CapacityGenerationOperation
+}
+
+fn capacity_generation_claim_key(plan: CapacityPlannedGeneration) -> NonEmptyStr {
+  concat("capacity-generation-", sha256_hex_of_text(text: serialize_json(v: json_array(elements: [
+    json_string(s: plan.store.attempt as String),
+    json_string(s: match plan.operation.subject.manager { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) }),
+    json_string(s: plan.operation.subject.unit as String), json_string(s: plan.operation.digest.hex as String)
+  ])))) as NonEmptyStr
+}
+
+fn capacity_generation_plan(store: CapacityCaptureStore, install: DeploymentUnitInstall) -> Result<CapacityPlannedGeneration, String> {
+  match install.file {
+    CapturedUnitDocument { capture: _ } => Err { value: "target generation must be rendered from a modeled unit definition" }
+    ModeledUnitDocument { file: file } => match sha256_hex_digest(hex: sha256_hex_of_text(text: apply_modeled_unit_install_payload(file: file))) {
+      Absent => Err { value: "typed unit rendering produced no SHA-256 digest" }
+      Present { value: digest } => {
+        let op = CapacityGenerationOperation { subject: CapacityManagedUnit { manager: install.manager, unit: install.unit },
+          destination: install.destination, root: store.root, digest: digest }
+        let name = sha256_hex_of_text(text: serialize_json(v: json_array(elements: [
+          json_string(s: match install.manager { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) }),
+          json_string(s: install.unit as String), json_string(s: digest.hex as String)
+        ])))
+        let staging = DeploymentUnitInstall { manager: install.manager, unit: install.unit,
+          destination: join([capacity_capture_journal_root(store: store) as String, "/generation-", name, ".unit"], "") as NonEmptyStr,
+          file: ModeledUnitDocument { file: file } }
+        Ok { value: CapacityPlannedGeneration { store: store, install: install, staging: staging, operation: op } }
+      }
+    }
+  }
+}
+
+fn capacity_generation_render_admission(plan: CapacityPlannedGeneration, approved: CapacityGenerationOperation) -> Result<CapacityPlannedGeneration, String> {
+  if plan.operation != approved { Err { value: "rendered unit or digest differs from the approved target" } }
+  else { Ok { value: plan } }
+}
+
+type CapacityPublishedGeneration sole_constructor {
+  revision: CommitSha
+  planned: CapacityPlannedGeneration
+  install: DeploymentUnitInstall
+}
+
+// A supplied provider reading makes the refusal controls hermetic. Production
+// calls this only after the existing provider's verified part lookup.
+fn capacity_generation_target_admit(plan: CapacityPlannedGeneration, approval: CapacityCutoverAuthorization,
+  at: Timestamp, published: Result<CapturedUnitBlob, String>) -> Result<CapacityPublishedGeneration, String>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.live_deploy.capacity_generation_publish", decl_name: "capacity_generation_publish_held"),
+    decl_ref(module_path: "test.claim.live_deploy.capacity_generation_publish_witness", decl_name: "an_unpublished_target_cannot_become_an_installable_generation"),
+    decl_ref(module_path: "test.claim.live_deploy.capacity_generation_publish_witness", decl_name: "a_verified_published_target_binds_the_closed_controller"),
+  ]
+{
+  if (plan.store.attempt != approval.intent.attempt) { return Err { value: "target approval belongs to another apply" } }
+  match capacity_cutover_generation_admission(authorization: approval, operation: plan.operation, at: at) {
+    Err { value: why } => Err { value: why }
+    Ok { value: _ } => match published {
+      Err { value: why } => Err { value: why }
+      Ok { value: capture } => {
+        let request = CutoverCaptureRequest { host: approval.intent.host, source_unit: plan.install.destination, digest: plan.operation.digest }
+        let expected = match capacity_capture_blob_path(store: plan.store, request: request) {
+          Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+        }
+        if capture.request != request || fabric_blob_reading_digest(reading: capture.reading) != plan.operation.digest
+          || fabric_blob_reading_path(reading: capture.reading) != expected {
+          Err { value: "published target does not match the approved unit digest and provider address" }
+        } else { Ok { value: CapacityPublishedGeneration { revision: approval.intent.revision, planned: plan, install: DeploymentUnitInstall {
+          manager: plan.install.manager, unit: plan.install.unit, destination: plan.install.destination,
+          file: CapturedUnitDocument { capture: capture }
+        } } } }
+      }
+    }
+  }
+}
+
+// After source capture this is the operator's old/new digest comparison. A
+// missing or ambiguous old capture is a refusal, never an invented digest.
+fn capacity_generation_diff_lines(plans: List<CapacityPlannedGeneration>, record: CapacityCutoverRecord) -> Result<List<String>, String> {
+  fold(plans, init: Ok { value: [] }, f: (prior, plan) => match prior {
+    Err { value: why } => Err { value: why }
+    Ok { value: lines } => {
+      let old = filter(record.prior, file => file.manager == plan.install.manager && file.unit == plan.install.unit && file.destination == plan.install.destination)
+      if (count(old) != 1 || record.attempt != plan.store.attempt) { Err { value: "old unit capture is missing, ambiguous or belongs to another apply" } }
+      else { match first(old) {
+        Absent => Err { value: "old unit capture is missing" }
+        Present { value: file } => Ok { value: lines + [join(["unit=", plan.install.unit as String, " old=", file.digest.hex as String,
+          " new=", plan.operation.digest.hex as String, " root=", plan.operation.root as String], "")] }
+      } }
+    }
+  })
+}
+
+fn capacity_generation_claim_admission(outcome: AuthorizationClaimOutcome) -> Result<CasGeneration, String> {
+  match outcome {
+    ClaimHeld { state: _, generation: generation } => Ok { value: generation }
+    ClaimLost { holder: _ } => Err { value: "target generation has already been claimed for publication" }
+    ClaimUndecided { reason: why } => Err { value: why }
+  }
+}
+
+fn capacity_generation_record_result(record: CapacityCutoverRecord, file: CapacityGenerationFile) -> Result<CapacityCutoverRecord, String> {
+  if record.phase != CapacityCapturingGeneration || count(record.created_paths) != 0 {
+    Err { value: "target publication cannot follow inhibition" }
+  } else if any(record.target, existing => existing.manager == file.manager && existing.unit == file.unit) {
+    Err { value: "target unit already published in this apply" }
+  } else { Ok { value: CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior, target: record.target + [file],
+    planned_paths: record.planned_paths, created_paths: record.created_paths, artifacts: record.artifacts, phase: record.phase
+  } } }
+}
+
+// This is the only staging route: the typed modeled-document install producer,
+// into the journal's root-owned directory. No caller-supplied argv is executed.
+fn capacity_generation_publish(plan: CapacityPlannedGeneration, provider: LocalStoreCapability,
+  journal: SlotStore, key: NonEmptyStr, approval: CapacityCutoverAuthorization,
+  now: fn() -> Result<Timestamp, String>, ports: DeployApplyPorts) -> Result<LocalStoreBracket<Result<CapacityPublishedGeneration, String>>, String> {
+  if (local_store_binding_path(b: provider.binding) != (plan.store.root as String) || plan.store.attempt != approval.intent.attempt) {
+    return Err { value: "target provider or approval belongs to another apply" }
+  }
+  let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  match capacity_cutover_generation_admission(authorization: approval, operation: plan.operation, at: at) {
+    Err { value: why } => Err { value: why }
+    Ok { value: _ } => Ok { value: local_store_held_session(capability: provider, family: cutover_capture_artifact_kind,
+      run: held => capacity_generation_publish_held(plan: plan, provider: provider, held: held, journal: journal, key: key, approval: approval, now: now, ports: ports)) }
+  }
+}
+
+fn capacity_generation_publish_held(plan: CapacityPlannedGeneration, provider: LocalStoreCapability, held: LocalStoreFamilyHeld,
+  journal: SlotStore, key: NonEmptyStr, approval: CapacityCutoverAuthorization,
+  now: fn() -> Result<Timestamp, String>, ports: DeployApplyPorts) -> Result<CapacityPublishedGeneration, String>
+  admit_callers: [decl_ref(module_path: "gunbc.live_deploy.capacity_generation_publish", decl_name: "capacity_generation_publish")]
+{
+  let prior = match capacity_capture_journal_open(store: plan.store, journal: journal, key: key) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  if (prior.record.target_revision != approval.intent.revision || prior.record.plan.approved_digest != approval.approved_plan_digest) {
+    return Err { value: "target journal revision differs from approval" }
+  }
+  let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  match capacity_cutover_generation_admission(authorization: approval, operation: plan.operation, at: at) {
+    Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
+  }
+  let claimed = match capacity_generation_claim_admission(outcome: claim_authorization_slot(
+    escalation_id: capacity_generation_claim_key(plan: plan), attempt: plan.store.attempt, at: at)) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  let scope = serialize_json(v: json_array(elements: [json_string(s: journal.root as String), json_string(s: key as String)])) as NonEmptyStr
+  match local_store_bind_retention(held: held, scope: scope) {
+    Present { value: _ } => { return Err { value: "target retention binding is not current" } } Absent => {}
+  }
+  let ensure = ports.ensure_directory
+  let target = match capacity_journal_directory(tree: host_state_tree(), attempt: plan.store.attempt) {
+    Err { value: why } => { return Err { value: why } } Ok { value: target } => target
+  }
+  let directory = ensure(target)
+  if !owned_directory_outcome_converged(o: directory) { return Err { value: owned_directory_outcome_detail(o: directory) } }
+  match deploy_apply_unit_install_failure(install: plan.staging, ports: ports) {
+    Present { value: why } => { return Err { value: why } } Absent => {}
+  }
+  let reading = match read_staged_fabric_blob(path: plan.staging.destination) {
+    FabricBlobReadRefused { fault: fault } => { return Err { value: fabric_blob_fault_text(fault: fault) } }
+    FabricBlobRead { reading: value } => value
+  }
+  if (fabric_blob_reading_digest(reading: reading) != plan.operation.digest) {
+    return Err { value: "rendered bytes differ from approved target digest" }
+  }
+  let request = CutoverCaptureRequest { host: approval.intent.host, source_unit: plan.install.destination, digest: plan.operation.digest }
+  let committed = local_store_commit_under_request(held: held, req: request, payloads: [],
+    parts: [LocalStoreStagedPart { id: output_fabric_blob, staged: plan.staging.destination }])
+  match committed.commit {
+    StoreCommitRefused { key: _, refusal: _ } => { return Err { value: "target provider refused publication" } }
+    StoreCommitSettled { receipt: _ } => {}
+  }
+  let completed_at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let published = match capacity_generation_target_admit(plan: plan, approval: approval, at: completed_at,
+    published: capacity_capture_blob_lookup(store: plan.store, request: request, provider: provider)) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  let address = match capacity_capture_blob_path(store: plan.store, request: request) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  let record = match capacity_generation_record_result(record: prior.record, file: CapacityGenerationFile {
+    host: approval.intent.host, manager: plan.install.manager, unit: plan.install.unit, destination: plan.install.destination,
+    address: address, digest: plan.operation.digest
+  }) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  match capacity_capture_record_replace(journal: journal, key: key, prior: prior, record: record) {
+    Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
+  }
+  match settle_authorization_claim(label: "cutover target publication", outcome: ExitSuccess,
+    escalation_id: capacity_generation_claim_key(plan: plan), attempt: plan.store.attempt, held_at: claimed, at: completed_at) {
+    ExitSuccess => Ok { value: published }
+    ExitFailure { code: _, reason: why } => Err { value: why }
+  }
+}

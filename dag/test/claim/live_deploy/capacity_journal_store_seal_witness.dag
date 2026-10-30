@@ -1,0 +1,18 @@
+module test.claim.live_deploy.capacity_journal_store_seal_witness
+
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit }
+
+// Removing the record seal must make this control fail. There is no coproduct
+// seal or caller-name roster standing in for the construction boundary.
+test fn a_foreign_literal_cannot_rebind_the_cutover_journal_attempt() -> ProcessExit {
+  let source = "module probe_capacity_journal_literal\nimport gunbc.live_deploy.capacity_journal_store { CapacityJournalStore }\nfn f(a: CapacityJournalStore, b: CapacityJournalStore) -> CapacityJournalStore { CapacityJournalStore { slots: a.slots, attempt: b.attempt } }\n"
+  census_exit(census_verdict(census: blocking_subject_census(source: source,
+    wanted_class: "SoleConstructorViolation", wanted_subject: "CapacityJournalStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_foreign_literal_cannot_mint_cutover_authority() -> ProcessExit {
+  let source = "module probe_capacity_authorization_literal\nimport gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization }\nfn f(a: CapacityCutoverAuthorization) -> CapacityCutoverAuthorization { CapacityCutoverAuthorization { intent: a.intent, approved_plan_digest: a.approved_plan_digest, request: a.request, grant: a.grant, claim: a.claim } }\n"
+  census_exit(census_verdict(census: blocking_subject_census(source: source,
+    wanted_class: "SoleConstructorViolation", wanted_subject: "CapacityCutoverAuthorization"), holds: fn(n) { n == 1 }))
+}

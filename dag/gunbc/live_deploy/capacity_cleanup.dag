@@ -1,0 +1,125 @@
+module gunbc.live_deploy.capacity_cleanup
+
+import std.types { String, NonEmptyStr, Timestamp, List, ShellResponse }
+import std.decl_ref { decl_ref }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.cache_identity { cutover_capture_artifact_kind }
+import extdeps.languages.json.emit { serialize_json, json_array, json_string }
+import extdeps.realization.materialization_store_local { LocalStoreCapability, LocalStoreBracket, LocalStoreFamilyHeld,
+  LocalStoreRetentionRefusal, local_store_binding_path, local_store_held_session, local_store_bind_retention, local_store_reclaim_unreferenced }
+import gunbc.durable_cas_file_store { SlotStore }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.capacity_capture_store { CapacityCaptureStore }
+import gunbc.live_deploy.capacity_capture_provider { capacity_cutover_journal_read, capacity_capture_record_replace }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, CapacityCleanupOnly, CapacityClosed }
+import gunbc.live_deploy.capacity_discharge { CapacityDischargeReady, capacity_discharge_admit }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityMaskEntry }
+import gunbc.live_deploy.capacity_manager_reload { CapacityReloadCompleted }
+import gunbc.live_deploy.capacity_migration_approval { CapacityCutoverAuthorization, capacity_cutover_file_admission }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverFileOperation, CapacityCaptureRemove }
+
+type CapacityCleanupCompleted {
+  record: CapacityCutoverRecord
+  foreign_entries: List<CapacityInhibitionPath>
+  externally_masked: List<CapacityManagedUnit>
+}
+
+type CapacityCleanupFault
+  = CapacityCleanupBoundaryRefused { detail: String }
+  | CapacityCleanupProviderRefused { refusal: LocalStoreRetentionRefusal }
+
+fn capacity_cleanup_begin(ready: CapacityDischargeReady) -> CapacityCutoverRecord {
+  let record = ready.record
+  CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
+    target: record.target, planned_paths: record.planned_paths, created_paths: record.created_paths,
+    artifacts: record.artifacts, phase: CapacityCleanupOnly }
+}
+
+fn capacity_cleanup_admission(record: CapacityCutoverRecord) -> Result<CapacityCutoverRecord, String> {
+  if (record.phase == CapacityCleanupOnly) { Ok { value: record } }
+  else { Err { value: "provider reclamation requires a persisted cleanup-only phase" } }
+}
+
+fn capacity_cleanup_close(record: CapacityCutoverRecord) -> CapacityCutoverRecord
+  admit_callers: [decl_ref(module_path: "gunbc.live_deploy.capacity_cleanup", decl_name: "capacity_cleanup_held")]
+{
+  CapacityCutoverRecord { plan: record.plan, attempt: record.attempt, target_revision: record.target_revision, prior: record.prior,
+    target: record.target, planned_paths: record.planned_paths, created_paths: record.created_paths,
+    artifacts: record.artifacts, phase: CapacityClosed }
+}
+
+fn capacity_cleanup_consent(store: CapacityCaptureStore, approval: CapacityCutoverAuthorization,
+  now: fn() -> Result<Timestamp, String>) -> Result<Timestamp, String> {
+  if (store.attempt != approval.intent.attempt) { return Err { value: "cleanup approval belongs to another apply" } }
+  let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  match capacity_cutover_file_admission(authorization: approval,
+    operation: CapacityCutoverFileOperation { path: store.root, verb: CapacityCaptureRemove }, at: at) {
+    Err { value: why } => Err { value: why } Ok { value: _ } => Ok { value: at }
+  }
+}
+
+// The capture root is per apply and its retention binding names this journal.
+// Empty roots are legal only AFTER the durable cleanup-only transition. Provider
+// reclamation owns its index/tombstones; there is no filesystem delete side path.
+fn capacity_cleanup_run(store: CapacityCaptureStore, provider: LocalStoreCapability, journal: SlotStore, key: NonEmptyStr,
+  approval: CapacityCutoverAuthorization, now: fn() -> Result<Timestamp, String>,
+  reloads: Result<List<CapacityReloadCompleted>, String>,
+  read_entry: fn(CapacityInhibitionPath) -> Result<CapacityMaskEntry?, String>,
+  read_unit: fn(CapacityManagedUnit) -> Result<ShellResponse, String>) -> Result<LocalStoreBracket<Result<CapacityCleanupCompleted, CapacityCleanupFault>>, CapacityCleanupFault> {
+  if local_store_binding_path(b: provider.binding) != (store.root as String) {
+    return Err { value: CapacityCleanupBoundaryRefused { detail: "cleanup provider differs from the admitted root" } }
+  }
+  match capacity_cleanup_consent(store: store, approval: approval, now: now) {
+    Err { value: why } => Err { value: CapacityCleanupBoundaryRefused { detail: why } }
+    Ok { value: _ } => Ok { value: local_store_held_session(capability: provider, family: cutover_capture_artifact_kind,
+      run: held => capacity_cleanup_held(store: store, held: held, journal: journal, key: key, approval: approval,
+        now: now, reloads: reloads, read_entry: read_entry, read_unit: read_unit)) }
+  }
+}
+
+fn capacity_cleanup_held(store: CapacityCaptureStore, held: LocalStoreFamilyHeld, journal: SlotStore, key: NonEmptyStr,
+  approval: CapacityCutoverAuthorization, now: fn() -> Result<Timestamp, String>,
+  reloads: Result<List<CapacityReloadCompleted>, String>,
+  read_entry: fn(CapacityInhibitionPath) -> Result<CapacityMaskEntry?, String>,
+  read_unit: fn(CapacityManagedUnit) -> Result<ShellResponse, String>) -> Result<CapacityCleanupCompleted, CapacityCleanupFault>
+  admit_callers: [decl_ref(module_path: "gunbc.live_deploy.capacity_cleanup", decl_name: "capacity_cleanup_run")]
+{
+  let observed = match capacity_cutover_journal_read(store: store, journal: journal, key: key) {
+    Err { value: why } => { return Err { value: CapacityCleanupBoundaryRefused { detail: why } } } Ok { value: value } => value
+  }
+  if (observed.record.target_revision != approval.intent.revision || observed.record.phase == CapacityClosed) {
+    return Err { value: CapacityCleanupBoundaryRefused { detail: "cleanup journal is closed or names another revision" } }
+  }
+  match capacity_cleanup_consent(store: store, approval: approval, now: now) {
+    Err { value: why } => { return Err { value: CapacityCleanupBoundaryRefused { detail: why } } } Ok { value: _ } => {}
+  }
+  let scope = serialize_json(v: json_array(elements: [json_string(s: journal.root as String), json_string(s: key as String)])) as NonEmptyStr
+  match local_store_bind_retention(held: held, scope: scope) {
+    Present { value: why } => { return Err { value: CapacityCleanupProviderRefused { refusal: why } } } Absent => {}
+  }
+  let ready = match capacity_discharge_admit(record: observed.record, reloads: reloads, read_entry: read_entry, read_unit: read_unit) {
+    Err { value: why } => { return Err { value: CapacityCleanupBoundaryRefused { detail: why } } } Ok { value: value } => value
+  }
+  if (observed.record.phase != CapacityCleanupOnly) {
+    match capacity_capture_record_replace(journal: journal, key: key, prior: observed, record: capacity_cleanup_begin(ready: ready)) {
+      Err { value: why } => { return Err { value: CapacityCleanupBoundaryRefused { detail: why } } } Ok { value: _ } => {}
+    }
+  }
+  let cleanup = match capacity_cutover_journal_read(store: store, journal: journal, key: key) {
+    Err { value: why } => { return Err { value: CapacityCleanupBoundaryRefused { detail: why } } } Ok { value: value } => value
+  }
+  match capacity_cleanup_admission(record: cleanup.record) {
+    Err { value: why } => { return Err { value: CapacityCleanupBoundaryRefused { detail: why } } } Ok { value: _ } => {}
+  }
+  match capacity_cleanup_consent(store: store, approval: approval, now: now) {
+    Err { value: why } => { return Err { value: CapacityCleanupBoundaryRefused { detail: why } } } Ok { value: _ } => {}
+  }
+  match local_store_reclaim_unreferenced(held: held, roots: []) {
+    Present { value: why } => { return Err { value: CapacityCleanupProviderRefused { refusal: why } } } Absent => {}
+  }
+  match capacity_capture_record_replace(journal: journal, key: key, prior: cleanup, record: capacity_cleanup_close(record: cleanup.record)) {
+    Err { value: why } => Err { value: CapacityCleanupBoundaryRefused { detail: why } } Ok { value: record } => Ok { value: CapacityCleanupCompleted { record: record, foreign_entries: ready.foreign_entries, externally_masked: ready.externally_masked } }
+  }
+}

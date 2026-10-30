@@ -147,31 +147,49 @@ type DurableHoldReleaseAssessment
   = HoldReleaseEligible { generation: CasGeneration }
   | HoldReleaseRefused { refusal: DurableHoldReleaseRefusal }
 
+// One authority for an intact owner/generation binding. This assessment neither
+// releases nor acquires a hold; callers retain the distinct meaning of each act.
+// Refusals reuse the existing occupancy/identity cases without a second taxonomy.
+type DurableHoldContinuityAssessment
+  = HoldContinuityIntact { generation: CasGeneration }
+  | HoldContinuityBroken { refusal: DurableHoldReleaseRefusal }
+
+fn durable_hold_continuity_assess(
+  observed: DurableHoldObservation,
+  owner: DurableHoldOwnerRef,
+  acquired_generation: CasGeneration,
+) -> DurableHoldContinuityAssessment {
+  match observed {
+    HoldSlotAbsent => HoldContinuityBroken { refusal: HoldReleaseSlotAbsent }
+    HoldSlotFree { generation: g, released_by: b } =>
+      HoldContinuityBroken { refusal: HoldReleaseAlreadyFree { generation: g, released_by: b } }
+    HoldSlotUndecodable { generation: g, detail: d } =>
+      HoldContinuityBroken { refusal: HoldReleaseSlotUndecodable { generation: g, detail: d } }
+    HoldObservationUnavailable { cause: c } =>
+      HoldContinuityBroken { refusal: HoldReleaseObservationUnavailable { cause: c } }
+    HoldSlotHeld { generation: g, owner: holder } =>
+      if !durable_hold_owner_equal(left: holder, right: owner) {
+        HoldContinuityBroken { refusal: HoldReleaseHeldByAnotherOwner { generation: g, holder: holder } }
+      } else {
+        if cas_generation_count(g: g) != cas_generation_count(g: acquired_generation) {
+          HoldContinuityBroken {
+            refusal: HoldReleaseAgainstAnotherGeneration { acquired: acquired_generation, observed: g },
+          }
+        } else {
+          HoldContinuityIntact { generation: g }
+        }
+      }
+  }
+}
+
 fn durable_hold_release_assess(
   observed: DurableHoldObservation,
   owner: DurableHoldOwnerRef,
   acquired_generation: CasGeneration,
 ) -> DurableHoldReleaseAssessment {
-  match observed {
-    HoldSlotAbsent => HoldReleaseRefused { refusal: HoldReleaseSlotAbsent }
-    HoldSlotFree { generation: g, released_by: b } =>
-      HoldReleaseRefused { refusal: HoldReleaseAlreadyFree { generation: g, released_by: b } }
-    HoldSlotUndecodable { generation: g, detail: d } =>
-      HoldReleaseRefused { refusal: HoldReleaseSlotUndecodable { generation: g, detail: d } }
-    HoldObservationUnavailable { cause: c } =>
-      HoldReleaseRefused { refusal: HoldReleaseObservationUnavailable { cause: c } }
-    HoldSlotHeld { generation: g, owner: holder } =>
-      if !durable_hold_owner_equal(left: holder, right: owner) {
-        HoldReleaseRefused { refusal: HoldReleaseHeldByAnotherOwner { generation: g, holder: holder } }
-      } else {
-        if cas_generation_count(g: g) != cas_generation_count(g: acquired_generation) {
-          HoldReleaseRefused {
-            refusal: HoldReleaseAgainstAnotherGeneration { acquired: acquired_generation, observed: g },
-          }
-        } else {
-          HoldReleaseEligible { generation: g }
-        }
-      }
+  match durable_hold_continuity_assess(observed: observed, owner: owner, acquired_generation: acquired_generation) {
+    HoldContinuityIntact { generation: g } => HoldReleaseEligible { generation: g }
+    HoldContinuityBroken { refusal: why } => HoldReleaseRefused { refusal: why }
   }
 }
 

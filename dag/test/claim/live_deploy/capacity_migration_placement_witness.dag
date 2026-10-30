@@ -1,0 +1,47 @@
+module test.claim.live_deploy.capacity_migration_placement_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.systemd.manager { UserManager }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.capacity_migration_placement { capacity_cutover_placement }
+
+fn placement_fixture(body: String, parent_path: Result<String, String>) -> Result<NonEmptyStr, String> {
+  capacity_cutover_placement(content: Ok { value: body },
+    parents: [CapacityManagedUnit { manager: UserManager { uid: 1000 }, unit: "gunbc-user-work.slice" }],
+    read_parent: parent => parent_path)
+}
+
+test fn the_cutover_cannot_drain_its_own_parent_slice() -> Bool {
+  match placement_fixture(body: "0::/user.slice/user-1000.slice/user@1000.service/gunbc-user-work.slice/cutover.service\n",
+    parent_path: Ok { value: "/user.slice/user-1000.slice/user@1000.service/gunbc-user-work.slice" }) {
+    Err { value: why } => why == "cutover executes inside drain parent: gunbc-user-work.slice"
+    Ok { value: _ } => false
+  }
+}
+
+test fn a_separate_runner_cgroup_is_not_a_descendant() -> Bool {
+  match placement_fixture(body: "0::/system.slice/actions-runner@srv1-02.service\n",
+    parent_path: Ok { value: "/user.slice/user-1000.slice/user@1000.service/gunbc-user-work.slice" }) {
+    Ok { value: path } => (path as String) == "/system.slice/actions-runner@srv1-02.service"
+    Err { value: _ } => false
+  }
+}
+
+test fn a_missing_parent_reading_never_proves_separation() -> Bool {
+  match placement_fixture(body: "0::/system.slice/runner.service\n", parent_path: Err { value: "unreadable" }) {
+    Err { value: _ } => true Ok { value: _ } => false
+  }
+}
+
+test fn an_empty_parent_control_group_never_proves_separation() -> Bool {
+  match placement_fixture(body: "0::/system.slice/runner.service\n", parent_path: Ok { value: "" }) {
+    Err { value: _ } => true Ok { value: _ } => false
+  }
+}
+
+test fn a_sibling_with_a_shared_text_prefix_is_outside_the_parent() -> Bool {
+  match placement_fixture(body: "0::/work.slice-other/runner.service\n", parent_path: Ok { value: "/work.slice" }) {
+    Ok { value: _ } => true Err { value: _ } => false
+  }
+}

@@ -1247,6 +1247,45 @@ fn detach_portable_children(value: &mut PortableValue, pending: &mut Vec<Portabl
     }
 }
 
+/// UNIQUELY OWNED CARRIERS ARE DRAINED EVEN WHEN A `Weak` HANDLE IS OUTSTANDING.
+///
+/// `Rc::get_mut` is the obvious test for "nobody else can observe this carrier", and it is too strict
+/// for THIS interpreter: it returns `None` whenever any `Weak` exists, even with the strong count at
+/// one, and this interpreter deliberately keeps `Weak` handles on live carriers (`CompositeWeak` in the
+/// recompute memo, taken by `Rc::downgrade` in the `EvalRecomputeFrameKind` finalizers). So a carrier
+/// can be uniquely owned and still refuse `get_mut`; its members were then never moved to the worklist,
+/// and `Value::drop`'s own return released them through drop glue -- one host frame per value level,
+/// which is the abort this function exists to prevent.
+///
+/// THE INSTRUMENT FOR THAT CLAIM is this module's `a_weak_held_list_chain_drops` and
+/// `a_weak_held_variant_chain_drops`: a 262,144-level chain whose every carrier is uniquely owned but
+/// has a `Weak` outstanding. Take the three fallback arms out and they abort the test process with a
+/// host stack overflow; with them they pass, and they pass in one module run beside the pre-existing
+/// `a_deep_variant_chain_drops` / `a_deep_list_drops` guards, which already passed with and without
+/// this change -- that pair is what says the escape was specific to `Weak`-held carriers rather than
+/// to deep values in general.
+///
+/// `Rc::try_unwrap` is the route that works, and that is pinned rather than assumed:
+/// `an_outstanding_weak_blocks_get_mut_but_not_try_unwrap` asserts that a `Weak` blocks `get_mut` and
+/// does NOT block `try_unwrap`, and says so if a future std changes either way. It is also the honest
+/// route, because it re-checks ownership itself instead of trusting the guard above it: it returns
+/// `Err` unless the strong count is one, so a genuinely SHARED carrier is left in place for its other
+/// owners -- the invariant the `VALUE_DROP_INLINE_DEPTH` note above states, pinned on the shared side
+/// by this module's `a_shared_deep_chain_drops_once_per_owner`, by `slice_cost_tests`'
+/// `dropping_a_slice_of_a_shared_list_moves_no_member` /
+/// `the_detaching_drop_moves_the_slice_members` pair, and on this fallback's own side by
+/// `a_weak_held_but_shared_carrier_keeps_its_members_for_its_other_owner`. The `strong_count` test
+/// above is what keeps the common shared case off the `try_unwrap` path entirely; the `Err` branch only
+/// reverts to the previous behaviour, and restores the carrier.
+///
+/// A `Weak` OBSERVER OF A DRAINED CARRIER SEES WHAT IT WOULD SEE AFTER AN ORDINARY DROP:
+/// `strong_count` 0. Draining the members does not resurrect the carrier or keep the chain alive, so
+/// the recompute memo's liveness check — `CompositeWeak::alive`, which consults `strong_count` and
+/// never the contents — reads the same answer it read before this change.
+///
+/// This is NARROW by construction: it adds a fallback where the drain previously did nothing. It does
+/// not touch `value_depth_guarded` or any `stacker::maybe_grow` site, so the separate unfired-guard
+/// item (an interpreted recursion whose frames keep allocating) is NOT retired here.
 fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_carriers: bool) {
     match value {
         Value::List(items) if detach_carriers => {
@@ -1254,6 +1293,18 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
                 #[cfg(test)]
                 DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + items.len() as u64));
                 pending.extend(std::mem::take(items));
+            } else if Rc::strong_count(items) == 1 {
+                // Uniquely owned but `Weak`-held: take the carrier out and put it back if the unwrap
+                // refuses, so no path can leave this value looking at an emptied carrier.
+                let carrier = std::mem::replace(items, Rc::new(RrbVector::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(mut owned) => {
+                        #[cfg(test)]
+                        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + owned.len() as u64));
+                        pending.extend(std::mem::take(&mut owned));
+                    }
+                    Err(restored) => *items = restored,
+                }
             }
         }
         Value::Map(entries) if detach_carriers => {
@@ -1261,11 +1312,27 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
                 #[cfg(test)]
                 DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + entries.len() as u64));
                 pending.extend(std::mem::take(entries).into_iter().map(|(_, v)| v));
+            } else if Rc::strong_count(entries) == 1 {
+                let carrier = std::mem::replace(entries, Rc::new(HamtMap::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(owned) => {
+                        #[cfg(test)]
+                        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + owned.len() as u64));
+                        pending.extend(owned.into_iter().map(|(_, v)| v));
+                    }
+                    Err(restored) => *entries = restored,
+                }
             }
         }
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             if let Some(fields) = Rc::get_mut(fields) {
                 pending.extend(fields.drain(..).map(|(_, v)| v));
+            } else if Rc::strong_count(fields) == 1 {
+                let carrier = std::mem::replace(fields, Rc::new(Vec::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(owned) => pending.extend(owned.into_iter().map(|(_, v)| v)),
+                    Err(restored) => *fields = restored,
+                }
             }
         }
         _ => {}
@@ -30030,9 +30097,9 @@ mod value_depth_walker_tests {
 
     use super::{
         account_value, cross_representation_numeric_straddle,
-        free_monoid_symbol_value_to_dotted_string, json_to_value, list_value,
+        free_monoid_symbol_value_to_dotted_string, json_to_value, list_value, map_value,
         portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
-        portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash,
+        portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash, CanonKey,
         ExecutionMode, InterpContext, MemoryAccounting, Value,
     };
 
@@ -30079,6 +30146,138 @@ mod value_depth_walker_tests {
             value = list_value(vec![value]);
         }
         value
+    }
+
+    // THE RED: A UNIQUELY OWNED CARRIER HELD BY A `Weak` STILL REACHES THE WORKLIST.
+    //
+    // `Rc::get_mut` refuses any carrier with an outstanding `Weak`, even at strong count one, and this
+    // interpreter keeps such handles on live carriers on purpose (`CompositeWeak` in the recompute
+    // memo). Before the fallback in detach_owned_children, no level's members were moved, so
+    // `Value::drop`'s return released them through drop glue and the 262,144-deep chain aborted the
+    // process on the default 2 MiB test-thread stack -- the same host abort the wet lane shows after a
+    // reported refusal. Remove the fallback and THIS test aborts; that is its discriminating input.
+    #[test]
+    fn a_weak_held_list_chain_drops() {
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = list_value(Vec::<Value>::new());
+        for _ in 0..DEPTH {
+            let carrier = Rc::new(im_vec![value]);
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::List(carrier);
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // Same through the fields carrier, which detach_owned_children drains at EVERY depth rather than
+    // only past VALUE_DROP_INLINE_DEPTH, so it is the arm the wet-lane Variant/Record values take.
+    #[test]
+    fn a_weak_held_variant_chain_drops() {
+        let ctx = fresh_ctx();
+        let (chain, link, end, next) = (
+            ctx.sym("Chain"),
+            ctx.sym("Link"),
+            ctx.sym("End"),
+            ctx.sym("next"),
+        );
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = Value::Variant {
+            type_name: chain,
+            variant_name: end,
+            fields: Rc::new(vec![]),
+        };
+        for _ in 0..DEPTH {
+            let fields = Rc::new(vec![(next, value)]);
+            weaks.push(Rc::downgrade(&fields));
+            value = Value::Variant {
+                type_name: chain,
+                variant_name: link,
+                fields,
+            };
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // THE THIRD CARRIER TYPE, TESTED THE SAME WAY. detach_owned_children has three fallback arms
+    // (List, Map, fields), and the two above cover List and fields; without this one the Map arm could
+    // be deleted and the suite would stay green. Same shape: uniquely owned at every level, one `Weak`
+    // outstanding at every level, deep enough that detach_carriers is on.
+    #[test]
+    fn a_weak_held_map_chain_drops() {
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = map_value(HashMap::new());
+        for level in 0..DEPTH {
+            let mut entries = HashMap::new();
+            entries.insert(
+                CanonKey::new(Value::Int(level as i64)).expect("reflexive key"),
+                value,
+            );
+            let carrier = Rc::new(entries);
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::Map(carrier);
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // THE POSITIVE CONTROL: A SHARED CARRIER IS STILL NOT STOLEN. The fallback must drain only what the
+    // dropping value exclusively owns. Here every level's carrier has a SECOND STRONG OWNER held
+    // elsewhere, so the strong_count guard must keep it off the try_unwrap path entirely: after the
+    // chain is dropped, each retained carrier still holds its one member. Widen the fallback to ignore
+    // the strong count and this fails instead of passing.
+    #[test]
+    fn a_weak_held_but_shared_carrier_keeps_its_members_for_its_other_owner() {
+        const SHARED_DEPTH: usize = 1_024;
+        let mut retained: Vec<Rc<im::Vector<Value>>> = Vec::with_capacity(SHARED_DEPTH);
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(SHARED_DEPTH);
+        let mut value = list_value(Vec::<Value>::new());
+        for _ in 0..SHARED_DEPTH {
+            let carrier = Rc::new(im_vec![value]);
+            retained.push(Rc::clone(&carrier));
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::List(carrier);
+        }
+        drop(value);
+        assert_eq!(
+            retained.iter().map(|carrier| carrier.len()).sum::<usize>(),
+            SHARED_DEPTH,
+            "a shared carrier was drained from under its other owner"
+        );
+        drop(retained);
+        drop(weaks);
+    }
+
+    // WHY try_unwrap AND NOT A STRONGER get_mut TEST: the fallback rests on `Weak` not blocking
+    // `Rc::try_unwrap` while it does block `Rc::get_mut`. That is std behaviour this file now depends
+    // on, so it is pinned here rather than trusted: if a future std made `Weak` block try_unwrap, the
+    // two deep tests above would abort again and THIS one would say why.
+    #[test]
+    fn an_outstanding_weak_blocks_get_mut_but_not_try_unwrap() {
+        let mut carrier: Rc<Vec<(crate::v1_interpreter::Symbol, Value)>> = Rc::new(vec![]);
+        let weak = Rc::downgrade(&carrier);
+        let extra = Rc::clone(&carrier);
+        assert!(
+            Rc::get_mut(&mut carrier).is_none(),
+            "two strong owners must not grant get_mut"
+        );
+        drop(extra);
+        assert_eq!(
+            Rc::strong_count(&carrier),
+            1,
+            "the extra owner was not released"
+        );
+        assert_eq!(Rc::weak_count(&carrier), 1, "the Weak handle vanished");
+        assert!(
+            Rc::get_mut(&mut carrier).is_none(),
+            "Weak stopped blocking get_mut: the fallback arm this pins is then dead weight"
+        );
+        assert!(
+            Rc::try_unwrap(carrier).is_ok(),
+            "std started letting Weak block try_unwrap: uniquely owned carriers stop draining \
+             and the deep drops abort again"
+        );
+        assert_eq!(weak.strong_count(), 0, "the carrier survived its unwrap");
     }
 
     #[test]

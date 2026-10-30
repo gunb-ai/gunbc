@@ -1,0 +1,54 @@
+module test.claim.live_deploy.capacity_inhibition_witness
+
+import std.types { Bool }
+import std.error_primitives { Ok, Err }
+import extdeps.systemd.manager { SystemManager, UserManager }
+import extdeps.systemd.unit_file { ServiceUnitFile, NotInstallable }
+import extdeps.systemd.unit_load_path { systemd_user_control_directories }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall, ModeledUnitDocument }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath, capacity_inhibition_path, capacity_inhibition_precedes_install }
+
+fn inhibition_fixture_install() -> DeploymentUnitInstall {
+  DeploymentUnitInstall { manager: SystemManager, unit: "fixture.service", destination: "/etc/systemd/system/fixture.service",
+    file: ModeledUnitDocument { file: ServiceUnitFile { unit: [], service: [], install: NotInstallable } }}
+}
+
+fn inhibition_fixture_path() -> CapacityInhibitionPath {
+  CapacityInhibitionPath { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }, path: "/etc/systemd/system.control/fixture.service" }
+}
+
+test fn persistent_system_inhibition_precedes_normal_install() -> Bool {
+  let path = inhibition_fixture_path()
+  capacity_inhibition_path(subject: path.subject, user_config_home: Err { value: "not a user" }) == Ok { value: path }
+    && capacity_inhibition_precedes_install(inhibition: path, install: inhibition_fixture_install(), effective_directories: Ok { value: ["/etc/systemd/system.control", "/run/systemd/system.control", "/etc/systemd/system"] }) == Ok { value: path }
+}
+
+test fn an_install_cannot_overwrite_its_inhibition() -> Bool {
+  let path = CapacityInhibitionPath { subject: inhibition_fixture_path().subject, path: "/etc/systemd/system/fixture.service" }
+  capacity_inhibition_precedes_install(inhibition: path, install: inhibition_fixture_install(), effective_directories: Ok { value: ["/etc/systemd/system"] })
+    == Err { value: "unit installation would overwrite its inhibition" }
+}
+
+test fn an_effective_path_override_can_reverse_default_precedence() -> Bool {
+  capacity_inhibition_precedes_install(inhibition: inhibition_fixture_path(), install: inhibition_fixture_install(), effective_directories: Ok { value: ["/etc/systemd/system", "/etc/systemd/system.control"] })
+    == Err { value: "inhibition does not precede the installed unit" }
+}
+
+test fn an_unreadable_effective_path_does_not_borrow_the_default() -> Bool {
+  capacity_inhibition_precedes_install(inhibition: inhibition_fixture_path(), install: inhibition_fixture_install(), effective_directories: Err { value: "manager unreadable" })
+    == Err { value: "manager unreadable" }
+}
+
+test fn user_inhibition_uses_the_users_resolved_persistent_config() -> Bool {
+  let subject = CapacityManagedUnit { manager: UserManager { uid: 1234 }, unit: "fixture.service" }
+  capacity_inhibition_path(subject: subject, user_config_home: Ok { value: "/home/fixture/.config" })
+    == Ok { value: CapacityInhibitionPath { subject: subject, path: "/home/fixture/.config/systemd/user.control/fixture.service" } }
+    && systemd_user_control_directories(config_home: "/home/fixture/.config", runtime_dir: "/run/user/1234")
+      == Ok { value: ["/home/fixture/.config/systemd/user.control", "/run/user/1234/systemd/user.control"] }
+}
+
+test fn an_unknown_user_config_cannot_use_the_controllers_home() -> Bool {
+  capacity_inhibition_path(subject: CapacityManagedUnit { manager: UserManager { uid: 1234 }, unit: "fixture.service" }, user_config_home: Err { value: "user config unreadable" })
+    == Err { value: "user config unreadable" }
+}

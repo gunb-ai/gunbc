@@ -10,6 +10,7 @@ import std.durable_compare_and_set {
   CasUnreadableReadRefused, cas_generation_count, CasGeneration, cas_generation_first,
 }
 import std.durable_exclusive_hold {
+  durable_hold_continuity_assess, HoldContinuityIntact, HoldContinuityBroken,
   DurableHoldOwnerRef, DurableHoldReleaseRef,
   DurableHoldState, DurableHoldHeld, DurableHoldFree,
   DurableHoldObservation, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld,
@@ -393,4 +394,31 @@ test fn named_window_head_moved_recovery_does_not_claim_an_observed_current_gene
     WindowedHoldRecoveryProtocol { assessment: _ } => false
     _ => false
   }
+}
+
+// Existing release witnesses above remain unchanged. These observations cover
+// the shared relation and pin the intact/live case's release result explicitly.
+test fn continuity_is_intact_without_releasing_the_holder() -> Bool {
+  let owner = eh_owner(text: "continuity-owner")
+  let generation = cas_generation_first()
+  let observed = HoldSlotHeld { generation: generation, owner: owner }
+  durable_hold_continuity_assess(observed: observed, owner: owner, acquired_generation: generation)
+    == HoldContinuityIntact { generation: generation }
+    && durable_hold_release_assess(observed: observed, owner: owner, acquired_generation: generation)
+      == HoldReleaseEligible { generation: generation }
+}
+
+test fn continuity_and_release_preserve_foreign_owner_and_free_refusals() -> Bool {
+  let owner = eh_owner(text: "continuity-owner")
+  let foreign = eh_owner(text: "other-holder")
+  let generation = cas_generation_first()
+  let reason = HoldReleaseHeldByAnotherOwner { generation: generation, holder: foreign }
+  let observed = HoldSlotHeld { generation: generation, owner: foreign }
+  durable_hold_continuity_assess(observed: observed, owner: owner, acquired_generation: generation)
+    == HoldContinuityBroken { refusal: reason }
+    && durable_hold_release_assess(observed: observed, owner: owner, acquired_generation: generation)
+      == HoldReleaseRefused { refusal: reason }
+    && durable_hold_continuity_assess(observed: HoldSlotFree { generation: generation, released_by: eh_release(text: "done") },
+      owner: owner, acquired_generation: generation)
+      == HoldContinuityBroken { refusal: HoldReleaseAlreadyFree { generation: generation, released_by: eh_release(text: "done") } }
 }

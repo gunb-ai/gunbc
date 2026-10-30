@@ -1,0 +1,136 @@
+module gunbc.live_deploy.capacity_cutover_plan_input
+
+import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest, capacity_drain_input_admit }
+import gunbc.live_deploy.capacity_drain_wire { drain_population_read, drain_binding_read, drain_subject_read, drain_optional_unit_read, drain_hold_read }
+import gunbc.live_deploy.capacity_plan_data { capacity_plan_array, capacity_plan_at, capacity_plan_text, capacity_plan_rows, capacity_plan_manager, capacity_plan_population }
+import std.types { String, NonEmptyStr, List, Int, CommitSha, Timestamp }
+import std.algebra { list_at_optional }
+import std.decl_ref { decl_ref }
+import std.optional { Present, Absent }
+import std.error_primitives { Result, Ok, Err }
+import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text, sha1_hex_digest }
+import std.scoped_authorization { AttemptIdentity, ScopedAuthorization, AuthorizationClaimOutcome }
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonString }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text }
+import extdeps.systemd.manager { SystemdManager, SystemManager, UserManager }
+import gunbc.compute.capacity_migration { CapacityManagedUnit }
+import gunbc.live_deploy.capacity_quiescence { CapacityQuiescenceStep, CapacityReadUnit, CapacityInhibitUnit, CapacityPlantStart, CapacityContainStart }
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityCutoverFileOperation, CapacityCaptureRemove, CapacityInhibitionCreate, CapacityInhibitionRemove, CapacityCaptureOperation, CapacityGenerationOperation, CapacityManagerReload, CapacityReloadBoundary, CapacityAfterInhibition, CapacityAfterInstall, CapacityAfterRemoval, capacity_cutover_intent_text }
+
+// Closed data decoding of the SAME canonical manifest the broker signs. There is
+// no source text, entry name, function name, argv, or evaluator call in this wire.
+fn capacity_plan_operation(value: JsonValue) -> Result<CapacityQuiescenceStep, String> {
+  let row = match capacity_plan_array(value: value, size: 3) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let manager_text = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let manager = match capacity_plan_manager(text: manager_text) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let unit = match capacity_plan_text(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let verb = match capacity_plan_text(rows: row, index: 2) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let subject = CapacityManagedUnit { manager: manager, unit: unit }
+  if verb == "show" { Ok { value: CapacityReadUnit { subject: subject } } }
+  else if verb == "mask-now" { Ok { value: CapacityInhibitUnit { subject: subject } } }
+  else if verb == "start" { Ok { value: CapacityPlantStart { subject: subject } } }
+  else if verb == "stop" { Ok { value: CapacityContainStart { subject: subject } } }
+  else { Err { value: "unknown cutover lifecycle verb" } }
+}
+
+fn capacity_plan_boundary(value: JsonValue) -> Result<CapacityReloadBoundary, String> {
+  match value {
+    JsonString { value: text } => if text == "after-inhibition" { Ok { value: CapacityAfterInhibition } }
+      else if text == "after-install" { Ok { value: CapacityAfterInstall } }
+      else if text == "after-owned-inhibition-removal" { Ok { value: CapacityAfterRemoval } }
+      else { Err { value: "unknown cutover reload boundary" } }
+    _ => Err { value: "cutover reload boundary is not a string" }
+  }
+}
+
+fn capacity_plan_reload(value: JsonValue) -> Result<CapacityManagerReload, String> {
+  let row = match capacity_plan_array(value: value, size: 2) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let text = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let manager = match capacity_plan_manager(text: text) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let raw = match capacity_plan_at(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  match capacity_plan_rows(value: raw, decode: capacity_plan_boundary) {
+    Err { value: why } => Err { value: why } Ok { value: boundaries } => Ok { value: CapacityManagerReload { manager: manager, boundaries: boundaries } }
+  }
+}
+
+fn capacity_plan_capture(value: JsonValue) -> Result<CapacityCaptureOperation, String> {
+  let row = match capacity_plan_array(value: value, size: 2) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let source = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let root = match capacity_plan_text(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  Ok { value: CapacityCaptureOperation { source: source, root: root } }
+}
+
+fn capacity_plan_file(value: JsonValue) -> Result<CapacityCutoverFileOperation, String> {
+  let row = match capacity_plan_array(value: value, size: 2) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let path = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let verb = match capacity_plan_text(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  if verb == "capture-remove" { Ok { value: CapacityCutoverFileOperation { path: path, verb: CapacityCaptureRemove } } }
+  else if verb == "inhibit-create" { Ok { value: CapacityCutoverFileOperation { path: path, verb: CapacityInhibitionCreate } } }
+  else if verb == "inhibit-remove" { Ok { value: CapacityCutoverFileOperation { path: path, verb: CapacityInhibitionRemove } } }
+  else { Err { value: "unknown cutover filesystem verb" } }
+}
+
+fn capacity_plan_generation(value: JsonValue) -> Result<CapacityGenerationOperation, String> {
+  let row = match capacity_plan_array(value: value, size: 5) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let text = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let manager = match capacity_plan_manager(text: text) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let unit = match capacity_plan_text(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let destination = match capacity_plan_text(rows: row, index: 2) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let root = match capacity_plan_text(rows: row, index: 3) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let hex = match capacity_plan_text(rows: row, index: 4) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  match sha256_hex_digest(hex: hex as String) {
+    Absent => Err { value: "invalid cutover generation digest" }
+    Present { value: digest } => Ok { value: CapacityGenerationOperation {
+      subject: CapacityManagedUnit { manager: manager, unit: unit }, destination: destination, root: root, digest: digest } }
+  }
+}
+
+fn capacity_cutover_plan_input(text: String, approved: Sha256Digest) -> Result<CapacityCutoverIntent, String> {
+  if sha256_hex_of_text(text: text) != (approved.hex as String) { return Err { value: "cutover plan input digest differs from the approval" } }
+  let document = match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: gap } => { return Err { value: json_document_gap_text(gap: gap) } }
+    JsonDocumentParsed { value: value } => value
+  }
+  let schema_row = match document { JsonArray { elements: rows } => rows _ => { return Err { value: "cutover plan is not an array" } } }
+  let version = match capacity_plan_text(rows: schema_row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: text } => text }
+  if version == "gunbc.capacity-cutover.v6" { return Err { value: "plan incomplete: v6 has no retained drain inputs" } }
+  if count(schema_row) != 15 && count(schema_row) != 16 { return Err { value: "invalid v7 plan field count" } }
+  let row = match capacity_plan_array(value: document, size: count(schema_row)) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let schema = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  if schema != "gunbc.capacity-cutover.v7" { return Err { value: "unknown cutover plan schema" } }
+  let host = match capacity_plan_text(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let revision = match capacity_plan_text(rows: row, index: 2) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  match sha1_hex_digest(hex: revision as String) { Absent => { return Err { value: "invalid cutover release revision" } } Present { value: _ } => {} }
+  let attempt = match capacity_plan_text(rows: row, index: 3) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let operations = match capacity_plan_population(rows: row, index: 4, decode: capacity_plan_operation) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let reloads = match capacity_plan_population(rows: row, index: 5, decode: capacity_plan_reload) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let generations = match capacity_plan_population(rows: row, index: 6, decode: capacity_plan_generation) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let captures = match capacity_plan_population(rows: row, index: 7, decode: capacity_plan_capture) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let files = match capacity_plan_population(rows: row, index: 8, decode: capacity_plan_file) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let instance_id = match capacity_plan_text(rows: row, index: 9) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let identity_value = match capacity_plan_at(rows: row, index: 10) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let identity_row = match capacity_plan_array(value: identity_value, size: 3) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let identity_module = match capacity_plan_text(rows: identity_row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let identity_name = match capacity_plan_text(rows: identity_row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let identity_kind = match capacity_plan_text(rows: identity_row, index: 2) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  if identity_kind != "whole" { return Err { value: "cutover selection must name a whole desired-deployment declaration" } }
+  let raw_population = match capacity_plan_at(rows: row, index: 11) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let population = match drain_population_read(value: raw_population) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let raw_controller_slot = match capacity_plan_at(rows: row, index: 14) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let controller_slot = match drain_optional_unit_read(value: raw_controller_slot) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let bindings = match capacity_plan_population(rows: row, index: 12, decode: value => drain_binding_read(value: value)) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let child_subjects = match capacity_plan_population(rows: row, index: 13, decode: value => drain_subject_read(value: value)) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  let controller_hold = if count(row) == 15 { none } else {
+    let raw = match capacity_plan_at(rows: row, index: 15) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+    match drain_hold_read(value: raw) { Err { value: why } => { return Err { value: why } } Ok { value: hold } => Present { value: hold } }
+  }
+  let intent = CapacityCutoverIntent { controller_hold: controller_hold, instance_id: instance_id,
+    drain: CapacityMigrationApplyRequest { population: population, bindings: bindings, child_subjects: child_subjects, target_revision: revision as CommitSha }, controller_slot: controller_slot,
+    selected_identity: decl_ref(module_path: identity_module, decl_name: identity_name), host: host, revision: revision as CommitSha, attempt: attempt as AttemptIdentity,
+    operations: operations, file_operations: files, captures: captures, reloads: reloads, generations: generations }
+  match capacity_drain_input_admit(request: intent.drain, controller_slot: intent.controller_slot) {
+    Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
+  }
+  if (capacity_cutover_intent_text(intent: intent) as String) != text { Err { value: "cutover plan input is not the canonical operation manifest" } }
+  else { Ok { value: intent } }
+}

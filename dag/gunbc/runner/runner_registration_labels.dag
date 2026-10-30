@@ -1,7 +1,7 @@
 module gunbc.runner.runner_registration_labels
 
 import std.types { String, NonEmptyStr, List, Bool }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions { SelfHosted, HostedRunner, RunsOnExpression }
 import gunbc.ci.ci_fleet { fleet_compute_offer_for }
@@ -9,6 +9,12 @@ import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { runner_host_label, runner_label_set_union, runner_label_sets_equal }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_host_deploy { runner_job_user_session_hosts }
+import gunbc.runner.runner_user_session_receipt {
+  RunnerUserSessionConvergeReceipt, RunnerUserSessionReceiptInput, ReceiptSupplied, ReceiptUnreadable, ReceiptAbsent,
+  runner_user_session_converge_receipt_failure, runner_user_session_converge_receipt_names_host,
+  runner_user_session_converge_receipt_staleness,
+}
 import gunbc.runner.runner_slot_job_role { RunnerSlotJobRole, CiJobSlot, DeployJobSlot, runner_slot_job_role }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
 
@@ -30,7 +36,25 @@ type RunnerRegistrationLabelsResolution
   | RegistrationLabelsRefused { host: HostIdentity, cause: NonEmptyStr }
 
 fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsResolution {
-  runner_registration_labels_of_class(host: host, class_labels: gunbc_runner_slot_desired().labels.github_labels)
+  runner_registration_labels_with_user_session_receipt(host: host, receipt: ReceiptAbsent)
+}
+
+// THE COMPOSITION WITH THE EVIDENCE IN HAND. THE ONLY WIRING POINT PIECE 3 CHANGES: the follow-up carried
+// on a FrontierRow in gunbc.runner.runner_user_session_receipt runner_user_session_label_frontier_rows
+// (registered in gunbc.census_closure_frontier) replaces the production entry's ReceiptAbsent with the
+// parsed read of the converge's own document (the fleet-converge leg runs
+// gunbc.runner.runner_user_session_receipt runner_user_session_converge_receipt_read_argv per rostered
+// host and pipes the bytes through runner_user_session_receipt_input_of_text). Controls drive this entry
+// with forged receipts the same way the class half is driven with a forged class_labels argument --
+// the parameter is a control surface, and only the fleet read may supply it in production.
+fn runner_registration_labels_with_user_session_receipt(host: HostIdentity, receipt: RunnerUserSessionReceiptInput) -> RunnerRegistrationLabelsResolution {
+  match runner_registration_labels_of_class(host: host, class_labels: gunbc_runner_slot_desired().labels.github_labels) {
+    RegistrationLabelsResolved { labels: ls } =>
+      RegistrationLabelsResolved {
+        labels: runner_label_set_union(a: ls, b: runner_user_session_labels_of_roster(host: host, roster: runner_job_user_session_hosts, receipt: receipt)),
+      }
+    refused => refused
+  }
 }
 
 // THE CLASS HALF OF THE COMPOSITION IS THE ONLY PART A ROLE CHANGES. A CI slot carries the class
@@ -51,7 +75,7 @@ fn runner_registration_labels_of_class(host: HostIdentity, class_labels: List<St
         SelfHosted { labels: platform } =>
           RegistrationLabelsResolved {
             labels: runner_label_set_union(
-              a: runner_label_set_union(a: platform, b: class_labels),
+              a: runner_user_session_label_stripped(labels: runner_label_set_union(a: platform, b: class_labels)),
               b: [runner_host_label(host: host)],
             ),
           }
@@ -67,6 +91,176 @@ fn runner_slot_registration_labels(slot: RunnerSlotIdentity) -> RunnerRegistrati
     CiJobSlot => runner_registration_labels(host: slot.host)
     DeployJobSlot => runner_registration_labels_of_class(host: slot.host, class_labels: [deploy_slot_runner_group_name as String])
   }
+}
+
+// THE SLOT COMPOSITION WITH THE EVIDENCE IN HAND: the CI slot takes the host entry's receipt, the deploy
+// slot -- a different principal -- never receives one, which is where the role line is enforced at the
+// slot grain. Same wiring-point status as runner_registration_labels_with_user_session_receipt: piece 3
+// supplies the fleet read here for the per-slot producers (the JIT mint, the replace postcondition, the
+// conformance check's desired set), and the controls drive the parameter directly.
+fn runner_slot_registration_labels_with_user_session_receipt(slot: RunnerSlotIdentity, receipt: RunnerUserSessionReceiptInput) -> RunnerRegistrationLabelsResolution {
+  match runner_slot_job_role(slot: slot) {
+    CiJobSlot => runner_registration_labels_with_user_session_receipt(host: slot.host, receipt: receipt)
+    DeployJobSlot => runner_registration_labels_of_class(host: slot.host, class_labels: [deploy_slot_runner_group_name as String])
+  }
+}
+
+// ── USER-SESSION READINESS: A LABEL THE CONVERGE RECEIPT GRANTS AND NOTHING ELSE ──────────────────
+//
+// A job account with no lingering user manager cannot start the daemons a job needs: they die with
+// the transient scope the job ran in (the defect fleet-converge run 40222057493's mode exists to fix).
+// A host's user session is therefore a capability, and -- per the browser-ready and gpu-docker rulings
+// and review 86550's "a capability a host can gain and lose has to be a LABEL" -- it reaches the
+// registration as a label, so a workflow can select it and a host that never went through the converge
+// simply never appears in its pool.
+//
+// THE LABEL HAS TWO INPUTS, EACH WITH ONE JOB, AND NEITHER IS A SENTENCE ABOUT THE OTHER:
+// gunbc.runner.runner_host_deploy runner_job_user_session_hosts is the ROSTER -- the population an
+// administrator put on the converge (it is the converge's INPUT list; runner_job_user_session_on reads
+// it to decide whom to converge). gunbc.runner.runner_user_session_receipt
+// RunnerUserSessionConvergeReceipt is the EVIDENCE -- the three readings a converge run actually
+// reported for one host (enable-linger ran clean, Linger=yes, the bus answers), PARSED from the
+// document that run wrote, and supplied to the grant as a PARAMETER. There is no receipt data in-tree:
+// an earlier revision carried hand-typed rows copied from what fleet-converge run 40270496735 printed
+// on srv4, and reviews 87051/87054/87126/87136/87155 correctly rejected that (DESIGN 6: name the
+// instrument, never transcribe its output -- a copied row keeps granting after the host loses its
+// linger, and nothing can re-read it). The producer-side gate evidence the PR body cites is
+// fleet-converge run 40270496735 on srv4: enable_linger=ok, linger=yes, bus=present, manager reachable.
+//
+// UNTIL PIECE 3 THE LABEL IS OFF IN PRODUCTION, AND THAT IS THE HONEST STATE. No caller supplies a
+// receipt yet -- the production entries below pass ReceiptAbsent, so every rostered host answers
+// RosteredUnconverged and no registration carries the label. The follow-up is carried, not promised: a
+// FrontierRow in gunbc.runner.runner_user_session_receipt runner_user_session_label_frontier_rows,
+// registered in gunbc.census_closure_frontier, whose dissolution names the declaration whose appearance
+// ends the gap -- the fleet-converge leg that will run the receipt read
+// (runner_user_session_converge_receipt_read_argv: a gh run download of the converge run's receipt
+// ARTIFACT, not a cat of a host path -- the converge writes the file in the runner's workspace and
+// actions/upload-artifact ships it), parse the bytes with the read_at its own clock stamps, and hand them
+// here. No rung drop declares this gap, because no debt was taken: the label this PR adds has never been
+// advertised; production supplies Absent; and when a document does arrive it must be FRESH -- the grant
+// ages the receipt's own probed_at against the read instant and refuses one older than
+// gunbc.runner.runner_user_session_receipt runner_user_session_converge_receipt_max_age -- so no state in
+// the tree can keep advertising the label after the host loses its manager.
+data gunbc_user_session_label: String = "gunbc-user-session"
+
+// THE GRANT IS TYPED STATE, NOT A SILENT LIST (review 87126; DESIGN 3 "each fact lives in exactly one
+// place", DESIGN 5 "every path succeeds fully or fails with a typed, located diagnostic"). Granted only
+// when the host is rostered AND a receipt was supplied AND it is ABOUT that host AND every reading in it
+// holds AND it is still FRESH at the read (its probed_at ages against
+// the caller's read instant inside the declared bound). RosteredUnconverged carries WHY there is no label
+// -- no receipt supplied, the bytes did not
+// parse, a named reading failed (which reading, from the receipt module's own locator), the document was
+// stale or undatable at the read (staleness, from the receipt module's own locator), or the receipt
+// was written about a different host -- so the difference between "not in the population" and "rostered
+// but unconverged" is assertable, never inferred from an empty list. ReceiptedUnrostered names the
+// mismatch in the other direction: evidence supplied for a host the roster does not name (a stale or
+// stray read) is refused and NAMED, not silently ignored, and the plain outsider is Unadmitted.
+//
+// THE ROSTER IS A PARAMETER with the fleet list as its only argument at every real call site -- exactly
+// the class_labels discipline above -- so a control can pass a forged roster and prove the receipt, not
+// the list, is what grants; and the receipt is a parameter for the same reason: a control can forge one
+// and prove the grant reads its READINGS. The grant is added at the job entry, not inside
+// runner_registration_labels_of_class: the roster is about the job account's user manager, and the deploy
+// slot runs the separate deploy principal (whose own labels the role drop-in sets) -- gating inside
+// _of_class would hand a capability the deploy principal never earned. Every producer reads the job
+// entry (unit fragment, JIT mint, the replace postcondition, the roster readback, and the conformance
+// check's desired set), so the grant, the registration and the observed-vs-desired comparison cannot
+// disagree about it.
+type RunnerUserSessionGrant
+  = RunnerUserSessionGranted { receipt: RunnerUserSessionConvergeReceipt }
+  | RunnerUserSessionRosteredUnconverged { host: HostIdentity, cause: NonEmptyStr }
+  | RunnerUserSessionReceiptedUnrostered { host: HostIdentity }
+  | RunnerUserSessionUnadmitted { host: HostIdentity }
+
+fn runner_user_session_grant_of_roster(
+  host: HostIdentity,
+  roster: List<HostIdentity>,
+  receipt: RunnerUserSessionReceiptInput,
+) -> RunnerUserSessionGrant {
+  let rostered = any(roster, h => (h as String) == (host as String))
+  if !rostered {
+    match receipt {
+      ReceiptSupplied { value: _ } => RunnerUserSessionReceiptedUnrostered { host: host }
+      ReceiptUnreadable { why: _ } => RunnerUserSessionReceiptedUnrostered { host: host }
+      ReceiptAbsent => RunnerUserSessionUnadmitted { host: host }
+    }
+  } else {
+    match receipt {
+      ReceiptSupplied { value: r, read_at: read_at } =>
+        if !runner_user_session_converge_receipt_names_host(receipt: r, host: host) {
+          RunnerUserSessionRosteredUnconverged {
+            host: host,
+            cause: "the supplied converge receipt was written about another host, so it is not evidence about this one" as NonEmptyStr,
+          }
+        } else {
+          // FRESHNESS BEFORE TRUST (review 87218): a document that names this host and holds every reading
+          // is still not evidence if the read that supplied it is older than the declared bound, or if its
+          // probed_at cannot be aged at all. A receipt is evidence about a LIVE manager; the age gate is
+          // what stops a document left in the artifact store from a run before a re-image from granting a
+          // label on a host whose manager is gone -- the silent-wrong-answer DESIGN 5 hard-rejects.
+          match runner_user_session_converge_receipt_staleness(receipt: r, read_at: read_at) {
+            Present { value: why } =>
+              RunnerUserSessionRosteredUnconverged {
+                host: host,
+                cause: join(["the converge receipt for this host was supplied but is stale evidence: ", why], "") as NonEmptyStr,
+              }
+            Absent =>
+              match runner_user_session_converge_receipt_failure(receipt: r) {
+                Absent => RunnerUserSessionGranted { receipt: r }
+                Present { value: why } =>
+                  RunnerUserSessionRosteredUnconverged {
+                    host: host,
+                    cause: join(["the converge receipt for this host did not hold: ", why], "") as NonEmptyStr,
+                  }
+              }
+          }
+        }
+      ReceiptAbsent =>
+        RunnerUserSessionRosteredUnconverged {
+          host: host,
+          cause: "no converge receipt was supplied for this rostered host (the live read is the follow-up named in gunbc#15253; until it runs, the label stays off)" as NonEmptyStr,
+        }
+      ReceiptUnreadable { why: w } =>
+        RunnerUserSessionRosteredUnconverged {
+          host: host,
+          cause: join(["the converge receipt for this rostered host was not readable as a receipt document: ", w], "") as NonEmptyStr,
+        }
+    }
+  }
+}
+
+// THE RENDERER. Only a Granted state contributes the label; every other state renders no label -- but
+// callers and controls read the GRANT, so the reason is visible and assertable, not inferred from a
+// length.
+fn runner_user_session_grant_labels(grant: RunnerUserSessionGrant) -> List<String> {
+  match grant {
+    RunnerUserSessionGranted { receipt: _ } => [gunbc_user_session_label]
+    RunnerUserSessionRosteredUnconverged { host: _, cause: _ } => []
+    RunnerUserSessionReceiptedUnrostered { host: _ } => []
+    RunnerUserSessionUnadmitted { host: _ } => []
+  }
+}
+
+fn runner_user_session_labels_of_roster(host: HostIdentity, roster: List<HostIdentity>, receipt: RunnerUserSessionReceiptInput) -> List<String> {
+  runner_user_session_grant_labels(grant: runner_user_session_grant_of_roster(host: host, roster: roster, receipt: receipt))
+}
+
+// THE PRODUCTION ENTRY FOR THE COMPOSITION: no live supplier exists yet, so the receipt is Absent and
+// the grant answers RosteredUnconverged for rostered hosts -- label off, reason typed. The follow-up
+// named in the PR body of gunbc#15253 replaces this Absent with the parsed read of the converge's own
+// receipt document; controls forge receipts by calling runner_user_session_grant_of_roster directly.
+fn runner_user_session_labels_for(host: HostIdentity) -> List<String> {
+  runner_user_session_labels_of_roster(host: host, roster: runner_job_user_session_hosts, receipt: ReceiptAbsent)
+}
+
+// THE GRANT IS NOT FORGEABLE THROUGH A CALLER OR AN OFFER ROW. Both halves a host can reach the
+// registration through -- its own compute-offer platform labels and the class labels a caller passes --
+// are STRIPPED of this label, which is then added only from the row. Without the strip, editing one
+// label in a host's offer row, or one class_labels argument, would advertise a user session that host
+// never had; that is exactly why the browser-ready label is a written drop-in rather than a
+// host-chosen string. test.claim.runner.runner_user_session_label_witness drives both channels.
+fn runner_user_session_label_stripped(labels: List<String>) -> List<String> {
+  filter(labels, l => l != gunbc_user_session_label)
 }
 
 // ── BROWSER READINESS: A LABEL THE BROWSER-TOOLCHAIN CONVERGE GRANTS AND NOTHING ELSE ─────────────

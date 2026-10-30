@@ -1,0 +1,184 @@
+module gunbc.live_deploy.capacity_recovery_approval
+
+import gunbc.live_deploy.capacity_recovery_inhibition { CapacityRecoveryBoundaryFault, CapacityRecoveryBoundaryRefused, CapacityRecoveryControllerHoldRefused, capacity_recovery_inhibition_plan }
+import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityMaskEntry }
+import std.optional { Present, Absent }
+import gunbc.live_deploy.capacity_retained_plan { capacity_retained_plan_read, capacity_retained_plan_result }
+import gunbc.live_deploy.capacity_controller_hold { capacity_controller_hold_read }
+import std.types { String, NonEmptyStr, List, Timestamp }
+import std.error_primitives { Result, Ok, Err }
+import std.content_hash { Sha256Digest }
+import std.durable_compare_and_set { CasGeneration, CasSlotObservation, CasObservedReadable, CasReadablePresent,
+  ExpectSlotGeneration, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused }
+import std.scoped_authorization {
+  AttemptIdentity, AuthorizationScope, ScopedAuthorization, OperatorGrant, AuthorizationClaimState,
+  AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided, ClaimedBy,
+  authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason
+}
+import gunbc.durable_cas_file_store { SlotStore, slot_observe, slot_commit, OwnerOnlyCreateOnly,
+  admit_cas_attempt_for_derived_payload, DerivedPayloadKeyNotSlotAddressable, DerivedPayloadAdmitted, VerifiedCasAttempt }
+import gunbc.live_deploy.capacity_recovery_subject { CapacityRecoverySubject, capacity_recovery_observed }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryChoice, CapacityRecoveryLeg, CapacityRecoveryRequireApproval, capacity_recovery_plan }
+import gunbc.fleet.srv1_root_mutation_approval_run {
+  Srv1RecoveryRequest, Srv1RootMutationApproval, CapacityCutoverRecovery, CapacityCutoverRecoveryRequest,
+  srv1_root_mutation_request_for_kind
+}
+
+fn capacity_recovery_read(journal: SlotStore, key: NonEmptyStr, choice: CapacityRecoveryChoice,
+  helper_digest: Sha256Digest) -> Result<CapacityRecoverySubject, String> {
+  capacity_recovery_observed(journal_root: journal.root, journal_key: key,
+    observed: slot_observe(store: journal, key: key), choice: choice, helper_digest: helper_digest)
+}
+
+// Consume the approval leg emitted by the existing recovery plan. The leg is
+// checked against the live reading; an apply identity supplies no authority.
+fn capacity_recovery_request(leg: CapacityRecoveryLeg, observed: Result<CapacityRecoverySubject, String>,
+  escalation_id: NonEmptyStr, execution_revision: NonEmptyStr) -> Result<Srv1RecoveryRequest, String> {
+  let subject = match observed { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  match leg {
+    CapacityRecoveryRequireApproval { attempt: attempt, choice: choice } => {
+      if (attempt != subject.apply_reference || choice != subject.choice) {
+        return Err { value: "recovery approval leg differs from the observed journal and choice" }
+      }
+      match srv1_root_mutation_request_for_kind(kind: CapacityCutoverRecovery { subject: subject },
+        escalation_id: escalation_id, execution_revision: execution_revision, selects: []) {
+        Err { value: why } => Err { value: why }
+        Ok { value: CapacityCutoverRecoveryRequest { recovery: recovery } } => Ok { value: recovery }
+        _ => Err { value: "recovery did not use the existing broker recovery request kind" }
+      }
+    }
+    _ => Err { value: "recovery request requires the explicit approval leg" }
+  }
+}
+
+type CapacityRecoveryAuthorization sole_constructor {
+  recovery: Srv1RecoveryRequest
+  grant: OperatorGrant<Srv1RootMutationApproval>
+  claim: AuthorizationClaimState
+  journal_generation: CasGeneration
+}
+
+// This is admission, not a recovery actuator. The executor must hold the existing
+// FleetHostLock across this fresh read/claim and its journal transitions. No
+// automatic boot recovery or lease-expiry takeover is introduced here.
+fn capacity_recovery_claim(request: Srv1RecoveryRequest,
+  reread: fn() -> Result<CapacityRecoverySubject, String>,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
+  claim: fn(CapacityRecoverySubject, AttemptIdentity, Timestamp) -> AuthorizationClaimOutcome) -> Result<CapacityRecoveryAuthorization, String> {
+  let observed = match reread() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  if (observed != request.subject) { return Err { value: "recovery journal, choice, helper or scopes changed after approval" } }
+  match authorize(authorization: authorization, request: request.request, observed_at: at) {
+    AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
+    AuthorizationPermitted { grant: grant } => match claim(observed, request.request.attempt, at) {
+      ClaimLost { holder: _ } => Err { value: "recovery journal generation already consumed" }
+      ClaimUndecided { reason: why } => Err { value: why as String }
+      ClaimHeld { state: state, generation: generation } => Ok { value: CapacityRecoveryAuthorization {
+        recovery: request, grant: grant, claim: state, journal_generation: generation } }
+    }
+  }
+}
+
+// The journal CAS IS consumption. It advances the generation with identical
+// bytes before any recovery actuator. A crash cannot leave a spent external
+// claim beside an unchanged journal: another recovery needs fresh approval for
+// the successor generation. The apply identity and recovery phase stay intact.
+fn capacity_recovery_consume_journal(subject: CapacityRecoverySubject,
+  observed: CasSlotObservation<NonEmptyStr>, attempt: AttemptIdentity, at: Timestamp,
+  commit: fn(VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>) -> AuthorizationClaimOutcome {
+  let reread = capacity_recovery_observed(journal_root: subject.journal_root, journal_key: subject.journal_key,
+    observed: observed, choice: subject.choice, helper_digest: subject.helper_digest)
+  match reread {
+    Err { value: why } => { return ClaimUndecided { reason: why as NonEmptyStr } }
+    Ok { value: current } => {
+      if (current != subject) {
+        return ClaimLost { holder: "journal-generation-or-content-changed" }
+      }
+    }
+  }
+  match observed {
+    CasObservedReadable { readable: CasReadablePresent { version: version } } =>
+      match admit_cas_attempt_for_derived_payload(key: subject.journal_key,
+        expected: ExpectSlotGeneration { generation: subject.generation }, proposed: version.value) {
+        DerivedPayloadKeyNotSlotAddressable { key: _ } => ClaimUndecided { reason: "recovery journal key is not slot-addressable" }
+        DerivedPayloadAdmitted { verified: verified } => match commit(verified) {
+          CasCommitted { committed: committed } => ClaimHeld {
+            state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: committed.generation }
+          CasPreconditionFailed { expected: _, observed: _ } => ClaimLost { holder: "journal-generation-changed" }
+          CasStoreRefused { cause: _ } => ClaimUndecided { reason: "recovery journal claim is unconfirmed; reread and require fresh approval" }
+        }
+      }
+    _ => ClaimUndecided { reason: "recovery requires a readable present journal" }
+  }
+}
+
+// Observe inhibition before the consumption CAS, under the same whole-helper
+// FleetHostLock. A partial-removal refusal cannot mutate the journal or captures.
+fn capacity_recovery_claim_checked(request: Srv1RecoveryRequest,
+  journal_root: NonEmptyStr, key: NonEmptyStr, choice: CapacityRecoveryChoice, helper_digest: Sha256Digest,
+  observed: CasSlotObservation<NonEmptyStr>,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
+  read_entry: fn(CapacityInhibitionPath) -> Result<CapacityMaskEntry?, String>,
+  commit: fn(VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>) -> Result<CapacityRecoveryAuthorization, CapacityRecoveryBoundaryFault> {
+  let subject = match capacity_recovery_observed(journal_root: journal_root, journal_key: key,
+    observed: observed, choice: choice, helper_digest: helper_digest) {
+    Err { value: why } => { return Err { value: CapacityRecoveryBoundaryRefused { cause: why } } }
+    Ok { value: value } => value
+  }
+  if (subject != request.subject) { return Err { value: CapacityRecoveryBoundaryRefused {
+    cause: "recovery journal, choice, helper or scopes changed after approval" } } }
+  let record = match observed {
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => match capacity_cutover_record_decode(text: version.value as String) {
+      Err { value: why } => { return Err { value: CapacityRecoveryBoundaryRefused { cause: why } } }
+      Ok { value: value } => value
+    }
+    _ => { return Err { value: CapacityRecoveryBoundaryRefused { cause: "recovery requires a readable present journal" } } }
+  }
+  let intent = match capacity_retained_plan_result(finding: capacity_retained_plan_read(envelope: record.plan.envelope,
+    digest: record.plan.digest, approved_digest: record.plan.approved_digest)) {
+    Err { value: why } => { return Err { value: CapacityRecoveryBoundaryRefused { cause: why } } } Ok { value: value } => value
+  }
+  match intent.controller_slot {
+    Absent => {}
+    Present { value: slot } => match capacity_controller_hold_read(slot: slot, retained: intent.controller_hold,
+      journal_root: journal_root, journal_key: key, attempt: record.attempt) {
+      Err { value: why } => { return Err { value: CapacityRecoveryControllerHoldRefused { refusal: why } } } Ok { value: _ } => {}
+    }
+  }
+  match capacity_recovery_inhibition_plan(record: record, choice: choice, read_entry: read_entry) {
+    Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
+  }
+  match capacity_recovery_claim(request: request, reread: fn() { Ok { value: subject } },
+    authorization: authorization, at: at,
+    claim: (current, attempt, instant) => capacity_recovery_consume_journal(subject: current,
+      observed: observed, attempt: attempt, at: instant, commit: commit)) {
+    Err { value: why } => Err { value: CapacityRecoveryBoundaryRefused { cause: why } }
+    Ok { value: value } => Ok { value: value }
+  }
+}
+
+fn capacity_recovery_claim_over_store(request: Srv1RecoveryRequest, journal: SlotStore, key: NonEmptyStr,
+  choice: CapacityRecoveryChoice, helper_digest: Sha256Digest,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
+  read_entry: fn(CapacityInhibitionPath) -> Result<CapacityMaskEntry?, String>) -> Result<CapacityRecoveryAuthorization, CapacityRecoveryBoundaryFault> {
+  capacity_recovery_claim_checked(request: request, journal_root: journal.root, key: key,
+    choice: choice, helper_digest: helper_digest, observed: slot_observe(store: journal, key: key),
+    authorization: authorization, at: at, read_entry: read_entry,
+    commit: verified => slot_commit(store: journal, publication: OwnerOnlyCreateOnly, verified: verified))
+}
+
+// The controller's supplied effect boundary. A refusal never invokes its body.
+// The production binding of this port is the locked fleet recovery executor;
+// that remains a declared frontier until journal transitions and actuators are
+// wired under FleetHostLock. This function alone is not a deployed executor.
+fn capacity_recovery_execute<T>(request: Srv1RecoveryRequest,
+  reread: fn() -> Result<CapacityRecoverySubject, String>,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
+  claim: fn(CapacityRecoverySubject, AttemptIdentity, Timestamp) -> AuthorizationClaimOutcome,
+  execute: fn(CapacityRecoveryAuthorization) -> Result<T, String>) -> Result<T, String> {
+  match capacity_recovery_claim(request: request, reread: reread, authorization: authorization, at: at, claim: claim) {
+    Err { value: why } => Err { value: why }
+    Ok { value: admitted } => execute(admitted)
+  }
+}
