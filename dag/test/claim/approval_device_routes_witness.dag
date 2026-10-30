@@ -19,10 +19,10 @@ import extdeps.auth.oidc { OidcIdTokenSignatureRefusal }
 import extdeps.apple.app_attest { AttestationUndecodable }
 import extdeps.tailscale.identity { TailnetUser }
 import gunbc.auth.approval_decision_store { approval_identity_trust, IdentityHeaderTrustNotEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustEstablished }
-import gunbc.auth.approval_device_redemption { observe_google_enrolment, approval_device_store_root, DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused, DevicePlatformUnrealized, DeviceCapabilityTagMalformed }
+import gunbc.auth.approval_device_redemption { DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused, DevicePlatformUnrealized, DeviceCapabilityTagMalformed }
 import gunbc.auth.approval_google_enrolment { GoogleEnrolmentSlot, GoogleEnrolmentUnreadable }
 import gunbc.auth.approval_device_redemption_fixtures { envelope_vector_body, fx_point }
-import gunbc.auth.approval_decision_store { observe_escalation, EscalationUnreadable }
+import gunbc.auth.approval_decision_store { observe_escalation, EscalationUnreadable, approval_decision_store_root }
 import gunbc.auth.approval_device_wire { GoogleEnrolmentRequest, google_enrolment_request_json, MobileIos, ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json, ApnsRegistration, path_segment, SignedRedemption, DeviceRedemptionSigningInput, RedemptionChallenge, IosAppAttestAssertion, signed_redemption_json }
 import extdeps.crypto.signature { SignatureBytes, VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth }
 import gunbc.auth.approval_capability { ProposeApprove }
@@ -123,19 +123,18 @@ test fn reads_refuse_unconfigured_until_the_operator_supplies_the_prefix() -> Bo
   }
 }
 
-// A REQUEST-SUPPLIED IDENTITY NEVER BECOMES NAVIGATION (review 69793 of gunbc#12000): the two
-// observers the device routes hand a body or path-segment identity to answer Unreadable with the
-// store's fixed slot-addressability detail for a separator-carrying key -- the store refuses before
-// any read, so no path outside the root is probed and the detail names no host state.
+// A REQUEST-SUPPLIED IDENTITY NEVER BECOMES NAVIGATION (review 69793 of gunbc#12000): the observers the
+// device routes hand a body or path-segment identity to answer Unreadable with the store's fixed
+// slot-addressability detail for a separator-carrying key -- the store refuses before any read, so no
+// path outside the root is probed and the detail names no host state. The escalation observer is driven
+// here; the enrolment observer takes the sealed device store, which is minted only from a listed
+// directory, so its half runs over a real one (test.claim.approval_google_enrolment_wet_witness
+// a_traversal_enrolment_id_is_refused_by_the_store_before_any_read).
 test fn a_traversal_identity_is_refused_by_the_store_before_any_read() -> Bool {
-  (match observe_google_enrolment(root: approval_device_store_root, enrollment_id: "enr-../../../etc/shadow") {
-    GoogleEnrolmentUnreadable { detail: d } => string_contains(s: d as String, pattern: "not slot-addressable")
+  match observe_escalation(root: approval_decision_store_root, escalation_id: "../../../etc/shadow") {
+    EscalationUnreadable { detail: d } => string_contains(s: d as String, pattern: "not slot-addressable")
     _ => false
-  })
-    && (match observe_escalation(root: approval_device_store_root, escalation_id: "../../../etc/shadow") {
-      EscalationUnreadable { detail: d } => string_contains(s: d as String, pattern: "not slot-addressable")
-      _ => false
-    })
+  }
 }
 
 // The skew window is closed below and open above: 60 s before is inside, 61 s before is not; 59 s
