@@ -1,6 +1,7 @@
 module product.zone_thermal_curve
 
-import std.types { Int, List }
+import std.types { Int, List, NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Absent, Present }
 import std.measure { Celsius, Percent, celsius, celsius_count, percent, percent_count }
@@ -19,8 +20,10 @@ import std.measure { Celsius, Percent, celsius, celsius_count, percent, percent_
 // temperature is a reason for maximum cooling.
 //
 // A curve is flat at `floor` up to and including `flat_until`, then linear to 100 at `full_at`.
-// Integer arithmetic, truncating division: the live a16-fan.sh rounding is a READ OBLIGATION (its
-// source has not been read by this change), so witnesses pin the curve's endpoints, not its interior.
+// Integer arithmetic, truncating division. The live a16-fan.sh lin() was read on 2026-10-30
+// (sha256 4ff02eb223003349): bash integer d0 + (t-t0)*(100-d0)/(t1-t0), truncating toward zero, and
+// the witness pins the interior to it. That script is an observed behaviour this module reproduces
+// and replaces at cutover; it is not the authority, and the cutover deletes it.
 type ZoneCurve {
   floor: Percent
   flat_until: Celsius
@@ -95,3 +98,8 @@ fn zone_curve_for_load(curves: ZoneLoadCurves, secs_since_loaded: Int?) -> ZoneC
     Present { value: s } => if s < curves.hold_secs { curves.loaded } else { curves.idle }
   }
 }
+
+// DESIGN section 3c declared frontier: this policy has no consumer in this change.
+data zone_thermal_curve_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the h11 GPU-card host row (gunbc.machine_intake.supermicro_h11ssl_unit1_platform_standing, once its wiring facts land) carries a ZoneCurve or ZoneLoadCurves per cooling zone, and a Supermicro realization renders the host-side controller unit from that row by calling zone_duty. SUFFICIENT FOR: zone_duty and zone_curve_for_load have a production consumer, and gunbc.plans.gpu_card_host_program can delete a16-fan.sh. THE INHABITANCE CLAIM IS PART OF THIS TRIGGER AND IS NOT MET: the witness supplies readings, and no enrolled claim yet shows the rendered controller answering what zone_duty answers." as NonEmptyStr
+)
