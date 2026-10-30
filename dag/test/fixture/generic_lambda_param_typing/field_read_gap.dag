@@ -1,0 +1,26 @@
+module test.fixture.generic_lambda_param_typing.field_read_gap
+
+import std.types { Bool, String, List }
+import std.algebra { list_map }
+
+// Fixture source handed to the compiler. A generic fn<T, K>(xs: List<T>, key: fn(T) -> K) called with a
+// lambda that READS A FIELD of T must bind T from xs before checking the lambda body. Over an alias
+// element (type Tag = Plain) it refuses today: "no field 'text' on type 'T'" (the bag_hash_digest shape
+// of the sort_by -> list_sort_by_key migration). Control: the same call over a record element resolves.
+type Plain {
+  text: String
+}
+
+type Tag = Plain
+
+fn keys_of<T, K>(xs: List<T>, key: fn(T) -> K) -> List<K> {
+  list_map(xs: xs, f: key)
+}
+
+fn control_record_element(xs: List<Plain>) -> List<String> {
+  keys_of(xs: xs, key: fn(h) { h.text })
+}
+
+fn red_alias_element(xs: List<Tag>) -> List<String> {
+  keys_of(xs: xs, key: fn(h) { h.text })
+}
