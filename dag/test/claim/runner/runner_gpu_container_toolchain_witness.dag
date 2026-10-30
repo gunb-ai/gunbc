@@ -129,7 +129,7 @@ import extdeps.docker.cli {
   docker_info_command, docker_program, docker_gpu_cdi_probe_run_command,
 }
 import extdeps.container.docker_ce { docker_ce_packages, docker_ce_rootless_prerequisite_packages }
-import gunbc.runner.runner_host_deploy { runner_host_gpu_container_toolchain_for, RunnerHostGpuToolchainFound, GpuContainerToolchainDesired }
+import gunbc.runner.runner_host_deploy { runner_host_gpu_container_toolchain_for, RunnerHostGpuToolchainFound, RunnerHostGpuToolchainAbsent, GpuContainerToolchainDesired, GpuContainerToolchainNotWanted, GpuContainerToolchainUnmeasured }
 import extdeps.container.nvidia_container_toolkit {
   nvidia_ctk_cdi_generate_command, nvidia_ctk_cdi_list_command, nvidia_ctk_program,
   nvidia_cdi_all_gpu_device,
@@ -1522,7 +1522,9 @@ test fn the_unit_start_leg_captures_status_and_the_users_journal_on_refusal() ->
 test fn every_rootless_prerequisite_is_in_the_docker_package_set_and_srv3s_resolved_ensure_set() -> Bool {
   let srv3_packages = match runner_host_gpu_container_toolchain_for(host: operator_host_srv3) {
     RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainDesired { repo: _, docker_repo: _, packages: ps } } => ps
-    _ => []
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainNotWanted { reason: _ } } => []
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainUnmeasured { } } => []
+    RunnerHostGpuToolchainAbsent { host: _ } => []
   }
   length(docker_ce_rootless_prerequisite_packages) > 0
     && docker_ce_rootless_prerequisite_packages.all(p => docker_ce_packages.any(q => q == p))
