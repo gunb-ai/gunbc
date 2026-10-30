@@ -398,6 +398,13 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       labels: [RosterLabelRename { from: "s", to: "text" }],
       head: KeepHead
     },
+    // Import-only heads whose one declared home is already std.algebra on main (NAMESPACE-XL import-only wave; tidy-ant-251):
+    // the call spelling IS the home's name, so each is a KeepHead row and the sweep only writes the import.
+    RosterHeadRow { call: "skip", key: "skip", import_name: "skip", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "map_insert", key: "map_insert", import_name: "map_insert", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "empty_map", key: "empty_map", import_name: "empty_map", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "string_contains", key: "string_contains", import_name: "string_contains", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "map_contains_key", key: "map_contains_key", import_name: "map_contains_key", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
     // map_get's operation is ALREADY declared (tidy-ant-251's ruling A): std.algebra map_lookup(m, key), the same keyed
     // read with the same Optional<V> answer, so the call moves to that declaration instead of minting a second name for it.
     RosterHeadRow {
