@@ -3,14 +3,16 @@ module gunbc.live_deploy.capacity_recovery_approval
 import std.types { String, NonEmptyStr, List, Timestamp }
 import std.error_primitives { Result, Ok, Err }
 import std.content_hash { Sha256Digest }
+import std.durable_compare_and_set { CasGeneration, CasSlotObservation, CasObservedReadable, CasReadablePresent,
+  ExpectSlotGeneration, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused }
 import std.scoped_authorization {
   AttemptIdentity, AuthorizationScope, ScopedAuthorization, OperatorGrant, AuthorizationClaimState,
-  AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided,
+  AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided, ClaimedBy,
   authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason
 }
-import gunbc.durable_cas_file_store { SlotStore, slot_observe }
-import gunbc.authorization_claim_slot { claim_authorization_slot }
-import gunbc.live_deploy.capacity_recovery_subject { CapacityRecoverySubject, capacity_recovery_observed, capacity_recovery_claim_key }
+import gunbc.durable_cas_file_store { SlotStore, slot_observe, slot_commit, OwnerOnlyCreateOnly,
+  admit_cas_attempt_for_derived_payload, DerivedPayloadKeyNotSlotAddressable, DerivedPayloadAdmitted, VerifiedCasAttempt }
+import gunbc.live_deploy.capacity_recovery_subject { CapacityRecoverySubject, capacity_recovery_observed }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryChoice, CapacityRecoveryLeg, CapacityRecoveryRequireApproval, capacity_recovery_plan }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   Srv1RecoveryRequest, Srv1RootMutationApproval, CapacityCutoverRecovery, CapacityCutoverRecoveryRequest,
@@ -48,6 +50,7 @@ type CapacityRecoveryAuthorization sole_constructor {
   recovery: Srv1RecoveryRequest
   grant: OperatorGrant<Srv1RootMutationApproval>
   claim: AuthorizationClaimState
+  journal_generation: CasGeneration
 }
 
 // This is admission, not a recovery actuator. The executor must hold the existing
@@ -56,29 +59,66 @@ type CapacityRecoveryAuthorization sole_constructor {
 fn capacity_recovery_claim(request: Srv1RecoveryRequest,
   reread: fn() -> Result<CapacityRecoverySubject, String>,
   authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
-  claim: fn(NonEmptyStr, AttemptIdentity, Timestamp) -> AuthorizationClaimOutcome) -> Result<CapacityRecoveryAuthorization, String> {
+  claim: fn(CapacityRecoverySubject, AttemptIdentity, Timestamp) -> AuthorizationClaimOutcome) -> Result<CapacityRecoveryAuthorization, String> {
   let observed = match reread() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   if observed != request.subject { return Err { value: "recovery journal, choice, helper or scopes changed after approval" } }
   match authorize(authorization: authorization, request: request.request, observed_at: at) {
     AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
-    AuthorizationPermitted { grant: grant } => match claim(capacity_recovery_claim_key(subject: observed), request.request.attempt, at) {
+    AuthorizationPermitted { grant: grant } => match claim(observed, request.request.attempt, at) {
       ClaimLost { holder: _ } => Err { value: "recovery journal generation already consumed" }
       ClaimUndecided { reason: why } => Err { value: why as String }
-      ClaimHeld { state: state, generation: _ } => Ok { value: CapacityRecoveryAuthorization {
-        recovery: request, grant: grant, claim: state } }
+      ClaimHeld { state: state, generation: generation } => Ok { value: CapacityRecoveryAuthorization {
+        recovery: request, grant: grant, claim: state, journal_generation: generation } }
     }
   }
 }
 
-// Existing durable authorization CAS, keyed by journal/generation rather than
-// the newly filed approval id. No independent recovery claim store.
-fn capacity_recovery_claim_live(request: Srv1RecoveryRequest, journal: SlotStore, key: NonEmptyStr,
+// The journal CAS IS consumption. It advances the generation with identical
+// bytes before any recovery actuator. A crash cannot leave a spent external
+// claim beside an unchanged journal: another recovery needs fresh approval for
+// the successor generation. The apply identity and recovery phase stay intact.
+fn capacity_recovery_consume_journal(subject: CapacityRecoverySubject,
+  observed: CasSlotObservation<NonEmptyStr>, attempt: AttemptIdentity, at: Timestamp,
+  commit: fn(VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>) -> AuthorizationClaimOutcome {
+  let reread = capacity_recovery_observed(journal_root: subject.journal_root, journal_key: subject.journal_key,
+    observed: observed, choice: subject.choice, helper_digest: subject.helper_digest, scopes: subject.scopes)
+  match reread {
+    Err { value: why } => { return ClaimUndecided { reason: why as NonEmptyStr } }
+    Ok { value: current } => if current != subject {
+      return ClaimLost { holder: "journal-generation-or-content-changed" }
+    } else { {} }
+  }
+  match observed {
+    CasObservedReadable { readable: CasReadablePresent { version: version } } =>
+      match admit_cas_attempt_for_derived_payload(key: subject.journal_key,
+        expected: ExpectSlotGeneration { generation: subject.generation }, proposed: version.value) {
+        DerivedPayloadKeyNotSlotAddressable { key: _ } => ClaimUndecided { reason: "recovery journal key is not slot-addressable" }
+        DerivedPayloadAdmitted { verified: verified } => match commit(verified) {
+          CasCommitted { committed: committed } => ClaimHeld {
+            state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: committed.generation }
+          CasPreconditionFailed { expected: _, observed: _ } => ClaimLost { holder: "journal-generation-changed" }
+          CasStoreRefused { cause: _ } => ClaimUndecided { reason: "recovery journal claim is unconfirmed; reread and require fresh approval" }
+        }
+      }
+    _ => ClaimUndecided { reason: "recovery requires a readable present journal" }
+  }
+}
+
+fn capacity_recovery_claim_over_store(request: Srv1RecoveryRequest, journal: SlotStore, key: NonEmptyStr,
   choice: CapacityRecoveryChoice, helper_digest: Sha256Digest, scopes: List<AuthorizationScope>,
   authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp) -> Result<CapacityRecoveryAuthorization, String> {
   capacity_recovery_claim(request: request,
     reread: fn() { capacity_recovery_read(journal: journal, key: key, choice: choice, helper_digest: helper_digest, scopes: scopes) },
     authorization: authorization, at: at,
-    claim: (id, attempt, instant) => claim_authorization_slot(escalation_id: id, attempt: attempt, at: instant))
+    claim: (subject, attempt, instant) => {
+      if subject != request.subject || journal.root != subject.journal_root || key != subject.journal_key {
+        ClaimUndecided { reason: "recovery claim store identity changed" }
+      } else {
+        capacity_recovery_consume_journal(subject: request.subject, observed: slot_observe(store: journal, key: key),
+          attempt: attempt, at: instant,
+          commit: verified => slot_commit(store: journal, publication: OwnerOnlyCreateOnly, verified: verified))
+      }
+    })
 }
 
 // The controller's supplied effect boundary. A refusal never invokes its body.
@@ -88,7 +128,7 @@ fn capacity_recovery_claim_live(request: Srv1RecoveryRequest, journal: SlotStore
 fn capacity_recovery_execute<T>(request: Srv1RecoveryRequest,
   reread: fn() -> Result<CapacityRecoverySubject, String>,
   authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
-  claim: fn(NonEmptyStr, AttemptIdentity, Timestamp) -> AuthorizationClaimOutcome,
+  claim: fn(CapacityRecoverySubject, AttemptIdentity, Timestamp) -> AuthorizationClaimOutcome,
   execute: fn(CapacityRecoveryAuthorization) -> Result<T, String>) -> Result<T, String> {
   match capacity_recovery_claim(request: request, reread: reread, authorization: authorization, at: at, claim: claim) {
     Err { value: why } => Err { value: why }

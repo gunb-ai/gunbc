@@ -6,9 +6,8 @@ import std.optional { Present, Absent }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryChoice, CapacityResume, CapacityRollback, capacity_recovery_plan }
 import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope }
-import std.durable_compare_and_set { CasGeneration, cas_generation_count, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
+import std.durable_compare_and_set { CasGeneration, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
 import std.content_hash { Sha256Digest, sha256_hex_of_text, sha256_hex_digest }
-import extdeps.languages.json.emit { json_array, json_string, json_int, serialize_json }
 
 // The journal address is an identity, never a store capability. Production
 // derives it from the admitted SlotStore; this value cannot open a store.
@@ -25,15 +24,6 @@ type CapacityRecoverySubject sole_constructor {
 
 fn capacity_recovery_choice_text(choice: CapacityRecoveryChoice) -> String {
   match choice { CapacityResume => "resume" CapacityRollback => "rollback" }
-}
-
-// Excludes approval identity, choice and digest deliberately: a second operator
-// decision cannot spend the same journal generation a second time.
-fn capacity_recovery_claim_key(subject: CapacityRecoverySubject) -> NonEmptyStr {
-  concat("capacity-recovery-", sha256_hex_of_text(text: serialize_json(v: json_array(elements: [
-    json_string(s: subject.journal_root as String), json_string(s: subject.journal_key as String),
-    json_int(n: cas_generation_count(g: subject.generation))
-  ])))) as NonEmptyStr
 }
 
 // The supplied observation boundary is paired with capacity_recovery_read below:
