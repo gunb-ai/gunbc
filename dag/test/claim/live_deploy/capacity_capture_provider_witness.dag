@@ -1,17 +1,20 @@
 module test.claim.live_deploy.capacity_capture_provider_witness
 
+import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverFileOperation, CapacityInhibitionCreate, CapacityInhibitionRemove, capacity_cutover_intent_text, CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import extdeps.systemd.manager { SystemManager }
+import gunbc.live_deploy.capacity_capture_provider { capacity_cutover_claim_initial, capacity_capture_claim_admission, capacity_capture_claim_key, capacity_capture_record_result, capacity_capture_manifest_complete }
+import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode }
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent, approval_fixture_request, approval_fixture_grant, approval_fixture_drain }
+import std.durable_compare_and_set { cas_decide, CasObservedReadable, CasReadableAbsent, CasReadablePresent, CasSlotVersion, cas_generation_first, CasStoreRefused, CasGenerationPublicationRefused }
+import std.content_hash { content_hash_of_value, Sha256Digest, sha256_hex_of_text }
 import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan }
-import gunbc.live_deploy.capacity_cutover_intent { capacity_cutover_intent_text, CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation }
-import std.content_hash { Sha256Digest, sha256_hex_of_text }
-import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_drain }
 import std.decl_ref { decl_ref }
-import std.types { Bool, NonEmptyStr, String }
+import std.types { List, Bool, NonEmptyStr, String }
 import std.error_primitives { Result, Ok, Err }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
 import std.optional { Present, Absent }
 import std.scoped_authorization { AttemptIdentity, ClaimHeld, ClaimLost, ClaimUndecided, ClaimedBy }
-import std.durable_compare_and_set { cas_generation_first }
-import gunbc.live_deploy.capacity_capture_provider { capacity_capture_claim_admission, capacity_capture_claim_key, capacity_capture_record_result, capacity_capture_manifest_complete }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityGenerationFile, CapacityCutoverRecord, CapacityCapturingGeneration, CapacityInstalling, capacity_generation_request }
 import gunbc.live_deploy.capacity_capture_store { capacity_capture_blob_path }
 import test.claim.live_deploy.capacity_capture_store_witness { capture_fixture_store }
@@ -100,4 +103,82 @@ test fn a_provider_result_outside_the_apply_root_refuses() -> Bool {
 test fn a_target_outside_generation_consent_prevents_inhibition() -> Bool {
   capture_manifest_fixture(outside: false, missing: false, wrong_target: true)
     == Err { value: "target generation does not match the approved digests exactly" }
+}
+
+fn initial_claim_paths() -> List<CapacityInhibitionPath> {
+  [CapacityInhibitionPath { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" }, path: "/etc/systemd/system.control/fixture.service" }]
+}
+
+fn initial_claim_intent() -> CapacityCutoverIntent {
+  let prior = approval_fixture_intent()
+  CapacityCutoverIntent { drain: prior.drain, controller_slot: prior.controller_slot,
+    instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host, revision: prior.revision,
+    attempt: prior.attempt, operations: prior.operations, captures: prior.captures, reloads: prior.reloads, generations: prior.generations,
+    file_operations: [CapacityCutoverFileOperation { path: "/etc/systemd/system.control/fixture.service", verb: CapacityInhibitionCreate },
+      CapacityCutoverFileOperation { path: "/etc/systemd/system.control/fixture.service", verb: CapacityInhibitionRemove }] }
+}
+
+test fn apply_consumption_first_persists_the_approved_v7_plan() -> Bool {
+  let intent = initial_claim_intent()
+  let request = match approval_fixture_request(intent: intent, escalation_id: "initial-journal-fixture") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match capacity_cutover_claim_initial(intent: intent, request: request, authorization: approval_fixture_grant(request: request),
+    planned_paths: initial_claim_paths(), at: "2026-10-29T00:01:00Z", commit: verified => {
+      match capacity_cutover_record_decode(text: verified.attempt.proposed as String) {
+        Err { value: why } => CasStoreRefused { cause: CasGenerationPublicationRefused { detail: why } }
+        Ok { value: record } => if record.plan.envelope != capacity_cutover_intent_text(intent: intent)
+          || record.plan.approved_digest != request.plan_digest || record.phase != CapacityCapturingGeneration
+          || count(record.prior) != 0 || count(record.target) != 0 {
+          CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "initial claim failed to retain its exact plan before captures" } }
+        } else { cas_decide(attempt: verified.attempt, observed: CasObservedReadable { readable: CasReadableAbsent }) }
+      }
+    }) {
+    Err { value: _ } => false
+    Ok { value: approval } => approval.approved_plan_digest == request.plan_digest && approval.intent == intent
+  }
+}
+
+test fn an_existing_journal_cannot_be_claimed_as_a_new_apply() -> Bool {
+  let intent = initial_claim_intent()
+  let request = match approval_fixture_request(intent: intent, escalation_id: "initial-journal-fixture") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let bytes = "existing-record" as NonEmptyStr
+  match capacity_cutover_claim_initial(intent: intent, request: request, authorization: approval_fixture_grant(request: request),
+    planned_paths: initial_claim_paths(), at: "2026-10-29T00:01:00Z", commit: verified =>
+      cas_decide(attempt: verified.attempt, observed: CasObservedReadable { readable: CasReadablePresent {
+        version: CasSlotVersion { generation: cas_generation_first(), content: content_hash_of_value(value: bytes), value: bytes } } })) {
+    Err { value: why } => why == "cutover approval already consumed: existing-cutover-journal"
+    Ok { value: _ } => false
+  }
+}
+
+test fn an_uncertain_initial_commit_never_returns_apply_authority() -> Bool {
+  let intent = initial_claim_intent()
+  let request = match approval_fixture_request(intent: intent, escalation_id: "initial-journal-fixture") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match capacity_cutover_claim_initial(intent: intent, request: request, authorization: approval_fixture_grant(request: request),
+    planned_paths: initial_claim_paths(), at: "2026-10-29T00:01:00Z", commit: verified => CasStoreRefused {
+      cause: CasGenerationPublicationRefused { detail: "fixture lost commit response" } }) {
+    Err { value: why } => why == "initial journal commit unconfirmed; no capture or inhibition permitted"
+    Ok { value: _ } => false
+  }
+}
+
+// If the mismatch accidentally reaches the CAS, its distinct failure cannot
+// satisfy this control: path admission must refuse before claiming execution.
+test fn an_unapproved_initial_inhibition_path_never_reaches_the_claim() -> Bool {
+  let intent = initial_claim_intent()
+  let request = match approval_fixture_request(intent: intent, escalation_id: "initial-journal-fixture") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  match capacity_cutover_claim_initial(intent: intent, request: request, authorization: approval_fixture_grant(request: request),
+    planned_paths: [CapacityInhibitionPath { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" },
+      path: "/etc/systemd/system.control/unapproved.service" }], at: "2026-10-29T00:01:00Z",
+    commit: verified => CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "unexpected claim dispatch" } }) {
+    Err { value: why } => why == "initial inhibition paths differ from the approved file operations or drain subjects"
+    Ok { value: _ } => false
+  }
 }

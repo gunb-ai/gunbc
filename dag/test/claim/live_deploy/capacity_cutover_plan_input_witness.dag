@@ -118,9 +118,9 @@ test fn the_v7_plan_builder_refuses_the_unmodeled_live_agent_door() -> Bool {
     installed: [], runners: Ok { value: [] }, controller_slot: none, operations: [],
     file_operations: [], captures: [], reloads: [], generations: []) {
     Err { value: CapacityActivatorProducerMissing { producer: producer, evidence: evidence } } =>
-      producer == "agent-door" && evidence == "live unit observed, no main producer"
+      producer == "agent-door" && evidence == "live unit observed, no producer has ever existed on main"
         && capacity_plan_source_fault_text(fault: CapacityActivatorProducerMissing { producer: producer, evidence: evidence })
-          == "activator producer missing: agent-door (live unit observed, no main producer)"
+          == "activator producer missing: agent-door (live unit observed, no producer has ever existed on main)"
     _ => false
   }
 }

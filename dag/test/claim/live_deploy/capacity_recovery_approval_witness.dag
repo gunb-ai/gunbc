@@ -332,3 +332,11 @@ test fn an_out_of_program_ordinal_cannot_select_an_effect() -> Bool {
     }
   }
 }
+
+test fn the_broker_adds_the_root_helper_scope_exactly_once() -> Bool {
+  match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "root-scope-fixture") {
+    Err { value: _ } => false
+    Ok { value: request } => count(filter(request.request.scopes, scope => scope == capacity_root_helper_scope)) == 1
+      && count(filter(request.subject.scopes, scope => scope == capacity_root_helper_scope)) == 0
+  }
+}

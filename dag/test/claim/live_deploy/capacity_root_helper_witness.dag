@@ -146,7 +146,7 @@ test fn the_fleet_lock_wraps_the_whole_fixed_helper_invocation() -> Bool {
   let digest = Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
   match capacity_helper_invocation(revision: RevisionBoundAtEmission { revision: "1111111111111111111111111111111111111111" },
     approved_helper: digest, observed_helper: Ok { value: digest }, request_path: "/fixture/request.json",
-    approval_path: "/fixture/approval.json", plan_path: "/fixture/plan.json") {
+    plan_path: "/fixture/plan.json") {
     Err { value: _ } => false
     Ok { value: invocation } => take(invocation.words, n: 9) == ["/usr/bin/sudo", "-n", "/usr/bin/flock", "--exclusive", "--wait", "120", "--conflict-exit-code", "75", fleet_generation_lock]
       && count(filter(invocation.words, word => word == "/usr/bin/flock")) == 1

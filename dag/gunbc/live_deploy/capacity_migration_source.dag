@@ -40,7 +40,7 @@ type CapacityPlanSourceFault
 // The observed lab agent-door is not a tailnet door. Main has no naming
 // producer for it. The source owner must model it before this plan can exist.
 fn capacity_main_agent_door() -> Result<CapacityManagedUnit, CapacityPlanSourceFault> {
-  Err { value: CapacityActivatorProducerMissing { producer: "agent-door", evidence: "live unit observed, no main producer" } }
+  Err { value: CapacityActivatorProducerMissing { producer: "agent-door", evidence: "live unit observed, no producer has ever existed on main" } }
 }
 
 fn capacity_plan_source_fault_text(fault: CapacityPlanSourceFault) -> String {

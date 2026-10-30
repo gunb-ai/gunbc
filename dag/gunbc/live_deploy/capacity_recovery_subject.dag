@@ -7,7 +7,6 @@ import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryChoice, Cap
 import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction }
 import std.effect_grant { Execute, NamespacePosition, ServiceOpTree }
-import gunbc.live_deploy.capacity_root_helper { capacity_root_helper_scope }
 import std.durable_compare_and_set { CasGeneration, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
 import std.content_hash { Sha256Digest, sha256_hex_of_text, sha256_hex_digest }
 
@@ -58,6 +57,8 @@ fn capacity_recovery_observed(journal_root: NonEmptyStr, journal_key: NonEmptySt
 }
 
 
+// The existing broker adds the root-helper scope once; this list contains only
+// the internal program-leg scopes.
 // Each executable leg is addressed within the freshly observed, digest-bound
 // record and choice. The ordinal selects an exact file/population from that
 // retained plan, never a caller-selected path or a newly evaluated roster.
@@ -80,11 +81,11 @@ fn capacity_recovery_leg_action(leg: CapacityRecoveryLeg) -> NonEmptyStr {
 
 fn capacity_recovery_leg_scopes(legs: List<CapacityRecoveryLeg>, record_digest: Sha256Digest,
   choice: CapacityRecoveryChoice) -> List<AuthorizationScope> {
-  fold(legs, init: [capacity_root_helper_scope], f: (scopes, leg) => match leg {
+  fold(legs, init: [] as List<AuthorizationScope>, f: (scopes, leg) => match leg {
     CapacityRecoveryRequireApproval { attempt: _, choice: _ } => scopes
     _ => scopes + [AuthorizationScope { verb: Execute,
       resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc.cutover.recovery" },
-        path: [record_digest.hex as String, capacity_recovery_choice_text(choice: choice), to_string(count(scopes))] },
+        path: [record_digest.hex as String, capacity_recovery_choice_text(choice: choice), to_string(count(scopes) + 1)] },
       action: capacity_recovery_leg_action(leg: leg) as AuthorizedAction }]
   })
 }

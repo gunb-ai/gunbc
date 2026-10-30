@@ -17,8 +17,10 @@ import gunbc.live_deploy.capacity_helper_snapshot { capacity_helper_locus, capac
 // One elevated flock wraps ONE fixed helper process. The helper's first journal
 // read, claim, every leg and final CAS all occur before that process exits. Never
 // apply this wrapper separately to individual file writes or journal operations.
-// The helper CLI must decode these data files through the existing broker grant
-// and v7 plan/journal readers; argv construction itself grants no execution.
+// The helper CLI must decode these request/plan files and re-read the SAME live
+// broker gate under the lock. srv1_root_mutation_after_gate's receipt is a log,
+// never authority that can be deserialized into a grant. The v7 plan/journal
+// readers bind data; argv construction itself grants no execution.
 type CapacityHelperInvocation sole_constructor {
   words: List<String>
   helper_digest: Sha256Digest
@@ -26,12 +28,12 @@ type CapacityHelperInvocation sole_constructor {
 
 fn capacity_helper_invocation(revision: ReleaseRevisionBinding, approved_helper: Sha256Digest,
   observed_helper: Result<Sha256Digest, String>, request_path: NonEmptyStr,
-  approval_path: NonEmptyStr, plan_path: NonEmptyStr) -> Result<CapacityHelperInvocation, String> {
+  plan_path: NonEmptyStr) -> Result<CapacityHelperInvocation, String> {
   match revision { RevisionNotInstalled => { return Err { value: "cutover invocation requires a pinned helper revision" } } RevisionBoundAtEmission { revision: _ } => {} }
   let digest = match capacity_helper_manifest_admission(approved: approved_helper, observed: observed_helper) {
     Err { value: why } => { return Err { value: why } } Ok { value: value } => value
   }
-  if !all([request_path, approval_path, plan_path], path => starts_with(s: path as String, prefix: "/")) {
+  if !all([request_path, plan_path], path => starts_with(s: path as String, prefix: "/")) {
     return Err { value: "cutover helper inputs must be absolute data paths" }
   }
   let dir = helper_locus_dir(locus: capacity_helper_locus, revision: revision)
@@ -40,7 +42,6 @@ fn capacity_helper_invocation(revision: ReleaseRevisionBinding, approved_helper:
     source_roots: [concat(dir, "/dag"), concat(dir, "/src/v2")],
     entry: join([dir, "/", capacity_helper_entry], ""), function: capacity_helper_function,
     arguments: [NamedArgumentRequest { name: "request_path", value: request_path as String },
-      NamedArgumentRequest { name: "approval_path", value: approval_path as String },
       NamedArgumentRequest { name: "plan_path", value: plan_path as String }]) {
     Absent => Err { value: "fixed cutover helper arguments refused" }
     Present { value: command } => Ok { value: CapacityHelperInvocation {
