@@ -97,9 +97,9 @@ fn zone_token_accessor_cell_landed() -> Bool {
   fleet_accessor_grant_roster.any(row => row.target.secret == cloudflare_zone_token_secret_id)
 }
 
-// What a selected-but-unrealized route is missing, named once. Deleted with the roster row that lands the cell
-// (gunbc.auth.privileged_effect_census zone_token_accessor_cell_unlanded binds its dissolution to this
-// declaration's retirement).
+// What a selected-but-unrealized route is missing, named once. The census reason
+// zone_token_accessor_cell_unlanded binds its dissolution to this declaration's retirement, which
+// present_trigger_declarations fires when zone_token_accessor_cell_landed turns true.
 data zone_token_accessor_unlanded: FreeSemigroup<NonEmptyStr> = non_empty_append(
   left: non_empty_append(
     left: non_empty_singleton(
