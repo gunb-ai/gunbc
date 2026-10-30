@@ -55,6 +55,7 @@ import extdeps.systemd.systemctl {
   systemctl_restart_verb,
   systemctl_is_active_verb,
   systemctl_is_enabled_verb,
+  systemctl_user_status_for_uid_argv,
 }
 import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, readlink_command, rm_force_command }
 import extdeps.posix.getent { getent_passwd_command }
@@ -122,6 +123,7 @@ import extdeps.shadow.subordinate_ids {
   subordinate_plan_text,
 }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
+import extdeps.systemd.journalctl { journalctl_user_unit_tail_argv }
 import extdeps.systemd.loginctl { loginctl_binary_name, loginctl_enable_linger_argv }
 import extdeps.tools.gnu_coreutils {
   coreutils_install_directory_argv,
@@ -1376,10 +1378,38 @@ type GpuContainerProvisionStep
 type GpuContainerProvisionLeg {
   step: String
   argv: List<String>
+  // READ ONLY COMMANDS RUN AFTER THIS LEG REFUSES, their output joined into the refusal cause. A unit start
+  // that fails with "control process exited with error code" names nothing; the reason is in the unit's
+  // journal, which the next converge cannot reconstruct once the unit has restarted. Empty for a leg whose
+  // own stderr is the whole story.
+  on_refusal: List<List<String>>
 }
 
 fn gpu_container_provision_leg(step: String, words: List<String>) -> GpuContainerProvisionLeg {
-  GpuContainerProvisionLeg { step: step, argv: words }
+  GpuContainerProvisionLeg { step: step, argv: words, on_refusal: [] }
+}
+
+// THE START LEG CARRIES ITS OWN EVIDENCE: status (exit status of ExecStart, rootlesskit's last lines) and
+// the unit's journal tail. Both address the job user's manager, the one the failed start addressed.
+data gpu_container_provision_unit_journal_lines: Int = 100
+
+fn gpu_container_provision_start_leg(uid: Int) -> GpuContainerProvisionLeg {
+  GpuContainerProvisionLeg {
+    step: "unit start",
+    argv: gpu_container_provision_start_argv(uid: uid),
+    on_refusal: [
+      systemctl_user_status_for_uid_argv(unit: gpu_container_provision_rootless_unit_name, uid: uid),
+      journalctl_user_unit_tail_argv(unit: gpu_container_provision_rootless_unit_name, uid: uid, lines: gpu_container_provision_unit_journal_lines),
+    ],
+  }
+}
+
+fn gpu_container_provision_diagnostic_text(argv: List<String>, transport: HostEffectTransport) -> String {
+  match run_argv_over_host_effect_transport(command: sudo_elevate_command(command: argv), transport: transport) {
+    RunArgvTransportRefused { reason: r } => join(["[", join(argv, " "), ": transport refused: ", r as String, "]"], "")
+    RunArgvTransportObserved { observed: o } =>
+      join(["\n--- ", join(argv, " "), " (exit=", to_string(o.exit_code), ")\n", trim(s: o.stdout), trim(s: o.stderr)], "")
+  }
 }
 
 fn gpu_container_provision_run_leg(leg: GpuContainerProvisionLeg, transport: HostEffectTransport) -> GpuContainerProvisionStep {
@@ -1389,7 +1419,16 @@ fn gpu_container_provision_run_leg(leg: GpuContainerProvisionLeg, transport: Hos
       if o.exit_code == 0 {
         GpuContainerProvisioned { step: leg.step }
       } else {
-        GpuContainerProvisionRefused { step: leg.step, cause: join(["exit=", to_string(o.exit_code), " ", trim(s: o.stderr)], "") }
+        GpuContainerProvisionRefused {
+          step: leg.step,
+          cause: join(
+            append(
+              ["exit=", to_string(o.exit_code), " ", trim(s: o.stderr)],
+              items: map(leg.on_refusal, a => gpu_container_provision_diagnostic_text(argv: a, transport: transport)),
+            ),
+            "",
+          ),
+        }
       }
   }
 }
@@ -2919,7 +2958,7 @@ fn gpu_container_provision_plan(
           ProvisionLegs { legs: [gpu_container_provision_leg(step: "user daemon-reload", words: gpu_container_provision_reload_argv(uid: uid_value))] },
           ProvisionLegs { legs: [gpu_container_provision_leg(step: "unit enable", words: gpu_container_provision_enable_argv(uid: uid_value))] },
           ProvisionVerify { step: "unit enabled verified", check: VerifyUnitEnabled { uid: uid_value } },
-          ProvisionLegs { legs: [gpu_container_provision_leg(step: "unit start", words: gpu_container_provision_start_argv(uid: uid_value))] },
+          ProvisionLegs { legs: [gpu_container_provision_start_leg(uid: uid_value)] },
           ProvisionVerify { step: "unit active verified", check: VerifyUnitActive { uid: uid_value } },
         ],
       ),

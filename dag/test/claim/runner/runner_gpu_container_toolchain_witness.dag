@@ -40,6 +40,7 @@ import gunbc.fleet.fleet_host_identity {
 }
 
 import gunbc.runner.runner_gpu_container_toolchain {
+  gpu_container_provision_start_leg,
   GpuContainerArm,
   GpuContainerArmOk, GpuContainerArmMissing, GpuContainerArmUnobserved,
   GpuContainerToolchainReadback,
@@ -1493,4 +1494,16 @@ test fn the_re_read_compare_names_its_exit_code_and_no_step_refuses_with_an_empt
     && typed_remote_file_step_failure_reason(step: "re-read-compare", exit_code: 2, stderr: "") == "destination unreadable (cmp exit 2)"
     && typed_remote_file_step_failure_reason(step: "rename", exit_code: 1, stderr: "") != "remote step failed: "
     && typed_remote_file_step_failure_reason(step: "rename", exit_code: 1, stderr: "denied\n") == "remote step failed: denied"
+}
+
+// A FAILED UNIT START IS NEVER OPAQUE: the start leg carries the status and the journal tail of the unit,
+// both addressed to the same uid-keyed manager the start addressed, and the journal read is keyed by the
+// trusted _UID field. Discriminates against the pre-repair leg (start argv, no evidence) and against a
+// journal read of the wrong account.
+test fn the_unit_start_leg_captures_status_and_the_users_journal_on_refusal() -> Bool {
+  let leg = gpu_container_provision_start_leg(uid: 999)
+  length(leg.on_refusal) == 2
+    && leg.on_refusal.any(a => a == ["systemctl", "--user", "--machine=999@", "status", "--no-pager", "--full", "docker.service"])
+    && leg.on_refusal.any(a => a == ["journalctl", "--user-unit=docker.service", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
+    && leg.argv == ["systemctl", "--user", "--machine=999@", "start", "docker.service"]
 }
