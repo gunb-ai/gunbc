@@ -540,15 +540,21 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   // f1 is engine-local with cap 1. The first turn parks inside the upstream for four seconds, so the
   // second arrives while that turn is still active and must be refused on the SAME engine -- never
   // silently re-placed -- and the third waits behind it and is served once the first releases.
-  // ONE curl process, TWO transfers (-Z): the requests must overlap, and sequential bindings cannot
-  // overlap -- the holding turn would already have finished by the time its successor was issued. One
-  // transfer holds f1 (its engine sleeps six seconds) while the other arrives, and -i prints the status
-  // The hold needs ?hold=1, not ?hold: nginx leaves arg_hold NIL for a query without '=', so a bare
-  // ?hold never entered the sleep, both transfers finished instantly, f1 never reached its cap, and
-  // the refusal the case exists to prove was never issued. Measured against the fixture on srv1:
-  // ?hold=1 sleeps 6.00s, ?hold returns in 0.001s.
+  // ONE curl process, TWO transfers (-Z --parallel-immediate): the requests must overlap, and
+  // sequential bindings cannot overlap -- the holding turn would already have finished by the time
+  // its successor was issued. One transfer holds f1 (its engine sleeps six seconds) while the other
+  // arrives, and -i prints the status line and headers of each so the refusal is visible as a 429.
+  // TWO INVOCATION FACTS, both measured, because both made this case vacuously green:
+  // - The hold needs ?hold=1, not ?hold: nginx leaves arg_hold NIL for a query without '=', so a bare
+  //   ?hold never entered the sleep. Against the fixture on srv1: ?hold=1 sleeps 6.00s, ?hold 0.001s.
+  // - -Z ALONE DOES NOT OVERLAP TWO TRANSFERS TO THE SAME host:port over HTTP/1.1: curl opens one
+  //   connection, learns the peer cannot multiplex, and queues the second transfer behind the first.
+  //   Measured against a local server that sleeps 6s and stamps its own arrival: without
+  //   --parallel-immediate the arrivals are 6.001s apart (the second never contended anything); with
+  //   --parallel-immediate both arrive in the same millisecond. So the cap was never reached and the
+  //   429 this case exists to prove was never issued -- the client, not the router, serialized them.
   // line and headers of each so the refusal is visible as a 429 carrying Retry-After.
-  let cap_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: cap-1", "--data-binary", "\{\"model\":\"m-f\",\"q\":\"contended\"\}", "-w", "\n%\{http_code\}\n", "https://127.0.0.1:18445/v1/chat/completions?hold=1", "https://127.0.0.1:18445/v1/chat/completions?hold=1"])
+  let cap_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--parallel-immediate", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: cap-1", "--data-binary", "\{\"model\":\"m-f\",\"q\":\"contended\"\}", "-w", "\n%\{http_code\}\n", "https://127.0.0.1:18445/v1/chat/completions?hold=1", "https://127.0.0.1:18445/v1/chat/completions?hold=1"])
   // After the contended turn releases, the SAME session still goes to f1: the binding survived a refusal.
   let cap_after_release = dev_request(key: "ck-falsifier", session: "cap-1", body: model_body(model: "m-f"), path: "/v1/chat/completions")
   let drained = dev_request(key: "ck-falsifier", session: "drained-1", body: model_body(model: "m-g"), path: "/v1/chat/completions")
