@@ -319,6 +319,6 @@ test fn a_missing_ledger_row_is_unknown_for_a_pending_lineage_and_ended_otherwis
   let key = "a3b4c5d6e7f80910"
   let seeded = seed_request_pending_events(instance: instance, node: node, attempt_key: key)
   let pending = match belt_lineage_standing(instance: instance, ledger: AttemptsObserved { attempts: [] }, panes: BeltAttemptPanesObserved { panes: [] }, node_id: node, attempt_key: key) { LineageUnknown { detail: _ } => true _ => false }
-  let none = match belt_lineage_standing(instance: instance, ledger: AttemptsObserved { attempts: [] }, panes: BeltAttemptPanesObserved { panes: [] }, node_id: node, attempt_key: "b4c5d6e7f8091021") { LineageEnded => true _ => false }
-  cleaned(instance: instance, verdict: seeded && pending && none)
+  let no_stream = match belt_lineage_standing(instance: instance, ledger: AttemptsObserved { attempts: [] }, panes: BeltAttemptPanesObserved { panes: [] }, node_id: node, attempt_key: "b4c5d6e7f8091021") { LineageEnded => true _ => false }
+  cleaned(instance: instance, verdict: seeded && pending && no_stream)
 }
