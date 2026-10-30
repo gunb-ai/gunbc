@@ -285,6 +285,16 @@ service git.Plumbing {
     transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "checkout-index", "-a", "-f", "--prefix={prefix}"] }
   }
 
+  operation ResetWorktreeToTree {
+    requires opaque
+    input { address: GitRepositoryAddress, treeish: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", git_repository_address_argv(address: address), "read-tree", "-u", "--reset", "{treeish}"] }
+  }
+
   operation CommitTree {
     requires opaque
     input { address: GitRepositoryAddress, tree: String, parents: GitCommitParents, message: String }

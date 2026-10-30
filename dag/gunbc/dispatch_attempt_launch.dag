@@ -1,6 +1,7 @@
 module gunbc.dispatch_attempt_launch
 
 import std.types { String, NonEmptyStr }
+import gunbc.dispatch_replay_recording { RecordingId }
 import std.decl_ref { decl_ref }
 import extdeps.llm.cli { ReasoningEffort, ProviderModelSelection }
 import gunbc.dispatch_attempt { DispatchAttempt, dispatch_attempts_agree, dispatch_attempt_label }
@@ -15,6 +16,7 @@ import gunbc.dispatch_credential_snapshot { TakenCredentialSnapshot, taken_crede
 type SnapshotFreeExecutor
   = CodexWithoutSnapshot
   | HarnessWithoutSnapshot
+  | ReplayWithoutSnapshot { recording_id: RecordingId }
 
 type AttemptLaunch
   = SnapshotFreeLaunch { attempt: DispatchAttempt, executor: SnapshotFreeExecutor }
@@ -97,4 +99,34 @@ fn prepared_attempt_model(prepared: PreparedAttemptLaunch) -> ProviderModelSelec
 
 fn prepared_attempt_process_fingerprint(prepared: PreparedAttemptLaunch) -> NonEmptyStr {
   prepared.process_fingerprint
+}
+
+// WHAT EXECUTED THE ATTEMPT, as a fact of the attempt rather than a property of its provider: a real worker, or the
+// replay of a RECORDED end state (gunbc.dispatch_replay_recording). It is derived here from the same executor
+// value the launch is built from and is a REQUIRED field of the spawn origin the belt writes once per attempt
+// (gunbc.roadmap.roadmap_dispatch_destination DispatchSpawnOrigin), so no attempt record can exist without
+// answering it and a replayed attempt cannot be recorded as a real one: the value that selected the replay
+// executor is the value written. The recording is carried as its typed id (gunbc.dispatch_replay_recording RecordingId),
+// its named parts intact; it becomes text only on the wire, the spawn argv and the spawn-origin document.
+type DispatchExecutorOrigin
+  = RealExecutorOrigin
+  | ReplayExecutorOrigin { recording_id: RecordingId }
+
+fn snapshot_free_executor_origin(executor: SnapshotFreeExecutor) -> DispatchExecutorOrigin {
+  match executor {
+    CodexWithoutSnapshot => RealExecutorOrigin
+    HarnessWithoutSnapshot => RealExecutorOrigin
+    ReplayWithoutSnapshot { recording_id } => ReplayExecutorOrigin { recording_id: recording_id }
+  }
+}
+
+fn attempt_launch_executor_origin(launch: AttemptLaunch) -> DispatchExecutorOrigin {
+  match launch {
+    SnapshotFreeLaunch { attempt: _, executor } => snapshot_free_executor_origin(executor: executor)
+    SnapshotLaunch { snapshot: _ } => RealExecutorOrigin
+  }
+}
+
+fn prepared_attempt_executor_origin(prepared: PreparedAttemptLaunch) -> DispatchExecutorOrigin {
+  attempt_launch_executor_origin(launch: prepared.launch)
 }

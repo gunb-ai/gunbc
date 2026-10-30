@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_dispatch_actuator
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance, dispatch_attempt_unit_stem, dispatch_attempt_worker_log_path_for_instance, dispatch_model_driven_privilege_confinement_properties, dispatch_pane_working_directory, dispatch_worker_git_pointer_readonly_list, dispatch_worker_unit_stream_properties, dispatch_worker_writable_path_list, dispatch_worktree_entry_name, dispatch_worktree_path_for_instance, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, GunbcHarnessProvider }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance, dispatch_attempt_unit_stem, dispatch_attempt_worker_log_path_for_instance, dispatch_model_driven_privilege_confinement_properties, dispatch_pane_working_directory, dispatch_worker_git_pointer_readonly_list, dispatch_worker_unit_stream_properties, dispatch_worker_writable_path_list, dispatch_worktree_entry_name, dispatch_worktree_path_for_instance, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, GunbcHarnessProvider, ReplayDispatchProvider }
 import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments, install_directory_owned_argv_command }
 import gunbc.managed_directory { declared_directory_mode, DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverseSetgid, DirectoryOwnerGroupWritableSetgid }
 import extdeps.tools.env { env_path_resolved_program }
@@ -208,6 +208,7 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
+  srv1_dashboard_lab_id,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   dashboard_instance_provider_executable_refusal_detail,
@@ -244,10 +245,12 @@ import gunbc.worker_turn_standing { codex_observed_standing_for_instance, cursor
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
 import gunbc.cursor_harness_credential { cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnRefused }
 import gunbc.dispatch_attempt { DispatchAttempt }
+import gunbc.dispatch_replay_recording { RecordingId, recording_id_decode, RecordingIdDecoded, RecordingIdMalformed, recording_id_text }
 import gunbc.dispatch_attempt_launch {
   SnapshotFreeExecutor,
   CodexWithoutSnapshot,
   HarnessWithoutSnapshot,
+  ReplayWithoutSnapshot,
   AttemptLaunch,
   SnapshotFreeLaunch,
   SnapshotLaunch,
@@ -344,6 +347,10 @@ fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> DispatchProvi
       DispatchExecutorHasNoVendorKind {
         executor: "gunbc-harness: a local harness process against a local inference backend, with no vendor account, entitlement or rate limit for a ProviderKind to name",
       }
+    ReplayDispatchProvider =>
+      DispatchExecutorHasNoVendorKind {
+        executor: "gunbc-replay: replays a recorded end state in the worker unit with no model, so no vendor account, entitlement or rate limit exists for a ProviderKind to name",
+      }
   }
 }
 
@@ -388,6 +395,7 @@ fn snapshot_free_executor_provider(executor: SnapshotFreeExecutor) -> DispatchCl
   match executor {
     CodexWithoutSnapshot => CodexDispatchProvider
     HarnessWithoutSnapshot => GunbcHarnessProvider
+    ReplayWithoutSnapshot { recording_id: _ } => ReplayDispatchProvider
   }
 }
 
@@ -577,10 +585,13 @@ fn dispatch_actuator_selection_for_provider_on(
 type DispatchExecutorRequest
   = ExecutorDefault
   | ExecutorVendor { provider: DispatchCliProvider }
+  | ExecutorReplay { recording_id: RecordingId }
 
 type DispatchExecutorRequestDecode
   = DispatchExecutorRequestDecoded { request: DispatchExecutorRequest }
   | DispatchExecutorRequestUnknown { word: String, known: List<String> }
+
+data dispatch_replay_request_prefix: String = "replay:"
 
 data dispatch_vendor_executor_roster: List<DispatchCliProvider> = [ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider]
 
@@ -589,7 +600,14 @@ data dispatch_vendor_executor_roster: List<DispatchCliProvider> = [ClaudeCodePro
 // is the default executor named explicitly, not a vendor. Any other word is a typed refusal naming
 // the accepted set -- never the default, which would run a turn somewhere the operator did not ask.
 fn decode_dispatch_executor_request(word: String) -> DispatchExecutorRequestDecode {
-  if word == "" || word == dispatch_provider_label(provider: GunbcHarnessProvider) {
+  if starts_with(s: word, prefix: dispatch_replay_request_prefix) {
+    match recording_id_decode(text: substring(s: word, start: string_length(s: dispatch_replay_request_prefix), end: string_length(s: word))) {
+      RecordingIdDecoded { id } =>
+        DispatchExecutorRequestDecoded { request: ExecutorReplay { recording_id: id } }
+      RecordingIdMalformed { reason } =>
+        DispatchExecutorRequestUnknown { word: word, known: [join(["replay:<recording id>; ", reason], "")] }
+    }
+  } else if word == "" || word == dispatch_provider_label(provider: GunbcHarnessProvider) {
     DispatchExecutorRequestDecoded { request: ExecutorDefault }
   } else {
     fold(
@@ -911,6 +929,8 @@ fn dispatch_actuator_worker_turn_selection_observed(
       DispatchAttemptSelectionRefused { reason: "the claude draw is observed by dispatch_actuator_claude_selection_observed" as NonEmptyStr }
     GunbcHarnessProvider =>
       DispatchAttemptSelectionRefused { reason: "worker-turn selection was asked for the gunbc harness, which has no vendor credential" as NonEmptyStr }
+    ReplayDispatchProvider =>
+      DispatchAttemptSelectionRefused { reason: "worker-turn selection was asked for the replay executor, which has no vendor credential and is requested only by recording id" as NonEmptyStr }
   }
 }
 
@@ -932,6 +952,46 @@ fn dispatch_actuator_selection_for_request(
         CursorDispatchProvider =>
           dispatch_actuator_worker_turn_selection_observed(attempt: attempt, provider: provider, sizing_expectation: sizing_expectation)
         GunbcHarnessProvider => dispatch_harness_attempt_selection(attempt: attempt, sizing_expectation: sizing_expectation)
+        ReplayDispatchProvider =>
+          DispatchAttemptSelectionRefused { reason: "the replay executor is requested as replay:<recording id>, never as a bare vendor word" as NonEmptyStr }
+      }
+    ExecutorReplay { recording_id } =>
+      dispatch_replay_attempt_selection(attempt: attempt, recording_id: recording_id)
+  }
+}
+
+// THE REPLAY EXECUTOR IS ADMITTED ON THE LAB INSTANCE ONLY, and a request for it anywhere else is a typed
+// refusal, never the harness or a vendor in its place. The instance is the attempt's own, so the gate reads
+// the same value the launch is built from. Replay has no model, so effort and model are the harness's
+// not-applicable answers; its process fingerprint is the gunbc binary it runs under.
+type DispatchReplayInstanceAdmission
+  = ReplayAdmittedOnInstance
+  | ReplayRefusedOffLab { instance_id: String }
+
+fn dispatch_replay_instance_admission(instance: HostDashboardInstance) -> DispatchReplayInstanceAdmission {
+  if (instance.instance_id as String) == (srv1_dashboard_lab_id as String) {
+    ReplayAdmittedOnInstance
+  } else {
+    ReplayRefusedOffLab { instance_id: instance.instance_id as String }
+  }
+}
+
+fn dispatch_replay_attempt_selection(attempt: DispatchAttempt, recording_id: RecordingId) -> DispatchAttemptSelection {
+  match dispatch_replay_instance_admission(instance: attempt.instance) {
+    ReplayAdmittedOnInstance =>
+      attempt_selection_launching(
+        requested: attempt,
+        selection: DispatchActuatorSelectionOk {
+          provider: ReplayDispatchProvider,
+          effort: ReasoningMedium,
+          model: ProviderAccountDefaultModel,
+          process_fingerprint: harness_selection_process_fingerprint,
+        },
+        launch: SnapshotFreeLaunch { attempt: attempt, executor: ReplayWithoutSnapshot { recording_id: recording_id } },
+      )
+    ReplayRefusedOffLab { instance_id } =>
+      DispatchAttemptSelectionRefused {
+        reason: join(["the replay executor is admitted only on the lab instance ", srv1_dashboard_lab_id as String, "; instance ", instance_id, " refuses it and does not fall back to a real provider"], "") as NonEmptyStr,
       }
   }
 }
@@ -960,6 +1020,7 @@ fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
     CodexDispatchProvider => "codex"
     CursorDispatchProvider => "cursor"
     GunbcHarnessProvider => "gunbc-harness"
+    ReplayDispatchProvider => "gunbc-replay"
   }
 }
 
@@ -1093,6 +1154,7 @@ fn dispatch_provider_executable(provider: DispatchCliProvider) -> NonEmptyStr {
     CodexDispatchProvider => codex_cli_program as NonEmptyStr
     CursorDispatchProvider => cursor_cli_program as NonEmptyStr
     GunbcHarnessProvider => gunbc_harness_program as NonEmptyStr
+    ReplayDispatchProvider => gunbc_harness_program as NonEmptyStr
   }
 }
 
@@ -2695,9 +2757,41 @@ fn dispatch_provider_inner_argv_for_launch(
               alignment_chain_fingerprint: alignment_chain_fingerprint,
             ),
           }
+        ReplayWithoutSnapshot { recording_id } =>
+          DispatchProviderInnerArgvReady {
+            argv: gunbc_replay_spawn_argv(
+              gunbc_program: instance.serve_binary as String,
+              repo_root: instance.repo_root as String,
+              worktree_path: worktree_path,
+              recording_id: recording_id,
+            ),
+          }
       }
   }
 }
+
+fn gunbc_replay_spawn_argv(
+  gunbc_program: String,
+  repo_root: String,
+  worktree_path: String,
+  recording_id: RecordingId,
+) -> List<String> {
+  [
+    gunbc_program,
+    "run",
+    "--source-root", join([repo_root, "/dag"], ""),
+    "--source-root", join([repo_root, "/src/v2"], ""),
+    "--entry", join([repo_root, "/", gunbc_replay_worker_entry], ""),
+    "--function", gunbc_replay_worker_function,
+    "--arg", join(["worktree=", worktree_path], ""),
+    "--arg", join(["repo_root=", repo_root], ""),
+    "--arg", join(["recording_id=", recording_id_text(id: recording_id)], ""),
+  ]
+}
+
+data gunbc_replay_worker_entry: String = "dag/gunbc/dispatch_replay_worker.dag"
+
+data gunbc_replay_worker_function: String = "replay_worker_cli"
 
 fn tmux_spawn_inner_argv(session_name: String, worktree_path: String, inner_argv: List<String>) -> HostExecArgv {
   host_exec_argv(
@@ -3350,6 +3444,19 @@ fn dispatch_session_container_for_provider(
   provider_inner: List<String>,
 ) -> DispatchSessionContainerPlan {
   match provider {
+    ReplayDispatchProvider =>
+      dispatch_systemd_unit_container_plan(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+        pane_working_directory: pane_working_directory,
+        worktree_path: worktree_path,
+        stdout_path: worker_log_path,
+        stderr_path: worker_log_path,
+        provider_inner: provider_inner,
+        unavailable_step: "replay-transient-unit" as NonEmptyStr,
+        unavailable_why: "the replay worker runs in the same transient unit as a real worker so its confinement and exit record are the real ones",
+      )
     GunbcHarnessProvider =>
       dispatch_systemd_unit_container_plan(
         instance: instance,

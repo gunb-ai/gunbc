@@ -1,0 +1,252 @@
+module test.claim.roadmap.dispatch_replay_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.optional { Present }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance, srv1_dashboard_lab_id, srv1_dashboard_live_id }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, GunbcHarnessProvider, ReplayDispatchProvider }
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  dispatch_session_container_for_provider,
+  DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable,
+  SystemdUnitContainer, TmuxSessionContainer,
+  DispatchReplayInstanceAdmission, ReplayAdmittedOnInstance, ReplayRefusedOffLab, dispatch_replay_instance_admission,
+  dispatch_cli_to_provider_kind, DispatchExecutorHasNoVendorKind, DispatchProviderKindIs,
+  decode_dispatch_executor_request, ExecutorDefault, ExecutorVendor, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown, ExecutorReplay,
+}
+import gunbc.dispatch_replay_recording {
+  RecordingId, recording_id_text, dispatch_replay_recording_frontier_rows, recording_id_decode, RecordingIdDecoded, RecordingIdMalformed,
+  recording_replay_admission, RecordingReplayAdmitted, RecordingReplayBaseMismatch,
+  RecordedSuccess, RecordedExitCode, recorded_end_of, RecordedEndAdmitted, RecordedEndRefused,
+  RecordedEndPairNotReproducible, RecordedEndOutOfRange, RecordedEndCollidesWithReplayRefusal, recording_object_hex,
+  RecordingProvenance, CapturedFromAttempt, PreparedByOperator, recording_provenance_word, recording_ref_of,
+  dispatch_replay_recording_frontier_decl_names,
+  recording_ref_prefix, recording_prepared_ref_prefix, recorded_end_of_status, RecordingPreparedEndAdmitted, RecordingPreparedEndRefused,
+}
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import gunbc.dispatch_replay_capture { recording_prepare_cli }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.roster_frontier { frontier_subject_eq, DeclSubject, PathSubject }
+import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultExitCode, ServiceResultOomKill }
+
+data base_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data base_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data tree_t: String = "cccccccccccccccccccccccccccccccccccccccc"
+
+fn fx_recording_text(base: String, status: Int) -> String {
+  join([base, ".", tree_t, ".", to_string(value: status), ".", if status == 0 { "success" } else { "exit-code" }, ".captured"], "")
+}
+
+// A fixture id is built only through the decode, the one constructor that admits GitObjectId parts.
+fn fx_recording(base: String, status: Int) -> RecordingId? {
+  match recording_id_decode(text: fx_recording_text(base: base, status: status)) {
+    RecordingIdDecoded { id } => Present { value: id }
+    RecordingIdMalformed { text: _, reason: _ } => none
+  }
+}
+
+// The same end state under the other provenance: a five-part id whose last word is 'prepared'.
+fn fx_prepared_recording_text(base: String, status: Int) -> String {
+  join([base, ".", tree_t, ".", to_string(value: status), ".", if status == 0 { "success" } else { "exit-code" }, ".", recording_provenance_word(provenance: PreparedByOperator)], "")
+}
+
+fn fx_prepared_recording(base: String, status: Int) -> RecordingId? {
+  match recording_id_decode(text: fx_prepared_recording_text(base: base, status: status)) {
+    RecordingIdDecoded { id } => Present { value: id }
+    RecordingIdMalformed { text: _, reason: _ } => none
+  }
+}
+
+fn fx_plan(provider: DispatchCliProvider, inner: List<String>) -> DispatchSessionContainerPlan {
+  dispatch_session_container_for_provider(
+    provider: provider,
+    instance: srv1_lab_dashboard_instance(),
+    node_id: "n1",
+    attempt_key: "k1",
+    session_name: "unused",
+    events_path: "/e",
+    worker_log_path: "/l",
+    pane_working_directory: "/wt",
+    worktree_path: "/wt",
+    provider_inner: inner,
+  )
+}
+
+// (a) ONE ROUTE: the replay arm's unit is the harness worker's unit, field for field, except the argv it runs.
+// Mutation: give the replay arm in dispatch_session_container_for_provider a different stdout_path (or the tmux
+// container) and this goes red.
+test fn the_replay_unit_equals_a_real_workers_except_the_argv() -> Bool {
+  match fx_plan(provider: GunbcHarnessProvider, inner: ["real"]) {
+    DispatchSessionContainerUnavailable { step: _, detail: _ } => false
+    DispatchSessionContainerReady { container: real } =>
+      match fx_plan(provider: ReplayDispatchProvider, inner: ["replay"]) {
+        DispatchSessionContainerUnavailable { step: _, detail: _ } => false
+        DispatchSessionContainerReady { container: replay } =>
+          match real {
+            TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => false
+            SystemdUnitContainer { plan: rp } =>
+              match replay {
+                TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => false
+                SystemdUnitContainer { plan: pp } =>
+                  rp.systemd_run_program == pp.systemd_run_program && rp.unit == pp.unit && rp.node_id == pp.node_id
+                    && rp.attempt_key == pp.attempt_key && rp.working_directory == pp.working_directory
+                    && rp.attempt_worktree == pp.attempt_worktree && rp.stdout_path == pp.stdout_path
+                    && rp.stderr_path == pp.stderr_path && rp.exit_hook == pp.exit_hook
+                    && rp.inner_argv != pp.inner_argv
+              }
+          }
+      }
+  }
+}
+
+// (b) REPLAY IS EXACT OR REFUSES. Mutation: make recording_replay_admission admit on a prefix match, or always,
+// and the mismatch assertion goes red; the equal-base control keeps the admit arm honest.
+test fn replay_refuses_a_base_mismatch_and_admits_an_equal_base() -> Bool {
+  match fx_recording(base: base_a, status: 0) {
+    Absent => false
+    Present { value: fx } =>
+      (match recording_replay_admission(id: fx, attempt_base: base_a) { RecordingReplayAdmitted { id: _ } => true  RecordingReplayBaseMismatch { recorded_base: _, attempt_base: _ } => false })
+        && (match recording_replay_admission(id: fx, attempt_base: base_b) { RecordingReplayBaseMismatch { recorded_base: r, attempt_base: a } => r == base_a && a == base_b  RecordingReplayAdmitted { id: _ } => false })
+  }
+}
+
+// (c) LAB ONLY. Mutation: admit on any instance, or compare against the live id, and the live refusal goes red.
+test fn selection_admits_replay_on_the_lab_and_refuses_it_on_live() -> Bool {
+  (match dispatch_replay_instance_admission(instance: srv1_lab_dashboard_instance()) { ReplayAdmittedOnInstance => true  ReplayRefusedOffLab { instance_id: _ } => false })
+    && (match dispatch_replay_instance_admission(instance: srv1_live_dashboard_instance()) { ReplayRefusedOffLab { instance_id: _ } => true  ReplayAdmittedOnInstance => false })
+}
+
+// (e) THE RECORDING'S ID IS ITS PREIMAGE: encode then decode returns the same base, tree, status and result, so
+// the tree the replay forces is the tree the capture read. Mutation: drop the result word or reorder two parts in
+// recording_id_text and the round trip goes red. The byte-for-byte TREE round trip over git objects is the
+// operational run recorded in the PR body.
+test fn a_recording_id_round_trips_its_preimage() -> Bool {
+  match fx_recording(base: base_a, status: 3) {
+    Absent => false
+    Present { value: fx } =>
+      recording_id_text(id: fx) == fx_recording_text(base: base_a, status: 3)
+        && (match recording_id_decode(text: recording_id_text(id: fx)) {
+          RecordingIdMalformed { text: _, reason: _ } => false
+          RecordingIdDecoded { id } =>
+            recording_object_hex(oid: id.base) == base_a
+              && recording_object_hex(oid: id.result_tree) == tree_t
+              && (match id.end { RecordedExitCode { status } => status == 3  RecordedSuccess => false })
+        })
+  }
+}
+
+// The replay word reaches the request only through a decodable recording id; the harness has no vendor kind and
+// neither has replay.
+test fn the_replay_request_word_and_kind_are_explicit() -> Bool {
+  (match decode_dispatch_executor_request(word: join(["replay:", fx_recording_text(base: base_a, status: 0)], "")) { DispatchExecutorRequestDecoded { request } => match request { ExecutorReplay { recording_id: _ } => true  ExecutorDefault => false  ExecutorVendor { provider: _ } => false }  DispatchExecutorRequestUnknown { word: _, known: _ } => false })
+    && (match decode_dispatch_executor_request(word: "replay:nonsense") { DispatchExecutorRequestUnknown { word: _, known: _ } => true  DispatchExecutorRequestDecoded { request: _ } => false })
+    && (match dispatch_cli_to_provider_kind(provider: ReplayDispatchProvider) { DispatchExecutorHasNoVendorKind { executor: _ } => true  DispatchProviderKindIs { kind: _ } => false })
+    && (match recorded_end_of(status: 0, result: ServiceResultExitCode) { RecordedEndRefused { cause } => match cause { RecordedEndPairNotReproducible { status: _, manager_result: _ } => true  RecordedEndOutOfRange { status: _ } => false  RecordedEndCollidesWithReplayRefusal { status: _ } => false }  RecordedEndAdmitted { end: _ } => false })
+    && (match recorded_end_of(status: 0, result: ServiceResultOomKill) { RecordedEndRefused { cause: _ } => true  RecordedEndAdmitted { end: _ } => false })
+    && (match recorded_end_of(status: 0, result: ServiceResultSuccess) { RecordedEndAdmitted { end } => match end { RecordedSuccess => true  RecordedExitCode { status: _ } => false }  RecordedEndRefused { cause: _ } => false })
+}
+
+// THE ONE ADMISSION: decode refuses what a unit that ended by exiting could not have produced. Mutation: drop any
+// of the three decode checks (range, refusal code, exit pair) and the matching assertion goes red.
+test fn decode_refuses_an_unreplayable_exit_status_or_pair() -> Bool {
+  let b = base_a
+  let t = tree_t
+  (match recording_id_decode(text: join([b, ".", t, ".78.exit-code.captured"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".256.exit-code.captured"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".0.exit-code.captured"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".3.success.captured"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".0.oom-kill.captured"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".0.success.captured"], "")) { RecordingIdDecoded { id: _ } => true  RecordingIdMalformed { text: _, reason: _ } => false })
+}
+
+// THE CAPTURE FRONTIER IS TRACKED IN THE CORPUS: its row is read by the closure census, so the dissolution trigger is
+// a citable fact and not a note. Mutation: drop dispatch_replay_recording_frontier_rows from
+// census_closure_frontier_row_groups and this goes red.
+// The exit facts a refusal claim needs, read from the same two arms ProcessExit has.
+fn prepare_exit_code(exit: ProcessExit) -> Int {
+  match exit {
+    ExitSuccess => 0
+    ExitFailure { code, reason: _ } => code
+  }
+}
+
+fn prepare_exit_reason(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason } => reason
+  }
+}
+
+// THE PREPARE ENTRY IS GATED THE WAY REPLAY IS, AND BY THE SAME AUTHORITY. The wet claim proves a prepared
+// recording mints and replays in a real repository; this proves the refusal an operator gets elsewhere: on the live
+// instance the entry refuses with the typed reason and no mint happens, and an unknown instance refuses too. There
+// is no arm on which a live request for a prepared recording produces a ref -- a refusal, never a fallback (§5).
+// Mutation: route recording_prepare_cli through the lab regardless of instance (the live assertion goes red); fall
+// back to the vendor provider or to recording_capture when the gate refuses (both reason assertions go red).
+test fn the_prepare_entry_refuses_on_the_live_instance_and_never_mints_there() -> Bool {
+  let live = recording_prepare_cli(
+    instance_id: srv1_dashboard_live_id as String,
+    base_sha: base_a,
+    result_commit: tree_t,
+    exit_status: 0,
+  )
+  let unknown = recording_prepare_cli(
+    instance_id: "some-instance-that-is-not-declared",
+    base_sha: base_a,
+    result_commit: tree_t,
+    exit_status: 0,
+  )
+  prepare_exit_code(exit: live) != 0
+    && string_contains(s: prepare_exit_reason(exit: live), pattern: "prepared")
+    && string_contains(s: prepare_exit_reason(exit: live), pattern: srv1_dashboard_lab_id as String)
+    && !string_contains(s: prepare_exit_reason(exit: live), pattern: "recording capture refused")
+    && prepare_exit_code(exit: unknown) != 0
+    && string_contains(s: prepare_exit_reason(exit: unknown), pattern: "no declared dashboard instance")
+}
+
+test fn the_capture_frontier_is_enrolled_in_the_closure_census() -> Bool {
+  // Two rows: the capture operation and the prepare operation, each with no production caller.
+  count(dispatch_replay_recording_frontier_rows) == 2
+    && all(
+      dispatch_replay_recording_frontier_rows,
+      row => any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject)),
+    )
+    && all(dispatch_replay_recording_frontier_decl_names(), name => any(dispatch_replay_recording_frontier_rows, row => match row.subject { DeclSubject { ref } => ref.decl_name as String == name  PathSubject { path: _ } => false }))
+}
+
+// PROVENANCE IS TYPED, NOT A PLACE IT IS FILED. Two arms, no default; the arm picks the namespace, so an id can
+// never name a ref in the other arm's namespace and `git for-each-ref refs/gunbc/recordings/` lists exactly the
+// receipts of real attempts. The fifth part is admitted only by its own word, so an id that does not say how it
+// came to exist is malformed rather than quietly captured -- and a manager result is never supplied to prepare, it
+// is derived from the status the unit ends with. Mutation: default the fifth part to CapturedFromAttempt in
+// recording_provenance_of_word (the unknown-word assertion goes red); render the provenance from a constant in
+// recording_ref_of, or point both arms at one prefix (both namespace assertions go red); accept a manager result as
+// a prepare argument and the derived-pair assertions go red.
+test fn the_provenance_arm_is_typed_and_picks_the_namespace() -> Bool {
+  let captured = match fx_recording(base: base_a, status: 0) { Absent => false  Present { value: fx } => match fx.provenance { CapturedFromAttempt => true  PreparedByOperator => false } }
+  let prepared = match fx_prepared_recording(base: base_a, status: 0) { Absent => false  Present { value: fx } => match fx.provenance { PreparedByOperator => true  CapturedFromAttempt => false } }
+  captured
+    && prepared
+    // The arm decides the namespace, and the two namespaces are disjoint.
+    && (match fx_recording(base: base_a, status: 0) {
+      Absent => false
+      Present { value: fx } => recording_ref_of(id: fx) == concat(recording_ref_prefix, recording_id_text(id: fx))
+    })
+    && (match fx_prepared_recording(base: base_a, status: 0) {
+      Absent => false
+      Present { value: fx } => recording_ref_of(id: fx) == concat(recording_prepared_ref_prefix, recording_id_text(id: fx))
+    })
+    && (match fx_prepared_recording(base: base_a, status: 0) {
+      Absent => false
+      Present { value: fx } => !string_contains(s: recording_ref_of(id: fx), pattern: recording_ref_prefix)
+    })
+    // A fourth part is malformed; a fifth part that is neither word is malformed; only the two words are admitted.
+    && (match recording_id_decode(text: join([base_a, ".", tree_t, ".0.success"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([base_a, ".", tree_t, ".0.success.captured"], "")) { RecordingIdDecoded { id } => match id.provenance { CapturedFromAttempt => true  PreparedByOperator => false }  RecordingIdMalformed { text: _, reason: _ } => false })
+    && (match recording_id_decode(text: join([base_a, ".", tree_t, ".0.success.prepared"], "")) { RecordingIdDecoded { id } => match id.provenance { PreparedByOperator => true  CapturedFromAttempt => false }  RecordingIdMalformed { text: _, reason: _ } => false })
+    && (match recording_id_decode(text: join([base_a, ".", tree_t, ".0.success.real"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([base_a, ".", tree_t, ".0.success."], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    // The prepared end is DERIVED from the status: 0 can only be success and any other admitted status only
+    // exit-code, and the replay refusal code is not mintable at all.
+    && (match recorded_end_of_status(status: 0) { RecordingPreparedEndAdmitted { end } => match end { RecordedSuccess => true  RecordedExitCode { status: _ } => false }  RecordingPreparedEndRefused { cause: _ } => false })
+    && (match recorded_end_of_status(status: 3) { RecordingPreparedEndAdmitted { end } => match end { RecordedExitCode { status } => status == 3  RecordedSuccess => false }  RecordingPreparedEndRefused { cause: _ } => false })
+    && (match recorded_end_of_status(status: 78) { RecordingPreparedEndRefused { cause: _ } => true  RecordingPreparedEndAdmitted { end: _ } => false })
+}

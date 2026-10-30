@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_belt_actuate
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
+import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, ReplayDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_attempt_request_binding {
   AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous, attempt_launch_request_for_origin,
@@ -68,6 +68,8 @@ import gunbc.dispatch_attempt_launch {
   prepared_attempt,
   prepared_attempt_launch_alternative,
   prepared_attempt_process_fingerprint,
+  prepared_attempt_executor_origin,
+  DispatchExecutorOrigin,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request,
@@ -382,6 +384,9 @@ import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_f
 }
 import extdeps.github.github { Repository }
 import gunbc.roadmap.roadmap_dispatch_destination {
+  DispatchExecutorOriginRead,
+  DispatchExecutorOriginUnreadable,
+  dispatch_executor_origin_of_document,
   DispatchDestinationResolved,
   DispatchDestinationMissing,
   node_dispatch_destination,
@@ -882,6 +887,7 @@ fn belt_attempt_state_initialize_for_instance(
   binding: AlignmentBinding,
   request: AttemptLaunchRequest,
   process_fingerprint: NonEmptyStr,
+  executor: DispatchExecutorOrigin,
 ) -> AttemptStateInitialization {
   let key_write = Filesystem.Write(
     path: dispatch_attempt_key_path_for_instance(
@@ -1013,6 +1019,7 @@ fn belt_attempt_state_initialize_for_instance(
                 instance: instance,
                 node: node,
                 attempt_key: attempt_key,
+                executor: executor,
               ) {
                 SpawnOriginRecorded =>
                   match attempt_request_binding_commit_for_instance(instance: instance, node_id: node.node, attempt_key: attempt_key, request: request) {
@@ -1050,6 +1057,7 @@ fn belt_persist_spawn_origin_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
   attempt_key: String,
+  executor: DispatchExecutorOrigin,
 ) -> SpawnOriginRecord {
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason } =>
@@ -1077,6 +1085,7 @@ fn belt_persist_spawn_origin_for_instance(
             identity: identity,
             base_ref: instance.dispatch_base_ref,
             base_sha: revision as NonEmptyStr,
+            executor: executor,
           }
           let write = Filesystem.Write(
             path: dispatch_attempt_spawn_origin_path_for_instance(
@@ -2204,6 +2213,7 @@ fn belt_provider_preflight_for_instance(
         step: "cursor-provider-preflight",
         detail: "cursor dispatch is not yet wired on this actuator path",
       }
+    ReplayDispatchProvider => ProviderPreflightOk
     GunbcHarnessProvider =>
       match harness_observe_roster() {
         HarnessRosterServing { serving: _, declined: _, unresolved: _ } => ProviderPreflightOk
@@ -3516,6 +3526,7 @@ fn belt_spawn_admitted(
         binding: binding,
         request: request,
         process_fingerprint: process_fingerprint,
+        executor: prepared_attempt_executor_origin(prepared: prepared),
       ) {
         AttemptStateInitializationFailed { step, detail } =>
           SpawnFailed {
@@ -7343,6 +7354,27 @@ fn belt_scm_base_sha_observe(instance: HostDashboardInstance, node_id: RoadmapNo
   }
 }
 
+// THE ATTEMPT'S EXECUTOR ORIGIN, read back from the same spawn-origin record the belt wrote once at spawn. Every
+// way of not reading it is Unreadable, which the metering mint refuses: an attempt whose origin cannot be read is
+// never treated as a real one.
+fn belt_spawn_executor_origin_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> DispatchExecutorOriginRead {
+  let path = dispatch_attempt_spawn_origin_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+  )
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error } =>
+      DispatchExecutorOriginUnreadable { reason: join(["the spawn origin could not be read: ", path, " (", error, ")"], "") }
+    FilesystemReadSucceeded { content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap: _ } => DispatchExecutorOriginUnreadable { reason: join(["the spawn origin at ", path, " is not JSON"], "") }
+        JsonDocumentParsed { value: doc } => dispatch_executor_origin_of_document(doc: doc)
+      }
+  }
+}
+
 fn belt_scm_stage_base_tree(
   instance: HostDashboardInstance,
   worktree: String,
@@ -8732,46 +8764,70 @@ fn belt_commit_record_member(doc: JsonValue, key: String) -> String? {
   }
 }
 
-// THE RECORD SETTLES ONLY THE SUBJECT AND HEAD IT NAMES. A record for another attempt is unexplained
-// state and refuses; a record at another head, with no head, or from before the record named its head
-// settles nothing here, so the capture of this head is owed; at this head, the kind's disposition decides.
-fn belt_commit_record_standing_of_text(content: String, node_id: String, attempt_key: String, head_sha: String) -> BeltCommitRecordStanding {
+// THE ONE DECODE OF THE COMMIT STEP'S RECORD for one attempt: its schema, subject and kind are checked here, once,
+// and the record's head and detail come back with the kind. A record for another attempt is unexplained state and
+// refuses; a v1 record predates the head binding. Read by the head-grain capture standing below and by the replay
+// recording capture (gunbc.dispatch_replay_capture), which takes the settled head as the attempt's result commit.
+type BeltCommitRecordDecode
+  = CommitRecordDecoded { kind: BeltCommitOutcomeKind, outcome: String, head_sha: String?, detail: String }
+  | CommitRecordPredatesHead
+  | CommitRecordRefused { reason: String }
+
+fn belt_commit_record_decode(content: String, node_id: String, attempt_key: String) -> BeltCommitRecordDecode {
   match parse_json_document(s: content) {
     JsonDocumentUnreadable { gap } =>
-      CommitStepRefused { reason: join(["the commit step's record is ", json_document_gap_text(gap: gap)], "") }
+      CommitRecordRefused { reason: join(["the commit step's record is ", json_document_gap_text(gap: gap)], "") }
     JsonDocumentParsed { value: doc } =>
       match belt_commit_record_member(doc: doc, key: "schema") {
-        Absent => CommitStepRefused { reason: "the commit step's record names no schema" }
+        Absent => CommitRecordRefused { reason: "the commit step's record names no schema" }
         Present { value: schema } =>
           if schema == belt_commit_outcome_schema_v1 {
-            CommitStepOwed { reason: "the commit step's record predates its head binding, so which head it settled is unknown" }
+            CommitRecordPredatesHead
           } else if schema != belt_commit_outcome_schema {
-            CommitStepRefused { reason: join(["the commit step's record is ", schema, ", not ", belt_commit_outcome_schema], "") }
+            CommitRecordRefused { reason: join(["the commit step's record is ", schema, ", not ", belt_commit_outcome_schema], "") }
           } else if belt_commit_record_member(doc: doc, key: "node_id") != Present { value: node_id }
             || belt_commit_record_member(doc: doc, key: "attempt_key") != Present { value: attempt_key } {
-            CommitStepRefused { reason: join(["the commit step's record at attempt ", attempt_key, "'s address names another subject, which is unexplained state"], "") }
+            CommitRecordRefused { reason: join(["the commit step's record at attempt ", attempt_key, "'s address names another subject, which is unexplained state"], "") }
           } else {
             match belt_commit_record_member(doc: doc, key: "outcome") {
-              Absent => CommitStepRefused { reason: "the commit step's record names no outcome" }
+              Absent => CommitRecordRefused { reason: "the commit step's record names no outcome" }
               Present { value: outcome } =>
                 match belt_commit_outcome_kind_of_key(key: outcome) {
-                  Absent => CommitStepRefused { reason: join(["the commit step's record names outcome ", outcome, ", which the commit step does not write"], "") }
+                  Absent => CommitRecordRefused { reason: join(["the commit step's record names outcome ", outcome, ", which the commit step does not write"], "") }
                   Present { value: kind } =>
-                    match belt_commit_record_member(doc: doc, key: "head_sha") {
-                      Absent => CommitStepOwed { reason: join(["the commit step's last run ended ", outcome, " at a head it could not observe"], "") }
-                      Present { value: settled } =>
-                        if settled != head_sha {
-                          CommitStepOwed { reason: join(["the commit step last ran at ", settled, ", not at this head"], "") }
-                        } else {
-                          let said = join(["the commit step's last run at this head ended ", outcome, ": ", match belt_commit_record_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" }], "")
-                          match belt_commit_outcome_kind_capture_disposition(k: kind) {
-                            CommitSettlesCapture => CommitStepSettled
-                            CommitLeavesCaptureOwed => CommitStepOwed { reason: said }
-                            CommitRefusesCapture => CommitStepRefused { reason: said }
-                          }
-                        }
+                    CommitRecordDecoded {
+                      kind: kind,
+                      outcome: outcome,
+                      head_sha: belt_commit_record_member(doc: doc, key: "head_sha"),
+                      detail: match belt_commit_record_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" },
                     }
                 }
+            }
+          }
+      }
+  }
+}
+
+// THE RECORD SETTLES ONLY THE SUBJECT AND HEAD IT NAMES. A record at another head, with no head, or from before the
+// record named its head settles nothing here, so the capture of this head is owed; at this head, the kind's
+// disposition decides.
+fn belt_commit_record_standing_of_text(content: String, node_id: String, attempt_key: String, head_sha: String) -> BeltCommitRecordStanding {
+  match belt_commit_record_decode(content: content, node_id: node_id, attempt_key: attempt_key) {
+    CommitRecordRefused { reason } => CommitStepRefused { reason: reason }
+    CommitRecordPredatesHead =>
+      CommitStepOwed { reason: "the commit step's record predates its head binding, so which head it settled is unknown" }
+    CommitRecordDecoded { kind, outcome, head_sha: settled_head, detail } =>
+      match settled_head {
+        Absent => CommitStepOwed { reason: join(["the commit step's last run ended ", outcome, " at a head it could not observe"], "") }
+        Present { value: settled } =>
+          if settled != head_sha {
+            CommitStepOwed { reason: join(["the commit step last ran at ", settled, ", not at this head"], "") }
+          } else {
+            let said = join(["the commit step's last run at this head ended ", outcome, ": ", detail], "")
+            match belt_commit_outcome_kind_capture_disposition(k: kind) {
+              CommitSettlesCapture => CommitStepSettled
+              CommitLeavesCaptureOwed => CommitStepOwed { reason: said }
+              CommitRefusesCapture => CommitStepRefused { reason: said }
             }
           }
       }

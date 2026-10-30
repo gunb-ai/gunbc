@@ -60,6 +60,7 @@ type DispatchCliProvider
   | CodexDispatchProvider
   | CursorDispatchProvider
   | GunbcHarnessProvider
+  | ReplayDispatchProvider
 
 // THE GITFILE AND WORKTREE POINTER FILES REDIRECT THE CONTROLLER'S GIT. They sit inside the
 // writable carve-outs (the worktree and .git/worktrees/<n>/), and ReadOnlyPaths= on those exact
@@ -231,6 +232,7 @@ fn dispatch_pane_working_directory(
 ) -> String {
   match provider {
     GunbcHarnessProvider => instance.repo_root as String
+    ReplayDispatchProvider => instance.repo_root as String
     ClaudeCodeProvider => worktree_path
     CodexDispatchProvider => worktree_path
     CursorDispatchProvider => worktree_path
