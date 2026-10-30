@@ -5,10 +5,16 @@ import extdeps.languages.json.emit { serialize_json }
 import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased, Metal }
 import product.printed_chassis.cassette { rear_socket_bolt_clearances }
 import product.printed_chassis.printable_assembly {
-  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct, PrintableAssembly,
-  PrintableAssemblyReady, PrintableAssemblyRefused, printable_manifest, printed_assembly_root_wire, printed_assembly_root_from_wire, printed_assembly_roots,
+  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, DuctRootKind, duct_root_kinds,
+  PlugDuct, SleeveDuct, PlugFitRing, SleeveFitRing, BlowerDuct, BlowerFlatOnEndDuct, PrintableAssembly,
+  PrintableAssemblyReady, PrintableAssemblyRefused, PrintableAssemblySelection, printable_manifest, printed_assembly_root_wire,
 }
-import product.printed_chassis.printable_assembly_selection { select_printable_assembly }
+import product.printed_chassis.printable_assembly_selection {
+  select_printable_assembly, duct_selection, blower_selection, plane_on_end_selection,
+  duct_card_root, printed_assembly_root_from_wire, printed_assembly_roots,
+}
+import product.printed_chassis.duct_card_catalog { DuctCard, a16_duct_card, t4_duct_card, a2_duct_card, t10_duct_card, duct_cards, duct_card_unread_reason }
+import product.printed_chassis.gpu_duct { PlugAndFlange, FullDuct }
 import product.printed_chassis.preparation_identity { manifest_identity }
 
 fn selected(root: PrintedAssemblyRoot) -> PrintableAssembly? {
@@ -19,6 +25,11 @@ fn selected(root: PrintedAssemblyRoot) -> PrintableAssembly? {
 }
 
 fn ids(a: PrintableAssembly) -> List<String> { map(a.parts, p => p.id) }
+
+// A duct root for the A16, spelled the way the selection spells one: the catalogued card's own id and a
+// shape (printable_assembly_selection duct_card_root). The claims below are about the A16's geometry, so
+// they name the A16 explicitly instead of taking it from an enum arm.
+fn a16_root(kind: DuctRootKind) -> PrintedAssemblyRoot { duct_card_root(card: a16_duct_card, kind: kind) }
 
 fn is_clearance(a: PrintableAssembly, id: String) -> Bool {
   any(a.parts, p => p.id == id && match p.kind { Clearance => true Printed => false Purchased => false Metal => false })
@@ -50,11 +61,12 @@ fn a16_selects(root: PrintedAssemblyRoot, printed: String, with_fan: Bool) -> Bo
 
 // Each A16 root selects exactly its parts, and its power keep-out is required and a clearance part.
 test fn w_a16_duct_selects_exactly_its_parts_and_power_keepout() -> Bool {
-  a16_selects(root: A16PlugDuct, printed: "DUCT", with_fan: true)
-    && a16_selects(root: A16SleeveDuct, printed: "DUCT", with_fan: true)
-    && a16_selects(root: A16PlugFitRing, printed: "FIT-RING", with_fan: false)
-    && a16_selects(root: A16SleeveFitRing, printed: "FIT-RING", with_fan: false)
-    && a16_selects(root: A16BlowerDuct, printed: "DUCT", with_fan: true)
+  a16_selects(root: a16_root(kind: PlugDuct), printed: "DUCT", with_fan: true)
+    && a16_selects(root: a16_root(kind: SleeveDuct), printed: "DUCT", with_fan: true)
+    && a16_selects(root: a16_root(kind: PlugFitRing), printed: "FIT-RING", with_fan: false)
+    && a16_selects(root: a16_root(kind: SleeveFitRing), printed: "FIT-RING", with_fan: false)
+    && a16_selects(root: a16_root(kind: BlowerDuct), printed: "DUCT", with_fan: true)
+    && a16_selects(root: a16_root(kind: BlowerFlatOnEndDuct), printed: "DUCT", with_fan: true)
 }
 
 // RED: the duct and the residential cassette share no part id. This is a claim about that pair only;
@@ -62,7 +74,7 @@ test fn w_a16_duct_selects_exactly_its_parts_and_power_keepout() -> Bool {
 // (w_the_prepared_root_is_bound_by_the_manifest_digest) is what keeps overlapping roots apart.
 test fn w_duct_and_residential_cassette_share_no_part_ids() -> Bool {
   match selected(root: ResidentialCassette) {
-    Present { value: c } => match selected(root: A16PlugDuct) {
+    Present { value: c } => match selected(root: a16_root(kind: PlugDuct)) {
       Present { value: d } =>
         !any(ids(a: c), x => any(ids(a: d), y => x == y))
       Absent => false
@@ -81,10 +93,31 @@ test fn w_root_wire_round_trips_and_unknown_refuses() -> Bool {
     && match printed_assembly_root_from_wire(s: "cassette") { Present { value: _ } => false Absent => true }
 }
 
+// WHICH ROOTS EXIST IS READ FROM THE CARD ROSTER, not from a list of enum arms. The count is the roster
+// crossed with the six shapes; every catalogued card's six shapes have a wire spelling that decodes back to
+// the same root; the six A16 spellings are byte-for-byte the ones the printed parts carry; a card with no
+// reading still HAS roots (t10-plug-fit-ring decodes), which is what lets it refuse by naming its reading
+// instead of not existing; and an id that is not on the roster decodes to nothing.
+test fn w_the_duct_roots_are_enumerated_from_the_card_roster() -> Bool {
+  list_length(items: printed_assembly_roots) == 2 + list_length(items: duct_cards) * list_length(items: duct_root_kinds)
+    && all(duct_cards, c => all(duct_root_kinds, k =>
+      match printed_assembly_root_from_wire(s: printed_assembly_root_wire(root: duct_card_root(card: c, kind: k))) {
+        Present { value: back } => printed_assembly_root_wire(root: back) == printed_assembly_root_wire(root: duct_card_root(card: c, kind: k))
+        Absent => false
+      }))
+    && all(["a16-plug-duct", "a16-sleeve-duct", "a16-plug-fit-ring", "a16-sleeve-fit-ring", "a16-blower-duct", "a16-blower-flat-on-end-duct"], s =>
+      match printed_assembly_root_from_wire(s: s) {
+        Present { value: r } => printed_assembly_root_wire(root: r) == s
+        Absent => false
+      })
+    && match printed_assembly_root_from_wire(s: "t10-plug-fit-ring") { Present { value: _ } => true Absent => false }
+    && match printed_assembly_root_from_wire(s: "t40-plug-duct") { Present { value: _ } => false Absent => true }
+}
+
 // The checked manifest carries the root and its keep-outs, which is what preparation reads back and
 // what the CAD adapter enforces on solids.
 test fn w_duct_manifest_names_its_root_and_keepout() -> Bool {
-  match selected(root: A16SleeveFitRing) {
+  match selected(root: a16_root(kind: SleeveFitRing)) {
     Present { value: a } => {
       let m = serialize_json(v: printable_manifest(a: a))
       string_contains(s: m, pattern: "\"root\": \"a16-sleeve-fit-ring\"") && string_contains(s: m, pattern: "\"required_keepouts\": [\"POWER-KEEPOUT\"]")
@@ -111,4 +144,51 @@ test fn w_the_prepared_root_is_bound_by_the_manifest_digest() -> Bool {
 // A manifest without a root refuses rather than defaulting to the cassette.
 test fn w_a_manifest_without_a_root_refuses() -> Bool {
   match manifest_identity(content: "{\"parts\": []}") { Present { value: _ } => false Absent => true }
+}
+
+fn refuses_naming(s: PrintableAssemblySelection, card: DuctCard) -> Bool {
+  match s {
+    PrintableAssemblyReady { assembly: _ } => false
+    PrintableAssemblyRefused { reason: r } => r == duct_card_unread_reason(card: card) && string_contains(s: r, pattern: "end face")
+  }
+}
+
+// A card whose end face nobody has read has no dimensions to print from: EVERY root the roster enumerates
+// for it refuses, through select_printable_assembly itself, and the refusal names the reading it needs --
+// rather than falling back to the A16's geometry. The three direct calls below keep the claim pinned to the
+// geometry producers as well as to the selection.
+test fn w_an_unread_card_refuses_every_shape_by_naming_its_reading() -> Bool {
+  all([t4_duct_card, a2_duct_card, t10_duct_card], c =>
+    all(duct_root_kinds, k => refuses_naming(s: select_printable_assembly(root: duct_card_root(card: c, kind: k)), card: c))
+    && refuses_naming(s: duct_selection(root: duct_card_root(card: c, kind: PlugDuct), card: c, mount: PlugAndFlange, extent: FullDuct), card: c)
+      && refuses_naming(s: blower_selection(root: duct_card_root(card: c, kind: BlowerDuct), card: c), card: c)
+      && refuses_naming(s: plane_on_end_selection(root: duct_card_root(card: c, kind: BlowerFlatOnEndDuct), card: c), card: c))
+}
+
+// CONTROL: the read card selects through the same function.
+test fn w_the_read_card_selects_through_the_same_function() -> Bool {
+  match duct_selection(root: a16_root(kind: PlugDuct), card: a16_duct_card, mount: PlugAndFlange, extent: FullDuct) {
+    PrintableAssemblyReady { assembly: _ } => true
+    PrintableAssemblyRefused { reason: _ } => false
+  }
+}
+
+// A CHANGE DETECTOR for the printed A16 fit ring, honestly labelled. The a16-plug-fit-ring root was printed
+// out of band and the operator reported "part fits the A16" on 2026-10-26 (artifacts/printing/
+// a16-plug-fit-ring/manual-start-2026-10-26.json; product.printed_chassis.fit_observations plug_fit_ring_fit).
+// That record carries only the 3mf project_sha256, no manifest digest or part geometry, so this literal
+// CANNOT be re-derived from the print: it was recorded at 0633c1d from the tree, whose fit-ring geometry is
+// unchanged since before the print (git history), and it covers the WHOLE manifest including note and part
+// names (the CARD name changed at that commit). A red here means a printed dimension moved OR text changed;
+// a reviewer must tell which before re-recording. It becomes a grounded control when a print record carries the
+// FIT-RING part geometry to digest instead. The root is now spelled as a catalogued card joined to a shape
+// (printable_assembly_selection duct_card_root); the two literals below are byte-for-byte what they were.
+test fn w_the_a16_plug_fit_ring_is_the_geometry_that_was_printed_and_fitted() -> Bool {
+  match selected(root: a16_root(kind: PlugFitRing)) {
+    Present { value: a } => match manifest_identity(content: serialize_json(v: printable_manifest(a: a))) {
+      Present { value: m } => m.root_wire == "a16-plug-fit-ring" && m.digest.hex == "c12992f1156658e0c81955f452c61e2bd9a02fa674691e2d671ed39180e66ac2"
+      Absent => false
+    }
+    Absent => false
+  }
 }

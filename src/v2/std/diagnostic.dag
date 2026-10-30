@@ -43,6 +43,17 @@ type NoCorrectionReason
   // The identity is the declarer's qualified path as segments, exactly as DeclarationLocus carries
   // one, so a census joins on it rather than reading the refusal's reason text.
   | DeclarerRefused { declarer: FreeMonoid<Symbol> }
+  // THE NAME THE REFUSAL IS ABOUT, carried where a caller cannot overwrite it. `at` is a POSITION and a
+  // located caller legitimately owns it: `admit_imported_module_existence` re-stamps a requester's refusal
+  // with the import's own authored locus -- that is the only position the requester can be pointed at, and
+  // the census reads it -- and in doing so drops whatever `at` cited. A refusal naming its subject only in
+  // `at` would lose the name on exactly that route, and a reader wanting it back had to re-derive it.
+  // This arm holds the SAME value the mint writes into `at`, from the mint's single argument, so the two
+  // cannot disagree: one producer, two projections of it. It is the diagnostic projection of
+  // `v2.compiler.name_resolve`'s `ModuleRootLookup::ModuleRootMissing { requested }`; the names differ only
+  // because the roles differ (a lookup outcome vs. a correction on a refusal), and both are the projection
+  // of the same requested QualifiedName.
+  | RequestedModuleMissing { requested: FreeMonoid<Symbol> }
 
 type Correction
   = Suggested { node: Node }

@@ -1,10 +1,11 @@
 module gunbc.machine_intake.bmc_secure
 
-import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length }
+import std.measure { Second, second_to_millisecond, millisecond_count }
+import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length, range }
 import std.decl_ref { decl_ref }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.algebra { FreeSemigroup, length, list_head }
+import std.algebra { FreeSemigroup, int_total_order, length, list_head, list_sort_by_key }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -21,7 +22,35 @@ import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.board_authority { BoardAuthorityRef }
 import gunbc.machine_intake.bmc_credential_policy {
-  BmcCredentialPolicyKey, CredentialSurface, SharedCredentialSurface, shared_store_surfaces, bmc_credential_policy_for, bmc_credential_policy_key_eq,
+  BmcCredentialPolicyKey, CredentialSurface, SharedCredentialSurface, shared_store_surfaces, bmc_credential_policy_for,
+  PublishedCredentialChangeForced, bmc_credential_policy_key_eq,
+}
+import extdeps.bmc.redfish {
+  RedfishAccountServicePropertyCount,
+  redfish_account_lockout_counter_reset_window,
+  RedfishAccountServiceLockoutServed,
+  RedfishAccountServiceLockoutVerdict,
+  RedfishAccountServiceLockoutPropertiesRead,
+  RedfishAccountServiceLockoutPropertiesNotAuthenticated,
+  RedfishAccountServiceLockoutPropertiesUnreadable,
+  RedfishAccountLockoutThresholdReading,
+  AccountIsNeverLockedByServedThreshold,
+  AccountLocksAfter,
+  redfish_account_lockout_threshold_locks_after,
+  redfish_account_lockout_counter_reset_enabled_reads,
+}
+import extdeps.bmc.ipmi_channel {
+  IpmiLanBadPasswordThreshold,
+  ipmi_lan_attempt_count_reset_window,
+  IpmiLanBadPasswordThresholdVerdict,
+  IpmiLanBadPasswordThresholdRead,
+  IpmiLanBadPasswordThresholdNotAvailable,
+  IpmiLanBadPasswordThresholdReadFailed,
+  IpmiLanLockoutThresholdReading,
+  IpmiLanUsersAreNotLockedOut,
+  IpmiLanLocksAfter,
+  ipmi_lan_bad_password_threshold_locks_after,
+  ipmi_lan_failed_attempts_drive_lockout,
 }
 import extdeps.cloud.gcp.secret_manager {
   SmResolvedVersionIdentity,
@@ -1357,6 +1386,22 @@ type BmcAccountStateObservation sole_constructor {
   break_glass: ManagedCredentialReference
   break_glass_probe: ObservedCredentialProbe
   controller_clock: ControllerClockReading?
+  // THE SERVED LOCKOUT READING, taken beside the other readings of this pass: what
+  // this controller serves for AccountService lockout and for the per-channel IPMI
+  // LAN Bad Password Threshold, or the typed reason neither could be read. It is a
+  // REQUIRED field and not an optional one, because "this plan may not spend a
+  // failed login until we know" is the answer, and an optional field would let a
+  // caller mean that by forgetting to fill it in. See the section at the end of
+  // this module.
+  //
+  // WHY ITS INSTANT IS PART OF ITS IDENTITY, unlike the controller clock above
+  // (which is zeroed before the join): the served threshold is OPERATOR-WRITABLE —
+  // an AccountService PATCH, a Set LAN Configuration Parameters — so a reading from
+  // an earlier instant may describe a policy the controller no longer has, and two
+  // readings that differ only in when they were taken are NOT the same reading here.
+  // The consequence is deliberate and costs a pass: a phase that already holds the
+  // conjunction but bring a lockout reading from another instant is asked to re-read.
+  lockout: BmcControllerLockoutReading
 }
 
 fn observed_bmc_account_state(
@@ -1378,6 +1423,7 @@ fn observed_bmc_account_state(
   break_glass: ManagedCredentialReference,
   break_glass_probe: ObservedCredentialProbe,
   controller_clock: ControllerClockReading?,
+  lockout: BmcControllerLockoutReading,
 ) -> BmcAccountStateObservation
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
@@ -1403,6 +1449,7 @@ fn observed_bmc_account_state(
     break_glass: break_glass,
     break_glass_probe: break_glass_probe,
     controller_clock: controller_clock,
+    lockout: lockout,
   }
 }
 
@@ -1452,6 +1499,7 @@ fn observation_with_controller_clock(base: BmcAccountStateObservation, controlle
     break_glass: base.break_glass,
     break_glass_probe: base.break_glass_probe,
     controller_clock: controller_clock,
+    lockout: base.lockout,
   )
 }
 
@@ -1979,6 +2027,12 @@ type BmcAccountActionPlan sole_constructor {
   channel_writes: List<PlannedChannelAccessWrite>
   planned_at: ObserverClockInstant
 }
+// THE FAILED-LOGIN BUDGET'S REFUSAL (the last arm) carries one entry per
+// account+surface that is over budget, each with the plan's own cost, the served
+// threshold, and what is already spent inside the reset window — or the reason no
+// threshold could be planned against at all. See the section at the end of this
+// module; the rung is
+// test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.threshold_three_refuses_three_failing_logins_and_admits_two.
 
 type BmcAccountPlanRefusal
   = AccountPlanNotDue { decision: UpsertDecision<BmcAccountActionDue> }
@@ -1998,6 +2052,7 @@ type BmcAccountPlanRefusal
   | ChannelCloseRouteNotSupplied { channels: List<IpmiChannelNumber> }
   | PlanWritesAreNotTheApprovedConvergence { approved: List<BmcAccountWriteRequest>, planned: List<BmcAccountWriteRequest> }
   | ChannelWriteNotAdmitted { channel: IpmiChannelNumber, admission: RotationApplyAdmission }
+  | FailedLoginBudgetExceeded { blocked: List<BmcFailedLoginBudgetBlockReading> }
 
 type BmcAccountPlanOutcome
   = BmcAccountPlanned { plan: BmcAccountActionPlan }
@@ -2268,6 +2323,16 @@ fn plan_bmc_account_action(
   published: PublishedWriteInput,
   channel_close: ChannelCloseInput?,
   planned_at: ObserverClockInstant,
+  // WHAT THE PLAN DECLARES IT MAY DO AGAIN: each entry is a credential it may
+  // present again, on one account and surface, and the budget charges every one of
+  // those presentations. A plan that declares nothing is charged nothing for a
+  // retry — an undeclared retry is a bug in the realization, not a licence here.
+  declared_retries: List<BmcDeclaredLoginRetry>,
+  // THE SEALED FORCED-CHANGE STATE of this build, if one was admitted
+  // (admit_published_credential_change_forced). It is the ONLY thing that can make
+  // the published credential's own authentication cost nothing, and only on the
+  // Redfish surface — see bmc_plan_failing_logins.
+  forced_change: PublishedCredentialChangeForced?,
 ) -> BmcAccountPlanOutcome {
   match inspect_bmc_secure_state(subject: subject, goal: goal, reading: reading) {
     BmcSecureStateUnobserved { cause: c } => BmcAccountPlanRefused { cause: AccountPlanUnobserved { cause: c } }
@@ -2304,20 +2369,37 @@ fn plan_bmc_account_action(
                           if !same_write_requests(a: approved, b: planned) {
                             BmcAccountPlanRefused { cause: PlanWritesAreNotTheApprovedConvergence { approved: approved, planned: planned } }
                           } else {
-                          BmcAccountPlanned {
-                            plan: BmcAccountActionPlan {
-                              subject: subject,
-                              endpoint: o.endpoint,
-                              firmware: o.firmware,
-                              goal: BmcSecureGoal { managed: next, published_break_glass: pg, policy: goal.policy },
-                              diverged: o,
-                              due: due,
-                              managed_write: mw,
-                              published_write: pw,
-                              channel_writes: cw,
-                              planned_at: planned_at,
-                            },
-                          }
+                            // THE FAILED-LOGIN BUDGET GATE. LAST CHECK BEFORE A PLAN IS MINTED,
+                            // after the writes are admitted and after the plan is confirmed to BE
+                            // the approved convergence: a plan that would spend more failed logins
+                            // than this controller leaves never produces a write, never asks for an
+                            // approval, and says which account on which surface is over. It sees the
+                            // whole plan — managed write, published write and channel writes are all
+                            // admitted by this point — because the lockout counter is spent by
+                            // logins, not by writes.
+                            match bmc_failed_login_budget_verdict(
+                              roster: bmc_plan_failing_logins(goal: goal, observed: o, managed_write: mw, published_write: pw, forced_change: forced_change, declared_retries: declared_retries),
+                              reading: o.lockout,
+                              known: bmc_known_failed_logins_of(observed: o, goal: goal, managed_write: mw, published_write: pw),
+                              now: observer_instant_millis(instant: planned_at),
+                            ) {
+                              FailedLoginBudgetRefused { blocked: blocks, spends: _, exempt: _ } => BmcAccountPlanRefused { cause: FailedLoginBudgetExceeded { blocked: blocks } }
+                              FailedLoginBudgetAdmitted { spends: _, exempt: _ } =>
+                                BmcAccountPlanned {
+                                  plan: BmcAccountActionPlan {
+                                    subject: subject,
+                                    endpoint: o.endpoint,
+                                    firmware: o.firmware,
+                                    goal: BmcSecureGoal { managed: next, published_break_glass: pg, policy: goal.policy },
+                                    diverged: o,
+                                    due: due,
+                                    managed_write: mw,
+                                    published_write: pw,
+                                    channel_writes: cw,
+                                    planned_at: planned_at,
+                                  },
+                                }
+                            }
                           }
                         }
                       }
@@ -2737,6 +2819,16 @@ fn dry_read_bmc_account_state(
   published_account: PublishedAccountKind,
   break_glass: ManagedCredentialReference,
   break_glass_password: String,
+  // THE LOCKOUT READ OF THIS PASS, taken beside the probes below. A live reader
+  // fills it from a Redfish GET of AccountService and a Get LAN Configuration
+  // Parameters of the addressed channel, through bmc_lockout_surface_from_redfish
+  // and bmc_lockout_surface_from_ipmi_lan; until that read is wired
+  // (bmc_served_lockout_live_read_frontier) every caller says so in the reading it
+  // passes — test.fixture.machine_intake.bmc_lockout is how a witness does it — and
+  // the budget gate then refuses any plan carrying a potentially-failing login on
+  // the unread surface. It is an argument and not a default precisely because a
+  // caller must decide which of those two it is.
+  lockout: BmcControllerLockoutReading,
   published_reading: DryPublishedReading,
   attempt: AttemptIdentity,
   read_at_millis: EpochMs,
@@ -2744,6 +2836,10 @@ fn dry_read_bmc_account_state(
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "read_root"),
+    // The served-lockout witness reads a root state so its budget gate has a real
+    // observation to refuse or admit; its pass is dry and it names itself in every
+    // instant it mints.
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "read_lock"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "read_root_on"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path"),
@@ -2777,6 +2873,7 @@ fn dry_read_bmc_account_state(
     break_glass: break_glass,
     break_glass_probe: dry_probe(world: world, user: published_user, password: break_glass_password, what: "break-glass", at: at),
     controller_clock: none,
+    lockout: lockout,
   )
 }
 
@@ -2918,3 +3015,1062 @@ data bmc_secure_state_cutover_frontier: DissolutionCondition = unbound_dissoluti
 data bmc_secure_standing_consumer_frontier: DissolutionCondition = unbound_dissolution(
   description: "dissolves when the srv1-4 / srv14 ALTRAD8UD gunbc.host.managed_host rows take their BmcSecureStanding from bmc_secure_standing_of_phase_receipt over each unit's own converged BmcSecurePhaseReceipt, that admission being named in the projection's admit_callers, and mtcollins1's held transition follows on the same projection in the change that drops gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash; NOT satisfied by a witness calling the projection, by a standing re-minted from an event-shaped observation, or by a consumer pointed at a receipt for another subject" as NonEmptyStr,
 )
+
+// ════════════════════════════════════════════════════════════════════════════
+// SERVED LOCKOUT POLICY AND THE FAILED-LOGIN BUDGET (BMC 1b).
+//
+// WHAT THIS SECTION IS FOR. A rotation plan logs in, and a wrong password is a
+// FAILED login. The controller counts failed logins per account and locks the
+// account when the count reaches the threshold it SERVES — it is the controller
+// that decides, not a row we keep: Redfish serves
+// AccountService.AccountLockoutThreshold / AccountLockoutDuration /
+// AccountLockoutCounterResetAfter / AccountLockoutCounterResetEnabled
+// (extdeps.bmc.redfish, RedfishAccountServiceLockoutServed, whose module
+// comment quotes each property verbatim from
+// redfish.dmtf.org/schemas/v1/AccountService.v1_19_0.json, fetched 2026-10-29),
+// and an IPMI controller serves the per-channel Bad Password Threshold block of
+// its LAN configuration parameters (extdeps.bmc.ipmi_channel,
+// IpmiLanBadPasswordThreshold: Get LAN Configuration Parameters, NetFn 0x0C,
+// parameter selector IPMI_LANP_BAD_PASS_THRESH, a 6-byte block in units of ten
+// seconds — cited there from ipmitool's lib/ipmi_lanp.c at commit
+// be11d948f89b10be094e28d8a0a5e8fb532c7b60, the transport this fold drives). So
+// this section holds NO threshold of its own: it holds the READING of those
+// served properties and the arithmetic that reading licenses. On OpenBMC the
+// published account IS the managed account (root), so one careless probe locks
+// the account the whole plan exists to keep; on the H11SSL units an IPMI LAN
+// lockout after 3 bad passwords is what the operator reports, and that number
+// is in this repository's capture
+// (artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/lan-print-1.txt:
+// "Bad Password Threshold : 3") as a REPORTED read, not as a row.
+//
+// THE BUDGET. Every login a plan MAY make that can be answered with a rejected
+// password is counted, per account AND per surface, against the headroom the
+// served threshold leaves:
+//
+//     may_fail = threshold - 1 - (known failed attempts still inside the reset
+//                window), floored at zero
+//
+// The -1 is because a login is refused when the count REACHES the threshold:
+// with threshold 3, two failures leave the account usable and the third locks
+// it. The witness test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.threshold_three_refuses_three_failing_logins_and_admits_two is
+// the rung — threshold N with a plan of N potentially-failing logins on that
+// account+surface refuses, and N-1 admits — which is the same N-1 rule the
+// 03.22.00 probe budget already states (bmc_probe_budget_is_sound cites the
+// sealed 1 <= probes <= threshold - 1 from
+// artifacts/bmc/srv15-lab-2026-10-27/openbmc-3.22.00-ipmi-probe-policy.json).
+// A plan whose count exceeds the headroom is REFUSED AT PLAN TIME, inside
+// plan_bmc_account_action: no write is asked for, no approval is spent, and the
+// refusal is a typed BmcAccountPlanRefusal the operator reads.
+//
+// UNKNOWN THRESHOLD REFUSES. When a surface's threshold is not readable, no
+// headroom can be computed, so ANY plan containing a potentially-failing login
+// on that account+surface is refused (BmcFailedLoginThresholdUnknown) — §5,
+// "what is not read is said": the safe default is the refusal, never a number.
+// The ONE exception is the forced-change path, which is NOT a failed login: on
+// OpenBMC 03.22.00 a login with any password is answered
+// 403 Base.1.16.0.PasswordChangeRequired — an AUTHENTICATED response that
+// rejects the OPERATION, not a 401 that rejects the CREDENTIAL. Only a rejected
+// credential moves the controller's failed-login counter, so that path costs
+// zero. That reading is not ours to assert: it is the sealed
+// PublishedCredentialChangeForced of gunbc.machine_intake.bmc_credential_policy
+// (minted only by admit_published_credential_change_forced, over a captured
+// Redfish error body verified against the build's row), and it is grounded for
+// the REDFISH surface only — the IPMI lanplus row of that same build is
+// explicitly not grounded there. So the exemption is granted on the Redfish
+// surface and nowhere else; the witness
+// test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.the_forced_change_path_costs_no_failed_login_on_the_surface_it_is_grounded_for is the rung
+// that holds it to that scope: the same published-credential login under the
+// same sealed state admits over Redfish and refuses over IPMI lanplus.
+//
+// WHAT COSTS WHAT.
+//   - Derived retirement (PublishedCredentialRetiredOnTheManagedAccount) costs
+//     ZERO failed logins: nothing is probed to prove the published password
+//     fails, because the build grounds one password per account and the
+//     derivation (SharedStoreRetirement) is itself the proof. Rung:
+//     test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.derived_retirement_costs_nothing_and_the_probed_path_one_per_member.
+//   - The PROBED path costs ONE login per LAN member the published user may
+//     reach: the plan must try the published password on each addressed LAN
+//     channel (admitted_channel_writes refuses a member the plan does not
+//     cover), and each attempt can be rejected. Rung:
+//     test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.derived_retirement_costs_nothing_and_the_probed_path_one_per_member.
+//   - A probe is charged to the account it AUTHENTICATES AS. Probing the
+//     published/ADMIN account does not spend root's budget; it spends the ADMIN
+//     account's own. Rung:
+//     test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.a_retry_on_another_account_spends_that_account_and_not_root.
+//   - Declared retries (BmcDeclaredLoginRetry) count: the plan says how many
+//     further times it may present a credential, and each further presentation
+//     is another login the controller may count. A plan that declares no retry
+//     spends nothing for one — an undeclared retry is a bug in the realization,
+//     not a licence handed out here. Rung:
+//     test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.declared_retries_are_charged_as_logins.
+//   - A WRITE authentication is NOT counted, and that exclusion is named:
+//     bmc_write_authentication_failed_login_frontier at the end of this section
+//     states what would make it wrong. The password write's authorization was
+//     checked before the request was built, and by the time it runs the same
+//     credential has just been accepted by the probe beside it.
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── SURFACE AND KEY ──────────────────────────────────────────────────────────
+// The controller counts failed logins per ACCOUNT, and each surface reaches an
+// account through its own code path with its own SERVED policy (the Redfish
+// AccountService properties vs the per-channel IPMI LAN parameters), so the
+// budget key is the PAIR: a plan may have headroom on Redfish and none on
+// channel 1, and both have to be satisfied.
+//
+// WHY A CHANNEL AND ALSO AN UNDETERMINED ARM. The IPMI Bad Password Threshold is
+// served PER CHANNEL, so a probe recorded against a channel is charged to that
+// channel's counter. A plan-side IPMI login is different: the Set User Password
+// request (BmcAccountWriteRequest.IpmiSetUserPassword) names a user id and no
+// channel, because the lanplus transport picks the addressed channel, not the
+// plan. Such a login is therefore charged to IpmiLanPlusLoginChannelUndetermined,
+// whose threshold is the TIGHTEST served one across the controller's addressed
+// LAN channels — the plan has to fit whichever channel it ends up crossing, and
+// we do not get to choose after the fact. SurfaceOfThePlannedWriteUndetermined is
+// the fail-closed arm for a write whose route carries no request at all; it is
+// never readable, so a login charged there is refused.
+
+type BmcFailedLoginSurface =
+    RedfishAccountServiceLogin
+  | IpmiLanPlusLogin { channel: IpmiChannelNumber }
+  | IpmiLanPlusLoginChannelUndetermined
+  | SurfaceOfThePlannedWriteUndetermined
+
+fn bmc_failed_login_surface_same(a: BmcFailedLoginSurface, b: BmcFailedLoginSurface) -> Bool {
+  match a {
+    RedfishAccountServiceLogin => match b { RedfishAccountServiceLogin => true, IpmiLanPlusLogin { channel: _ } => false, IpmiLanPlusLoginChannelUndetermined => false, SurfaceOfThePlannedWriteUndetermined => false }
+    IpmiLanPlusLogin { channel: ca } => match b {
+      RedfishAccountServiceLogin => false
+      IpmiLanPlusLogin { channel: cb } => (ca as Int) == (cb as Int)
+      IpmiLanPlusLoginChannelUndetermined => false
+      SurfaceOfThePlannedWriteUndetermined => false
+    }
+    IpmiLanPlusLoginChannelUndetermined => match b { RedfishAccountServiceLogin => false, IpmiLanPlusLogin { channel: _ } => false, IpmiLanPlusLoginChannelUndetermined => true, SurfaceOfThePlannedWriteUndetermined => false }
+    SurfaceOfThePlannedWriteUndetermined => match b { RedfishAccountServiceLogin => false, IpmiLanPlusLogin { channel: _ } => false, IpmiLanPlusLoginChannelUndetermined => false, SurfaceOfThePlannedWriteUndetermined => true }
+  }
+}
+
+type BmcFailedLoginBudgetKey {
+  account: NonEmptyStr
+  surface: BmcFailedLoginSurface
+}
+
+fn bmc_failed_login_budget_key_same(a: BmcFailedLoginBudgetKey, b: BmcFailedLoginBudgetKey) -> Bool {
+  (a.account as String) == (b.account as String) && bmc_failed_login_surface_same(a: a.surface, b: b.surface)
+}
+
+// ── WHAT ONE PLAN MAY LOG IN WITH ────────────────────────────────────────────
+// One potentially-failing login the plan may make. Each variant names the
+// account it AUTHENTICATES AS and the surface it crosses: the account is whose
+// counter the controller moves, so a probe of the published ADMIN account moves
+// the ADMIN's counter and not root's, whatever motivated it.
+
+type BmcCountedFailedLogin =
+    ManagedProbeLogin { account: NonEmptyStr, surface: BmcFailedLoginSurface }
+  | BreakGlassProbeLogin { account: NonEmptyStr, surface: BmcFailedLoginSurface }
+  | PublishedProbeLogin { account: NonEmptyStr, surface: BmcFailedLoginSurface, channel: IpmiChannelNumber }
+  | PublishedCredentialAuthenticationLogin { account: NonEmptyStr, surface: BmcFailedLoginSurface }
+  | DeclaredRetryLogin { account: NonEmptyStr, surface: BmcFailedLoginSurface, of: NonEmptyStr }
+
+fn bmc_counted_login_surface(login: BmcCountedFailedLogin) -> BmcFailedLoginSurface {
+  match login {
+    ManagedProbeLogin { account: _, surface: s } => s
+    BreakGlassProbeLogin { account: _, surface: s } => s
+    PublishedProbeLogin { account: _, surface: s, channel: _ } => s
+    PublishedCredentialAuthenticationLogin { account: _, surface: s } => s
+    DeclaredRetryLogin { account: _, surface: s, of: _ } => s
+  }
+}
+
+fn bmc_counted_login_account(login: BmcCountedFailedLogin) -> NonEmptyStr {
+  match login {
+    ManagedProbeLogin { account: a, surface: _ } => a
+    BreakGlassProbeLogin { account: a, surface: _ } => a
+    PublishedProbeLogin { account: a, surface: _, channel: _ } => a
+    PublishedCredentialAuthenticationLogin { account: a, surface: _ } => a
+    DeclaredRetryLogin { account: a, surface: _, of: _ } => a
+  }
+}
+
+fn bmc_counted_login_key(login: BmcCountedFailedLogin) -> BmcFailedLoginBudgetKey {
+  BmcFailedLoginBudgetKey { account: bmc_counted_login_account(login: login), surface: bmc_counted_login_surface(login: login) }
+}
+
+// A RETRY THE PLAN DECLARES: how many further times it may present this
+// account's credential on this surface, and why it believes it may need to
+// (of: what it is retrying). extra_attempts is at least 1 because a retry that
+// can never retry is not a retry, it is a restatement of the login beside it;
+// and at most 32 because a plan that wants more has no budget question left —
+// no controller this repository has evidence for serves a threshold that high.
+// CONSUMER: BmcFailedLoginBudgetRequest.declared_retries, read by
+// bmc_plan_failing_logins.
+// HOW MANY TIMES A PLAN MAY PRESENT A CREDENTIAL AGAIN, bounded: at least once
+// (a retry that can never retry is not a retry) and at most 32 (no controller this
+// repository has evidence for serves a threshold that high, so a plan wanting more
+// has no budget question left to ask). Named because a record field's constraint is
+// fine but the same bound appears in two records and must say the same thing once.
+type BmcDeclaredLoginExtraAttempts = Int where range(min: 1, max: 32)
+
+type BmcDeclaredLoginRetry {
+  account: NonEmptyStr
+  surface: BmcFailedLoginSurface
+  of: NonEmptyStr
+  extra_attempts: BmcDeclaredLoginExtraAttempts
+}
+
+// ── THE ROSTER ───────────────────────────────────────────────────────────────
+// How many potentially-failing logins a plan may make on one account+surface,
+// with the plan's own list beside it in the order it makes them: a witness
+// reads the count off the list, and an operator can see WHICH login is the one
+// that would have locked the account.
+type BmcPlanFailedLoginSpend {
+  key: BmcFailedLoginBudgetKey
+  logins: List<BmcCountedFailedLogin>
+}
+
+// A login the sealed forced-change state exempts, kept OUT of the spends so it
+// can never be mistaken for a failure — and never quietly widened: attempts is
+// how many logins this record exempts, and forced is the sealed record that
+// says so, so a reader can walk from the exemption to the captured 403 behind
+// it. See the section header for why the surface is checked.
+type BmcForcedChangeExemptLogin {
+  account: NonEmptyStr
+  surface: BmcFailedLoginSurface
+  attempts: BmcDeclaredLoginExtraAttempts
+  forced: PublishedCredentialChangeForced
+}
+
+// The whole count of a plan: what it may spend, and what the sealed forced-change
+// state says it may spend WITHOUT it counting.
+type BmcPlanFailedLoginRoster {
+  spends: List<BmcPlanFailedLoginSpend>
+  exempt: List<BmcForcedChangeExemptLogin>
+}
+
+fn bmc_add_login(spends: List<BmcPlanFailedLoginSpend>, login: BmcCountedFailedLogin) -> List<BmcPlanFailedLoginSpend> {
+  let key = bmc_counted_login_key(login: login)
+  if any(spends, s => bmc_failed_login_budget_key_same(a: s.key, b: key)) {
+    map(spends, s => if bmc_failed_login_budget_key_same(a: s.key, b: key) {
+      BmcPlanFailedLoginSpend { key: s.key, logins: concat(s.logins, [login]) }
+    } else { s })
+  } else {
+    concat(spends, [BmcPlanFailedLoginSpend { key: key, logins: [login] }])
+  }
+}
+
+// Present the same credential again exactly n times: a declared retry of 3 costs
+// 3 logins, not "up to 3, we lost track".
+fn bmc_add_repeated_login(spends: List<BmcPlanFailedLoginSpend>, login: BmcCountedFailedLogin, times: Int) -> List<BmcPlanFailedLoginSpend> {
+  if times <= 0 { spends } else { bmc_add_repeated_login(spends: bmc_add_login(spends: spends, login: login), login: login, times: times - 1) }
+}
+
+// TWO EXEMPTIONS ARE THE SAME EXEMPTION when they exempt the same account on the
+// same surface under the same sealed build row: they merge into one record whose
+// attempts add, so the roster cannot be padded with duplicate entries and a reader
+// sees one number per account+surface.
+fn bmc_exemption_matches(x: BmcForcedChangeExemptLogin, e: BmcForcedChangeExemptLogin) -> Bool {
+  (x.account as String) == (e.account as String) && bmc_failed_login_surface_same(a: x.surface, b: e.surface) && bmc_credential_policy_key_eq(a: x.forced.key, b: e.forced.key)
+}
+
+fn bmc_add_exemption(exempt: List<BmcForcedChangeExemptLogin>, e: BmcForcedChangeExemptLogin) -> List<BmcForcedChangeExemptLogin> {
+  if any(exempt, x => bmc_exemption_matches(x: x, e: e)) {
+    map(exempt, x => if bmc_exemption_matches(x: x, e: e) { BmcForcedChangeExemptLogin { account: x.account, surface: x.surface, attempts: x.attempts + e.attempts, forced: x.forced } } else { x })
+  } else {
+    concat(exempt, [e])
+  }
+}
+
+fn bmc_spend_count(spends: List<BmcPlanFailedLoginSpend>, key: BmcFailedLoginBudgetKey) -> Int {
+  let hits = filter(spends, s => bmc_failed_login_budget_key_same(a: s.key, b: key))
+  match list_head(hits) {
+    Absent => 0
+    Present { value: s } => list_length(s.logins)
+  }
+}
+
+// The surface a planned write crosses, read off the route's own request. An
+// IPMI Set User Password names no channel, so it is the undetermined arm; a
+// privilege-limit write names the channel of the access row it sets.
+fn bmc_write_surface(write: PlannedAccountWrite) -> BmcFailedLoginSurface {
+  match grounded_request(standing: write.route) {
+    Present { value: RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } } => RedfishAccountServiceLogin
+    Present { value: IpmiSetUserPassword { user: _ } } => IpmiLanPlusLoginChannelUndetermined
+    Present { value: IpmiSetUserPrivilegeLimit { access: a } } => IpmiLanPlusLogin { channel: a.channel }
+    Present { value: _ } => SurfaceOfThePlannedWriteUndetermined
+    Absent => SurfaceOfThePlannedWriteUndetermined
+  }
+}
+
+// Does the sealed forced-change state exempt a login on THIS surface? The carrier is
+// `PublishedCredentialChangeForced`, which is SOLE-CONSTRUCTOR and mintable only by
+// bmc_credential_policy.admit_published_credential_change_forced over a captured
+// ForcedChangeResponseReading: a 403 whose bytes are the capture's, whose body the
+// Redfish verdict reads as Base.1.16.0.PasswordChangeRequired, on a build the policy
+// answers as forcing a factory change. There is no flag a caller can set to claim
+// the exemption, and the record carries the identity of the answer it witnessed — so
+// four conditions, each load-bearing:
+//   - the SURFACE is Redfish: the sealed 403 body is a Redfish error body, and
+//     bmc_credential_policy grounds the factory-login behaviour for that surface and
+//     leaves the IPMI lanplus row ungrounded;
+//   - the ENDPOINT is the one this plan's reading is of: a controller that was forced
+//     does not make this controller forced;
+//   - the ATTEMPT is the one this plan's reading was taken in: a 403 from an earlier
+//     run does not license a login in this one, and a plan must rely on the answer it
+//     actually received;
+//   - the FIRMWARE is the one this reading reports: a forced change on 03.22.00 says
+//     nothing about a controller that has since moved.
+// CONSUMER: bmc_plan_failing_logins.
+fn bmc_forced_change_covers(forced: PublishedCredentialChangeForced?, observed: BmcAccountStateObservation, surface: BmcFailedLoginSurface) -> PublishedCredentialChangeForced? {
+  match forced {
+    Absent => none
+    Present { value: f } =>
+      if !bmc_failed_login_surface_same(a: surface, b: RedfishAccountServiceLogin) {
+        none
+      } else if f.endpoint != observed.endpoint {
+        // The 403 was read on a DIFFERENT controller. Its being forced says nothing
+        // about logging into this one, so nothing is exempt here.
+        none
+      } else if f.attempt != observed.attempt {
+        // And it was read in a DIFFERENT run of this controller. A forced answer
+        // from an earlier attempt does not license a login in this one: the answer
+        // the plan relies on has to be the answer this plan's reading received.
+        none
+      } else if !bmc_firmware_release_identity_eq(a: f.key.firmware, b: observed.firmware) {
+        none
+      } else {
+        Present { value: f }
+      }
+  }
+}
+
+// THE WHOLE COUNT, from the plan's own parts. Every argument is a value the
+// planner already holds; this adds no knowledge of its own, it only says, for
+// each login the plan is allowed to make, whose counter it can move.
+// CONSUMER: bmc_failed_login_budget_verdict, which plan_bmc_account_action runs.
+fn bmc_plan_failing_logins(
+  goal: BmcSecureGoal,
+  observed: BmcAccountStateObservation,
+  managed_write: PlannedAccountWrite?,
+  published_write: PlannedPublishedWrite?,
+  forced_change: PublishedCredentialChangeForced?,
+  declared_retries: List<BmcDeclaredLoginRetry>,
+) -> BmcPlanFailedLoginRoster {
+  let managed_account = goal.managed.account
+  let published_account = goal.published_break_glass.account
+  let managed_surface = match managed_write {
+    Present { value: w } => bmc_write_surface(write: w)
+    Absent => SurfaceOfThePlannedWriteUndetermined
+  }
+  let published_is_the_managed_write = match published_write {
+    Present { value: PublishedWrittenSeparately { write: _ } } => false
+    Present { value: PublishedIsTheManagedWrite } => true
+    Absent => false
+  }
+  let published_surface = match published_write {
+    Present { value: PublishedWrittenSeparately { write: w } } => bmc_write_surface(write: w)
+    _ => managed_surface
+  }
+  // 1. THE MANAGED PROBE. The plan reads this account's state by logging in as
+  //    it with the credential it believes is current, over the surface its
+  //    managed write will use — the probe exists to say what that write needs.
+  let after_managed = match managed_write {
+    Present { value: _ } => bmc_add_login(spends: [], login: ManagedProbeLogin { account: managed_account, surface: managed_surface })
+    Absent => []
+  }
+  // 2. THE BREAK-GLASS PROBE: its own login, on its own account's counter, made
+  //    whenever the plan writes at all. When the published account IS the managed
+  //    account it lands on the same counter as the managed probe, and it is STILL a
+  //    second login: one stored password per account says at most one of the two
+  //    presentations can be accepted, not that two presentations are one attempt.
+  //    Only one authentication reused by both consumers would be one login, and the
+  //    plan makes no such reuse (the reading's side of the same rule is
+  //    bmc_break_glass_probe_is_the_managed_authentication).
+  let after_break = match managed_write {
+    Absent => after_managed
+    Present { value: _ } => bmc_add_login(spends: after_managed, login: BreakGlassProbeLogin { account: published_account, surface: published_surface })
+  }
+  // 3. THE PUBLISHED PROBES: one login per addressed LAN member the published
+  //    user may reach, charged to the PUBLISHED account on the channel each
+  //    probe crossed. A derived (retired) published credential contributes
+  //    NOTHING — that is the whole point of deriving it instead of probing it.
+  let after_probes = match observed.published_credential {
+    PublishedCredentialRetiredOnTheManagedAccount { derivation: _ } => after_break
+    PublishedCredentialProbed { probes: probes } =>
+      fold(probes, init: after_break, f: (acc, p) => {
+        bmc_add_login(spends: acc, login: PublishedProbeLogin { account: published_account, surface: IpmiLanPlusLogin { channel: p.channel }, channel: p.channel })
+      })
+  }
+  // 4. THE PUBLISHED CREDENTIAL'S OWN AUTHENTICATION, when the plan retires it by
+  //    writing the managed password over it: at that moment the plan holds only
+  //    the published credential, so that login can be answered 401 and moves the
+  //    published account's counter. The sealed forced-change state says the
+  //    controller answers it with 403 PasswordChangeRequired instead —
+  //    authenticated, not failed — so it is exempted AND RECORDED as exempt
+  //    rather than dropped.
+  let published_auth_login = if published_is_the_managed_write {
+    Present { value: PublishedCredentialAuthenticationLogin { account: published_account, surface: managed_surface } }
+  } else {
+    none
+  }
+  let forced_covers_published_auth = match published_auth_login {
+    Present { value: login } => bmc_forced_change_covers(forced: forced_change, observed: observed, surface: bmc_counted_login_surface(login: login))
+    Absent => none
+  }
+  let spends_after_auth = match forced_covers_published_auth {
+    Present { value: _ } => after_probes
+    Absent => match published_auth_login {
+      Present { value: login } => bmc_add_login(spends: after_probes, login: login)
+      Absent => after_probes
+    }
+  }
+  let exempt_after_auth = match forced_covers_published_auth {
+    Present { value: f } => bmc_add_exemption([], e: BmcForcedChangeExemptLogin { account: published_account, surface: managed_surface, attempts: 1, forced: f })
+    Absent => []
+  }
+  // 5. DECLARED RETRIES: each further presentation the plan declares is another
+  //    login the controller may count as a failure on that account+surface.
+  fold(declared_retries, init: BmcPlanFailedLoginRoster { spends: spends_after_auth, exempt: exempt_after_auth }, f: (acc, r) => {
+    BmcPlanFailedLoginRoster {
+      spends: bmc_add_repeated_login(spends: acc.spends, login: DeclaredRetryLogin { account: r.account, surface: r.surface, of: r.of }, times: r.extra_attempts),
+      exempt: acc.exempt,
+    }
+  })
+}
+
+// ── THE SERVED LOCKOUT READING ───────────────────────────────────────────────
+// The controller's own answer, kept per surface, beside the other account
+// readings. Nothing here is a default: LockoutPolicyNotReadable is a state of the
+// controller (on OpenBMC 03.22.00 NOTHING authenticated is readable before the
+// forced change — every authenticated GET is answered 403
+// Base.1.16.0.PasswordChangeRequired, which is exactly what
+// artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00-factory-login-403.json
+// records), and §5 forbids turning "we could not read it" into a number.
+
+// Where a surface's policy came from. The two arms carry the extdeps shapes
+// verbatim, so a reader can walk from a refusal to the served properties that
+// produced it.
+type BmcServedLockoutSource =
+    ServedFromRedfishAccountService { properties: RedfishAccountServiceLockoutServed }
+  | ServedFromIpmiLanBadPasswordThreshold { parameters: IpmiLanBadPasswordThreshold }
+
+// WHY a surface's served policy could not be read. Each arm is a different
+// controller behaviour, and they are not interchangeable for the operator: the
+// first says the controller will not answer until the forced change happens
+// (nothing to do but use the forced-change path), the second says it answered
+// with an error to an authenticated read, the third says this controller simply
+// has no such parameter (a real state of some firmware: no threshold is served,
+// so no number may be invented), the fourth says the read itself failed.
+type BmcLockoutNotReadableCause =
+    NothingAuthenticatedBeforeTheForcedChange { forced: PublishedCredentialChangeForced }
+  | ControllerRefusedTheAuthenticatedRead { detail: NonEmptyStr }
+  | ControllerServesNoLockoutParameter { detail: NonEmptyStr }
+  | LockoutReadAttemptFailed { detail: NonEmptyStr }
+
+type BmcServedLockoutPolicy =
+    LockoutPolicyServed { served: BmcServedLockoutSource }
+  | LockoutPolicyNotReadable { cause: BmcLockoutNotReadableCause }
+
+type BmcLockoutSurfaceReading sole_constructor {
+  surface: BmcFailedLoginSurface
+  policy: BmcServedLockoutPolicy
+  evidence: EvidenceRef
+  // WHEN THIS SURFACE WAS READ, on the observer clock. Part of the reading's
+  // identity, so a plan cannot be admitted against a threshold the controller may
+  // since have been told to change.
+  read_at: ObserverClockInstant
+}
+
+// THE PER-CONTROLLER LOCKOUT READING, carried by BmcAccountStateObservation
+// beside the census and the probes. read_at is the observer instant the reads
+// were taken, so the read-floor rule that governs every other reading in the
+// observation governs this one too.
+//
+// WHY IT IS NOT A PER-BUILD ROW (design settled in
+// gunbc.machine_intake.bmc_credential_policy's module comment): the threshold is
+// a property the controller SERVES and an operator can change — an
+// AccountService PATCH, a Set LAN Configuration Parameters on the H11SSL units —
+// so a row keyed by board and firmware would go stale the moment that happens,
+// and a stale threshold is precisely how a rotation locks the account it is
+// meant to protect.
+type BmcControllerLockoutReading sole_constructor {
+  read_at: ObserverClockInstant
+  surfaces: List<BmcLockoutSurfaceReading>
+}
+
+// THE ADAPTERS: controller verdict → this fold's reading. They add no numbers;
+// they only place the served properties where the budget can use them, and turn
+// a not-readable verdict into the typed cause rather than an absence.
+
+// not_authenticated is WHAT THE READER KNOWS about the refusal, and it is the
+// reader's to know: the 403 Base.1.16.0.PasswordChangeRequired case is only
+// something the reader can say, because it is the sealed
+// PublishedCredentialChangeForced of the build it read — the extdeps verdict
+// carries an HTTP status, which is not an exemption. A caller that cannot seal a
+// forced change passes ControllerRefusedTheAuthenticatedRead, and the budget then
+// refuses instead of assuming the 403.
+fn bmc_lockout_surface_from_redfish(
+  verdict: RedfishAccountServiceLockoutVerdict,
+  not_authenticated: BmcLockoutNotReadableCause,
+  evidence: EvidenceRef,
+  read_at: ObserverClockInstant,
+) -> BmcLockoutSurfaceReading {
+  BmcLockoutSurfaceReading {
+    surface: RedfishAccountServiceLogin,
+    policy: match verdict {
+      RedfishAccountServiceLockoutPropertiesRead { served: s } => LockoutPolicyServed { served: ServedFromRedfishAccountService { properties: s } }
+      RedfishAccountServiceLockoutPropertiesNotAuthenticated { http_status: _, detail: _ } => LockoutPolicyNotReadable { cause: not_authenticated }
+      RedfishAccountServiceLockoutPropertiesUnreadable { detail: d } => LockoutPolicyNotReadable { cause: LockoutReadAttemptFailed { detail: d } }
+    },
+    evidence: evidence,
+    read_at: read_at,
+  }
+}
+
+fn bmc_lockout_surface_from_ipmi_lan(verdict: IpmiLanBadPasswordThresholdVerdict, evidence: EvidenceRef, read_at: ObserverClockInstant) -> BmcLockoutSurfaceReading {
+  match verdict {
+    IpmiLanBadPasswordThresholdRead { channel: c, served: s } => BmcLockoutSurfaceReading {
+      surface: IpmiLanPlusLogin { channel: c },
+      policy: LockoutPolicyServed { served: ServedFromIpmiLanBadPasswordThreshold { parameters: s } },
+      evidence: evidence,
+      read_at: read_at,
+    }
+    IpmiLanBadPasswordThresholdNotAvailable { channel: c } => BmcLockoutSurfaceReading {
+      surface: IpmiLanPlusLogin { channel: c },
+      policy: LockoutPolicyNotReadable { cause: ControllerServesNoLockoutParameter { detail: ipmi_lan_channel_text(channel: c) } },
+      evidence: evidence,
+      read_at: read_at,
+    }
+    IpmiLanBadPasswordThresholdReadFailed { channel: c, detail: d } => BmcLockoutSurfaceReading {
+      surface: IpmiLanPlusLogin { channel: c },
+      policy: LockoutPolicyNotReadable { cause: LockoutReadAttemptFailed { detail: join([ipmi_lan_channel_text(channel: c), ": ", d], "") } },
+      evidence: evidence,
+      read_at: read_at,
+    }
+  }
+}
+
+fn ipmi_lan_channel_text(channel: IpmiChannelNumber) -> NonEmptyStr {
+  join(["IPMI LAN channel ", to_string(channel as Int)], "")
+}
+
+// THE ONLY WAY TO HOLD ONE OF THESE OUTSIDE THIS MODULE (the record is
+// sole_constructor): a reader places each surface's served policy here, with the
+// receipt of the read that produced it.
+// CONSUMER: bmc_lockout_surface_from_redfish, bmc_lockout_surface_from_ipmi_lan,
+// bmc_lockout_reading_not_read, and test.fixture.machine_intake.bmc_lockout.
+fn bmc_lockout_surface(surface: BmcFailedLoginSurface, policy: BmcServedLockoutPolicy, evidence: EvidenceRef, read_at: ObserverClockInstant) -> BmcLockoutSurfaceReading {
+  BmcLockoutSurfaceReading { surface: surface, policy: policy, evidence: evidence, read_at: read_at }
+}
+
+fn bmc_lockout_reading(surfaces: List<BmcLockoutSurfaceReading>, read_at: ObserverClockInstant) -> BmcControllerLockoutReading {
+  BmcControllerLockoutReading { read_at: read_at, surfaces: surfaces }
+}
+
+// THE THRESHOLD FOR A SURFACE, in the fold's own vocabulary. WHY A THIRD STATE
+// BEYOND SERVED/NOT-SERVED: "never locked out" and "we could not read it" are
+// both controller states but they license opposite plans, so they are never
+// collapsed — and neither is ever taken from an absent property (the extdeps
+// shapes hold Option for exactly this reason; the reading turns an absent
+// threshold into LockoutThresholdUnread, never into 0).
+// A served threshold that locks the account: BOTH upstream sources bound it on both
+// sides, and the bound is carried rather than re-derived here — AccountService.v1_19_0
+// AccountLockoutThreshold is a UInt32 whose 0 means "never locked" (that arm is
+// AccountNeverLockedOutByThisController, so a value reaching this one is >= 1), and
+// the IPMI LAN Bad Password Threshold byte is 1..255 (ipmitool's
+// IPMI_LANP_BAD_PASS_THRESH). The product bound is therefore the union of the two
+// upstream bounds, min 1 to max the UInt32 ceiling. Derived counts (how many failures
+// fall in a window, how many a plan may still make) are plain Ints: they are computed
+// here, not served upstream, and clamping them is this module's own arithmetic.
+type BmcAccountLockoutFailedAttempts = Int where range(min: 1, max: 4294967295)
+
+type BmcLockoutThreshold =
+    AccountNeverLockedOutByThisController { reason: NonEmptyStr }
+  | AccountLockedOutAfter { failed_attempts: BmcAccountLockoutFailedAttempts }
+  | LockoutThresholdUnread { cause: NonEmptyStr }
+
+// The threshold whose REFUSAL the plan must fit, per surface. The two upstream
+// rules are taken from the served shapes, not inferred here:
+//   - Redfish: AccountLockoutThreshold == 0 means the account shall never be
+//     locked (AccountService.v1_19_0), via
+//     redfish_account_lockout_threshold_locks_after.
+//   - IPMI: invalid_password_disable false means the bad-password threshold is
+//     not in force, via ipmi_lan_bad_password_threshold_locks_after.
+// NOTE, and it is deliberate: AccountLockoutDuration == 0 does NOT exempt a
+// plan. The schema says no lockout "shall occur" when it is 0, but it also says
+// the duration is ignored when AccountLockoutCounterResetEnabled is false, and a
+// controller whose reset is disabled keeps the account locked until an
+// administrator resets it — so treating a 0 duration as free passage would
+// license a plan against the one configuration where a lockout is most
+// expensive. Being refused for a plan that could not have been locked is the
+// safe direction; locking out the only administrator is not.
+fn bmc_lockout_threshold(surface: BmcFailedLoginSurface, reading: BmcControllerLockoutReading) -> BmcLockoutThreshold {
+  let found = filter(reading.surfaces, s => bmc_failed_login_surface_same(a: s.surface, b: surface))
+  match list_head(found) {
+    // No entry for this surface means it was never read on this controller. Fail
+    // closed: an unread surface licenses no login, exactly as an unread threshold
+    // does on a surface that was read.
+    Absent => LockoutThresholdUnread { cause: join(["no lockout reading was taken for ", bmc_failed_login_surface_text(surface: surface)], "") }
+    Present { value: entry } => match entry.policy {
+      LockoutPolicyNotReadable { cause: c } => LockoutThresholdUnread { cause: bmc_lockout_not_readable_text(cause: c, surface: surface) }
+      LockoutPolicyServed { served: ServedFromRedfishAccountService { properties: p } } =>
+        match redfish_account_lockout_threshold_locks_after(served: p) {
+          AccountIsNeverLockedByServedThreshold => AccountNeverLockedOutByThisController { reason: "AccountService.AccountLockoutThreshold is 0: the controller serves no lockout on this account (AccountService.v1_19_0)" }
+          AccountLocksAfter { failed_attempts: n } => AccountLockedOutAfter { failed_attempts: n as Int }
+        }
+      LockoutPolicyServed { served: ServedFromIpmiLanBadPasswordThreshold { parameters: p } } =>
+        match entry.surface {
+          // The channel comes from the entry's own surface, never from a default:
+          // a served IPMI reading is keyed by the channel it was read on.
+          IpmiLanPlusLogin { channel: c } => match ipmi_lan_bad_password_threshold_locks_after(channel: c, served: p) {
+            IpmiLanUsersAreNotLockedOut { reason: r } => AccountNeverLockedOutByThisController { reason: r }
+            IpmiLanLocksAfter { failed_attempts: n } => AccountLockedOutAfter { failed_attempts: n as Int }
+          }
+          _ => LockoutThresholdUnread { cause: join(["an IPMI LAN lockout reading is carried on a non-IPMI surface: ", bmc_failed_login_surface_text(surface: surface)], "") }
+        }
+    }
+  }
+}
+
+// ── THE COUNTERS A LOGIN CAN MOVE ────────────────────────────────────────────
+// The controller keeps one failed-attempt counter per account on each surface it
+// serves a policy for: the Redfish AccountService, and each IPMI LAN channel. A
+// login the plan names lands on exactly one of them. A login it cannot name -- an
+// IPMI login whose channel the lanplus transport picks, or a write whose request
+// names no surface -- may land on ANY counter it can reach, and the plan does not
+// get to choose after the fact, so it is charged to EVERY one of them, BESIDE
+// whatever else that counter is already charged with and whatever it has already
+// counted. Judging it as a separate pseudo-counter against the tightest threshold
+// undercounts twice: two undetermined logins and one named to channel 1 each fit a
+// headroom of 2 on their own while all three can reach channel 1, and a failure
+// already on channel 1 never reduced the undetermined login's headroom.
+//
+// AND A PARTIAL READING BOUNDS NOTHING. A login of unknown transport could land on
+// the Redfish counter or on any LAN channel's; spending it against only the
+// transport that happened to be read treats the unread one as if it did not exist,
+// the fabrication this gate exists to prevent. So the unnamed-write arm needs both
+// transports read (a Redfish AccountService surface and at least one LAN channel),
+// and the unnamed-channel arm at least one LAN channel; otherwise the login is not
+// bounded and refuses. Today plan_bmc_account_action cannot reach the unnamed-write
+// arm -- the write admissions refuse a route with no named request first -- so it
+// is witnessed at function level for the day a plan mints such a write.
+type BmcCountersReached =
+    CountersReached { surfaces: List<BmcFailedLoginSurface> }
+  | CountersNotBounded { cause: NonEmptyStr }
+
+fn bmc_counters_reached(surface: BmcFailedLoginSurface, reading: BmcControllerLockoutReading) -> BmcCountersReached {
+  let channels = map(filter(reading.surfaces, s => match s.surface { IpmiLanPlusLogin { channel: _ } => true, _ => false }), s => s.surface)
+  match surface {
+    RedfishAccountServiceLogin => CountersReached { surfaces: [surface] }
+    IpmiLanPlusLogin { channel: _ } => CountersReached { surfaces: [surface] }
+    IpmiLanPlusLoginChannelUndetermined =>
+      if list_length(channels) == 0 {
+        CountersNotBounded { cause: "no IPMI LAN channel of this controller was read, so the channel the lanplus transport will address is unknown" }
+      } else {
+        CountersReached { surfaces: channels }
+      }
+    SurfaceOfThePlannedWriteUndetermined => {
+      let saw_redfish = list_length(filter(reading.surfaces, s => match s.surface { RedfishAccountServiceLogin => true, _ => false })) > 0
+      if !(saw_redfish && list_length(channels) > 0) {
+        CountersNotBounded { cause: "this login's surface is not named by the plan and the reading did not cover every transport it could authenticate on — the Redfish AccountService policy and a LAN channel policy are both needed to bound it" }
+      } else {
+        CountersReached { surfaces: concat([RedfishAccountServiceLogin], channels) }
+      }
+    }
+  }
+}
+
+// Can a login (or a recorded failure) on `from` have moved the concrete counter
+// `counter`? An unbounded surface can have moved any of them.
+fn bmc_surface_reaches_counter(from: BmcFailedLoginSurface, counter: BmcFailedLoginSurface, reading: BmcControllerLockoutReading) -> Bool {
+  match bmc_counters_reached(surface: from, reading: reading) {
+    CountersReached { surfaces: ss } => any(ss, s => bmc_failed_login_surface_same(a: s, b: counter))
+    CountersNotBounded { cause: _ } => true
+  }
+}
+
+fn bmc_failed_login_surface_text(surface: BmcFailedLoginSurface) -> NonEmptyStr {
+  match surface {
+    RedfishAccountServiceLogin => "Redfish AccountService"
+    IpmiLanPlusLogin { channel: c } => ipmi_lan_channel_text(channel: c)
+    IpmiLanPlusLoginChannelUndetermined => "IPMI LAN (channel chosen by the transport)"
+    SurfaceOfThePlannedWriteUndetermined => "the surface of a write whose route carries no request"
+  }
+}
+
+fn bmc_lockout_not_readable_text(cause: BmcLockoutNotReadableCause, surface: BmcFailedLoginSurface) -> NonEmptyStr {
+  match cause {
+    NothingAuthenticatedBeforeTheForcedChange { forced: f } => join([bmc_failed_login_surface_text(surface: surface), ": nothing authenticated is readable before the forced change (", f.message_id, " on firmware ", f.key.firmware.raw_version, ")"], "")
+    ControllerRefusedTheAuthenticatedRead { detail: d } => join([bmc_failed_login_surface_text(surface: surface), ": the controller refused the authenticated read (", d, ")"], "")
+    ControllerServesNoLockoutParameter { detail: d } => join([bmc_failed_login_surface_text(surface: surface), ": the controller serves no lockout parameter (", d, ")"], "")
+    LockoutReadAttemptFailed { detail: d } => join([bmc_failed_login_surface_text(surface: surface), ": the lockout read failed (", d, ")"], "")
+  }
+}
+
+// THE RESET WINDOW: how long a failed attempt keeps counting. Not the plan's
+// choice and not a constant — Redfish serves AccountLockoutCounterResetAfter
+// (seconds, from the last failed attempt; the counter also resets on a
+// SUCCESSFUL login) and AccountLockoutCounterResetEnabled, whose schema default
+// when the property is absent is TRUE; IPMI serves attempt_count_reset_secs in
+// the same block as the threshold. Absent means UNREAD, not infinite, and never
+// a borrowed 300 from the H11SSL capture.
+type BmcFailedAttemptWindow =
+    // The window as the repo's own time unit, produced at the extdeps boundary
+    // (redfish_account_lockout_counter_reset_window, ipmi_lan_attempt_count_reset_window).
+    // No layer below this one multiplies it by a factor to compare with a timestamp.
+    FailedAttemptsCountedFor { window: Second }
+  | FailedAttemptsNeverReset { reason: NonEmptyStr }
+  | FailedAttemptWindowUnread { detail: NonEmptyStr }
+
+fn bmc_failed_attempt_window(surface: BmcFailedLoginSurface, reading: BmcControllerLockoutReading) -> BmcFailedAttemptWindow {
+  let found = filter(reading.surfaces, s => bmc_failed_login_surface_same(a: s.surface, b: surface))
+  match list_head(found) {
+    Absent => FailedAttemptWindowUnread { detail: join(["no lockout reading was taken for ", bmc_failed_login_surface_text(surface: surface)], "") }
+    Present { value: entry } => match entry.policy {
+      LockoutPolicyNotReadable { cause: c } => FailedAttemptWindowUnread { detail: bmc_lockout_not_readable_text(cause: c, surface: surface) }
+      LockoutPolicyServed { served: ServedFromRedfishAccountService { properties: p } } =>
+        // With counter-reset disabled a locked account stays locked until an
+        // administrator resets it, so the window is unbounded: any failure the
+        // operator cannot show to be old still counts.
+        if !redfish_account_lockout_counter_reset_enabled_reads(served: p) {
+          FailedAttemptsNeverReset { reason: "AccountService.AccountLockoutCounterResetEnabled is false: the account stays locked until an administrator resets it (AccountService.v1_19_0)" }
+        } else {
+          // The seconds this property serves become a time measure at the
+          // extdeps boundary (redfish_account_lockout_counter_reset_window), so this
+          // layer never holds a bare count of them and never scales one itself. An
+          // absent property stays Absent here and is reported as an unread window.
+          match redfish_account_lockout_counter_reset_window(served: p) {
+            Present { value: w } => FailedAttemptsCountedFor { window: w }
+            Absent => FailedAttemptWindowUnread { detail: join([bmc_failed_login_surface_text(surface: surface), ": AccountService.AccountLockoutCounterResetAfter is not served"], "") }
+          }
+        }
+      LockoutPolicyServed { served: ServedFromIpmiLanBadPasswordThreshold { parameters: p } } =>
+        if !ipmi_lan_failed_attempts_drive_lockout(served: p) {
+          FailedAttemptsNeverReset { reason: join([bmc_failed_login_surface_text(surface: surface), ": invalid password disable is off, so a lockout on this channel is not driven by the failed-attempt counter at all"], "") }
+        } else {
+          FailedAttemptsCountedFor { window: ipmi_lan_attempt_count_reset_window(served: p) }
+        }
+    }
+  }
+}
+
+// A FAILED ATTEMPT THE READING ALREADY KNOWS ABOUT, so the budget counts against
+// what is left rather than against the full threshold. at is the observer instant
+// the rejection was recorded; a rejection whose surface the plan does not use is
+// not this key's business and is never silently dropped — the caller passes one
+// entry per (account, surface) it observed a rejection on.
+type BmcKnownFailedLogin {
+  key: BmcFailedLoginBudgetKey
+  at: EpochMs
+}
+
+fn bmc_known_failed_login(account: NonEmptyStr, surface: BmcFailedLoginSurface, at: EpochMs) -> BmcKnownFailedLogin {
+  BmcKnownFailedLogin { key: BmcFailedLoginBudgetKey { account: account, surface: surface }, at: at }
+}
+
+// HOW MANY OF THE KNOWN FAILURES ARE STILL ON THIS COUNTER. Every recorded failure
+// of the account on a surface that can reach the counter is a candidate (see
+// bmc_surface_reaches_counter). An unread or unbounded window counts every one of
+// them -- section 5, fail closed: the operator cannot show a failure to be old.
+fn bmc_known_failures_in_window(known: List<BmcKnownFailedLogin>, key: BmcFailedLoginBudgetKey, window: BmcFailedAttemptWindow, now: EpochMs, reading: BmcControllerLockoutReading) -> Int {
+  let mine = filter(known, k => (k.key.account as String) == (key.account as String) && bmc_surface_reaches_counter(from: k.key.surface, counter: key.surface, reading: reading))
+  match window {
+    FailedAttemptsNeverReset { reason: _ } => list_length(mine)
+    FailedAttemptWindowUnread { detail: _ } => list_length(mine)
+    FailedAttemptsCountedFor { window: window } => {
+      // The measure converts itself: seconds to milliseconds is
+      // second_to_millisecond, and the elapsed value it is compared with is already
+      // a millisecond difference of EpochMs. There is no local factor here because
+      // there is no local unit.
+      let window_ms: Int = millisecond_count(m: second_to_millisecond(s: window))
+      // A served window of 0 seconds is NOT read as "nothing counts": upstream
+      // gives no sentence that licenses dropping a failure the controller has
+      // already counted, so a 0 window counts everything too.
+      if window_ms <= 0 { list_length(mine) } else { bmc_failures_since_the_last_quiet_interval(failures: mine, window_ms: window_ms, now: now) }
+    }
+  }
+}
+
+// THE COUNTER IS RESET BY A QUIET INTERVAL, NOT BY EACH FAILURE AGEING OUT.
+// AccountService.AccountLockoutCounterResetAfter is the interval from the LAST
+// failed login until the counter returns to zero (AccountService.v1_19_0), so a
+// failure stays counted for as long as later failures keep the counter active:
+// threshold 3, window 300 s, failures at T and T+290, evaluated at T+310 -- no
+// 300 s has passed without a failure, the counter holds 2, and expiring the first
+// failure on its own age would report 1 and admit the login that locks the account.
+// The walk goes from `now` back through the failures, newest first: each failure no
+// further than the window from the one after it (or from `now`) is still counted,
+// and the first gap longer than the window is the reset, behind which nothing
+// counts. A failure stamped after `now` (an observer clock that skewed between the
+// rejection and the plan) cannot be shown to be old and is counted without moving
+// the walk. A SUCCESSFUL login also resets the Redfish counter, and no reading here
+// records one, so this count is never below the controller's. The IPMI LAN
+// attempt-count reset is read the same way: of the readings of "reset after the
+// interval" this is the one that counts the most, so it holds whichever the
+// controller implements.
+type BmcCounterWalk {
+  since: Int
+  counted: Int
+  reset: Bool
+}
+
+fn bmc_failures_since_the_last_quiet_interval(failures: List<BmcKnownFailedLogin>, window_ms: Int, now: EpochMs) -> Int {
+  // Newest first: the sort is ascending on the negated instant, and it is stable.
+  let newest_first = list_sort_by_key(xs: failures, key: k => 0 - (k.at as Int), order: int_total_order())
+  let walked = fold(newest_first, init: BmcCounterWalk { since: now as Int, counted: 0, reset: false }, f: (w, k) => {
+    if w.reset {
+      w
+    } else if (k.at as Int) > (now as Int) {
+      BmcCounterWalk { since: w.since, counted: w.counted + 1, reset: false }
+    } else if w.since - (k.at as Int) <= window_ms {
+      BmcCounterWalk { since: k.at as Int, counted: w.counted + 1, reset: false }
+    } else {
+      BmcCounterWalk { since: w.since, counted: w.counted, reset: true }
+    }
+  })
+  walked.counted
+}
+
+// ── THE HEADROOM AND THE VERDICT ─────────────────────────────────────────────
+type BmcFailedLoginHeadroom =
+    AccountNotLockedOutByThisController { reason: NonEmptyStr }
+  | HeadroomKnown { threshold: BmcAccountLockoutFailedAttempts, known_failures_in_window: Int, may_fail: Int }
+  | HeadroomUnknown { cause: NonEmptyStr }
+
+// The headroom of ONE CONCRETE COUNTER: the key's surface is the Redfish
+// AccountService or one IPMI LAN channel, never an undetermined surface (those are
+// spread onto the counters they reach before the gate asks).
+fn bmc_failed_login_headroom(key: BmcFailedLoginBudgetKey, reading: BmcControllerLockoutReading, known: List<BmcKnownFailedLogin>, now: EpochMs) -> BmcFailedLoginHeadroom {
+  match bmc_lockout_threshold(surface: key.surface, reading: reading) {
+    AccountNeverLockedOutByThisController { reason: r } => AccountNotLockedOutByThisController { reason: r }
+    LockoutThresholdUnread { cause: c } => HeadroomUnknown { cause: c }
+    AccountLockedOutAfter { failed_attempts: n } => {
+      let window = bmc_failed_attempt_window(surface: key.surface, reading: reading)
+      let used = bmc_known_failures_in_window(known: known, key: key, window: window, now: now, reading: reading)
+      let room = (n as Int) - 1 - used
+      HeadroomKnown { threshold: n, known_failures_in_window: used, may_fail: if room < 0 { 0 } else { room } }
+    }
+  }
+}
+
+// WHY A PLAN'S LOGIN COUNT IS REFUSED, in the two shapes that are genuinely
+// different: MORE THAN THE CONTROLLER LEAVES (the operator can shrink the plan,
+// or reset the counter and re-read) versus NO SERVED THRESHOLD TO PLAN AGAINST
+// (the operator has to read the policy first, or produce the sealed forced-change
+// state). Collapsing them would tell an operator to shrink a plan that was
+// already small enough.
+type BmcFailedLoginBudgetBlock
+  = CostExceedsTheServedHeadroom { cost: Int, may_fail: Int, threshold: BmcAccountLockoutFailedAttempts, known_failures_in_window: Int }
+  | FailingLoginsWithNoServedThreshold { cost: Int, cause: NonEmptyStr }
+
+type BmcFailedLoginBudgetBlockReading {
+  key: BmcFailedLoginBudgetKey
+  block: BmcFailedLoginBudgetBlock
+}
+
+type BmcFailedLoginBudgetVerdict
+  = FailedLoginBudgetAdmitted { spends: List<BmcPlanFailedLoginSpend>, exempt: List<BmcForcedChangeExemptLogin> }
+  | FailedLoginBudgetRefused { blocked: List<BmcFailedLoginBudgetBlockReading>, spends: List<BmcPlanFailedLoginSpend>, exempt: List<BmcForcedChangeExemptLogin> }
+
+// THE GATE. plan_bmc_account_action runs this before it mints anything: the
+// refusal is produced at PLAN time, so no write is asked for and no approval is
+// spent. It judges every CONCRETE COUNTER a spend can reach, charging that counter
+// with every spend of the same account that can reach it -- named or not -- and
+// with every recorded failure that can have moved it, and it refuses the whole
+// plan if any one counter is over. A spend whose counters cannot be bounded
+// refuses on its own key.
+fn bmc_failed_login_budget_verdict(
+  roster: BmcPlanFailedLoginRoster,
+  reading: BmcControllerLockoutReading,
+  known: List<BmcKnownFailedLogin>,
+  now: EpochMs,
+) -> BmcFailedLoginBudgetVerdict {
+  let unbounded: List<BmcFailedLoginBudgetBlockReading> = fold(roster.spends, init: [], f: (acc, s) => {
+    let cost = list_length(s.logins)
+    match bmc_counters_reached(surface: s.key.surface, reading: reading) {
+      CountersReached { surfaces: _ } => acc
+      // A spend recorded with zero logins is not a login and refuses nothing.
+      CountersNotBounded { cause: c } => if cost > 0 {
+        concat(acc, [BmcFailedLoginBudgetBlockReading { key: s.key, block: FailingLoginsWithNoServedThreshold { cost: cost, cause: c } }])
+      } else { acc }
+    }
+  })
+  let counters: List<BmcFailedLoginBudgetKey> = fold(roster.spends, init: [], f: (acc, s) => match bmc_counters_reached(surface: s.key.surface, reading: reading) {
+    CountersNotBounded { cause: _ } => acc
+    CountersReached { surfaces: ss } => fold(ss, init: acc, f: (a, surface) => {
+      let k = BmcFailedLoginBudgetKey { account: s.key.account, surface: surface }
+      if any(a, x => bmc_failed_login_budget_key_same(a: x, b: k)) { a } else { concat(a, [k]) }
+    })
+  })
+  let over: List<BmcFailedLoginBudgetBlockReading> = fold(counters, init: [], f: (acc, k) => {
+    let cost = fold(roster.spends, init: 0, f: (n, s) =>
+      if (s.key.account as String) == (k.account as String) && bmc_surface_reaches_counter(from: s.key.surface, counter: k.surface, reading: reading) {
+        n + list_length(s.logins)
+      } else { n })
+    match bmc_failed_login_headroom(key: k, reading: reading, known: known, now: now) {
+      // The controller serves no lockout on this account+surface: nothing this
+      // plan does here can lock it, whatever the count.
+      AccountNotLockedOutByThisController { reason: _ } => acc
+      HeadroomKnown { threshold: t, known_failures_in_window: used, may_fail: may } =>
+        if cost > may {
+          concat(acc, [BmcFailedLoginBudgetBlockReading { key: k, block: CostExceedsTheServedHeadroom { cost: cost, may_fail: may, threshold: t, known_failures_in_window: used } }])
+        } else {
+          acc
+        }
+      // No threshold means no headroom can be computed, so ONE potentially-failing
+      // login is enough to refuse.
+      HeadroomUnknown { cause: c } =>
+        if cost > 0 {
+          concat(acc, [BmcFailedLoginBudgetBlockReading { key: k, block: FailingLoginsWithNoServedThreshold { cost: cost, cause: c } }])
+        } else {
+          acc
+        }
+    }
+  })
+  let blocked = concat(unbounded, over)
+  if list_length(blocked) > 0 {
+    FailedLoginBudgetRefused { blocked: blocked, spends: roster.spends, exempt: roster.exempt }
+  } else {
+    FailedLoginBudgetAdmitted { spends: roster.spends, exempt: roster.exempt }
+  }
+}
+
+// THE FRONTIERS.
+//
+// The live read is not wired in this change (the brief: live reads are out of
+// scope), so nothing here asserts what any controller in the fleet serves. When
+// the read lands, it lands as the two extdeps verdict shapes above — a Redfish
+// GET of AccountService and a Get LAN Configuration Parameters on the addressed
+// channel — through the two adapters, and the witnesses below are replaced by
+// receipts. NOT satisfied by a capture under artifacts/bmc/ standing in for a
+// read: the H11SSL "Bad Password Threshold : 3" is a REPORTED read of one unit at
+// one moment, and the threshold is operator-writable.
+data bmc_served_lockout_live_read_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when the account-state read of gunbc.machine_intake.bmc_secure takes its BmcControllerLockoutReading from a live Redfish GET of AccountService (extdeps.bmc.redfish RedfishAccountServiceLockoutVerdict) and a live Get LAN Configuration Parameters of the addressed channel (extdeps.bmc.ipmi_channel IpmiLanBadPasswordThresholdVerdict), through bmc_lockout_surface_from_redfish and bmc_lockout_surface_from_ipmi_lan, on a controller this repository holds a subject for; NOT satisfied by a witness passing a forged reading, by the H11SSL lan-print capture, or by any per-build row" as NonEmptyStr,
+)
+
+// THE ONE EXCLUSION THIS SECTION MAKES, said out loud instead of left silent.
+// A plan's WRITE authentication is not counted as a potentially-failing login:
+// its authorization is checked before the request is built
+// (ScopedAuthorization<BmcAccountWriteApproval>, read_bmc_write_approval), and by
+// the time the write runs the same credential has just been ACCEPTED by the
+// probe beside it on the same account — a credential accepted seconds ago is not
+// a failing login. If that stops holding — if a realization authenticates a write
+// with a credential it has NOT just had accepted, or retries the write after a
+// rejection — this exclusion is wrong and every plan that relies on it is
+// under-counted.
+data bmc_write_authentication_failed_login_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when any realization of a BmcAccountActionPlan authenticates a password write with a credential it has not just had ACCEPTED on the same account and surface in the same plan (a write retried after a 401, or a write issued without the managed probe preceding it); at that point the write's authentication must be counted as a potentially-failing login in bmc_plan_failing_logins" as NonEmptyStr,
+)
+
+// ONE AUTHENTICATION OR TWO. The break-glass probe is the managed probe's own
+// authentication only when it IS that reading: the same evidence (label and digest)
+// observed at the same instant. Two probes that present the same account, even the
+// same password, are two authentications with two pieces of evidence, and the dry
+// reader takes two (its "managed" and "break-glass" probes). An unestablished probe
+// made no recorded authentication and is never the same event as anything.
+// CONSUMER: bmc_known_failed_logins_of.
+fn bmc_break_glass_probe_is_the_managed_authentication(managed: ObservedCredentialProbe, break_glass: ObservedCredentialProbe) -> Bool {
+  match bmc_probe_recorded_reading(probe: managed) {
+    Absent => false
+    Present { value: a } => match bmc_probe_recorded_reading(probe: break_glass) {
+      Absent => false
+      Present { value: b } =>
+        bmc_probe_accepted(probe: managed) == bmc_probe_accepted(probe: break_glass)
+          && (observer_instant_millis(instant: a.observed_at) as Int) == (observer_instant_millis(instant: b.observed_at) as Int)
+          && a.evidence.label == b.evidence.label
+          && content_hash_equal(left: a.evidence.digest, right: b.evidence.digest)
+    }
+  }
+}
+
+fn bmc_probe_recorded_reading(probe: ObservedCredentialProbe) -> ObservedReading? {
+  match probe {
+    ObservedCredentialAccepted { reading: r } => Present { value: r }
+    ObservedCredentialRejected { reading: r } => Present { value: r }
+    ObservedCredentialUnestablished { detail: _ } => none
+  }
+}
+
+fn bmc_probe_accepted(probe: ObservedCredentialProbe) -> Bool {
+  match probe {
+    ObservedCredentialAccepted { reading: _ } => true
+    ObservedCredentialRejected { reading: _ } => false
+    ObservedCredentialUnestablished { detail: _ } => false
+  }
+}
+
+// THE FAILURES THE READING ALREADY KNOWS ABOUT. The budget counts against what is
+// LEFT, not against the full threshold, so a controller that has already rejected
+// two of three attempts must not be promised a third. A rejection is attributed to
+// the account it authenticated as and the surface it crossed — the same key the
+// roster charges the planned login to, so a rejection of the managed probe is
+// charged against the plan's own managed probe and nothing else.
+//
+// THE BREAK-GLASS REJECTION IS ITS OWN FAILURE unless it is the managed probe's own
+// authentication read twice. Sharing an account, or one stored password per account,
+// does not make two presentations of a password one attempt: threshold 4 with two
+// distinct rejections leaves 4 - 1 - 2 = 1, and folding them into one would promise
+// 2. The deduplication rests on the identity of the authentication event and on
+// nothing about the account (bmc_break_glass_probe_is_the_managed_authentication).
+fn bmc_known_failed_logins_of(
+  observed: BmcAccountStateObservation,
+  goal: BmcSecureGoal,
+  managed_write: PlannedAccountWrite?,
+  published_write: PlannedPublishedWrite?,
+) -> List<BmcKnownFailedLogin> {
+  let managed_surface = match managed_write {
+    Present { value: w } => bmc_write_surface(write: w)
+    Absent => SurfaceOfThePlannedWriteUndetermined
+  }
+  let published_surface = match published_write {
+    Present { value: PublishedWrittenSeparately { write: w } } => bmc_write_surface(write: w)
+    _ => managed_surface
+  }
+  let managed_rejected = match observed.managed_probe {
+    ObservedCredentialRejected { reading: r } => [bmc_known_failed_login(account: goal.managed.account, surface: managed_surface, at: observer_instant_millis(instant: r.observed_at))]
+    _ => []
+  }
+  let break_rejected = match observed.break_glass_probe {
+    ObservedCredentialRejected { reading: r } =>
+      if bmc_break_glass_probe_is_the_managed_authentication(managed: observed.managed_probe, break_glass: observed.break_glass_probe) {
+        []
+      } else {
+        [bmc_known_failed_login(account: goal.published_break_glass.account, surface: published_surface, at: observer_instant_millis(instant: r.observed_at))]
+      }
+    _ => []
+  }
+  let probe_rejected = match observed.published_credential {
+    PublishedCredentialRetiredOnTheManagedAccount { derivation: _ } => []
+    PublishedCredentialProbed { probes: probes } => fold(probes, init: [], f: (acc, p) => {
+      match p.probe {
+        ObservedCredentialRejected { reading: r } => concat(acc, [bmc_known_failed_login(account: goal.published_break_glass.account, surface: IpmiLanPlusLogin { channel: p.channel }, at: observer_instant_millis(instant: r.observed_at))])
+        _ => acc
+      }
+    })
+  }
+  concat(concat(managed_rejected, break_rejected), probe_rejected)
+}
+
+// A READER THAT COULD NOT READ SAYS SO. This is the honest input for a pass that
+// took no lockout read — including today's dry reader, which reads none: every
+// surface it reports is NotReadable with the reason the caller gives, and the
+// budget gate then refuses any plan carrying a potentially-failing login. It takes
+// no threshold, no window and no channel from anywhere, so there is no number here
+// for a plan to lean on (§5).
+// CONSUMER: callers of dry_read_bmc_account_state and any reader that has no
+// AccountService GET / Get LAN Configuration Parameters to report; the rung is
+// test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.an_unread_threshold_refuses_the_failing_logins_a_served_one_admits.
+fn bmc_lockout_reading_not_read(detail: NonEmptyStr, read_at: ObserverClockInstant) -> BmcControllerLockoutReading {
+  bmc_lockout_reading(surfaces: [BmcLockoutSurfaceReading {
+    surface: RedfishAccountServiceLogin,
+    policy: LockoutPolicyNotReadable { cause: LockoutReadAttemptFailed { detail: detail } },
+    evidence: bmc_lockout_absence_evidence(detail: detail),
+    read_at: read_at,
+  }], read_at: read_at)
+}
+
+// THE EVIDENCE OF A READ THAT DID NOT HAPPEN, labelled as such. It is not an
+// EvidenceRef standing in for a receipt: its label says absence, and no code path
+// turns it into a served property — the only thing it can produce is a refusal.
+fn bmc_lockout_absence_evidence(detail: NonEmptyStr) -> EvidenceRef {
+  EvidenceRef { label: join(["lockout-read-absent: ", detail], ""), digest: content_hash_of_value(value: join(["lockout-read-absent ", detail], "") as NonEmptyStr) }
+}

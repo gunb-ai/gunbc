@@ -690,8 +690,7 @@ fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObserva
 fn observe_cas_slot_state_windowed(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow) -> CasSlotObservation<NonEmptyStr>
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_read_index"),
-    decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "observe_push_registration"),
-    decl_ref(module_path: "gunbc.auth.approval_apns_publish", decl_name: "observe_apns_provider_token"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "slot_observe_windowed"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_window_slot_holds_at_most_k_plus_one_generations_by_real_execution"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_window_observation_at_generation_1500_terminates_by_real_execution"),
   ]
@@ -1178,8 +1177,7 @@ fn file_compare_and_set(root: NonEmptyStr, publication: CasGenerationPublication
 fn file_compare_and_set_windowed(root: NonEmptyStr, publication: CasGenerationPublication, verified: VerifiedCasAttempt, window: CasGenerationWindow) -> CasFileWrite
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index_settled"),
-    decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "push_registration_cas"),
-    decl_ref(module_path: "gunbc.auth.approval_apns_publish", decl_name: "publish_apns_provider_token"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "slot_commit_windowed"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "run_cas_in"),
   ]
 {
@@ -1252,9 +1250,14 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
 //
 // It inhabits std.durable_compare_and_set (the outcomes and observations are that module's own); it
 // is not an ArtifactStore (a pure content-addressed fold) nor a StorageSurface (cache capacity
-// policy): neither models a generation-checked create-new slot. The windowed and retained operations
-// are not carried: no holder of this value uses them, and a holder that does adds the function with
-// its first consumer (DESIGN section 3c).
+// policy): neither models a generation-checked create-new slot. The WINDOWED pair (slot_observe_windowed,
+// slot_commit_windowed) is carried because its first holder needs it: the approval device store's head-only
+// slots (gunbc.auth.approval_device_redemption, the push registration and the APNs provider token). Each
+// delegates to observe_cas_slot_state_windowed / file_compare_and_set_windowed, the one windowed contract,
+// and stays a distinct operation pair rather than a mode of slot_observe / slot_commit, because a slot whose
+// generation line is an audit trail must not be reachable through the head-only reclamation. The retained
+// operations are not carried: no holder uses them, and a holder that does adds them with its first consumer
+// (DESIGN section 3c).
 type SlotStore sole_constructor {
   root: NonEmptyStr
 }
@@ -1265,6 +1268,14 @@ fn slot_observe(store: SlotStore, key: NonEmptyStr) -> CasSlotObservation<NonEmp
 
 fn slot_commit(store: SlotStore, publication: CasGenerationPublication, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {
   file_compare_and_set(root: store.root, publication: publication, verified: verified)
+}
+
+fn slot_observe_windowed(store: SlotStore, key: NonEmptyStr, window: CasGenerationWindow) -> CasSlotObservation<NonEmptyStr> {
+  observe_cas_slot_state_windowed(root: store.root, key: key, window: window)
+}
+
+fn slot_commit_windowed(store: SlotStore, publication: CasGenerationPublication, verified: VerifiedCasAttempt, window: CasGenerationWindow) -> CasFileWrite {
+  file_compare_and_set_windowed(root: store.root, publication: publication, verified: verified, window: window)
 }
 
 fn slot_keys(store: SlotStore) -> CasSlotKeys {
