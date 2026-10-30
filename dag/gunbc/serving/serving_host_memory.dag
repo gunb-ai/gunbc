@@ -285,8 +285,9 @@ fn h11_engine_as_launched(bus: String) -> ServingEngineMemory {
 
 // h11-a16 AS IT RUNS ON 2026-10-30: six engines (buses 85 87 88 c5 c7 c8; 86 and c6 disabled on 10-26), each
 // capped at 16 GiB of RAM and allowed 32 GiB of swap, beside the routed-expert GGUF locked once in RAM.
-// 7 x 16 GB DIMMs are installed and one slot is empty (dmidecode -t memory), which is why MemTotal is
-// 110 GiB and not 128.
+// Eight 16 GB DIMMs are fitted, but slot H1 trains on some boots and is disabled on others
+// (gunbc.machine_intake.supermicro_h11ssl_unit1_platform_standing supermicro_h11ssl_unit1_dimmh1_standing),
+// and the boot this row was read on is one where it was disabled, so MemTotal is 110 GiB and not 125.
 data h11_serving_memory_observed: ServingDedicatedHostMemory = ServingDedicatedHostMemory {
   name: "h11-a16" as NonEmptyStr,
   usable_ram: HostUsableRamMeasured { bytes: kibibyte_to_byte_size(k: kibibyte(count: 115192288)), provenance: "h11-a16 /proc/meminfo MemTotal 115192288 kB, read 2026-10-30T16:18Z" as NonEmptyStr },

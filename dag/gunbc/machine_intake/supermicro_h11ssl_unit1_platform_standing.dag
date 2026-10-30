@@ -1,0 +1,181 @@
+module gunbc.machine_intake.supermicro_h11ssl_unit1_platform_standing
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { decl_ref }
+import extdeps.network.mac { Eui48Address }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import gunbc.machine_intake.supermicro_h11ssl_unit_identity { supermicro_h11ssl_unit1_bmc_mac }
+import gunbc.host.host_memory_qualification { CausalExperimentReceipt, ExperimentInconclusive }
+import gunbc.fleet.fleet_fan_wiring {
+  FanHeaderWiring, DrivenFanCountOperatorDeclared, FanModelUnobserved, FanModelOperatorDeclaredPart,
+  TachCarriedByDrivenFan, TachRepresentationUnobserved,
+}
+
+// WHAT H11SSL UNIT 1 (BMC ac:1f:6b:e3:f5:7b, the host h11-a16 that serves the A16 Strata pool) IS BUILT
+// AND BEHAVING AS, beside the first-contact and observation receipts in this namespace and keyed the same
+// way. Receipts, not upstream facts (DESIGN section 3): the board's own facts stay in
+// extdeps.boards.supermicro_h11ssl.
+//
+// WHY A SIBLING MODULE AND NOT ROWS IN gunbc.machine_intake.supermicro_h11ssl_unit_observation: that
+// module holds one reading per BMC visit; these are standings built from many boots and from the
+// operator's account of the build, and they feed the serving host's memory budget
+// (gunbc.serving.serving_host_memory h11_serving_memory_observed), which nothing there does.
+//
+// WHY NOT gunbc.host.host_memory_qualification HostMemoryStanding OR gunbc.fleet.fleet_fan_wiring
+// HostFanWiring: both are keyed by HostIdentity, and h11-a16 has none yet (the adoption gap
+// gunbc.machine_intake.h11ssl_x86_bringup_frontier h11ssl_hand_install_adoption_frontier). The row types
+// that do not need a host identity are reused as they are: CausalExperimentReceipt and FanHeaderWiring.
+
+// ---- DIMM slot H1: trains on some boots and is disabled on others.
+//
+// ONE BOOT'S OUTCOME FOR ONE SLOT, from two independent readings that agree on every boot recorded: the
+// BMC's SEL ("Memory Device Disabled (@DIMMH1(CPU1))", logged by firmware during POST) and the kernel's
+// "Memory: <avail>K/<total>K" line (134071316K with eight 16 GB modules, 117294100K with seven). Not
+// gunbc.host.host_memory_qualification DdrTrainingOutcome: that is the whole host's training result,
+// whose operational arm carries an Altra DIMM mask; this is one slot, per boot.
+type H11sslSlotBootOutcome
+  = SlotTrainedThisBoot { kernel_memory_line: NonEmptyStr }
+  | SlotDisabledThisBoot { sel_record: NonEmptyStr, kernel_memory_line: NonEmptyStr }
+
+type H11sslSlotBoot {
+  bmc_mac: Eui48Address
+  slot: NonEmptyStr
+  boot_id: NonEmptyStr
+  first_journal_entry: Rfc3339Timestamp
+  outcome: H11sslSlotBootOutcome
+}
+
+fn h11_dimmh1_trained(boot_id: NonEmptyStr, at: Rfc3339Timestamp) -> H11sslSlotBoot {
+  H11sslSlotBoot {
+    bmc_mac: supermicro_h11ssl_unit1_bmc_mac, slot: "DIMMH1" as NonEmptyStr, boot_id: boot_id, first_journal_entry: at,
+    outcome: SlotTrainedThisBoot { kernel_memory_line: "Memory: .../134071316K available" as NonEmptyStr },
+  }
+}
+
+fn h11_dimmh1_disabled(boot_id: NonEmptyStr, at: Rfc3339Timestamp, sel_record: NonEmptyStr) -> H11sslSlotBoot {
+  H11sslSlotBoot {
+    bmc_mac: supermicro_h11ssl_unit1_bmc_mac, slot: "DIMMH1" as NonEmptyStr, boot_id: boot_id, first_journal_entry: at,
+    outcome: SlotDisabledThisBoot { sel_record: sel_record, kernel_memory_line: "Memory: .../117294100K available" as NonEmptyStr },
+  }
+}
+
+// EVERY BOOT h11-a16's JOURNAL HOLDS, read 2026-10-30 (journalctl --list-boots, journalctl -k -b N, ipmitool
+// sel elist). The SEL records are its ids; their times are the BMC's EDT clock, a minute or less before
+// each boot's first journal entry. The last row is the operator-approved reboot of 2026-10-30T16:31:49Z.
+data supermicro_h11ssl_unit1_dimmh1_boots: List<H11sslSlotBoot> = [
+  h11_dimmh1_disabled(boot_id: "e934b5ebcd794a67b2c63d6d1c9bcb4f", at: "2026-10-24T23:38:32Z", sel_record: "4c"),
+  h11_dimmh1_trained(boot_id: "ada4b1ba3f3c42e881741e383d403acb", at: "2026-10-25T01:48:36Z"),
+  h11_dimmh1_trained(boot_id: "3624fd1ca5f34c38829f03b8ce7ba2fb", at: "2026-10-25T06:16:59Z"),
+  h11_dimmh1_trained(boot_id: "52d311d6f1ce420abc74430ad190c5cf", at: "2026-10-25T22:50:12Z"),
+  h11_dimmh1_trained(boot_id: "788a702250094e4faddee56f79e42c7a", at: "2026-10-25T23:23:59Z"),
+  h11_dimmh1_trained(boot_id: "0b7c956c33774ab5bcc4c459b37fe6f5", at: "2026-10-25T23:41:23Z"),
+  h11_dimmh1_trained(boot_id: "98753fdd49ed4425a41957ee231e19a9", at: "2026-10-26T00:09:35Z"),
+  h11_dimmh1_disabled(boot_id: "d804fdcb79074b37b6343196141ac413", at: "2026-10-26T00:21:16Z", sel_record: "5d"),
+  h11_dimmh1_disabled(boot_id: "a4749624437f48e695e5ef1e98677a41", at: "2026-10-27T03:54:02Z", sel_record: "5e"),
+  h11_dimmh1_trained(boot_id: "e56d3b741b414342874fd80e288c0240", at: "2026-10-27T03:59:50Z"),
+  h11_dimmh1_disabled(boot_id: "7222ba6e4304417aa9adf032f492c5ea", at: "2026-10-27T15:29:22Z", sel_record: "5f"),
+  h11_dimmh1_disabled(boot_id: "01ccb96e52664fa7ad10d311a6a87a35", at: "2026-10-30T16:33:48Z", sel_record: "d0"),
+]
+
+// THE SAME SLOT WAS DISABLED BEFORE THE JOURNAL BEGINS, so the pattern is not new with the A16 build: SEL
+// records 3c, 3d, 3e (stamped 2026-05-01) and 40, 42, 44, 46, 49, 4a, 4b (2026-10-24, 14:38-15:27 EDT, the
+// bring-up afternoon). They have no boot id to pair with a kernel line, so they are carried as records.
+data supermicro_h11ssl_unit1_dimmh1_pre_journal_sel_records: List<NonEmptyStr> = ["3c", "3d", "3e", "40", "42", "44", "46", "49", "4a", "4b"]
+
+// WHAT THE RECORD SAYS ABOUT A SLOT, DERIVED FROM THE BOOTS, NEVER WRITTEN BY HAND. "Flaky" is
+// SlotTrainsIntermittently: the slot trained on some recorded boots and was disabled on others.
+type H11sslSlotTrainingStanding
+  = SlotTrainedEveryRecordedBoot { boots: Nat }
+  | SlotTrainsIntermittently { trained: Nat, disabled: Nat }
+  | SlotDisabledEveryRecordedBoot { boots: Nat }
+  | SlotTrainingUnrecorded
+
+fn slot_boot_trained(b: H11sslSlotBoot) -> Bool {
+  match b.outcome {
+    SlotTrainedThisBoot { kernel_memory_line: _ } => true
+    SlotDisabledThisBoot { sel_record: _, kernel_memory_line: _ } => false
+  }
+}
+
+fn supermicro_h11ssl_slot_training_standing(boots: List<H11sslSlotBoot>, slot: NonEmptyStr) -> H11sslSlotTrainingStanding {
+  let mine = filter(boots, b => b.slot == slot)
+  let trained = filter(mine, b => slot_boot_trained(b: b)).length()
+  let disabled = mine.length() - trained
+  if mine.length() == 0 { SlotTrainingUnrecorded }
+  else if disabled == 0 { SlotTrainedEveryRecordedBoot { boots: trained } }
+  else if trained == 0 { SlotDisabledEveryRecordedBoot { boots: disabled } }
+  else { SlotTrainsIntermittently { trained: trained, disabled: disabled } }
+}
+
+fn supermicro_h11ssl_unit1_dimmh1_standing() -> H11sslSlotTrainingStanding {
+  supermicro_h11ssl_slot_training_standing(boots: supermicro_h11ssl_unit1_dimmh1_boots, slot: "DIMMH1" as NonEmptyStr)
+}
+
+// WHAT HAS BEEN TRIED, as a receipt so the verdict can be re-judged against the intervention. The
+// operator's account on 2026-10-30 is "we already tried the part", which does not say whether a
+// different module went into H1 (which would clear the module and implicate the slot, the channel or the
+// socket) or the H1 module went into another slot (which would implicate the module if the fault
+// followed it). Until it says which, the receipt cannot carry a verdict either way.
+data supermicro_h11ssl_unit1_dimmh1_experiments: List<CausalExperimentReceipt> = [
+  CausalExperimentReceipt {
+    hypothesis: "The module fitted in DIMMH1 is defective",
+    intervention: "Operator: 'we already tried the part' (2026-10-30); the procedure is not stated",
+    observation: "DIMMH1 is still disabled on 5 of 12 recorded boots, including the 2026-10-30T16:31Z reboot; the SEL records the slot disabled since 2026-05-01",
+    verdict: ExperimentInconclusive { reason: "The intervention is not stated: a different module in H1 and the H1 module in another slot discriminate opposite hypotheses, and the receipt does not say which was done." },
+    observed_at: 1793378400000,
+  },
+  CausalExperimentReceipt {
+    hypothesis: "Stale CMOS settings disable DIMMH1",
+    intervention: "Operator reset the CMOS (date unrecorded)",
+    observation: "DIMMH1 trained on some later boots and was disabled again on others, including 2026-10-30T16:31Z",
+    verdict: ExperimentInconclusive { reason: "A per-boot intermittent fault is untouched by a one-time reset; the boots after it are the same mix as before, so the reset neither cleared nor caused it." },
+    observed_at: 1793378400000,
+  },
+]
+
+// ---- Fans: what hangs off which header, as the operator wired it.
+//
+// The board has seven 4-pin headers (extdeps.boards.supermicro_h11ssl supermicro_h11ssl_fan_headers).
+// Two are wired, and both read rpm on 2026-10-30 (ipmitool sdr type Fan): FAN3 2400, FANB 1800. FAN1,
+// FAN2, FAN4, FAN5 and FANA read "No Reading"; FAN4 is unplugged (operator), and it read 500-900 rpm and
+// tripped its lower-critical threshold on 2026-10-25 (SEL 51-54) before it went. An unwired header is not a
+// row: FanHeaderWiring describes wiring, and "nothing on it" is the absence of one.
+//
+// FAN3 is the CPU cooler's fan (operator: "the cpu fan is the other fan (fan 3 i think?)"; the live rpm
+// on FAN3 agrees). Its model is not recorded. FANB carries the three P12 Pro Reverse fans on the pack's Y
+// splitter (operator 2026-10-30; a16-fan.sh records the move to FANB on 2026-10-26). Whether the splitter
+// returns one tach for three rotors or none of the second and third is unread, so representation is
+// Unobserved: FANB reading rpm says a tach is carried, not how many rotors it speaks for.
+data supermicro_h11ssl_unit1_fan_headers: List<FanHeaderWiring> = [
+  FanHeaderWiring {
+    header: "FAN3",
+    driven_fan_count: DrivenFanCountOperatorDeclared { count: 1 },
+    model: FanModelUnobserved,
+    tach_source: TachCarriedByDrivenFan { representation: TachRepresentationUnobserved },
+  },
+  FanHeaderWiring {
+    header: "FANB",
+    driven_fan_count: DrivenFanCountOperatorDeclared { count: 3 },
+    model: FanModelOperatorDeclaredPart { catalog: decl_ref(module_path: "extdeps.fans.arctic", decl_name: "arctic_p12_pro_reverse_catalog") },
+    tach_source: TachCarriedByDrivenFan { representation: TachRepresentationUnobserved },
+  },
+]
+
+// WHERE THE FANS SIT AND WHICH WAY THEY BLOW is a fact of this build that no reading here can supply:
+// rpm says a fan turns, not where it is or which face it pushes from. Owed by the operator.
+data supermicro_h11ssl_unit1_fan_orientation_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "For each of the three P12 Pro Reverse fans on FANB and the CPU fan on FAN3: its mounting position in the chassis (front, rear, side, GPU duct) and whether it pushes air into or out of the chassis, as the operator sees it.",
+}
+
+// ---- Chassis. The operator names it "RackChoice 3U rackmount Server Chassis Support Liquid Cooling
+// Compatibility up to Elevated 360mm Radiator Support SFX PSU/ATX/MicroATX/Mini-ITX MB". Listings under
+// that title disagree on bays, included fans and depth (they read as several SKUs), so no
+// extdeps.chassis.types ChassisCatalogRow is minted: its counts are not optional, and filling them would
+// be guessing one SKU's figures.
+data supermicro_h11ssl_unit1_chassis_named: NonEmptyStr = "RackChoice 3U rackmount server chassis (360 mm radiator, SFX/ATX PSU, ATX/MicroATX/Mini-ITX)"
+
+data supermicro_h11ssl_unit1_chassis_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "The exact RackChoice SKU (the listing's ASIN or the model on the chassis label), from which a ChassisCatalogRow in a new extdeps.chassis.rackchoice module can cite its bays, slots and included fans.",
+}
