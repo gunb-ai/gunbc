@@ -40,7 +40,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
 }
 import gunbc.roadmap.roadmap_attempt_worktree_claim { ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
-import gunbc.harness.harness_session_recovery { SessionValidated, session_event_request_pending, session_recovery_resumability, ResumabilityResumable }
+import gunbc.harness.harness_session_recovery { SessionValidated, session_event_request_pending, session_event_request_redelivered, session_recovery_resumability, ResumabilityResumable, ResumabilityMalformed }
 
 fn fresh_instance(tag: String) -> HostDashboardInstance {
   let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_wt_restore_wet_", tag, ".XXXXXX"], "")).path
@@ -263,4 +263,34 @@ test fn a_lineage_without_a_request_pending_stream_is_not_needed() -> Bool {
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
   let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
   cleaned(instance: instance, verdict: laid && is_not_needed(step))
+}
+
+// (review 88393) A MALFORMED STREAM REFUSES AND CREATES NOTHING: a lone re-delivery marker with no pending request
+// beneath it reads as SessionRecoveryMalformed, the tree is genuinely missing and the dispatch branch exists, so
+// the ONLY thing standing between this lineage and a `git worktree add` is the typed refusal. Asserts the reading
+// is Malformed (the route), the step is the Refused arm (not NotNeeded), and the tree is still Absent after it.
+test fn a_malformed_stream_on_a_missing_tree_refuses_and_creates_no_worktree() -> Bool {
+  let instance = fresh_instance(tag: "restore-malformed")
+  let node = "n-wt-malformed"
+  let key = "8192132435465768"
+  let events_path = dispatch_attempt_events_path_for_instance(instance: instance, node_id: node, attempt_key: key)
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && mkdir_p(path_parent_directory(path: events_path))
+    && Filesystem.Write(path: events_path, content: join([session_event_request_redelivered(ordinal: 1, round: 7, at: 1000), "\n"], "")).success
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let pk = ledger_first_key(instance: instance)
+  let malformed = match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node, attempt_key: pk)) { ResumabilityMalformed { mismatch: _ } => true _ => false }
+  let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
+  let refused = match step {
+    AttemptWorktreeRestoreRefused { detail: _ } => true
+    AttemptWorktreeRestored { worktree_path: _, branch: _ } => false
+    AttemptWorktreeNotNeeded => false
+    AttemptWorktreeBranchAbsent { branch: _, detail: _ } => false
+  }
+  let still_absent = match belt_claim_tree_at(instance: instance, path: dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: pk)) {
+    ClaimTreeAbsent => true
+    ClaimTreePresent => false
+    ClaimTreeUnobserved { detail: _ } => false
+  }
+  cleaned(instance: instance, verdict: laid && pk == key && malformed && refused && still_absent)
 }
