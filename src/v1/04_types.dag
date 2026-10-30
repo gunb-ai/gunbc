@@ -18,7 +18,8 @@ import std.algebra {
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named, OptionalOf, WitnessOf, TupleOf, AlgebraTypeVariable,
   AlgebraFieldTemplate,
   kernel_algebra_profile,
-  algebra_templates_for_profile
+  algebra_templates_for_profile,
+  zip_eq
 }
 
 import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
@@ -1254,14 +1255,10 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       && (left.children |> count) > 0 && (left.children |> count) == (right.children |> count)
       && (is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: left))
         || is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: right))) {
-      left.children |> enumerate |> all(pair =>
-        match right.children |> skip(pair.first) |> first {
-          Present { value: right_ch } =>
-            let left_el = join_element_type(slot: pair.second)
-            let right_el = join_element_type(slot: right_ch)
-            is_unit_like(n: left_el) || is_unit_like(n: right_el) || node_type_compatible(left: left_el, right: right_el, source_indices: source_indices, text: text)
-          Absent => true
-        }
+      zip_eq(a: left.children, b: right.children, eq: (left_ch, right_ch) =>
+        let left_el = join_element_type(slot: left_ch)
+        let right_el = join_element_type(slot: right_ch)
+        is_unit_like(n: left_el) || is_unit_like(n: right_el) || node_type_compatible(left: left_el, right: right_el, source_indices: source_indices, text: text)
       )
     }
     else if left_opt && right_opt {
