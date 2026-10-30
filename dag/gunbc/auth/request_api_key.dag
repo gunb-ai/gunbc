@@ -24,7 +24,7 @@ fn request_api_key_digest(authorization: String) -> Result<NonEmptyStr, String> 
   if count(words) != 2 { return Err { value: "Bearer credential required" } }
   let scheme = match first(words) { Present { value: v } => v Absent => "" }
   let token = match first(skip(words, n: 1)) { Present { value: v } => v Absent => "" }
-  if scheme != "Bearer" || token == "" || trim(s: token) != token {
+  if (scheme != "Bearer" || token == "" || trim(s: token) != token) {
     return Err { value: "Bearer credential required" }
   }
   Ok { value: sha256_hex_of_text(text: token) as NonEmptyStr }
