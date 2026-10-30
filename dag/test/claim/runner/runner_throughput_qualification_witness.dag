@@ -53,7 +53,7 @@ import gunbc.runner.runner_throughput_qualification {
   FloorWorkloadPin, SelectedRunnerRuntime, PeerScratchExport, WorkspaceBytesLocus, OnSubjectChargedToSlot, OnSubjectUncharged, OffSubject,
   workspace_bytes_locus, EffectiveSlotProperties,
   ObservedRunnerQualificationRun, observed_run, FleetBaselineRun, observed_baseline,
-  SamplingPolicy, ExactlyOneReconciledRun, ConservativePerAxis, BaselineWallAllowance, SelectedRunnerQualification,
+  SamplingPolicy, ExactlyOneReconciledRun, ConservativePerAxis, SelectedRunnerQualification,
   HostAllocationAdmitted, HostAllocationRefused,
   subject_join_axis_wire, SubjectJoined, SubjectJoinRefused,
   PeakWithinSlotHigh, PeakExceedsSlotHigh, MemoryEnvelopeViolatedAt, MemoryReceiptDisagreesAt, MemoryUnread,
@@ -67,6 +67,7 @@ import gunbc.runner.runner_throughput_qualification {
   RunnerCohortEvidence, NoCohortObserved, CohortObserved, run_key,
 }
 import std.nat { Nat, nat_range_inclusive, nat_to_decimal_string }
+import std.rational { NonzeroNatFraction }
 import std.observation { AttemptOccurrenceId }
 import product.capacity.cohort_observation {
   CohortReading, CohortSeatReading, SeatSettlement, SeatSettledAs, SeatSucceeded, SeatFailed, seal_cohort,
@@ -211,7 +212,7 @@ data fixture_runtime: SelectedRunnerRuntime = SelectedRunnerRuntime {
 
 // THE WALL ALLOWANCE IS A POLICY INPUT THE SELECTION SUPPLIES, a ratio and never a wall: a subject step may take at
 // most 5/4 of the same step's wall on the baseline host.
-data fixture_wall_allowance: BaselineWallAllowance = BaselineWallAllowance { numerator: 5, denominator: 4 }
+data fixture_wall_allowance: NonzeroNatFraction = NonzeroNatFraction { num: 5, denom_predecessor: 3 }
 
 fn inputs_with(sampling: SamplingPolicy, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> RunnerQualificationInputs<HostIdentity> {
   inputs_offered(offer: selected_offer(key: "offer-mtcollins1-qual-1"), sampling: sampling, plan: plan, allocation: allocation)

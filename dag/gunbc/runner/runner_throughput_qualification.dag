@@ -2,7 +2,8 @@ module gunbc.runner.runner_throughput_qualification
 
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Timestamp }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
-import std.nat { Nat, nat_to_decimal_string }
+import std.nat { Nat, nat_mul, nat_to_decimal_string }
+import std.rational { NonzeroNatFraction, nonzero_nat_fraction_denom }
 import std.measure {
   ByteSize, byte_size, byte_size_count,
   HardwareThreadCount, hardware_thread_count_value,
@@ -259,11 +260,9 @@ type SamplingPolicy
 
 // THE WALL ALLOWANCE AGAINST THE FLEET BASELINE IS POLICY THE SELECTION SUPPLIES (operator decision A): each subject
 // step's wall on the subject may be at most numerator/denominator of the same step's wall on the baseline run. The
-// allowance is a declared policy ratio, never a wall literal; the walls it multiplies are both observed.
-type BaselineWallAllowance {
-  numerator: Int
-  denominator: Int
-}
+// allowance is a declared policy ratio, never a wall literal; the walls it multiplies are both observed. It is
+// std.rational's fraction, whose denominator cannot be zero; a zero numerator is the strictest allowance, not a
+// malformed one, so no ratio this field holds needs a refusal.
 
 type SelectedRunnerQualification<P> {
   offer: SupplierOffer<P>
@@ -276,7 +275,7 @@ type SelectedRunnerQualification<P> {
   workspace: WorkspaceBacking
   cores_per_slot: HardwareThreadCount
   sampling: SamplingPolicy
-  wall_allowance: BaselineWallAllowance
+  wall_allowance: NonzeroNatFraction
 }
 
 // ── THE SUBJECT JOIN ──────────────────────────────────────────────────────────────────────────
@@ -468,11 +467,10 @@ fn observed_baseline(run: GitHubWorkflowRunId, host: HostIdentity, revision: Com
 // taken on the subject host itself, at another revision, or missing a subject -- is not a baseline, and refuses.
 type SubjectWallStanding
   = SubjectWallsWithinBaseline
-  | SubjectWallExceedsBaseline { subject: NonEmptyStr, wall: Second, baseline: Second, allowance: BaselineWallAllowance }
+  | SubjectWallExceedsBaseline { subject: NonEmptyStr, wall: Second, baseline: Second, allowance: NonzeroNatFraction }
   | BaselineOnTheSubjectHost { host: HostIdentity }
   | BaselineAtAnotherRevision { selected: CommitSha, baseline: CommitSha }
   | BaselineMissingSubject { subject: NonEmptyStr }
-  | BaselineAllowanceMalformed { allowance: BaselineWallAllowance }
   | SubjectWallsNotAssessed { because: NonEmptyStr }
 
 // THE SLOT COUNT IS READ OFF THE SELECTED ALLOCATION: its runner slice over the selected slot's
@@ -582,8 +580,6 @@ fn subject_wall_standing<P>(selection: SelectedRunnerQualification<P>, runs: Lis
     BaselineOnTheSubjectHost { host: baseline.host }
   } else if baseline.revision != selection.workload.revision {
     BaselineAtAnotherRevision { selected: selection.workload.revision, baseline: baseline.revision }
-  } else if allowance.numerator < 1 || allowance.denominator < 1 {
-    BaselineAllowanceMalformed { allowance: allowance }
   } else {
     fold(rows, init: SubjectWallsWithinBaseline, f: (acc, row) =>
       match acc {
@@ -592,7 +588,7 @@ fn subject_wall_standing<P>(selection: SelectedRunnerQualification<P>, runs: Lis
             Absent => BaselineMissingSubject { subject: subject_label(row: row) }
             Present { value: b } => {
               let observed = max_subject_wall(runs: runs, row: row)
-              if (observed as Int) * allowance.denominator > (second_count(b) as Int) * allowance.numerator {
+              if nat_mul(a: observed, b: nonzero_nat_fraction_denom(r: allowance)) > nat_mul(a: second_count(b), b: allowance.num) {
                 SubjectWallExceedsBaseline { subject: subject_label(row: row), wall: second(count: observed), baseline: b, allowance: allowance }
               } else {
                 acc
@@ -755,7 +751,6 @@ fn subject_wall_refusal(s: SubjectWallStanding) -> List<ThroughputRefusal> {
     BaselineOnTheSubjectHost { host: _ } => [SubjectWallDidNotHold { standing: s }]
     BaselineAtAnotherRevision { selected: _, baseline: _ } => [SubjectWallDidNotHold { standing: s }]
     BaselineMissingSubject { subject: _ } => [SubjectWallDidNotHold { standing: s }]
-    BaselineAllowanceMalformed { allowance: _ } => [SubjectWallDidNotHold { standing: s }]
     SubjectWallsNotAssessed { because: _ } => [SubjectWallDidNotHold { standing: s }]
   }
 }
@@ -924,11 +919,10 @@ fn subject_wall_wire(s: SubjectWallStanding) -> String {
   match s {
     SubjectWallsWithinBaseline => "every subject step's wall is within the baseline allowance"
     SubjectWallExceedsBaseline { subject: x, wall: w, baseline: b, allowance: a } =>
-      join(["subject ", x as String, " wall ", nat_wire(n: second_count(w)), "s exceeds the baseline ", nat_wire(n: second_count(b)), "s times ", int_to_decimal_string(value: a.numerator), "/", int_to_decimal_string(value: a.denominator)], "")
+      join(["subject ", x as String, " wall ", nat_wire(n: second_count(w)), "s exceeds the baseline ", nat_wire(n: second_count(b)), "s times ", nat_wire(n: a.num), "/", nat_wire(n: nonzero_nat_fraction_denom(r: a))], "")
     BaselineOnTheSubjectHost { host: h } => concat("the baseline run is on the subject host itself: ", h as String)
     BaselineAtAnotherRevision { selected: x, baseline: b } => join(["the baseline ran revision ", b as String, ", the subject runs ", x as String], "")
     BaselineMissingSubject { subject: x } => concat("the baseline carries no reading of subject ", x as String)
-    BaselineAllowanceMalformed { allowance: a } => join(["the wall allowance ", int_to_decimal_string(value: a.numerator), "/", int_to_decimal_string(value: a.denominator), " is not a positive ratio"], "")
     SubjectWallsNotAssessed { because: b } => concat("subject walls not assessed: ", b as String)
   }
 }

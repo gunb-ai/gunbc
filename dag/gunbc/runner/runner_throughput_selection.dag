@@ -2,6 +2,7 @@ module gunbc.runner.runner_throughput_selection
 
 import std.types { NonEmptyStr }
 import product.host_identity { HostIdentity }
+import std.rational { NonzeroNatFraction }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply { SupplierOffer }
 import gunbc.runner.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget, gunbc_runner_cores_per_slot }
@@ -13,7 +14,7 @@ import gunbc.fleet.fleet_host_budget {
 import gunbc.fabric.fabric_executor_class { ExecutorSanction }
 import gunbc.runner.runner_throughput_qualification {
   SelectedRunnerQualification, SelectedSlot, SelectedHostAllocation, HostAllocationAdmitted, HostAllocationRefused,
-  SlotQuotaThreads, FloorWorkloadPin, SelectedRunnerRuntime, WorkspaceBacking, SamplingPolicy, BaselineWallAllowance,
+  SlotQuotaThreads, FloorWorkloadPin, SelectedRunnerRuntime, WorkspaceBacking, SamplingPolicy,
 }
 
 // THE SELECTION IS THE FLEET'S ACT, AND THIS IS WHERE THE FLEET'S AUTHORITIES ARE CONSUMED.
@@ -95,7 +96,7 @@ fn select_runner_qualification<P>(
   unit: NonEmptyStr,
   workspace: WorkspaceBacking,
   sampling: SamplingPolicy,
-  wall_allowance: BaselineWallAllowance,
+  wall_allowance: NonzeroNatFraction,
 ) -> RunnerQualificationInputs<P> {
   RunnerQualificationInputs {
     executor_sanction: executor_sanction,
