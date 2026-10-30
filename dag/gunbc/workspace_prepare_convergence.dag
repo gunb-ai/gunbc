@@ -16,6 +16,7 @@ import product.fabric.offer_route { OfferRouteRow }
 import product.fabric.route_readiness { RouteExercise, RouteReadinessRequirement }
 import product.fabric.candidate_field { FieldRequest }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
 import gunbc.workspace_allocation { WorkspaceRequest }
 import gunbc.workspace_allocation_reservation { workspace_demand }
 import gunbc.workspace_allocation_supply { workspace_candidate_field, workspace_supply_from_field }
@@ -46,7 +47,7 @@ type WorkspaceProducedField { offers: List<FieldRequest<NonEmptyStr>>, routes: L
 
 // Preparation enters the same sealed convergence basis as the existing plan/apply path. It never
 // acquires a hold or starts a VM. Empty commissioning evidence cannot manufacture a provider offer.
-fn workspace_prepare_convergence_at_observed_clock(store: FabricStorageBinding, root: NonEmptyStr,
+fn workspace_prepare_convergence_at_observed_clock(store: FabricStorageBinding, cells: FabricAllocationStore,
   request: WorkspaceRequest, attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
   evidence: List<WorkspacePreparationEvidence>, policy: WorkspacePreparationPolicy,
   submitted_at: Timestamp, now: Timestamp, at: EpochSecs) -> WorkspaceConvergenceObservation
@@ -69,7 +70,7 @@ fn workspace_prepare_convergence_at_observed_clock(store: FabricStorageBinding, 
       scope: policy.scope, decision_receipt: policy.decision_receipt, exercises: policy.exercises, readiness: policy.readiness,
       at: at, offers: produced.offers)
     let supply = workspace_supply_from_field(field: field, admitted_slots: map(evidence, sample => sample.admission.slot))
-    match workspace_prepare_recorded_intent(store: store, root: root, request: request,
+    match workspace_prepare_recorded_intent(store: store, cells: cells, request: request,
       demand: admitted_demand, attempt: attempt,
       supply: supply.supply, resource_policy: policy.resource_budget, duration: policy.duration, initial_account: policy.initial_account) {
       WorkspacePreparationUnmet { reason: detail } => WorkspaceConvergenceUnobserved { reason: detail }
@@ -80,7 +81,7 @@ fn workspace_prepare_convergence_at_observed_clock(store: FabricStorageBinding, 
 }
 
 
-fn workspace_prepare_convergence_from_observations(store: FabricStorageBinding, root: NonEmptyStr,
+fn workspace_prepare_convergence_from_observations(store: FabricStorageBinding, cells: FabricAllocationStore,
   request: WorkspaceRequest, attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
   evidence: List<WorkspacePreparationEvidence>, policy: WorkspacePreparationPolicy,
   submitted_at: Timestamp) -> WorkspaceConvergenceObservation {
@@ -92,7 +93,7 @@ fn workspace_prepare_convergence_from_observations(store: FabricStorageBinding, 
       Absent => WorkspaceConvergenceUnobserved { reason: "preparation clock is unavailable" }
       Present { value: observed_now } => match clock_timestamp_to_unix_secs(timestamp: observed_now as Timestamp) {
         ClockTimestampRefused { detail: cause } => WorkspaceConvergenceUnobserved { reason: cause }
-        ClockTimestampObserved { epoch_secs: epoch } => workspace_prepare_convergence_at_observed_clock(store: store, root: root,
+        ClockTimestampObserved { epoch_secs: epoch } => workspace_prepare_convergence_at_observed_clock(store: store, cells: cells,
           request: request, attempt: attempt, evidence: evidence, policy: policy, submitted_at: submitted_at,
           now: observed_now as Timestamp, at: epoch)
       }

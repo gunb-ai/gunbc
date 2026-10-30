@@ -196,7 +196,11 @@ fn heal_checkout_step() -> Step {
 // name that a local branch and its remote-tracking ref can disagree about, and the round's seed
 // must be one commit that GitHub already resolved for this pull request. The step asks for the
 // base mirror UNCONDITIONALLY on every heal run; nothing here branches on a previous failure, and
-// the round's receipt names the base COMMIT it seeded from.
+// the round's receipt names the base COMMIT it seeded from. THE SCOPE IS THE WHOLE CRATE (`src/v1/stage0`:
+// mirrors at any depth, hand-maintained files, Cargo.toml, build.rs), not the generated top level --
+// a nested partition or a hand-maintained file left at the head beside base's definitions is a crate
+// that is neither base nor head, which is how #15175 (E0599) and #14876 (26 E0308/E0282 in
+// `v1-stage0-std-core`) refused in round 1.
 fn heal_stage0_round_step() -> Step {
   RunStep {
     name: Present { value: "Converge the stage0 mirrors to the seed's own fixed point" },

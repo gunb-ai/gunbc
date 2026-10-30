@@ -1,0 +1,644 @@
+module gunbc.cloudflare.zone
+
+// THE gunb.ai ZONE STANDING, THE COPY THE BIND DEPENDS ON, AND THE GAPS THAT HOLD THE BIND.
+//
+// B1 of gunbc.plans.boot_origin_bmc_media asks for the boot origin's gunb.ai hostname to be allocated,
+// which extdeps.cloudflare.zone shows is admissible only inside an ACTIVE zone in the SAME account as
+// gunbai-fabric-boot. Three things had to be OBSERVED before any of that could be written down, and all
+// three are here as receipts rather than as claims:
+//
+//   (1) the zone copy — every gunb.ai record the Namecheap-hosted zone still serves, transcribed into the
+//       Cloudflare record model, taken BEFORE any write and by a route that needs no credential (the
+//       registrar's own nameservers, queried directly, both of them);
+//   (2) what Cloudflare now serves for the same names, from the account's own delegated pair, so the copy
+//       is verified against the serving side rather than against a description of it;
+//   (3) that boot.gunb.ai answers NXDOMAIN at both authoritative servers, i.e. the hostname is genuinely
+//       unallocated rather than allocated to something this repository forgot about.
+//
+// The verification comes back PENDING, and this module says so with arms rather than narrative: proxied
+// records answer with Cloudflare's own addresses, so a DNS read cannot confirm their stored content and
+// the zone's record list (which needs the token this session has no route to) is the only complete
+// source. Nothing here writes: the bind's effect and its typed gaps are the deliverable, and the arm
+// names which gap it is waiting on. NO effect lives in this module — writes stay behind the gunbc.auth
+// authorization pattern (WIF / ntfy approval / explicit refusal), and no token ever passes through here.
+
+import std.types { Bool, Duration, Int, List, NonEmptyStr }
+import std.optional { Absent, Optional }
+import std.algebra { FreeSemigroup, non_empty_singleton, non_empty_append, non_empty_to_list }
+import std.human_intervention { HumanInterventionIdentity }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, FullyQualified, host_name_eq }
+import extdeps.external_authority { FactCitation }
+import extdeps.cloudflare.zone {
+  CloudflareAccountId, CloudflareZone, ZoneHold,
+  R2CustomDomainZoneStanding, r2_custom_domain_zone_admissible,
+  CloudflareDnsRecord, RecordTypeA, RecordTypeAAAA, RecordTypeCNAME,
+  RecordTypeTXT, RecordTypeMX, RecordTypeNS, RecordTypeSOA,
+  cloudflare_dns_record_key, cloudflare_record_type_admits_proxy, cloudflare_record_type_wire_eq,
+  cloudflare_account_id_from_text,
+  CloudflareR2CustomDomainBinding,
+  cloudflare_r2_custom_domain_is_serving,
+  r2_custom_domain_requires_zone_citation, dns_record_api_citation,
+}
+
+// The account the fleet's R2 storage lives in, and the bucket the boot origin publishes from — both read
+// from where they are already pinned (gunbc.cloudflare.r2_origin), restated here under their vendor-model
+// types because a comparison against an observed binding must name the account and bucket the fleet MEANS,
+// not compare a free string to whatever a read happens to carry. The id is ONLY obtainable through
+// cloudflare_account_id_from_text (the checked constructor) — and the result is Optional (review 87415):
+// a refused literal must stay Absent, a typed absence consumers are forced to handle, never be replaced
+// by a placeholder that wears the vendor's 32-hex shape and would pass every same-account check against
+// a zero account. DESIGN §5: no plausible output is fabricated. The literal here is cited from the
+// fleet's own roster value; if it ever stops parsing, the gap surfaces as Absent, not as a match.
+data gunb_ai_bucket_account: Optional<CloudflareAccountId> =
+  cloudflare_account_id_from_text(text: "5f71db675ad3e94c16a3d5c159d16298")
+data boot_origin_bucket: NonEmptyStr = "gunbai-fabric-boot"
+
+// The three names this carrier is about, in the vendor's own absolute spelling.
+data gunb_ai_apex: HostName = HostName {
+  name: DomainName { labels: ["gunb" as DnsLabel, "ai" as DnsLabel] },
+  qualification: FullyQualified,
+}
+data gunb_ai_www: HostName = HostName {
+  name: DomainName { labels: ["www" as DnsLabel, "gunb" as DnsLabel, "ai" as DnsLabel] },
+  qualification: FullyQualified,
+}
+data boot_origin_hostname: HostName = HostName {
+  name: DomainName { labels: ["boot" as DnsLabel, "gunb" as DnsLabel, "ai" as DnsLabel] },
+  qualification: FullyQualified,
+}
+
+// --------------------------------------------------------------------------------
+// (1) THE COPY. Observed 2026-10-27T22:44:54Z by querying dns1/dns2.registrar-servers.com
+// (156.154.132.200 / 156.154.133.200) directly over UDP/TCP 53 — the Namecheap-hosted
+// copy of the zone, i.e. exactly what gunbc.namecheap.observe's get_hosts reports, read
+// from the side that serves it. Both servers answered identically for every type, so the
+// two independent answers are the receipt's cross-check. TTLs are as served; the AAAA
+// contents are the parsed wire form with zero groups written out, both sides alike.
+// --------------------------------------------------------------------------------
+
+// The apex carries four A and four AAAA to GitHub Pages at ttl 1799, the Google Workspace
+// SPF TXT, one MX at preference 1, and the registrar's own SOA/NS.
+data namecheap_apex_a_contents: List<NonEmptyStr> = [
+  "185.199.108.153", "185.199.111.153", "185.199.109.153", "185.199.110.153",
+]
+data namecheap_apex_aaaa_contents: List<NonEmptyStr> = [
+  "2606:50c0:8002:0:0:0:0:153", "2606:50c0:8003:0:0:0:0:153",
+  "2606:50c0:8000:0:0:0:0:153", "2606:50c0:8001:0:0:0:0:153",
+]
+data namecheap_apex_txt: NonEmptyStr = "v=spf1 include:_spf.google.com ~all"
+data namecheap_apex_mx: NonEmptyStr = "1 smtp.google.com"
+data namecheap_www_cname: NonEmptyStr = "gunb-ai.github.io"
+// A TTL is a duration in seconds, and std.types already publishes Duration for exactly that; a bare Int
+// here would let a minute-count be stored where a second-count is meant (the review's unit-modeling rule).
+data namecheap_ttl_short: Duration = 1799
+
+// The zone's own SOA and NS pair are observed and DELIBERATELY NOT COPIED: Cloudflare mints its own the
+// moment a zone is added, so transcribing the registrar's serial or its NS delegation would be an edit to
+// records that are not the fleet's to copy. They are carried as RECORDS, not as a number beside the copy
+// (review 38602: a count copied from the tree is a change detector — completeness is an identity join on
+// the record key, so the witness joins these three rows against the observed fourteen, not against 14 - 3).
+// 14 distinct records, not the 21 rows a raw sweep prints: a CNAME answers every query type at its own
+// name, so the single www CNAME came back under all seven query types (an A answer whose rdata is a name
+// is the giveaway) and the two NS and the SOA are counted once each. The set is the set, not the sweep.
+data namecheap_registrar_ns_contents: List<NonEmptyStr> = [
+  "dns1.registrar-servers.com", "dns2.registrar-servers.com",
+]
+data namecheap_registrar_soa: NonEmptyStr = "dns1.registrar-servers.com hostmaster.registrar-servers.com 2020020801 3600 1800 604800 3600"
+data namecheap_ttl_registrar: Duration = 1800
+
+// THE OBSERVED SET, as the two registrar nameservers answered it, independent of what the copy chose to
+// carry. This is the set the copy is measured AGAINST: copied and uncopied below are claims over it, and
+// the witness joins all three by cloudflare_dns_record_key rather than trusting any cardinality.
+fn namecheap_observed_records() -> List<CloudflareDnsRecord> {
+  let apex_a = map(namecheap_apex_a_contents, content => CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeA,
+    content: content,
+    ttl: namecheap_ttl_short,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeA, proxied: false),
+  })
+  let apex_aaaa = map(namecheap_apex_aaaa_contents, content => CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeAAAA,
+    content: content,
+    ttl: namecheap_ttl_short,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeAAAA, proxied: false),
+  })
+  let txt = [CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeTXT,
+    content: namecheap_apex_txt,
+    ttl: namecheap_ttl_short,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeTXT, proxied: false),
+  }]
+  let mx = [CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeMX,
+    content: namecheap_apex_mx,
+    ttl: namecheap_ttl_short,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeMX, proxied: false),
+  }]
+  let www = [CloudflareDnsRecord {
+    name: gunb_ai_www,
+    record_type: RecordTypeCNAME,
+    content: namecheap_www_cname,
+    ttl: namecheap_ttl_short,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeCNAME, proxied: false),
+  }]
+  let ns = map(namecheap_registrar_ns_contents, content => CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeNS,
+    content: content,
+    ttl: namecheap_ttl_registrar,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeNS, proxied: false),
+  })
+  let soa = [CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeSOA,
+    content: namecheap_registrar_soa,
+    ttl: namecheap_ttl_registrar,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeSOA, proxied: false),
+  }]
+  concat(apex_a, concat(apex_aaaa, concat(txt, concat(mx, concat(www, concat(ns, soa))))))
+}
+
+// THE COPY, DERIVED — not re-typed. The copied set IS the observed set minus the two records the
+// registrar owns (its NS pair and the SOA Cloudflare mints itself); that exclusion is the whole decision,
+// so it is written ONCE as a filter over the observation rather than as a second transcription of eleven
+// literals that could silently drift from the fourteen they were copied from (review 87475, §2 "a
+// perfectly DRY process is therefore the minimal one"). The match is inline because it is this filter's
+// question, not a concept the module needs a name for.
+fn namecheap_copied_records() -> List<CloudflareDnsRecord> {
+  filter(
+    namecheap_observed_records(),
+    record => match record.record_type {
+      RecordTypeNS => false
+      RecordTypeSOA => false
+      _ => true
+    }
+  )
+}
+
+
+// and www resolves to them with no CNAME in the answer at all, so what the DNS reader sees is
+// the proxy's front, not the stored content the copy has to match. The zone's record LIST is
+// therefore the only complete source for a proxied record's content, and reading it needs the
+// Cloudflare credential (extdeps.cloudflare.zone carries the record-list route and the proxy
+// ranges that make this true). What the DNS read CAN settle — the unproxied records — it does
+// settle, and both copies agree exactly on the SPF TXT and on MX "1 smtp.google.com".
+// --------------------------------------------------------------------------------
+
+data cloudflare_apex_a_answers: List<NonEmptyStr> = [
+  "104.21.59.200", "172.67.183.41",
+]
+data cloudflare_apex_aaaa_answers: List<NonEmptyStr> = [
+  "2606:4700:3034:0:0:0:6815:3bc8", "2606:4700:3036:0:0:0:ac43:b729",
+]
+data cloudflare_apex_txt: NonEmptyStr = "v=spf1 include:_spf.google.com ~all"
+data cloudflare_apex_mx: NonEmptyStr = "1 smtp.google.com"
+// The Cloudflare-side TTL, the same unit: 300 seconds is what the proxied records serve with.
+data cloudflare_ttl_proxied: Duration = 300
+
+// www resolves to the same two anycast pairs at both servers, and a CNAME query at www returned ZERO
+// answers. So the zone publishes A and AAAA at www, while the Namecheap copy carries a CNAME there: one
+// record, two shapes. Whether Cloudflare stores a proxied CNAME it answers by flattening, or genuine A and
+// AAAA records, is exactly the question the record list answers and the DNS reader cannot — which is why
+// this copy's www arm is outstanding rather than guessed either way.
+data cloudflare_www_a_answers: List<NonEmptyStr> = ["104.21.59.200", "172.67.183.41"]
+data cloudflare_www_aaaa_answers: List<NonEmptyStr> = [
+  "2606:4700:3034:0:0:0:6815:3bc8", "2606:4700:3036:0:0:0:ac43:b729",
+]
+data cloudflare_www_cname_answer_count: Int = 0
+
+fn cloudflare_served_records() -> List<CloudflareDnsRecord> {
+  let apex_a = map(cloudflare_apex_a_answers, content => CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeA,
+    content: content,
+    ttl: cloudflare_ttl_proxied,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeA, proxied: true),
+  })
+  let apex_aaaa = map(cloudflare_apex_aaaa_answers, content => CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeAAAA,
+    content: content,
+    ttl: cloudflare_ttl_proxied,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeAAAA, proxied: true),
+  })
+  let txt = [CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeTXT,
+    content: cloudflare_apex_txt,
+    ttl: cloudflare_ttl_proxied,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeTXT, proxied: false),
+  }]
+  let mx = [CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeMX,
+    content: cloudflare_apex_mx,
+    ttl: cloudflare_ttl_proxied,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeMX, proxied: false),
+  }]
+  let www_a = map(cloudflare_www_a_answers, content => CloudflareDnsRecord {
+    name: gunb_ai_www,
+    record_type: RecordTypeA,
+    content: content,
+    ttl: cloudflare_ttl_proxied,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeA, proxied: true),
+  })
+  let www_aaaa = map(cloudflare_www_aaaa_answers, content => CloudflareDnsRecord {
+    name: gunb_ai_www,
+    record_type: RecordTypeAAAA,
+    content: content,
+    ttl: cloudflare_ttl_proxied,
+    proxy: cloudflare_record_proxy(record_type: RecordTypeAAAA, proxied: true),
+  })
+  concat(apex_a, concat(apex_aaaa, concat(txt, concat(mx, concat(www_a, www_aaaa)))))
+}
+
+// A copied record is CARRIED when the served set holds the same name/type/content triple (TTL and the
+// proxy flag are not identity: served TTLs are the vendor's defaults for the same values, and the proxy
+// flag says how Cloudflare answers, not what the record is).
+fn copied_record_is_carried(record: CloudflareDnsRecord) -> Bool {
+  let wanted = cloudflare_dns_record_key(record: record)
+  fold(
+    cloudflare_served_records(),
+    init: false,
+    f: (acc, served) => acc || (cloudflare_dns_record_key(record: served) == wanted)
+  )
+}
+
+// The name/type a copied record claims, matched against what the served set publishes at all. A proxied
+// record's content cannot be compared (above), so for those the question is only whether the zone publishes
+// that name at that type — the content question is handed to CopyPending's outstanding list.
+fn served_set_publishes(record: CloudflareDnsRecord) -> Bool {
+  fold(
+    cloudflare_served_records(),
+    init: false,
+    f: (acc, served) => acc
+      || (host_name_eq(a: served.name, b: record.name) && (cloudflare_record_type_wire_eq(a: served.record_type, b: record.record_type)))
+  )
+}
+
+
+
+// The records whose CONTENT the DNS read could not settle: everything the Cloudflare side answers from
+// behind its anycast front, plus anything whose name/type the served set does not publish at all. This is
+// the outstanding work for a Complete copy, named rather than assumed away. The check matches the record's
+// OWN proxy variant directly — a proxiable type is not the same claim as "this record is proxied", and the
+// removed helpers used to blur exactly that (review 38602).
+fn unverified_copied_records() -> List<CloudflareDnsRecord> {
+  fold(
+    namecheap_copied_records(),
+    init: [],
+    f: (acc, record) => if !served_set_publishes(record: record) {
+      concat(acc, [record])
+    } else if cloudflare_record_type_admits_proxy(record_type: record.record_type) {
+      // A record whose TYPE Cloudflare can proxy: the copy's own proxy field says how the registrar
+      // answers, not how Cloudflare will, so the content question stays open for these.
+      concat(acc, [record])
+    } else {
+      acc
+    }
+  )
+}
+
+// The unproxied contents, checked directly. Both copies serve the SPF TXT and MX "1 smtp.google.com"
+// identically, and this is the part of the copy the credential-free route can actually verify.
+// THE COPIED SET, not a third transcription (review 87475): the two rows are PICKED OUT of the copy by
+// type and then compared to what the zone answers, so the agreement being claimed is between the copy
+// standing and the served answer — not between two literals written in the same file, which would be
+// true whatever Cloudflare served. Absent is a refusal of its own: a copy that lost its SPF or its MX
+// cannot be reported as agreeing.
+fn copied_record_of_type(record_type: CloudflareDnsRecordType) -> Optional<CloudflareDnsRecord> {
+  fold(
+    namecheap_copied_records(),
+    init: Absent,
+    f: (acc, record) => match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if cloudflare_record_type_wire_eq(a: record.record_type, b: record_type) {
+        Present { value: record }
+      } else {
+        Absent
+      }
+    }
+  )
+}
+
+fn unproxied_contents_agree() -> Bool {
+  match copied_record_of_type(record_type: RecordTypeTXT) {
+    Present { value: txt } => copied_record_is_carried(record: txt)
+    Absent => false
+  }
+    && match copied_record_of_type(record_type: RecordTypeMX) {
+         Present { value: mx } => copied_record_is_carried(record: mx)
+         Absent => false
+       }
+}
+
+data copy_observed_at: Rfc3339Timestamp = "2026-10-27T22:44:54Z" as Rfc3339Timestamp
+
+// The copy standing. Complete would mean every copied record's CONTENT is matched in the zone's own record
+// list; Pending names what is still unverified and why. An empty outstanding list with the unproxied
+// contents agreeing is not Complete either — that would be the record list claiming what a DNS answer
+// cannot prove — so the arm cannot be reached without the list read, and says so.
+type ZoneRecordCopyStanding
+  = CopyCompleteAgainstRecordList { copied: List<CloudflareDnsRecord>, observed_at: Rfc3339Timestamp, basis: FactCitation }
+  // gap, not reason (review 87595): which blocker this arm waits on is DECIDED here, where the blocking
+  // observation was made — the nine proxied rows answer with Cloudflare's own addresses, so only the
+  // zone's record list can confirm their stored content. A prose cause downstream could only be
+  // re-guessed; this arm states the typed gap, and the verdict passes it through unchanged.
+  | CopyPendingRecordList {
+      copied: List<CloudflareDnsRecord>,
+      outstanding: List<CloudflareDnsRecord>,
+      unproxied_contents_agree: Bool,
+      gap: BootOriginBindEffectGap,
+      observed_at: Rfc3339Timestamp,
+      basis: FactCitation,
+    }
+  // The future arm: the copy refused outright (a served row that contradicts the observation, once the
+  // record list is readable). Its remedy is the same read — the list is how a contradiction is settled —
+  // so it carries the record-list gap too, and the verdict forwards it rather than inventing one.
+  | CopyRefused { outstanding: List<CloudflareDnsRecord>, gap: BootOriginBindEffectGap }
+
+fn zone_record_copy_standing() -> ZoneRecordCopyStanding {
+  CopyPendingRecordList {
+    copied: namecheap_copied_records(),
+    outstanding: unverified_copied_records(),
+    unproxied_contents_agree: unproxied_contents_agree(),
+    gap: record_list_gap(),
+    observed_at: copy_observed_at,
+    basis: dns_record_api_citation,
+  }
+}
+
+// --------------------------------------------------------------------------------
+// (3) THE ZONE STANDING, and the hostname's own DNS state.
+// --------------------------------------------------------------------------------
+
+// The delegation this precondition rests on, re-observed here rather than inherited: all four .ai parent
+// servers name the same Cloudflare pair, and both of those answer authoritatively with a Cloudflare-minted
+// SOA (serial 2418495802) — which is what a live zone looks like from outside.
+data gunb_ai_delegated_nameservers: List<NonEmptyStr> = ["alexandra.ns.cloudflare.com", "austin.ns.cloudflare.com"]
+data gunb_ai_served_soa: NonEmptyStr = "alexandra.ns.cloudflare.com dns.cloudflare.com 2418495802 10000 2400 604800 1800"
+data zone_identity_observed_at: Rfc3339Timestamp = "2026-10-27T23:12:19Z" as Rfc3339Timestamp
+
+// boot.gunb.ai answers NXDOMAIN for A, AAAA and CNAME at BOTH authoritative servers. The hostname is not
+// taken; that is the claim, and this is its evidence rather than an assumption of emptiness.
+data boot_origin_nxdomain_answers: Int = 6
+
+type FleetGunbAiZoneStanding
+  = ZoneObservedActive { zone: CloudflareZone, soa: NonEmptyStr, observed_at: Rfc3339Timestamp, basis: FactCitation }
+  // The zone is live — the parent delegates and both servers answer with a Cloudflare-minted SOA — but
+  // its 32-hex id and holding account come only from GET /client/v4/zones, which this session has no
+  // route to. The evidence IS the receipt (nameservers, soa, observed_at, basis); the blocker is the
+  // typed gap, stated here rather than paraphrased for a downstream keyword match (review 87595).
+  | ZoneLiveButIdentityUnobserved {
+      apex: HostName,
+      nameservers: List<NonEmptyStr>,
+      soa: NonEmptyStr,
+      gap: BootOriginBindEffectGap,
+      observed_at: Rfc3339Timestamp,
+      basis: FactCitation,
+    }
+  // No zone visible for the apex at all. The remedy is still the same read — GET /client/v4/zones?name=
+  // is how you learn whether a zone exists for an apex — so the same gap is carried honestly, and the
+  // two arms stay distinct by their EVIDENCE, not by an interchangeable sentence.
+  | ZoneNotObserved { apex: HostName, gap: BootOriginBindEffectGap }
+
+fn fleet_gunb_ai_zone_standing() -> FleetGunbAiZoneStanding {
+  ZoneLiveButIdentityUnobserved {
+    apex: gunb_ai_apex,
+    nameservers: gunb_ai_delegated_nameservers,
+    soa: gunb_ai_served_soa,
+    gap: credential_route_gap(),
+    observed_at: zone_identity_observed_at,
+    basis: r2_custom_domain_requires_zone_citation,
+  }
+}
+
+// --------------------------------------------------------------------------------
+// (7) THE READBACK, as what it is: a receipt or its absence.
+//
+// The blocker this replaces (manager, on 5218cdb) was a fabricated CloudflareR2CustomDomainBinding for a
+// read nobody performed, wearing OwnershipStatusUnknown / SslStatusUnknown { wire: "unobserved" }. That
+// was wrong twice over: those arms mean a value OUTSIDE the vendor's published set — and the manager
+// caught that Cloudflare PUBLISHES "unknown" in both status vocabularies (r2_custom_domain_status_api_read
+// ing), so the fabricated value silently collided with a real vendor answer; and a binding is what the
+// custom-domain endpoint RETURNS, so constructing one without a response invents enabled, a zone id and
+// two statuses out of nothing. §5 again: no plausible output is fabricated.
+//
+// So the binding type now has exactly one producer path — a response — and the reading itself is a sum in
+// the OBSERVING layer with absence as one of its arms: ReadbackNotTaken is not a weird binding, it is no
+// binding, and it names its own remedy (dispatch the bind). Only ReadbackOf carries a receipt.
+// --------------------------------------------------------------------------------
+
+type BootOriginBindReadback
+  // No read has been made and none may be until the bind runs: absence with its reason, never a
+  // placeholder binding. This is today's state.
+  = ReadbackNotTaken { gap: BootOriginBindEffectGap }
+  // The response path: exists only by construction from a real GET of the custom domain. zone_id keeps
+  // its OPTIONAL meaning honestly here (the response carries it), and neither status can be faked,
+  // because R2OwnershipStatus / R2SslStatus are built by the vendor-vocabulary decoder in extdeps.
+  | ReadbackOf { binding: CloudflareR2CustomDomainBinding, observed_at: Rfc3339Timestamp }
+
+// Today: no credential route, no bind, therefore no response. The dispatch gap is the same one the
+// standing carries, so one fact still lives in one place.
+data boot_origin_bind_readback: BootOriginBindReadback = ReadbackNotTaken { gap: bind_dispatch_gap() }
+
+
+// --------------------------------------------------------------------------------
+// THE VERDICT THE B1 ARM NEEDS — computed, never asserted. Allocated requires all three:
+// the zone observed with its identity, the copy complete against the zone's record list,
+// and a readback whose ownership AND certificate are active. Every arm names which of the
+// three it is waiting on, so the plan's gate reads off the arms instead of off a paragraph,
+// and no agent can reach the allocated-looking arm without all three having happened.
+// --------------------------------------------------------------------------------
+
+// THE HOLD READ, as an OBSERVATION of this repository. The vendor publishes the hold on its own
+// endpoint (zones.holds, a boolean), not on the zones-list response, so whether THIS fleet has read it
+// is a fact about this fleet, never a field of a Cloudflare zone (DESIGN §3, External upstream
+// decomposition; review 87475 — the extdeps model had made it one, with a fabricated default besides).
+// Absent here is a coverage obligation with a named remedy, and it reaches the admissibility rule
+// unchanged, so the rule's refusal on unread input is the SAME absence the module carries — not a second
+// invented stand-in.
+data boot_origin_zone_hold_observation: Optional<ZoneHold> = Absent
+
+data boot_origin_zone_hold_read_citation: FactCitation = zone_hold_api_citation
+
+// The admissibility rule, CALLED with what the module actually knows (review 87180: a rule only a test
+// calls is a rule the product does not use). It returns Optional because when the zone's identity has
+// not been read there IS no zone to put in front of the rule — the standing arms say so, and Absent is
+// their answer. The verdict path consumes that Absent as the zone-identity gap it already reports, so no
+// placeholder zone is invented to satisfy a signature (review 87415, §5).
+//
+// Today this yields Absent: no Cloudflare credential route reaches the session, so the zone is live but
+// unnamed. The moment the identity is read, the rule runs against the real zone, the account receipt and
+// the hold receipt — and the hold is still Absent here, so a zone would be refused for the UNREAD hold
+// rather than waved through: each unmade observation refuses for its own reason.
+fn boot_origin_zone_admissibility() -> Optional<R2CustomDomainZoneStanding> {
+  match fleet_gunb_ai_zone_standing() {
+    ZoneNotObserved { apex: _, gap: _ } => Absent
+    ZoneLiveButIdentityUnobserved { apex: _, nameservers: _, soa: _, gap: _, observed_at: _, basis: _ } => Absent
+    ZoneObservedActive { zone, soa: _, observed_at: _, basis: _ } =>
+      Present { value: r2_custom_domain_zone_admissible(zone: zone, bucket_account: gunb_ai_bucket_account, hold: boot_origin_zone_hold_observation) }
+  }
+}
+
+type BootOriginHostnameBindingVerdict
+  = BindingAllocated { binding: CloudflareR2CustomDomainBinding, observed_at: Rfc3339Timestamp }
+  | BindingAwaitingZoneIdentity { gap: BootOriginBindEffectGap }
+  | BindingAwaitingCompleteCopy { outstanding: List<CloudflareDnsRecord>, gap: BootOriginBindEffectGap }
+  // The arm today's truth lands on once the zone and the copy are settled: no binding exists yet because
+  // nothing may dispatch its creation. Distinct from BindingNotServing, which requires a binding that
+  // EXISTS and reports not serving — collapsing the two would tell the operator to debug a domain that
+  // was never created.
+  | BindingAwaitingDispatch { gap: BootOriginBindEffectGap }
+  // No reason string (review 87595): the binding ALREADY carries the three typed fields that make this
+  // arm true — enabled, ownership, ssl — so a sentence describing them would be a second home for the
+  // same fact, and prose is the weaker copy of it. The reader reads the receipt.
+  | BindingNotServing { binding: CloudflareR2CustomDomainBinding }
+
+fn boot_origin_hostname_binding_verdict() -> BootOriginHostnameBindingVerdict {
+  // Pure pass-through: the gap the standing carries IS the verdict's gap. Nothing here infers a cause
+  // from text, so no rewording can re-route the operator (review 87595).
+  match fleet_gunb_ai_zone_standing() {
+    ZoneNotObserved { apex: _, gap } => BindingAwaitingZoneIdentity { gap: gap }
+    ZoneLiveButIdentityUnobserved { apex: _, nameservers: _, soa: _, gap, observed_at: _, basis: _ } => BindingAwaitingZoneIdentity { gap: gap }
+    ZoneObservedActive { zone, observed_at } => boot_origin_verdict_for_zone(zone: zone, observed_at: observed_at)
+  }
+}
+
+fn boot_origin_verdict_for_zone(zone: CloudflareZone, observed_at: Rfc3339Timestamp) -> BootOriginHostnameBindingVerdict {
+  match zone_record_copy_standing() {
+    CopyRefused { outstanding, gap } => BindingAwaitingCompleteCopy { outstanding: outstanding, gap: gap }
+    CopyPendingRecordList { outstanding, gap, copied: _, unproxied_contents_agree: _, observed_at: _, basis: _ } =>
+      BindingAwaitingCompleteCopy { outstanding: outstanding, gap: gap }
+    // AwaitingDispatch is DERIVED from the readback's absence (manager blocker), not from an invented
+    // binding whose zone id happens to be Absent. Absence is the readback sum's own arm, and it carries
+    // its own remedy — the dispatch gap — so the verdict adds nothing.
+    CopyCompleteAgainstRecordList { copied: _, observed_at: _, basis: _ } =>
+      match boot_origin_bind_readback {
+        ReadbackNotTaken { gap } => BindingAwaitingDispatch { gap: gap }
+        // Only a real response reaches the other two arms, and it is read through the single serving
+        // rule in extdeps. Not serving requires a binding that EXISTS and reports itself so.
+        ReadbackOf { binding, observed_at: read_at } =>
+          if cloudflare_r2_custom_domain_is_serving(binding: binding) {
+            BindingAllocated { binding: binding, observed_at: read_at }
+          } else {
+            BindingNotServing { binding: binding }
+          }
+      }
+  }
+}
+
+// --------------------------------------------------------------------------------
+// THE TYPED GAPS. Every one of these is a credential, a grant, or a decision this session
+// does not have — reported with its remedy, never talked around (README: stop visibly;
+// never conceal the deficit). Each carries the reading that makes it the blocker, so the
+// gap cannot be argued away by someone who has not read the page.
+// --------------------------------------------------------------------------------
+
+// WHICH CAUSE, decided BY THE STANDING, never guessed from prose (review 87595). These arms used to be
+// selected by keyword-matching a NonEmptyStr reason — a silent widening §5 forbids, because rewording a
+// sentence re-routed the operator to the wrong remedy. Each standing arm now CARRIES one of these, built
+// where the blocking observation actually was; the prose reasons they replace are gone, so there is
+// nothing left to misread.
+//
+// missing is std.algebra::FreeSemigroup<NonEmptyStr> — the §3b cardinality home for a list that cannot be
+// empty. An unreported gap (a concealment, not a deficit) is now UNREPRESENTABLE: no arm of this sum can
+// be built without a remedy, so the runtime length check this declaration used to carry is deleted rather
+// than asserted (review 87595, §4b: rung inflation is worse than sitting low — this is rung 4, honestly).
+type BootOriginBindEffectGap =
+    CloudflareCredentialRouteMissing { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
+  | CloudflareRecordListUnread { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
+  | BindDispatchUnmodeled { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
+
+// The credential-route gap as the ZONE STANDING carries it. Its remedies name both halves of what is
+// missing — the token and the fleet's accessor into Cloudflare — because minting a token without a place
+// to route it would only move the gap.
+fn credential_route_gap() -> BootOriginBindEffectGap {
+  CloudflareCredentialRouteMissing {
+    missing: non_empty_append(
+      left: non_empty_singleton(
+        item: "a Cloudflare API token holding the zone-read and R2 custom-domain scopes, minted and held through the gunbc.auth authorization pattern (WIF federation, or the ntfy approval route, or an explicit refusal) — never pasted by the operator"
+      ),
+      right: non_empty_singleton(
+        item: "the fleet's Cloudflare accessor: the roster and the converge workflow carry bucket, object and token-mint modes and NO zone-read or custom-domain mode"
+      )
+    ),
+    basis: r2_custom_domain_requires_zone_citation,
+  }
+}
+
+// The record-list gap as the COPY STANDING carries it: proxied records answer with the proxy's own
+// addresses, so the zone's record list is the only complete source, and reading it needs the token.
+fn record_list_gap() -> BootOriginBindEffectGap {
+  CloudflareRecordListUnread {
+    missing: non_empty_singleton(
+      item: "a Cloudflare API token scoped to read the zone's DNS records (GET /client/v4/dns/records), obtained through the gunbc.auth authorization pattern"
+    ),
+    basis: dns_record_api_citation,
+  }
+}
+
+// The dispatch gap, produced where it is true: the bind is a privileged Cloudflare WRITE, and no site may
+// run one ad hoc — it belongs behind the gunbc.auth authorization pattern as a fleet-converge mode, and
+// no such mode exists (r2_bucket_admin_mint is the precedent shape, and none covers the custom domain).
+// This arm is reached from the verdict's serving path, never from a keyword.
+fn bind_dispatch_gap() -> BootOriginBindEffectGap {
+  BindDispatchUnmodeled {
+    missing: non_empty_singleton(
+      item: "the fleet-converge mode and entry module that run the bind: a privileged Cloudflare write has no ad-hoc site, so it belongs behind the authorization pattern as a converge"
+    ),
+    basis: r2_custom_domain_requires_zone_citation,
+  }
+}
+
+// RENDERING, not validation: the remedies are non-empty by construction, so this only flattens them for
+// whoever reports the gap.
+fn boot_origin_bind_gap_names(gap: BootOriginBindEffectGap) -> List<NonEmptyStr> {
+  match gap {
+    CloudflareCredentialRouteMissing { missing } => non_empty_to_list(xs: missing)
+    CloudflareRecordListUnread { missing } => non_empty_to_list(xs: missing)
+    BindDispatchUnmodeled { missing } => non_empty_to_list(xs: missing)
+  }
+}
+
+// --------------------------------------------------------------------------------
+// (4) THE FQDN DECISION, as the pending thing it is.
+//
+// There is deliberately no is_decided Bool here (review 87806): a Bool answers "has anyone decided?" and
+// throws away WHAT was decided, and the consumer that then takes the production host from anywhere else
+// can name the boot origin on a host nobody chose. The consumer (gunbc.cloudflare.boot_origin's hostname
+// standing) matches this sum directly and builds its Allocated arm FROM the Decided arm's hostname.
+//
+// gunbc.cloudflare.boot_origin's own instruction says the zone and FQDN "is an operator decision this
+// repository cannot derive", and its standing is derived — never declarable — from this module's verdict
+// plus this carrier's Decided arm, so no agent may flip boot_origin_hostname_standing from here, and this
+// module does not.
+//
+// Modelled (review 87595) instead of stored as a sentence: a decision status is a status, and §4c puts a
+// status in a typed carrier. Pending carries the candidate plus WHO recommended it and WHEN; Decided
+// requires the citation, so a decided FQDN without a source cannot be written. Today's value is Pending
+// with the parent's recommendation — the carrier is read by the hostname standing in
+// gunbc.cloudflare.boot_origin, which reads the HOST out of the Decided arm, so it is not commentary.
+// When the operator answers, the Decided arm is built from their citation and the hostname standing flips
+// in the follow-up that cites it; this file cannot pre-fill it.
+// --------------------------------------------------------------------------------
+
+type BootOriginFqdnDecision
+  = PendingFqdnRecommendation { hostname: HostName, recommended_by: NonEmptyStr, at: Rfc3339Timestamp }
+  // citation, not prose: which operator decision, recorded where. The arm cannot be built without it.
+  | FqdnDecided { hostname: HostName, decided_by: HumanInterventionIdentity, citation: FactCitation }
+
+data boot_origin_fqdn_decision: BootOriginFqdnDecision = PendingFqdnRecommendation {
+  hostname: boot_origin_hostname,
+  recommended_by: "bright-swift-248",
+  at: boot_origin_fqdn_recommendation_at,
+}
+
+data boot_origin_fqdn_recommendation_at: Rfc3339Timestamp = "2026-10-28T00:00:00Z" as Rfc3339Timestamp
+
+

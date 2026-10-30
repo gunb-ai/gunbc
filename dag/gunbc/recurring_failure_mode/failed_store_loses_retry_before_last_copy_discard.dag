@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.failed_store_loses_retry_before_last_copy_discard
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data failed_store_loses_retry_before_last_copy_discard: RecurringFailureMode = RecurringFailureMode {
+  identity: "failed_store_loses_retry_before_last_copy_discard" as NonEmptyStr,
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "retention admission reserves replacement capacity and permits release of the last copy only after per-object persistence readback and retained-head commit, preserving the prior head on failure" } },
+  receipts: [
+    "INVALID STATE: store completion removes failed work while retention still records it as pending; duplicate suppression prevents retry after capacity returns. The expiry path then permits discarding the last copy. HARM: warm conversations reconstruct despite available storage. FOUND: srv1 LMCache checkpoint_on_evict, 2026-10-29; NativeConnectorL2Adapter capacity refusal, StoreController finalization and CheckpointRetention pending suppression reproduce the loss without disk contention or a permanently full tier.",
+    "MITIGATION: retain failed stores as retryable work under the original deadline, with bounded backoff, capacity-release wakeup, key deduplication and per-key persistence settlement. The upstream test_checkpoint_store_retry controls cover capacity recovery, partial and late completion, and continued-full expiry. Keep late-delete accounting until actual completion; removing the charge at caller timeout over-admits. The existing 120-second last-copy discard permission remains a retention gap even when its cause is counted and logged. Retry alone cannot guarantee preservation; the admission and publication barrier is still required.",
+  ],
+  evidence: [],
+}

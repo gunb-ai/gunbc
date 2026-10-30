@@ -2,7 +2,7 @@ module extdeps.sudo.elevation
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -99,6 +99,13 @@ fn sudo_elevate_as(user: NonEmptyStr, command: List<String>) -> ElevatedInvocati
 fn sudo_elevate_as_command(user: NonEmptyStr, command: List<String>) -> ArgvCommand {
   let elevated = sudo_elevate_as(user: user, command: command)
   argv_command(program: sudo_program(), arguments: elevated.args)
+}
+
+// WHETHER A COMMAND IS AN ELEVATED INVOCATION, read from its program rather than its words: every
+// elevated command this module mints names sudo_program() as its program, so a host-effect fold can
+// route a leg by what the leg is (gunbc.host.host_effect_realize HostEffectElevationRoute).
+fn argv_command_is_sudo_elevated(command: ArgvCommand) -> Bool {
+  (command.program.invocation as String) == (sudo_program().invocation as String)
 }
 
 // sudo_elevate as a command: root, non-interactive.

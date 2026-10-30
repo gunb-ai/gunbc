@@ -140,7 +140,7 @@ use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled;
+use crate::v1_std_core::CompilerDiagnostic::{CastRealizationRefused, TransportEmissionNotModeled};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
@@ -160,7 +160,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::TransportKind::{
-    FileTransport, LocalTransport, RestTransport, ShellTransport,
+    FileTransport, RestTransport, ShellTransport, UndeclaredTransport,
 };
 use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::VarBindingKind::*;
@@ -174,17 +174,17 @@ pub use crate::v1_std_core::{
     field_init_node_name_at, field_init_node_value, field_init_operation_modifier,
     find_child_named, foreach_body, foreach_collection, foreach_variable_at, if_condition,
     if_else_branch, if_then_branch, index_base, index_expr, is_compiler_error, is_file_transport,
-    is_local_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, local_transport_node, make_error_node,
+    is_rest_transport, is_shell_transport, is_undeclared_transport, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, make_error_node,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
     module_items, operation_modifier_name, param_node_default_value, param_node_name_at,
     param_node_type_expr, qualified_last_segment, record_lit_type_name_at, return_value,
     slice_base, slice_end, slice_start, transport_base_path, transport_has_auth, transport_verb,
-    tuple_type_name, unaryop_operand, with_required_cardinality, CallSemantics, CallTargetIdentity,
-    Cardinality, CompilerDiagnostic, Connective, DeclaredCallableIdentity, DeclaredFuncSig,
-    ErrorNode, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind, StringPart, TextFile, TransportKind,
-    UnaryOpKind, VarBindingKind,
+    tuple_type_name, unaryop_operand, undeclared_transport_node, with_required_cardinality,
+    CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
+    DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
+    StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2260,7 +2260,7 @@ pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
 
 pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
     if (item.transport.clone() == std::option::Option::None) {
-        crate::v1_std_core::local_transport_node(
+        crate::v1_std_core::undeclared_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             item.span.clone(),
         )
@@ -2567,7 +2567,7 @@ pub enum BoundOperation {
         transport: Rc<Node>,
         result_fields: Rc<Vec<Rc<ShellResultField>>>,
     },
-    LocalBound,
+    UnboundOperation,
     FileBound {
         verb: FileVerb,
         path_template: Rc<Node>,
@@ -3016,7 +3016,7 @@ pub fn bind_operation_transport(
         Some(TransportKind::FileTransport) => {
             bind_file_operation(t.clone(), op_node.clone(), source_indices.clone())
         }
-        Some(TransportKind::LocalTransport) => Rc::new(BoundOperation::LocalBound),
+        Some(TransportKind::UndeclaredTransport) => Rc::new(BoundOperation::UnboundOperation),
         std::option::Option::None => Rc::new(BoundOperation::BindingRefused {
             cause: Rc::new(TransportBindingRefusal::TransportMatchesNoRosterMember),
         }),
@@ -3218,7 +3218,7 @@ pub fn bound_operation_transport_kind(bound: Rc<BoundOperation>) -> Option<Trans
         BoundOperation::RestBound { transport: _, .. } => Some(TransportKind::RestTransport),
         BoundOperation::ShellBound { .. } => Some(TransportKind::ShellTransport),
         BoundOperation::FileBound { .. } => Some(TransportKind::FileTransport),
-        BoundOperation::LocalBound => Some(TransportKind::LocalTransport),
+        BoundOperation::UnboundOperation => Some(TransportKind::UndeclaredTransport),
         BoundOperation::BindingRefused { cause: _, .. } => std::option::Option::None,
     }
 }
@@ -3557,7 +3557,6 @@ pub fn emit_unified_transport_dispatch(
     render_rest: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone,
     render_shell: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
         + Clone,
-    render_local: impl Fn(String, i64) -> String + Clone,
 ) -> String {
     match (*bound.clone()).clone() {
         BoundOperation::RestBound { transport: t, .. } => render_rest(
@@ -3576,7 +3575,9 @@ pub fn emit_unified_transport_dispatch(
             depth.clone(),
             source_indices.clone(),
         ),
-        BoundOperation::LocalBound => render_local(op_name.clone(), depth.clone()),
+        BoundOperation::UnboundOperation => {
+            emit_unbound_operation_refusal(op_name.clone(), target.clone())
+        }
         BoundOperation::FileBound {
             path_template: __pt,
             result_fields: __rf,
@@ -6469,6 +6470,22 @@ pub fn emit_unmodeled_file_transport_refusal_with_cause(
     )
 }
 
+pub fn emit_unbound_operation_refusal(op_name: String, target: RenderTarget) -> String {
+    emit_error_expr(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat("operation '".to_string(), op_name.clone()),
+                    "' has no realization for target ".to_string(),
+                ),
+                render_target_name(target.clone()),
+            ),
+            ": its service declares no transport".to_string(),
+        ),
+        target.clone(),
+    )
+}
+
 pub fn emit_unmodeled_file_transport_refusal(op_name: String, target: RenderTarget) -> String {
     emit_unmodeled_file_transport_refusal_with_cause(
         op_name,
@@ -7020,6 +7037,12 @@ pub fn cast_source_grounded_onto_target_carrier(
     }
 }
 
+pub fn cast_realization_refusal_fact(refusal: Rc<CastRealizationRefusal>) -> String {
+    match (*refusal.clone()).clone() {
+    CastRealizationRefusal::CastRouteUndeclared { source_type: s, target_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no declared conversion route from ".to_string(), s.clone()), " to ".to_string()), t.clone()), ": the two do not reach one carrier, no grounded crossing joins them, and the target's cast syntax has no rule for the pair; name a declared conversion (a checked constructor or a conversion function) instead of `as`".to_string()),
+}
+}
+
 pub fn emit_typed_cast_shared(
     expr: Rc<Node>,
     cast_target_node: Rc<Node>,
@@ -7048,28 +7071,124 @@ pub fn emit_typed_cast_shared(
                 ty.clone(),
                 target.clone(),
             ),
-            CastRealization::CastNotRealized { refusal: r, .. } => emit_error_expr(
-                cast_realization_unsupported_message(r.clone()),
-                target.clone(),
-            ),
+            CastRealization::CastNotRealized { refusal: r, .. } => {
+                let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
+                crate::v1_compiler_emit_core_support::apply_type_template1(
+                    spec.error_type_template.clone(),
+                    cast_realization_refusal_fact(r.clone()),
+                )
+            }
         }
     }
 }
 
-pub fn cast_realization_unsupported_message(refusal: Rc<CastRealizationRefusal>) -> String {
-    match (*refusal.clone()).clone() {
-        CastRealizationRefusal::CastRouteUndeclared {
-            source_type: s,
-            target_type: t,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat("unsupported cast from ".to_string(), s.clone()),
-                " to ".to_string(),
-            ),
-            t.clone(),
-        ),
+pub fn cast_realization_diagnostics(
+    typed: Rc<ResolvedGraph>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::SerializesSubstrate => Rc::new(vec![]),
+        TargetEmissionMode::RealizesTransports => Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*{
+                        let module_name = crate::v1_compiler_infer_env::authored_name(
+                            tm.type_env.clone(),
+                            tm.module.clone(),
+                        );
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for item in tm.items.clone().iter().cloned() {
+                                __result.extend(
+                                    (*match item.body.clone() {
+                                        Some(b) => cast_realization_diagnostics_in(
+                                            b.clone(),
+                                            target.clone(),
+                                            tm.type_env.clone(),
+                                            module_name.clone(),
+                                        ),
+                                        std::option::Option::None => Rc::new(vec![]),
+                                    })
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        })
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
     }
+}
+
+pub fn cast_realization_diagnostics_in(
+    texpr: Rc<Node>,
+    target: RenderTarget,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*texpr.expr_data.clone()).clone() {
+            ExprData::ExprCast => match (*cast_realization(
+                crate::v1_std_core::cast_expr(texpr.clone()),
+                crate::v1_std_core::cast_target(texpr.clone()),
+                target.clone(),
+                env.clone(),
+                env.source_indices.clone(),
+            ))
+            .clone()
+            {
+                CastRealization::CastNotRealized { refusal: r, .. } => {
+                    Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::CastRealizationRefused {
+                            target: render_target_name(target.clone()),
+                            missing_realization_fact: cast_realization_refusal_fact(r.clone()),
+                            span: texpr.span.clone(),
+                        }),
+                        module_name.clone(),
+                    )])
+                }
+                _ => Rc::new(vec![]),
+            },
+            _ => Rc::new(vec![]),
+        };
+        let nested_body = match texpr.body.clone() {
+            Some(b) => cast_realization_diagnostics_in(
+                b.clone(),
+                target.clone(),
+                env.clone(),
+                module_name.clone(),
+            ),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            v1_rt::concat(
+                here.clone(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in texpr.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*cast_realization_diagnostics_in(
+                                c.clone(),
+                                target.clone(),
+                                env.clone(),
+                                module_name.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+            nested_body.clone(),
+        )
+    })
 }
 
 pub fn emit_typed_for_each_shared(

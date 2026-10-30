@@ -1,5 +1,7 @@
 module test.claim.materialization_store_local_immutable_pin_wet_witness
 
+import std.cache_interface { ReplaceExisting, LeastRecentlyUsed }
+
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, List, String, NonEmptyStr }
@@ -50,8 +52,8 @@ import std.measure { byte_size }
 // with reclaim-stop reverted.
 
 data witness_family_budgets: List<LocalStoreFamilyBudget> = [
-  LocalStoreFamilyBudget { family: native_module_verdict_bundle_artifact_kind, budget: byte_size(count: 4096) },
-  LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: byte_size(count: 4096) },
+  LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: native_module_verdict_bundle_artifact_kind, budget: byte_size(count: 4096) },
+  LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: typed_module_artifact_kind, budget: byte_size(count: 4096) },
 ]
 
 fn h(v: String) -> Fnv1a64Structural {
