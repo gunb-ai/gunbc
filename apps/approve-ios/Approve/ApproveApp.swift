@@ -19,7 +19,10 @@ struct ApproveApp: App {
                 }
                 .onChange(of: scenePhase) { _, phase in
                     // Returning to the foreground re-lists: a push may have been missed or coalesced.
-                    if phase == .active { Task { await state.refresh() } }
+                    if phase == .active {
+                        Task { await state.refresh() }
+                        Task { await state.resyncPush() }
+                    }
                 }
         }
     }
