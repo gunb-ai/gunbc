@@ -9,6 +9,7 @@ import v2.std.text { String }
 import v2.std.integer { Int }
 import v2.std.node { Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_string_segments, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string }
+import std.primitive_projection { primitive_projection_roster, HostRealizedSeam, ModeledProjection, DivergentProjection }
 import v2.compiler.dependency_demand { RequirementClass, RequiresNone, RequiresResources, RequiresOpaque, RequiresUndeclared }
 
 // ONE DECLARATION PER HOST-BOUNDARY OPERATION, keyed by its declaration path.
@@ -412,6 +413,28 @@ data operation_declaration_index: Map<QualifiedName, List<OperationDeclaration>>
     )
   }
 )
+
+// THE HOST-SEAM POPULATION, indexed once by declaration path: the paths std.primitive_projection
+// projects at HostRealizedSeam. D13's seam test is a keyed read of this value, so asking N walked
+// declarations costs N keyed reads, never N folds of the projection roster (DESIGN.md section 6).
+data host_seam_projection_index: Map<QualifiedName, Bool> = fold_list(
+  xs: primitive_projection_roster(),
+  empty: empty_map(),
+  cons: fn(m, row) {
+    match row.fidelity {
+      HostRealizedSeam => map_insert(m: m, key: operation_declaration_path(declaration: row.declaration), value: true)
+      ModeledProjection => m
+      DivergentProjection { divergence: _ } => m
+    }
+  }
+)
+
+fn operation_declaration_is_projected_host_seam(declaration: DeclarationRef) -> Bool {
+  match map_lookup(m: host_seam_projection_index, key: operation_declaration_path(declaration: declaration)) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
 
 fn operation_declaration_rows_at(
   index: Map<QualifiedName, List<OperationDeclaration>>,
