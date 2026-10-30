@@ -151,3 +151,25 @@ fn kernel_builtins_and_none_stay_bare_and_admitted() {
          admitted when the pool fallback is cut; got {diags:?}"
     );
 }
+
+/// Control 4: a QUALIFIED call whose signature names a type the caller never imports. The type
+/// reaches the caller through the callee's own module (the owner's perspective), not through a
+/// bare occurrence in the caller, so the floor does not reach it. A cut that resolves signature
+/// types from the caller's chain breaks the emitted v2.std.artifact (v2.std.refinement.refine).
+#[test]
+fn qualified_call_returning_unimported_type_compiles_clean() {
+    let diags = error_diag_messages(vec![
+        src(
+            "probe_q_a.dag",
+            "module probe.q.a\ntype QProbeBox<B> { base: B }\ntype QProbeOut<B> = QProbeOk { value: B } | QProbeNo\nfn q_probe_make<B>(base: B) -> QProbeOut<QProbeBox<B>> { QProbeOk { value: QProbeBox { base: base } } }\n",
+        ),
+        src(
+            "probe_q_b.dag",
+            "module probe.q.b\nfn q_probe_use() -> Int {\n  match probe.q.a.q_probe_make(base: 1) {\n    probe.q.a.QProbeOk { value: b } => b.base\n    probe.q.a.QProbeNo => 0\n  }\n}\n",
+        ),
+    ]);
+    assert!(
+        diags.is_empty(),
+        "a qualified call's signature types resolve from the callee's module; got {diags:?}"
+    );
+}

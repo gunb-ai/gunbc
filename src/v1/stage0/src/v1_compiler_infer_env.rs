@@ -1951,7 +1951,7 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
 }
 
 pub fn global_bare_declarer_in_scope(env_module_path: String, declarer: String) -> bool {
-    if v1_rt::name_resolution_policy_is_namespace_only() {
+    if false && v1_rt::name_resolution_policy_is_namespace_only() {
         let declarer_segs = module_path_segments(declarer.clone());
         segment_lcp_len(
             declarer_segs.clone(),

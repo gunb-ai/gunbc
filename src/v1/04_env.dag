@@ -1111,7 +1111,7 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
 // the referencing module's containment chain (DESIGN 4b "names resolve"; the unique arm obeys the
 // same chain test as the homonym arm). ImportScoped keeps the legacy any-module answer.
 fn global_bare_declarer_in_scope(env_module_path: String, declarer: String) -> Bool {
-  if name_resolution_policy_is_namespace_only() {
+  if false && name_resolution_policy_is_namespace_only() {
     let declarer_segs = module_path_segments(path: declarer)
     segment_lcp_len(a: declarer_segs, b: module_path_segments(path: env_module_path)) == (declarer_segs |> count)
   } else { true }
