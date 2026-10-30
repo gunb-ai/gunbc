@@ -42,18 +42,28 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data skp_types_source: String = "module std.types\n\nimport std.algebra { FreeMonoid }\n\ntype List<element> = FreeMonoid<element>\n\ntype Pair<A, B> = Mk { first: A, second: B }\n"
 data skp_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
 
+fn skp_probe_source_with(module_name: String, formal: String, produced: String) -> String {
+  join(["module ", module_name, "\n\nimport std.types { List, Pair }\n\nfn skp_take<K>(m: ", formal, ") -> Int {\n  0\n}\n\nfn skp_call(p: ", produced, ") -> Int {\n  skp_take(m: p)\n}\n"], "")
+}
+
 fn skp_probe_source(module_name: String, produced: String) -> String {
-  join(["module ", module_name, "\n\nimport std.types { Pair }\n\nfn skp_take<K>(m: Pair<K, String>) -> Int {\n  0\n}\n\nfn skp_call(p: ", produced, ") -> Int {\n  skp_take(m: p)\n}\n"], "")
+  skp_probe_source_with(module_name: module_name, formal: "Pair<K, String>", produced: produced)
 }
 
 data skp_red_source: String = skp_probe_source(module_name: "gunbc.skp_red", produced: "Pair<Int, Int>")
+data skp_nested_var_red_source: String = skp_probe_source_with(module_name: "gunbc.skp_nested_var_red", formal: "Pair<List<K>, String>", produced: "Pair<List<Int>, Int>")
+data skp_nested_sibling_red_source: String = skp_probe_source_with(module_name: "gunbc.skp_nested_sibling_red", formal: "Pair<Pair<K, String>, Int>", produced: "Pair<Pair<Int, Int>, Int>")
+data skp_nested_var_control_source: String = skp_probe_source_with(module_name: "gunbc.skp_nested_var_control", formal: "Pair<List<K>, String>", produced: "Pair<List<Int>, String>")
 data skp_control_source: String = skp_probe_source(module_name: "gunbc.skp_control", produced: "Pair<Int, String>")
 
 data skp_ingest: SourceRootIngest = [
   rcf_read_in(tree: DagTree, source: skp_algebra_source, id: ^skp_algebra_read, unit: ^skp_algebra_cu, path: "dag/std/algebra.dag"),
   rcf_read_in(tree: DagTree, source: skp_types_source, id: ^skp_types_read, unit: ^skp_types_cu, path: "dag/std/types.dag"),
   rcf_read_in(tree: DagTree, source: skp_red_source, id: ^skp_red_read, unit: ^skp_red_cu, path: "dag/gunbc/skp_red.dag"),
-  rcf_read_in(tree: DagTree, source: skp_control_source, id: ^skp_control_read, unit: ^skp_control_cu, path: "dag/gunbc/skp_control.dag")
+  rcf_read_in(tree: DagTree, source: skp_control_source, id: ^skp_control_read, unit: ^skp_control_cu, path: "dag/gunbc/skp_control.dag"),
+  rcf_read_in(tree: DagTree, source: skp_nested_var_red_source, id: ^skp_nested_var_red_read, unit: ^skp_nested_var_red_cu, path: "dag/gunbc/skp_nested_var_red.dag"),
+  rcf_read_in(tree: DagTree, source: skp_nested_sibling_red_source, id: ^skp_nested_sibling_red_read, unit: ^skp_nested_sibling_red_cu, path: "dag/gunbc/skp_nested_sibling_red.dag"),
+  rcf_read_in(tree: DagTree, source: skp_nested_var_control_source, id: ^skp_nested_var_control_read, unit: ^skp_nested_var_control_cu, path: "dag/gunbc/skp_nested_var_control.dag")
 ]
 
 fn skp_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
@@ -87,6 +97,36 @@ fn skp_accepted(subject: String) -> Bool {
     RcfInferRefused { diagnostics: _ } => false
     RcfResolveRefused => false
   }
+}
+
+// The decided-vs-undecided cell: a pair whose concrete positions all agree stays UNDECIDED (accepted
+// carrying the generic-formal advisory), never Inhabits. Only infer_grounding_not_derived is admitted.
+fn skp_only_admitted_advisories(d: Diagnostics) -> Bool {
+  match d {
+    None => true
+    Some { diagnostics: nd } =>
+      fold(concat([nd.head], nd.tail), init: true, f: fn(acc, x) { acc && (x.reason == ^infer_grounding_not_derived) })
+  }
+}
+
+fn skp_accepted_but_undecided(subject: String) -> Bool {
+  match rcf_verdict(resolved: skp_resolve_subject(subject: subject)) {
+    RcfInferAccepted { diagnostics: ds } => !skp_only_admitted_advisories(d: ds)
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+test fn skp_a_variable_nested_in_a_position_does_not_hide_a_concrete_sibling_refuses_holds() -> Bool {
+  skp_refused_at_the_argument(subject: "gunbc.skp_nested_var_red")
+}
+
+test fn skp_a_concrete_mismatch_nested_beside_a_variable_refuses_holds() -> Bool {
+  skp_refused_at_the_argument(subject: "gunbc.skp_nested_sibling_red")
+}
+
+test fn skp_agreeing_concrete_positions_beside_a_variable_stay_undecided_holds() -> Bool {
+  skp_accepted_but_undecided(subject: "gunbc.skp_control") && skp_accepted_but_undecided(subject: "gunbc.skp_nested_var_control")
 }
 
 test fn skp_a_variable_at_the_first_position_does_not_hide_a_concrete_second_mismatch_refuses_holds() -> Bool {
