@@ -7,7 +7,7 @@ import std.durable_compare_and_set { CasExpectation, ExpectSlotAbsent, ExpectSlo
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, FieldRead, FieldAbsent, FieldMalformed }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageSlotMember }
 import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_observe_cas_slot, fabric_storage_compare_and_set }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
 import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence, workspace_gateway_evidence_json, workspace_gateway_evidence_decode, workspace_gateway_refusal }
@@ -17,10 +17,8 @@ type WorkspaceGatewayRead
   = WorkspaceGatewayEvidenceRead { evidence: WorkspaceGatewayEvidence }
   | WorkspaceGatewayEvidenceUnavailable { reason: NonEmptyStr }
 
-// THE ONE DECLARATION OF THE GATEWAY EVIDENCE SLOT FAMILY (see WorkspaceAllocationSlotsDeclaration for the shape).
-type WorkspaceGatewaySlotsDeclaration { member: NonEmptyStr }
-
-data workspace_gateway_slots: WorkspaceGatewaySlotsDeclaration = WorkspaceGatewaySlotsDeclaration { member: "workspace-gateway" as NonEmptyStr }
+// THE ONE DECLARATION OF THE GATEWAY EVIDENCE SLOT FAMILY (see FabricStorageSlotMember for the shape).
+data workspace_gateway_slots: FabricStorageSlotMember = FabricStorageSlotMember { member: "workspace-gateway" as NonEmptyStr }
 
 // THE GATEWAY STORE, SEALED: workspace_gateway_store is the one mint (binding in, member from the declaration, no path).
 type WorkspaceGatewayStore sole_constructor { binding: FabricStorageBinding, member: NonEmptyStr }

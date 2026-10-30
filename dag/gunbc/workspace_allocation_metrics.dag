@@ -8,7 +8,7 @@ import product.fabric.memory_grant { memory_grant_bytes }
 import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted }
 import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_compare_and_set }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted }
-import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageSlotMember }
 import gunbc.workspace_allocation { WorkspaceReservation, workspace_reservation_json, workspace_profile_memory }
 import gunbc.runner.runner_microvm_lifecycle { AttemptIdentity }
 import gunbc.runner.runner_microvm_lifecycle_realize { AttemptLaunch, bind_attempt_console, AttemptConsoleBound }
@@ -37,10 +37,8 @@ fn workspace_metric_unit(unit: NonEmptyStr) -> JsonValue {
   ])
 }
 
-// THE ONE DECLARATION OF THE RUNTIME-METRICS SLOT FAMILY (see WorkspaceAllocationSlotsDeclaration for the shape).
-type WorkspaceMetricsSlotsDeclaration { member: NonEmptyStr }
-
-data workspace_metrics_slots: WorkspaceMetricsSlotsDeclaration = WorkspaceMetricsSlotsDeclaration { member: "workspace-metrics" as NonEmptyStr }
+// THE ONE DECLARATION OF THE RUNTIME-METRICS SLOT FAMILY (see FabricStorageSlotMember for the shape).
+data workspace_metrics_slots: FabricStorageSlotMember = FabricStorageSlotMember { member: "workspace-metrics" as NonEmptyStr }
 
 // THE METRICS STORE, SEALED: workspace_metrics_store is the one mint (binding in, member from the declaration, no path).
 type WorkspaceMetricsStore sole_constructor { binding: FabricStorageBinding, member: NonEmptyStr }

@@ -21,7 +21,7 @@ fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> Cens
   census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
 }
 
-data workspace_allocation_literal: String = "module probe_workspace_allocation_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_store { WorkspaceAllocationStore, workspace_allocation_store }\nfn f(b: FabricStorageBinding, m: NonEmptyStr) -> WorkspaceAllocationStore {\n  WorkspaceAllocationStore { binding: b, member: m }\n}\n"
+data workspace_allocation_literal: String = "module probe_workspace_allocation_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_store { WorkspaceAllocationStore, workspace_allocation_store }\nfn f(b: FabricStorageBinding, m: NonEmptyStr) -> WorkspaceAllocationStore {\n  WorkspaceAllocationStore { binding: b }\n}\n"
 
 data workspace_allocation_cast: String = "module probe_workspace_allocation_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_store { WorkspaceAllocationStore, workspace_allocation_store }\nfn f(r: NonEmptyStr) -> WorkspaceAllocationStore {\n  r as WorkspaceAllocationStore\n}\n"
 
@@ -213,4 +213,20 @@ test fn a_file_root_over_a_literal_path_is_accepted_today() -> ProcessExit {
 // binding, so a workspace store over a literal path is ACCEPTED today. Same trigger; no rung claimed.
 test fn a_workspace_store_over_a_local_files_literal_path_is_accepted_today() -> ProcessExit {
   census_exit(blocking_delta(hostile: local_files_store_path, safe: local_files_baseline, holds: fn(n) { n <= 0 }))
+}
+
+// THE OUTCOME-TAKING FOLD IS DELETED: fabric_storage_put_from_create turned a supplied FilesystemCreated into FabricObjectStored
+// (and trusted a supplied FabricObjectFetched), so any module could mint the success outcome. It is inlined into
+// fabric_storage_file_put beside its own create and readback. RED: importing it is exactly one MissingExport keyed on the name;
+// GREEN: importing the lawful fabric_storage_file_put is zero. Restoring the export flips the RED to zero.
+data put_fold_import: String = "module probe_put_fold_import\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_put_from_create }\nfn f() -> Int {\n  1\n}\n"
+
+data put_lawful_import: String = "module probe_put_lawful_import\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_put }\nfn f() -> Int {\n  1\n}\n"
+
+test fn the_outcome_taking_put_fold_is_not_exported() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: put_fold_import, wanted_class: "MissingExport", wanted_subject: "fabric_storage_put_from_create"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_put_is_exported() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: put_lawful_import, wanted_class: "MissingExport", wanted_subject: "fabric_storage_file_put"), holds: fn(n) { n == 0 }))
 }

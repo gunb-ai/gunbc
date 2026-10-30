@@ -3,7 +3,7 @@ module gunbc.workspace_allocation_store
 
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before }
-import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageSlotMember }
 import std.types { String, NonEmptyStr, Bool, Int, List, Timestamp }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.decl_ref { decl_ref }
@@ -47,11 +47,9 @@ type WorkspaceStoreWrite = WorkspaceStoreWritten { allocation: WorkspaceAllocati
 type WorkspaceCreateDecision = WorkspaceCreateNew { allocation: WorkspaceAllocation } | WorkspaceCreateReplay { allocation: WorkspaceAllocation } | WorkspaceCreateRefused { reason: String }
 
 // THE ONE DECLARATION OF THE OWNER SLOT FAMILY: the member every owner key is spelled under in the fabric
-// DB. The key (workspace_owner_key) and the sealed store (WorkspaceAllocationStore) both derive from it,
+// DB. The key (workspace_owner_key) derives from it,
 // so the slot name has no second spelling. Byte-identical to the name the unsealed store wrote.
-type WorkspaceAllocationSlotsDeclaration { member: NonEmptyStr }
-
-data workspace_allocation_slots: WorkspaceAllocationSlotsDeclaration = WorkspaceAllocationSlotsDeclaration { member: "workspace-owner" as NonEmptyStr }
+data workspace_allocation_slots: FabricStorageSlotMember = FabricStorageSlotMember { member: "workspace-owner" as NonEmptyStr }
 
 // THE ALLOCATION STORE, A SEALED VALUE. WorkspaceAllocationStore is sole_constructor and workspace_allocation_store
 // is its one mint: it takes the fabric storage binding and never a path, and the member is derived from
@@ -59,10 +57,10 @@ data workspace_allocation_slots: WorkspaceAllocationSlotsDeclaration = Workspace
 // The binding itself is not sealed here (its LocalFiles arm is the declared residual
 // gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module). The mint is total:
 // the Served arm has no directory to list, so there is nothing to observe and no Unready arm.
-type WorkspaceAllocationStore sole_constructor { binding: FabricStorageBinding, member: NonEmptyStr }
+type WorkspaceAllocationStore sole_constructor { binding: FabricStorageBinding }
 
 fn workspace_allocation_store(binding: FabricStorageBinding) -> WorkspaceAllocationStore {
-  WorkspaceAllocationStore { binding: binding, member: workspace_allocation_slots.member }
+  WorkspaceAllocationStore { binding: binding }
 }
 
 fn workspace_owner_key(owner: PrincipalRef) -> NonEmptyStr {

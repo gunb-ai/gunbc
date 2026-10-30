@@ -29,7 +29,7 @@ import std.durable_compare_and_set {
 }
 import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_observe_cas_slot, fabric_storage_compare_and_set }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
-import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageSlotMember }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_value }
 import extdeps.tailscale.serve { tailscale_serve_route_key_label, tailscale_serve_proxy_url, tailscale_serve_backend_of_proxy_target }
@@ -85,10 +85,8 @@ fn tailnet_door_cutover_binding(spec: DeploymentSpec, candidate: CandidateReleas
 
 // A slot key may not carry a path separator and a route label does, so the key is the route's
 // content identity under a fixed prefix.
-// THE ONE DECLARATION OF THE CUTOVER JOURNAL SLOT FAMILY (see WorkspaceAllocationSlotsDeclaration for the shape).
-type TailnetDoorCutoverSlotsDeclaration { member: NonEmptyStr }
-
-data tailnet_door_cutover_slots: TailnetDoorCutoverSlotsDeclaration = TailnetDoorCutoverSlotsDeclaration { member: "tailnet-door-cutover" as NonEmptyStr }
+// THE ONE DECLARATION OF THE CUTOVER JOURNAL SLOT FAMILY (see FabricStorageSlotMember for the shape).
+data tailnet_door_cutover_slots: FabricStorageSlotMember = FabricStorageSlotMember { member: "tailnet-door-cutover" as NonEmptyStr }
 
 // THE CUTOVER JOURNAL STORE, SEALED: tailnet_door_cutover_store is the one mint (binding in, member from the declaration, no path).
 type TailnetDoorCutoverStore sole_constructor { binding: FabricStorageBinding, member: NonEmptyStr }

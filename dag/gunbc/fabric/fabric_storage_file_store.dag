@@ -158,25 +158,6 @@ fn fabric_storage_file_get(root: FabricStorageFileRoot, object: FabricObjectRef)
 //
 // THE REF IS RECEIVED, NOT RE-DERIVED: the object and its ref arrive as ONE carrier, minted once at
 // the entry below, so this function cannot be handed a ref for some other object's bytes.
-fn fabric_storage_put_from_create(addressed: FabricAddressedObject, created: FilesystemCreateNew, existing: FabricObjectGet) -> FabricPut {
-  let r = addressed.ref
-  let object = addressed.object
-  match created {
-    FilesystemCreated { path: _ } => FabricObjectStored { object: r }
-    FilesystemCreateTargetOccupied { path: _ } =>
-      match existing {
-        FabricObjectFetched { stored: s } =>
-          if fabric_object_preimage(object: s.content) == fabric_object_preimage(object: object) { FabricObjectStored { object: r } }
-          else { FabricPutRefused { fault: FabricObjectCorrupt { object: r, detail: "a different object already holds this digest" } } }
-        FabricObjectGetRefused { fault: f } => FabricPutRefused { fault: f }
-      }
-    FilesystemCreateRefused { path: _, kind: k, error: _ } =>
-      FabricPutRefused { fault: fabric_storage_publication_refused(detail: join(["object publication refused: ", filesystem_failure_kind_name(kind: k)], "")) }
-    FilesystemCreateKindUnrecognized { path: _, observed: o, error: _ } =>
-      FabricPutRefused { fault: fabric_storage_publication_refused(detail: join(["object publication failure kind unrecognized: ", o], "")) }
-  }
-}
-
 // BOTH HALVES OF THE ADDRESSED OBJECT COME OFF THE CARRIER, and the write below reads a.object
 // rather than the outer `object` deliberately. They are the same VALUE; the difference is SHAPE.
 // Reading the outer binding is the spelling that lets a later edit change one side without the
@@ -187,10 +168,18 @@ fn fabric_storage_file_put(root: FabricStorageFileRoot, object: FabricObject) ->
   let path = fabric_storage_object_path(root: root, object: r)
   let created = fabric_storage_object_create(root: root, path: path, content: fabric_object_preimage(object: a.object) as String)
   match created {
-    FilesystemCreateTargetOccupied { path: _ } => fabric_storage_put_from_create(addressed: a, created: created, existing: fabric_storage_file_get(root: root, object: r))
-    FilesystemCreated { path: _ } => fabric_storage_put_from_create(addressed: a, created: created, existing: FabricObjectGetRefused { fault: FabricObjectMissing { object: r } })
-    FilesystemCreateRefused { path: _, kind: _, error: _ } => fabric_storage_put_from_create(addressed: a, created: created, existing: FabricObjectGetRefused { fault: FabricObjectMissing { object: r } })
-    FilesystemCreateKindUnrecognized { path: _, observed: _, error: _ } => fabric_storage_put_from_create(addressed: a, created: created, existing: FabricObjectGetRefused { fault: FabricObjectMissing { object: r } })
+    FilesystemCreated { path: _ } => FabricObjectStored { object: r }
+    FilesystemCreateTargetOccupied { path: _ } =>
+      match fabric_storage_file_get(root: root, object: r) {
+        FabricObjectFetched { stored: s } =>
+          if fabric_object_preimage(object: s.content) == fabric_object_preimage(object: a.object) { FabricObjectStored { object: r } }
+          else { FabricPutRefused { fault: FabricObjectCorrupt { object: r, detail: "a different object already holds this digest" } } }
+        FabricObjectGetRefused { fault: f } => FabricPutRefused { fault: f }
+      }
+    FilesystemCreateRefused { path: _, kind: k, error: _ } =>
+      FabricPutRefused { fault: fabric_storage_publication_refused(detail: join(["object publication refused: ", filesystem_failure_kind_name(kind: k)], "")) }
+    FilesystemCreateKindUnrecognized { path: _, observed: o, error: _ } =>
+      FabricPutRefused { fault: fabric_storage_publication_refused(detail: join(["object publication failure kind unrecognized: ", o], "")) }
   }
 }
 

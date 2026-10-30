@@ -5,7 +5,7 @@ import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.durable_compare_and_set { ExpectSlotAbsent, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
 import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_observe_cas_slot, fabric_storage_compare_and_set }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
-import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageSlotMember }
 import gunbc.workspace_allocation { WorkspaceReservation, workspace_reservation_json }
 import gunbc.workspace_money_codec { workspace_money_json }
 import gunbc.fabric.fabric_control_plane { fabric_money_reservation_ref }
@@ -27,10 +27,8 @@ type WorkspaceReleasePreparation
 
 data workspace_release_reason: NonEmptyStr = "workspace sanitation observed" as NonEmptyStr
 
-// THE ONE DECLARATION OF THE RELEASE-PLAN SLOT FAMILY (see WorkspaceAllocationSlotsDeclaration for the shape).
-type WorkspaceReleaseSlotsDeclaration { member: NonEmptyStr }
-
-data workspace_release_slots: WorkspaceReleaseSlotsDeclaration = WorkspaceReleaseSlotsDeclaration { member: "workspace-release" as NonEmptyStr }
+// THE ONE DECLARATION OF THE RELEASE-PLAN SLOT FAMILY (see FabricStorageSlotMember for the shape).
+data workspace_release_slots: FabricStorageSlotMember = FabricStorageSlotMember { member: "workspace-release" as NonEmptyStr }
 
 // THE RELEASE STORE, SEALED: workspace_release_store is the one mint (binding in, member from the declaration, no path).
 type WorkspaceReleaseStore sole_constructor { binding: FabricStorageBinding, member: NonEmptyStr }
