@@ -1,0 +1,234 @@
+diff --git a/dag/extdeps/uri_path.dag b/dag/extdeps/uri_path.dag
+index 34f87320ae56..5f57cd649387 100644
+--- a/dag/extdeps/uri_path.dag
++++ b/dag/extdeps/uri_path.dag
+@@ -3,7 +3,10 @@ module extdeps.uri_path
+ import std.optional { Present, Absent }
+ import extdeps.external_authority { ExternalAuthority }
+ import extdeps.uri { Uri, Https }
++import std.types { List }  // PROVISIONAL
+ import std.algebra { collection_concat_shape, collection_count_shape }
++// PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS): bind the bare `List` spelling to its H1 home.
++// Same-spelled binding as the Map direction (warm-crane-888); no ruling cited for List.
+ 
+ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+   uri: Uri {
+diff --git a/dag/gunbc/roadmap/roadmap_belt_actuate.dag b/dag/gunbc/roadmap/roadmap_belt_actuate.dag
+index c6371ff0f4c4..e356b9eb6b3a 100644
+--- a/dag/gunbc/roadmap/roadmap_belt_actuate.dag
++++ b/dag/gunbc/roadmap/roadmap_belt_actuate.dag
+@@ -7348,7 +7348,7 @@ fn belt_scm_entries_zip(paths: List<NonEmptyStr>, sources: List<AuthoredSourceOb
+     paths,
+     init: BeltZipAcc { i: 0, entries: [] },
+     f: fn(acc, path) {
+-      match map_lookup(m: by_index, key: key: to_string(acc.i)) {
++      match map_lookup(m: by_index, key: to_string(acc.i)) {
+         Absent => acc
+         Present { value: source } =>
+           BeltZipAcc {
+@@ -7678,7 +7678,7 @@ fn belt_scm_advance_fold(store: ObjectStore, tip_record: CorpusManifestRecord, c
+           WorktreeDelete { path: p } =>
+             BeltDeltaFold { store: acc.store, unique: path_unique_with_path_removed(unique: acc.unique, path: p), refused: none }
+           WorktreeBind { path: p } =>
+-            match map_lookup(m: texts, key: key: p as String) {
++            match map_lookup(m: texts, key: p as String) {
+               Absent =>
+                 BeltDeltaFold { store: acc.store, unique: acc.unique, refused: Present { value: join(["the advance's diff re-binds ", p as String, " but its bytes at the target revision were not read"], "") } }
+               Present { value: text } => belt_scm_delta_bind_text(acc: acc, path: p, text: text)
+@@ -7919,7 +7919,7 @@ fn belt_scm_rebound_identities(store: ObjectStore, changes: List<WorktreeChange>
+       match change {
+         WorktreeDelete { path: _ } => []
+         WorktreeBind { path } =>
+-          match map_lookup(m: texts, key: key: path as String) {
++          match map_lookup(m: texts, key: path as String) {
+             Absent => []
+             Present { value: text } => [scm_object_identity(object: authored_source_object(text: text))]
+           }
+@@ -14103,13 +14103,13 @@ fn belt_publish_plan(head: List<CorpusManifestEntry>, root: List<CorpusManifestE
+   let head_bound = path_unique_of_record_entries(entries: head)
+   concat(
+     head
+-      |> filter(e => match map_lookup(m: base_bound, key: key: e.path) {
++      |> filter(e => match map_lookup(m: base_bound, key: e.path) {
+         Absent => true
+         Present { value: held } => !object_id_eq(left: held.source.locator, right: e.source.locator)
+       })
+       |> map(e => PublishBind { entry: e }),
+     root
+-      |> filter(e => match map_lookup(m: head_bound, key: key: e.path) {
++      |> filter(e => match map_lookup(m: head_bound, key: e.path) {
+         Absent => true
+         Present { value: _ } => false
+       })
+@@ -14143,13 +14143,13 @@ fn belt_publish_apply(base: List<CorpusManifestEntry>, plan: List<BeltPublishCha
+       PublishBind { entry } => map_insert(m, entry.path as String, object_id_key(identity: entry.source.locator))
+       PublishDelete { path } => map_without(m: m, key: path as String)
+     })
+-  sort_by(map_keys(applied), k => k) |> map(k => join([k, "=", match map_lookup(m: applied, key: key: k) { Present { value: d } => d Absent => "" }], ""))
++  sort_by(map_keys(applied), k => k) |> map(k => join([k, "=", match map_lookup(m: applied, key: k) { Present { value: d } => d Absent => "" }], ""))
+ }
+ 
+ fn map_without(m: Map<String, String>, key: String) -> Map<String, String> {
+   fold(map_keys(m), init: empty_map(), f: (acc, k) =>
+     if k == key { acc } else {
+-      match map_lookup(m: m, key: key: k) {
++      match map_lookup(m: m, key: k) {
+         Present { value: v } => map_insert(acc, k, v)
+         Absent => acc
+       }
+diff --git a/dag/std/coercion.dag b/dag/std/coercion.dag
+index 1109e0ee5724..84f30c956604 100644
+--- a/dag/std/coercion.dag
++++ b/dag/std/coercion.dag
+@@ -4,7 +4,7 @@ import std.optional { Present, Absent }
+ import std.types { NonEmptyStr, List }
+ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+ import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind }
+-import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
++import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, FreeMonoid }  // PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS): FreeMonoid added; unicode_scalar_unfold/fold name the free-monoid carrier in their signatures (589/593). Same-spelled binding as the Map direction (warm-crane-888); std.types itself imports FreeMonoid from std.algebra.
+ import std.host_text { chars }
+ 
+ type TypeCheckpoint {
+diff --git a/dag/std/graph.dag b/dag/std/graph.dag
+index 49664b849310..c77f4ec4c21a 100644
+--- a/dag/std/graph.dag
++++ b/dag/std/graph.dag
+@@ -6,7 +6,11 @@ import std.termination {
+   DescentEvidence, Strict, NonIncreasing, DescentUnknown,
+   TerminationProof
+ }
++import std.types { List, Set }  // PROVISIONAL
+ import std.algebra { map_lookup, collection_concat_shape, collection_count_shape, collection_map_shape }
++// PROVISIONAL (measure/n7-lookahead-2, census probe, NEVER LANDS): bind the kernel container
++// spellings used bare in this module to their H1 homes in std.types (List, Set). Map is NOT bound
++// here (look-ahead-3: the Map binding is withdrawn; Map sites stay unbound and are what the census counts).
+ 
+ type GraphEdge {
+   caller: String
+diff --git a/dag/std/unicode/scalar.dag b/dag/std/unicode/scalar.dag
+index 14ab9e09aa0d..d7bca0ce23d4 100644
+--- a/dag/std/unicode/scalar.dag
++++ b/dag/std/unicode/scalar.dag
+@@ -3,7 +3,7 @@ module std.unicode.scalar
+ import std.algebra { Empty, list_snoc_item, collection_concat_shape, collection_join_shape }
+ import std.coercion { unicode_scalar_fold }
+ import std.error_primitives { Result, Ok, Err }
+-import std.types { Char }
++import std.types { Char, List }  // PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS): List added; ascii_letter_pairs (57) names it bare. Same-spelled binding as the Map direction; no ruling cited for List.
+ import std.unicode.types { unicode_scalar, unicode_surrogate_first_code_point, unicode_surrogate_last_code_point }
+ 
+ // Unicode Standard 17.0 Core Specification section 3.9, D76: the scalar values are U+0000..U+D7FF
+diff --git a/src/v2/compiler/infer.dag b/src/v2/compiler/infer.dag
+index 097b214f410f..b30f413a9131 100644
+--- a/src/v2/compiler/infer.dag
++++ b/src/v2/compiler/infer.dag
+@@ -61,7 +61,7 @@ import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder
+ import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+ import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
+ import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
+-import v2.std.node { BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed }
++import v2.std.node { BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, n7la_lexeme_order, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed }
+ import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
+ import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
+ import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
+@@ -3975,8 +3975,8 @@ fn infer_formals_in_declared_order(formals: List<InhabitanceFormal>, labels: Lis
+       InferIndexWalk { index: acc.index + 1, labels: Cons { head: InferIndexedLabel { label: l, position: acc.index }, tail: acc.labels } }
+     }).labels
+     let pairs = infer_pair_by_label(
+-      labels: sort_by(indexed, infer_indexed_label_key),
+-      formals: sort_by(formals, infer_formal_identity_key)
++      labels: list_sort_by_key(xs: indexed, key: infer_indexed_label_key, order: n7la_lexeme_order()),
++      formals: list_sort_by_key(xs: formals, key: infer_formal_identity_key, order: n7la_lexeme_order())
+     )
+     if infer_pairings_match(pairs: pairs) {
+       FormalsInDeclaredOrder { formals: infer_pairings_in_declared_order(pairs: pairs) }
+@@ -4012,7 +4012,7 @@ fn infer_pairings_match(pairs: List<InferFormalPairing>) -> Bool {
+ }
+ 
+ fn infer_pairings_in_declared_order(pairs: List<InferFormalPairing>) -> List<InhabitanceFormal> {
+-  list_map(xs: sort_by(pairs, infer_pairing_position_key), f: infer_pairing_formal)
++  list_map(xs: list_sort_by_key(xs: pairs, key: infer_pairing_position_key, order: int_total_order()), f: infer_pairing_formal)
+ }
+ 
+ fn infer_pairing_formal(p: InferFormalPairing) -> InhabitanceFormal {
+@@ -5506,7 +5506,7 @@ fn infer_formal_args_by_authored_actuals(pairs: List<InferSlotFormal>, actuals:
+ 
+ fn infer_formal_args_by_plan(formals: List<InhabitanceFormal>, slots: List<ApplicationSlot>, actuals: List<Edge>) -> List<InhabitanceFormalArg> {
+   infer_formal_args_by_authored_actuals(
+-    pairs: sort_by(infer_slot_formals(formals: formals, slots: slots), infer_slot_formal_index_key),
++    pairs: list_sort_by_key(xs: infer_slot_formals(formals: formals, slots: slots), key: infer_slot_formal_index_key, order: int_total_order()),
+     actuals: actuals
+   )
+ }
+diff --git a/src/v2/std/node.dag b/src/v2/std/node.dag
+index 4a97fdaf3057..db18a2ef6b08 100644
+--- a/src/v2/std/node.dag
++++ b/src/v2/std/node.dag
+@@ -3,7 +3,7 @@ module v2.std.node
+ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+ import v2.std.compilers.lowered_shape { LoweredShape }
+ import std.types { List }
+-import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape }
++import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape, list_sort_by_key, TotalOrder, Ordering, Less, Equal, Greater }  // PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS): the list_sort_by_key/TotalOrder/Ordering names added for the sort_by piece
+ import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+ import std.occurrence_identity {
+   NodeOccurrenceIdentity,
+@@ -1282,6 +1282,19 @@ fn arrow_domain_binds_a_name(children: List<Edge>) -> Bool {
+   }
+ }
+ 
++// PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS; tidy-ant-251: sort_by is 'declared with a
++// signature gap', the modeled authority is std.algebra list_sort_by_key + an explicit TotalOrder, so
++// these call sites pass one instead of resting on the ambient sort_by). The lexeme order reads the one
++// Symbol spelling authority (symbol_lexeme); the compare form follows the corpus precedent
++// tree_path_compare (gunbc.host.host_effect_realize:6024).
++fn n7la_lexeme_compare(a: String, b: String) -> Ordering {
++  if a < b { Less } else { if a > b { Greater } else { Equal } }
++}
++
++fn n7la_lexeme_order() -> TotalOrder<String> {
++  TotalOrder { compare: n7la_lexeme_compare }
++}
++
+ type SortedSymbolWalk {
+   rest: List<Symbol>
+   previous: List<Symbol>
+@@ -1293,7 +1306,7 @@ fn symbols_are_one_distinct_set(a: List<Symbol>, b: List<Symbol>) -> Bool {
+   if count(a) != count(b) {
+     false
+   } else {
+-    let walk = fold(sort_by(a, fn(x) { x }), init: SortedSymbolWalk { rest: sort_by(b, fn(x) { x }), previous: [], ok: true }, f: fn(acc, x) {
++    let walk = fold(list_sort_by_key(xs: a, key: fn(x) { symbol_lexeme(sym: x) }, order: n7la_lexeme_order()), init: SortedSymbolWalk { rest: list_sort_by_key(xs: b, key: fn(x) { symbol_lexeme(sym: x) }, order: n7la_lexeme_order()), previous: [], ok: true }, f: fn(acc, x) {
+       match acc.rest {
+         Empty => SortedSymbolWalk { rest: Empty, previous: [x], ok: false }
+         Cons { head: y, tail: more } =>
+@@ -2162,8 +2175,8 @@ fn labeled_sort_classes<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> Labe
+ fn sort_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
+   let classes = labeled_sort_classes(items: items, label_of: label_of)
+   concat(
+-    sort_by(classes.structural, fn(x) { label_sort_key(label: label_of(x)) }),
+-    sort_by(classes.other, fn(x) { label_sort_key(label: label_of(x)) })
++    list_sort_by_key(xs: classes.structural, key: fn(x) { symbol_lexeme(sym: label_sort_key(label: label_of(x))) }, order: n7la_lexeme_order()),
++    list_sort_by_key(xs: classes.other, key: fn(x) { symbol_lexeme(sym: label_sort_key(label: label_of(x))) }, order: n7la_lexeme_order())
+   )
+ }
+ 
+@@ -3111,9 +3124,17 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
+   }
+ }
+ 
++// PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS): the digest key is a NAMED function, not an
++// inline closure, because the inline form types its parameter as list_sort_by_key's generic T and
++// emit refuses 'no field digest on type T' (source_root_eval census diagnostic at 3129:44). The
++// named form follows the infer_pairing_position_key precedent (v2.compiler.infer:3999).
++fn n7la_hash_digest_key(h: Hash) -> String {
++  h.digest as String
++}
++
+ fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
+   fold(
+-    sort_by(xs, fn(h) { h.digest }),
++    list_sort_by_key(xs: xs, key: n7la_hash_digest_key, order: n7la_lexeme_order()),
+     init: empty,
+     f: fn(acc, h) {
+       combine_hash(a: acc, b: h)
