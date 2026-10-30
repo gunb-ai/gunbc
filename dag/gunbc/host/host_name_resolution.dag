@@ -70,9 +70,12 @@ import std.algebra {
 }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.dissolution { DissolutionCondition, bound_dissolution }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.bmc.megarac { MegaRacMediaAddressFieldProbe, megarac_media_address_field_probe_set }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, ipv4_address_eq }
 import extdeps.dns.domain_name {
   DnsLabel,
+  DomainName,
   HostName,
   NameQualification,
   FullyQualified,
@@ -742,7 +745,9 @@ fn asked_name(outcome: NameResolution) -> ResolvableName {
 //                          controller refuses a single label, measured against its served bundle. Kept
 //                          distinct from the resolver's view deliberately: the router happily answers "srv2",
 //                          so "does it resolve" and "is it usable" are two questions with two owners, and
-//                          collapsing them would let a passing probe hide a refused field.
+//                          collapsing them would let a passing probe hide a refused field. The refusal names
+//                          the RELEASE whose rule refused, because that rule was read off a served bundle:
+//                          a reader holding a different build must be able to see the rule may not be theirs.
 //   NamesAnotherHost       the share the boot would write and the row that vouches for it disagree. Caught
 //                          before attach, which is what the boot-attach failure was asking for.
 //   Unresolved             the consumer can ask, and asked, and the answer said no. Carries the cause, which
@@ -756,7 +761,7 @@ type MediaShareAddressStanding
   // because the remedy quotes the offending spelling back to whoever edits the row.
   = AddressIsNotAName { raw: NonEmptyStr, refusal: ResolvableNameRefusal }
   | NeedsLanNameSpace { host: HostIdentity, space: NameSpace }
-  | RefusedByConsumerFirmware { host: HostIdentity, name: ResolvableName, minimum_labels: Int }
+  | RefusedByConsumerFirmware { host: HostIdentity, name: ResolvableName, firmware: BmcFirmwareReleaseIdentity, minimum_labels: Int }
   // The two spellings that disagree, carried as the VALUES rather than as renderings of them: the share's
   // own authored spelling, and the row's admitted name. Rendering both to compare or to display is the
   // string-comparison mistake this module deleted elsewhere; a consumer that must show the mismatch renders
@@ -782,19 +787,43 @@ type MediaShareAddressStanding
   }
   | Usable { host: HostIdentity, name: ResolvableName, address: Ipv4Address }
 
-// THE CONSUMER'S OWN FIELD RULE, as data. `minimum_labels: 2` is not a rule this module invented: it is the
-// controller's, measured 2026-10-27 by executing the firmware's own client-side validator against the
-// address field (it accepts an IPv4/IPv6 literal or an RFC-1123 FQDN, and refuses a single label and a
-// trailing dot). Carrying the number rather than a Bool keeps this module from owning a rule it merely
-// reports — and a second consumer with a different rule contributes a row, not an arm.
+// THE CONSUMER'S OWN FIELD RULE, as data — and the number in it is AN INFERENCE OF OURS, so it is carried
+// beside the vendor rows it was inferred from rather than as a bare constant. The verdicts themselves are
+// the firmware's and live in extdeps (extdeps.bmc.megarac.megarac_media_address_field_probe_set), keyed to
+// the release they were read from; what this module adds is the one generalization its gate can act on.
+//
+// THE GENERALIZATION IS ONE-DIRECTIONAL, AND SAYING SO OUT LOUD IS THE POINT. Every name the firmware
+// accepted carries at least two DNS labels, so two labels is NECESSARY for a name to be accepted and NOT
+// SUFFICIENT: `a.b.c.d` has four labels and the same validator refused it, because the predicate also
+// constrains the last label. The gate may therefore use the number to refuse cheaply and must never use it
+// to claim the field would accept — only the firmware's own answer does that, at write time. The witness
+// pins both halves against the vendor rows instead of trusting this paragraph: the floor equals one more
+// than the widest refused single-label name in the set, it never exceeds the narrowest accepted name, and
+// at least one probe at or above the floor was still refused.
 type MediaShareConsumerRule {
-  consumer: NonEmptyStr
+  // WHICH OPERATION CARRIES THE FIELD, located by the corpus's own citation carrier instead of described
+  // in a sentence a reader has to trust.
+  consumer: DeclarationRef
+  // THE WIRE MEMBER INSIDE IT. A wire spelling is legitimately a string — it is the vendor's name, the
+  // same kind of fact as a firmware `wire` — and it is NOT a field of the DAG declaration, so pointing a
+  // DeclarationRef at it would name a field that does not exist.
+  member: NonEmptyStr
+  // THE RELEASE THE RULE WAS READ FROM, as a key and not as prose: a rule with no release is a rule that
+  // silently outlives the build it came from. Taken from the probe set rather than restated, so the key
+  // has one source (§3).
+  firmware: BmcFirmwareReleaseIdentity
   minimum_labels: Int
+  // THE VENDOR ROWS THIS NUMBER CAME FROM, carried rather than paraphrased, so the generalization and its
+  // evidence travel together and a claim can hold one against the other.
+  evidence: List<MegaRacMediaAddressFieldProbe>
 }
 
 data megarac_media_address_rule: MediaShareConsumerRule = MediaShareConsumerRule {
-  consumer: "mtcollins1 BMC (AMI MegaRAC) media/general cd_remote_server_address" as NonEmptyStr,
+  consumer: decl_ref(module_path: "extdeps.bmc.megarac", decl_name: "megarac_op_media_config"),
+  member: "cd_remote_server_address" as NonEmptyStr,
+  firmware: megarac_media_address_field_probe_set.firmware,
   minimum_labels: 2,
+  evidence: megarac_media_address_field_probe_set.probes,
 }
 
 // THE GATE. Every check is against a TYPE or a CITATION, and no check asks the network a question a cited
@@ -818,7 +847,7 @@ fn media_share_address_gate(
       // FIRST the consumer's own field rule, then the row's agreement, then resolvability: the two cheap
       // refusals before the one that needs an answer.
       if resolvable_name_label_count(name: share_name) < rule.minimum_labels {
-        RefusedByConsumerFirmware { host: row.host, name: share_name, minimum_labels: rule.minimum_labels }
+        RefusedByConsumerFirmware { host: row.host, name: share_name, firmware: rule.firmware, minimum_labels: rule.minimum_labels }
       } else if !names_are_the_same_name(a: share_name, b: row.name) {
         NamesAnotherHost { host: row.host, share: share_server, row: row.name }
       } else {

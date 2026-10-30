@@ -213,6 +213,60 @@ data megarac_firmware_0_45_3: BmcFirmwareReleaseIdentity = bmc_firmware_release_
   wire: "0.45.3",
 )
 
+// THE cd_remote_server_address FIELD'S OWN VALIDATOR, AS EXECUTED, KEYED TO THE RELEASE IT WAS READ
+// FROM. These rows are the firmware's OUTPUTS, not a second implementation of its predicate: each one is
+// a spelling handed to the controller's own client-side validator and the verdict it returned, executed
+// 2026-10-27 against the bundle the device at 192.168.1.228 was serving (the predicate was extracted
+// verbatim and run, not read — docs/probes/bmc_media_share_naming_2026-10-27.md, "The firmware's own
+// field validator, executed"). Nothing here claims to restate the predicate: the set is exactly what was
+// executed, and a spelling outside it is simply not covered rather than guessed at.
+//
+// WHY KEYED. The validator is served BY THE FIRMWARE, so another release can ship another one, and an
+// unkeyed row here would be a family-grain claim resting on one build — which the scope note at the top
+// of this module forbids. The key is megarac_firmware_0_45_3, the same identity the redirection-status rows
+// below are keyed by, so the firmware-grain facts about this device share one key.
+//
+// WHAT THAT KEY IS WORTH, stated rather than left to be discovered: its version string came from an operator
+// read of the BMC web UI after the 2026-10-02 reflash, which is why it is a string and not a machine read.
+// The gunbc release capability catalog keys on a DIFFERENT grain — an identity derived from a committed
+// ipmitool hpm-check, whose wire is "0.45" because the HPM.1 auxiliary bytes are deliberately not folded into
+// a patch number — and that module says plainly that nothing asserts "0.45.3" and the derived "0.45" are the
+// same name. This row does not equate them either: asking that catalog for this key answers Uncatalogued.
+// Closing the gap needs a machine read whose wire IS the label; until then this row rests on the operator's
+// read and says so.
+//
+// WHY `raw` IS A String AND NOT A NonEmptyStr: the empty spelling is one of the spellings that was
+// actually handed over and refused, and narrowing the carrier would make one of the executed verdicts
+// unwritable — the type would silently drop a row of the evidence.
+type MegaRacMediaAddressFieldProbe {
+  raw: String
+  accepted: Bool
+}
+
+// THE SET, PAIRED WITH ITS KEY AT CONSTRUCTION. A bare list of verdicts could be read against the wrong
+// release; carrying the key beside the rows is what makes "which build answered this" part of the fact
+// rather than part of a comment above it.
+type MegaRacMediaAddressFieldProbeSet {
+  firmware: BmcFirmwareReleaseIdentity
+  probes: List<MegaRacMediaAddressFieldProbe>
+}
+
+data megarac_media_address_field_probe_set: MegaRacMediaAddressFieldProbeSet = MegaRacMediaAddressFieldProbeSet {
+  firmware: megarac_firmware_0_45_3,
+  probes: [
+    MegaRacMediaAddressFieldProbe { raw: "192.168.1.201", accepted: true },
+    MegaRacMediaAddressFieldProbe { raw: "192.168.1.188", accepted: true },
+    MegaRacMediaAddressFieldProbe { raw: "srv2", accepted: false },
+    MegaRacMediaAddressFieldProbe { raw: "srv2.mynetworksettings.com", accepted: true },
+    MegaRacMediaAddressFieldProbe { raw: "SRV2.MYNETWORKSETTINGS.COM", accepted: true },
+    MegaRacMediaAddressFieldProbe { raw: "srv2.mynetworksettings.com.", accepted: false },
+    MegaRacMediaAddressFieldProbe { raw: "srv_2.mynetworksettings.com", accepted: false },
+    MegaRacMediaAddressFieldProbe { raw: "localhost", accepted: false },
+    MegaRacMediaAddressFieldProbe { raw: "::1", accepted: false },
+    MegaRacMediaAddressFieldProbe { raw: "255.255.255.0", accepted: false },
+  ],
+}
+
 // THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
 // share type; the host sees a virtual CD. PXE is not a term of this route. The required
 // image_redirection fact is MegaRacImageRedirectionRequired / megarac_op_media_start.

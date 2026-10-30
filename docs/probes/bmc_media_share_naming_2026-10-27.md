@@ -39,6 +39,14 @@ is observed behaviour, not reading:
 | `::1` | **REFUSED** |
 | `255.255.255.0` | **REFUSED** |
 
+These verdicts are carried in the corpus as data, keyed to the release they were read from:
+`extdeps.bmc.megarac.megarac_media_address_field_probe_set` (key `megarac_firmware_0_45_3`, the build the
+device has run since the 2026-10-02 reflash). The generalization this repo draws from them — a label floor —
+is a separate row, `gunbc.host.host_name_resolution.megarac_media_address_rule`, and the witness claims
+`the_floor_refuses_nothing_the_firmware_accepted`, `the_floor_is_above_at_least_one_refused_name` and
+`the_floor_is_necessary_and_not_sufficient` hold that inference against these rows rather than against the
+paragraph below.
+
 The predicate is an IPv4/IPv6 literal whitelist that then exempts anything matching an RFC 1123
 fully-qualified name. Three consequences, all modelled in gunbc/host/host_name_resolution:
 
@@ -46,7 +54,10 @@ fully-qualified name. Three consequences, all modelled in gunbc/host/host_name_r
    reservation — the fallback in the brief is not needed.
 2. A **single label is refused**. `srv2` is not a usable value for this field, only the FQDN. Any
    migration that "simplifies" the share to the short name breaks the boot. Carried in the corpus as
-   `megarac_media_address_rule` and its `minimum_labels`, which the share gate consults.
+   `megarac_media_address_rule` and its `minimum_labels`, which the share gate consults — as a NECESSARY
+   condition and not the device's rule: `a.b.c.d` has four labels and was refused too, so the floor may
+   refuse cheaply and must never be read as "the field would accept this". Only the firmware's own answer
+   says that, at write time.
 3. The firmware accepts IPs too, so firmware behaviour cannot enforce the ruling. Enforcement belongs
    on the authorable side — which is what `ResolvableName` is.
 4. **The trailing-dot form is refused, so nothing may demand it.** This is worth its own number because the

@@ -38,7 +38,22 @@ import std.algebra {
   non_empty_to_list,
   list_head,
 }
-import extdeps.dns.domain_name { DnsLabel, dns_label_eq }
+import extdeps.dns.domain_name { DnsLabel, dns_label_eq, host_name_label_count }
+import extdeps.network.endpoint {
+  parse_network_host,
+  NetworkHostParsed,
+  NetworkHostRefused,
+  HostByName,
+  HostByAddress,
+}
+import extdeps.bmc.capability { bmc_firmware_release_identity_eq }
+import extdeps.bmc.megarac {
+  MegaRacMediaAddressFieldProbe,
+  megarac_media_address_field_probe_set,
+  megarac_redirection_status_of_wire,
+  RedirectionStatusKnown,
+  RedirectionStatusFirmwareUncatalogued,
+}
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, ipv4_address_eq }
 import extdeps.network.address { IpV4, IpV6 }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
@@ -124,7 +139,7 @@ import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_media_share }
 import extdeps.network.ipv4 { render_ipv4_address }
 import product.host_identity { host_identity_eq }
-import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all }
+import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, census_verdict, census_verdict_all }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_eq }
 import std.dissolution { DissolutionPending, DissolutionFired, DissolutionUnbound, dissolution_status, dissolution_is_bound }
 
@@ -433,21 +448,64 @@ test fn a_malformed_name_is_refused_as_malformed_and_not_as_an_address() -> Bool
 //   forge_zone_hole_source              writes `Zone { suffix: DomainName { labels: [] } }` by hand, which
 //                                       would let a name space be configured with an unparsed domain — and
 //                                       with no labels at all, which would make every name a suffix match.
-//   forge_empty_resolver_hole_source    the fail-open trap: a resolver with no servers, which makes every
-//                                       name look unresolvable. Refused TWICE — by the seal, and by the
-//                                       field's cardinality, since `servers` is a `FreeSemigroup` and an
-//                                       empty list is not an inhabitant of it. That second refusal is
-//                                       review 87047's finding 2, and the claim below asserts both classes
-//                                       so the guarantee is not just "we also wrote a check".
+//   forge_empty_resolver_hole_source    the fail-open trap written through the CONSTRUCTOR: refused by the
+//                                       seal. The cardinality refusal — the one review 87047's finding 2
+//                                       is about — is asserted on a separate pair of fixtures that go
+//                                       through the admission door, where the seal is not in play; see
+//                                       `resolver_cardinality_probe_source` below for why the two refusals
+//                                       cannot share one probe.
 data forge_resolvable_name_hole_source: String = "module probe_forge_resolvable_name\nimport extdeps.dns.resolver { ResolvableName }\nimport extdeps.dns.domain_name { parse_host_name }\nimport std.error_primitives { Ok, Err }\nimport std.optional { Optional, Present, Absent }\nfn forged() -> Optional<ResolvableName> {\n  match parse_host_name(raw: \"srv2.mynetworksettings.com\") {\n    Ok { value: h } => Present { value: ResolvableName { name: h } }\n    Err { value: e } => Absent\n  }\n}\n"
 
 data forge_single_label_row_hole_source: String = "module probe_forge_single_label_row\nimport extdeps.dns.resolver { ResolvableName }\nimport extdeps.dns.domain_name { parse_host_name }\nimport std.error_primitives { Ok, Err }\nimport std.optional { Optional, Present, Absent }\ntype ShareRow { server: ResolvableName }\nfn forged_row() -> Optional<ShareRow> {\n  match parse_host_name(raw: \"srv2\") {\n    Ok { value: h } => Present { value: ShareRow { server: ResolvableName { name: h } } }\n    Err { value: e } => Absent\n  }\n}\n"
 
 data forge_zone_hole_source: String = "module probe_forge_zone\nimport gunbc.host.host_name_resolution { Zone }\nimport extdeps.dns.domain_name { DomainName, DnsLabel }\ndata bad_zone: Zone = Zone { suffix: DomainName { labels: [] } }\n"
 
-// THE EMPTY RESOLVER. `[]` is a FreeMonoid and cannot be a FreeSemigroup, so the forgery is refused by the
-// field's cardinality as well as by the seal — which is the difference between a check that can be
-// forgotten and a state that cannot be written.
+// THE EMPTY RESOLVER, BY THE DOOR THAT IS NOT THE SEAL. `[]` is a FreeMonoid and cannot be a
+// FreeSemigroup, so the state cannot be written at all — which is the difference between a check that can
+// be forgotten and a state that cannot be written.
+//
+// ONE AXIS BY CONSTRUCTION, NOT BY MAINTENANCE (the form is established at
+// test.claim.machine_intake.no_fallback_plan_ineligibility_wall): both fixtures come out of ONE producer
+// parameterised by the server-list spelling and nothing else — same module name, same import list (it
+// carries what BOTH arms need, so the imports are not a second variable), same declaration name, same
+// declared type. The one-axis relation is therefore a property of the producer, not an alignment between
+// two literals a reader would have to check and a future edit could silently break.
+//
+// THE PRODUCER GOES THROUGH `resolver_admit`, NOT THE CONSTRUCTOR. The direct constructor is refused by
+// the seal, and a fixture refused by the seal cannot show what refuses the EMPTY LIST: the two refusals
+// would be entangled in one probe and the claim would green on the seal alone. Through the admission the
+// seal is not in play at all, so the only thing that can refuse `servers: []` is the field's cardinality.
+fn resolver_cardinality_probe_source(servers: String) -> String {
+  "module probe_resolver_server_cardinality\n"
+    + "import extdeps.dns.resolver { Resolver, resolver_admit }\n"
+    + "import std.algebra { non_empty_singleton }\n"
+    + "import extdeps.network.ipv4 { ipv4_address }\n"
+    + "data probed_resolver: Resolver = resolver_admit(servers: "
+    + servers
+    + ")\n"
+}
+
+data resolver_no_servers_source: String = resolver_cardinality_probe_source(servers: "[]")
+
+data resolver_one_server_source: String = resolver_cardinality_probe_source(
+  servers: "non_empty_singleton(item: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1))",
+)
+
+// THE KEY THE COMPILER ACTUALLY EMITS, measured and not guessed — and the guess was wrong once. This
+// claim's first cut asked for class `TypeMismatch`, and it was RED: the compiler reports an empty list
+// against a non-collection type through `inference_error`, which builds `CompilerDiagnostic::InternalError`
+// (v1_compiler_infer.rs, `infer_empty_list`), so the histogram class is `InternalError` and the subject is
+// the message itself (`compile_clean_internal_error_histogram_name` falls through to
+// `truncate_histogram_label`, and this message is under the 80-byte cap, so it is verbatim). Naming the
+// key the compiler emits rather than the one one would expect is what makes the claim a witness: a class
+// nobody emits would have made the wall look absent while the seal kept refusing for a different reason.
+data cardinality_refusal_class: String = "InternalError"
+
+data cardinality_refusal_subject: String = "empty list literal: expected type is not a collection"
+
+// THE SEAL, on the same carrier, asserted separately: constructing `Resolver` outside its defining module
+// is refused even when the payload is well-typed. Kept apart from the cardinality probe on purpose —
+// review 87047's finding 2 is about the CARDINALITY, and a probe that mixes the two proves neither.
 data forge_empty_resolver_hole_source: String = "module probe_forge_empty_resolver\nimport extdeps.dns.resolver { Resolver }\ndata bad_resolver: Resolver = Resolver { servers: [] }\n"
 
 // THE CONTROL: the identical intentions, built through the admissions. It must be CLEAN of every class the
@@ -465,17 +523,22 @@ test fn a_host_row_forging_a_sealed_name_is_refused_at_compile_time() -> Process
   )
 }
 
-// NON-EMPTINESS IS IN THE TYPE, and this claim is how that is known rather than believed. The empty-resolver
-// forgery must be refused by the CARDINALITY (`TypeMismatch`: a list is not a non-empty carrier) in addition
-// to the seal, and the control — which builds a one-server resolver through `resolver_admit` — must be
-// clean of the cardinality class. If someone relaxes `servers` back to a `List`, this goes red even if the
-// seal stays, because the empty list becomes well-typed again.
+// NON-EMPTINESS IS IN THE TYPE, and this claim is how that is known rather than believed. The axis is the
+// server list alone: the empty arm must be refused at EXACTLY the one histogram key the compiler emits for
+// it, and the one-server arm — identical but for that spelling — must be clean at that same key. `== 1`
+// and not `>= 1`, for the reason the precedent gives: a lower bound keeps greening on the day the fixture
+// starts refusing for a second, unintended reason, so the wall would still prove that SOMETHING refuses
+// while having stopped proving that THIS refuses. If someone relaxes `servers` back to a `List`, the empty
+// arm becomes well-typed and this goes red even with the seal intact.
+//
+// THE SEAL IS ASSERTED SEPARATELY, on the direct constructor, because a probe refused by the seal cannot
+// prove the cardinality: the two refusals would be entangled and the claim would green on the seal alone.
 test fn a_resolver_with_no_servers_is_not_a_type_at_all() -> ProcessExit {
   census_verdict_all(
     verdicts: [
+      census_verdict(census: blocking_subject_census(source: resolver_no_servers_source, wanted_class: cardinality_refusal_class, wanted_subject: cardinality_refusal_subject), holds: fn(n) { n == 1 }),
+      census_verdict(census: blocking_subject_census(source: resolver_one_server_source, wanted_class: cardinality_refusal_class, wanted_subject: cardinality_refusal_subject), holds: fn(n) { n == 0 }),
       census_verdict(census: blocking_class_census(source: forge_empty_resolver_hole_source, wanted_class: "SoleConstructorViolation"), holds: fn(n) { n >= 1 }),
-      census_verdict(census: blocking_class_census(source: forge_empty_resolver_hole_source, wanted_class: "TypeMismatch"), holds: fn(n) { n >= 1 }),
-      census_verdict(census: blocking_class_census(source: forge_control_source, wanted_class: "TypeMismatch"), holds: fn(n) { n == 0 }),
     ],
   )
 }
@@ -587,13 +650,145 @@ test fn a_single_label_share_refuses_because_the_consumer_would_reject_it() -> B
                     rule: megarac_media_address_rule,
                     ask: fn(_s, _nm) { answered(addrs: one_address()) },
                   ) {
-                    RefusedByConsumerFirmware { host: _, name: refused_name, minimum_labels: k } =>
+                    RefusedByConsumerFirmware { host: _, name: refused_name, firmware: _, minimum_labels: k } =>
                       k == 2 && resolvable_name_label_count(name: refused_name) == 1
                     _ => false
                   }
               }
           }
       }
+  }
+}
+
+// ── THE FLOOR HELD AGAINST THE VENDOR ROWS IT CAME FROM ─────────────────────────────────────────────
+// `megarac_media_address_rule.minimum_labels` is OUR inference, not a vendor fact. The firmware's verdicts
+// are the rows in extdeps.bmc.megarac.megarac_media_address_field_probe_set; the number is what this repo
+// concluded from them. A number with no witness is a number that outlives its evidence, so these claims
+// hold it against the rows instead against a paragraph.
+//
+// WHAT THE ROWS CAN AND CANNOT PIN, stated because the claims only pin the first. Every accepted NAME in
+// the set carries three labels, and the refused names include ones with one label — so the rows bound the
+// floor to [2,3] and do not choose between them. The reason it is 2 and not 3 is the shape of an RFC-1123
+// FQDN (a host label above a zone), which is a fact about names and not an inference from ten spellings.
+// So: the floor is not so high that it refuses something the device answered, and not so low that it
+// admits something the device refused. Both are checked against the rows.
+
+// THE ONE AUTHORITY FOR "name or address", asked and not re-derived here — the same delegation review
+// 87232 demanded for name equality. The count is present when the spelling is a name and absent when it is
+// an address or a spelling the grammar will not read as a name at all, so an address can never be scored
+// against a rule about names.
+fn probe_labels_if_a_name(raw: String) -> Int? {
+  match parse_network_host(raw: raw) {
+    NetworkHostParsed { host: h } =>
+      match h {
+        HostByName { name: n } => Present { value: host_name_label_count(host: n) }
+        HostByAddress { address: _ } => Absent
+      }
+    NetworkHostRefused { refusal: _ } => Absent
+  }
+}
+
+fn every_accepted_name_meets_the_floor(probes: List<MegaRacMediaAddressFieldProbe>, at_least: Int) -> Bool {
+  match probes {
+    Empty => true
+    Cons { head: p, tail: rest } =>
+      if !p.accepted {
+        every_accepted_name_meets_the_floor(probes: rest, at_least: at_least)
+      } else {
+        match probe_labels_if_a_name(raw: p.raw) {
+          Absent => every_accepted_name_meets_the_floor(probes: rest, at_least: at_least)
+          Present { value: labels } =>
+            labels >= at_least && every_accepted_name_meets_the_floor(probes: rest, at_least: at_least)
+        }
+      }
+  }
+}
+
+// The floor is not so high that it refuses a spelling the device itself answered. Raise it past three and
+// this goes red, which is the guard against "safer means stricter" drifting the gate into refusing the one
+// name the share row must carry.
+test fn the_floor_refuses_nothing_the_firmware_accepted() -> Bool {
+  every_accepted_name_meets_the_floor(
+    probes: megarac_media_address_field_probe_set.probes,
+    at_least: megarac_media_address_rule.minimum_labels,
+  )
+}
+
+fn some_refused_name_falls_below_the_floor(probes: List<MegaRacMediaAddressFieldProbe>, at_least: Int) -> Bool {
+  match probes {
+    Empty => false
+    Cons { head: p, tail: rest } =>
+      if p.accepted {
+        some_refused_name_falls_below_the_floor(probes: rest, at_least: at_least)
+      } else {
+        match probe_labels_if_a_name(raw: p.raw) {
+          Absent => some_refused_name_falls_below_the_floor(probes: rest, at_least: at_least)
+          Present { value: labels } =>
+            labels < at_least || some_refused_name_falls_below_the_floor(probes: rest, at_least: at_least)
+        }
+      }
+  }
+}
+
+// A floor of 1 would let `srv2` through, and the device refuses it. This is what stops the floor decaying
+// into a no-op: the row set contains a refused spelling that IS a name, and the floor sits above it.
+test fn the_floor_is_above_at_least_one_refused_name() -> Bool {
+  some_refused_name_falls_below_the_floor(
+    probes: megarac_media_address_field_probe_set.probes,
+    at_least: megarac_media_address_rule.minimum_labels,
+  )
+}
+
+fn some_name_at_or_above_the_floor_was_refused(probes: List<MegaRacMediaAddressFieldProbe>, at_least: Int) -> Bool {
+  match probes {
+    Empty => false
+    Cons { head: p, tail: rest } =>
+      if p.accepted {
+        some_name_at_or_above_the_floor_was_refused(probes: rest, at_least: at_least)
+      } else {
+        match probe_labels_if_a_name(raw: p.raw) {
+          Absent => some_name_at_or_above_the_floor_was_refused(probes: rest, at_least: at_least)
+          Present { value: labels } =>
+            labels >= at_least || some_name_at_or_above_the_floor_was_refused(probes: rest, at_least: at_least)
+        }
+      }
+  }
+}
+
+// THE FLOOR IS NOT THE DEVICE'S RULE, and the row set says so: at least one spelling at or above the floor
+// was still refused — `a.b.c.d`, four labels, refused because the predicate constrains the last label too.
+// A gate reading the floor as sufficient would hand the firmware a field it rejects and learn that at
+// attach time, which is the failure this item exists to prevent. The floor is a filter, and this claim is
+// what keeps it labelled as one.
+test fn the_floor_is_necessary_and_not_sufficient() -> Bool {
+  some_name_at_or_above_the_floor_was_refused(
+    probes: megarac_media_address_field_probe_set.probes,
+    at_least: megarac_media_address_rule.minimum_labels,
+  )
+}
+
+// THE KEY IS A KEY, NOT A COMMENT: the release this rule was read from has to be a release the corpus
+// already catalogues at firmware grain, or the key is a label that matches nothing and the firmware field is
+// decoration. The test is the corpus's other firmware-keyed vendor table — the redirection-status rows —
+// resolving under the SAME identity. Retype the key to a release nobody read and that lookup refuses
+// `FirmwareUncatalogued`, and this goes red.
+//
+// WHY NOT THE RELEASE CAPABILITY CATALOG, which is the lookup a reader would reach for first. That catalog
+// (gunbc.host.bmc_release_capability_catalog) is keyed by an identity DERIVED from a committed artifact, and
+// for this release the machine read derives the wire "0.45" — the HPM.1 auxiliary bytes are deliberately not
+// folded into a patch number — while the family-grain identity here carries the vendor page label "0.45.3".
+// The corpus states plainly that nothing asserts those are the same release-name, and this row does not
+// quietly equate them either: asking that catalog for this key answers `Uncatalogued`, which is a fact about
+// the two grains, not a defect here. Closing that gap means a machine read whose wire IS the label, and when
+// one lands this claim should be re-pointed at it.
+test fn the_rule_is_keyed_to_a_release_the_corpus_already_catalogues() -> Bool {
+  match megarac_redirection_status_of_wire(
+    firmware: megarac_media_address_field_probe_set.firmware,
+    wire: 0,
+  ) {
+    RedirectionStatusKnown { firmware: f, status: _ } =>
+      bmc_firmware_release_identity_eq(a: f, b: megarac_media_address_field_probe_set.firmware)
+    RedirectionStatusFirmwareUncatalogued { firmware: _, } => false
   }
 }
 
@@ -1475,8 +1670,8 @@ test fn a_zone_configured_as_an_ip_literal_is_refused_as_an_address() -> Bool {
       // can report what was written AND what it meant; both are checked, so neither can drift.
       r == "192.168.1.1" && inner == "192.168.1.1"
         && (match a {
-          IpV4 { addr: v } => ipv4_address_eq(a: v, b: router_address)
-          IpV6 { addr: _ } => false
+          IpV4 { v4: v } => ipv4_address_eq(a: v, b: router_address)
+          IpV6 { v6: _ } => false
         })
     ZoneRefused { raw: _, cause: _ } => false
     ZoneAdmitted { zone: _ } => false
