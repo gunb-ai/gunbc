@@ -43,7 +43,8 @@ test fn running_and_cleanup_hold_the_slot_until_complete_settlement() -> Bool {
     worker: worker, claimed_generation: generation) {
     Err { value: _ } => { return false } Ok { value: proposal } => proposal.next
   }
-  let refused = all([RevisionRequestTerminalStillRunning, RevisionRequestTerminalCleanupUnproven, RevisionRequestTerminalReceiptUnproven], standing =>
+  let incomplete = [RevisionRequestTerminalStillRunning, RevisionRequestTerminalCleanupUnproven, RevisionRequestTerminalReceiptUnproven]
+  let refused = incomplete.all(standing =>
     match revision_request_settle_transition(current: cleanup, generation: generation, worker: worker,
       claimed_generation: generation, standing: standing) {
       Err { value: _ } => true Ok { value: _ } => false

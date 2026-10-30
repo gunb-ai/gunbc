@@ -27,7 +27,8 @@ test fn another_host_effect_or_undeclared_slot_requires_per_effect_approval() ->
     declared_slot: true, workload_identity: identity)
   let undeclared_slot = revision_request_select_launch(host: operator_host_srv1, effect: StandingRevisionRequestStart,
     declared_slot: false, workload_identity: identity)
-  all([other_host, other_effect, undeclared_slot], selection => match selection {
+  let selections = [other_host, other_effect, undeclared_slot]
+  selections.all(selection => match selection {
     PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
     _ => false
   })
