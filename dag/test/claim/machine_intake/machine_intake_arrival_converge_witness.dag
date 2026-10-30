@@ -9,7 +9,7 @@ import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, SupermicroAten, BmcController
 import product.host_identity { HostIdentity, host_identity_eq }
 import std.scoped_authorization { ScopedAuthorization }
 import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write, approved_bmc_convergence }
-import test.fixture.machine_intake.bmc_lockout { lockout_served_channels }
+import test.fixture.machine_intake.bmc_lockout { lockout_both_served, lockout_served_channels }
 import gunbc.machine_intake.phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, BootDeliveryEstablish, IntakePhase, machine_qualification_policy }
 import gunbc.machine_intake.subject {
   AssemblyManifest, BoardSerialObservation, BmcFru, HostSmbios, ChassisComponent, ComponentIdentity, BoardSerialAbsent,
@@ -1850,6 +1850,7 @@ fn srv13_secured_read(subject: MachineIntakeSubject, firmware: BmcFirmwareReleas
     published_reading: derive_over(served: redfish_only),
     attempt: (subject.attempt_id as NonEmptyStr) as AttemptIdentity,
     read_at_millis: t_read,
+    lockout: lockout_both_served(read_at: t_read, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
   )
 }
 
