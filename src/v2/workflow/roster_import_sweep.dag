@@ -113,8 +113,7 @@ type RosterHeadRewrite
 // A CONSTANT NAMED ARGUMENT A RenameHead ROW APPENDS after the call's last argument (tidy-ant-251's sort_by ruling): the
 // renamed callee declares one more parameter than the ambient spelling took, and its value is the same at every site of the
 // row (list_sort_by_key's `order`, the one canonical order bare sort_by already applies). `text` is the argument's source
-// spelling; the callee it names must resolve at the site: either its own KeepHead row imports it (string_total_order, fnv1a64_digest_hex_total_order)
-// or (symbol_total_order) it is declared in v2.std.node, which a KeepHead row of home v2.std.node imports into every other module. Exact arity of the positionals is unchanged.
+// spelling; the callee it names must resolve at the site: fnv1a64_digest_hex_total_order is imported by its own KeepHead row; symbol_total_order is declared in v2.std.node, where every sort_by/symbol site of this migration lives. Exact arity of the positionals is unchanged.
 type RosterAppendedArg {
   label: String
   text: String
@@ -438,14 +437,6 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       labels: [],
       head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "string_total_order()" }] }
     },
-    RosterHeadRow {
-      call: "sort_by",
-      key: "sort_by/int",
-      import_name: "list_sort_by_key",
-      home: qualified_name_from_dotted_string(dotted: "std.algebra"),
-      labels: [],
-      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "int_total_order()" }] }
-    },
     // A digest key (Fnv1a64Structural.digest, a String where lower_hex_16) is its own key kind: its declared order is over
     // Fnv1a64StructuralDigestHex, which is not String at a typed argument, so it gets its own row and its own order.
     RosterHeadRow {
@@ -456,10 +447,7 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       labels: [],
       head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "fnv1a64_digest_hex_total_order()" }] }
     },
-    RosterHeadRow { call: "fnv1a64_digest_hex_total_order", key: "fnv1a64_digest_hex_total_order", import_name: "fnv1a64_digest_hex_total_order", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "string_total_order", key: "string_total_order", import_name: "string_total_order", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "int_total_order", key: "int_total_order", import_name: "int_total_order", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "symbol_total_order", key: "symbol_total_order", import_name: "symbol_total_order", home: qualified_name_from_dotted_string(dotted: "v2.std.node"), labels: [], head: KeepHead }
+    RosterHeadRow { call: "fnv1a64_digest_hex_total_order", key: "fnv1a64_digest_hex_total_order", import_name: "fnv1a64_digest_hex_total_order", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead }
   ]
 }
 
@@ -2919,7 +2907,7 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-key-off-the-head-refuses",
     "occurrences-empty-key-list-refuses",
     "appended-argument-symbol-order",
-    "appended-argument-string-order", "appended-argument-int-order", "appended-argument-digest-order",
+    "appended-argument-string-order", "appended-argument-digest-order",
     "sort-by-undeclared-order-refuses",
     "occurrences-byte-column-after-multibyte-text",
     "occurrences-scalar-column-after-multibyte-text-refuses",
@@ -3043,7 +3031,6 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-unknown-row-key-refuses", fail: roster_occ_unknown_row_control()),
     roster_control_verdict(name: "appended-argument-symbol-order", fail: roster_sort_expect(name: "appended-argument-symbol-order", row_key: "sort_by/symbol", elem: "Symbol", order: "symbol_total_order()", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "appended-argument-string-order", fail: roster_sort_expect(name: "appended-argument-string-order", row_key: "sort_by/string", elem: "String", order: "string_total_order()", prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "appended-argument-int-order", fail: roster_sort_expect(name: "appended-argument-int-order", row_key: "sort_by/int", elem: "Int", order: "int_total_order()", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "appended-argument-digest-order", fail: roster_sort_expect(name: "appended-argument-digest-order", row_key: "sort_by/digest_hex", elem: "Fnv1a64StructuralDigestHex", order: "fnv1a64_digest_hex_total_order()", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "sort-by-undeclared-order-refuses", fail: roster_sort_undeclared_order_control()),
     roster_control_verdict(name: "occurrences-scalar-column-after-multibyte-text-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-scalar-column-after-multibyte-text-refuses", text: wide, keys: ["control/rename.dag:6:17"], key: "control/rename.dag:6:17", prepared: prepared, lex: lex)),
