@@ -81,7 +81,7 @@ fn fixture_incarnation(slot: RunnerSlotIdentity, pid: Int, start: String) -> Run
   }
 }
 
-// srv1's registration label set, spelled independently of runner_registration_labels and in a
+// srv1's registration label set, spelled independently of runner_evidence_gated_registration_labels and in a
 // DIFFERENT ORDER than the composition produces, so the positive control also establishes that the
 // postcondition compares by set membership rather than by list equality.
 fn fixture_labels() -> List<String> {

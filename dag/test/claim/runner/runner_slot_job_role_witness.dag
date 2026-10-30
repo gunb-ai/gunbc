@@ -19,7 +19,7 @@ import gunbc.runner.runner_slot_job_role {
   host_committed_github_members, srv1_modeled_deploy_slot_reading, runner_host_has_deploy_slot,
 }
 import gunbc.runner.runner_registration_labels {
-  runner_slot_registration_labels, runner_slot_labels_conform, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_declared_slot_registration_labels, runner_slot_labels_conform, RegistrationLabelsResolved, RegistrationLabelsRefused,
   RegistrationLabelsConform, RegistrationLabelsDiverge, gunbc_browser_ready_label,
 }
 import gunbc.runner.runner_unit_file { runner_unit_slot_role_dropin_text, RunnerUnitText, RunnerUnitTextRefused }
@@ -49,7 +49,7 @@ fn committed_srv1() -> Int {
 }
 
 fn labels_of(slot: RunnerSlotIdentity) -> List<String> {
-  match runner_slot_registration_labels(slot: slot) {
+  match runner_declared_slot_registration_labels(slot: slot) {
     RegistrationLabelsResolved { labels: ls } => ls
     RegistrationLabelsRefused { host: _, cause: _ } => []
   }

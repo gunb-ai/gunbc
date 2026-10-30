@@ -5,12 +5,12 @@ import std.algebra { trim }
 import std.list { first_where }
 import std.measure { Second, second, second_count }
 import std.optional { Optional, Present, Absent }
-import std.decl_ref { decl_ref }
-import std.dissolution { bound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
 import product.host_identity { HostIdentity }
 import extdeps.systemd.loginctl { LoginctlLingerReading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
-import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text, github_workflow_run_id_of_wire, WorkflowRun, Completed, Success }
+import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title_selector }
+import extdeps.tools.gh { gh_run_download_argv, gh_run_download_command }
+import extdeps.exec.command { ArgvCommand }
 import gunbc.repository { gunbc_repository }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 
@@ -37,12 +37,11 @@ import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_se
 // runner_user_session_converge_receipt_artifact_name) is still only evidence for a window: the grant ages
 // the document's own probed_at header word against the instant it was read at, and refuses one older than
 // runner_user_session_converge_receipt_max_age, so even a document left in the artifact store from a run
-// before a host lost its linger cannot grant. Until piece 3 -- the fleet-converge leg wired to fetch the
-// document and hand it to the composition -- production callers supply Absent, every rostered host answers
-// RosteredUnconverged, and the label is genuinely off. That is the honest state: no rung drop is needed
-// because no debt is taken. The follow-up is not a promise kept in a PR body: it is a FrontierRow in
-// runner_user_session_label_frontier_rows below, registered in gunbc.census_closure_frontier, whose
-// dissolution names the declaration whose appearance ends the gap.
+// before a host lost its linger cannot grant. Every production leg observes the receipt itself
+// at its own effect edge (gunbc.runner.runner_user_session_receipt_observed
+// runner_user_session_receipt_observed: select the producer run, download its artifact, parse it), so the
+// label is on exactly while a fresh receipt for a rostered host holds, and ReceiptAbsent -- no qualifying run --
+// leaves it off.
 //
 // This module is a LEAF: runner_user_session reaches its consumers through the host-effect chain, so
 // anything imported HERE must not reach gunbc.runner.runner_registration_labels (checked by
@@ -108,12 +107,66 @@ type RunnerUserSessionConvergeReceipt {
   bus: UserSessionAnswer,
 }
 
+// THE FLEET-CONVERGE MODE THE PRODUCER RUNS UNDER, ONE HOME (the workflow's mode wire and the selector below
+// read this row; gunbc.fleet.fleet_converge_workflow's RunnerUserSessionConverge arm projects it).
+data runner_user_session_converge_mode_wire: String = "runner_user_session_converge"
+
+// WHICH PRODUCER RUN'S ARTIFACT TO READ, AS A FOLD OVER A LISTING THE CALLER OBSERVED. The query shape is
+// extdeps.github.workflow_runs ListWorkflowRuns; the POLICY is here, beside the receipt it serves: the run
+// must be a fleet-converge run of THIS mode for THIS host (its display_title carries both, rendered by
+// gunbc.fleet.fleet_converge_run_name), it must have completed with conclusion success, and of those the
+// NEWEST by created_at wins. A run that failed still uploads its receipt, but a failed converge is not the
+// evidence the label spends, so it is not selectable. Selection is not freshness: the winner's own
+// probed_at is still aged by runner_user_session_converge_receipt_staleness at the gate, so a wrong pick can
+// only refuse, never grant. Nothing qualifying is a TYPED refusal, which the read maps to ReceiptAbsent --
+// the label stays off.
+type RunnerUserSessionProducerRunSelection
+  = ProducerRunSelected { run: GitHubWorkflowRunId, created_at: Timestamp }
+  | ProducerRunNone { cause: String }
+
+fn runner_user_session_producer_run_qualifies(run: WorkflowRun, host: String) -> Bool {
+  let selector = fleet_converge_run_title_selector(mode: runner_user_session_converge_mode_wire, host: host)
+  let titled = match run.display_title {
+    Present { value: t } => starts_with(s: t, prefix: selector)
+    Absent => false
+  }
+  let succeeded = match run.conclusion {
+    Present { value: c } => match c { Success => true  _ => false }
+    Absent => false
+  }
+  let completed = match run.status { Completed => true  _ => false }
+  titled && succeeded && completed
+}
+
+fn runner_user_session_producer_run_select(runs: List<WorkflowRun>, host: String) -> RunnerUserSessionProducerRunSelection {
+  let qualifying = filter(runs, r => runner_user_session_producer_run_qualifies(run: r, host: host))
+  let no_run: WorkflowRun? = Absent
+  let newest = fold(qualifying, init: no_run, f: (best, r) => match best {
+    Absent => Present { value: r }
+    Present { value: b } => if r.created_at > b.created_at { Present { value: r } } else { best }
+  })
+  match newest {
+    Absent => ProducerRunNone { cause: join(["no completed, successful fleet-converge run of mode ", runner_user_session_converge_mode_wire, " for host ", host, " is in the listing, so there is no producer artifact to read"], "") }
+    Present { value: r } => ProducerRunSelected { run: github_workflow_run_id_of_wire(n: r.id), created_at: r.created_at }
+  }
+}
+
 // THE ONE ARTIFACT NAME THE PRODUCER UPLOADS THE RECEIPT DOCUMENT UNDER (review 87218: the name had two
 // homes -- a bare literal in the workflow's upload step and the read spec -- and a rename that missed one
 // would make the follow-up download a name that no run ever published, silently). The fleet-converge
 // upload step (gunbc.fleet.fleet_converge_workflow
 // fleet_converge_runner_user_session_receipt_upload_step) publishes the writer's path under THIS name, and
 // the read spec below fetches by it; the label witness pins both against this row.
+// WHERE THE CONVERGE WRITES THE DOCUMENT (a path under the job's workspace) AND WHAT THE UPLOADED ARTIFACT
+// CALLS IT: upload-artifact of one file stores it under its own name, so the reader of a downloaded artifact
+// opens the path's last segment inside its download directory. One row, read by the writer, the workflow's
+// upload step and the read below.
+data runner_user_session_converge_receipt_path: String = "target/runner-user-session-converge-receipt.txt"
+
+fn runner_user_session_converge_receipt_file_name() -> String {
+  match runner_user_session_converge_receipt_path.split(delimiter: "/").last() { Present { value: n } => n  Absent => runner_user_session_converge_receipt_path }
+}
+
 data runner_user_session_converge_receipt_artifact_name: String = "runner-user-session-converge-receipt"
 
 // THE READ SPEC (review 87218: the receipt is NOT a file on a host -- the converge writes it on a Linux
@@ -124,22 +177,24 @@ data runner_user_session_converge_receipt_artifact_name: String = "runner-user-s
 // -- typed GitHubWorkflowRunId, projected to its wire word -- because the follow-up reads the receipt from
 // the run that WROTE it (that is DESIGN 6's citation by producer, not by transcription). Consumers:
 // test.claim.runner.runner_user_session_label_witness the_consumer_reads_this_spec pins these words (a
-// reader that runs a different route is downloading a different document), and the follow-up -- carried on
-// a FrontierRow in runner_user_session_label_frontier_rows below, registered in
-// gunbc.census_closure_frontier -- is the production consumer whose absence keeps the label off until then.
+// reader that runs a different route is downloading a different document), and
+// gunbc.runner.runner_user_session_receipt_observed is the production consumer.
 fn runner_user_session_converge_receipt_read_argv(run: GitHubWorkflowRunId, into: String) -> List<String> {
-  [
-    "gh",
-    "run",
-    "download",
-    github_workflow_run_id_wire_text(id: run),
-    "--repo",
-    gunbc_repository.full_name,
-    "--name",
-    runner_user_session_converge_receipt_artifact_name,
-    "--dir",
-    into,
-  ]
+  gh_run_download_argv(
+    run_id: github_workflow_run_id_wire_text(id: run),
+    repo: gunbc_repository.full_name,
+    artifact: runner_user_session_converge_receipt_artifact_name,
+    dir: into,
+  )
+}
+
+fn runner_user_session_converge_receipt_read_command(run: GitHubWorkflowRunId, into: String) -> ArgvCommand {
+  gh_run_download_command(
+    run_id: github_workflow_run_id_wire_text(id: run),
+    repo: gunbc_repository.full_name,
+    artifact: runner_user_session_converge_receipt_artifact_name,
+    dir: into,
+  )
 }
 
 // THE DOCUMENT'S WIRE VOCABULARY, one home each -- BOTH DIRECTIONS read these rows (review 88438). The
@@ -434,23 +489,3 @@ fn runner_user_session_converge_receipt_staleness(receipt: RunnerUserSessionConv
   }
 }
 
-// THE WIRING FRONTIER ON A CARRIER (review 87218: "each frontier comment names its trigger as the follow-up
-// in the PR body -- a PR body is not on a carrier and will not be resolvable from the Node tree"). These
-// rows name, as subjects, the two production entries that must gain a live receipt supplier, and as their
-// dissolution, the declaration whose APPEARANCE ends the gap: the fleet-converge receipt-read job. They are
-// registered in gunbc.census_closure_frontier census_closure_frontier_row_groups, so the pending frontier is
-// walkable from the census -- the mark on the carrier is the authority, not a parallel ledger (DESIGN 6).
-// While these rows stand, production supplies ReceiptAbsent and the user-session label is off; test.claim.
-// runner.runner_user_session_label_witness proves the rows are well formed and enrolled.
-data runner_user_session_label_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.runner.runner_registration_labels", decl_name: "runner_user_session_labels_for"),
-    reason: "the production entry for the user-session grant still supplies ReceiptAbsent, because no leg yet runs runner_user_session_converge_receipt_read_argv to fetch the converge run's receipt artifact, parses it with runner_user_session_receipt_input_of_text, and supplies it; until then the label is off",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_runner_user_session_receipt_read_job")),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.runner.runner_registration_labels", decl_name: "runner_slot_registration_labels_with_user_session_receipt"),
-    reason: "the CI job-slot entry has no production caller that supplies a parsed converge receipt; the slot's host is rostered by the same row the job entry reads, so it waits on the same receipt-read leg",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_runner_user_session_receipt_read_job")),
-  ),
-]

@@ -2,6 +2,7 @@ module test.claim.fleet.fleet_runner_connectivity_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
+import product.host_identity { HostIdentity }
 import std.nat { Nat }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
@@ -259,27 +260,30 @@ test fn truncated_roster_still_answers_slots_inside_the_prefix() -> Bool {
   )
 }
 
-// ── registration-label readback: the desired side is runner_registration_labels(slot host) ───────
+// ── registration-label readback: the desired side is runner_evidence_gated_registration_labels(slot host) ───────
 // ONE ONLINE REGISTRATION, VARIED ONLY IN ITS LABELS, read through the real verdict fold over a
 // complete roster. The expected sets are spelled here rather than computed from the composition, so
 // a composition that dropped a label would turn the positive control red.
 //
-// SRV4'S SET DOES NOT CARRY gunbc-user-session YET, and this fixture spells that state: the label is
-// granted only from a parsed converge receipt handed to the evidence entry
-// (gunbc.runner.runner_registration_labels runner_registration_labels_with_user_session_receipt), and no
-// production entry supplies one until the fleet-converge read lands (the follow-up in the PR body of
-// gunbc#15253). test.claim.runner.runner_user_session_label_witness covers the receipt-backed side; this
-// fixture pins that a PRODUCTION registration observed WITH the label diverges from the desired set -- so
-// a hand-forced label on a live runner is noticed, not blessed. srv3's controls are unchanged.
+// SRV4'S CI SLOT MAY CARRY gunbc-user-session: the label is granted from a parsed converge receipt a leg
+// observed (gunbc.runner.runner_registration_labels runner_evidence_gated_registration_labels), the readback
+// does not re-judge that observation, and runner_slot_optional_registration_labels licenses it on a rostered CI
+// slot. test.claim.runner.runner_user_session_label_witness covers the receipt-backed side; this fixture pins
+// that the readback tolerates the granted label on srv4 and still refuses it on a host no roster admits.
+// srv3's controls are unchanged.
 fn online_srv4_01_under(labels: List<NonEmptyStr>) -> RunnerSlotConnectivityVerdict {
+  online_01_under(host: operator_host_srv4, name: "srv4-01", labels: labels)
+}
+
+fn online_01_under(host: HostIdentity, name: String, labels: List<NonEmptyStr>) -> RunnerSlotConnectivityVerdict {
   runner_slot_connectivity_verdict_for_incarnation(
-    incarnation: runner_slot_incarnation(host: operator_host_srv4, slot_index: 1, unit_active: true),
+    incarnation: runner_slot_incarnation(host: host, slot_index: 1, unit_active: true),
     roster: organization_runner_roster_from_page(
       observed_on: "2026-09-19" as NonEmptyStr,
       registrations: [
         GitHubSelfHostedRunnerRegistration {
           id: 9401,
-          name: "srv4-01" as NonEmptyStr,
+          name: name as NonEmptyStr,
           status: GitHubRunnerOnline,
           busy: false,
           ephemeral: Present { value: true },
@@ -299,16 +303,17 @@ test fn online_registration_under_its_own_class_and_host_labels_is_healthy() -> 
   )
 }
 
-// THE LABEL IS OFF UNTIL THE FLEET READ LANDS, AND A LIVE REGISTRATION THAT CARRIES IT ANYWAY IS A
-// DIVERGENCE, NOT A HEALTHY RUNNER. The production entry grants the label to nobody until the
-// fleet-converge receipt read lands (the follow-up in the PR body of gunbc#15253), so a srv4 runner
-// advertising gunbc-user-session means someone forced it -- a stale config, a hand-edited .credential
-// file -- and the roster check must see it. This is the connectivity witness's half of the same state
-// test.claim.runner.runner_user_session_label_witness pins on the grant side.
-test fn online_registration_carrying_the_user_session_label_before_the_fleet_read_is_not_healthy() -> Bool {
-  connectivity_verdict_labels_diverge(
+// A READBACK MUST NOT FLAP ON THE LABEL IT LICENSES: srv4 is rostered, so its CI registration carrying
+// gunbc-user-session is healthy; an unrostered host carrying it means someone forced it -- a stale config, a
+// hand-edited .credential file -- and the roster check must see it.
+// RED control: license the label on every host and the srv3 arm goes red; license it on none and srv4's goes red.
+test fn the_user_session_label_is_healthy_on_a_rostered_host_and_diverges_on_an_unrostered_one() -> Bool {
+  connectivity_verdict_is_healthy(
     v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr, "gunbc-user-session" as NonEmptyStr]),
   )
+    && connectivity_verdict_labels_diverge(
+      v: online_01_under(host: operator_host_srv3, name: "srv3-01", labels: ["srv3" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr, "gunbc-user-session" as NonEmptyStr]),
+    )
 }
 
 test fn online_registration_missing_the_class_label_is_not_healthy() -> Bool {

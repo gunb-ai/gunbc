@@ -64,11 +64,12 @@ import gunbc.ci.ci_runner_placement {
   host_deployment_refusal_text,
   CapacityQuota, NoCpuCeiling,
 }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_capability_labels { runner_gpu_docker_ready_registration_labels }
 import gunbc.runner.runner_registration_labels {
   HostCapabilityWitness,
-  runner_registration_labels, runner_browser_ready_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
-  runner_slot_registration_labels,
+  runner_evidence_gated_registration_labels, runner_browser_ready_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_deploy_slot_registration_labels,
 }
 import gunbc.runner.runner_slot_job_role {
   CiJobSlot, DeployJobSlot, runner_slot_job_role, runner_slot_job_user, runner_slot_job_role_runs_containers,
@@ -151,7 +152,7 @@ fn runner_slot_instance_directory() -> String {
 // A runner registers with a label set and a workflow's `runs-on` selects on it. If the unit spelled
 // its own list, the failure of a disagreement would be a job that is queued forever against a label
 // nothing advertises -- no diagnostic anywhere, because neither side is wrong on its own terms. So
-// the render takes its labels from `gunbc.runner.runner_registration_labels` `runner_registration_labels`
+// the render takes its labels from `gunbc.runner.runner_registration_labels` `runner_evidence_gated_registration_labels`
 // -- the host's offer-derived platform labels, the slot's class label (gunbc-heavy) and the label of
 // the host the runner executes on -- and this module spells no label literal. The host-pinned selectors
 // (`gunbc.ci.ci_deploy_target_host` `host_pinned_runner_spec`, the fleet-converge host input) spell the
@@ -489,8 +490,8 @@ fn gunbc_runner_unit_depriv_dropin_text_from_reading(
 // plus gunbc-browser-ready. It uses the fragment's own quoted-environment rule and JSON serializer,
 // so the two cannot disagree about how a label set is spelled. Its only writer is the
 // browser-toolchain converge (gunbc.runner.runner_browser_toolchain browser_ready_labels_converge_wet).
-fn runner_host_browser_ready_labels_dropin_text(host: HostIdentity) -> RunnerUnitTextRendering {
-  match runner_browser_ready_registration_labels(host: host) {
+fn runner_host_browser_ready_labels_dropin_text(host: HostIdentity, receipt: RunnerUserSessionReceiptInput) -> RunnerUnitTextRendering {
+  match runner_browser_ready_registration_labels(host: host, receipt: receipt) {
     RegistrationLabelsRefused { host: _, cause: c } =>
       RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
     RegistrationLabelsResolved { labels: labels } =>
@@ -529,8 +530,8 @@ fn runner_host_browser_ready_labels_dropin_text(host: HostIdentity) -> RunnerUni
 // back. There is no Bool here to pass `true` to because it looked likely: a capability enters the set only
 // if some caller read the owning converge's own drop-in and found the token in it, and an unreadable one
 // makes the fold refuse, which arrives here as a refused render and fails the converge.
-fn runner_host_gpu_docker_labels_dropin_text(host: HostIdentity, witnesses: List<HostCapabilityWitness>) -> RunnerUnitTextRendering {
-  match runner_gpu_docker_ready_registration_labels(host: host, witnesses: witnesses) {
+fn runner_host_gpu_docker_labels_dropin_text(host: HostIdentity, witnesses: List<HostCapabilityWitness>, receipt: RunnerUserSessionReceiptInput) -> RunnerUnitTextRendering {
+  match runner_gpu_docker_ready_registration_labels(host: host, witnesses: witnesses, receipt: receipt) {
     RegistrationLabelsRefused { host: _, cause: c } =>
       RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
     RegistrationLabelsResolved { labels: labels } =>
@@ -587,7 +588,7 @@ fn runner_unit_slot_role_dropin_text(deploy: RunnerHostDeploy, slot: RunnerSlotI
         Absent =>
           RunnerUnitTextRefused { reason: "runner_unit_file: the deploy slot's runner group receipt is for another group or workflow, so the slot is not registered into a group nobody re-read" as NonEmptyStr }
         Present { value: group } =>
-          match runner_slot_registration_labels(slot: slot) {
+          match runner_deploy_slot_registration_labels(slot: slot) {
             RegistrationLabelsRefused { host: _, cause: c } =>
               RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
             RegistrationLabelsResolved { labels: labels } =>
@@ -615,8 +616,8 @@ fn runner_unit_slot_role_dropin_text(deploy: RunnerHostDeploy, slot: RunnerSlotI
   }
 }
 
-fn gunbc_runner_unit_fragment_from_deploy(deploy: RunnerHostDeploy, host: HostIdentity) -> RunnerUnitTextRendering {
-  match runner_registration_labels(host: host) {
+fn gunbc_runner_unit_fragment_from_deploy(deploy: RunnerHostDeploy, host: HostIdentity, receipt: RunnerUserSessionReceiptInput) -> RunnerUnitTextRendering {
+  match runner_evidence_gated_registration_labels(host: host, receipt: receipt) {
     RegistrationLabelsRefused { host: _, cause: c } =>
       RunnerUnitTextRefused {
         reason: concat("runner_unit_file: ", c as String) as NonEmptyStr,

@@ -7,7 +7,7 @@ module test.claim.runner.runner_user_session_label_witness
 // population), and gunbc.runner.runner_user_session_receipt RunnerUserSessionConvergeReceipt is the
 // EVIDENCE -- the three readings a converge run reported for one host, parsed from the document that run
 // wrote. The composition (gunbc.runner.runner_registration_labels
-// runner_registration_labels_with_user_session_receipt) grants the label only when the host is rostered
+// runner_evidence_gated_registration_labels) grants the label only when the host is rostered
 // AND the supplied receipt parses, is ABOUT that host, and every reading in it holds. There is no receipt
 // data in-tree (reviews 87051/87054/87126/87136/87155: hand-copied rows are DESIGN 6's transcribed
 // output, and a row cannot re-read a host): production supplies ReceiptAbsent until the follow-up named
@@ -55,6 +55,9 @@ module test.claim.runner.runner_user_session_label_witness
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.list { first_where }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.algebra { string_contains }
 import std.optional { Optional, Present, Absent, optional_is_absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -66,10 +69,10 @@ import gunbc.runner.runner_registration_labels {
   RunnerUserSessionGrant, RunnerUserSessionGranted, RunnerUserSessionRosteredUnconverged,
   RunnerUserSessionReceiptedUnrostered, RunnerUserSessionUnadmitted,
   runner_user_session_grant_of_roster,
-  gunbc_user_session_label, runner_registration_labels, runner_registration_labels_of_class,
-  runner_registration_labels_with_user_session_receipt,
-  runner_slot_registration_labels, runner_slot_registration_labels_with_user_session_receipt,
-  runner_user_session_labels_for, runner_user_session_labels_of_roster,
+  gunbc_user_session_label, runner_evidence_gated_registration_labels, runner_registration_labels_of_class,
+  runner_declared_registration_labels, runner_slot_optional_registration_labels, runner_slot_labels_conform,
+  RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
+  runner_user_session_labels_of_roster,
   runner_user_session_label_stripped,
 }
 import gunbc.runner.runner_host_deploy { runner_job_user_session_hosts }
@@ -84,12 +87,18 @@ import gunbc.runner.runner_user_session_receipt {
   runner_user_session_converge_receipt_document_text, runner_user_session_receipt_header_line,
   RunnerUserSessionConvergeReceipt,
   runner_user_session_converge_receipt_staleness,
-  runner_user_session_converge_receipt_artifact_name, runner_user_session_label_frontier_rows,
+  runner_user_session_converge_receipt_artifact_name,
   runner_user_session_converge_receipt_names_host,
+  RunnerUserSessionProducerRunSelection, ProducerRunSelected, ProducerRunNone, runner_user_session_producer_run_select,
 }
 import std.roster_frontier { frontier_rows_well_formed, DeclSubject, PathSubject }
 import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigger_ref }
-import extdeps.github.workflow_runs { GitHubWorkflowRunId }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text, WorkflowRun, Completed, InProgress, Success, Failure }
+import std.types { CommitSha, Secret }
+import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_workflow_mode_wire, RunnerUserSessionConverge, RunnerBrowserToolchainConverge }
+import extdeps.github.actions { Workflow }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed_with }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.runner.runner_slot_job_role { srv1_deploy_slot }
 import gunbc.ci.ci_fleet { srv4_offer }
@@ -285,8 +294,7 @@ test fn the_parser_reads_the_document_and_refuses_to_guess() -> Bool {
 // these words, so a rename that misses one goes red HERE). producer_run is the fleet-converge run the
 // gate evidence cites (40270496735); the follow-up passes whatever run it read, typed as
 // GitHubWorkflowRunId. Consumers: this control (the shape) and the follow-up carried on
-// runner_user_session_label_frontier_rows in gunbc.runner.runner_user_session_receipt (registered in
-// gunbc.census_closure_frontier -- the production one).
+// gunbc.runner.runner_user_session_receipt_observed (the production one).
 // RED control: turn the route back into cat of a path, drop --name/--repo/--dir, or rename the artifact
 // on one side only, and this goes red.
 test fn the_consumer_reads_this_spec() -> Bool {
@@ -502,67 +510,56 @@ fn header_line_is_the_document_head() -> Bool {
     == "runner_user_session_converge host=srv4 job_user=ghrunner probed_at=2026-10-28T00:00:00Z"
 }
 
-// THE FOLLOW-UP IS A ROW ON A CARRIER, NOT A SENTENCE IN A PR BODY (review 87218: "each frontier comment
-// names its trigger as the follow-up in the PR body; a PR body is not on a carrier and will not be
-// resolvable from the Node tree"). The gap -- no leg yet fetches the converge receipt artifact and feeds
-// the grant -- is carried as FrontierRows in gunbc.runner.runner_user_session_receipt
-// runner_user_session_label_frontier_rows: well formed (reason, subject, and a BOUND dissolution whose
-// trigger names the declaration whose appearance ends the gap), and ENROLLED in
-// gunbc.census_closure_frontier, so a census walk of the tree reaches it. This is also the control that
-// goes red if someone deletes the registration line while leaving the rows behind.
-// RED control: un-enroll the rows from the census, or strip a dissolution trigger, and this goes red.
-test fn the_wiring_frontier_is_a_row_on_a_carrier() -> Bool {
-  frontier_rows_well_formed(rows: runner_user_session_label_frontier_rows)
-    && fold(runner_user_session_label_frontier_rows, init: 0, f: (acc, _) => acc + 1) == 2
-    && match first_where(xs: runner_user_session_label_frontier_rows, keep: _ => true) {
-      Present { value: row } =>
-        match row.dissolution {
-          BoundDissolution { trigger: t } => dissolution_trigger_ref(trigger: t).decl_name == "fleet_converge_runner_user_session_receipt_read_job"
-          UnboundDissolution { description: _ } => false
-        }
-      Absent => false
-    }
-    && !optional_is_absent(opt: first_where(xs: census_closure_frontier_rows(), keep: enrolled => match enrolled.subject {
-      DeclSubject { ref: r } => r.module_path == "gunbc.runner.runner_registration_labels" && r.decl_name == "runner_user_session_labels_for"
-      PathSubject { path: _ } => false
-    }))
-    && !optional_is_absent(opt: first_where(xs: census_closure_frontier_rows(), keep: enrolled => match enrolled.subject {
-      DeclSubject { ref: r } => r.module_path == "gunbc.runner.runner_registration_labels" && r.decl_name == "runner_slot_registration_labels_with_user_session_receipt"
+// THE FRONTIER THIS WITNESS ONCE CARRIED IS DISSOLVED, AND ITS RED STAYS (DESIGN 4b, dissolution on climb:
+// the production machinery goes, the discriminating control remains). The two FrontierRows that named the
+// receipt-read leg as their dissolution were deleted when gunbc.runner.runner_user_session_receipt_observed
+// landed, so (1) no enrolled frontier subject names an entry of gunbc.runner.runner_registration_labels, and
+// (2) the checker that made such a row admissible still refuses a row with no reason, so a re-added frontier
+// that states none goes red here.
+// RED control: re-enroll a row naming one of those entries, or let the checker accept a row with an empty
+// reason, and this goes red.
+test fn the_wiring_frontier_is_dissolved_and_its_red_remains() -> Bool {
+  !frontier_rows_well_formed(rows: [
+    frontier_row_decl(
+      ref: decl_ref(module_path: "gunbc.runner.runner_registration_labels", decl_name: "runner_evidence_gated_registration_labels"),
+      reason: "",
+      dissolution: unbound_dissolution(description: "when the follow-up lands"),
+    ),
+  ])
+    && optional_is_absent(opt: first_where(xs: census_closure_frontier_rows(), keep: enrolled => match enrolled.subject {
+      DeclSubject { ref: r } => r.module_path == "gunbc.runner.runner_registration_labels"
       PathSubject { path: _ } => false
     }))
 }
 
-// THE PRODUCTION ENTRY CARRIES NO EVIDENCE YET, AND THE LABEL IS OFF -- THAT IS THE HONEST STATE, AND IT
-// IS ASSERTED, NOT ASSUMED. The production composition passes ReceiptAbsent (no live supplier until the
-// follow-up): srv4 is rostered, so its grant is RosteredUnconverged naming the absent receipt, and NO
-// registration at the production entry carries the label; a host outside the roster is Unadmitted. This
-// is the control that makes "the label is not advertised until the fleet read runs" a checked claim: the
-// day someone hand-builds a receipt at the production entry to force the label on, this goes red and
-// forces them through the follow-up instead. srv1's and srv3's absence is credited only when each host
-// RESOLVED -- a refusal here is false, not green (a host whose offer vanished is not "an unconverged
-// host", it is a host that stopped answering).
-// RED control: pass a holding receipt into the production entry instead of ReceiptAbsent.
-test fn the_production_entry_advertises_the_label_to_nobody_until_the_fleet_read_lands() -> Bool {
-  match runner_registration_labels(host: operator_host_srv4) {
-    RegistrationLabelsResolved { labels: srv4 } =>
-      !has_label(labels: srv4)
-        && match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts, receipt: ReceiptAbsent) {
-          RunnerUserSessionRosteredUnconverged { host: _, cause: why } =>
-            string_contains(s: why as String, pattern: "no converge receipt")
-            && match runner_registration_labels(host: operator_host_srv1) {
-              RegistrationLabelsResolved { labels: srv1 } =>
-                match runner_registration_labels(host: operator_host_srv3) {
-                  RegistrationLabelsResolved { labels: srv3 } =>
-                    !has_label(labels: srv1) && !has_label(labels: srv3)
-                      && runner_user_session_labels_for(host: operator_host_srv1) == []
-                      && runner_user_session_labels_for(host: operator_host_srv4) == []
-                  RegistrationLabelsRefused { host: _, cause: _ } => false
-                }
-              RegistrationLabelsRefused { host: _, cause: _ } => false
-            }
-          RunnerUserSessionGranted { receipt: _ } => false
-          RunnerUserSessionReceiptedUnrostered { host: _ } => false
-          RunnerUserSessionUnadmitted { host: _ } => false
+// A DECLARED-LABELS RESOLUTION NEVER CARRIES THE LABEL, AND ReceiptAbsent GRANTS NOTHING. The declaration-only
+// entry (the one the emit-time floor pool reads) has no evidence parameter, so no receipt can reach it; the
+// evidence entry handed ReceiptAbsent answers label-off for the rostered srv4 with the cause named, and a host
+// outside the roster is Unadmitted. srv1's and srv3's absence is credited only when each host RESOLVED.
+// RED control: let the declared entry read a receipt, or default the evidence entry to a holding one.
+test fn declared_labels_and_an_absent_receipt_advertise_the_label_to_nobody() -> Bool {
+  match runner_declared_registration_labels(host: operator_host_srv4) {
+    RegistrationLabelsResolved { labels: declared } =>
+      !has_label(labels: declared)
+        && match runner_evidence_gated_registration_labels(host: operator_host_srv4, receipt: ReceiptAbsent) {
+          RegistrationLabelsResolved { labels: absent } =>
+            !has_label(labels: absent)
+              && match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts, receipt: ReceiptAbsent) {
+                RunnerUserSessionRosteredUnconverged { host: _, cause: why } =>
+                  string_contains(s: why as String, pattern: "no converge receipt")
+                    && match runner_evidence_gated_registration_labels(host: operator_host_srv1, receipt: srv4_holding_input()) {
+                      RegistrationLabelsResolved { labels: srv1 } =>
+                        match runner_evidence_gated_registration_labels(host: operator_host_srv3, receipt: srv4_holding_input()) {
+                          RegistrationLabelsResolved { labels: srv3 } => !has_label(labels: srv1) && !has_label(labels: srv3)
+                          RegistrationLabelsRefused { host: _, cause: _ } => false
+                        }
+                      RegistrationLabelsRefused { host: _, cause: _ } => false
+                    }
+                RunnerUserSessionGranted { receipt: _ } => false
+                RunnerUserSessionReceiptedUnrostered { host: _ } => false
+                RunnerUserSessionUnadmitted { host: _ } => false
+              }
+          RegistrationLabelsRefused { host: _, cause: _ } => false
         }
     RegistrationLabelsRefused { host: _, cause: _ } => false
   }
@@ -576,10 +573,10 @@ test fn the_production_entry_advertises_the_label_to_nobody_until_the_fleet_read
 // the roster (srv1's receipted arm goes red); a refusal slipping past as an absence (either Refused arm
 // goes red).
 test fn the_evidence_entry_grants_the_label_exactly_once_and_only_to_a_rostered_host() -> Bool {
-  match runner_registration_labels_with_user_session_receipt(host: operator_host_srv4, receipt: srv4_holding_input()) {
+  match runner_evidence_gated_registration_labels(host: operator_host_srv4, receipt: srv4_holding_input()) {
     RegistrationLabelsResolved { labels: srv4 } =>
       has_label(labels: srv4) && label_count(labels: srv4) == 1
-        && match runner_registration_labels_with_user_session_receipt(host: operator_host_srv1, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes(host: "srv1", enable_linger: "ok", linger: "yes", bus: "answered"), read_at: receipt_probe_instant())) {
+        && match runner_evidence_gated_registration_labels(host: operator_host_srv1, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes(host: "srv1", enable_linger: "ok", linger: "yes", bus: "answered"), read_at: receipt_probe_instant())) {
           RegistrationLabelsResolved { labels: srv1 } =>
             !has_label(labels: srv1)
               && match runner_registration_labels_of_class(host: operator_host_srv1, class_labels: [gunbc_user_session_label]) {
@@ -597,7 +594,7 @@ test fn the_evidence_entry_grants_the_label_exactly_once_and_only_to_a_rostered_
 // it), and stripping a host-spelled copy before re-granting still yields the label -- the guard closes
 // the forge without disabling the grant.
 test fn the_grant_adds_the_label_exactly_once_and_the_strip_composes_with_it() -> Bool {
-  match runner_registration_labels_with_user_session_receipt(host: operator_host_srv4, receipt: srv4_holding_input()) {
+  match runner_evidence_gated_registration_labels(host: operator_host_srv4, receipt: srv4_holding_input()) {
     RegistrationLabelsResolved { labels: ls } =>
       label_count(labels: ls) == 1
         && !has_label(labels: runner_user_session_label_stripped(labels: [gunbc_user_session_label]))
@@ -619,23 +616,33 @@ test fn the_platform_half_cannot_carry_the_label_but_keeps_its_own_labels() -> B
     && any(stripped, l => l == "arm64")
 }
 
-// THE SLOT GRAIN FOLLOWS THE EVIDENCE, AT BOTH SIDES OF THE PRINCIPAL LINE. srv4's CI slot registers with
-// the label ONLY when the evidence entry is handed its receipt, and srv1's deploy slot does not carry it
-// EVEN WHEN the same receipt is handed to the entry -- the deploy principal never inherits the host's
-// capability. That is why the gate sits at the job entry and not inside _of_class: gating there would
-// hand the deploy principal a capability it never earned. Both resolutions must Resolve; either refusal
-// is a false.
-// RED controls: wire the grant only into the host entry and srv4's slot lacks the label; move the gate
-// into _of_class and srv1's deploy slot carries it.
-test fn a_ci_slot_label_set_follows_its_host_evidence_and_the_deploy_slot_stays_out() -> Bool {
-  match runner_slot_registration_labels_with_user_session_receipt(slot: srv4_ci_slot(), receipt: srv4_holding_input()) {
-    RegistrationLabelsResolved { labels: srv4_labels } =>
-      match runner_slot_registration_labels_with_user_session_receipt(slot: srv1_deploy_slot(), receipt: srv4_holding_input()) {
-        RegistrationLabelsResolved { labels: deploy_labels } =>
-          has_label(labels: srv4_labels) && !has_label(labels: deploy_labels)
-            && match runner_slot_registration_labels(slot: srv4_ci_slot()) {
-              RegistrationLabelsResolved { labels: bare_labels } => !has_label(labels: bare_labels)
-              RegistrationLabelsRefused { host: _, cause: _ } => false
+// THE SLOT GRAIN: THE LABEL IS AN OPTIONAL LABEL OF A ROSTERED CI SLOT AND OF NO DEPLOY SLOT. The readback
+// compares what GitHub holds against the declared labels plus the optional ones an observation can license,
+// so a CI slot on srv4 that registered with the label conforms, the same slot without it conforms, and the
+// deploy slot on srv1 carrying it diverges -- the deploy principal never inherits the host's capability.
+// RED controls: license the label on every slot and the deploy arm goes red; license it on none and the CI arm
+// goes red.
+test fn a_ci_slot_may_carry_the_label_and_the_deploy_slot_may_not() -> Bool {
+  match runner_evidence_gated_registration_labels(host: operator_host_srv4, receipt: srv4_holding_input()) {
+    RegistrationLabelsResolved { labels: with_label } =>
+      match runner_declared_registration_labels(host: operator_host_srv4) {
+        RegistrationLabelsResolved { labels: without_label } =>
+          any(runner_slot_optional_registration_labels(slot: srv4_ci_slot()), l => l == gunbc_user_session_label)
+            && !any(runner_slot_optional_registration_labels(slot: srv1_deploy_slot()), l => l == gunbc_user_session_label)
+            && match runner_slot_labels_conform(slot: srv4_ci_slot(), observed: with_label) {
+              RegistrationLabelsConform => true
+              RegistrationLabelsDiverge => false
+              RegistrationLabelsUnjudged { host: _, cause: _ } => false
+            }
+            && match runner_slot_labels_conform(slot: srv4_ci_slot(), observed: without_label) {
+              RegistrationLabelsConform => true
+              RegistrationLabelsDiverge => false
+              RegistrationLabelsUnjudged { host: _, cause: _ } => false
+            }
+            && match runner_slot_labels_conform(slot: srv1_deploy_slot(), observed: concat(without_label, [gunbc_user_session_label])) {
+              RegistrationLabelsConform => false
+              RegistrationLabelsDiverge => true
+              RegistrationLabelsUnjudged { host: _, cause: _ } => false
             }
         RegistrationLabelsRefused { host: _, cause: _ } => false
       }
@@ -658,11 +665,11 @@ test fn a_ci_slot_label_set_follows_its_host_evidence_and_the_deploy_slot_stays_
 test fn the_consumer_selector_is_satisfied_by_the_evidence_and_by_nothing_else() -> Bool {
   match runner_spec_from_offer(offer: srv4_offer) {
     SelfHosted { labels: platform } =>
-      match runner_registration_labels_with_user_session_receipt(host: operator_host_srv4, receipt: srv4_holding_input()) {
+      match runner_evidence_gated_registration_labels(host: operator_host_srv4, receipt: srv4_holding_input()) {
         RegistrationLabelsResolved { labels: srv4_backed } =>
-          match runner_registration_labels(host: operator_host_srv4) {
+          match runner_declared_registration_labels(host: operator_host_srv4) {
             RegistrationLabelsResolved { labels: srv4_bare } =>
-              match runner_registration_labels_with_user_session_receipt(host: operator_host_srv1, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes(host: "srv1", enable_linger: "ok", linger: "yes", bus: "answered"), read_at: receipt_probe_instant())) {
+              match runner_evidence_gated_registration_labels(host: operator_host_srv1, receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes(host: "srv1", enable_linger: "ok", linger: "yes", bus: "answered"), read_at: receipt_probe_instant())) {
                 RegistrationLabelsResolved { labels: srv1_backed } => {
                   let selector = concat(platform, [gunbc_user_session_label])
                   runner_labels_satisfy_selector(held: srv4_backed, selector: selector)
@@ -677,6 +684,141 @@ test fn the_consumer_selector_is_satisfied_by_the_evidence_and_by_nothing_else()
       }
     other => false
   }
+}
+
+// THE PRODUCER-RUN FIXTURES: a run is data the listing returns, supplied at the boundary the selection fold
+// reads; title, status, conclusion and created_at are the only fields the fold judges.
+fn producer_run(id: Int, title: String, completed: Bool, conclusion: Optional<Bool>, created_at: String) -> WorkflowRun {
+  WorkflowRun {
+    id: id,
+    name: Absent,
+    display_title: Present { value: title },
+    path: Absent,
+    head_sha: "1111111111111111111111111111111111111111" as CommitSha,
+    head_branch: Absent,
+    event: "workflow_dispatch",
+    status: if completed { Completed } else { InProgress },
+    conclusion: match conclusion {
+      Present { value: ok } => Present { value: if ok { Success } else { Failure } }
+      Absent => Absent
+    },
+    workflow_id: 9,
+    run_number: 1,
+    run_attempt: 1,
+    actor: Absent,
+    triggering_actor: Absent,
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/1" as NonEmptyStr,
+    created_at: created_at,
+    updated_at: created_at,
+    pull_requests: [],
+  }
+}
+
+fn user_session_title(host: String, nonce: String) -> String {
+  fleet_converge_run_title(mode: fleet_converge_workflow_mode_wire(mode: RunnerUserSessionConverge), host: host, nonce: nonce)
+}
+
+// NO QUALIFYING RUN IS A TYPED REFUSAL, AND IT NEVER SELECTS A NEAR MISS: a failed run, a run still in
+// progress, a successful run of another mode and a successful run for another host are each in the listing, and
+// the selection is ProducerRunNone naming the mode and host -- which the read maps to ReceiptAbsent (label off).
+// RED control: let the fold accept any conclusion, any status, any mode or any host and an arm goes red.
+test fn no_successful_run_for_this_mode_and_host_refuses() -> Bool {
+  let other_mode = fleet_converge_run_title(mode: fleet_converge_workflow_mode_wire(mode: RunnerBrowserToolchainConverge), host: "srv4", nonce: "n3")
+  match runner_user_session_producer_run_select(
+    runs: [
+      producer_run(id: 1, title: user_session_title(host: "srv4", nonce: "n1"), completed: true, conclusion: Present { value: false }, created_at: "2026-10-28T00:00:00Z"),
+      producer_run(id: 2, title: user_session_title(host: "srv4", nonce: "n2"), completed: false, conclusion: Absent, created_at: "2026-10-28T01:00:00Z"),
+      producer_run(id: 3, title: other_mode, completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T02:00:00Z"),
+      producer_run(id: 4, title: user_session_title(host: "srv1", nonce: "n4"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T03:00:00Z"),
+    ],
+    host: "srv4",
+  ) {
+    ProducerRunNone { cause: c } => string_contains(s: c, pattern: "srv4") && string_contains(s: c, pattern: fleet_converge_workflow_mode_wire(mode: RunnerUserSessionConverge))
+    ProducerRunSelected { run: _, created_at: _ } => false
+  }
+}
+
+// THE NEWEST QUALIFYING RUN IS THE ONE READ, AND WHEN ITS RECEIPT IS STALE THE GRANT REFUSES -- the fold does not
+// fall back to an older, fresher-looking run. Two successful srv4 runs are listed out of order; the later
+// created_at wins; the receipt that run uploaded is parsed from bytes probed 2026-09-01 and read 2026-10-28, so
+// the grant is RosteredUnconverged naming the age, never Granted.
+// RED control: pick the first listed run (the older id wins) or drop the staleness gate and an arm goes red.
+test fn the_newest_run_is_read_and_a_stale_newest_receipt_refuses() -> Bool {
+  match runner_user_session_producer_run_select(
+    runs: [
+      producer_run(id: 20, title: user_session_title(host: "srv4", nonce: "new"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T00:00:00Z"),
+      producer_run(id: 10, title: user_session_title(host: "srv4", nonce: "old"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-01T00:00:00Z"),
+    ],
+    host: "srv4",
+  ) {
+    ProducerRunSelected { run: r, created_at: at } =>
+      github_workflow_run_id_wire_text(id: r) == "20" && at == "2026-10-28T00:00:00Z"
+        && match runner_user_session_grant_of_roster(
+          host: operator_host_srv4,
+          roster: runner_job_user_session_hosts,
+          receipt: runner_user_session_receipt_input_of_text(text: receipt_bytes_probed_at(host: "srv4", probed_at: "2026-09-01T00:00:00Z", enable_linger: "ok", linger: "yes", bus: "answered"), read_at: receipt_probe_instant()),
+        ) {
+          RunnerUserSessionRosteredUnconverged { host: _, cause: why } => string_contains(s: why as String, pattern: "older than")
+          RunnerUserSessionGranted { receipt: _ } => false
+          RunnerUserSessionReceiptedUnrostered { host: _ } => false
+          RunnerUserSessionUnadmitted { host: _ } => false
+        }
+    ProducerRunNone { cause: _ } => false
+  }
+}
+
+// THE INHABITANCE CLAIM ON THE REAL PRODUCER ROUTE (DESIGN 3: supplying inputs above may not remove the last
+// execution of the real path). The producer is the fleet-converge workflow: its run_name is the title the
+// listing returns for a dispatch, and fleet_converge_workflow_mode_wire is the mode word its input carries. The
+// title the PRODUCER's run_name renders -- read from the workflow data, its three placeholders resolved to the
+// roster host, the mode wire and a nonce -- is a title the selection fold qualifies; a run titled by a drifted
+// run_name (any other head, separator or word order) does not. The placeholders are resolved by rendering
+// fleet_converge_run_title with the same words, and the workflow's own value must be that rendering over the
+// placeholder words, so deleting the shared title function from the workflow makes this go red.
+// RED control: change the workflow's run_name to a literal of another shape and the first arm goes red.
+test fn the_producer_run_name_is_a_title_the_selection_qualifies() -> Bool {
+  let placeholder = fleet_converge_run_title(mode: "${{ inputs.mode }}", host: "${{ inputs.host }}", nonce: "${{ inputs.transaction_nonce }}")
+  match fleet_converge_workflow.run_name {
+    Present { value: rendered } =>
+      rendered == placeholder
+        && match runner_user_session_producer_run_select(
+          runs: [producer_run(id: 7, title: user_session_title(host: "srv4", nonce: "abc"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T00:00:00Z")],
+          host: "srv4",
+        ) {
+          ProducerRunSelected { run: r, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "7"
+          ProducerRunNone { cause: _ } => false
+        }
+        && match runner_user_session_producer_run_select(
+          runs: [producer_run(id: 8, title: "fleet converge runner_user_session_converge srv4 nonce=abc", completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T00:00:00Z")],
+          host: "srv4",
+        ) {
+          ProducerRunNone { cause: _ } => true
+          ProducerRunSelected { run: _, created_at: _ } => false
+        }
+    Absent => false
+  }
+}
+
+fn none_token() -> Secret? {
+  Absent
+}
+
+// THE READ ROUTE, EXECUTED BELOW THE NETWORK: a rostered host with no credential is a LOCATED ReceiptUnreadable
+// naming the step and the variable (never Absent, never a grant), and an unrostered host is ReceiptAbsent
+// without touching a credential. This runs the real production route up to its first effect.
+// RED control: replace the read with ReceiptAbsent, drop the roster gate, or default a missing token and an arm
+// goes red.
+test fn the_read_route_refuses_a_rostered_host_without_a_credential_and_skips_an_outsider() -> Bool {
+  match runner_user_session_receipt_observed_with(host: operator_host_srv4, token: none_token()) {
+    ReceiptUnreadable { why: w } => string_contains(s: w, pattern: "token") && string_contains(s: w, pattern: "GITHUB_TOKEN")
+    ReceiptAbsent => false
+    ReceiptSupplied { value: _, read_at: _ } => false
+  }
+    && match runner_user_session_receipt_observed_with(host: operator_host_srv1, token: none_token()) {
+      ReceiptAbsent => true
+      ReceiptUnreadable { why: _ } => false
+      ReceiptSupplied { value: _, read_at: _ } => false
+    }
 }
 
 // THE CONTROL CENSUS, IN THE ORDER THE FOLD READS THEM. Each control above answers Bool (the claim lane's
@@ -723,12 +865,12 @@ fn witness_control_name(step: WitnessControl) -> String {
     InstantKeptAgedStep => "the_parser_keeps_the_instant_and_the_grant_ages_it"
     StaleReceiptRefusedStep => "the_grant_refuses_a_stale_undatable_or_skewed_receipt"
     ReadSpecStep => "the_consumer_reads_this_spec"
-    FrontierCarrierStep => "the_wiring_frontier_is_a_row_on_a_carrier"
-    ProductionEntryLabelOffStep => "the_production_entry_advertises_the_label_to_nobody_until_the_fleet_read_lands"
+    FrontierCarrierStep => "the_wiring_frontier_is_dissolved_and_its_red_remains"
+    ProductionEntryLabelOffStep => "declared_labels_and_an_absent_receipt_advertise_the_label_to_nobody"
     EvidenceEntryExactlyOnceStep => "the_evidence_entry_grants_the_label_exactly_once_and_only_to_a_rostered_host"
     StripComposesWithGrantStep => "the_grant_adds_the_label_exactly_once_and_the_strip_composes_with_it"
     PlatformHalfStep => "the_platform_half_cannot_carry_the_label_but_keeps_its_own_labels"
-    SlotGrainStep => "a_ci_slot_label_set_follows_its_host_evidence_and_the_deploy_slot_stays_out"
+    SlotGrainStep => "a_ci_slot_may_carry_the_label_and_the_deploy_slot_may_not"
     ConsumerSelectorStep => "the_consumer_selector_is_satisfied_by_the_evidence_and_by_nothing_else"
   }
 }
@@ -741,12 +883,12 @@ fn witness_control_holds(step: WitnessControl) -> Bool {
     InstantKeptAgedStep => the_parser_keeps_the_instant_and_the_grant_ages_it()
     StaleReceiptRefusedStep => the_grant_refuses_a_stale_undatable_or_skewed_receipt()
     ReadSpecStep => the_consumer_reads_this_spec()
-    FrontierCarrierStep => the_wiring_frontier_is_a_row_on_a_carrier()
-    ProductionEntryLabelOffStep => the_production_entry_advertises_the_label_to_nobody_until_the_fleet_read_lands()
+    FrontierCarrierStep => the_wiring_frontier_is_dissolved_and_its_red_remains()
+    ProductionEntryLabelOffStep => declared_labels_and_an_absent_receipt_advertise_the_label_to_nobody()
     EvidenceEntryExactlyOnceStep => the_evidence_entry_grants_the_label_exactly_once_and_only_to_a_rostered_host()
     StripComposesWithGrantStep => the_grant_adds_the_label_exactly_once_and_the_strip_composes_with_it()
     PlatformHalfStep => the_platform_half_cannot_carry_the_label_but_keeps_its_own_labels()
-    SlotGrainStep => a_ci_slot_label_set_follows_its_host_evidence_and_the_deploy_slot_stays_out()
+    SlotGrainStep => a_ci_slot_may_carry_the_label_and_the_deploy_slot_may_not()
     ConsumerSelectorStep => the_consumer_selector_is_satisfied_by_the_evidence_and_by_nothing_else()
   }
 }

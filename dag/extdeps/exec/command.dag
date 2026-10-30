@@ -91,6 +91,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.exec.command", decl_name: "operation_row_argv_command"),
     decl_ref(module_path: "extdeps.tools.util_linux_setsid", decl_name: "setsid_fork_command"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_run_download_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_file_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_probe_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owned_regular_files_exec_command"),

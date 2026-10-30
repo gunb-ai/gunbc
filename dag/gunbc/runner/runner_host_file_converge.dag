@@ -113,6 +113,8 @@ import gunbc.runner.runner_unit {
   runner_unit_suffix,
   runner_unit_name_of_registration,
 }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import gunbc.runner.runner_unit_file {
   runner_unit_teardown_dropin_path,
   gunbc_runner_unit_teardown_dropin_text,
@@ -545,8 +547,9 @@ fn runner_host_files_with_optional_depriv(
 fn runner_host_file_desired_population_from_uid_reading(
   host: HostIdentity,
   reading: RunnerJobUserUidReading,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerHostFileDesiredPopulation {
-  match runner_host_unit_files_desired(host: host, reading: reading) {
+  match runner_host_unit_files_desired(host: host, reading: reading, receipt: receipt) {
     RunnerHostFilesDesiredRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
     RunnerHostFilesDesired { files: fs, withheld: ws } =>
       match runner_slot_cpu_desired(host: host) {
@@ -578,6 +581,7 @@ fn runner_host_files_deliver_fragment(files: List<FleetHostFileDesired>) -> Bool
 fn runner_host_unit_files_desired(
   host: HostIdentity,
   reading: RunnerJobUserUidReading,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerHostFileDesiredPopulation {
   match needrestart_unit_name_prefix(raw: runner_unit_prefix) {
     NeedrestartUnitNamePrefixRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
@@ -592,7 +596,7 @@ fn runner_host_unit_files_desired(
             cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row because ", c, ", so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
           }
         RunnerHostDeployFound { deploy: d } =>
-          match gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host) {
+          match gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host, receipt: receipt) {
             RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
             RunnerUnitText { text: fragment } =>
               match gunbc_runner_unit_depriv_dropin_text_from_reading(deploy: d, host: host, reading: reading) {
@@ -3835,7 +3839,8 @@ fn runner_host_file_ci_wet_hosted(mode: FleetHostFileConvergeMode, host: String?
             FleetSshContextRefused { cause: c } => exit_failure(reason: c)
             FleetSshContextReady { context: context, receipt: context_receipt } => {
               let uid_reading = observe_runner_job_user_uid(subject: subject, context: context)
-              match runner_host_file_desired_population_from_uid_reading(host: raw_host as HostIdentity, reading: uid_reading) {
+              // THE CONVERGE'S OWN EFFECT EDGE reads the receipt, once, at this leg's read time.
+              match runner_host_file_desired_population_from_uid_reading(host: raw_host as HostIdentity, reading: uid_reading, receipt: runner_user_session_receipt_observed(host: raw_host as HostIdentity)) {
                 RunnerHostFilesDesiredRefused { cause: c } => exit_failure(reason: c as String)
                 RunnerHostFilesDesired { files: files, withheld: withheld } =>
                   match runner_slot_cpu_desired(host: raw_host as HostIdentity) {

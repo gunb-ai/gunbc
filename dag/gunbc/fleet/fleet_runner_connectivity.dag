@@ -301,7 +301,7 @@ data incident_runner_version: NonEmptyStr = "2.334.0"
 
 // THE CORPUS PINNED STATUS, NOT LABELS. Each fixture registration carries the class labels plus
 // the label of the host it names, i.e. the registration contract
-// (gunbc.runner.runner_registration_labels runner_registration_labels) spelled independently here, so the
+// (gunbc.runner.runner_registration_labels runner_evidence_gated_registration_labels) spelled independently here, so the
 // connectivity rows below exercise status while label divergence is exercised by its own reds.
 data incident_runner_class_labels: List<NonEmptyStr> = [
   "self-hosted" as NonEmptyStr,

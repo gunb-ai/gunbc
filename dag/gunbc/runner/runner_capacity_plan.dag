@@ -248,7 +248,7 @@ fn connectivity_replace_action(
           Present {
             value: RunnerIncarnationReplace {
               slot: s,
-              cause: "GitHub registration online under labels other than runner_registration_labels for its host"
+              cause: "GitHub registration online under labels other than runner_evidence_gated_registration_labels for its host"
             }
           }
         SlotConnectivityOrphaned { slot: s } =>

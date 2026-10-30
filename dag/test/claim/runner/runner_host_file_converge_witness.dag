@@ -1,5 +1,6 @@
 module test.claim.runner.runner_host_file_converge_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import std.types { Bool, String, NonEmptyStr, Int, List, FilePath }
 import std.list { distinct_by_key }
@@ -350,7 +351,7 @@ fn srv1_desired_population() -> RunnerHostFileDesiredPopulation {
   runner_host_file_desired_population_from_uid_reading(
     host: "srv1" as HostIdentity,
     reading: fixture_cited_job_user_uid(),
-  )
+   receipt: ReceiptAbsent)
 }
 
 // ── The bytes, against independently authored oracles ─────────────────────────────────────────────
@@ -410,7 +411,7 @@ test fn the_needrestart_snippet_defers_runner_units_by_upstream_syntax() -> Bool
 }
 
 test fn an_unread_uid_withholds_depriv_and_still_delivers_teardown_and_cpu() -> Bool {
-  match runner_host_file_desired_population_from_uid_reading(host: "srv1" as HostIdentity, reading: fixture_unread_job_user_uid()) {
+  match runner_host_file_desired_population_from_uid_reading(host: "srv1" as HostIdentity, reading: fixture_unread_job_user_uid(), receipt: ReceiptAbsent) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
       length(not_role_files(fs)) == 4
@@ -538,7 +539,7 @@ test fn a_host_with_no_runner_deploy_row_refuses() -> Bool {
 }
 
 test fn an_unmodeled_host_has_no_fragment_to_deliver() -> Bool {
-  match runner_host_file_desired_population_from_uid_reading(host: "srv9" as HostIdentity, reading: fixture_cited_job_user_uid()) {
+  match runner_host_file_desired_population_from_uid_reading(host: "srv9" as HostIdentity, reading: fixture_cited_job_user_uid(), receipt: ReceiptAbsent) {
     RunnerHostFilesDesiredRefused { cause: _ } => true
     RunnerHostFilesDesired { files: _, withheld: _ } => false
   }
@@ -1635,7 +1636,7 @@ fn host_legs_cross(host: String) -> Bool {
   match runner_host_file_subject(host: host as HostIdentity) {
     RunnerHostFileSubjectRefused { cause: _ } => false
     RunnerHostFileSubjectAdmitted { subject: subj } =>
-      match runner_host_file_desired_population_from_uid_reading(host: host as HostIdentity, reading: fixture_cited_job_user_uid()) {
+      match runner_host_file_desired_population_from_uid_reading(host: host as HostIdentity, reading: fixture_cited_job_user_uid(), receipt: ReceiptAbsent) {
         RunnerHostFilesDesiredRefused { cause: _ } => false
         RunnerHostFilesDesired { files: fs, withheld: _ } => {
           let legs = concat(
