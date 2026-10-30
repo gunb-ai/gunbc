@@ -1,5 +1,6 @@
 module gunbc.live_deploy.capacity_recovery_inhibition
 
+import gunbc.live_deploy.capacity_controller_hold { CapacityRecoveryControllerSlotUnproven }
 import std.types { String, List }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
@@ -15,6 +16,7 @@ type CapacityRecoveryBoundaryFault
       observed_present: List<CapacityInhibitionArtifact>
       observed_absent: List<CapacityInhibitionArtifact>
     }
+  | CapacityRecoveryControllerHoldRefused { refusal: CapacityRecoveryControllerSlotUnproven }
   | CapacityRecoveryBoundaryRefused { cause: String }
 
 // An absent destination has no live inode. Its entry in observed_absent retains

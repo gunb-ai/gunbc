@@ -1,7 +1,8 @@
 module gunbc.live_deploy.capacity_cutover_intent
 
 import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest, capacity_drain_input_admit }
-import gunbc.live_deploy.capacity_drain_wire { drain_population_wire, drain_binding_wire, drain_subject_wire, drain_optional_unit_wire }
+import gunbc.live_deploy.capacity_drain_wire { drain_population_wire, drain_binding_wire, drain_subject_wire, drain_optional_unit_wire, drain_hold_wire }
+import std.durable_exclusive_hold { DurableHoldSubject }
 import std.types { String, NonEmptyStr, List, CommitSha, Timestamp, ShellResponse }
 import std.error_primitives { Result, Ok, Err }
 import std.content_hash { Sha256Digest, sha256_hex_of_text, sha256_hex_digest }
@@ -121,6 +122,7 @@ type CapacityCutoverIntent {
   drain: CapacityMigrationApplyRequest
   // A named controller slot is exempt only for the closed cutover program;
   // absence means no slot is exempt. It is never permission for general apply.
+  controller_hold: DurableHoldSubject?
   controller_slot: CapacityManagedUnit?
   instance_id: NonEmptyStr
   selected_identity: DeclarationRef
@@ -198,7 +200,7 @@ fn capacity_cutover_intent_text(intent: CapacityCutoverIntent) -> NonEmptyStr {
     JsonArray { elements: map(intent.drain.bindings, binding => drain_binding_wire(value: binding)) },
     JsonArray { elements: map(intent.drain.child_subjects, subject => drain_subject_wire(value: subject)) },
     drain_optional_unit_wire(value: intent.controller_slot),
-  ] }) as NonEmptyStr
+  ] + (match intent.controller_hold { Absent => [] Present { value: hold } => [drain_hold_wire(value: hold)] }) }) as NonEmptyStr
 }
 
 // This canonical operation manifest is the plan input signed by the fleet

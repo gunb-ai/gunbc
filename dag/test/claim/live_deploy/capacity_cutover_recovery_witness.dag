@@ -1,6 +1,9 @@
 module test.claim.live_deploy.capacity_cutover_recovery_witness
 
 import gunbc.live_deploy.capacity_recovery_inhibition { capacity_recovery_inhibition_plan, CapacityRecoveryPartialInhibitionRemoval }
+import std.durable_exclusive_hold { DurableHoldSubject, DurableHoldRef, DurableHoldObservation, HoldSlotHeld, HoldSlotFree, HoldSlotAbsent, DurableHoldReleaseRef }
+import gunbc.durable_exclusive_hold_file_store { file_hold_ref }
+import gunbc.live_deploy.capacity_controller_hold { capacity_controller_hold_admit, capacity_controller_hold_key, capacity_controller_hold_owner, capacity_controller_hold_root }
 import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest }
 import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan }
 import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, capacity_cutover_intent_text }
@@ -9,7 +12,7 @@ import std.content_hash { Sha256Digest, sha256_hex_of_text, sha256_hex_digest }
 import std.types { List, Bool, NonEmptyStr, String }
 import std.error_primitives { Result, Ok, Err }
 import std.scoped_authorization { AttemptIdentity }
-import std.durable_compare_and_set { CasObservedReadable, CasReadableAbsent }
+import std.durable_compare_and_set { CasObservedReadable, CasReadableAbsent, cas_generation_first, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import extdeps.filesystem.posix { PosixFileIdentity, S_IFLNK }
 import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact, CapacityMaskEntry }
 import std.optional { Present, Absent }
@@ -30,7 +33,7 @@ fn recovery_fixture_file(name: NonEmptyStr, digest: NonEmptyStr) -> CapacityGene
 
 fn recovery_fixture_intent() -> CapacityCutoverIntent {
   let prior = approval_fixture_intent()
-  CapacityCutoverIntent { drain: prior.drain, controller_slot: prior.controller_slot,
+  CapacityCutoverIntent { controller_hold: prior.controller_hold, drain: prior.drain, controller_slot: prior.controller_slot,
     instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host,
     revision: prior.revision, attempt: "fixture-cutover" as NonEmptyStr as AttemptIdentity,
     operations: prior.operations, file_operations: prior.file_operations, captures: prior.captures,
@@ -126,7 +129,7 @@ test fn a_later_roster_value_does_not_change_the_retained_recovery_drain() -> Bo
   let before = recovery_fixture_intent()
   // A changed plan-time input would produce a different envelope. Recovery must
   // still return the population approved before that later value existed.
-  let after = CapacityCutoverIntent { instance_id: before.instance_id, selected_identity: before.selected_identity,
+  let after = CapacityCutoverIntent { controller_hold: none, instance_id: before.instance_id, selected_identity: before.selected_identity,
     host: before.host, revision: before.revision, attempt: before.attempt,
     operations: before.operations, file_operations: before.file_operations, captures: before.captures,
     generations: before.generations, reloads: before.reloads, controller_slot: before.controller_slot,
@@ -192,5 +195,56 @@ test fn recovery_all_masks_absent_is_not_cleanup_completion() -> Bool {
     Err { value: CapacityRecoveryPartialInhibitionRemoval { recorded: recorded, observed_present: found, observed_absent: missing } } =>
       recorded == record.artifacts && count(found) == 0 && missing == record.artifacts
     _ => false
+  }
+}
+
+fn recovery_controller_slot() -> CapacityManagedUnit {
+  CapacityManagedUnit { manager: SystemManager, unit: "controller.service" }
+}
+
+fn recovery_controller_hold() -> DurableHoldSubject {
+  DurableHoldSubject { hold: file_hold_ref(root: capacity_controller_hold_root, slot_key: capacity_controller_hold_key(slot: recovery_controller_slot())),
+    holder: capacity_controller_hold_owner(journal_root: "/fixture/journal", journal_key: "record", attempt: recovery_fixture_record().attempt),
+    generation: cas_generation_first() }
+}
+
+fn recovery_controller_assess(retained: DurableHoldSubject?, observation: DurableHoldObservation) -> Bool {
+  match capacity_controller_hold_admit(slot: recovery_controller_slot(), retained: retained,
+    journal_root: "/fixture/journal", journal_key: "record", attempt: recovery_fixture_record().attempt,
+    read: (root, key) => if root == capacity_controller_hold_root && key == capacity_controller_hold_key(slot: recovery_controller_slot()) {
+      observation
+    } else { HoldSlotAbsent }) {
+    Ok { value: _ } => true Err { value: _ } => false
+  }
+}
+
+test fn an_intact_retained_controller_hold_proves_continuity() -> Bool {
+  let hold = recovery_controller_hold()
+  recovery_controller_assess(retained: Present { value: hold }, observation: HoldSlotHeld { generation: hold.generation, owner: hold.holder })
+}
+
+test fn a_reused_controller_slot_under_a_different_hold_ref_refuses() -> Bool {
+  let hold = recovery_controller_hold()
+  !recovery_controller_assess(retained: Present { value: DurableHoldSubject { hold: "/another/slot" as NonEmptyStr as DurableHoldRef,
+    holder: hold.holder, generation: hold.generation } }, observation: HoldSlotHeld { generation: hold.generation, owner: hold.holder })
+}
+
+test fn a_released_controller_hold_refuses() -> Bool {
+  let hold = recovery_controller_hold()
+  !recovery_controller_assess(retained: Present { value: hold }, observation: HoldSlotFree {
+    generation: hold.generation, released_by: "released" as NonEmptyStr as DurableHoldReleaseRef })
+}
+
+test fn a_prechange_controller_exception_has_no_continuity_proof() -> Bool {
+  let hold = recovery_controller_hold()
+  !recovery_controller_assess(retained: none, observation: HoldSlotHeld { generation: hold.generation, owner: hold.holder })
+}
+
+test fn the_same_controller_owner_at_a_new_generation_refuses() -> Bool {
+  let hold = recovery_controller_hold()
+  match cas_generation_successor(g: hold.generation) {
+    CasSuccessorExhausted { head: _ } => false
+    CasSuccessorGeneration { generation: next } => !recovery_controller_assess(retained: Present { value: hold },
+      observation: HoldSlotHeld { generation: next, owner: hold.holder })
   }
 }

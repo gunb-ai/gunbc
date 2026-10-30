@@ -78,7 +78,7 @@ test fn rendered_digest_must_match_the_approved_digest() -> Bool {
 }
 
 fn generation_fixture_approval(plan: CapacityPlannedGeneration) -> Result<CapacityCutoverAuthorization, String> {
-  let intent = CapacityCutoverIntent { drain: approval_fixture_drain(), controller_slot: none, instance_id: "fixture-deployment", selected_identity: decl_ref(module_path: "test.claim.live_deploy.capacity_migration_approval_witness", decl_name: "approval_fixture_intent"), host: "srv1", revision: "1111111111111111111111111111111111111111",
+  let intent = CapacityCutoverIntent { controller_hold: none, drain: approval_fixture_drain(), controller_slot: none, instance_id: "fixture-deployment", selected_identity: decl_ref(module_path: "test.claim.live_deploy.capacity_migration_approval_witness", decl_name: "approval_fixture_intent"), host: "srv1", revision: "1111111111111111111111111111111111111111",
     attempt: plan.store.attempt, operations: [], file_operations: [], captures: [], reloads: [], generations: [plan.operation] }
   let request = match approval_fixture_request(intent: intent, escalation_id: "generation-fixture") {
     Err { value: why } => { return Err { value: why } } Ok { value: value } => value

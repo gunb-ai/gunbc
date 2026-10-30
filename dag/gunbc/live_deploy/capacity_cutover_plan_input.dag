@@ -1,7 +1,7 @@
 module gunbc.live_deploy.capacity_cutover_plan_input
 
 import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest, capacity_drain_input_admit }
-import gunbc.live_deploy.capacity_drain_wire { drain_population_read, drain_binding_read, drain_subject_read, drain_optional_unit_read }
+import gunbc.live_deploy.capacity_drain_wire { drain_population_read, drain_binding_read, drain_subject_read, drain_optional_unit_read, drain_hold_read }
 import gunbc.live_deploy.capacity_plan_data { capacity_plan_array, capacity_plan_at, capacity_plan_text, capacity_plan_rows, capacity_plan_manager, capacity_plan_population }
 import std.types { String, NonEmptyStr, List, Int, CommitSha, Timestamp }
 import std.algebra { list_at_optional }
@@ -94,7 +94,8 @@ fn capacity_cutover_plan_input(text: String, approved: Sha256Digest) -> Result<C
   let schema_row = match document { JsonArray { elements: rows } => rows _ => { return Err { value: "cutover plan is not an array" } } }
   let version = match capacity_plan_text(rows: schema_row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: text } => text }
   if version == "gunbc.capacity-cutover.v6" { return Err { value: "plan incomplete: v6 has no retained drain inputs" } }
-  let row = match capacity_plan_array(value: document, size: 15) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  if count(schema_row) != 15 && count(schema_row) != 16 { return Err { value: "invalid v7 plan field count" } }
+  let row = match capacity_plan_array(value: document, size: count(schema_row)) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
   let schema = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
   if schema != "gunbc.capacity-cutover.v7" { return Err { value: "unknown cutover plan schema" } }
   let host = match capacity_plan_text(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
@@ -119,7 +120,11 @@ fn capacity_cutover_plan_input(text: String, approved: Sha256Digest) -> Result<C
   let controller_slot = match drain_optional_unit_read(value: raw_controller_slot) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   let bindings = match capacity_plan_population(rows: row, index: 12, decode: value => drain_binding_read(value: value)) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   let child_subjects = match capacity_plan_population(rows: row, index: 13, decode: value => drain_subject_read(value: value)) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
-  let intent = CapacityCutoverIntent { instance_id: instance_id,
+  let controller_hold = if count(row) == 15 { none } else {
+    let raw = match capacity_plan_at(rows: row, index: 15) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+    match drain_hold_read(value: raw) { Err { value: why } => { return Err { value: why } } Ok { value: hold } => Present { value: hold } }
+  }
+  let intent = CapacityCutoverIntent { controller_hold: controller_hold, instance_id: instance_id,
     drain: CapacityMigrationApplyRequest { population: population, bindings: bindings, child_subjects: child_subjects, target_revision: revision as CommitSha }, controller_slot: controller_slot,
     selected_identity: decl_ref(module_path: identity_module, decl_name: identity_name), host: host, revision: revision as CommitSha, attempt: attempt as AttemptIdentity,
     operations: operations, file_operations: files, captures: captures, reloads: reloads, generations: generations }

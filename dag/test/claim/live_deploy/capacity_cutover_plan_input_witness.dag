@@ -3,6 +3,7 @@ module test.claim.live_deploy.capacity_cutover_plan_input_witness
 import gunbc.live_deploy.capacity_migration_source { capacity_main_cutover_intent, CapacityActivatorProducerMissing, capacity_plan_source_fault_text }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.capacity_migration_approval { capacity_cutover_claim_input }
+import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_controller_hold, recovery_controller_slot }
 import std.types { Bool, String, NonEmptyStr }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
@@ -17,7 +18,7 @@ import test.claim.live_deploy.capacity_migration_approval_witness { approval_fix
 
 fn plan_input_fixture() -> CapacityCutoverIntent {
   let prior = approval_fixture_intent()
-  CapacityCutoverIntent { drain: prior.drain, controller_slot: prior.controller_slot, instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host, revision: prior.revision, attempt: prior.attempt,
+  CapacityCutoverIntent { controller_hold: prior.controller_hold, drain: prior.drain, controller_slot: prior.controller_slot, instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host, revision: prior.revision, attempt: prior.attempt,
     operations: prior.operations, file_operations: prior.file_operations, captures: prior.captures,
     reloads: [CapacityManagerReload { manager: UserManager { uid: 1000 },
       boundaries: [CapacityAfterInhibition, CapacityAfterInstall, CapacityAfterRemoval] }],
@@ -83,7 +84,7 @@ test fn a_v5_manifest_without_source_selection_is_not_upgraded() -> Bool {
 // producer callback: it can only decode the retained envelope.
 test fn a_changed_controller_exception_cannot_spend_the_original_plan_digest() -> Bool {
   let original = plan_input_fixture()
-  let changed = CapacityCutoverIntent { instance_id: original.instance_id, selected_identity: original.selected_identity,
+  let changed = CapacityCutoverIntent { controller_hold: none, instance_id: original.instance_id, selected_identity: original.selected_identity,
     host: original.host, revision: original.revision, attempt: original.attempt,
     operations: original.operations, file_operations: original.file_operations, captures: original.captures,
     generations: original.generations, reloads: original.reloads, drain: original.drain,
@@ -122,5 +123,22 @@ test fn the_v7_plan_builder_refuses_the_unmodeled_live_agent_door() -> Bool {
         && capacity_plan_source_fault_text(fault: CapacityActivatorProducerMissing { producer: producer, evidence: evidence })
           == "activator producer missing: agent-door (live unit observed, no producer has ever existed on main)"
     _ => false
+  }
+}
+
+
+test fn v7_retains_the_exact_controller_hold_in_the_approved_envelope() -> Bool {
+  let prior = plan_input_fixture()
+  let intent = CapacityCutoverIntent { controller_hold: Present { value: recovery_controller_hold() },
+    controller_slot: Present { value: recovery_controller_slot() }, drain: prior.drain,
+    instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host, revision: prior.revision,
+    attempt: prior.attempt, operations: prior.operations, file_operations: prior.file_operations,
+    captures: prior.captures, reloads: prior.reloads, generations: prior.generations }
+  match capacity_cutover_plan_digest(intent: intent) {
+    Err { value: _ } => false
+    Ok { value: digest } => match capacity_cutover_plan_input(text: capacity_cutover_intent_text(intent: intent) as String, approved: digest) {
+      Err { value: _ } => false
+      Ok { value: decoded } => decoded == intent && decoded.controller_hold == Present { value: recovery_controller_hold() }
+    }
   }
 }

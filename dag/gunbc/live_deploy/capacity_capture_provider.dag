@@ -349,6 +349,10 @@ fn capacity_capture_finish_held(store: CapacityCaptureStore, provider: LocalStor
 fn capacity_cutover_claim_initial(intent: CapacityCutoverIntent, request: Srv1CutoverRequest,
   authorization: ScopedAuthorization<Srv1RootMutationApproval>, planned_paths: List<CapacityInhibitionPath>,
   at: Timestamp, commit: fn(VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>) -> Result<CapacityCutoverAuthorization, String> {
+  match intent.controller_slot {
+    Present { value: _ } => { return Err { value: "controller-slot hold acquisition is not realized; no apply effects permitted" } }
+    Absent => {}
+  }
   let creates = filter(intent.file_operations, op => op.verb == CapacityInhibitionCreate)
   if count(planned_paths) != count(creates)
     || any(creates, op => count(filter(planned_paths, path => path.path == op.path)) != 1)

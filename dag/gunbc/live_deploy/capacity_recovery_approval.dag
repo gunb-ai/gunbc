@@ -1,9 +1,12 @@
 module gunbc.live_deploy.capacity_recovery_approval
 
-import gunbc.live_deploy.capacity_recovery_inhibition { CapacityRecoveryBoundaryFault, CapacityRecoveryBoundaryRefused, capacity_recovery_inhibition_plan }
+import gunbc.live_deploy.capacity_recovery_inhibition { CapacityRecoveryBoundaryFault, CapacityRecoveryBoundaryRefused, CapacityRecoveryControllerHoldRefused, capacity_recovery_inhibition_plan }
 import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode }
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 import gunbc.live_deploy.capacity_inhibition_ownership { CapacityMaskEntry }
+import std.optional { Present, Absent }
+import gunbc.live_deploy.capacity_retained_plan { capacity_retained_plan_read, capacity_retained_plan_result }
+import gunbc.live_deploy.capacity_controller_hold { capacity_controller_hold_read }
 import std.types { String, NonEmptyStr, List, Timestamp }
 import std.error_primitives { Result, Ok, Err }
 import std.content_hash { Sha256Digest }
@@ -129,6 +132,17 @@ fn capacity_recovery_claim_checked(request: Srv1RecoveryRequest,
       Ok { value: value } => value
     }
     _ => { return Err { value: CapacityRecoveryBoundaryRefused { cause: "recovery requires a readable present journal" } } }
+  }
+  let intent = match capacity_retained_plan_result(finding: capacity_retained_plan_read(envelope: record.plan.envelope,
+    digest: record.plan.digest, approved_digest: record.plan.approved_digest)) {
+    Err { value: why } => { return Err { value: CapacityRecoveryBoundaryRefused { cause: why } } } Ok { value: value } => value
+  }
+  match intent.controller_slot {
+    Absent => {}
+    Present { value: slot } => match capacity_controller_hold_read(slot: slot, retained: intent.controller_hold,
+      journal_root: journal_root, journal_key: key, attempt: record.attempt) {
+      Err { value: why } => { return Err { value: CapacityRecoveryControllerHoldRefused { refusal: why } } } Ok { value: _ } => {}
+    }
   }
   match capacity_recovery_inhibition_plan(record: record, choice: choice, read_entry: read_entry) {
     Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}

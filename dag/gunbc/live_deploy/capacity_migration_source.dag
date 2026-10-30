@@ -158,7 +158,7 @@ fn capacity_main_cutover_intent(spec: DeploymentSpec, selected_identity: Declara
     Err { value: why } => Err { value: why }
     Ok { value: resolved } => match capacity_drain_input_admit(request: resolved, controller_slot: controller_slot) {
     Err { value: why } => Err { value: CapacityPlanSourceRefused { cause: why } }
-    Ok { value: drain } => Ok { value: CapacityCutoverIntent { instance_id: spec.instance_id, selected_identity: selected_identity,
+    Ok { value: drain } => Ok { value: CapacityCutoverIntent { controller_hold: none, instance_id: spec.instance_id, selected_identity: selected_identity,
       host: host, revision: revision, attempt: attempt, drain: drain, controller_slot: controller_slot,
       operations: operations, file_operations: file_operations, captures: captures, reloads: reloads, generations: generations } }
   }

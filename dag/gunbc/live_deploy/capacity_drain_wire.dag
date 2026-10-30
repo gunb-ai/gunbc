@@ -1,5 +1,7 @@
 module gunbc.live_deploy.capacity_drain_wire
 
+import std.durable_exclusive_hold { DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef }
+import std.durable_compare_and_set { cas_generation, cas_generation_count }
 import std.types { String, NonEmptyStr, List, Int }
 import std.nat { Nat }
 import std.error_primitives { Result, Ok, Err }
@@ -236,4 +238,24 @@ fn drain_binding_read(value: JsonValue) -> Result<CapacityProbeBinding, String> 
   let raw_requirement = match capacity_plan_at(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: raw } => raw }
   let requirement = match drain_probe_read(value: raw_requirement) { Err { value: why } => { return Err { value: why } } Ok { value: decoded } => decoded }
   Ok { value: CapacityProbeBinding { subject: subject, requirement: requirement } }
+}
+
+// Optional trailing v7 field. Missing means no hold was retained, never a
+// reconstructed acquisition. Its bytes participate in the whole plan digest.
+fn drain_hold_wire(value: DurableHoldSubject) -> JsonValue {
+  JsonArray { elements: [JsonString { value: value.hold as String }, JsonString { value: value.holder as String },
+    JsonString { value: to_string(cas_generation_count(g: value.generation)) }] }
+}
+
+fn drain_hold_read(value: JsonValue) -> Result<DurableHoldSubject, String> {
+  let row = match capacity_plan_array(value: value, size: 3) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let ref = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let owner = match capacity_plan_text(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let raw = match capacity_plan_text(rows: row, index: 2) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let n = match parse_int(s: raw as String) { Absent => { return Err { value: "invalid retained hold generation" } } Present { value: v } => v }
+  if to_string(n) != (raw as String) { return Err { value: "noncanonical retained hold generation" } }
+  match cas_generation(n: n) {
+    Absent => Err { value: "invalid retained hold generation" }
+    Present { value: generation } => Ok { value: DurableHoldSubject { hold: ref as DurableHoldRef, holder: owner as DurableHoldOwnerRef, generation: generation } }
+  }
 }

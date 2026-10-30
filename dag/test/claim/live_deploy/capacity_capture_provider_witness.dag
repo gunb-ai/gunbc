@@ -74,7 +74,7 @@ fn capture_manifest_fixture(outside: Bool, missing: Bool, wrong_target: Bool) ->
         Ok { value: address } => {
           let captured = CapacityGenerationFile { host: file.host, manager: file.manager, unit: file.unit,
             destination: file.destination, digest: file.digest, address: if outside { "/outside/provider" as NonEmptyStr } else { address } }
-          let intent = CapacityCutoverIntent { drain: approval_fixture_drain(), controller_slot: none, instance_id: "fixture-deployment", selected_identity: decl_ref(module_path: "test.claim.live_deploy.capacity_migration_approval_witness", decl_name: "approval_fixture_intent"), host: "srv1", revision: record.target_revision, attempt: store.attempt,
+          let intent = CapacityCutoverIntent { controller_hold: none, drain: approval_fixture_drain(), controller_slot: none, instance_id: "fixture-deployment", selected_identity: decl_ref(module_path: "test.claim.live_deploy.capacity_migration_approval_witness", decl_name: "approval_fixture_intent"), host: "srv1", revision: record.target_revision, attempt: store.attempt,
             operations: [], file_operations: [], reloads: [], generations: [CapacityGenerationOperation { subject: CapacityManagedUnit { manager: file.manager, unit: file.unit }, destination: if wrong_target { "/etc/systemd/system/unapproved.service" as NonEmptyStr } else { file.destination }, root: store.root, digest: file.digest }], captures: [CapacityCaptureOperation { source: file.destination, root: store.root }] }
           let envelope = capacity_cutover_intent_text(intent: intent)
           let digest = Sha256Digest { hex: sha256_hex_of_text(text: envelope as String) as NonEmptyStr }
@@ -111,7 +111,7 @@ fn initial_claim_paths() -> List<CapacityInhibitionPath> {
 
 fn initial_claim_intent() -> CapacityCutoverIntent {
   let prior = approval_fixture_intent()
-  CapacityCutoverIntent { drain: prior.drain, controller_slot: prior.controller_slot,
+  CapacityCutoverIntent { controller_hold: prior.controller_hold, drain: prior.drain, controller_slot: prior.controller_slot,
     instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host, revision: prior.revision,
     attempt: prior.attempt, operations: prior.operations, captures: prior.captures, reloads: prior.reloads, generations: prior.generations,
     file_operations: [CapacityCutoverFileOperation { path: "/etc/systemd/system.control/fixture.service", verb: CapacityInhibitionCreate },
