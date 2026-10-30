@@ -175,6 +175,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.gnu_time", decl_name: "gnu_time_program"),
     decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_program"),
     decl_ref(module_path: "extdeps.tools.id", decl_name: "id_program"),
+    decl_ref(module_path: "extdeps.tools.ls", decl_name: "ls_program"),
     decl_ref(module_path: "extdeps.iproute2.ip_neigh", decl_name: "ip_program"),
     decl_ref(module_path: "extdeps.tools.make", decl_name: "make_program"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_program"),
