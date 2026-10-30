@@ -348,7 +348,9 @@ fn capacity_capture_finish_held(store: CapacityCaptureStore, provider: LocalStor
 // kernel validates the whole request before invoking this one commit boundary.
 fn capacity_initial_claim_decide(request: Srv1CutoverRequest, record: CapacityCutoverRecord,
   escalation: NonEmptyStr, attempt: AttemptIdentity, claimed_at: Timestamp,
-  commit: fn(VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>) -> AuthorizationClaimOutcome {
+  commit: fn(VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>) -> AuthorizationClaimOutcome
+  admit_callers: [decl_ref(module_path: "gunbc.live_deploy.capacity_capture_provider", decl_name: "capacity_cutover_claim_initial")]
+{
   if (escalation != request.request.escalation_id || attempt != request.request.attempt) {
     return ClaimUndecided { reason: "initial journal claim differs from the original approval" }
   }
