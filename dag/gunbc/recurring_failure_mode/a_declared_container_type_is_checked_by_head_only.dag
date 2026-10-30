@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.a_declared_container_type_is_checked_by_head_only
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_declared_container_type_is_checked_by_head_only: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_declared_container_type_is_checked_by_head_only" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of judging a declared container application against a produced one at every type-argument position, recursively, with a position holding an unsolved variable undecided rather than agreeing, so no Accepted program binds a value whose container type disagrees with its declaration at any argument." } },
+
+  receipts: [
+    "**a declared container type is checked by its head only** (a value whose container type disagrees with its declaration at some type-argument position is accepted, because the declared-position judgment compares the container's head, or at most its first argument one level down).",
+
+    "INVALID STATE: an Accepted program in which a binder, return, field or argument declared Map<K1, V1> (or List<List<A>>) holds a value of Map<K2, V2> (or List<List<B>>) with K1 /= K2 or V1 /= V2 (A /= B).",
+
+    "HARM: silent wrongness. The emitted Rust drops the annotation (`let q: Map<Bool, Bool> = m` emits `let q = m.clone();`), so rustc has nothing to refuse either, and the wrong type surfaces at the first consumer that reads the value as its declared type.",
+
+    "SPECIMEN (srv1, v1 seed built from main 8de219bdc5ad, 2026-10-30): `let m: Map<String, Int> = map_insert(empty_map(), \"a\", 1)` then `let q: Map<Bool, Bool> = m` compiles with no diagnostic under both `gunbc run` and `gunbc compile --target rust`.",
+
+    "DISTINGUISHING FACTS, two links in one rule chain: v1.compiler.infer declared_type_conformance_diags_core ended `if !both_ground { [] }`, and conformance_ground_type admitted only kernel scalars and element collections whose first element is a kernel scalar, excluding keyed collections by name -- so every Map pair was accepted with no judgment; and v1.compiler.types node_type_compatible's container arm compared `children |> first`, so every argument after the first was never compared even where the pair was judged. The one-peel leaves beside it (declared_type_kernel_inhabitance_mismatch_at_element, callable_element_signature_mismatch) each stated their own depth-one narrowing.",
+
+    "RUNG: found BELOW the ladder -- accepted and emitted with no diagnostic.",
+
+    "CEILING 3, structurally guaranteed: the source can still write the mismatch, and the compiler can refuse every one whose positions are established, because two applications of one template compare positionally on a finite type tree. A position holding an unsolved type variable is not decided by this judgment; it is a counted undecided cause, never an agreement, and a concrete disagreement at a sibling position still refuses.",
+
+    "NEXT-RUNG TRIGGER: v1.compiler.types application_arguments_verdict consumed at v1.compiler.infer declared_type_conformance_diags_core, with the discriminating REDs and paired controls in test.claim.declared_container_argument_witness executed against a seed built from that change. The row is read at the ceiling only once those execute.",
+
+    "REVIEW TELL: a declared-type judgment that reads `children |> first`, peels exactly one level, or excludes a collection kind by name and returns an empty diagnostic list for what it excluded.",
+  ],
+
+  evidence: [],
+}
