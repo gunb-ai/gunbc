@@ -492,6 +492,17 @@ fn dd_overwrite_path_command(path: String) -> ArgvCommand {
   argv_command(program: dd_program(), arguments: [concat("of=", path), "status=none"])
 }
 
+// dd(1) oflag=excl -- GNU coreutils manual, "dd invocation", flag list: "excl: Fail if the output
+// file already exists; dd must create the output file itself." It is open(2) with O_CREAT|O_EXCL, so
+// the existence test and the creation are one act (see gunbc.filesystem_create_new_admission for why
+// that cannot be composed from a check and a write). The floor this repository relies on is
+// min_coreutils_version (>= 8.0) above; behavior measured on coreutils 9.7. Distinct from
+// dd_overwrite_path_command by one word, and the distinction is the fact: the overwrite builder
+// truncates an existing PATH, this one refuses it and leaves its bytes untouched. Payload is stdin.
+fn dd_create_new_path_command(path: String) -> ArgvCommand {
+  argv_command(program: dd_program(), arguments: [concat("of=", path), "oflag=excl", "status=none"])
+}
+
 // rm(1) — GNU coreutils, "Removing files or directories". Three shapes are used in this
 // repository and the distinction between them is load-bearing, not stylistic: -f removes a file
 // and does not fail when it is already absent (idempotent teardown); -d removes an EMPTY

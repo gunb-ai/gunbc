@@ -1,0 +1,102 @@
+module test.claim.roadmap.roadmap_dashboard_target_write_witness
+
+import std.types { Bool, String, FilePath, NonEmptyStr, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.gnu_coreutils { dd_create_new_path_command, dd_overwrite_path_command }
+import extdeps.exec.command { argv_words }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  macbook_local_dashboard_instance,
+  srv1_live_dashboard_instance,
+}
+import gunbc.roadmap.roadmap_dashboard_target_write {
+  DashboardCreateNewOutcome,
+  CreateNewWritten,
+  CreateNewRefused,
+  CreateNewNotDispatched,
+  dashboard_create_new_argv,
+  dashboard_target_write_create_new,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data first_body: String = "first-bytes\n"
+data second_body: String = "second-bytes\n"
+
+fn fx_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_target_write.XXXXXX").path
+}
+
+fn is_written(outcome: DashboardCreateNewOutcome) -> Bool {
+  match outcome {
+    CreateNewWritten => true
+    CreateNewRefused { exit_code: _, stderr: _ } => false
+    CreateNewNotDispatched { reason: _ } => false
+  }
+}
+
+fn is_refused(outcome: DashboardCreateNewOutcome) -> Bool {
+  match outcome {
+    CreateNewWritten => false
+    CreateNewRefused { exit_code: _, stderr: _ } => true
+    CreateNewNotDispatched { reason: _ } => false
+  }
+}
+
+// WET (local exec rung): a create-only write lands, a second one over the same path refuses with a
+// typed outcome, and the first bytes are unchanged.
+test fn create_new_lands_then_refuses_over_existing_and_keeps_bytes_by_real_execution() -> Bool {
+  let root = fx_root()
+  let path = concat(root, "/entry")
+  let instance = macbook_local_dashboard_instance()
+  let first = dashboard_target_write_create_new(instance: instance, path: path as FilePath, content: first_body)
+  let after_first = Filesystem.Read(path: path)
+  let second = dashboard_target_write_create_new(instance: instance, path: path as FilePath, content: second_body)
+  let after_second = Filesystem.Read(path: path)
+  let cleaned = shell.Remove.RecursiveForce(path: root)
+  is_written(outcome: first)
+    && after_first.content == first_body
+    && is_refused(outcome: second)
+    && after_second.content == first_body
+    && cleaned.exit_code == 0
+}
+
+// REALIZATION-BROKEN CONTROL: the same two writes through the truncating dd (what the builder would
+// be without oflag=excl) DO overwrite, so the refusal above is the flag's doing and not the fixture's.
+test fn overwrite_dd_control_clobbers_the_existing_bytes_by_real_execution() -> Bool {
+  let root = fx_root()
+  let path = concat(root, "/entry")
+  let seeded = Filesystem.Write(path: path, content: first_body)
+  let argv = argv_words(command: dd_overwrite_path_command(path: path))
+  let ran = shell.Exec.RunArgvStdin(
+    program: "dd" as NonEmptyStr,
+    arguments: argv |> skip(n: 1),
+    stdin_payload: second_body,
+  )
+  let after = Filesystem.Read(path: path)
+  let cleaned = shell.Remove.RecursiveForce(path: root)
+  seeded.success && ran.exit_code == 0 && after.content == second_body && cleaned.exit_code == 0
+}
+
+// ARGV SHAPE: payload is never an argv word; the flag that makes it create-only is present.
+test fn create_new_argv_is_one_dd_with_excl_and_no_payload() -> Bool {
+  let argv = dashboard_create_new_argv(path: "/tmp/x/entry")
+  argv == ["dd", "of=/tmp/x/entry", "oflag=excl", "status=none"]
+    && !any(argv, w => contains(s: w, sub: first_body))
+}
+
+// SSH ARM, MOCK ROUTE ONLY (local-exec rung, not wet): srv1's instance routes through
+// typed_argv_exec_over_ssh_with_stdin, answered by ssh.Session.ExecPortableWordsWithStdin mock_response.
+// A path the argv wall refuses never reaches ssh and is NotDispatched.
+test fn ssh_arm_routes_through_typed_argv_stdin_and_the_wall_refuses_unsafe_paths() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let routed = dashboard_target_write_create_new(instance: instance, path: "/tmp/x/entry" as FilePath, content: first_body)
+  let walled = dashboard_target_write_create_new(instance: instance, path: "/tmp/x; rm -rf y" as FilePath, content: first_body)
+  is_written(outcome: routed)
+    && match walled {
+      CreateNewNotDispatched { reason: _ } => true
+      CreateNewWritten => false
+      CreateNewRefused { exit_code: _, stderr: _ } => false
+    }
+}
