@@ -437,6 +437,8 @@ fn occurrence_resolution_partial(module: String, entries: List<OccurrenceResolut
   let records = fold_list(xs: entries, empty: empty_map(), cons: fn(m, e) {
     if map_contains_key(m: m, key: e.reference) { m } else { map_insert(m: m, key: e.reference, value: e.record) }
   })
+  // Bound before map_keys only to avoid gunbc.recurring_failure_mode
+  // by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow; unwind when its trigger lands.
   let duplicate_set = fold_list(xs: occurrence_resolution_duplicates(entries: entries), empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) })
   let conflicting = map_keys(m: duplicate_set)
   let ids = list_sort_by_key(xs: map_keys(m: records), key: fn(id) { id.value }, order: int_total_order())

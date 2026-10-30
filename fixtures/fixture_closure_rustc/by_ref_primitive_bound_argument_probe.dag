@@ -1,0 +1,13 @@
+module fixture.closure.rustc_by_ref_primitive_bound_argument_probe
+
+import std.algebra { FreeMonoid, fold_list, empty_map, map_insert, map_keys }
+import std.types { Int, List, Map }
+
+// THE CONTROL ARM for by_ref_primitive_generic_call_argument_probe.dag: the same fold and the same
+// by-ref primitive, with the fold bound to a `let` first. It differs from the red in that one
+// authored thing, so a green here and a red there locate the refusal at the unbound generic call
+// argument.
+fn by_ref_bound_argument_keys(ids: List<Int>) -> FreeMonoid<Int> {
+  let present = fold_list(xs: ids, empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) })
+  map_keys(m: present)
+}
