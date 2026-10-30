@@ -1,5 +1,8 @@
 module gunbc.live_deploy.capacity_generation_publish
 
+import gunbc.live_deploy.capacity_journal_store { capacity_journal_directory }
+import gunbc.host_state_root { host_state_tree }
+
 import std.decl_ref { decl_ref }
 import std.scoped_authorization { AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided }
 import std.durable_compare_and_set { CasGeneration }
@@ -194,7 +197,10 @@ fn capacity_generation_publish_held(plan: CapacityPlannedGeneration, provider: L
     Present { value: _ } => { return Err { value: "target retention binding is not current" } } Absent => {}
   }
   let ensure = ports.ensure_directory
-  let directory = ensure(capacity_capture_directory_target(path: capacity_capture_journal_root(store: plan.store)))
+  let target = match capacity_journal_directory(tree: host_state_tree(), attempt: plan.store.attempt) {
+    Err { value: why } => { return Err { value: why } } Ok { value: target } => target
+  }
+  let directory = ensure(target)
   if !owned_directory_outcome_converged(o: directory) { return Err { value: owned_directory_outcome_detail(o: directory) } }
   match deploy_apply_unit_install_failure(install: plan.staging, ports: ports) {
     Present { value: why } => { return Err { value: why } } Absent => {}

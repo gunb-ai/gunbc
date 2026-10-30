@@ -1,5 +1,14 @@
 module test.claim.live_deploy.capacity_capture_provider_witness
 
+import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, slot_commit, OwnerOnlyCreateOnly }
+import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted }
+
+import extdeps.shell
+import gunbc.live_deploy.capacity_journal_store { capacity_journal_observe, capacity_journal_store, capacity_journal_directory }
+import gunbc.host_state_root { isolated_host_state_tree }
+import gunbc.owned_directory { owned_directory_path }
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_journal, approval_fixture_claim_twice }
+
 import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverFileOperation, CapacityInhibitionCreate, CapacityInhibitionRemove, capacity_cutover_intent_text, CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation }
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 import extdeps.systemd.manager { SystemManager }
@@ -10,7 +19,7 @@ import std.durable_compare_and_set { cas_decide, CasObservedReadable, CasReadabl
 import std.content_hash { content_hash_of_value, Sha256Digest, sha256_hex_of_text }
 import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan }
 import std.decl_ref { decl_ref }
-import std.types { List, Bool, NonEmptyStr, String }
+import std.types { List, Bool, NonEmptyStr, String, FilePath }
 import std.error_primitives { Result, Ok, Err }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
 import std.optional { Present, Absent }
@@ -123,19 +132,23 @@ test fn apply_consumption_first_persists_the_approved_v7_plan() -> Bool {
   let request = match approval_fixture_request(intent: intent, escalation_id: "initial-journal-fixture") {
     Err { value: _ } => { return false } Ok { value: value } => value
   }
+  let journal = match approval_fixture_journal(attempt: intent.attempt) {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
   match capacity_cutover_claim_initial(intent: intent, request: request, authorization: approval_fixture_grant(request: request),
-    planned_paths: initial_claim_paths(), at: "2026-10-29T00:01:00Z", commit: verified => {
-      match capacity_cutover_record_decode(text: verified.attempt.proposed as String) {
-        Err { value: why } => CasStoreRefused { cause: CasGenerationPublicationRefused { detail: why } }
-        Ok { value: record } => if record.plan.envelope != capacity_cutover_intent_text(intent: intent)
-          || record.plan.approved_digest != request.plan_digest || record.phase != CapacityCapturingGeneration
-          || count(record.prior) != 0 || count(record.target) != 0 {
-          CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "initial claim failed to retain its exact plan before captures" } }
-        } else { cas_decide(attempt: verified.attempt, observed: CasObservedReadable { readable: CasReadableAbsent }) }
-      }
-    }) {
+    planned_paths: initial_claim_paths(), at: "2026-10-29T00:01:00Z", journal: journal) {
     Err { value: _ } => false
-    Ok { value: approval } => approval.approved_plan_digest == request.plan_digest && approval.intent == intent
+    Ok { value: approval } => match capacity_journal_observe(store: journal) {
+      CasObservedReadable { readable: CasReadablePresent { version: observed } } =>
+        match capacity_cutover_record_decode(text: observed.value as String) {
+          Err { value: _ } => false
+          Ok { value: record } => record.plan.envelope == capacity_cutover_intent_text(intent: intent)
+            && record.plan.approved_digest == request.plan_digest && record.phase == CapacityCapturingGeneration
+            && count(record.prior) == 0 && count(record.target) == 0
+            && approval.approved_plan_digest == request.plan_digest && approval.intent == intent
+        }
+      _ => false
+    }
   }
 }
 
@@ -144,41 +157,111 @@ test fn an_existing_journal_cannot_be_claimed_as_a_new_apply() -> Bool {
   let request = match approval_fixture_request(intent: intent, escalation_id: "initial-journal-fixture") {
     Err { value: _ } => { return false } Ok { value: value } => value
   }
-  let bytes = "existing-record" as NonEmptyStr
-  match capacity_cutover_claim_initial(intent: intent, request: request, authorization: approval_fixture_grant(request: request),
-    planned_paths: initial_claim_paths(), at: "2026-10-29T00:01:00Z", commit: verified =>
-      cas_decide(attempt: verified.attempt, observed: CasObservedReadable { readable: CasReadablePresent {
-        version: CasSlotVersion { generation: cas_generation_first(), content: content_hash_of_value(value: bytes), value: bytes } } })) {
+  match approval_fixture_claim_twice(intent: intent, request: request,
+    authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z") {
     Err { value: why } => why == "cutover approval already consumed: existing-cutover-journal"
     Ok { value: _ } => false
   }
 }
 
-test fn an_uncertain_initial_commit_never_returns_apply_authority() -> Bool {
+test fn a_removed_journal_directory_never_returns_apply_authority() -> Bool {
   let intent = initial_claim_intent()
   let request = match approval_fixture_request(intent: intent, escalation_id: "initial-journal-fixture") {
     Err { value: _ } => { return false } Ok { value: value } => value
   }
+  let journal = match approval_fixture_journal(attempt: intent.attempt) {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let removed = shell.Remove.RecursiveForce(path: journal.slots.root as FilePath)
   match capacity_cutover_claim_initial(intent: intent, request: request, authorization: approval_fixture_grant(request: request),
-    planned_paths: initial_claim_paths(), at: "2026-10-29T00:01:00Z", commit: verified => CasStoreRefused {
-      cause: CasGenerationPublicationRefused { detail: "fixture lost commit response" } }) {
+    planned_paths: initial_claim_paths(), at: "2026-10-29T00:01:00Z", journal: journal) {
     Err { value: why } => why == "initial journal commit unconfirmed; no capture or inhibition permitted"
     Ok { value: _ } => false
   }
 }
 
-// If the mismatch accidentally reaches the CAS, its distinct failure cannot
-// satisfy this control: path admission must refuse before claiming execution.
 test fn an_unapproved_initial_inhibition_path_never_reaches_the_claim() -> Bool {
   let intent = initial_claim_intent()
   let request = match approval_fixture_request(intent: intent, escalation_id: "initial-journal-fixture") {
     Err { value: _ } => { return false } Ok { value: value } => value
   }
-  match capacity_cutover_claim_initial(intent: intent, request: request, authorization: approval_fixture_grant(request: request),
+  let journal = match approval_fixture_journal(attempt: intent.attempt) {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let refused = match capacity_cutover_claim_initial(intent: intent, request: request, authorization: approval_fixture_grant(request: request),
     planned_paths: [CapacityInhibitionPath { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" },
-      path: "/etc/systemd/system.control/unapproved.service" }], at: "2026-10-29T00:01:00Z",
-    commit: verified => CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "unexpected claim dispatch" } }) {
+      path: "/etc/systemd/system.control/unapproved.service" }], at: "2026-10-29T00:01:00Z", journal: journal) {
     Err { value: why } => why == "initial inhibition paths differ from the approved file operations or drain subjects"
     Ok { value: _ } => false
   }
+  refused && (match capacity_journal_observe(store: journal) {
+    CasObservedReadable { readable: CasReadableAbsent } => true
+    _ => false
+  })
+}
+
+test fn an_unlisted_journal_refuses_and_the_declared_directory_restores_readiness() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-capacity-mint.XXXXXX").path
+  if dir == "" { return false }
+  let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
+  let attempt = "fixture-ready" as NonEmptyStr as AttemptIdentity
+  let missing = match capacity_journal_store(tree: tree, attempt: attempt) {
+    Err { value: _ } => true Ok { value: _ } => false
+  }
+  let target = match capacity_journal_directory(tree: tree, attempt: attempt) {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let made = shell.Mkdir.Parents(path: owned_directory_path(t: target))
+  let ready = match capacity_journal_store(tree: tree, attempt: attempt) {
+    Err { value: _ } => false Ok { value: journal } => journal.attempt == attempt
+  }
+  let removed = shell.Remove.RecursiveForce(path: dir as FilePath)
+  missing && ready
+}
+
+test fn another_attempts_journal_refuses_before_any_write() -> Bool {
+  let intent = initial_claim_intent()
+  let request = match approval_fixture_request(intent: intent, escalation_id: "initial-journal-fixture") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let journal = match approval_fixture_journal(attempt: "different-attempt" as NonEmptyStr as AttemptIdentity) {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let refused = match capacity_cutover_claim_initial(intent: intent, request: request, authorization: approval_fixture_grant(request: request),
+    planned_paths: initial_claim_paths(), at: "2026-10-29T00:01:00Z", journal: journal) {
+    Err { value: why } => why == "initial journal belongs to another apply"
+    Ok { value: _ } => false
+  }
+  refused && (match capacity_journal_observe(store: journal) {
+    CasObservedReadable { readable: CasReadableAbsent } => true _ => false
+  })
+}
+
+// Pre-seal bytes remain at the same root/key. Admission must not adopt, clear or
+// replace an existing record, even when the old payload cannot be decoded.
+test fn existing_bytes_survive_sealed_initial_claim_refusal() -> Bool {
+  let intent = initial_claim_intent()
+  let request = match approval_fixture_request(intent: intent, escalation_id: "legacy-journal-fixture") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let journal = match approval_fixture_journal(attempt: intent.attempt) {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let verified = match admit_cas_attempt_for_derived_payload(key: "record", expected: ExpectSlotAbsent, proposed: "pre-seal-record") {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => { return false }
+    DerivedPayloadAdmitted { verified: value } => value
+  }
+  match slot_commit(store: journal.slots, publication: OwnerOnlyCreateOnly, verified: verified) {
+    CasCommitted { committed: _ } => {}
+    _ => { return false }
+  }
+  let refused = match capacity_cutover_claim_initial(intent: intent, request: request, authorization: approval_fixture_grant(request: request),
+    planned_paths: initial_claim_paths(), at: "2026-10-29T00:01:00Z", journal: journal) {
+    Err { value: why } => why == "cutover approval already consumed: existing-cutover-journal"
+    Ok { value: _ } => false
+  }
+  refused && (match capacity_journal_observe(store: journal) {
+    CasObservedReadable { readable: CasReadablePresent { version: value } } => value.value == "pre-seal-record"
+    _ => false
+  })
 }

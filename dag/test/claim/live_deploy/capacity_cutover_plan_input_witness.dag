@@ -1,5 +1,7 @@
 module test.claim.live_deploy.capacity_cutover_plan_input_witness
 
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_claim, approval_fixture_claim_input }
+
 import gunbc.live_deploy.capacity_migration_source { capacity_main_cutover_intent, CapacityActivatorProducerMissing, capacity_plan_source_fault_text }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.capacity_migration_approval { capacity_cutover_claim_input }
@@ -39,9 +41,8 @@ test fn modified_input_is_refused_before_a_claim_is_attempted() -> Bool {
   let request = match approval_fixture_request(intent: intent, escalation_id: "input-fixture") {
     Err { value: _ } => { return false } Ok { value: value } => value
   }
-  match capacity_cutover_claim_input(text: concat(capacity_cutover_intent_text(intent: intent) as String, " "),
-    request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z",
-    claim: (id, attempt, at) => ClaimUndecided { reason: "claim reached" }) {
+  match approval_fixture_claim_input(text: concat(capacity_cutover_intent_text(intent: intent) as String, " "),
+    request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z") {
     Err { value: why } => why == "cutover plan input digest differs from the approval"
     Ok { value: _ } => false
   }
@@ -52,9 +53,8 @@ test fn verified_data_input_reaches_the_existing_inherited_claim() -> Bool {
   let request = match approval_fixture_request(intent: intent, escalation_id: "input-fixture") {
     Err { value: _ } => { return false } Ok { value: value } => value
   }
-  match capacity_cutover_claim_input(text: capacity_cutover_intent_text(intent: intent) as String,
-    request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z",
-    claim: (id, attempt, at) => ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() }) {
+  match approval_fixture_claim_input(text: capacity_cutover_intent_text(intent: intent) as String,
+    request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z") {
     Err { value: _ } => false
     Ok { value: approved } => approved.intent == intent && approved.request == request.request
   }

@@ -1,0 +1,65 @@
+module gunbc.live_deploy.capacity_journal_store
+
+import std.types { String, NonEmptyStr, FilePath }
+import std.error_primitives { Result, Ok, Err }
+import std.scoped_authorization { AttemptIdentity }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path }
+import gunbc.runner.runner_microvm_attempt_identity { attempt_segment, AttemptSegmentAccepted, AttemptSegmentRefused, attempt_segment_refusal_text }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreListed, SlotStoreRefused, slot_observe }
+import std.durable_compare_and_set { CasSlotObservation }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DirectoryOwnerOnly }
+import extdeps.posix.identity { PosixOwnerNames }
+
+// Seal the existing layout in place. Each attempt directory also holds generated
+// unit files, so attempts cannot become keys in a shared directory without a move.
+// Provisioning and admission derive their paths from this same member.
+data capacity_journal_member: NonEmptyStr = "cutover-journal"
+
+type CapacityJournalStore sole_constructor {
+  slots: SlotStore
+  attempt: AttemptIdentity
+}
+
+fn capacity_journal_base(tree: HostStateTree) -> NonEmptyStr {
+  join([host_state_tree_path(tree: tree) as String, "/", capacity_journal_member as String], "") as NonEmptyStr
+}
+
+fn capacity_journal_path(tree: HostStateTree, attempt: AttemptIdentity) -> Result<NonEmptyStr, String> {
+  match attempt_segment(spelling: attempt as String) {
+    AttemptSegmentRefused { refusal: why } => Err { value: attempt_segment_refusal_text(r: why) }
+    AttemptSegmentAccepted { segment: segment } => Ok { value: join([
+      capacity_journal_base(tree: tree) as String, "/", segment.value as String], "") as NonEmptyStr }
+  }
+}
+
+fn capacity_journal_store(tree: HostStateTree, attempt: AttemptIdentity) -> Result<CapacityJournalStore, String> {
+  match capacity_journal_path(tree: tree, attempt: attempt) {
+    Err { value: why } => Err { value: why }
+    Ok { value: path } => match listed_slot_store(member: capacity_journal_member as String, root: path) {
+      SlotStoreRefused { detail: why } => Err { value: why }
+      SlotStoreListed { root: root } => Ok { value: CapacityJournalStore { slots: file_slot_store(root: root), attempt: attempt } }
+    }
+  }
+}
+
+fn capacity_journal_directory(tree: HostStateTree, attempt: AttemptIdentity) -> Result<OwnedDirectoryTarget, String> {
+  match capacity_journal_path(tree: tree, attempt: attempt) {
+    Err { value: why } => Err { value: why }
+    Ok { value: path } => Ok { value: OwnedDirectoryDeclared {
+      member: capacity_journal_member, path: path as FilePath,
+      owner: PosixOwnerNames { user: "root", group: "root" },
+      mode: DirectoryOwnerOnly, group_adoption: ForeignOwnershipRefuses } }
+  }
+}
+
+fn capacity_journal_observe(store: CapacityJournalStore) -> CasSlotObservation<NonEmptyStr> {
+  slot_observe(store: store.slots, key: "record")
+}
+
+fn capacity_journal_base_directory(tree: HostStateTree) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared { member: capacity_journal_member,
+    path: capacity_journal_base(tree: tree) as FilePath,
+    owner: PosixOwnerNames { user: "root", group: "root" },
+    mode: DirectoryOwnerOnly, group_adoption: ForeignOwnershipRefuses }
+}

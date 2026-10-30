@@ -1,5 +1,8 @@
 module gunbc.live_deploy.capacity_capture_provider
 
+import gunbc.live_deploy.capacity_journal_store { CapacityJournalStore, capacity_journal_base, capacity_journal_directory, capacity_journal_base_directory }
+import gunbc.host_state_root { host_state_tree }
+
 import gunbc.fleet.srv1_root_mutation_approval_run { Srv1CutoverRequest, Srv1RootMutationApproval }
 import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan, capacity_retained_plan_read, capacity_retained_plan_result }
 import gunbc.live_deploy.capacity_cutover_intent { capacity_cutover_intent_text, CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation, CapacityInhibitionCreate, CapacityInhibitionRemove }
@@ -36,7 +39,7 @@ type CapacityCaptureFault
 
 // Root/key are fixed by the cutover owner, not a caller-selected CAS destination.
 // This sibling root is separate from the provider's swept namespace.
-data capacity_capture_journal_base: NonEmptyStr = "/var/lib/gunbc/cutover-journal"
+data capacity_capture_journal_base: NonEmptyStr = capacity_journal_base(tree: host_state_tree())
 
 fn capacity_capture_journal_root(store: CapacityCaptureStore) -> NonEmptyStr {
   join([capacity_capture_journal_base as String, "/", store.attempt as String], "") as NonEmptyStr
@@ -224,10 +227,10 @@ fn capacity_capture_publish_held(store: CapacityCaptureStore, provider: LocalSto
 fn capacity_capture_provisioning_targets(store: CapacityCaptureStore) -> Result<List<OwnedDirectoryTarget>, String> {
   match capacity_capture_directory_targets(attempt: store.attempt) {
     Err { value: why } => Err { value: why }
-    Ok { value: targets } => Ok { value: targets + [
-      capacity_capture_directory_target(path: capacity_capture_journal_base),
-      capacity_capture_directory_target(path: capacity_capture_journal_root(store: store))
-    ] }
+    Ok { value: targets } => match capacity_journal_directory(tree: host_state_tree(), attempt: store.attempt) {
+      Err { value: why } => Err { value: why }
+      Ok { value: directory } => Ok { value: targets + [capacity_journal_base_directory(tree: host_state_tree()), directory] }
+    }
   }
 }
 
@@ -348,58 +351,21 @@ fn capacity_capture_finish_held(store: CapacityCaptureStore, provider: LocalStor
 // kernel validates the whole request before invoking this one commit boundary.
 fn capacity_cutover_claim_initial(intent: CapacityCutoverIntent, request: Srv1CutoverRequest,
   authorization: ScopedAuthorization<Srv1RootMutationApproval>, planned_paths: List<CapacityInhibitionPath>,
-  at: Timestamp, commit: fn(VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>) -> Result<CapacityCutoverAuthorization, String> {
-  match intent.controller_slot {
-    Present { value: _ } => { return Err { value: "controller-slot hold acquisition is not realized; no apply effects permitted" } }
-    Absent => {}
-  }
-  let creates = filter(intent.file_operations, op => op.verb == CapacityInhibitionCreate)
-  if count(planned_paths) != count(creates)
-    || any(creates, op => count(filter(planned_paths, path => path.path == op.path)) != 1)
-    || any(planned_paths, path => count(filter(creates, op => op.path == path.path)) != 1
-      || count(filter(intent.file_operations, op => op.verb == CapacityInhibitionRemove && op.path == path.path)) != 1
-      || count(filter(intent.drain.bindings, binding => binding.subject == path.subject)) != 1)
-    || any(intent.drain.bindings, binding => count(filter(planned_paths, path => path.subject == binding.subject)) != 1) {
-    return Err { value: "initial inhibition paths differ from the approved file operations or drain subjects" }
-  }
-  let envelope = capacity_cutover_intent_text(intent: intent)
-  match capacity_retained_plan_result(finding: capacity_retained_plan_read(envelope: envelope,
-    digest: request.plan_digest, approved_digest: request.plan_digest)) {
-    Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
-  }
-  let record = CapacityCutoverRecord {
-    plan: CapacityRetainedPlan { envelope: envelope, digest: request.plan_digest, approved_digest: request.plan_digest },
-    attempt: intent.attempt, target_revision: intent.revision,
-    prior: [], target: [], planned_paths: planned_paths, created_paths: [], artifacts: [], phase: CapacityCapturingGeneration }
-  capacity_cutover_claim(intent: intent, request: request, authorization: authorization, at: at,
-    claim: (escalation, attempt, claimed_at) =>
-      if (escalation != request.request.escalation_id || attempt != request.request.attempt) {
-        ClaimUndecided { reason: "initial journal claim differs from the original approval" }
-      } else {
-        match admit_cas_attempt_for_derived_payload(key: "record", expected: ExpectSlotAbsent,
-          proposed: capacity_cutover_record_encode(record: record)) {
-          DerivedPayloadKeyNotSlotAddressable { key: _ } => ClaimUndecided { reason: "initial journal key is not slot-addressable" }
-          DerivedPayloadAdmitted { verified: verified } => match commit(verified) {
-            CasCommitted { committed: committed } => ClaimHeld {
-              state: ClaimedBy { attempt: attempt, claimed_at: claimed_at }, generation: committed.generation }
-            CasPreconditionFailed { expected: _, observed: _ } => ClaimLost { holder: "existing-cutover-journal" }
-            CasStoreRefused { cause: _ } => ClaimUndecided { reason: "initial journal commit unconfirmed; no capture or inhibition permitted" }
-          }
-        }
-      })
+  at: Timestamp, journal: CapacityJournalStore) -> Result<CapacityCutoverAuthorization, String> {
+  capacity_cutover_claim(intent: intent, request: request, authorization: authorization,
+    planned_paths: planned_paths, at: at, journal: journal)
 }
 
 // The locked root helper calls this before its first capture publication. An
 // existing record refuses regardless of whether its phase is closed; only a new
 // apply identity and fresh approval may use another journal.
-fn capacity_cutover_claim_over_journal(store: CapacityCaptureStore, journal: SlotStore,
+fn capacity_cutover_claim_over_journal(store: CapacityCaptureStore, journal: CapacityJournalStore,
   intent: CapacityCutoverIntent, request: Srv1CutoverRequest,
   authorization: ScopedAuthorization<Srv1RootMutationApproval>, planned_paths: List<CapacityInhibitionPath>,
   at: Timestamp) -> Result<CapacityCutoverAuthorization, String> {
-  if (journal.root != capacity_capture_journal_root(store: store) || store.attempt != intent.attempt) {
+  if (journal.slots.root != capacity_capture_journal_root(store: store) || store.attempt != intent.attempt) {
     return Err { value: "initial journal belongs to another apply" }
   }
   capacity_cutover_claim_initial(intent: intent, request: request, authorization: authorization,
-    planned_paths: planned_paths, at: at,
-    commit: verified => slot_commit(store: journal, publication: OwnerOnlyCreateOnly, verified: verified))
+    planned_paths: planned_paths, at: at, journal: journal)
 }

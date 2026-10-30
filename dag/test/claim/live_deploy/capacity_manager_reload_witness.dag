@@ -1,5 +1,7 @@
 module test.claim.live_deploy.capacity_manager_reload_witness
 
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_claim, approval_fixture_claim_input }
+
 import std.types { Bool, String, List, NonEmptyStr }
 import std.error_primitives { Result, Ok, Err }
 import std.scoped_authorization { AuthorizationGranted, OperatorGrant, Unclaimed, ClaimHeld, ClaimedBy, ClaimLost, AttemptIdentity }
@@ -25,8 +27,7 @@ fn reload_fixture_approval(rows: List<CapacityManagerReload>) -> Result<Capacity
   let request = match approval_fixture_request(intent: intent, escalation_id: "reload-fixture") {
     Err { value: why } => { return Err { value: why } } Ok { value: value } => value
   }
-  capacity_cutover_claim(intent: intent, request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z",
-    claim: (id, attempt, at) => ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() })
+  approval_fixture_claim(intent: intent, request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z")
 }
 
 fn reload_fixture_record(complete: Bool) -> CapacityCutoverRecord {

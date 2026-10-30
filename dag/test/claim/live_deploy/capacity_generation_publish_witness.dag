@@ -1,5 +1,7 @@
 module test.claim.live_deploy.capacity_generation_publish_witness
 
+import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_claim, approval_fixture_claim_input }
+
 import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_drain, approval_fixture_request, approval_fixture_grant }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.materialization_provider { CutoverCaptureRequest }
@@ -83,8 +85,7 @@ fn generation_fixture_approval(plan: CapacityPlannedGeneration) -> Result<Capaci
   let request = match approval_fixture_request(intent: intent, escalation_id: "generation-fixture") {
     Err { value: why } => { return Err { value: why } } Ok { value: value } => value
   }
-  capacity_cutover_claim(intent: intent, request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z",
-    claim: (id, attempt, at) => ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() })
+  approval_fixture_claim(intent: intent, request: request, authorization: approval_fixture_grant(request: request), at: "2026-10-29T00:01:00Z")
 }
 
 test fn an_unpublished_target_cannot_become_an_installable_generation() -> Bool {
