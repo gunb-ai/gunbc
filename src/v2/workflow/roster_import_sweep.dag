@@ -1,7 +1,7 @@
 module v2.workflow.roster_import_sweep
 
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
-import v2.compiler.module_acquisition { AcquiredModule, AcquisitionNotVerified, AcquisitionVerified, SourceRootBinding, acquire_verified }
+import v2.compiler.module_acquisition { AcquiredModule, AcquisitionNotVerified, AcquisitionVerified, SourceRootBinding, acquire_verified, acquisition_reached }
 import v2.cli.repository_layout { repository_storage_layout, repository_tree_directory, repository_path_of_module_file }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
@@ -27,7 +27,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node,
   parse_import_block_idents
 }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains, zip_map, for_all, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, map_contains_key, string_contains, zip_map, for_all, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
@@ -286,14 +286,10 @@ type RosterHomeClosure
   | RosterClosureUnread { home: String }
 
 fn roster_home_closures(root: String, scope: RosterHomeScope) -> List<RosterHomeClosure> {
-  let bindings = roster_repository_bindings(root: root)
-  fold_list(xs: roster_rows_for_scope(scope: scope), empty: [], cons: fn(acc, row) {
-    if roster_closure_has_home(closures: acc, home: roster_qn_text(qn: row.home)) {
-      acc
-    } else {
-      list_snoc_item(xs: acc, item: roster_home_closure_read(home: roster_qn_text(qn: row.home), bindings: bindings))
-    }
+  let homes = fold_list(xs: roster_rows_for_scope(scope: scope), empty: [], cons: fn(acc, row) {
+    if roster_contains(xs: acc, name: roster_qn_text(qn: row.home)) { acc } else { list_snoc_item(xs: acc, item: roster_qn_text(qn: row.home)) }
   })
+  roster_homes_closures_read(homes: homes, bindings: roster_repository_bindings(root: root))
 }
 
 fn roster_repository_bindings(root: String) -> List<SourceRootBinding> {
@@ -318,14 +314,18 @@ fn roster_acquired_name(m: AcquiredModule) -> String {
   m.name
 }
 
-fn roster_closure_has_home(closures: List<RosterHomeClosure>, home: String) -> Bool {
-  fold_list(xs: closures, empty: false, cons: fn(f, c) { f || roster_closure_home(c: c) == home })
-}
-
-fn roster_closure_home(c: RosterHomeClosure) -> String {
-  match c {
-    RosterClosureRead { home: h, modules: _ } => h
-    RosterClosureUnread { home: h } => h
+// ONE walk for every home of a run: the union of the homes' closures is acquired and verified once (each file read once),
+// and each home's own closure is the acquirer's own traversal (acquisition_reached) from that home over that one member table
+// -- the same reach acquisition_exactness certifies, so no second derivation of what a home reaches. A union the door
+// cannot verify leaves EVERY home unread (a refusal, never a guess).
+fn roster_homes_closures_read(homes: List<String>, bindings: List<SourceRootBinding>) -> List<RosterHomeClosure> {
+  match acquire_verified(layout: repository_storage_layout(), bindings: bindings, entries: homes) {
+    AcquisitionVerified { modules: modules, reads: _, absent_probes: _ } =>
+      list_map(xs: homes, f: fn(home) {
+        let reached = acquisition_reached(entries: [home], modules: modules)
+        RosterClosureRead { home: home, modules: list_map(xs: fold_list(xs: modules, empty: [], cons: fn(acc, m) { if map_contains_key(m: reached, key: m.name) { list_snoc_item(xs: acc, item: m) } else { acc } }), f: fn(m) { roster_acquired_name(m: m) }) }
+      })
+    AcquisitionNotVerified { reason: _, cause: _ } => list_map(xs: homes, f: fn(home) { RosterClosureUnread { home: home } })
   }
 }
 
@@ -2580,6 +2580,16 @@ fn roster_join(xs: List<String>, sep: String) -> String {
 //   multibyte: UTF-8 text before and after the import; byte extents must land on scalar boundaries and everything outside
 //             the extent is preserved byte for byte.
 //   annotation: a `//` inside the replaced import would be erased, so the splice refuses.
+// The OnlyOccurrences controls alone (roster_occ_controls), for a bounded run of the selection's own verdicts.
+fn roster_import_sweep_occ_controls_exit() -> ProcessExit {
+  let report = match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      fold_list(xs: roster_occ_controls(prepared: prepared, lex: dag_prepared_lex()), empty: "", cons: fn(acc, v) { acc + v.fail })
+  }
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
 fn roster_import_sweep_controls_exit() -> ProcessExit {
   let report = roster_controls_report()
   if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
