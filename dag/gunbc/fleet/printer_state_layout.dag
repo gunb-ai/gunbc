@@ -8,7 +8,7 @@ import gunbc.durable_exclusive_hold_file_store { file_hold_acquire, FileHoldAcqu
 import gunbc.owned_directory { OwnedDirectoryTarget }
 import gunbc.host_state_root { HostStateTree }
 import gunbc.fleet.printer_workflow_artifact { printer_starts_path, printer_starts_directory, print_run_directory_target, printer_starts_legacy_scan, PrinterStartsClean, PrinterStartsLegacyEntries, PrinterStartsUnreadable }
-import gunbc.fleet.print_record_stores { print_request_directory_target, print_completion_directory_target, print_completion_path, completion_record_name }
+import gunbc.fleet.print_record_stores { print_request_directory_target, print_completion_directory_target, print_completion_path, completion_record_name, legacy_completed_suffix }
 import gunbc.fleet.printer_actuation { printer_start_claim_directory_target, printer_start_claim_path }
 import gunbc.fleet.printer_execution_hold { printer_execution_hold_directory_target, printer_execution_hold_path, hold_key, printer_execution_hold_legacy_entry }
 import product.printed_chassis.assembly_inventory_store { cassette_inventory_directory_target, cassette_inventory_path }
@@ -33,7 +33,6 @@ import product.printed_chassis.assembly_inventory_store { cassette_inventory_dir
 // whole step refuse before anything has moved, and the pass retries on the next run.
 
 data legacy_claimed_suffix: String = ".claimed"
-data legacy_completed_suffix: String = ".claimed.completed.json"
 data legacy_claim_evidence_marker: String = ".claimed."
 data legacy_inventory_prefix: String = "cassette-prototype-inventory."
 data legacy_move_owner: NonEmptyStr = "printer-state-layout-move" as NonEmptyStr

@@ -207,7 +207,7 @@ fn converge_print(tree: HostStateTree, request: PrintRequest, pass_ref: PrintPas
     Absent => match print_completion_standing(store: completions, claim_key: claim_key, record: record, remote: remote) {
       CompletionMatchesRequest => CompletionRecorded
       CompletionDoesNotMatchRequest => CompletionRecordMismatched
-      CompletionUnreadable { cause: _ } => CompletionRecordMismatched
+      CompletionUnreadable { cause: c } => return exit_failure(reason: concat("Completion record unreadable, standing cannot be derived: ", c))
     }
     Present { value: report } => if claimed { ClaimedObserved { job: observe_job(text: report, remote: remote as String) } } else { RecordedNotClaimed { printer_ready: report_allows_start(text: report) } }
   }

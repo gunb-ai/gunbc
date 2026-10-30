@@ -83,7 +83,9 @@ fn print_request_store(tree: HostStateTree) -> PrintRequestStoreReading {
 }
 
 // A completion record of the flat layout: <claim key>.claimed.completed.json in the parent.
-fn print_completion_legacy_entry(name: String) -> Bool { ends_with(s: name, suffix: ".claimed.completed.json") }
+data legacy_completed_suffix: String = ".claimed.completed.json"
+
+fn print_completion_legacy_entry(name: String) -> Bool { ends_with(s: name, suffix: legacy_completed_suffix) }
 
 fn print_completion_store(tree: HostStateTree) -> PrintCompletionStoreReading {
   match printer_starts_legacy_scan(tree: tree, owns: n => print_completion_legacy_entry(name: n)) {

@@ -163,19 +163,22 @@ fn provision_and_run(plan_file:String,recipe:String,source_revision:String,root:
 type InventoryRoot = InventoryRootReady {parts:List<AssemblyPart>,bindings:List<PreparedSlot>} | InventoryRootRefused
 fn inventory_root(plan_file:String) -> InventoryRoot {
  let plan=Filesystem.Read(path:plan_file)
- if !plan.success {return InventoryRootRefused}
- let bundle=match prepared_bundle(tree:host_state_tree(),plan_text:plan.content) {PreparedBundleReady {bundle:b}=>b PreparedBundleUnready {detail:_}=>return InventoryRootRefused}
- match read_prepared_assembly(bundle:bundle) {
-  Absent=>InventoryRootRefused
-  Present {value:prepared}=>match printed_assembly_root_from_wire(s:prepared.root_wire) {
-   Absent=>InventoryRootRefused
-   Present {value:r}=>match r {
-    ResidentialCassette=>match select_printable_assembly(root:r) {
-     PrintableAssemblyReady {assembly:a}=>cassette_inventory_root(parts:a.parts,bindings:prepared.slots)
-     PrintableAssemblyRefused {reason:_}=>InventoryRootRefused
+ if !plan.success {InventoryRootRefused} else {
+  match prepared_bundle(tree:host_state_tree(),plan_text:plan.content) {
+   PreparedBundleUnready {detail:_}=>InventoryRootRefused
+   PreparedBundleReady {bundle:bundle}=>match read_prepared_assembly(bundle:bundle) {
+    Absent=>InventoryRootRefused
+    Present {value:prepared}=>match printed_assembly_root_from_wire(s:prepared.root_wire) {
+     Absent=>InventoryRootRefused
+     Present {value:r}=>match r {
+      ResidentialCassette=>match select_printable_assembly(root:r) {
+       PrintableAssemblyReady {assembly:a}=>cassette_inventory_root(parts:a.parts,bindings:prepared.slots)
+       PrintableAssemblyRefused {reason:_}=>InventoryRootRefused
+      }
+      CassetteRackReview=>InventoryRootRefused
+      DuctCardRoot {card:_,kind:_}=>InventoryRootRefused
+     }
     }
-    CassetteRackReview=>InventoryRootRefused
-    DuctCardRoot {card:_,kind:_}=>InventoryRootRefused
    }
   }
  }
