@@ -7,7 +7,7 @@ import std.integer { int_to_decimal_string }
 
 // The census locus rendering, `<line>:<byte column>`, 1-based, over the byte-split line starts of a text. The sweep's occurrence
 // keys read it here. DECLARED FORK: gunbc.instruments.namespace_wave_occurrence_join still carries its own line_starts/locus_at
-// (it imports the sweep, so it cannot be this module's only home without a cycle through the sweep's old copy), so the two can
+// (a change to the join's source cannot be verified while its controls are ~5h cold), so the two can
 // drift until the join retargets here and deletes its copy; trigger: heavy runs resume, or the join's controls get a normal-size cost.
 type LineScan {
   next: Int
