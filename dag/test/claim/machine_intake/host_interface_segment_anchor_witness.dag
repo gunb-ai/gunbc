@@ -8,13 +8,17 @@ import std.types { Bool }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_mtjade1, operator_host_srv1 }
 import gunbc.fleet.fleet_intent_network { operator_docker_bridge_default_segment, operator_lan_segment }
+import product.network_topology { NetworkSegment, Lan }
 import gunbc.machine_intake.ethernet { HostData }
 import gunbc.machine_intake.host_interface_inventory { FunctionUnread }
 import gunbc.site_segment_anchor {
   InterfaceAnchored,
   InterfaceNotRead,
   InterfaceUnanchored,
+  CidrNetworkNotIpv4,
   NoSegmentContainsAddress,
+  SegmentsUnjudged,
+  UnjudgedSegment,
   host_interface_segment_anchor,
 }
 
@@ -59,6 +63,18 @@ test fn srv1_without_a_dedicated_controller_row_is_refused() -> Bool {
 test fn an_address_outside_every_supplied_segment_is_refused() -> Bool {
   match host_interface_segment_anchor(host: operator_host_mtcollins1, segments: [operator_docker_bridge_default_segment]).operating_system {
     InterfaceUnanchored { refusal: NoSegmentContainsAddress { host: _, function: _ } } => true
+    InterfaceUnanchored { refusal: _ } => false
+    InterfaceAnchored { host: _, function: _, lan: _, segment: _ } => false
+  }
+}
+
+data malformed_segment: NetworkSegment = NetworkSegment { cidr: "not-a-network/24", gateway: none, locality: Lan }
+
+// FAIL-CLOSED RED: one matching /24 beside one unjudgeable cidr is NOT a unique anchor. The
+// single-/24 control above (mtcollins1 on [operator_lan_segment]) still anchors.
+test fn a_matching_segment_beside_an_unjudged_one_is_refused_with_its_cause() -> Bool {
+  match host_interface_segment_anchor(host: operator_host_mtcollins1, segments: [operator_lan_segment, malformed_segment]).operating_system {
+    InterfaceUnanchored { refusal: SegmentsUnjudged { host: _, function: _, unjudged: us } } => us == [UnjudgedSegment { segment: malformed_segment, cause: CidrNetworkNotIpv4 }]
     InterfaceUnanchored { refusal: _ } => false
     InterfaceAnchored { host: _, function: _, lan: _, segment: _ } => false
   }

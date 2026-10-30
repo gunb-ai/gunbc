@@ -35,8 +35,6 @@ import gunbc.machine_intake.host_interface_inventory {
 // ipv4_same_network (it answers only some prefixes), not malformed data, so S3 can tell them apart.
 type CidrUnjudgedCause
   = CidrNotNetworkAndPrefix
-  | CidrNetworkPartAbsent
-  | CidrPrefixAbsent
   | CidrNetworkNotIpv4
   | CidrPrefixNotInteger
   | CidrPrefixOutOfRange { prefix: Int }
@@ -47,12 +45,18 @@ type SegmentJudgment
   | AddressOutsideSegment
   | SegmentUnjudged { cidr: NonEmptyStr, cause: CidrUnjudgedCause }
 
+// A SEGMENT THAT COULD NOT BE JUDGED, WITH THE CAUSE: the refusal carries both, so no cause is dropped.
+type UnjudgedSegment {
+  segment: NetworkSegment
+  cause: CidrUnjudgedCause
+}
+
 type SegmentAnchorRefusal
   = InterfaceNotRead { gap: HostInterfaceGap }
   | InterfaceHasNoNetworkAddress { host: HostIdentity, function: ObservedEthernetFunction }
   | NoSegmentContainsAddress { host: HostIdentity, function: ObservedEthernetFunction }
   | AddressOnSeveralSegments { host: HostIdentity, function: ObservedEthernetFunction, segments: List<NetworkSegment> }
-  | SegmentsUnjudged { host: HostIdentity, function: ObservedEthernetFunction, segments: List<NetworkSegment> }
+  | SegmentsUnjudged { host: HostIdentity, function: ObservedEthernetFunction, unjudged: List<UnjudgedSegment> }
 
 type InterfaceSegmentAnchor
   = InterfaceAnchored { host: HostIdentity, function: ObservedEthernetFunction, lan: ObservedEthernetLan, segment: NetworkSegment }
@@ -70,9 +74,9 @@ fn judge_address_in_segment(address: Ipv4Address, segment: NetworkSegment) -> Se
     SegmentUnjudged { cidr: segment.cidr, cause: CidrNotNetworkAndPrefix }
   } else {
     match parts |> get(0) {
-      Absent => SegmentUnjudged { cidr: segment.cidr, cause: CidrNetworkPartAbsent }
+      Absent => SegmentUnjudged { cidr: segment.cidr, cause: CidrNotNetworkAndPrefix }
       Present { value: network_text } => match parts |> get(1) {
-        Absent => SegmentUnjudged { cidr: segment.cidr, cause: CidrPrefixAbsent }
+        Absent => SegmentUnjudged { cidr: segment.cidr, cause: CidrNotNetworkAndPrefix }
         Present { value: length_text } => match parse_ipv4_address(text: network_text) {
           Ipv4ParseFailed { error: _ } => SegmentUnjudged { cidr: segment.cidr, cause: CidrNetworkNotIpv4 }
           Ipv4Parsed { address: segment_network } => match parse_int(s: length_text) {
@@ -98,23 +102,24 @@ fn anchor_lan_to_segment(host: HostIdentity, function: ObservedEthernetFunction,
     Absent => InterfaceUnanchored { refusal: InterfaceHasNoNetworkAddress { host: host, function: function } }
     Present { value: address } => {
       let inside = filter(xs: segments, predicate: s => judge_address_in_segment(address: address, segment: s) == AddressInSegment)
-      let unjudged = filter(xs: segments, predicate: s => match judge_address_in_segment(address: address, segment: s) {
-        SegmentUnjudged { cidr: _, cause: _ } => true
-        AddressInSegment => false
-        AddressOutsideSegment => false
+      let unjudged = flat_map(segments, s => match judge_address_in_segment(address: address, segment: s) {
+        SegmentUnjudged { cidr: _, cause: c } => [UnjudgedSegment { segment: s, cause: c }]
+        AddressInSegment => []
+        AddressOutsideSegment => []
       })
-      if list_length(items: inside) > 1 {
+      // FAIL CLOSED: one segment this fold cannot judge may be the one the address is on, so no anchor
+      // is produced while any candidate is unjudged, however many others matched.
+      if list_length(items: unjudged) > 0 {
+        InterfaceUnanchored { refusal: SegmentsUnjudged { host: host, function: function, unjudged: unjudged } }
+      } else if list_length(items: inside) > 1 {
         InterfaceUnanchored { refusal: AddressOnSeveralSegments { host: host, function: function, segments: inside } }
-      } else if list_length(items: inside) == 1 {
+      } else {
         match first(inside) {
           Present { value: segment } => InterfaceAnchored { host: host, function: function, lan: lan, segment: segment }
           Absent => InterfaceUnanchored { refusal: NoSegmentContainsAddress { host: host, function: function } }
         }
-      } else if list_length(items: unjudged) > 0 {
-        InterfaceUnanchored { refusal: SegmentsUnjudged { host: host, function: function, segments: unjudged } }
-      } else {
-        InterfaceUnanchored { refusal: NoSegmentContainsAddress { host: host, function: function } }
       }
+    }
     }
   }
 }
