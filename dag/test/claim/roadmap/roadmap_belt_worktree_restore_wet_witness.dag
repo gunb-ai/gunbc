@@ -37,7 +37,11 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_attempt_worktree_restore_for_instance, AttemptWorktreeRestore,
   AttemptWorktreeRestored, AttemptWorktreeNotNeeded, AttemptWorktreeBranchAbsent, AttemptWorktreeRestoreRefused,
   belt_attempts_observe_for_instance, belt_prior_attempt_recovery, belt_claim_tree_at, AttemptsObserved,
+  belt_lineage_standing, BeltAttemptPanesObserved, claim_reopen_refusal_outcome, WorktreeClaimEnsure, ClaimEnsured, ClaimEnsureRefused,
 }
+import std.durable_compare_and_set { cas_generation_first }
+import gunbc.compute.attempt_lifecycle { AttemptTerminal, AttemptRecovered, AttemptReserved }
+import gunbc.roadmap.roadmap_attempt_worktree_claim { WorktreeClaim, WorktreeClaimHeld, worktree_claim_new, LineageUnknown, LineageEnded }
 import gunbc.roadmap.roadmap_attempt_worktree_claim { ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
 import gunbc.harness.harness_session_recovery { SessionValidated, session_event_request_pending, session_event_request_redelivered, session_recovery_resumability, ResumabilityResumable, ResumabilityMalformed }
@@ -293,4 +297,28 @@ test fn a_malformed_stream_on_a_missing_tree_refuses_and_creates_no_worktree() -
     ClaimTreeUnobserved { detail: _ } => false
   }
   cleaned(instance: instance, verdict: laid && pk == key && malformed && refused && still_absent)
+}
+
+// (review 88499) A REFUSED REOPEN LEAVES THE CLAIM CLOSED => REFUSED: a terminal claim that still names this exact
+// path must not read as ensured (the path alone proves nothing); an OPEN claim naming it is accepted (positive
+// control), and an open claim naming a DIFFERENT path is refused.
+test fn a_refused_reopen_is_ensured_only_by_an_open_claim_naming_the_path() -> Bool {
+  let open_claim = worktree_claim_new(node_id: "n-x", attempt_key: "9213243546576879", worktree_path: "/w/p", opened_at: 1000, launch_deadline: 2000)
+  let closed_claim = WorktreeClaim { identity: open_claim.identity, node_id: open_claim.node_id, attempt_key: open_claim.attempt_key, reference: open_claim.reference, worktree_path: "/w/p", opened_at: 1000, launch_deadline: 2000, state: AttemptTerminal { verdict: AttemptRecovered, detail: "" } }
+  let closed_refused = match claim_reopen_refusal_outcome(reading: WorktreeClaimHeld { claim: closed_claim, generation: cas_generation_first() }, worktree_path: "/w/p", detail: "x") { ClaimEnsureRefused { detail: _ } => true ClaimEnsured => false }
+  let open_ok = match claim_reopen_refusal_outcome(reading: WorktreeClaimHeld { claim: open_claim, generation: cas_generation_first() }, worktree_path: "/w/p", detail: "x") { ClaimEnsured => true ClaimEnsureRefused { detail: _ } => false }
+  let other_path = match claim_reopen_refusal_outcome(reading: WorktreeClaimHeld { claim: open_claim, generation: cas_generation_first() }, worktree_path: "/w/q", detail: "x") { ClaimEnsureRefused { detail: _ } => true ClaimEnsured => false }
+  closed_refused && open_ok && other_path
+}
+
+// (review 88499) A MISSING LEDGER ROW IS ENDED ONLY WHEN THE RECOVERY STREAM IS NOT PENDING: the same empty ledger
+// reads Unknown for a request-pending lineage (its tree is never released) and Ended for one with no stream.
+test fn a_missing_ledger_row_is_unknown_for_a_pending_lineage_and_ended_otherwise() -> Bool {
+  let instance = fresh_instance(tag: "standing-norow")
+  let node = "n-wt-norow"
+  let key = "a3b4c5d6e7f80910"
+  let seeded = seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+  let pending = match belt_lineage_standing(instance: instance, ledger: AttemptsObserved { attempts: [] }, panes: BeltAttemptPanesObserved { panes: [] }, node_id: node, attempt_key: key) { LineageUnknown { detail: _ } => true _ => false }
+  let none = match belt_lineage_standing(instance: instance, ledger: AttemptsObserved { attempts: [] }, panes: BeltAttemptPanesObserved { panes: [] }, node_id: node, attempt_key: "b4c5d6e7f8091021") { LineageEnded => true _ => false }
+  cleaned(instance: instance, verdict: seeded && pending && none)
 }

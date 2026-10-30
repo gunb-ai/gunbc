@@ -745,7 +745,7 @@ import gunbc.roadmap.roadmap_attempt_worktree_claim {
   ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits, ClaimContentUnobserved,
   ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimCaptureUnknown, ClaimRemoval, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_pass_wire, worktree_claim_outcome_is_red,
-  worktree_claim_read, WorktreeClaimReading, WorktreeClaimHeld, WorktreeClaimAbsent, WorktreeClaimUnreadable, worktree_claim_reference, worktree_claim_reopen_settled, worktree_claim_open, LineageStanding, LineageEnded, LineageNotEnded, LineageUnknown,
+  worktree_claim_read, WorktreeClaimReading, WorktreeClaimHeld, WorktreeClaimAbsent, WorktreeClaimUnreadable, worktree_claim_reference, worktree_claim_reopen_settled, worktree_claim_open, claim_state_open, LineageStanding, LineageEnded, LineageNotEnded, LineageUnknown,
 }
 import gunbc.roadmap.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
@@ -1841,6 +1841,23 @@ type WorktreeClaimEnsure
   = ClaimEnsured
   | ClaimEnsureRefused { detail: String }
 
+// WHAT A REFUSED REOPEN LEAVES (review 88499): accepted ONLY when the re-read claim is OPEN (reserved/launching) AND
+// names this exact path. A closed claim keeps the path it was opened with, so the path alone proves nothing -- a
+// reopen refused for an unreadable slot, undecodable record, out-of-range deadline or a refused commit leaves the
+// claim terminal, and reporting that as ensured would spawn on a tree no open claim names.
+fn claim_reopen_refusal_outcome(reading: WorktreeClaimReading, worktree_path: String, detail: String) -> WorktreeClaimEnsure {
+  match reading {
+    WorktreeClaimHeld { claim: c, generation: _ } =>
+      if claim_state_open(s: c.state) && c.worktree_path == worktree_path {
+        ClaimEnsured
+      } else {
+        ClaimEnsureRefused { detail: join(["the reclaim would not reopen onto this worktree (the re-read claim is not an open claim naming it): ", detail], "") }
+      }
+    WorktreeClaimAbsent => ClaimEnsureRefused { detail: join(["the reclaim vanished during the restore: ", detail], "") }
+    WorktreeClaimUnreadable { detail: d } => ClaimEnsureRefused { detail: join(["the reclaimed claim could not be re-read after the reopen refused: ", d], "") }
+  }
+}
+
 // ENSURE AN OPEN CLAIM NAMES THE RE-MATERIALIZED WORKTREE. A reclaimed (terminal) claim is reopened onto its own
 // slot at generation n+1 under a CAS on the observed generation, keeping the generation line (DESIGN §3b); an absent
 // claim (never opened, or removed) is opened create-only. Every branch that does NOT leave an open claim naming THIS
@@ -1872,16 +1889,7 @@ fn belt_worktree_claim_ensure_open_for_instance(
             AttemptLostRace { expected: e, observed: o } =>
               ClaimEnsureRefused { detail: join(["the reclaimed claim moved under the restore: expected ", e, ", observed ", o], "") }
             AttemptTransitionRefused { detail } =>
-              match worktree_claim_read(root: root, reference: reference as NonEmptyStr) {
-                WorktreeClaimHeld { claim: c, generation: _ } =>
-                  if c.worktree_path == worktree_path {
-                    ClaimEnsured
-                  } else {
-                    ClaimEnsureRefused { detail: join(["the reclaim would not reopen onto this worktree: ", detail], "") }
-                  }
-                WorktreeClaimAbsent => ClaimEnsureRefused { detail: join(["the reclaim vanished during the restore: ", detail], "") }
-                WorktreeClaimUnreadable { detail: d } => ClaimEnsureRefused { detail: join(["the reclaimed claim could not be re-read after the reopen refused: ", d], "") }
-              }
+              claim_reopen_refusal_outcome(reading: worktree_claim_read(root: root, reference: reference as NonEmptyStr), worktree_path: worktree_path, detail: detail)
           }
         WorktreeClaimAbsent =>
           match worktree_claim_open(root: root, claim: fresh) {
@@ -3189,14 +3197,20 @@ fn belt_lineage_standing(
     AttemptsRefused { reason } => LineageUnknown { detail: join(["the prior-attempt ledger could not be read: ", reason], "") }
     AttemptsObserved { attempts } =>
       match (attempts |> filter(a => a.node_id as String == node_id as String && a.attempt_key == attempt_key)).first() {
-        // A SUCCESSFULLY-READ ledger that carries no row for this attempt is NOT 'can't tell' -- it is the reaped,
-        // finished case. The workflow-attempts row exists while an attempt is active and is removed once it is done
-        // and reaped; a live request-pending lineage always carries its row. So a missing row for a claim whose worker
-        // has ended means the lineage is FINISHED: CLOSE it (LineageEnded), restoring the pre-settlement behaviour
-        // where an ended worker closed its own claim. Reporting this Unknown instead would leave a permanently-red,
-        // uncloseable claim on every settlement pass -- a rung lowered without declaration (DESIGN §4b meta-obligation
-        // 3). Only an UNREADABLE ledger (AttemptsRefused, above) is genuinely 'can't tell' and comes back Unknown.
-        Absent => LineageEnded
+        // A SUCCESSFULLY-READ ledger with no row for this attempt is the reaped, finished case ONLY when the
+        // attempt's OWN recovery stream (tree-independent, owned by harness_session_recovery) does not name a
+        // request-pending lineage (review 88499: 'a live pending lineage always carries its row' was inferred, not
+        // checked). The stream is the typed fact: a pending lineage with no row is UNKNOWN and REFUSES (never
+        // releases its tree); only a lineage the stream says is not pending is Ended, restoring the pre-settlement
+        // behaviour where an ended worker closed its own claim.
+        Absent =>
+          match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
+            ResumabilityNotRequestPending => LineageEnded
+            ResumabilityResumable => LineageUnknown { detail: "the attempt has no ledger row but its recovery stream is a resumable request-pending lineage: its tree is not released" }
+            ResumabilityRequestPendingNotResumable => LineageUnknown { detail: "the attempt has no ledger row but its recovery stream is a request-pending lineage: its tree is not released" }
+            ResumabilityRequestPendingInterrupted { interrupted_calls: _ } => LineageUnknown { detail: "the attempt has no ledger row but its recovery stream is a request-pending lineage with an interrupted call: its tree is not released" }
+            ResumabilityMalformed { mismatch } => LineageUnknown { detail: join(["the attempt has no ledger row and its recovery stream is malformed: ", mismatch], "") }
+          }
         Present { value: a } =>
           belt_lineage_standing_of_decision(
             belt_continuation_decision_for_progress(

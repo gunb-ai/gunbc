@@ -330,8 +330,9 @@ type WorktreeClaimPlan
 
 // THE LINEAGE STANDING, handed in by the belt from the continuation -- the ONE derivation of "has THIS attempt's
 // lineage ended". It is three-valued on purpose: 'can't tell' must not collapse into 'converged' (DESIGN §5, a
-// silent widen is a hard reject), so an unreadable ledger or a row we cannot find comes back Unknown and REFUSES
-// the claim (countable, located) rather than reporting it converged while it silently leaks.
+// silent widen is a hard reject), so an unreadable ledger comes back Unknown and REFUSES the claim (countable,
+// located) rather than reporting it converged while it silently leaks. A row we cannot find is Ended only when the
+// attempt's own recovery stream does not name a request-pending lineage; a pending one without a row is Unknown.
 type LineageStanding
   = LineageEnded
   | LineageNotEnded
