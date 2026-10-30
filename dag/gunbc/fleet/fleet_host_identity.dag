@@ -5,7 +5,7 @@ import product.host_identity { HostIdentity }
 
 // THE FLEET'S HOST IDENTITIES, as a leaf. These rows were authored in gunbc.fleet.fleet_intent_network,
 // beside the topology that ENROLLS hosts (its `endpoints`); they moved here so a module that only
-// needs a host's name -- the approval broker composing its ntfy address, gunbc.auth.approval_ntfy_publish --
+// needs a host's name -- the approval ntfy deployment composing its address, gunbc.auth.approval_ntfy_deployment --
 // does not import the topology's assets, segments and endpoints. The notes below were written when
 // the rows lived in gunbc.fleet.fleet_intent_network: where one says "this module" or "here" about NAMING,
 // it now means this leaf; where it speaks of enrollment or `endpoints`, that is still
