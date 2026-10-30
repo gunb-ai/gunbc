@@ -128,6 +128,7 @@ import extdeps.tools.env { env_path_resolved_program }
 import extdeps.docker.cli {
   docker_info_command, docker_program, docker_gpu_cdi_probe_run_command,
 }
+import extdeps.container.docker_ce { docker_ce_packages, docker_ce_engine_packages, docker_ce_rootless_prerequisites_missing }
 import extdeps.container.nvidia_container_toolkit {
   nvidia_ctk_cdi_generate_command, nvidia_ctk_cdi_list_command, nvidia_ctk_program,
   nvidia_cdi_all_gpu_device,
@@ -1506,9 +1507,16 @@ test fn the_unit_start_leg_captures_status_and_the_users_journal_on_refusal() ->
     && leg.on_refusal.any(a => a == ["systemctl", "--user", "--machine=999@", "status", "--no-pager", "--full", "docker.service"])
     && leg.on_refusal.any(a => a == ["journalctl", "--user-unit=docker.service", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
     && leg.on_refusal.any(a => a == ["journalctl", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
-    && leg.on_refusal.any(a => a == ["stat", "-c", "%a %U %n", "--", "/usr/bin/newuidmap", "/usr/bin/newgidmap"])
+    && leg.on_refusal.any(a => a == ["stat", "-c", "%a:%U:%n", "--", "/usr/bin/newuidmap", "/usr/bin/newgidmap"])
     && leg.on_refusal.any(a => a == ["sysctl", "-n", "kernel.apparmor_restrict_unprivileged_userns"])
     && leg.on_refusal.any(a => a == ["setpriv", "--reuid=999", "--regid=999", "--clear-groups", "unshare", "--user", "--map-root-user", "true"])
     && leg.on_refusal.any(a => a == ["grep", "-H", "-F", "-e", "ghrunner", "--", "/etc/subuid", "/etc/subgid"])
     && leg.argv == ["systemctl", "--user", "--machine=999@", "start", "docker.service"]
+}
+
+// THE ROOTLESS PREREQUISITE IS CHECKED, NOT ASSUMED: the engine set without uidmap names it missing (the RED
+// srv3 lived in), and the set the srv3 and srv1 rows are built from carries it.
+test fn an_engine_package_set_without_uidmap_is_missing_the_rootless_prerequisite() -> Bool {
+  length(docker_ce_rootless_prerequisites_missing(packages: docker_ce_engine_packages)) == 1
+    && length(docker_ce_rootless_prerequisites_missing(packages: docker_ce_packages)) == 0
 }

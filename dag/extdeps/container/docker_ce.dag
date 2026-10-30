@@ -40,7 +40,14 @@ data docker_ce_apt_repo_noble_arm64: DockerCeAptRepo = DockerCeAptRepo {
   arch: "arm64",
 }
 
-data docker_ce_packages: List<NonEmptyStr> = [
+// DOCKER'S DOCUMENTED PREREQUISITES FOR ROOTLESS MODE, as their own row rather than a literal inside the
+// engine list: docs.docker.com/engine/security/rootless/ requires `newuidmap` and `newgidmap`, which the
+// `uidmap` package provides, and docker-ce-rootless-extras does not pull it in. MEASURED on srv3 (run
+// 40997904513): without it rootlesskit dies with `exec: "newuidmap": executable file not found in $PATH`
+// and the unit exits 1 in milliseconds, with every other step of the converge green.
+data docker_ce_rootless_prerequisite_packages: List<NonEmptyStr> = ["uidmap"]
+
+data docker_ce_engine_packages: List<NonEmptyStr> = [
   "docker-ce",
   "docker-ce-cli",
   "containerd.io",
@@ -48,6 +55,14 @@ data docker_ce_packages: List<NonEmptyStr> = [
   "docker-compose-plugin",
   "docker-ce-rootless-extras",
 ]
+
+data docker_ce_packages: List<NonEmptyStr> = append(docker_ce_engine_packages, items: docker_ce_rootless_prerequisite_packages)
+
+// THE PREREQUISITES A PACKAGE SET DOES NOT CARRY, so a set that installs the engine and omits them is a
+// non-empty answer rather than a host that fails at unit start. Empty means the set is sufficient.
+fn docker_ce_rootless_prerequisites_missing(packages: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  filter(docker_ce_rootless_prerequisite_packages, p => !packages.any(q => q == p))
+}
 
 fn docker_ce_apt_source_line(repo: DockerCeAptRepo) -> String {
   join(
