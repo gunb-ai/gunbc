@@ -17,7 +17,7 @@ module gunbc.site_segment_anchor
 // segment whose CIDR this fold cannot judge is reported, and it is never read as "does not contain".
 // Which segments exist is the caller's argument, not a list owned here.
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
 import extdeps.network.ipv4 { Ipv4Address, Ipv4Parsed, Ipv4ParseFailed, ipv4_same_network, parse_ipv4_address }
 import product.network_topology { NetworkSegment }
 import product.host_identity { HostIdentity }
@@ -31,10 +31,21 @@ import gunbc.machine_intake.host_interface_inventory {
   host_operating_system_interface,
 }
 
+// WHY A CIDR CANNOT BE JUDGED, as a closed sum. The last arm is a capability limit of
+// ipv4_same_network (it answers only some prefixes), not malformed data, so S3 can tell them apart.
+type CidrUnjudgedCause
+  = CidrNotNetworkAndPrefix
+  | CidrNetworkPartAbsent
+  | CidrPrefixAbsent
+  | CidrNetworkNotIpv4
+  | CidrPrefixNotInteger
+  | CidrPrefixOutOfRange { prefix: Int }
+  | PrefixNotJudgedBySameNetwork { prefix: Int }
+
 type SegmentJudgment
   = AddressInSegment
   | AddressOutsideSegment
-  | SegmentUnjudged { cidr: NonEmptyStr, cause: NonEmptyStr }
+  | SegmentUnjudged { cidr: NonEmptyStr, cause: CidrUnjudgedCause }
 
 type SegmentAnchorRefusal
   = InterfaceNotRead { gap: HostInterfaceGap }
@@ -56,22 +67,22 @@ type HostSegmentAnchors {
 fn judge_address_in_segment(address: Ipv4Address, segment: NetworkSegment) -> SegmentJudgment {
   let parts = split(s: segment.cidr as String, delimiter: "/")
   if list_length(items: parts) != 2 {
-    SegmentUnjudged { cidr: segment.cidr, cause: "the segment cidr is not one network and one prefix length separated by a slash" }
+    SegmentUnjudged { cidr: segment.cidr, cause: CidrNotNetworkAndPrefix }
   } else {
     match parts |> get(0) {
-      Absent => SegmentUnjudged { cidr: segment.cidr, cause: "the segment cidr has no network part" }
+      Absent => SegmentUnjudged { cidr: segment.cidr, cause: CidrNetworkPartAbsent }
       Present { value: network_text } => match parts |> get(1) {
-        Absent => SegmentUnjudged { cidr: segment.cidr, cause: "the segment cidr has no prefix length" }
+        Absent => SegmentUnjudged { cidr: segment.cidr, cause: CidrPrefixAbsent }
         Present { value: length_text } => match parse_ipv4_address(text: network_text) {
-          Ipv4ParseFailed { error: _ } => SegmentUnjudged { cidr: segment.cidr, cause: "the segment cidr network part is not a dotted-decimal IPv4 address" }
+          Ipv4ParseFailed { error: _ } => SegmentUnjudged { cidr: segment.cidr, cause: CidrNetworkNotIpv4 }
           Ipv4Parsed { address: segment_network } => match parse_int(s: length_text) {
-            Absent => SegmentUnjudged { cidr: segment.cidr, cause: "the segment cidr prefix length is not an integer" }
+            Absent => SegmentUnjudged { cidr: segment.cidr, cause: CidrPrefixNotInteger }
             Present { value: length } =>
               if length < 0 || length > 32 {
-                SegmentUnjudged { cidr: segment.cidr, cause: "the segment cidr prefix length is outside 0 to 32" }
+                SegmentUnjudged { cidr: segment.cidr, cause: CidrPrefixOutOfRange { prefix: length } }
               } else {
                 match ipv4_same_network(a: address, b: segment_network, prefix: length) {
-                  Absent => SegmentUnjudged { cidr: segment.cidr, cause: "ipv4_same_network answers only the prefixes 8, 16, 24, 30 and 32, and refuses the rest" }
+                  Absent => SegmentUnjudged { cidr: segment.cidr, cause: PrefixNotJudgedBySameNetwork { prefix: length } }
                   Present { value: same } => if same { AddressInSegment } else { AddressOutsideSegment }
                 }
               }
