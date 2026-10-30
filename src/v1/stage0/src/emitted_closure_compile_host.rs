@@ -855,30 +855,6 @@ fn write_probe_crate_files(
     )
 }
 
-/// Cargo over an already-emitted tree, using the same writer and cargo invocation as the
-/// emit-compile probes. Callers decide whether to invoke it. The sharing census always does,
-/// once per subject: its standing is a subject-grain build (refuse / silent / green), not a
-/// rustc stamp gated on a different-sharing row.
-pub(crate) fn cargo_verdict_of_emit(
-    entry: &str,
-    emit: &crate::v1_compiler_emit_core_support::EmitResult,
-) -> Result<CargoVerdict, String> {
-    let probe_root = lane_emit_compile_probe_root()?;
-    let written = write_probe_crate_files(
-        &emit.files,
-        &emit.emitted_edges,
-        &emit.rust_crates,
-        &probe_root,
-        entry,
-    )?;
-    let crate_dir = written.root.clone();
-    Ok(run_cargo(
-        &crate_dir,
-        &probe_root.target_dir(),
-        &format!("{}.rs", probe_package_name(entry)),
-    ))
-}
-
 /// Run cargo over the probe crate.
 ///
 /// THE ATTRIBUTED LOCATION AND THE DIAGNOSTIC IT SITS UNDER, READ FROM ONE PASS OVER STDERR.

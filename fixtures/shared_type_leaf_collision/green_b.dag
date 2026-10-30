@@ -1,9 +1,0 @@
-module stlc.green_b
-
-type Beta {
-  items: List<Int>
-}
-
-fn hold_beta() -> Beta {
-  Beta { items: [1] }
-}
