@@ -1,7 +1,7 @@
 module test.claim.roadmap.attempt_state_store_wet_witness
 
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadSucceeded, FilesystemReadRefused, FilesystemWritten, FilesystemWriteRefused, FilesystemReadOutcome, FilesystemWriteOutcome }
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
@@ -9,7 +9,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolate
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_state_store {
   AttemptDirectoryRoot, AttemptLaunchIdentity, AttemptSpawnFailure, attempt_state_directory_text,
-  attempt_state_read_at, attempt_state_write_at, attempt_state_read_succeeded, attempt_state_read_content, attempt_state_write_succeeded,
+  attempt_state_read_at, attempt_state_write_at, 
 }
 
 // THE STORE'S OPERATIONS RUN WET against a fresh temporary instance: write then read back through the store, the
@@ -32,6 +32,34 @@ fn fresh_instance(tag: String) -> HostDashboardInstance {
   )
 }
 
+fn read_is(o: FilesystemReadOutcome, expected: String) -> Bool {
+  match o {
+    FilesystemReadSucceeded { content: c } => c == expected
+    FilesystemReadRefused { error: _ } => false
+  }
+}
+
+fn read_refused(o: FilesystemReadOutcome) -> Bool {
+  match o {
+    FilesystemReadSucceeded { content: _ } => false
+    FilesystemReadRefused { error: _ } => true
+  }
+}
+
+fn written(o: FilesystemWriteOutcome) -> Bool {
+  match o {
+    FilesystemWritten { path: _ } => true
+    FilesystemWriteRefused { path: _, error: _ } => false
+  }
+}
+
+fn write_refused(o: FilesystemWriteOutcome) -> Bool {
+  match o {
+    FilesystemWritten { path: _ } => false
+    FilesystemWriteRefused { path: _, error: _ } => true
+  }
+}
+
 fn with_attempt_directory(instance: HostDashboardInstance) -> HostDashboardInstance {
   let _made = shell.Mkdir.Parents(path: attempt_state_directory_text(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1", directory: AttemptDirectoryRoot) as FilePath)
   instance
@@ -39,25 +67,25 @@ fn with_attempt_directory(instance: HostDashboardInstance) -> HostDashboardInsta
 
 test fn a_written_member_reads_back_through_the_store() -> Bool {
   let i = with_attempt_directory(instance: fresh_instance(tag: "roundtrip"))
-  attempt_state_write_succeeded(outcome: attempt_state_write_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptLaunchIdentity, content: "payload"))
-    && attempt_state_read_content(outcome: attempt_state_read_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptLaunchIdentity)) == "payload"
+  written(o: attempt_state_write_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptLaunchIdentity, content: "payload"))
+    && read_is(o: attempt_state_read_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptLaunchIdentity), expected: "payload")
 }
 
 test fn bytes_an_earlier_layout_wrote_read_through_the_store() -> Bool {
   let i = with_attempt_directory(instance: fresh_instance(tag: "oldbytes"))
   let dir = attempt_state_directory_text(instance: i, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1", directory: AttemptDirectoryRoot)
   let planted = Filesystem.Write(path: join([dir, "/launch-identity.json"], ""), content: "old-bytes").success
-  planted && attempt_state_read_content(outcome: attempt_state_read_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptLaunchIdentity)) == "old-bytes"
+  planted && read_is(o: attempt_state_read_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptLaunchIdentity), expected: "old-bytes")
 }
 
 test fn an_attempt_directory_that_does_not_list_refuses_read_and_write() -> Bool {
   let i = fresh_instance(tag: "nodir")
-  !attempt_state_read_succeeded(outcome: attempt_state_read_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptLaunchIdentity))
-    && !attempt_state_write_succeeded(outcome: attempt_state_write_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptLaunchIdentity, content: "x"))
+  read_refused(o: attempt_state_read_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptLaunchIdentity))
+    && write_refused(o: attempt_state_write_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptLaunchIdentity, content: "x"))
 }
 
 test fn a_member_is_independent_of_its_sibling() -> Bool {
   let i = with_attempt_directory(instance: fresh_instance(tag: "sibling"))
   let _w = attempt_state_write_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptLaunchIdentity, content: "x")
-  !attempt_state_read_succeeded(outcome: attempt_state_read_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptSpawnFailure))
+  read_refused(o: attempt_state_read_at(instance: i, node: "n1", attempt_key: "k1", member: AttemptSpawnFailure))
 }

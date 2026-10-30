@@ -60,6 +60,16 @@ data ctl_belt_actuate_source: String = "module probe_attempt_state_ctl_belt_actu
 
 data ctl_actuator_source: String = "module probe_attempt_state_ctl_actuator\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptStateReady, AttemptStateUnready, AttemptStateProvision, AttemptStateReading, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_open, attempt_state_read, attempt_state_provision, attempt_state_external_path }\nimport gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json }\nimport gunbc.roadmap.roadmap_verification_receipt { verification_receipt_json }\nimport gunbc.roadmap.roadmap_belt_actuate { belt_current_member_or_empty }\n\nimport gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_state_path_for_instance }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}"
 
+data twin_state_literal_source: String = "module probe_attempt_state_twin_state\nimport std.types { NonEmptyStr, String }\nimport test.fixture.attempt_state_seal.unsealed { AttemptState }\nfn f(i: NonEmptyStr) -> AttemptState {\n  AttemptState { instance: i, node: \"n\", directory: \"/tmp/forged-attempt\" }\n}\n"
+data twin_provision_literal_source: String = "module probe_attempt_state_twin_provision\nimport std.types { NonEmptyStr, String }\nimport test.fixture.attempt_state_seal.unsealed { AttemptStateProvision }\nfn f(i: NonEmptyStr) -> AttemptStateProvision {\n  AttemptStateProvision { instance: i, node: \"n\", directory: \"/tmp/forged-attempt\" }\n}\n"
+
+test fn the_same_forged_sources_pass_against_the_seal_stripped_twin() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: twin_state_literal_source, subject: "AttemptState"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: twin_provision_literal_source, subject: "AttemptStateProvision"), holds: fn(n) { n == 0 }),
+  ])
+}
+
 test fn a_forged_state_literal_is_refused_at_compile() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: state_literal_source, subject: "AttemptState"), holds: fn(n) { n == 1 }))
 }

@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_belt_actuate
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptAlignmentBinding, AttemptAuditVerdict, AttemptCommitOutcomeLast, AttemptContinuationTurn, AttemptDiffWindow, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectorySupervisor, AttemptEnvironmentAdmission, AttemptKeyRecord, AttemptLaunchIdentity, AttemptOracleIdentity, AttemptOraclePinRefused, AttemptOracleRevision, AttemptProcessFingerprint, AttemptPublicationReceipt, AttemptReviewVerdict, AttemptSpawnFailure, AttemptSpawnOrigin, AttemptStateListingRead, AttemptStateListingUnreadable, AttemptStateMember, AttemptStateReady, AttemptStateUnready, AttemptSupervisorVerdict, AttemptValidationReceipt, AttemptVerificationReceipt, AttemptVerificationSelection, AttemptWorkerEvents, attempt_state_directory_presence, attempt_state_external_directory, attempt_state_external_path, attempt_state_list, attempt_state_observe, attempt_state_observe_at, attempt_state_observe_current, attempt_state_open, attempt_state_open_current, attempt_state_presence_at, attempt_state_presence_current, attempt_state_provision, attempt_state_provision_path, attempt_state_read_at, attempt_state_read_content, attempt_state_read_current, attempt_state_read_succeeded, attempt_state_verification_receipt_read_at, attempt_state_verification_selection_observe_at, attempt_state_write, attempt_state_write_at, attempt_state_write_error, attempt_state_write_succeeded }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAlignmentBinding, AttemptAuditVerdict, AttemptCommitOutcomeLast, AttemptContinuationTurn, AttemptDiffWindow, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectorySupervisor, AttemptEnvironmentAdmission, AttemptKeyRecord, AttemptLaunchIdentity, AttemptOracleIdentity, AttemptOraclePinRefused, AttemptOracleRevision, AttemptProcessFingerprint, AttemptPublicationReceipt, AttemptReviewVerdict, AttemptSpawnFailure, AttemptSpawnOrigin, AttemptStateListingRead, AttemptStateListingUnreadable, AttemptStateMember, AttemptStateReady, AttemptStateUnready, AttemptSupervisorVerdict, AttemptValidationReceipt, AttemptVerificationReceipt, AttemptVerificationSelection, AttemptWorkerEvents, attempt_state_directory_presence, attempt_state_external_directory, attempt_state_external_path, attempt_state_list, attempt_state_observe, attempt_state_observe_at, attempt_state_observe_current, attempt_state_open, attempt_state_open_current, attempt_state_presence_at, attempt_state_presence_current, attempt_state_provision, attempt_state_provision_path, attempt_state_read_at, attempt_state_read_current, attempt_state_verification_receipt_read_at, attempt_state_verification_selection_observe_at, attempt_state_write, attempt_state_write_at }
 import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_attempt_request_binding {
@@ -657,6 +657,10 @@ import gunbc.roadmap.spool_stall {
 }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  FilesystemWriteRefused,
+  FilesystemWritten,
   FilesystemEntryAbsent,
   FilesystemEntryListed,
   FilesystemEntryPresenceIndeterminate,
@@ -6464,10 +6468,22 @@ fn belt_workflow_attempt_evidence_for_key(
     ),
     modeled_state: WorkflowModeledStateObserved,
     worktree: belt_attempt_worktree_observe(instance: instance, node_id: node_id, attempt_key: current_key),
-    admission_receipt_readable: attempt_state_read_succeeded(outcome: admission),
-    admission_receipt: attempt_state_read_content(outcome: admission),
-    spawn_failure_present: attempt_state_read_succeeded(outcome: spawn_failure),
-    spawn_failure: attempt_state_read_content(outcome: spawn_failure),
+    admission_receipt_readable: match admission {
+      FilesystemReadSucceeded { content: _ } => true
+      FilesystemReadRefused { error: _ } => false
+    },
+    admission_receipt: match admission {
+      FilesystemReadSucceeded { content: c } => c
+      FilesystemReadRefused { error: _ } => ""
+    },
+    spawn_failure_present: match spawn_failure {
+      FilesystemReadSucceeded { content: _ } => true
+      FilesystemReadRefused { error: _ } => false
+    },
+    spawn_failure: match spawn_failure {
+      FilesystemReadSucceeded { content: c } => c
+      FilesystemReadRefused { error: _ } => ""
+    },
     provider_events_readable: provider_event_projection_readable(
       observation: events,
     ),
@@ -8874,7 +8890,10 @@ type BeltVerifyOutcome
 // regenerate a verdict against a worktree that may have moved. That seam no longer uses this
 // function; it reads with status preserved and decodes.
 fn belt_current_member_or_empty(instance: HostDashboardInstance, node_id: gunbc.roadmap.roadmap_model.RoadmapNodeId, member: AttemptStateMember) -> String {
-  trim(attempt_state_read_content(outcome: attempt_state_read_current(instance: instance, node: node_id as String, member: member)))
+  match attempt_state_read_current(instance: instance, node: node_id as String, member: member) {
+    FilesystemReadSucceeded { content: c } => trim(c)
+    FilesystemReadRefused { error: _ } => ""
+  }
 }
 
 type BeltValidationRun {
@@ -9768,17 +9787,18 @@ fn belt_verify_run_and_persist(
   member: AttemptVerificationReceipt { head_sha: subject.head_sha as String, window_identity_hex: identity_hex },
   content: verification_receipt_json(receipt: receipt),
 )
-    if attempt_state_write_succeeded(outcome: write) {
-      VerifyRecorded {
-        node_id: progress.node_id,
-        verdict_key: validation_verdict_key(verdict: run.verdict),
-        detail: validation_verdict_detail(verdict: run.verdict),
-      }
-    } else {
-      VerifyWriteFailed {
-        node_id: progress.node_id,
-        detail: attempt_state_write_error(outcome: write),
-      }
+    match write {
+      FilesystemWritten { path: _ } =>
+        VerifyRecorded {
+          node_id: progress.node_id,
+          verdict_key: validation_verdict_key(verdict: run.verdict),
+          detail: validation_verdict_detail(verdict: run.verdict),
+        }
+      FilesystemWriteRefused { path: _, error: e } =>
+        VerifyWriteFailed {
+          node_id: progress.node_id,
+          detail: e,
+        }
     }
   } else {
     match change_window_refusal {
@@ -9808,17 +9828,18 @@ fn belt_verify_run_and_persist(
   member: AttemptVerificationReceipt { head_sha: subject.head_sha as String, window_identity_hex: identity_hex },
   content: verification_receipt_json(receipt: receipt),
 )
-        if attempt_state_write_succeeded(outcome: write) {
-          VerifyRecorded {
-            node_id: progress.node_id,
-            verdict_key: validation_verdict_key(verdict: run.verdict),
-            detail: validation_verdict_detail(verdict: run.verdict),
-          }
-        } else {
-          VerifyWriteFailed {
-            node_id: progress.node_id,
-            detail: attempt_state_write_error(outcome: write),
-          }
+        match write {
+          FilesystemWritten { path: _ } =>
+            VerifyRecorded {
+              node_id: progress.node_id,
+              verdict_key: validation_verdict_key(verdict: run.verdict),
+              detail: validation_verdict_detail(verdict: run.verdict),
+            }
+          FilesystemWriteRefused { path: _, error: e } =>
+            VerifyWriteFailed {
+              node_id: progress.node_id,
+              detail: e,
+            }
         }
       }
       Absent => {
@@ -9906,17 +9927,18 @@ fn belt_verify_run_and_persist(
   member: AttemptVerificationReceipt { head_sha: subject.head_sha as String, window_identity_hex: identity_hex },
   content: verification_receipt_json(receipt: receipt),
 )
-    if attempt_state_write_succeeded(outcome: write) {
-      VerifyRecorded {
-        node_id: progress.node_id,
-        verdict_key: validation_verdict_key(verdict: run.verdict),
-        detail: validation_verdict_detail(verdict: run.verdict),
-      }
-    } else {
-      VerifyWriteFailed {
-        node_id: progress.node_id,
-        detail: attempt_state_write_error(outcome: write),
-      }
+    match write {
+      FilesystemWritten { path: _ } =>
+        VerifyRecorded {
+          node_id: progress.node_id,
+          verdict_key: validation_verdict_key(verdict: run.verdict),
+          detail: validation_verdict_detail(verdict: run.verdict),
+        }
+      FilesystemWriteRefused { path: _, error: e } =>
+        VerifyWriteFailed {
+          node_id: progress.node_id,
+          detail: e,
+        }
     }
       }
     }
@@ -14194,13 +14216,12 @@ fn belt_publish_attempt_adjudicate(
                       member: AttemptPublicationReceipt { head_sha: subject.expected_head as String },
                       content: publication_receipt_json(receipt: receipt),
                     )
-                    belt_publish_write_outcome(
-                      node_id: node_id,
-                      subject: subject,
-                      receipt: receipt,
-                      write_success: attempt_state_write_succeeded(outcome: write),
-                      write_error: attempt_state_write_error(outcome: write),
-                    )
+                    match write {
+                      FilesystemWritten { path: _ } =>
+                        belt_publish_write_outcome(node_id: node_id, subject: subject, receipt: receipt, write_success: true, write_error: "")
+                      FilesystemWriteRefused { path: _, error: e } =>
+                        belt_publish_write_outcome(node_id: node_id, subject: subject, receipt: receipt, write_success: false, write_error: e)
+                    }
                   }
                 }
             }

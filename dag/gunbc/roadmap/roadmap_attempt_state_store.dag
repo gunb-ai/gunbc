@@ -1,7 +1,6 @@
 module gunbc.roadmap.roadmap_attempt_state_store
 
 import std.types { String, NonEmptyStr, FilePath, Int, List, Bool }
-import std.optional { Optional, Present, Absent }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemReadOutcome, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome,
@@ -360,22 +359,6 @@ fn attempt_state_write_at(instance: HostDashboardInstance, node: String, attempt
   }
 }
 
-// The evidence record's own pair (readable, content) projects a read outcome; the refusal is carried by the
-// readable flag the record's consumers already branch on, never by the content.
-fn attempt_state_read_succeeded(outcome: FilesystemReadOutcome) -> Bool {
-  match outcome {
-    FilesystemReadSucceeded { content: _ } => true
-    FilesystemReadRefused { error: _ } => false
-  }
-}
-
-fn attempt_state_read_content(outcome: FilesystemReadOutcome) -> String {
-  match outcome {
-    FilesystemReadSucceeded { content: c } => c
-    FilesystemReadRefused { error: _ } => ""
-  }
-}
-
 // The create-only write: fails when the member exists, so the first writer binds and a later one reads what
 // is there. An attempt directory that does not list is a refused create, never a created one.
 fn attempt_state_create_new_at(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStateMember, content: String) -> FilesystemCreateNew {
@@ -386,27 +369,6 @@ fn attempt_state_create_new_at(instance: HostDashboardInstance, node: String, at
       let write = Filesystem.WriteCreateNew(path: attempt_state_member_path(store: store, member: member), content: content)
       filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind)
     }
-  }
-}
-
-fn attempt_state_write_succeeded(outcome: FilesystemWriteOutcome) -> Bool {
-  match outcome {
-    FilesystemWritten { path: _ } => true
-    FilesystemWriteRefused { path: _, error: _ } => false
-  }
-}
-
-fn attempt_state_write_error(outcome: FilesystemWriteOutcome) -> String {
-  match outcome {
-    FilesystemWritten { path: _ } => ""
-    FilesystemWriteRefused { path: _, error: e } => e
-  }
-}
-
-fn attempt_state_write_refusal(outcome: FilesystemWriteOutcome) -> Optional<String> {
-  match outcome {
-    FilesystemWritten { path: _ } => Absent
-    FilesystemWriteRefused { path: _, error: e } => Present { value: e }
   }
 }
 

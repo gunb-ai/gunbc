@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_verify
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptVerificationRecord, attempt_state_write_error, attempt_state_write_at, attempt_state_write_succeeded, attempt_state_provision, attempt_state_provision_path }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptVerificationRecord, attempt_state_write_at, attempt_state_provision, attempt_state_provision_path }
 import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
@@ -48,7 +48,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
 }
 
 import extdeps.filesystem.filesystem_io
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemWritten, FilesystemWriteRefused }
 import extdeps.languages.json.emit {
   JsonValue,
   serialize_json,
@@ -587,12 +587,13 @@ fn persist_verification_receipt(
       }
     DashboardLocalProvision => {
       let write = attempt_state_write_at(instance: instance, node: node.node as String, attempt_key: receipt.attempt_key, member: AttemptVerificationRecord, content: legacy_single_validation_verification_receipt_json(receipt: receipt))
-      if attempt_state_write_succeeded(outcome: write) {
-        ReceiptPersisted { path: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node.node as String, attempt_key: receipt.attempt_key), member: AttemptVerificationRecord) }
-      } else {
-        ReceiptPersistRefused {
-          reason: join(["verification receipt write failed: ", attempt_state_write_error(outcome: write)], ""),
-        }
+      match write {
+        FilesystemWritten { path: _ } =>
+          ReceiptPersisted { path: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node.node as String, attempt_key: receipt.attempt_key), member: AttemptVerificationRecord) }
+        FilesystemWriteRefused { path: _, error: e } =>
+          ReceiptPersistRefused {
+            reason: join(["verification receipt write failed: ", e], ""),
+          }
       }
     }
   }
