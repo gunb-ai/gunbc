@@ -1513,6 +1513,14 @@ fn map_support_keys<K, V>(m: FinitelySupportedFunction<K, V>) -> FreeMonoid<K> {
   m |> map_keys
 }
 
+// The values of a map, one per supported key: the total read of the finitely supported function's
+// range, a method call to the `map_values` primitive (std.primitives map_values_contract). A caller
+// folding over every entry reads it here, not map_support_keys then map_lookup, whose Absent arm
+// is unreachable and would bind to a domain answer.
+fn map_support_values<K, V>(m: FinitelySupportedFunction<K, V>) -> FreeMonoid<V> {
+  m |> map_values
+}
+
 fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match xs {
     Empty => true
