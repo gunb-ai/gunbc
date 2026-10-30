@@ -76,3 +76,23 @@ test fn modeled_string_sort_keeps_input_order_among_equal_keys() -> Bool {
   named_tags(rows: list_sort_by_key(xs: named_rows, key: fn(r) { r.name }, order: string_total_order()))
     == [2, 5, 4, 1, 3]
 }
+
+// The WRONG-ORDER RED for the declared String order: a reversed comparator sorts the same names out of order, so a
+// migration row that appended the wrong order argument would fail the equality with the host order above.
+fn string_compare_reversed(a: String, b: String) -> Ordering {
+  if a < b { Greater } else { if a > b { Less } else { Equal } }
+}
+
+data reversed_string_order: TotalOrder<String> = { compare: string_compare_reversed }
+
+test fn a_reversed_string_order_is_a_discriminating_red() -> Bool {
+  named_tags(rows: list_sort_by_key(xs: named_rows, key: fn(r) { r.name }, order: reversed_string_order))
+    != named_tags(rows: named_rows |> sort_by(r => r.name))
+}
+
+// The digest site's key kind: a lowercase-hex String (std.content_hash Fnv1a64StructuralDigestHex) orders under the same
+// declared String order as the host sort.
+test fn hex_digest_keys_order_under_the_declared_string_order() -> Bool {
+  list_sort_by_key(xs: ["ff00000000000000", "0a00000000000000", "9000000000000000", "0a00000000000000"], key: fn(h) { h }, order: string_total_order())
+    == ["0a00000000000000", "0a00000000000000", "9000000000000000", "ff00000000000000"]
+}
