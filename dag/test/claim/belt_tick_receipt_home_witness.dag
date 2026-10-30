@@ -2,7 +2,7 @@ module test.claim.belt_tick_receipt_home_witness
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
 
 
-import std.types { Bool, String, FilePath }
+import std.types { Bool, String, FilePath, List, NonEmptyStr, CommitSha }
 import gunbc.host.host_layout { instance_receipts_dir }
 import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
@@ -27,7 +27,6 @@ import gunbc.live_deploy.spec {
   srv1_live_deployment_names,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import std.types { List, NonEmptyStr, CommitSha }
 import v2.std.orchestration { PipelineStep, Do, Run }
 import std.optional { Present, Absent }
 

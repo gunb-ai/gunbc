@@ -1,7 +1,6 @@
 module v2.workflow.floor_cost_debt
 
-import std.types { list_length }
-import std.types { List }
+import std.types { list_length, List }
 import std.algebra { Cons, Empty, list_flat_map }
 
 // THE OVER-COST WITHHOLDING MECHANISM. ITS POPULATION IS NOT STATED HERE -- ASK

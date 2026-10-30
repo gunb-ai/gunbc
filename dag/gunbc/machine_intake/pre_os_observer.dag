@@ -3,7 +3,7 @@ module gunbc.machine_intake.pre_os_observer
 import gunbc.machine_intake.mtcollins1_netboot_client_observation { firmware_pxe_mac_rendering }
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
-import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import gunbc.machine_intake.pre_os_bringup_verdict {
   FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly,
   FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware, firmware_console_report,
@@ -11,7 +11,6 @@ import gunbc.machine_intake.pre_os_bringup_verdict {
 import gunbc.host.host_memory_qualification {
   HostBootOutcome, BootReachedOperatingSystem, BootOutcomeUnobserved, RepeatingFirmwareReset, BootStalledWithoutReset,
 }
-import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.algebra { FreeSemigroup, Empty }
 
 

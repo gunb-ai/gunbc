@@ -1,11 +1,11 @@
 module gunbc.auth.approval_device_routes
 
-import std.types { NonEmptyStr, String, Int, List, Timestamp, HttpStatus }
+import std.types { NonEmptyStr, String, Int, List, Timestamp, HttpStatus, FilePath }
 import std.logic { Bool }
-import std.integer { UInt8 }
+import std.integer { UInt8, QualifiedOctetsReady, QualifiedOctetsRefused }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, exit_failure }
-import std.encoding { base64_decode, Standard, UrlSafe }
+import std.encoding { base64_decode, Standard, UrlSafe, base64_octets }
 import extdeps.clock { Clock }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import extdeps.crypto.mac { MacKey, MacSigned, MacKeyMaterialNotHex, mac_sign }
@@ -41,7 +41,6 @@ import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, stored_request_json, observe_escalation, EscalationPending, EscalationDecided, EscalationNotFiled, EscalationUnreadable,
   claims_for, pending_escalations, PendingEscalationsListed, PendingEscalationsRefused,
 }
-import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import gunbc.auth.approval_device_wire {
   MobileIos, MobileAndroid, device_read_client_data, device_push_update_client_data, approval_device_read_skew,
   ReadAuthentication, decode_read_request, PushUpdateRequest, decode_push_update_request,
@@ -94,10 +93,7 @@ import extdeps.auth.oidc { OidcIdTokenSignature, OidcIdTokenSignatureRefused, oi
 import extdeps.auth.jwt { JwtCompactSerialization, NumericDateWholeSeconds }
 import extdeps.entropy { Urandom }
 import extdeps.numeric.base16 { base16_encode_lower }
-import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
-import std.encoding { base64_octets }
 import std.algebra { trim }
-import std.types { FilePath }
 import extdeps.ntfy.ntfy { NtfyAccepted }
 import gunbc.auth.approval_notification { approval_notification }
 import gunbc.auth.approval_broker_endpoint { approval_broker_serving_base_url, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }

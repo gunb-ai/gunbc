@@ -73,9 +73,8 @@ import gunbc.runner.runner_registration_labels {
 import gunbc.runner.runner_slot_job_role {
   CiJobSlot, DeployJobSlot, runner_slot_job_role, runner_slot_job_user, runner_slot_job_role_runs_containers,
 }
-import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, ci_cache_instance }
 import gunbc.runner.runner_unit { runner_slot_unit_dropin_path }
-import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 import gunbc.build_cache.build_cache_unit {
   sccache_endpoint_env_assignment,
   sccache_error_log_env_assignment,

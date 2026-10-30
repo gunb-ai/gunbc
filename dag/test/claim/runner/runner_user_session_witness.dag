@@ -4,10 +4,9 @@ import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
 import extdeps.shell
 import std.algebra { string_contains }
 import extdeps.exec.command { argv_words }
-import extdeps.systemd.loginctl { loginctl_enable_linger_argv }
+import extdeps.systemd.loginctl { loginctl_enable_linger_argv, loginctl_show_user_linger_command, loginctl_linger_reading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner.runner_host_deploy { runner_job_user_session_on, runner_job_user_session_hosts, srv1_runner_host_spec, srv4_runner_host_spec }
-import extdeps.systemd.loginctl { loginctl_show_user_linger_command, loginctl_linger_reading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
 import gunbc.runner.runner_user_session {
   UserSessionAnswer, UserSessionAnswered, UserSessionNotAnswered, user_session_answer_of,
   UserSessionHostAdmission, UserSessionHostAdmitted, UserSessionHostRefused, user_session_host_admission,

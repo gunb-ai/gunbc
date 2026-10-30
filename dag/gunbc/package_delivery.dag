@@ -63,7 +63,6 @@ import extdeps.tools.sha512sum {
   Sha512FileObservationRefused,
 }
 import extdeps.tools.node
-import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.command_runner { run_shell_commands, LocalExec }
 import gunbc.codex_runtime_paths {

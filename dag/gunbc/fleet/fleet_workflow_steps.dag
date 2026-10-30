@@ -21,7 +21,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import std.measure { minute_count, second_count }
 import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_step_timeout_minutes }
 import gunbc.live_deploy.service_ready { approval_broker_readback_poll_bound }
-import std.types { Duration }
+import std.types { Duration, List, String, Int, NonEmptyStr }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.github.actions {
   Step, RunStep, UsesStep, 
@@ -73,7 +73,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_var, bash_build_word_lit, bash_build_word_concat_from_nodes, bash_build_assign,
   bash_build_if_from_stmts, bash_build_test_bracket, bash_build_command_with_words,
 }
-import std.types { List, String, Int, NonEmptyStr }
 
 // THE SEED-BUILD ENVIRONMENT, consumed where this file's build steps compose their `run:` text.
 import gunbc.repo.repo_self_build { repo_self_seed_build_step_run }

@@ -1,6 +1,6 @@
 module gunbc.auth.approval_broker_serve
 import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_source }
-import extdeps.http.server { text_javascript_utf8 }
+import extdeps.http.server { text_javascript_utf8, application_json_utf8 }
 import gunbc.site.document { site_document_over, site_styles, ApprovalShell }
 
 import extdeps.tailscale.identity { tailnet_identity_login }
@@ -60,7 +60,6 @@ import gunbc.auth.approval_device_routes {
   device_enrol_response, device_redeem_response, device_pending_response, device_request_response, device_enrollment_readback_response, device_push_update_response,
   device_list_response, device_revoke_response,
 }
-import extdeps.http.server { application_json_utf8 }
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment, attr }

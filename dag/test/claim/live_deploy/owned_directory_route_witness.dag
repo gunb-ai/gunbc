@@ -1,13 +1,13 @@
 module test.claim.live_deploy.owned_directory_route_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath, List, Int }
-import gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization }
+import gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
 import gunbc.live_deploy.member_identity {
   DirectoryRoot, converged_member_eq, converged_effect_plan, derive_member_plan, RootAt, DirectoryRootIdentity, RootConverged,
   directory_root_standing_wire, ObservedMember, MemberObserved, MemberUnobservable, EffectsDerived, EffectsRefused, plan_mutation_count,
 }
-import gunbc.live_deploy.member_observe { deployment_member_roster, owned_directory_member_of_decision }
+import gunbc.live_deploy.member_observe { deployment_member_roster, owned_directory_member_of_decision, deployment_git_worker_subtree_members, deployment_repository_shared_posture_members }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory_demands }
 import gunbc.runner.runner_host_grants { runner_host_privileged_operations }
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
@@ -27,7 +27,6 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_git_worker_directory_children, is_dashboard_git_worker_directory_demand,
   dashboard_git_maintenance_service_unit_name, dashboard_git_maintenance_timer_unit_name,
 }
-import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, ApplyPlanReady, ApplyPlanRefused, ApplyLegEnsureDirectory,
@@ -35,14 +34,12 @@ import gunbc.live_deploy.apply_legs {
   deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan,
 }
 import gunbc.live_deploy.member_identity { plan_mutation_is, RegroupGitWorkerSubtree, AssertRepositorySharedPosture, EffectDerivation }
-import gunbc.live_deploy.member_observe { deployment_git_worker_subtree_members, deployment_repository_shared_posture_members }
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
 import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance, login_transaction_store_directory }
 import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_directory, cursor_attempt_runtime_directory, cursor_attempt_runtime_parent }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 
 // THE ROUTE, NOT ONLY THE ANSWER. For a consumer the production route used to leave without a creator,
 // each claim joins four facts on srv1_live: the path the consumer WRITES (its runtime layout) is its

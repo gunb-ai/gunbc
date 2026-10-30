@@ -18,11 +18,10 @@ import gunbc.auth.approval_google_enrolment {
 import extdeps.auth.oidc { OidcIdTokenSignatureRefusal }
 import extdeps.apple.app_attest { AttestationUndecodable }
 import extdeps.tailscale.identity { TailnetUser }
-import gunbc.auth.approval_decision_store { approval_identity_trust, IdentityHeaderTrustNotEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustEstablished }
+import gunbc.auth.approval_decision_store { approval_identity_trust, IdentityHeaderTrustNotEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustEstablished, observe_escalation, EscalationUnreadable }
 import gunbc.auth.approval_device_redemption { observe_google_enrolment, approval_device_store_root, DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused, DevicePlatformUnrealized, DeviceCapabilityTagMalformed }
 import gunbc.auth.approval_google_enrolment { GoogleEnrolmentSlot, GoogleEnrolmentUnreadable }
 import gunbc.auth.approval_device_redemption_fixtures { envelope_vector_body, fx_point }
-import gunbc.auth.approval_decision_store { observe_escalation, EscalationUnreadable }
 import gunbc.auth.approval_device_wire { GoogleEnrolmentRequest, google_enrolment_request_json, MobileIos, ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json, ApnsRegistration, path_segment, SignedRedemption, DeviceRedemptionSigningInput, RedemptionChallenge, IosAppAttestAssertion, signed_redemption_json }
 import extdeps.crypto.signature { SignatureBytes, VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth }
 import gunbc.auth.approval_capability { ProposeApprove }

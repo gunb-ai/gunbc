@@ -7,7 +7,7 @@ import std.primitive_projection { never_type_declaration }
 import v2.std.anonymous_binder { TypeVariableOfBinder, TypeVariableOfConstructorUse, TypeVariableRigid, fresh_constructor_use_variable, type_variable_origin }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceSynthetic, ScopedOccurrenceAllocator, alloc_projected_occurrence, occurrence_id_eq, scoped_occurrence_allocator }
 import v2.std.provenance { node_occurrence_id_optional }
-import std.integer { int_to_decimal_string }
+import std.integer { int_to_decimal_string, Signedness, Signed, Unsigned }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
 import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup, map_support_keys, collection_concat_shape, collection_count_shape }
 import v2.std.bounded_lattice_completeness {
@@ -73,7 +73,6 @@ import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, wit
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.machine_width_range { machine_width_admits }
-import std.integer { Signedness, Signed, Unsigned }
 
 
 

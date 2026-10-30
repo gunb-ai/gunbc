@@ -1,6 +1,6 @@
 module std.materialization_provider
 
-import std.measure { measure_add, measure_count }
+import std.measure { measure_add, measure_count, ByteSize, byte_size }
 import std.types { Bool, Int, List, String, NonEmptyStr, brand }
 import std.content_hash {
   ContentHash,
@@ -117,7 +117,6 @@ import std.judgment_contract {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Terminal }
-import std.measure { ByteSize, byte_size }
 import std.materialization_ladder { DemandNature, PureComputation, IdempotentEffect, FreshEffect }
 // THE SECOND STATED IMPORT DEPARTURE, for the same reason as the generation edge below: the compute
 // work vocabulary (the exact tree, the operation, the observed execution identity) has ONE home,

@@ -1,6 +1,6 @@
 module test.claim.fleet.fleet_intent_network_witness
 
-import std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.dhcp.v4 { Active }
 import extdeps.network.ipv4 { ipv4_address }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
@@ -23,7 +23,6 @@ import product.network_topology {
   NetworkEndpoint,
   network_reachability,
 }
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

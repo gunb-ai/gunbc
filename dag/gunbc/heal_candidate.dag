@@ -4,7 +4,6 @@ import std.bytes { utf8_encode_bytes }
 import std.types { NonEmptyStr, String, List, Int, Bool, CommitSha, FilePath }
 import std.integer { UInt8 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.bytes { utf8_encode_bytes }
 import std.algebra { trim }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }

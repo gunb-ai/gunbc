@@ -1,7 +1,7 @@
 module test.claim.approval_ntfy_deployment_witness
 
 import std.logic { Bool }
-import std.types { Int }
+import std.types { Int, String }
 import std.human_intervention {
   ProvisioningHumanBurden, HumanIntervention, FleetOnce, DeviceOnce, EveryProvision,
   BreakGlassOnly, human_intervention_count_at, HumanInterventionIdentity,
@@ -16,7 +16,6 @@ import gunbc.fleet.fleet_intent_network { fleet_intent_network }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import extdeps.ntfy.ntfy { NtfyTopic }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
-import std.types { String }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_posix_accounts {
   notification_service_realization_standing, PersistentServiceAccount, AccountUnallocated,

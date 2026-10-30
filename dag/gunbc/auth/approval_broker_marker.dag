@@ -1,9 +1,8 @@
 module gunbc.auth.approval_broker_marker
 
 import std.types { String, NonEmptyStr, List }
-import std.markup { MarkupComment, serialize_fragment_with }
+import std.markup { MarkupComment, serialize_fragment_with, Serialized, Rejected }
 import extdeps.languages.html { html_markup_medium }
-import std.markup { Serialized, Rejected }
 import extdeps.http.server { MediaType, ServeResponseHeader, ServeResponseHeaderField, HttpExtensionFieldNameAdmitted, HttpExtensionFieldNameRefused, ServeWireHeader, http_extension_field_name }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess, BrokerProcess }
 
