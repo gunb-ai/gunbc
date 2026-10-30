@@ -39,6 +39,7 @@ fn release_probe(name: String, callable: String, body: String) -> String {
     "import std.types { NonEmptyStr, String }\n",
     "import std.durable_compare_and_set { CasGeneration }\n",
     "import gunbc.durable_exclusive_hold_file_store { FileHoldReleaseOutcome, FileHoldReleased }\n",
+    "import std.durable_exclusive_hold { DurableHoldReleaseRefusal }\n",
     "import gunbc.deploy_transition_lease_store { TransitionLeaseHeld, TransitionLeaseRelease, ", callable, " }\n",
     body,
   ], "")
@@ -68,9 +69,9 @@ fn host_probe(name: String, callable: String, body: String) -> String {
 
 data host_fold_route_source: String = host_probe(name: "probe_outcome_laundering_host_fold", callable: "probe_hold_release_committed", body: "fn f(k: NonEmptyStr, g: Int) -> ProbeHoldReleaseOutcome {\n  probe_hold_release_committed(outcome: FileHoldReleased { slot_key: k, generation: g })\n}\n")
 
-data host_lawful_source: String = host_probe(name: "probe_outcome_laundering_host_lawful", callable: "probe_hold_release_refused", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
+data host_lawful_source: String = host_probe(name: "probe_outcome_laundering_host_lawful", callable: "probe_hold_release_refused", body: "fn f(r: DurableHoldReleaseRefusal) -> ProbeHoldReleaseOutcome {\n  probe_hold_release_refused(refusal: r)\n}\n")
 
-data host_baseline_source: String = host_lawful_source
+data host_baseline_source: String = host_probe(name: "probe_outcome_laundering_host_baseline", callable: "probe_hold_release_refused", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
 
 test fn no_outcome_can_be_folded_into_a_cas_commit() -> ProcessExit {
   deleted_callable_route_is_gone(source: cas_fold_route_source, baseline: cas_baseline_source, deleted_callable: "cas_outcome_from_create")
