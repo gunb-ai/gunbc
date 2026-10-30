@@ -42,6 +42,10 @@ import gunbc.fleet.fleet_host_identity {
 import gunbc.runner.runner_capability_labels { DropinPresent, host_capability_dropin_presence, host_capability_witness_of_reads }
 import gunbc.runner.runner_gpu_container_toolchain {
   gpu_container_provision_start_leg,
+  gpu_container_provision_start_actions,
+  gpu_container_provision_start_admitted,
+  GpuContainerProvisionRun,
+  GpuContainerProvisioned, GpuContainerProvisionRefused,
   GpuContainerArm,
   GpuContainerArmOk, GpuContainerArmMissing, GpuContainerArmUnobserved,
   GpuContainerToolchainReadback,
@@ -1505,15 +1509,28 @@ test fn the_re_read_compare_names_its_exit_code_and_no_step_refuses_with_an_empt
 // journal read of the wrong account.
 test fn the_unit_start_leg_captures_status_and_the_users_journal_on_refusal() -> Bool {
   let leg = gpu_container_provision_start_leg(uid: 999, job_user: "ghrunner" as NonEmptyStr)
-  length(leg.on_refusal) == 9
+  length(leg.on_refusal) == 10
     && leg.on_refusal.any(a => a == ["systemctl", "--user", "--machine=999@", "status", "--no-pager", "--full", "docker.service"])
     && leg.on_refusal.any(a => a == ["journalctl", "--user-unit=docker.service", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
     && leg.on_refusal.any(a => a == ["journalctl", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
-    && leg.on_refusal.any(a => a == ["stat", "-c", "%a:%U:%n", "--", "/usr/bin/newuidmap", "/usr/bin/newgidmap"])
+    && leg.on_refusal.any(a => a == ["ls", "-ldn", "--", "/usr/bin/newuidmap"])
+    && leg.on_refusal.any(a => a == ["ls", "-ldn", "--", "/usr/bin/newgidmap"])
     && leg.on_refusal.any(a => a == ["sysctl", "-n", "kernel.apparmor_restrict_unprivileged_userns"])
     && leg.on_refusal.any(a => a == ["setpriv", "--reuid=999", "--regid=999", "--clear-groups", "unshare", "--user", "--map-root-user", "true"])
     && leg.on_refusal.any(a => a == ["grep", "-H", "-F", "-e", "ghrunner", "--", "/etc/subuid", "/etc/subgid"])
     && leg.argv == ["systemctl", "--user", "--machine=999@", "start", "docker.service"]
+}
+
+// THE START PHASE FOLLOWS THE ENSURE: it is admitted only when the first phase held AND every package
+// holds, and it is its own two actions (start, active readback), absent from the first plan. A start that
+// ran regardless of the ensure (srv3 run 41004665254) makes the ensure-failed arm true and this RED.
+test fn the_unit_start_runs_only_after_the_package_ensure_holds() -> Bool {
+  let held = GpuContainerProvisionRun { steps: [GpuContainerProvisioned { step: "unit enable" }], planned: 1 }
+  let refused = GpuContainerProvisionRun { steps: [GpuContainerProvisionRefused { step: "linger", cause: "x" }], planned: 1 }
+  gpu_container_provision_start_admitted(prior: held, ensure_ok: true)
+    && !gpu_container_provision_start_admitted(prior: held, ensure_ok: false)
+    && !gpu_container_provision_start_admitted(prior: refused, ensure_ok: true)
+    && gpu_container_provision_plan_step_names(actions: gpu_container_provision_start_actions(uid: 999, job_user: "ghrunner" as NonEmptyStr)) == ["unit start", "unit active verified"]
 }
 
 // A MISSING DROP-IN IS ABSENT, A DROP-IN THAT CANNOT BE LOOKED AT IS NOT (srv3 run 41006939256 refused the whole

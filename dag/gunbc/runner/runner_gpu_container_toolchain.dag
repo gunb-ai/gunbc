@@ -57,7 +57,7 @@ import extdeps.systemd.systemctl {
   systemctl_is_enabled_verb,
   systemctl_user_status_for_uid_argv,
 }
-import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, readlink_command, rm_force_command, ls_one_per_line_command }
+import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, readlink_command, rm_force_command, ls_one_per_line_command, ls_long_directory_numeric_command }
 import extdeps.posix.getent { getent_passwd_command }
 import extdeps.linux.user_namespaces {
   unshare_map_root_user_as_uid_argv,
@@ -126,7 +126,6 @@ import extdeps.shadow.subordinate_ids {
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
 import extdeps.systemd.journalctl { journalctl_user_unit_tail_argv, journalctl_uid_tail_argv }
 import extdeps.procps.sysctl { sysctl_read_value_argv }
-import extdeps.tools.coreutils_stat { stat_mode_owner_name_argv }
 import extdeps.tools.grep { grep_fixed_string_lines_in_files_argv }
 import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
 import extdeps.systemd.loginctl { loginctl_binary_name, loginctl_enable_linger_argv }
@@ -940,7 +939,7 @@ fn runner_gpu_container_toolchain_converge_ci_wet() -> ProcessExit {
                   // report "package not found" on a host that is actually fine. It runs on every Desired
                   // host and is idempotent: on srv1, where the repos, packages, ranges and daemon already
                   // exist, every step reports "already declared" or succeeds as a no-op.
-                  let provision = gpu_container_provision_wet(host: host, spec: spec, ids: ids, admin: admin, context: context)
+                  let provision_first = gpu_container_provision_wet(host: host, spec: spec, ids: ids, admin: admin, context: context)
                   // THE ENSURE RUNS EVEN WHEN PROVISIONING REFUSED, and that is deliberate rather than an
                   // oversight: the package install is harmless and idempotent, and its outcome belongs in
                   // the receipt because it is what tells an operator WHERE the chain broke — "repos staged
@@ -952,6 +951,8 @@ fn runner_gpu_container_toolchain_converge_ci_wet() -> ProcessExit {
                   // range work exists to handle — see the conjunct at `subordinate_integrity`.
                   let ensure = runner_gpu_container_toolchain_ensure_wet(packages: packages, transport: transport)
                   let ensure_ok = fold(ensure, init: true, f: (ok, o) => ok && gpu_toolchain_ensure_outcome_holds(o: o))
+                  // THE UNIT START RUNS HERE, AFTER THE ENSURE: its prerequisite (uidmap) is an ensured package.
+                  let provision = gpu_container_provision_start_wet(prior: provision_first, ensure_ok: ensure_ok, spec: spec, admin: admin, context: context)
                   let generate = runner_gpu_container_toolchain_generate_cdi_wet(packages_hold: ensure_ok, transport: transport)
                   let readback = runner_gpu_container_toolchain_readback_wet(job_user: spec.job_user, transport: transport)
                   // SUBORDINATE INTEGRITY IS ITS OWN CONJUNCT, and not being one was review 5644178843's
@@ -1412,15 +1413,17 @@ data gpu_container_provision_uidmap_paths: List<NonEmptyStr> = ["/usr/bin/newuid
 data gpu_container_provision_subordinate_paths: List<NonEmptyStr> = ["/etc/subuid" as NonEmptyStr, "/etc/subgid" as NonEmptyStr]
 
 fn gpu_container_provision_start_discriminators(uid: Int, job_user: NonEmptyStr) -> List<List<String>> {
+  append(
   [
     journalctl_uid_tail_argv(uid: uid, lines: gpu_container_provision_unit_journal_lines),
-    stat_mode_owner_name_argv(paths: gpu_container_provision_uidmap_paths),
     sysctl_read_value_argv(name: apparmor_restrict_unprivileged_userns_sysctl_name),
     argv_words(command: ls_one_per_line_command(path: "/etc/apparmor.d")),
     unshare_map_root_user_as_uid_argv(uid: uid),
     argv_words(command: getent_passwd_command(key: job_user)),
     grep_fixed_string_lines_in_files_argv(pattern: job_user, paths: gpu_container_provision_subordinate_paths),
-  ]
+  ],
+  items: map(gpu_container_provision_uidmap_paths, p => argv_words(command: ls_long_directory_numeric_command(path: p as String))),
+  )
 }
 
 fn gpu_container_provision_start_leg(uid: Int, job_user: NonEmptyStr) -> GpuContainerProvisionLeg {
@@ -3012,8 +3015,8 @@ fn gpu_container_provision_plan(
           ProvisionLegs { legs: [gpu_container_provision_leg(step: "user daemon-reload", words: gpu_container_provision_reload_argv(uid: uid_value))] },
           ProvisionLegs { legs: [gpu_container_provision_leg(step: "unit enable", words: gpu_container_provision_enable_argv(uid: uid_value))] },
           ProvisionVerify { step: "unit enabled verified", check: VerifyUnitEnabled { uid: uid_value } },
-          ProvisionLegs { legs: [gpu_container_provision_start_leg(uid: uid_value, job_user: spec.job_user)] },
-          ProvisionVerify { step: "unit active verified", check: VerifyUnitActive { uid: uid_value } },
+          // THE START IS NOT HERE. It needs newuidmap/newgidmap, which the ensure route installs, so it is
+          // planned by gpu_container_provision_start_plan and run after the ensure.
         ],
       ),
       // 3 (placed last on purpose). THE RANGES, READ BACK AFTER THE SUBORDINATE WRITES RAN. Verification goes at the end
@@ -3293,6 +3296,60 @@ fn gpu_container_provision_subordinate_actions(
 // AN ACTION THAT ONLY REPORTS. It exists because a refusal discovered while PLANNING is still part of the
 // chain, and dropping it to keep the action list homogeneous would turn a specific, actionable refusal
 // into silence.
+
+// THE START PHASE, PLANNED APART FROM THE REST because it has a prerequisite the rest does not: rootlesskit
+// execs newuidmap/newgidmap, which the package ensure installs (docker_ce_rootless_prerequisite_packages),
+// and the ensure itself needs the repos this module's plan sets up. Provision -> ensure -> start is therefore
+// the only order every step's premise allows; a start inside the first plan ran before uidmap existed on a
+// fresh host, and its refusal also skipped the subordinate readbacks.
+fn gpu_container_provision_start_plan(
+  spec: RunnerHostSpec,
+  admin: SshTarget,
+  context: FleetSshExecutionContext,
+) -> List<GpuContainerProvisionAction> {
+  let transport = gpu_container_toolchain_admin_transport(target: admin, context: context)
+  match gpu_container_provision_principal(user: spec.job_user, transport: transport) {
+    Absent => []
+    Present { value: identity } => gpu_container_provision_start_actions(uid: identity.uid, job_user: spec.job_user)
+  }
+}
+
+fn gpu_container_provision_start_actions(uid: Int, job_user: NonEmptyStr) -> List<GpuContainerProvisionAction> {
+  [
+    ProvisionLegs { legs: [gpu_container_provision_start_leg(uid: uid, job_user: job_user)] },
+    ProvisionVerify { step: "unit active verified", check: VerifyUnitActive { uid: uid } },
+  ]
+}
+
+// RUN THE START PHASE AFTER THE ENSURE. `prior` is the first phase's run; the start is skipped, not
+// attempted, when that phase refused or when the packages did not all hold (`ensure_ok`), because its
+// prerequisite is then known absent and the refusal it would add names nothing new. The returned run is
+// the two phases joined, so every gate that reads provision.steps sees one ordered list.
+fn gpu_container_provision_start_admitted(prior: GpuContainerProvisionRun, ensure_ok: Bool) -> Bool {
+  ensure_ok && gpu_container_provision_run_holds(r: prior)
+}
+
+fn gpu_container_provision_start_wet(
+  prior: GpuContainerProvisionRun,
+  ensure_ok: Bool,
+  spec: RunnerHostSpec,
+  admin: SshTarget,
+  context: FleetSshExecutionContext,
+) -> GpuContainerProvisionRun {
+  if !gpu_container_provision_start_admitted(prior: prior, ensure_ok: ensure_ok) {
+    prior
+  } else {
+    let actions = gpu_container_provision_start_plan(spec: spec, admin: admin, context: context)
+    let steps = fold(actions, init: prior.steps, f: (acc, action) =>
+      if gpu_container_provision_has_refusal(steps: acc) {
+        acc
+      } else {
+        append(acc, items: gpu_container_provision_run_action(action: action, admin: admin, context: context, job_user: spec.job_user))
+      }
+    )
+    GpuContainerProvisionRun { steps: steps, planned: prior.planned + length(actions) }
+  }
+}
 
 // THE RUN. FOLDED, stopping at the first refusal.
 fn gpu_container_provision_wet(
