@@ -55,7 +55,7 @@ import gunbc.session_lease {
 }
 import extdeps.git {
   SafeDirectoryGrant, GitEnvironmentSetting, git_safe_directory_environment,
-  shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv, git_non_bare_git_dir_name,
+  shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv, shape_git_worktree_add_branch_argv, shape_git_rev_parse_verify_args, git_non_bare_git_dir_name,
   git_shared_repository_group_config_command, git_gc_auto_disabled_config_command,
   git_maintenance_auto_disabled_config_command,
 }
@@ -2571,6 +2571,41 @@ fn git_worktree_add_detached_argv_for_instance(
       path: worktree_path as FilePath,
       commit: commit_sha as GitRef,
     ),
+  )
+}
+
+// THE RESTORE'S BRANCH CHECKOUT: a worktree re-materialized at an EXISTING branch (no -b). Used only by the
+// named restore step on the spawn route for a request-pending lineage whose worktree was reclaimed but whose
+// branch survives; the branch is the durable record, so this checks it back out rather than creating one.
+fn git_worktree_add_branch_argv_for_instance(
+  instance: HostDashboardInstance,
+  worktree_path: String,
+  branch_name: String,
+) -> HostExecArgv {
+  host_exec_argv(
+    program: dispatch_capability_program(
+      environment: instance.execution_environment,
+      cap: GitWorkspaceCapability,
+    ),
+    args: shape_git_worktree_add_branch_argv(
+      path: worktree_path as FilePath,
+      branch: branch_name as NonEmptyStr,
+    ),
+  )
+}
+
+// THE RESTORE'S BRANCH-EXISTENCE CHECK: `git rev-parse --verify --quiet <branch>` exits 0 iff the branch
+// resolves; the caller reads the exit standing, never the text. A branch that is gone fails the restore closed.
+fn git_rev_parse_verify_argv_for_instance(
+  instance: HostDashboardInstance,
+  reference: String,
+) -> HostExecArgv {
+  host_exec_argv(
+    program: dispatch_capability_program(
+      environment: instance.execution_environment,
+      cap: GitWorkspaceCapability,
+    ),
+    args: shape_git_rev_parse_verify_args(reference: reference as GitRef),
   )
 }
 

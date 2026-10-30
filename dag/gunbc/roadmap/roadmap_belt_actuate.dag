@@ -8,6 +8,9 @@ import gunbc.roadmap.roadmap_attempt_request_binding {
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 
 import std.algebra { trim, skip }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.durable_compare_and_set { cas_generation_count }
 import std.filesystem { path_parent_directory }
 import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
@@ -207,6 +210,8 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files,
   dispatch_verification_checkout_path_for_instance,
   git_worktree_add_detached_argv_for_instance,
+  git_worktree_add_branch_argv_for_instance,
+  git_rev_parse_verify_argv_for_instance,
   dispatch_current_attempt_key_path_for_instance,
   dispatch_attempt_handin_dir_for_instance,
   dispatch_current_attempt_admission_path_for_instance,
@@ -386,7 +391,7 @@ import gunbc.roadmap.roadmap_publish_observe {
   observe_worktree_repository_binding,
 }
 import gunbc.compute.work_request { RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
-import gunbc.compute.attempt_lifecycle { DispatchOwned, attempt_record_json }
+import gunbc.compute.attempt_lifecycle { DispatchOwned, attempt_record_json, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused }
 import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved }
 import gunbc.compute.compute_seat_ensure {
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, compute_seat_discharge_all,
@@ -671,7 +676,8 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 // runs systemd-run --user --on-calendar --collect execing belt_dispatch_node_cli for the same node+key.
 import gunbc.roadmap.roadmap_attempt_redelivery_wake { attempt_redelivery_wake_command, attempt_redelivery_wake_unit_name, attempt_redelivery_wake_unit_stem }
 import gunbc.harness.harness_session_recovery {
-  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_recovery_of_events,
+  SessionRecovery, SessionRecoveryNone, session_recovery_of_events, session_recovery_resumability,
+  SessionResumability, ResumabilityResumable, ResumabilityRequestPendingNotResumable, ResumabilityRequestPendingInterrupted, ResumabilityMalformed, ResumabilityNotRequestPending,
 }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, ProviderRequestPending, provider_execution_activity, ProviderAwaitingAcceptance }
@@ -742,6 +748,7 @@ import gunbc.roadmap.roadmap_attempt_worktree_claim {
   ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits, ClaimContentUnobserved,
   ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimCaptureUnknown, ClaimRemoval, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_pass_wire, worktree_claim_outcome_is_red,
+  worktree_claim_read, WorktreeClaimReading, WorktreeClaimHeld, WorktreeClaimAbsent, WorktreeClaimUnreadable, worktree_claim_reference, worktree_claim_reopen_settled, worktree_claim_open, claim_state_open, LineageStanding, LineageEnded, LineageNotEnded, LineageUnknown,
 }
 import gunbc.roadmap.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
@@ -1806,6 +1813,178 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
   }
 }
 
+// THE WORKTREE RESTORE, an explicit named ACTUATION on the spawn route run BEFORE the continuation decision,
+// for the one state the old settlement mangled: a request-pending/resumable lineage whose worktree was reclaimed
+// (its claim's generation line reads terminal:recovered, 'the attempt ended and its capture is committed') but
+// whose DISPATCH BRANCH survives. It is NOT hidden inside the capture observation -- an observation that repairs
+// what it reads is the §5 hidden-actuation smell -- it is a visible step returning a typed outcome. It fires only
+// when (a) the recovery reading says request-pending/resumable, (b) the worktree path is absent, and (c) the
+// branch exists; it re-materializes the worktree from that branch (`git worktree add` on the existing branch) and
+// reopens the reclaimed claim on the SAME CAS slot (worktree_claim_reopen_settled, generation line kept, no
+// delete). The branch is the durable record (§3b), so this RESTORES state rather than guessing; a gone branch
+// fails closed (BranchAbsent) rather than spawning on an unknown tree. With D1/D2 no longer releasing a pending
+// claim, this step only ever sees the legacy reaped state -- it is recovery, not a second release path.
+// TEMPORARY, BOUNDED, OPERATOR-APPROVED: the admitted debt is the two rows below this type
+// (attempt_worktree_restore_scaffold, attempt_worktree_restore_dissolve_trigger), not this comment.
+type AttemptWorktreeRestore
+  = AttemptWorktreeRestored { worktree_path: String, branch: String }
+  | AttemptWorktreeNotNeeded
+  | AttemptWorktreeBranchAbsent { branch: String, detail: String }
+  | AttemptWorktreeRestoreRefused { detail: String }
+
+data attempt_worktree_restore_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap.roadmap_belt_actuate",
+    decl_name: "AttemptWorktreeRestore",
+    field: WholeDeclaration
+  }
+}
+
+data attempt_worktree_restore_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "Population: exactly attempt e5a42384c6a5e13d on lab instance srv1-lab-codex-feedback-v0, whose worktree claim reads terminal:recovered while its recovery stream is request-pending (written by the pre-D1/D2 release, which no longer exists, so no member can be added); operator approval is decision msg_e623cf1e (DESIGN section 5), granting no broader population and no census. DISSOLVES WHEN that attempt's own recovery stream has left request-pending (answered, ended or spawned fresh), read from its existing record: delete AttemptWorktreeRestore and belt_attempt_worktree_restore_for_instance in the first lab-dev change after. An attempt whose reading is unknown does not hold the deletion open; the ordinary route then refuses it with a typed refusal.")
+
+// THE CLAIM SUB-STEP'S OWN OUTCOME. It only ever ensures that an OPEN claim names the worktree path, so it does not
+// borrow AttemptWorktreeRestore's 'nothing to do' / 'branch absent' variants -- reusing that type for two roles would
+// force the sub-step to fake outcomes it cannot produce (§3: a name held constant may not carry two meanings).
+type WorktreeClaimEnsure
+  = ClaimEnsured
+  | ClaimEnsureRefused { detail: String }
+
+// WHAT A REFUSED REOPEN LEAVES (review 88499): accepted ONLY when the re-read claim is OPEN (reserved/launching) AND
+// names this exact path. A closed claim keeps the path it was opened with, so the path alone proves nothing -- a
+// reopen refused for an unreadable slot, undecodable record, out-of-range deadline or a refused commit leaves the
+// claim terminal, and reporting that as ensured would spawn on a tree no open claim names.
+fn claim_reopen_refusal_outcome(reading: WorktreeClaimReading, worktree_path: String, detail: String) -> WorktreeClaimEnsure {
+  match reading {
+    WorktreeClaimHeld { claim: c, generation: _ } =>
+      if claim_state_open(s: c.state) && c.worktree_path == worktree_path {
+        ClaimEnsured
+      } else {
+        ClaimEnsureRefused { detail: join(["the reclaim would not reopen onto this worktree (the re-read claim is not an open claim naming it): ", detail], "") }
+      }
+    WorktreeClaimAbsent => ClaimEnsureRefused { detail: join(["the reclaim vanished during the restore: ", detail], "") }
+    WorktreeClaimUnreadable { detail: d } => ClaimEnsureRefused { detail: join(["the reclaimed claim could not be re-read after the reopen refused: ", d], "") }
+  }
+}
+
+// ENSURE AN OPEN CLAIM NAMES THE RE-MATERIALIZED WORKTREE. A reclaimed (terminal) claim is reopened onto its own
+// slot at generation n+1 under a CAS on the observed generation, keeping the generation line (DESIGN §3b); an absent
+// claim (never opened, or removed) is opened create-only. Every branch that does NOT leave an open claim naming THIS
+// worktree path fails closed -- a reopen that refuses is re-read and accepted only if a live claim already names this
+// exact path, and an absent/open-lost/unreadable claim is a typed refusal rather than a reported success (§5: no
+// plausible output is fabricated on an unknown record).
+fn belt_worktree_claim_ensure_open_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  worktree_path: String,
+  branch: String,
+) -> WorktreeClaimEnsure {
+  let root = worktree_claim_slots_root_of(instance: instance)
+  let reference = worktree_claim_reference(node_id: node_id as String, attempt_key: attempt_key)
+  match now_epoch_seconds() {
+    Absent => ClaimEnsureRefused { detail: "the host clock could not be read, so a reopened claim would carry no launch deadline" }
+    Present { value: now } => {
+      let fresh = worktree_claim_new(
+        node_id: node_id as String,
+        attempt_key: attempt_key,
+        worktree_path: worktree_path,
+        opened_at: now,
+        launch_deadline: now + compute_pre_launch_ceiling_seconds)
+      match worktree_claim_read(root: root, reference: reference as NonEmptyStr) {
+        WorktreeClaimHeld { claim: _, generation: g } =>
+          match worktree_claim_reopen_settled(root: root, reference: reference as NonEmptyStr, expected: g, claim: fresh) {
+            AttemptAdvanced { state: _, generation: _ } => ClaimEnsured
+            AttemptLostRace { expected: e, observed: o } =>
+              ClaimEnsureRefused { detail: join(["the reclaimed claim moved under the restore: expected ", e, ", observed ", o], "") }
+            AttemptTransitionRefused { detail } =>
+              claim_reopen_refusal_outcome(reading: worktree_claim_read(root: root, reference: reference as NonEmptyStr), worktree_path: worktree_path, detail: detail)
+          }
+        WorktreeClaimAbsent =>
+          match worktree_claim_open(root: root, claim: fresh) {
+            AttemptAdvanced { state: _, generation: _ } => ClaimEnsured
+            AttemptTransitionRefused { detail } =>
+              ClaimEnsureRefused { detail: join(["a worktree claim could not be opened for the restored worktree: ", detail], "") }
+            AttemptLostRace { expected: e, observed: o } =>
+              ClaimEnsureRefused { detail: join(["a claim appeared under the restore: expected ", e, ", observed ", o], "") }
+          }
+        WorktreeClaimUnreadable { detail } =>
+          ClaimEnsureRefused { detail: join(["the reclaimed claim could not be read to reopen it: ", detail], "") }
+      }
+    }
+  }
+}
+
+// THE RESTORE STEP itself. Resolves the node's prior attempt from the ledger (the same ledger the decision reads),
+// applies the three-way gate, then re-materializes the tree from the branch and reopens the claim. Every read is
+// the modeled one; the two git calls run through the belt's exec path (the same host_exec_argv/capability program
+// the claim-open flow uses), so no parallel authority is introduced.
+fn belt_attempt_worktree_restore_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId) -> AttemptWorktreeRestore {
+  // The attempt to restore is the node's prior attempt -- the SAME first-per-node row the continuation decision
+  // reads -- so the restore and the decision never disagree about WHICH attempt is being resumed (one selection
+  // rule). The GATE is RESUMABILITY, not ENDEDNESS: it reads the recovery reading (the attempt-state event
+  // stream), which is TREE-INDEPENDENT. A reclaimed worktree makes the CONTINUATION Refused (its capture cannot
+  // be read), so gating the restore on that standing would CYCLE -- missing tree => Refused => unknown => restore
+  // refuses => tree stays missing, and the wedge would never clear. The recovery reading says 'request-pending
+  // and resumable' without touching the tree, so the restore can re-materialize it. ENDEDNESS is a separate fact,
+  // read by the claim release via belt_lineage_standing; RESUMABILITY is this one -- different facts, each derived
+  // in exactly one place (DESIGN §3). The ledger is read only to SELECT the prior attempt; if it cannot be read we
+  // refuse rather than act on an unknown (§5: a failure arm refuses, never widens).
+  let ledger = belt_attempts_observe_for_instance(instance: instance)
+  match ledger {
+    AttemptsRefused { reason } =>
+      AttemptWorktreeRestoreRefused { detail: join(["the prior-attempt ledger could not be read to decide whether a request-pending worktree needs restoring: ", reason], "") }
+    AttemptsObserved { attempts } =>
+      match (attempts |> filter(a => a.node_id as String == node_id as String)).first() {
+        Absent => AttemptWorktreeNotNeeded
+        Present { value: p } =>
+          match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: p.attempt_key)) {
+          ResumabilityResumable => {
+            let path = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key)
+            let branch = dispatch_branch_name(node_id: node_id, attempt_key: p.attempt_key)
+            match belt_claim_tree_at(instance: instance, path: path) {
+              // The tree is already there: no restore, and the decision observes its head normally.
+              ClaimTreePresent => AttemptWorktreeNotNeeded
+              // An unobservable tree is UNKNOWN, not absent: refuse rather than restore onto a tree we cannot see (§5).
+              ClaimTreeUnobserved { detail } =>
+                AttemptWorktreeRestoreRefused { detail: join(["the worktree could not be observed before restoring it: ", detail, "; refusing to restore onto an unknown tree"], "") }
+              ClaimTreeAbsent =>
+                match belt_exec(cmd: git_rev_parse_verify_argv_for_instance(instance: instance, reference: branch), workdir: instance.repo_root as String) {
+                  // The branch is the durable record. Reopen/open the CLAIM first (mirroring the invariant that the
+                  // claim is recorded BEFORE `git worktree add`), so a tree is never created that no open record names;
+                  // only then re-materialize the tree from the branch.
+                  ExecOk { stdout: _ } =>
+                    match belt_worktree_claim_ensure_open_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key, worktree_path: path, branch: branch) {
+                      ClaimEnsured =>
+                        match belt_exec(cmd: git_worktree_add_branch_argv_for_instance(instance: instance, worktree_path: path, branch_name: branch), workdir: instance.repo_root as String) {
+                          ExecOk { stdout: _ } => AttemptWorktreeRestored { worktree_path: path, branch: branch }
+                          ExecFailed { program: _, exit_code, stderr } => AttemptWorktreeRestoreRefused { detail: join(["re-materializing the worktree for attempt ", p.attempt_key, " from branch ", branch, " failed (exit ", to_string(value: exit_code), "): ", stderr], "") }
+                          ExecRefused { program, reason } => AttemptWorktreeRestoreRefused { detail: join(["re-materializing the worktree was refused: ", program, " -- ", reason], "") }
+                        }
+                      ClaimEnsureRefused { detail } => AttemptWorktreeRestoreRefused { detail: detail }
+                    }
+                  ExecFailed { program: _, exit_code, stderr: _ } =>
+                    if exit_code == 1 {
+                      AttemptWorktreeBranchAbsent { branch: branch, detail: join(["the request-pending attempt ", p.attempt_key, " has no worktree and its dispatch branch ", branch, " is gone: there is no durable record to re-materialize the worktree from"], "") }
+                    } else {
+                      AttemptWorktreeRestoreRefused { detail: join(["the branch existence check for ", branch, " could not be completed (exit ", to_string(value: exit_code), ")"], "") }
+                    }
+                  ExecRefused { program, reason } => AttemptWorktreeRestoreRefused { detail: join(["the branch existence check was refused: ", program, " -- ", reason], "") }
+                }
+            }
+          }
+          // Each non-resumable standing is its own arm (review 88393): none of them is a restore candidate, but
+          // the malformed stream refuses here, at the one reading, instead of leaning on the continuation.
+          ResumabilityMalformed { mismatch } =>
+            AttemptWorktreeRestoreRefused { detail: join(["the attempt-state stream is malformed, so the prior attempt cannot be classified for restore: ", mismatch], "") }
+          ResumabilityRequestPendingInterrupted { interrupted_calls: _ } => AttemptWorktreeNotNeeded
+          ResumabilityRequestPendingNotResumable => AttemptWorktreeNotNeeded
+          ResumabilityNotRequestPending => AttemptWorktreeNotNeeded
+          }
+      }
+  }
+}
+
 // THE WORKTREE CLAIM IS RECORDED BEFORE `git worktree add` (gunbc.roadmap.roadmap_attempt_worktree_claim): the
 // attempt's identity, derived path and launch deadline, written create-only and read back. Any other
 // standing refuses the spawn step, so no tree is created that a record does not name.
@@ -1900,7 +2079,11 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
     SessionSettlePassRan { settlements } =>
       match now_epoch_seconds() {
         Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the worktree claim ensure compares against the launch deadline" }
-        Present { value: now } =>
+        Present { value: now } => {
+          // Observe the raw ledger and the pane snapshot ONCE for the whole pass; each claim's lineage standing is a
+          // pure lookup over these, so a pass over n claims costs one ledger read and one pane read, not n of each.
+          let ledger = belt_attempts_observe_for_instance(instance: instance)
+          let panes = belt_attempt_panes_observe_for_instance(instance: instance)
           match worktree_claim_ensure_pass_at(
             stores: stores,
             claims_root: worktree_claim_slots_root_of(instance: instance),
@@ -1913,6 +2096,12 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
             content_of: p => belt_claim_content_of(instance: instance, worktree: p),
             remove_tree: p => belt_claim_remove_tree(instance: instance, repo_workdir: instance.repo_root as String, path: p),
             capture_of: (n, k) => belt_claim_capture_of(instance: instance, node_id: n, attempt_key: k),
+            // THE ONE 'ENDED' DERIVATION, keyed by THIS claim's (node_id, attempt_key) and read from the continuation
+            // over the shared snapshot -- never the node's collapsed first-per-node row (that lets a sibling attempt
+            // decide this claim's fate), never the worker's unit standing. A request-pending worker legitimately
+            // exited yet its OWN lineage is resumable, so its standing is NotEnded and the claim is kept; an unreadable
+            // ledger or a missing row is Unknown, which REFUSES the claim rather than reporting it converged.
+            ended_of: (n, k) => belt_lineage_standing(instance: instance, ledger: ledger, panes: panes, node_id: nid(s: n), attempt_key: k),
           ) {
             WorktreeClaimPassRan { outcomes } =>
               if any(outcomes, o => worktree_claim_outcome_is_red(o: o)) {
@@ -1922,6 +2111,7 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
               }
             WorktreeClaimPassRefused { detail } => SessionSettlePassRefused { detail: detail }
           }
+        }
       }
   }
 }
@@ -2636,6 +2826,28 @@ fn belt_actuate_spawn_for_instance(
   request: AttemptLaunchRequest,
   executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
+  // BEFORE the decision is read: a request-pending/resumable attempt whose worktree was reclaimed but whose
+  // branch survives is re-materialized here (a named actuation, not an effect hidden in an observation), so the
+  // continuation can observe the prior capture instead of refusing forever. A gone branch or a failed
+  // re-materialization fails closed -- it does not decide on an unknown tree.
+  match belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node.node) {
+    AttemptWorktreeBranchAbsent { branch: _, detail } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "worktree-restore",
+        detail: detail,
+        provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+        launch: launch,
+      }
+    AttemptWorktreeRestoreRefused { detail } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "worktree-restore",
+        detail: detail,
+        provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+        launch: launch,
+      }
+    _ => {
   let decision = belt_continuation_decision_for_instance(instance: instance, node: node)
   match belt_footprint_admission_for_instance(instance: instance) {
     FootprintRefused { step: fst, detail: fd } =>
@@ -2736,6 +2948,8 @@ fn belt_actuate_spawn_for_instance(
       }
     }
   }
+  }
+    }
   }
 }
 
@@ -2923,23 +3137,105 @@ fn belt_actuate_spawn_exec_modeled(
 // tell whether committed work exists must not start over on top of it. The capture observation is
 // the same head-grain read the verify gate makes.
 fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node: RoadmapNode) -> ContinuationDecision {
+  belt_continuation_decision_for_node(instance: instance, node_id: node.node)
+}
+
+// THE SAME SINGLE CONTINUATION DERIVATION, keyed by the node ID rather than a full node. The decision
+// path reads only the node's identity (its ledger row, prior-attempt facts and retire record are all
+// keyed by node_id), never the node's roadmap definition -- so a caller that holds only a node ID, such
+// as the worktree-claim settlement pass deciding whether a lineage has ended, asks the ONE decision
+// instead of re-deriving 'ended' from the worker's unit standing. for_instance is now a projection onto
+// this; there is one derivation, not two.
+fn belt_continuation_decision_for_node(instance: HostDashboardInstance, node_id: RoadmapNodeId) -> ContinuationDecision {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
       ContinuationRefused { reason: join(["the attempts ledger is unobservable, so whether this node has committed work to continue cannot be decided: ", reason], "") }
     WorkflowAttemptsObserved { attempts } => {
-      let mine = attempts |> filter(p => p.node_id == node.node as String)
+      let mine = attempts |> filter(p => p.node_id == node_id as String)
       match mine.first() {
         Absent => continuation_decision(prior: none)
-        Present { value: p } => belt_continuation_decision_for_progress(instance: instance, node: node, progress: p)
+        Present { value: p } => belt_continuation_decision_for_progress(instance: instance, node_id: node_id, progress: p)
       }
     }
   }
 }
 
+// THE 'ENDED' STANDING FOR ONE ATTEMPT, keyed by (node_id, attempt_key), computed from a PRE-OBSERVED ledger and
+// pane snapshot (so a pass over n claims costs ONE ledger read and ONE pane read, not n of each). The node-wide
+// observer collapses the ledger to the first row PER NODE (dispatch_attempt_ref_first_per_node), so it cannot answer
+// "has THIS attempt's lineage ended?" without a meaning fork; this reads the attempt's OWN row and routes it through
+// the SAME decision the spawn route uses (belt_continuation_decision_for_progress): one derivation, keyed. The
+// verdict is THREE-valued -- 'can't tell' is never collapsed into 'converged' (§5): the attempt's own row says
+// Ended -> LineageEnded (release); Resume / Hold-Until / Refused -> LineageNotEnded (keep); a ledger we could not
+// read, or a row we cannot find (reaped, or not this attempt's), -> LineageUnknown, which makes the claim REFUSE
+// (typed, located, countable) rather than report it converged while it silently leaks.
+// THE PURE DECISION -> STANDING PROJECTION: what the claim settlement may do given one attempt's OWN continuation
+// decision. Split out so the mapping is testable in isolation (belt_actuate_witness drives every ContinuationDecision
+// arm) and lives in exactly one place (§3). ENDED => the claim may be released/closed; NOT ENDED => keep it; UNKNOWN
+// => refuse it, countably -- a 'can't tell' never reports converged (§5).
+//   ENDED:     ContinuationEnded (the lineage ended); ContinuationComplete (verified green, reviewed and audited,
+//              "nothing spawns" -- definitively finished); ContinuationSpawnFresh (this attempt is abandoned for a
+//              fresh dispatch -- its lineage is not continuing). NONE is reachable for a live request-pending
+//              lineage, which decides Hold / HoldUntil / Resume, so releasing on these never touches a pending
+//              attempt's tree (review 88212: these were silently kept, leaking a finished attempt's worktree).
+//   NOT ENDED: ContinuationHold / ContinuationHoldUntil (awaiting the belt, an armed wake, or an operator) and
+//              ContinuationResume (recovery-needed and resumable) -- all still open; keep the claim.
+//   UNKNOWN:   ContinuationRefused -- the decision could not be made (unobservable ledger, unreadable retire record,
+//              or a damaged segment record only the operator may decide). 'Can't tell' REFUSES; never kept as if it
+//              converged, never released.
+fn belt_lineage_standing_of_decision(decision: ContinuationDecision) -> LineageStanding {
+  match decision {
+    ContinuationEnded { reason: _ } => LineageEnded
+    ContinuationComplete { reason: _ } => LineageEnded
+    ContinuationSpawnFresh { reason: _ } => LineageEnded
+    ContinuationRefused { reason } => LineageUnknown { detail: join(["the continuation could not decide: ", reason], "") }
+    ContinuationHold { reason: _ } => LineageNotEnded
+    ContinuationHoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => LineageNotEnded
+    ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageNotEnded
+  }
+}
+
+fn belt_lineage_standing(
+  instance: HostDashboardInstance,
+  ledger: BeltAttempts,
+  panes: BeltAttemptPanes,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> LineageStanding {
+  match ledger {
+    AttemptsRefused { reason } => LineageUnknown { detail: join(["the prior-attempt ledger could not be read: ", reason], "") }
+    AttemptsObserved { attempts } =>
+      match (attempts |> filter(a => a.node_id as String == node_id as String && a.attempt_key == attempt_key)).first() {
+        // A SUCCESSFULLY-READ ledger with no row for this attempt is the reaped, finished case ONLY when the
+        // attempt's OWN recovery stream (tree-independent, owned by harness_session_recovery) does not name a
+        // request-pending lineage (review 88499: 'a live pending lineage always carries its row' was inferred, not
+        // checked). The stream is the typed fact: a pending lineage with no row is UNKNOWN and REFUSES (never
+        // releases its tree); only a lineage the stream says is not pending is Ended, restoring the pre-settlement
+        // behaviour where an ended worker closed its own claim.
+        Absent =>
+          match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
+            ResumabilityNotRequestPending => LineageEnded
+            ResumabilityResumable => LineageUnknown { detail: "the attempt has no ledger row but its recovery stream is a resumable request-pending lineage: its tree is not released" }
+            ResumabilityRequestPendingNotResumable => LineageUnknown { detail: "the attempt has no ledger row but its recovery stream is a request-pending lineage: its tree is not released" }
+            ResumabilityRequestPendingInterrupted { interrupted_calls: _ } => LineageUnknown { detail: "the attempt has no ledger row but its recovery stream is a request-pending lineage with an interrupted call: its tree is not released" }
+            ResumabilityMalformed { mismatch } => LineageUnknown { detail: join(["the attempt has no ledger row and its recovery stream is malformed: ", mismatch], "") }
+          }
+        Present { value: a } =>
+          belt_lineage_standing_of_decision(
+            belt_continuation_decision_for_progress(
+              instance: instance,
+              node_id: node_id,
+              progress: belt_workflow_progress_for_attempt_ref(instance: instance, panes: panes, attempt: a),
+            ),
+          )
+      }
+  }
+}
+
 // THE DECISION OVER ONE ATTEMPT'S OWN FACTS, built from one progress row.
-fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node: RoadmapNode, progress: WorkflowAttemptProgress) -> ContinuationDecision {
-  let prior = Present { value: belt_prior_attempt_facts(instance: instance, node_id: node.node, progress: progress) }
-  match lineage_retire_read_for_instance(instance: instance, node_id: node.node, attempt_key: progress.attempt_key) {
+fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node_id: RoadmapNodeId, progress: WorkflowAttemptProgress) -> ContinuationDecision {
+  let prior = Present { value: belt_prior_attempt_facts(instance: instance, node_id: node_id, progress: progress) }
+  match lineage_retire_read_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key) {
     LineageRetireAbsent => continuation_decision_with_retirement(prior: prior, retire: none)
     LineageRetireFound { record } => continuation_decision_with_retirement(prior: prior, retire: Present { value: record })
     LineageRetireUnreadable { reason } =>

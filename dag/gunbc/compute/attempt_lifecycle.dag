@@ -425,7 +425,7 @@ fn attempt_commit_bytes(
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open_payload"),
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_advance_payload"),
-    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_reopen_settled"),
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_reopen_settled_payload"),
   ]
 {
   match admit_cas_attempt(attempt: cas_attempt(
@@ -620,13 +620,18 @@ fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
 // running worker is never displaced by a resume, and the caller's RED and SAFETY cases depend on it.
 // Whether the seat was actually RETURNED (release-settled) is NOT this fold's fact to see: the seat
 // ledger lives in the placement layer, which adjudicates it and alone calls here. See the module law.
-fn attempt_reopen_settled(
+fn attempt_reopen_settled_payload<P>(
   root: NonEmptyStr,
   reference: NonEmptyStr,
   expected: CasGeneration,
-  record: AttemptRecord,
-) -> AttemptTransition {
-  let codec = attempt_record_codec()
+  record: P,
+  codec: AttemptPayloadCodec<P>,
+) -> AttemptTransition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_reopen_settled"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_reopen_settled"),
+  ]
+{
   let reserved = codec.with_state(record, AttemptReserved)
   let declared = codec.launch_deadline(reserved) - codec.opened_at(reserved)
   if declared > compute_pre_launch_ceiling_seconds {
@@ -676,6 +681,20 @@ fn attempt_reopen_settled(
         }
     }
   }
+}
+
+fn attempt_reopen_settled(
+  root: NonEmptyStr,
+  reference: NonEmptyStr,
+  expected: CasGeneration,
+  record: AttemptRecord,
+) -> AttemptTransition {
+  attempt_reopen_settled_payload(
+    root: root,
+    reference: reference,
+    expected: expected,
+    record: record,
+    codec: attempt_record_codec())
 }
 
 // THE LAUNCH GATE. Called BEFORE the reader is admitted, never after. It reads the current slot,

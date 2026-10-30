@@ -427,6 +427,41 @@ type SessionRecovery
   | SessionRecoveryRequestPending { cause: String, since: EpochSecs, re_deliveries: Int, wakes_made: Int, last_delivery_at: EpochSecs, resumable: Bool, interrupted_calls: List<String>, resume_round: Int }
   | SessionRecoveryMalformed { mismatch: String }
 
+// THE TYPED RESUMABILITY READING (review 88393: a Bool flattened not-pending, malformed and interrupted into one
+// false). Each case the restore must tell apart is its own arm, so no consumer re-reads the recovery to recover them.
+type SessionResumability
+  = ResumabilityResumable
+  | ResumabilityRequestPendingNotResumable
+  | ResumabilityRequestPendingInterrupted { interrupted_calls: List<String> }
+  | ResumabilityMalformed { mismatch: String }
+  | ResumabilityNotRequestPending
+
+// THE CANONICAL 'THIS RECOVERY IS A REQUEST-PENDING LINEAGE THAT CAN BE RESUMED', projected from the ONE
+// recovery reading (gunbc.roadmap.roadmap_belt_actuate's belt_prior_attempt_recovery reads the attempt-state
+// event stream and hands it to session_recovery_of_events; this is the single interpretation of the one fact
+// 'is the standing request pending and resumable'). The belt's worktree restore gates on THIS, and NOT on the
+// continuation's ENDING standing: a reclaimed worktree makes the continuation Refused (its capture cannot be
+// read), and gating the restore on that Refused standing would cycle -- missing tree => Refused => unknown =>
+// restore refuses => tree stays missing. ENDEDNESS (read by the claim release via belt_lineage_standing) and
+// RESUMABILITY (read here) are DIFFERENT facts, each derived in exactly one place (DESIGN §3: a fact lives in
+// exactly one place). A request-pending lineage with an interrupted tool call is NOT resumable -- its effects
+// are not established, so it is not a restore candidate either: the decision Holds on it and the tree is left.
+fn session_recovery_resumability(recovery: SessionRecovery) -> SessionResumability {
+  match recovery {
+    SessionRecoveryRequestPending { cause: _, since: _, re_deliveries: _, wakes_made: _, last_delivery_at: _, resumable: resumable, interrupted_calls: interrupted_calls, resume_round: _ } =>
+      if !resumable {
+        ResumabilityRequestPendingNotResumable
+      } else if list_length(items: interrupted_calls) > 0 {
+        ResumabilityRequestPendingInterrupted { interrupted_calls: interrupted_calls }
+      } else {
+        ResumabilityResumable
+      }
+    SessionRecoveryMalformed { mismatch: mismatch } => ResumabilityMalformed { mismatch: mismatch }
+    SessionRecoveryNone => ResumabilityNotRequestPending
+    SessionRecoveryPending { causes: _, resumes_made: _, wakes_made: _, interrupted_calls: _, resume_round: _ } => ResumabilityNotRequestPending
+  }
+}
+
 type SessionRecoveryEvent
   = RecoveryEventNeeded { cause: String, round: Int, interrupted_calls: List<String> }
   | RecoveryEventRequestPending { cause: String, round: Int, interrupted_calls: List<String>, since: EpochSecs, resumable: Bool }

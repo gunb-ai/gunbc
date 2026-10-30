@@ -3529,6 +3529,102 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.attempt_worktree_claim_wet_witness", function: "a_ended_worker_with_a_ended_lineage_releases_its_tree" },
+      entry: "dag/test/claim/roadmap/attempt_worktree_claim_wet_witness.dag",
+      function: "a_ended_worker_with_a_ended_lineage_releases_its_tree",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.attempt_worktree_claim_wet_witness", function: "a_ended_worker_with_a_lineage_still_open_keeps_its_tree" },
+      entry: "dag/test/claim/roadmap/attempt_worktree_claim_wet_witness.dag",
+      function: "a_ended_worker_with_a_lineage_still_open_keeps_its_tree",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.attempt_worktree_claim_wet_witness", function: "an_ended_worker_with_a_ended_lineage_closes_the_record_when_the_tree_is_gone" },
+      entry: "dag/test/claim/roadmap/attempt_worktree_claim_wet_witness.dag",
+      function: "an_ended_worker_with_a_ended_lineage_closes_the_record_when_the_tree_is_gone",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.attempt_worktree_claim_wet_witness", function: "an_ended_worker_with_a_lineage_still_open_keeps_the_record_open_when_the_tree_is_gone" },
+      entry: "dag/test/claim/roadmap/attempt_worktree_claim_wet_witness.dag",
+      function: "an_ended_worker_with_a_lineage_still_open_keeps_the_record_open_when_the_tree_is_gone",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.attempt_worktree_claim_wet_witness", function: "an_unknown_lineage_standing_refuses_never_reports_converged" },
+      entry: "dag/test/claim/roadmap/attempt_worktree_claim_wet_witness.dag",
+      function: "an_unknown_lineage_standing_refuses_never_reports_converged",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.attempt_worktree_claim_wet_witness", function: "a_reclaimed_claim_reopens_on_the_same_slot_at_the_next_generation" },
+      entry: "dag/test/claim/roadmap/attempt_worktree_claim_wet_witness.dag",
+      function: "a_reclaimed_claim_reopens_on_the_same_slot_at_the_next_generation",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.attempt_worktree_claim_wet_witness", function: "the_fold_reaches_an_ended_worker_and_honours_the_lineage_standing" },
+      entry: "dag/test/claim/roadmap/attempt_worktree_claim_wet_witness.dag",
+      function: "the_fold_reaches_an_ended_worker_and_honours_the_lineage_standing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.attempt_worktree_claim_wet_witness", function: "two_siblings_are_fated_by_their_own_lineage_standings" },
+      entry: "dag/test/claim/roadmap/attempt_worktree_claim_wet_witness.dag",
+      function: "two_siblings_are_fated_by_their_own_lineage_standings",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_worktree_restore_wet_witness", function: "the_ledger_row_for_the_dispatch_branch_is_observed" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_worktree_restore_wet_witness.dag",
+      function: "the_ledger_row_for_the_dispatch_branch_is_observed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_worktree_restore_wet_witness", function: "the_gate_reads_the_seeded_lineage_as_resumable" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_worktree_restore_wet_witness.dag",
+      function: "the_gate_reads_the_seeded_lineage_as_resumable",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_worktree_restore_wet_witness", function: "the_worktree_is_absent_before_the_restore" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_worktree_restore_wet_witness.dag",
+      function: "the_worktree_is_absent_before_the_restore",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_worktree_restore_wet_witness", function: "the_restore_returns_the_restored_arm" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_worktree_restore_wet_witness.dag",
+      function: "the_restore_returns_the_restored_arm",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_worktree_restore_wet_witness", function: "the_restored_worktree_exists_after_the_restore" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_worktree_restore_wet_witness.dag",
+      function: "the_restored_worktree_exists_after_the_restore",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_worktree_restore_wet_witness", function: "the_restored_head_equals_the_branch_head" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_worktree_restore_wet_witness.dag",
+      function: "the_restored_head_equals_the_branch_head",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_worktree_restore_wet_witness", function: "an_already_present_tree_is_not_needed" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_worktree_restore_wet_witness.dag",
+      function: "an_already_present_tree_is_not_needed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_worktree_restore_wet_witness", function: "a_lineage_without_a_request_pending_stream_is_not_needed" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_worktree_restore_wet_witness.dag",
+      function: "a_lineage_without_a_request_pending_stream_is_not_needed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.belt_capture_intent_wet_witness", function: "a_kill_after_the_scm_save_does_not_double_capture" },
       entry: "dag/test/claim/roadmap/belt_capture_intent_wet_witness.dag",
       function: "a_kill_after_the_scm_save_does_not_double_capture",
