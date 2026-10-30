@@ -1,0 +1,69 @@
+module gunbc.live_deploy.capacity_recovery_drain
+
+import std.types { String, Int, Timestamp }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import gunbc.compute.capacity_migration { CapacityMigrationAdmission }
+import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest }
+import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyPorts, capacity_migration_apply }
+import gunbc.live_deploy.capacity_recovery_program { CapacityRecoveryProgram, capacity_recovery_leg_admit }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryRecheckDrain }
+import gunbc.live_deploy.capacity_retained_plan { capacity_retained_plan_read, capacity_retained_plan_result }
+import gunbc.live_deploy.capacity_recovery_inhibition { CapacityRecoveryBoundaryFault, CapacityRecoveryBoundaryRefused, CapacityRecoveryControllerHoldRefused }
+import gunbc.live_deploy.capacity_controller_hold { capacity_controller_hold_read }
+
+// Fresh recovery consent, never the original apply grant. The ordinal selects
+// the immutable retained drain; no caller-supplied request or roster can replace
+// it. Continuity is re-read for an exempt controller before entering the drain.
+fn capacity_recovery_drain_admit(program: CapacityRecoveryProgram, ordinal: Int,
+  at: Timestamp) -> Result<CapacityMigrationApplyRequest, CapacityRecoveryBoundaryFault> {
+  let leg = match capacity_recovery_leg_admit(program: program, ordinal: ordinal, at: at) {
+    Err { value: why } => { return Err { value: CapacityRecoveryBoundaryRefused { cause: why } } } Ok { value: value } => value
+  }
+  match leg {
+    CapacityRecoveryRecheckDrain { request: request, controller_slot: slot } => {
+      match slot {
+        Absent => {}
+        Present { value: unit } => {
+          let plan = program.record.plan
+          let intent = match capacity_retained_plan_result(finding: capacity_retained_plan_read(envelope: plan.envelope,
+            digest: plan.digest, approved_digest: plan.approved_digest)) {
+            Err { value: why } => { return Err { value: CapacityRecoveryBoundaryRefused { cause: why } } } Ok { value: value } => value
+          }
+          let subject = program.authorization.recovery.subject
+          match capacity_controller_hold_read(slot: unit, retained: intent.controller_hold, journal_root: subject.journal_root,
+            journal_key: subject.journal_key, attempt: program.record.attempt) {
+            Err { value: why } => { return Err { value: CapacityRecoveryControllerHoldRefused { refusal: why } } } Ok { value: _ } => {}
+          }
+        }
+      }
+      Ok { value: request }
+    }
+    _ => Err { value: CapacityRecoveryBoundaryRefused { cause: "recovery ordinal does not select its retained drain" } }
+  }
+}
+
+// Consumer frontier: the locked root controller's RecheckDrain arm invokes this
+// adapter. Its lifecycle transport is the existing apply port. This binds the
+// drain algorithm, not the still-unrealized root invocation/journal progression.
+fn capacity_recovery_drain_run(program: CapacityRecoveryProgram, ordinal: Int,
+  ports: CapacityMigrationApplyPorts, now: fn() -> Result<Timestamp, String>) -> Result<CapacityMigrationAdmission, CapacityRecoveryBoundaryFault> {
+  let at = match now() { Err { value: why } => { return Err { value: CapacityRecoveryBoundaryRefused { cause: why } } } Ok { value: value } => value }
+  let request = match capacity_recovery_drain_admit(program: program, ordinal: ordinal, at: at) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  match capacity_migration_apply(request: request, ports: CapacityMigrationApplyPorts {
+    self_cgroup: ports.self_cgroup, parent_cgroup: ports.parent_cgroup,
+    run: step => {
+      let instant = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+      match capacity_recovery_leg_admit(program: program, ordinal: ordinal, at: instant) {
+        Err { value: why } => Err { value: why }
+        Ok { value: _ } => ports.run(step)
+      }
+    },
+    descendants: ports.descendants, list_matches: ports.list_matches, child: ports.child,
+  }) {
+    Err { value: why } => Err { value: CapacityRecoveryBoundaryRefused { cause: why } }
+    Ok { value: value } => Ok { value: value }
+  }
+}
