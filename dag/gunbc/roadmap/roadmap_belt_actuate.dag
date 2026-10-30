@@ -6688,7 +6688,7 @@ fn belt_workflow_attempt_evidence_for_key(
         instance: instance,
         worktree: worktree,
         node_id: node_id,
-attempt_key: current_key,
+        attempt_key: current_key,
         head_sha: revision as String,
       )
   }
