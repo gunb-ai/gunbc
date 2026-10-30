@@ -11275,7 +11275,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         source_indices: si,
         module_name: scope.module_name
       )
-      let cast_sole_ctor_diags = sole_constructor_construction_diags(type_name: target_name, span: span, scope: scope)
+      let cast_sole_ctor_diags = sole_constructor_construction_diags(type_name: target_name, owner_hint: none, span: span, scope: scope)
       let cast_non_text_diags = non_text_kernel_cast_into_text_diags(source_reading: source_reading, source_inferred: inner_typed.inferred, target_type: target_type, span: span, scope: scope)
       let cast_refinement_diags = where_refinement_mismatch_diags(
         formal: target_type,
@@ -11956,9 +11956,32 @@ fn record_lit_expansion_declares_union(decl: Node, scope: InferScope) -> Node? {
   if expanded.connective == Disj { Present { value: expanded } } else { none }
 }
 
+// The declaration that SEALS `type_name`: the type itself, or for a variant arm the coproduct that
+// owns it. The modifier sits on the coproduct node, never on its arms, so keying on the constructed
+// name alone silently dropped it for every sum type.
+fn sealing_declaration_of(type_name: String, owner_hint: Node?, scope: InferScope) -> Node? {
+  let own = match lookup_type_by_name(env: scope.type_env, name: type_name) {
+    Present { value: decl } => if decl.properties |> any(p => p.name == "sole_constructor") { Present { value: decl } } else { Absent }
+    Absent => Absent
+  }
+  match own {
+    Present { value: decl } => Present { value: decl }
+    Absent =>
+      match owner_hint {
+        Present { value: owner } =>
+          if owner.connective == Disj && owner.properties |> any(p => p.name == "sole_constructor") { Present { value: owner } } else { Absent }
+        Absent =>
+          match variant_owner_node(scope: scope, name: type_name) {
+            Present { value: owner } => if owner.properties |> any(p => p.name == "sole_constructor") { Present { value: owner } } else { Absent }
+            Absent => Absent
+          }
+      }
+  }
+}
+
 fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
-  match lookup_type_by_name(env: scope.type_env, name: type_name) {
-    Present { value: decl } => decl.properties |> any(p => p.name == "sole_constructor")
+  match sealing_declaration_of(type_name: type_name, owner_hint: none, scope: scope) {
+    Present { value: _ } => true
     Absent => false
   }
 }
@@ -11979,20 +12002,19 @@ fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
 // sealed type's own module keeps every construction form and no other module gets any of them.
 fn sole_constructor_construction_diags(
   type_name: String,
+  owner_hint: Node?,
   span: SourceSpan,
   scope: InferScope
 ) -> List<ErrorNode> {
-  if type_has_sole_constructor(type_name: type_name, scope: scope) {
-    match lookup_type_by_name(env: scope.type_env, name: type_name) {
-      Present { value: decl } =>
-        if decl.span.file == span.file {
-          []
-        } else {
-          [make_error_node(diagnostic: SoleConstructorViolation { type_name: type_name, span: span }, module_name: scope.module_name)]
-        }
-      Absent => []
-    }
-  } else { [] }
+  match sealing_declaration_of(type_name: type_name, owner_hint: owner_hint, scope: scope) {
+    Present { value: decl } =>
+      if decl.span.file == span.file {
+        []
+      } else {
+        [make_error_node(diagnostic: SoleConstructorViolation { type_name: type_name, span: span }, module_name: scope.module_name)]
+      }
+    Absent => []
+  }
 }
 
 // THE ENUMERATED PAYLOAD-ARM WAIVER (gunbc.rung_drop payload_arm_tag_reference_hollow_value; replaces the
@@ -13009,7 +13031,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         module_name: scope.module_name
       )]
     }
-    let sole_ctor_diags = sole_constructor_construction_diags(type_name: type_name.value, span: span, scope: scope)
+    let sole_ctor_diags = sole_constructor_construction_diags(type_name: type_name.value, owner_hint: Present { value: raw_resolved }, span: span, scope: scope)
     let typed_field_nodes2 = typed_fields
     let rl_name = match type_name { Present { value: tn_val } => tn_val  Absent => "" }
     let texpr = make_named_expr_node(occurrence_identity: occurrence_identity,

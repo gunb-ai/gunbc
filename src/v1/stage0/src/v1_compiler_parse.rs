@@ -6008,6 +6008,12 @@ pub fn parse_type_body_after_eq(
                         to: rest.tokens.clone(),
                     }),
                 );
+                let sole_coproduct = parsed_sole_constructor_properties(
+                    minted.ctx.clone(),
+                    is_sole_constructor.clone(),
+                    start_span.clone(),
+                    sole_at.clone(),
+                );
                 let item = Rc::new(Node {
                     occurrence_identity: minted.identity.clone(),
                     name: name.clone(),
@@ -6021,7 +6027,7 @@ pub fn parse_type_body_after_eq(
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
-                    properties: Rc::new(vec![]),
+                    properties: sole_coproduct.properties.clone(),
                     type_annotation: std::option::Option::None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
@@ -6035,7 +6041,7 @@ pub fn parse_type_body_after_eq(
                 Rc::new(ItemResult {
                     item: item.clone(),
                     tokens: skip_newlines(rest.tokens.clone()),
-                    ctx: minted.ctx.clone(),
+                    ctx: sole_coproduct.ctx.clone(),
                     err: std::option::Option::None,
                 })
             }
@@ -6105,6 +6111,12 @@ pub fn parse_type_body_after_eq(
                                         to: rest.tokens.clone(),
                                     }),
                                 );
+                                let sole_coproduct = parsed_sole_constructor_properties(
+                                    minted.ctx.clone(),
+                                    is_sole_constructor.clone(),
+                                    start_span.clone(),
+                                    sole_at.clone(),
+                                );
                                 let item = Rc::new(Node {
                                     occurrence_identity: minted.identity.clone(),
                                     name: name.clone(),
@@ -6118,7 +6130,7 @@ pub fn parse_type_body_after_eq(
                                     uses: Rc::new(vec![]),
                                     body: std::option::Option::None,
                                     transport: std::option::Option::None,
-                                    properties: Rc::new(vec![]),
+                                    properties: sole_coproduct.properties.clone(),
                                     type_annotation: std::option::Option::None,
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
@@ -6133,7 +6145,7 @@ pub fn parse_type_body_after_eq(
                                 Rc::new(ItemResult {
                                     item: item.clone(),
                                     tokens: skip_newlines(rest.tokens.clone()),
-                                    ctx: minted.ctx.clone(),
+                                    ctx: sole_coproduct.ctx.clone(),
                                     err: std::option::Option::None,
                                 })
                             }
