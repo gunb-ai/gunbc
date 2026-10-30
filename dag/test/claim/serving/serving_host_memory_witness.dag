@@ -17,8 +17,6 @@ import gunbc.serving.serving_host_memory {
   serving_host_memory_verdict, serving_engine_cache_allowance, engine_warm_sessions, conversation_snapshot_bytes,
   strata_iq3_s_snapshot_cost, host_6ce85c_serving_memory_observed, host_6ce85c_engine_as_launched,
   srv1_vllm_engine_memory, srv3_strata_engine_memory, srv4_serving_engine_memory, serving_engine_missing,
-  ServingLayoutInputs, ServingLayoutDerivation, ServingLayoutDerived, ServingLayoutNoRoom, ServingLayoutInputsUnread,
-  serving_layout_derive, host_6ce85c_layout, host_6ce85c_layout_inputs,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -162,35 +160,4 @@ test fn witness_shared_host_rows_name_their_unread_figures() -> Bool {
     && serving_engine_missing(e: srv3_strata_engine_memory).length() == 3
     && serving_engine_missing(e: srv4_serving_engine_memory).length() == 4
     && is_absent_count(x: engine_warm_sessions(e: srv4_serving_engine_memory, cost: strata_iq3_s_snapshot_cost, context: token_count(count: 80000)))
-}
-
-fn layout_with(i: ServingLayoutInputs, base: ServingMemoryReading) -> ServingLayoutInputs {
-  ServingLayoutInputs {
-    host: i.host, usable_ram: i.usable_ram, overhead: i.overhead, shared_resident: i.shared_resident,
-    engine_names: i.engine_names, engine_base: base, request_margin: i.request_margin, swap_bound: i.swap_bound,
-    snapshot: i.snapshot, design_context: i.design_context,
-  }
-}
-
-// THE DERIVED h11 LAYOUT FITS, AND KEEPS AT LEAST THREE 80K SESSIONS WARM PER ENGINE: the layout the serving
-// units are launched with is the one this derivation returns, checked by the same verdict that refuses
-// today's layout.
-test fn witness_derived_h11_layout_fits_and_keeps_three_warm() -> Bool {
-  match host_6ce85c_layout {
-    ServingLayoutDerived { layout: l, per_engine_cap: cap, cache_per_engine: cache, warm_per_engine: warm } =>
-      is_fits(v: serving_host_memory_verdict(h: l))
-        && warm >= 3
-        && l.engines.length() == 6
-        && byte_size_count(b: cache) < byte_size_count(b: cap)
-        && (byte_size_count(b: cap) / 1048576) * 1048576 == byte_size_count(b: cap) && (byte_size_count(b: cache) / 1048576) * 1048576 == byte_size_count(b: cache)
-    _ => false
-  }
-}
-
-// THE DERIVATION REFUSES RATHER THAN GUESS: an unread base is named, and a base that leaves no cache is no room.
-test fn witness_layout_derivation_refuses_unread_and_impossible_inputs() -> Bool {
-  let unread = serving_layout_derive(i: layout_with(i: host_6ce85c_layout_inputs, base: ServingMemoryUnread { reason: "base unread" as NonEmptyStr }))
-  let huge = serving_layout_derive(i: layout_with(i: host_6ce85c_layout_inputs, base: shm_read(b: shm_gib(n: 10))))
-  (match unread { ServingLayoutInputsUnread { missing: m } => m.length() == 1  _ => false })
-    && (match huge { ServingLayoutNoRoom { engines: n } => n == 6  _ => false })
 }

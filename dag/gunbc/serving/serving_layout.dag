@@ -1,0 +1,460 @@
+module gunbc.serving.serving_layout
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure { ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
+import gunbc.host.host_memory_observation {
+  HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
+  HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured,
+}
+import gunbc.serving.serving_host_memory {
+  ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread,
+  ServingEngineMemory, ServingDedicatedHostMemory, ServingMemoryVerdict, ServingMemoryFits,
+  serving_host_memory_verdict, serving_reading_bytes_or_zero, serving_reading_assumption, serving_reading_missing,
+  ConversationSnapshotCost, conversation_snapshot_bytes, strata_iq3_s_snapshot_cost, serving_engine_swap_bound,
+  host_6ce85c_serving_memory_observed,
+}
+
+// HOW A SERVING HOST IS LAID OUT, DERIVED FROM WHAT IT HAS, HOW ITS DEVICES ARE GROUPED, AND WHAT THE ENGINE
+// NEEDS, AGAINST A REQUIREMENT. Three inputs that answer different questions and change for different reasons:
+//
+//   the GRANT     what the host has: usable RAM, the host's own overhead, artifacts resident once and shared
+//                 by every replica (each with the owner that keeps it resident), the swap bound, the devices;
+//   the TOPOLOGY  which devices serve together: one replica (one engine process) per group;
+//   the BACKEND   what one replica of this engine and model needs: per device, per process, per active
+//                 request, per retained conversation, and the largest group it can still retain on.
+//
+// THE REQUIREMENT IS A CEILING, NOT A GUESS. Every conversation a replica admits must stay retainable until it
+// reaches the maximum context, so admission is sized by the snapshot of a maximum-length conversation. How
+// long conversations usually are is a performance question (which topology, how many sessions to place), and
+// it is not an input here.
+//
+// THE RESULT IS A CONFIGURATION AND THREE SEPARATE STANDINGS: whether the budget fits under the assumptions
+// it names, whether the backend supports this topology, and whether this exact configuration has been
+// qualified live. They are different facts, and one is never read as another.
+//
+// UNAVOIDABLE DUPLICATION, named because each costs memory the operator might expect to share. Independent
+// replicas each hold their own dense weights and expert cache in their own device's VRAM (a device serves only
+// the replica it belongs to); each process holds its own base, including the pinned host copy of its
+// max-context KV (Strata: "KV streaming ... the K/V in 1.48 GiB of pinned RAM" per engine on h11), because a
+// replica's attention cache is its own. What is NOT duplicated is the routed-expert file: one locked
+// page-cache copy, owned by the host's strata-expert-lock service and mapped by every replica, counted once.
+
+// ---- THE GRANT
+
+type ServingDevice {
+  device: NonEmptyStr
+  board: DeclarationRef
+  vram: ServingMemoryReading
+}
+
+type ServingSharedArtifact {
+  name: NonEmptyStr
+  bytes: ByteSize
+  owner: NonEmptyStr
+}
+
+type ServingResourceGrant {
+  host: HostIdentity
+  usable_ram: HostUsableRam
+  overhead: HostFixedOverhead
+  shared: List<ServingSharedArtifact>
+  swap_bound: ByteSize
+  devices: List<ServingDevice>
+}
+
+// ---- THE TOPOLOGY: one replica per group; a group of two or more devices is one replica across them.
+
+type ServingDeviceGroup {
+  name: NonEmptyStr
+  devices: List<NonEmptyStr>
+}
+
+// ---- THE BACKEND PROFILE
+
+type ServingBackendProfile {
+  backend: NonEmptyStr
+  // VRAM a device needs before its elastic expert cache, and the least expert cache the engine runs with.
+  device_fixed_vram: ServingMemoryReading
+  device_min_elastic_vram: ServingMemoryReading
+  // Host RAM one replica process holds loaded and idle, with nothing retained.
+  replica_base_ram: ServingMemoryReading
+  // Requests a replica serves at once, and the host RAM each needs above the base (including the transient
+  // peak of capturing or restoring a conversation snapshot).
+  active_slots: Nat
+  active_slot_ram: ServingMemoryReading
+  // What one retained conversation costs as a function of its context.
+  retention: ConversationSnapshotCost
+  // The most devices a replica may span and still retain conversations.
+  max_devices_with_retention: Nat
+  // The longest context a replica is launched to serve.
+  max_context: TokenCount
+}
+
+type ServingRequirement {
+  max_context: TokenCount
+  min_retained_per_replica: Nat
+}
+
+// ---- THE RESULT
+
+type ServingReplicaConfig {
+  group: NonEmptyStr
+  devices: List<NonEmptyStr>
+  memory_max: ByteSize
+  swap_max: ByteSize
+  retention_budget: ByteSize
+  admitted_conversations: Nat
+  active_slots: Nat
+  max_context: TokenCount
+}
+
+type ServingBackendSupport
+  = ServingBackendSupportsTopology
+  | ServingBackendRefusesTopology { group: NonEmptyStr, reason: NonEmptyStr }
+
+// A live qualification is a receipt bound to the configuration it was taken on. Any change to an input that
+// changes the derived configuration leaves the receipt describing a configuration that no longer exists.
+type ServingLiveQualification
+  = ServingLiveUnqualified { obligation: NonEmptyStr }
+  | ServingLiveQualified { receipt: NonEmptyStr, configuration: String }
+
+type ServingLiveStanding
+  = ServingLiveStandingUnqualified { obligation: NonEmptyStr }
+  | ServingLiveStandingQualified { receipt: NonEmptyStr }
+  | ServingLiveRequalificationRequired { qualified: String, derived: String }
+
+type ServingLayoutEvidence {
+  budget: ServingMemoryVerdict
+  assumptions: List<NonEmptyStr>
+  backend: ServingBackendSupport
+  live: ServingLiveStanding
+}
+
+type ServingLayoutRefusal
+  = ServingLayoutInputsUnread { missing: List<NonEmptyStr> }
+  | ServingLayoutNoGroups
+  | ServingLayoutUnknownDevice { group: NonEmptyStr, device: NonEmptyStr }
+  | ServingLayoutDeviceInTwoGroups { device: NonEmptyStr }
+  | ServingLayoutEmptyGroup { group: NonEmptyStr }
+  | ServingLayoutContextAboveBackend { required: TokenCount, backend: TokenCount }
+  | ServingLayoutBackendCannotRetain { group: NonEmptyStr, devices: Nat, most: Nat }
+  | ServingLayoutDeviceTooSmall { device: NonEmptyStr, needed: ByteSize, has: ByteSize }
+  | ServingLayoutRamShort { needed: ByteSize, available: ByteSize }
+
+type ServingLayoutResult
+  = ServingLayoutConfigured { replicas: List<ServingReplicaConfig>, unallocated_ram: ByteSize, evidence: ServingLayoutEvidence }
+  | ServingLayoutRefused { refusal: ServingLayoutRefusal }
+
+// ---- THE DERIVATION
+
+fn serving_mib_ceil(b: Nat) -> ByteSize {
+  byte_size(count: ((b + 1048575) / 1048576) * 1048576)
+}
+
+fn serving_bytes_sum(xs: List<ByteSize>) -> Nat {
+  fold(xs, init: 0, f: (acc, x) => acc + byte_size_count(b: x))
+}
+
+fn serving_grant_ram(g: ServingResourceGrant) -> Nat {
+  match g.usable_ram {
+    HostUsableRamMeasured { bytes: b, provenance: _ } => byte_size_count(b: b)
+    HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b)
+    HostUsableRamUnmeasured { reason: _ } => 0
+  }
+}
+
+fn serving_grant_overhead(g: ServingResourceGrant) -> Nat {
+  match g.overhead {
+    HostFixedOverheadMeasured { bytes: b, provenance: _ } => byte_size_count(b: b)
+    HostFixedOverheadAllowance { bytes: b, reason: _ } => byte_size_count(b: b)
+    HostFixedOverheadUnmeasured { reason: _ } => 0
+  }
+}
+
+fn serving_layout_missing(g: ServingResourceGrant, b: ServingBackendProfile) -> List<NonEmptyStr> {
+  let ram = match g.usable_ram {
+    HostUsableRamUnmeasured { reason: r } => [r]
+    _ => [] as List<NonEmptyStr>
+  }
+  let overhead = match g.overhead {
+    HostFixedOverheadUnmeasured { reason: r } => [r]
+    _ => [] as List<NonEmptyStr>
+  }
+  let backend_figures = concat(serving_reading_missing(r: b.device_fixed_vram), concat(serving_reading_missing(r: b.device_min_elastic_vram),
+    concat(serving_reading_missing(r: b.replica_base_ram), serving_reading_missing(r: b.active_slot_ram))))
+  concat(ram, concat(overhead, concat(backend_figures, flat_map(g.devices, d => serving_reading_missing(r: d.vram)))))
+}
+
+fn serving_layout_assumptions(g: ServingResourceGrant, b: ServingBackendProfile) -> List<NonEmptyStr> {
+  let overhead = match g.overhead {
+    HostFixedOverheadAllowance { bytes: _, reason: r } => [r]
+    _ => [] as List<NonEmptyStr>
+  }
+  let backend_figures = concat(serving_reading_assumption(r: b.device_fixed_vram), concat(serving_reading_assumption(r: b.device_min_elastic_vram),
+    concat(serving_reading_assumption(r: b.replica_base_ram), serving_reading_assumption(r: b.active_slot_ram))))
+  concat(overhead, concat(backend_figures, flat_map(g.devices, d => serving_reading_assumption(r: d.vram))))
+}
+
+fn serving_device_named(g: ServingResourceGrant, name: NonEmptyStr) -> ServingDevice? {
+  fold(g.devices, init: Absent, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if d.device == name { Present { value: d } } else { Absent }
+  })
+}
+
+fn serving_group_count_with(groups: List<ServingDeviceGroup>, device: NonEmptyStr) -> Nat {
+  fold(groups, init: 0, f: (acc, gr) => acc + filter(gr.devices, d => d == device).length())
+}
+
+// The first structural fault in the topology, in a fixed order: no groups, an empty group, a device the grant
+// does not have, a device in two groups. Absent when the topology is a partition of granted devices.
+fn serving_topology_fault(g: ServingResourceGrant, groups: List<ServingDeviceGroup>) -> ServingLayoutRefusal? {
+  if groups.length() == 0 { Present { value: ServingLayoutNoGroups } } else {
+    fold(groups, init: Absent, f: (acc, gr) => match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if gr.devices.length() == 0 { Present { value: ServingLayoutEmptyGroup { group: gr.name } } } else {
+          fold(gr.devices, init: Absent, f: (inner, d) => match inner {
+            Present { value: v } => Present { value: v }
+            Absent => match serving_device_named(g: g, name: d) {
+              Absent => Present { value: ServingLayoutUnknownDevice { group: gr.name, device: d } }
+              Present { value: _ } => if serving_group_count_with(groups: groups, device: d) > 1 { Present { value: ServingLayoutDeviceInTwoGroups { device: d } } } else { Absent }
+            }
+          })
+        }
+    })
+  }
+}
+
+// Per-device fit: every device must hold the backend's fixed VRAM plus the least elastic expert cache.
+fn serving_device_fault(g: ServingResourceGrant, b: ServingBackendProfile) -> ServingLayoutRefusal? {
+  let need = byte_size_count(b: serving_reading_bytes_or_zero(r: b.device_fixed_vram)) + byte_size_count(b: serving_reading_bytes_or_zero(r: b.device_min_elastic_vram))
+  fold(g.devices, init: Absent, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent =>
+      if byte_size_count(b: serving_reading_bytes_or_zero(r: d.vram)) < need {
+        Present { value: ServingLayoutDeviceTooSmall { device: d.device, needed: byte_size(count: need), has: serving_reading_bytes_or_zero(r: d.vram) } }
+      } else { Absent }
+  })
+}
+
+fn serving_retention_fault(groups: List<ServingDeviceGroup>, b: ServingBackendProfile, r: ServingRequirement) -> ServingLayoutRefusal? {
+  if r.min_retained_per_replica == 0 { Absent } else {
+    fold(groups, init: Absent, f: (acc, gr) => match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if gr.devices.length() > b.max_devices_with_retention { Present { value: ServingLayoutBackendCannotRetain { group: gr.name, devices: gr.devices.length(), most: b.max_devices_with_retention } } } else { Absent }
+    })
+  }
+}
+
+// What one replica needs before it retains anything: its base and its active slots.
+fn serving_replica_fixed_ram(b: ServingBackendProfile) -> Nat {
+  byte_size_count(b: serving_reading_bytes_or_zero(r: b.replica_base_ram)) + b.active_slots * byte_size_count(b: serving_reading_bytes_or_zero(r: b.active_slot_ram))
+}
+
+fn serving_replica_config(gr: ServingDeviceGroup, b: ServingBackendProfile, r: ServingRequirement, swap: ByteSize, admitted: Nat) -> ServingReplicaConfig {
+  let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context))
+  let retention = serving_mib_ceil(b: admitted * snapshot)
+  ServingReplicaConfig {
+    group: gr.name, devices: gr.devices,
+    memory_max: serving_mib_ceil(b: serving_replica_fixed_ram(b: b) + byte_size_count(b: retention)),
+    swap_max: swap, retention_budget: retention, admitted_conversations: admitted,
+    active_slots: b.active_slots, max_context: r.max_context,
+  }
+}
+
+// The conversations replica `index` gets when `extra` are dealt one per replica in order after each has `base`.
+fn serving_dealt(index: Nat, replicas: Nat, base: Nat, extra: Nat) -> Nat {
+  let rounds = extra / replicas
+  let remainder = extra - rounds * replicas
+  if index < remainder { base + rounds + 1 } else { base + rounds }
+}
+
+// THE RAM ALLOCATION. The pool is what the host overhead and the shared artifacts leave. Every replica first
+// gets its fixed RAM and its minimum retention; what remains becomes whole additional max-context
+// conversations, dealt one per replica in group order until none fits; the rest is reported unallocated, not
+// spread. Each replica's cap is then its own need rounded up to a whole MiB.
+fn serving_allocate(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b: ServingBackendProfile, r: ServingRequirement) -> ServingLayoutResult {
+  let n = groups.length()
+  let pool_total = serving_grant_ram(g: g)
+  let reserved = serving_grant_overhead(g: g) + serving_bytes_sum(xs: map(g.shared, a => a.bytes))
+  let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context))
+  let per_replica_min = serving_replica_fixed_ram(b: b) + r.min_retained_per_replica * snapshot + 2097152
+  let needed = reserved + n * per_replica_min
+  if pool_total < needed {
+    ServingLayoutRefused { refusal: ServingLayoutRamShort { needed: byte_size(count: needed), available: byte_size(count: pool_total) } }
+  } else {
+    let extra = (pool_total - needed) / (snapshot + 1048576)
+    let configs = fold(groups, init: [] as List<ServingReplicaConfig>, f: (acc, gr) =>
+      concat(acc, [serving_replica_config(gr: gr, b: b, r: r, swap: g.swap_bound, admitted: serving_dealt(index: acc.length(), replicas: n, base: r.min_retained_per_replica, extra: extra))]))
+    let committed = reserved + serving_bytes_sum(xs: map(configs, c => c.memory_max))
+    ServingLayoutConfigured {
+      replicas: configs,
+      unallocated_ram: byte_size(count: pool_total - committed),
+      evidence: ServingLayoutEvidence {
+        budget: serving_host_memory_verdict(h: serving_layout_host_memory(g: g, b: b, configs: configs)),
+        assumptions: serving_layout_assumptions(g: g, b: b),
+        backend: ServingBackendSupportsTopology,
+        live: ServingLiveStandingUnqualified { obligation: "unqualified: no live receipt has been taken on this configuration" as NonEmptyStr },
+      },
+    }
+  }
+}
+
+// The derived configuration as the dedicated-host tree serving_host_memory already judges, so "the budget
+// fits" is the same verdict that refuses an over-committed layout, not a second arithmetic.
+fn serving_layout_host_memory(g: ServingResourceGrant, b: ServingBackendProfile, configs: List<ServingReplicaConfig>) -> ServingDedicatedHostMemory {
+  ServingDedicatedHostMemory {
+    host: g.host, usable_ram: g.usable_ram, overhead: g.overhead,
+    shared_resident: byte_size(count: serving_bytes_sum(xs: map(g.shared, a => a.bytes))),
+    swap_bound: g.swap_bound,
+    engines: map(configs, c => ServingEngineMemory {
+      name: c.group,
+      memory_cap: ServingMemoryRead { bytes: c.memory_max, provenance: "derived by gunbc.serving.serving_layout serving_layout_derive" as NonEmptyStr },
+      swap_cap: ServingMemoryRead { bytes: c.swap_max, provenance: "the grant's swap bound" as NonEmptyStr },
+      base: ServingMemoryAssumed { bytes: byte_size(count: serving_replica_fixed_ram(b: b)), reason: "base plus active-slot RAM from the backend profile" as NonEmptyStr },
+      conversation_cache: ServingMemoryRead { bytes: c.retention_budget, provenance: "derived by gunbc.serving.serving_layout serving_layout_derive" as NonEmptyStr },
+      conversation_slots: Present { value: c.admitted_conversations },
+    }),
+  }
+}
+
+// THE ARM ORDER IS THE CHECK ORDER: unread inputs, the topology's structure, the context ceiling, the
+// backend's retention limit, per-device fit, then RAM.
+fn serving_layout_derive(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b: ServingBackendProfile, r: ServingRequirement) -> ServingLayoutResult {
+  if serving_layout_missing(g: g, b: b).length() > 0 {
+    ServingLayoutRefused { refusal: ServingLayoutInputsUnread { missing: serving_layout_missing(g: g, b: b) } }
+  } else {
+    match serving_topology_fault(g: g, groups: groups) {
+      Present { value: f } => ServingLayoutRefused { refusal: f }
+      Absent =>
+        if token_count_value(t: r.max_context) > token_count_value(t: b.max_context) {
+          ServingLayoutRefused { refusal: ServingLayoutContextAboveBackend { required: r.max_context, backend: b.max_context } }
+        } else {
+          match serving_retention_fault(groups: groups, b: b, r: r) {
+            Present { value: f } => ServingLayoutRefused { refusal: f }
+            Absent => match serving_device_fault(g: g, b: b) {
+              Present { value: f } => ServingLayoutRefused { refusal: f }
+              Absent => serving_allocate(g: g, groups: groups, b: b, r: r)
+            }
+          }
+        }
+    }
+  }
+}
+
+// ---- LIVE QUALIFICATION AND REDERIVATION
+
+// The configuration's identity as a receipt can bind it: each replica's group, devices, cap, swap, retention
+// budget and admitted count. Two derivations with the same identity are the same configuration.
+fn serving_replica_identity(c: ServingReplicaConfig) -> String {
+  join([c.group as String, join(map(c.devices, d => d as String), "+"), to_string(byte_size_count(b: c.memory_max)), to_string(byte_size_count(b: c.swap_max)), to_string(byte_size_count(b: c.retention_budget)), to_string(c.admitted_conversations), to_string(c.active_slots), to_string(token_count_value(t: c.max_context))], ":")
+}
+
+fn serving_configuration_identity(replicas: List<ServingReplicaConfig>) -> String {
+  join(map(replicas, c => serving_replica_identity(c: c)), "|")
+}
+
+// A receipt qualifies the derived configuration only if it was taken on exactly this configuration. A changed
+// grant, topology, backend profile or requirement that changes the derivation leaves the old receipt naming a
+// configuration that is gone, and the standing says so rather than carrying the qualification forward.
+fn serving_layout_with_qualification(result: ServingLayoutResult, q: ServingLiveQualification) -> ServingLayoutResult {
+  match result {
+    ServingLayoutRefused { refusal: f } => ServingLayoutRefused { refusal: f }
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: u, evidence: e } =>
+      ServingLayoutConfigured { replicas: rs, unallocated_ram: u, evidence: ServingLayoutEvidence {
+        budget: e.budget, assumptions: e.assumptions, backend: e.backend,
+        live: match q {
+          ServingLiveUnqualified { obligation: o } => ServingLiveStandingUnqualified { obligation: o }
+          ServingLiveQualified { receipt: rc, configuration: c } =>
+            if c == serving_configuration_identity(replicas: rs) { ServingLiveStandingQualified { receipt: rc } } else { ServingLiveRequalificationRequired { qualified: c, derived: serving_configuration_identity(replicas: rs) } }
+        },
+      } }
+  }
+}
+
+// ---- ADMISSION: a replica admits a conversation only if every admitted conversation, this one included, can
+// still grow to the context ceiling within its retention budget. A refusal changes nothing: it never evicts.
+type ServingAdmission
+  = ServingAdmitted { now_admitted: Nat }
+  | ServingAdmissionRefused { admitted: Nat, capacity: Nat }
+
+fn serving_replica_admit(c: ServingReplicaConfig, admitted: Nat) -> ServingAdmission {
+  if admitted < c.admitted_conversations { ServingAdmitted { now_admitted: admitted + 1 } } else { ServingAdmissionRefused { admitted: admitted, capacity: c.admitted_conversations } }
+}
+
+// ---- h11 AS GRANTED, AND STRATA IQ3_S AS MEASURED ON IT
+
+fn host_6ce85c_a16_device(bus: String) -> ServingDevice {
+  ServingDevice {
+    device: ("a16-" + bus) as NonEmptyStr,
+    board: decl_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_catalog"),
+    vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 15356)), provenance: "nvidia-smi memory.total 15356 MiB, every A16 GPU on h11-a16, read 2026-10-30" as NonEmptyStr },
+  }
+}
+
+// THE GRANT. RAM and the locked expert file are the observed row's; the six devices are the six buses whose
+// engines are in service (86 and c6 are disabled). The host overhead is an ALLOWANCE until a reading with
+// every engine stopped replaces it.
+data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
+  host: operator_host_6ce85c,
+  usable_ram: host_6ce85c_serving_memory_observed.usable_ram,
+  overhead: HostFixedOverheadAllowance { bytes: gibibyte_to_byte_size(g: gibibyte(count: 6)), reason: "h11 host overhead: a 6 GiB allowance for the OS, sshd and the six server.py front ends until a reading with every engine stopped replaces it" as NonEmptyStr },
+  shared: [ServingSharedArtifact {
+    name: "Qwen3.8-Flash-Next IQ3_S routed-expert GGUF part 1" as NonEmptyStr,
+    bytes: host_6ce85c_serving_memory_observed.shared_resident,
+    owner: "strata-expert-lock.service (mlock, one page-cache copy mapped by every engine)" as NonEmptyStr,
+  }],
+  swap_bound: serving_engine_swap_bound,
+  devices: [host_6ce85c_a16_device(bus: "85"), host_6ce85c_a16_device(bus: "87"), host_6ce85c_a16_device(bus: "88"), host_6ce85c_a16_device(bus: "c5"), host_6ce85c_a16_device(bus: "c7"), host_6ce85c_a16_device(bus: "c8")],
+}
+
+// INDEPENDENT GROUPS FIRST: one replica per device.
+data host_6ce85c_independent_groups: List<ServingDeviceGroup> = [
+  ServingDeviceGroup { name: "h11-strata@85" as NonEmptyStr, devices: ["a16-85"] },
+  ServingDeviceGroup { name: "h11-strata@87" as NonEmptyStr, devices: ["a16-87"] },
+  ServingDeviceGroup { name: "h11-strata@88" as NonEmptyStr, devices: ["a16-88"] },
+  ServingDeviceGroup { name: "h11-strata@c5" as NonEmptyStr, devices: ["a16-c5"] },
+  ServingDeviceGroup { name: "h11-strata@c7" as NonEmptyStr, devices: ["a16-c7"] },
+  ServingDeviceGroup { name: "h11-strata@c8" as NonEmptyStr, devices: ["a16-c8"] },
+]
+
+// STRATA 0.1.48, Qwen3.8-Flash-Next IQ3_S, on one A16 GPU (h11-a16, 2026-10-30). Fixed VRAM is what the engine
+// used beside its expert cache (nvidia-smi memory.used 14544 MiB less the engine's reported 7935 MiB expert
+// cache). The least expert cache, the active-slot RAM and its snapshot peaks are ASSUMED until read. One active
+// slot (/props total_slots 1). Parking is rejected with a layer split (docs/DETAILS.md "Conversation
+// cache"), so a replica retains only on one device. The base was read after load, so it includes the pinned
+// host copy of the max-context KV.
+data strata_iq3_s_a16_profile: ServingBackendProfile = ServingBackendProfile {
+  backend: "strata 0.1.48 qwen3.8-flash-next-iq3_s" as NonEmptyStr,
+  device_fixed_vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 6609)), provenance: "h11-a16 nvidia-smi memory.used 14544 MiB less the engine's expert_cache_mib 7935, 2026-10-30" as NonEmptyStr },
+  device_min_elastic_vram: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 2)), reason: "least expert cache the engine is run with: a 2 GiB assumption until a run below it is read" as NonEmptyStr },
+  replica_base_ram: ServingMemoryRead { bytes: byte_size(count: 4703334400), provenance: "systemctl show h11-strata@c8 MemoryCurrent=4703334400, loaded, idle, 0 requests, nothing parked, 2026-10-30T17:10Z" as NonEmptyStr },
+  active_slots: 1,
+  active_slot_ram: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 512)), reason: "RAM a request needs above the base, including snapshot capture and restore peaks: a 512 MiB assumption until h11-strata@c8 memory.peak is read through real turns" as NonEmptyStr },
+  retention: strata_iq3_s_snapshot_cost,
+  max_devices_with_retention: 1,
+  max_context: token_count(count: 229376),
+}
+
+// THE REQUIREMENT: the engine's own context ceiling, and at least one conversation retained per replica.
+data h11_serving_requirement: ServingRequirement = ServingRequirement { max_context: token_count(count: 229376), min_retained_per_replica: 1 }
+
+data host_6ce85c_layout: ServingLayoutResult = serving_layout_with_qualification(
+  result: serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: h11_serving_requirement),
+  q: ServingLiveUnqualified { obligation: "h11 has not run this configuration: apply it, read each engine's memory.peak through real turns at the ceiling, and bind the receipt to this configuration's identity" as NonEmptyStr },
+)
+
+// CONSUMER, declared frontier (DESIGN section 3c): the h11 engine units' MemoryMax, MemorySwapMax,
+// --conversation-cache-mib and --conversation-cache-slots, and the router's per-replica admission, read this
+// configuration. Until a launch row renders them, the witnesses are the only readers and the values are
+// applied by hand from the derivation's output.
+data serving_layout_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Delete when the h11 Strata launch row renders each engine's MemoryMax, MemorySwapMax and conversation-cache flags from host_6ce85c_layout, and router placement admits through serving_replica_admit." as NonEmptyStr
+)
