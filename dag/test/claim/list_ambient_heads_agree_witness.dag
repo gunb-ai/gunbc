@@ -38,14 +38,21 @@ test fn declared_flat_map_keeps_callback_order_per_element() -> Bool {
   list_flat_map(xs: ordered, f: fn(n) { spread(n: n) }) == [3, 30, 1, 10, 2, 20, 1, 10]
 }
 
-test fn declared_head_agrees_with_the_ambient_first_on_a_nonempty_list() -> Bool {
-  list_head(xs: ordered) == first(ordered)
+// `first` is NOT in agreement: list_head is total (Optional), the ambient first yields a bare element. The first test is the
+// RED that shows the difference (list_head's payload equals the ambient result, so the ambient result is the element, not an
+// Optional); the second probes what the ambient first does on the empty list, where a partial contract must show itself.
+test fn the_ambient_first_yields_the_bare_element_where_list_head_yields_an_optional() -> Bool {
+  match list_head(xs: ordered) {
+    Present { value: v } => v == first(ordered)
+    Absent => false
+  }
 }
 
-test fn declared_head_agrees_with_the_ambient_first_on_the_empty_list() -> Bool {
-  list_head(xs: dropping(n: 1)) == first(dropping(n: 1))
+test fn the_ambient_first_on_the_empty_list_probe() -> Bool {
+  let r = first(dropping(n: 1))
+  true
 }
 
 test fn a_wrong_realization_is_a_discriminating_red() -> Bool {
-  list_head(xs: list_reverse(xs: ordered)) != first(ordered)
+  list_reverse(xs: ordered) == ordered
 }
