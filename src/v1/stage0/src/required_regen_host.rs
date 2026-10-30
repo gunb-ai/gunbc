@@ -3950,6 +3950,47 @@ struct BaseRestore {
     paths_absent_at_base: usize,
 }
 
+/// The receipt's base-mirror arm, in the shape its renderer takes. Split out so the HOST half of
+/// the line — which commit and which two counts reach the renderer — is checkable without loading a
+/// corpus. The RENDERER's half (the line's text, and its absence for a round that was never asked
+/// to bootstrap) is asserted in `dag/test/claim/self_host_regen_round_cost_witness.dag`
+/// `a_bootstrapped_receipt_names_the_base_commit_after_the_header` and
+/// `a_non_bootstrapped_receipt_renders_no_base_mirror_line`, which reach a verdict on a required
+/// run. A Rust control that renders through the interpreter pays a whole corpus load per call —
+/// measured at about 50 minutes of libtest time on srv1 at `b339f6fa0e6f`, the same front-end cost
+/// this repository's native-execution lane exists to remove — so rendering does not belong here.
+fn base_mirror_receipt_authority(base: &BaseRestore) -> (String, usize, usize) {
+    (
+        base.base_commit.clone(),
+        base.paths_restored,
+        base.paths_absent_at_base,
+    )
+}
+
+/// The same arm, DERIVED READ-ONLY from the authority the bootstrap uses, for the image that renders
+/// the receipt without having seeded: the re-exec'd handoff child. Under the handoff rule the child
+/// seeds nothing, so `base_bootstrap` is `None` there, and passing that `None` to the renderer would
+/// select the `SeedBuiltFromHead` arm and print a receipt claiming round 1 built from the HEAD —
+/// fabricating a plausible output for the one run whose whole purpose is to say which bytes round 1
+/// compiled. So the child re-derives the commit and both counts from the same authority the parent
+/// used. No fallback and no `.ok()`: a base commit that cannot be named refuses the round with the
+/// typed `BootstrapBaseMirrorCommitUnresolved` diagnostic instead of dropping the line.
+fn round_one_receipt_base_authority(
+    workspace: &Path,
+    base_commit_env: Option<&str>,
+) -> Result<(String, usize, usize), String> {
+    let (base_commit, from_base) = resolve_base_mirror_authority(workspace, base_commit_env)?;
+    let in_worktree = worktree_crate_population(&workspace.join(STAGE0_CRATE_REL))?;
+    let seeded = from_base
+        .keys()
+        .filter(|path| in_worktree.contains(*path))
+        .count();
+    let head_added = in_worktree
+        .difference(&from_base.keys().cloned().collect())
+        .count();
+    Ok((base_commit, seeded, head_added))
+}
+
 /// THE HEAL ROUND'S BOOTSTRAP AUTHORITY — DESIGN §5, `gunbc.recurring_failure_mode`
 /// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair` (RFM #14963).
 ///
@@ -7098,6 +7139,24 @@ pub fn run_regen_round_cost(
     )
     .map_err(|cause| cause.to_string())?;
     let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
+
+    // ONE AUTHORITY FOR THE RECEIPT'S BASE ARM, read by whichever image reports. The parent holds
+    // what its own seed did. The handoff child seeds nothing (the handoff rule), so it DERIVES the
+    // same arm from the same read-only authority; passing `None` there would select the renderer's
+    // `SeedBuiltFromHead` arm and print a receipt claiming round 1 compiled the HEAD — a fabricated
+    // output in the one run whose purpose is to record which bytes round 1 compiled. No `.ok()`
+    // anywhere: a base commit that cannot be named refuses the round with its typed
+    // `BootstrapBaseMirrorCommitUnresolved` diagnostic rather than dropping the line silently.
+    let receipt_base_authority: Option<(String, usize, usize)> = match base_bootstrap.as_ref() {
+        Some(restored) => Some(base_mirror_receipt_authority(restored)),
+        None if base_mirror => Some(round_one_receipt_base_authority(
+            &workspace,
+            std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV)
+                .ok()
+                .as_deref(),
+        )?),
+        None => None,
+    };
     let rendered = render_round_cost_receipt(
         source_roots,
         &host,
@@ -7114,13 +7173,9 @@ pub fn run_regen_round_cost(
         &rebuild_packages,
         &executable_digest,
         &second_generation_candidate_digest,
-        base_bootstrap.as_ref().map(|b| {
-            (
-                b.base_commit.as_str(),
-                b.paths_restored,
-                b.paths_absent_at_base,
-            )
-        }),
+        receipt_base_authority
+            .as_ref()
+            .map(|(commit, seeded, head_added)| (commit.as_str(), *seeded, *head_added)),
     )?;
     let receipt_path = workspace.join(REGEN_ROUND_COST_RECEIPT_REL);
     if let Some(parent) = receipt_path.parent() {
@@ -7133,23 +7188,14 @@ pub fn run_regen_round_cost(
         receipt_path,
         round_failures,
         // THE RECEIPT NAMES ITS SOURCE IN EVERY IMAGE OF THE ROUND, not only in the one that did
-        // the seeding. Under the handoff rule the image that reports is the child, which seeds
-        // nothing; if the commit came only from `base_bootstrap`, this PR's own authority — "which
-        // bytes did round 1 compile" — would disappear from exactly the run that answers it. So the
-        // child asks the same authority the parent used, which is read-only (a `git rev-parse` of
-        // the env-named ref) and writes nothing.
-        base_mirror_commit: match base_bootstrap {
-            Some(restored) => Some(restored.base_commit),
-            None if base_mirror => resolve_base_mirror_authority(
-                &workspace,
-                std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV)
-                    .ok()
-                    .as_deref(),
-            )
-            .map(|(commit, _)| commit)
-            .ok(),
-            None => None,
-        },
+        // the seeding, and both readers of that fact read the SAME value: the rendered line and
+        // this field come from `receipt_base_authority`. Under the handoff rule the image that
+        // reports is the child, which seeds nothing; if the commit came only from `base_bootstrap`,
+        // this PR's own authority — "which bytes did round 1 compile" — would disappear from
+        // exactly the run that answers it, and the rendered receipt would claim the head instead.
+        base_mirror_commit: receipt_base_authority
+            .as_ref()
+            .map(|(commit, _, _)| commit.clone()),
     })
 }
 
@@ -7435,10 +7481,24 @@ mod heal_round_one_base_mirror_tests {
         let put_back =
             restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
                 .expect("the round ends its snapshot");
+        // The journal covers every path the round can touch, not only the paths the seed WROTE: the
+        // head-added paths are journalled too, because the round's own round-2 install overwrites
+        // them and the rollback must be able to return them. So the teardown's population is the
+        // seeded population PLUS the paths base has no form of — and the sum, not the seed count, is
+        // what must come back, or a head-added hand-written file stays at base bytes.
         assert_eq!(
-            put_back, restored.paths_restored,
-            "the teardown restored a different population than the bootstrap seeded, so some base \
-             byte is still on disk where the candidate reads"
+            put_back,
+            restored.paths_restored + restored.paths_absent_at_base,
+            "the teardown did not return every journalled path (seeded {} + head-added {}), so a \
+             base byte is still on disk where the candidate reads",
+            restored.paths_restored,
+            restored.paths_absent_at_base
+        );
+        assert_eq!(
+            (restored.paths_restored, restored.paths_absent_at_base),
+            (5, 2),
+            "the fixture's population moved: base carries 5 paths under {STAGE0_CRATE_REL} and the \
+             head adds 2, and this control's arithmetic reads those numbers"
         );
         assert!(put_back > 0, "the teardown reported restoring nothing");
         for (path, needle, what) in [
@@ -7548,12 +7608,46 @@ mod heal_round_one_base_mirror_tests {
             journal.exists(),
             "the child's arrival destroyed the journal the round's teardown restores from"
         );
+        // THE CHILD'S RECEIPT ARM MATCHES WHAT THE PARENT SEEDED. The child seeded nothing under the
+        // handoff rule, so its arm is DERIVED from the same authority; a `None`, or a different
+        // count, would send the renderer down its `SeedBuiltFromHead` arm and print a receipt
+        // claiming round 1 compiled the HEAD — the opposite of what the heal round records, in the
+        // one image that reports.
+        let child_arm = round_one_receipt_base_authority(&root, Some(base_commit.as_str()))
+            .expect("the child can ask the same read-only authority the parent used");
+        assert_eq!(
+            (child_arm.0.as_str(), child_arm.1, child_arm.2),
+            (
+                base_commit.as_str(),
+                restored.paths_restored,
+                restored.paths_absent_at_base
+            ),
+            "the child's receipt arm disagrees with what the parent seeded, so the receipt the \
+             child renders names the wrong bytes for round 1"
+        );
         assert_eq!(
             restore_regen_convergence_journal_for_subject(&root, &subject)
                 .expect("the round's teardown restores what the parent seeded"),
+            restored.paths_restored + restored.paths_absent_at_base,
+            "the teardown did not return every journalled path (seeded {} + head-added {}), so the \
+             child touched the tree or the journal",
             restored.paths_restored,
-            "the teardown restored a different population than the parent seeded, so the child \
-             touched the tree or the journal"
+            restored.paths_absent_at_base
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// THE CHILD'S RECEIPT ARM HAS NO FALLBACK PATH. An unresolvable base commit refuses with the
+    /// typed diagnostic; it does not yield `None`, which is what let the rendered receipt fall to the
+    /// head arm and the struct field drop the commit (review 88497, second finding).
+    #[test]
+    fn the_childs_receipt_arm_refuses_rather_than_dropping_the_line() {
+        let (root, _stage0, _base_commit) = base_mirror_fixture();
+        let error = round_one_receipt_base_authority(&root, Some("   "))
+            .expect_err("a base commit that is not a commit id must refuse the round");
+        assert!(
+            error.starts_with("BootstrapBaseMirrorCommitUnresolved"),
+            "the child's receipt arm refused with an untyped diagnostic: {error}"
         );
         let _ = fs::remove_dir_all(&root);
     }
@@ -7923,67 +8017,37 @@ mod heal_round_one_base_mirror_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// THE RECEIPT NAMES THE BASE COMMIT, and only a round that was asked to bootstrap has one.
-    /// A probe round renders NO base line: that absence is pinned, so a heal fact can never be
-    /// assumed into a receipt that has none.
+    /// THE RECEIPT'S HOST ARM CARRIES THE COMMIT AND BOTH COUNTS. This is the host half only, and
+    /// it is deliberately corpus-free: rendering the receipt here would resolve its `.dag` renderer
+    /// through the interpreter, which loads the whole corpus per call (about 50 minutes of libtest
+    /// time on srv1 at `b339f6fa0e6f`). The renderer's own arms — the line's text, and its absence
+    /// for a round never asked to bootstrap — are
+    /// `dag/test/claim/self_host_regen_round_cost_witness.dag`
+    /// `a_bootstrapped_receipt_names_the_base_commit_after_the_header` and
+    /// `a_non_bootstrapped_receipt_renders_no_base_mirror_line`.
     #[test]
-    fn the_receipt_names_the_base_commit_and_a_probe_round_has_no_such_line() {
-        // The renderer refuses when its entry is under no declared source root, so the fixture
-        // declares the same roots the round does.
-        let workspace = workspace_root();
-        let roots = vec![
-            workspace.join("dag").display().to_string(),
-            workspace.join("src/v2").display().to_string(),
-        ];
-        let healed = render_round_cost_receipt(
-            &roots,
-            "host",
-            "0000000000000000000000000000000000000000",
-            false,
-            3,
-            2,
-            0,
-            &[],
-            &["src/v1/stage0/src/fixture_emitted.rs".to_string()],
-            &[],
-            &[],
-            &[],
-            &["v1-compiler".to_string()],
-            "e",
-            "c",
-            Some(("2a11b317d2caf3c37d1d38a4421e8e0c06188925", 252, 2)),
+    fn the_receipts_host_arm_carries_the_commit_and_both_counts() {
+        let (root, _stage0, base_commit) = base_mirror_fixture();
+        let restored = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
         )
-        .expect("a heal-round receipt renders");
-        assert!(
-            healed.contains(
-                "regen-round-cost: base_mirror_commit=2a11b317d2caf3c37d1d38a4421e8e0c06188925 \
-                 crate=src/v1/stage0 crate_paths=252 head_added_paths_kept=2"
-            ),
-            "the receipt does not name the base commit round 1 seeded from:\n{healed}"
+        .expect("the bootstrap runs");
+        let (commit, seeded, head_added) = base_mirror_receipt_authority(&restored);
+        assert_eq!(
+            commit,
+            base_commit.as_str(),
+            "the receipt would name something other than the commit the step named, so the \
+             round's stated source is not the authority it actually used"
         );
-        let probe = render_round_cost_receipt(
-            &roots,
-            "host",
-            "0000000000000000000000000000000000000000",
-            false,
-            3,
-            2,
-            0,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &["v1-compiler".to_string()],
-            "e",
-            "c",
-            None,
-        )
-        .expect("a probe receipt renders");
-        assert!(
-            !probe.contains("base_mirror_commit"),
-            "a probe round claimed a base mirror it was never asked for:\n{probe}"
+        assert_eq!(
+            (seeded, head_added),
+            (5, 2),
+            "the receipt's counts moved off the fixture's population, so the line it feeds no \
+             longer describes what the seed built"
         );
+        let _ = fs::remove_dir_all(&root);
     }
 }
 
