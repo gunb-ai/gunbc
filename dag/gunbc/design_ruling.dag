@@ -126,6 +126,13 @@ data instrument_is_a_row_not_a_flag: DesignRuling = DesignRuling {
   provenance: "Operator ruling; `--self-host` was withdrawn in the change that added //gunbc/instruments:self-host.",
 }
 
+data grep_stands_in_for_lenses_until_they_land: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "grep_stands_in_for_lenses_until_they_land"),
+  decided: "2026-10-30",
+  section: "6",
+  provenance: "Operator ruling, session clever-ibex-310: \"a census running for 6 hours is clearly broken\"; censuses are cleaned out \"in favor of just grepping for now - we don't have real support for lenses yet\". A cited text query is the admitted measurement and no new census instrument is built. Dissolves when lens support lands.",
+}
+
 data job_roster_closed_to_growth: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "job_roster_closed_to_growth"),
   decided: "2026-09-04",
@@ -560,6 +567,7 @@ data a16_latch_is_accommodated_not_cut: DesignRuling = DesignRuling {
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    grep_stands_in_for_lenses_until_they_land,
     the_mint_of_a_fleet_ssh_keypair_is_account_creation,
     macos_operator_terminal_runs_without_a_memory_bound,
     cross_tree_admission_is_namespace_membership,
