@@ -92,7 +92,7 @@ fn zone_token_accessor_cell_landed() -> Bool {
 
 // What a selected-but-unrealized route is missing, named once. The census reason
 // zone_token_accessor_cell_unlanded binds its dissolution to this declaration's retirement, which
-// present_trigger_declarations fires when zone_token_accessor_cell_landed turns true.
+// is a real declaration: the census witness asserts it is retired exactly when zone_token_accessor_cell_landed is true.
 data zone_token_accessor_unlanded: FreeSemigroup<NonEmptyStr> = non_empty_append(
   left: non_empty_append(
     left: non_empty_singleton(

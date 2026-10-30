@@ -9,7 +9,9 @@ import gunbc.auth.authorization_pattern_selection {
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, PatternSelected,
   select_authorization_pattern, pattern_identity,
 }
+import std.dissolution { DissolutionFired, DissolutionPending, DissolutionUnbound, dissolution_status }
 import gunbc.auth.privileged_effect_census {
+  zone_token_accessor_cell_unlanded, present_trigger_declarations,
   privileged_effect_census, site_verdict, site,
   DivergesWithReason, Diverges, Conforms, SiteNotDecidable, PrivilegedEffectSite,
 }
@@ -109,5 +111,28 @@ test fn the_gap_arm_follows_the_landed_standing() -> Bool {
   zone_token_accessor_cell_landed() == match zone_route_gap() {
     CloudflareRecordListUnread { missing: _, basis: _ } => true
     _ => false
+  }
+}
+
+// DEBT RETIREMENT AND REALIZATION CANNOT DRIFT. The reason's trigger is a real declaration retirement judged
+// over the real declaration population; the realization is the roster fold. They are independent sources, and
+// this claim is red unless they agree: landing the accessor row without deleting zone_token_accessor_unlanded
+// leaves the reason Pending while the cell is landed, and deleting the declaration without the row is refused
+// by the floor (the list cites it).
+test fn the_reason_retires_exactly_when_the_roster_cell_lands() -> Bool {
+  let fired = match dissolution_status(condition: zone_token_accessor_cell_unlanded.dissolution, present_decls: present_trigger_declarations()) {
+    DissolutionFired => true
+    DissolutionPending => false
+    DissolutionUnbound => false
+  }
+  fired == zone_token_accessor_cell_landed()
+}
+
+// DISCRIMINATING: over an empty population the same condition is Fired, so the claim above is not vacuous.
+test fn the_reason_fires_when_its_subject_is_absent_from_the_population() -> Bool {
+  match dissolution_status(condition: zone_token_accessor_cell_unlanded.dissolution, present_decls: []) {
+    DissolutionFired => true
+    DissolutionPending => false
+    DissolutionUnbound => false
   }
 }
